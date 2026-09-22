@@ -237,7 +237,8 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         if (params.literal === true) args.push("--fixed-strings");
         if ((params.context ?? 0) > 0) args.push("--context", String(params.context));
         if (params.glob !== undefined && params.glob !== "") args.push("--glob", params.glob);
-        args.push(params.pattern, target);
+        // `--regexp` binds the pattern as a value: a positional `-o …` was read as a flag (run 1aa6e6).
+        args.push("--regexp", params.pattern, target);
         const outcome = await isolatedRead("grep", "rg", args, target, true);
         throwIfTraversalError("grep", outcome);
         const limit = Math.max(1, params.limit ?? 100);

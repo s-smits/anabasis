@@ -50,7 +50,7 @@ function makeFixtureRepo(): MakeFixtureRepoResult {
     rootFiles: { ".env": "SECRET=hunter2\n", "package.json": "{}\n" },
     iterationFiles: {
       "slug/correctness-model/brief.json": '{"authored":true}\n',
-      "slug/poem.txt": "line one\nline two\nline three\n",
+      "slug/poem.txt": "line one\nline two\nline three\na -dash row\n",
       "census.json": JSON.stringify({ findings: [{ detail: REMEDY_LEAK }] }),
     },
   });
@@ -281,6 +281,12 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(rows).toContain(`${poem}:3-line three`);
     expect(rows).not.toContain("\0");
     expect(await run("grep", { pattern: "line", path: poem, limit: 1 })).toBe(`${poem}:1:line one`);
+  });
+
+  it("grep: a pattern that begins with a dash is searched for, not read as a flag", async () => {
+    const poem = workspacePath("slug", "poem.txt");
+    expect(await run("grep", { pattern: "-dash", path: poem, literal: true })).toBe(`${poem}:4:a -dash row`);
+    expect(await run("grep", { pattern: "-absent", path: poem })).toBe("No matches");
   });
 
   it("find and ls: enumerate the candidate tree, drop denied names, and record the drops", async () => {

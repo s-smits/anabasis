@@ -116,7 +116,7 @@ export function collect(campaignDir) {
     0,
   );
   reasons.push(
-    `findings ${findings}, of which without a proposed owner ${unowned}; actual routes belong to admission feedback`,
+    `measured-iteration findings ${findings}, of which without a proposed owner ${unowned}; actual routes belong to admission feedback, and authoring reviews to digest block 4d`,
   );
   const perTaskSet = {};
   for (const entry of rows) {

@@ -302,7 +302,7 @@ describe("review-yield: epoch reviewer", () => {
     expect(out.summary).toEqual({ iterations: 2, opportunities: 2, outputs: 2, consumed: 2, changed: 0 });
     expect(out.verdict).toBe("advisory-only");
     expect(out.reasons).toContain(
-      "findings 2, of which without a proposed owner 2; actual routes belong to admission feedback",
+      "measured-iteration findings 2, of which without a proposed owner 2; actual routes belong to admission feedback, and authoring reviews to digest block 4d",
     );
     expect(out.reasons).toContain("review conditions repeated: 1 (legacy rows use task-set identity)");
   });

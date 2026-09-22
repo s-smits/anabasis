@@ -274,8 +274,8 @@ async function executePath(
       /* SAFETY: the inherited submit tool takes no argument; `never` is the controller-side parameter type for a schema it does not model. */ {} as never,
     );
     const final = authority.finalSubmission();
-    if (final === null || final.artifactJson === null)
-      throw new Error("submit produced no accepted artifact bytes");
+    if (final === null) throw new Error("submit produced no accepted artifact bytes");
+    if (final.artifactJson === null) throw new Error("submit produced no accepted artifact bytes");
     const accepted = trustedJsonParse(final.artifactJson);
     if (!sameJsonValue(artifact, accepted)) {
       throw new Error("the writer cannot materialise the reference artifact without changing its value");

@@ -303,22 +303,23 @@ class BuilderCampaignController {
     // Read synchronously: submit publishes its run before its first await, so a preview started
     // meanwhile joins it.
     const clear = clearPreview(this.candidates.validation, key);
-    const opened: { iteration: Iteration | null } = { iteration: null };
+    let iteration: Iteration | null = null;
     const report = await submitStages(candidate, this.pipelineInput(), {
       gates: this.deps.gates ?? (async () => []),
       memory: this.candidates.validation,
       runDir: (clean, label) => {
         if (!clean) return freshRunDir(join(this.input.campaignDir, "trials", key), label);
-        opened.iteration = this.openIteration();
-        return opened.iteration.iterationDir;
+        iteration = this.openIteration();
+        return iteration.iterationDir;
       },
     });
     if (report.blocked !== null) throw report.blocked.cause;
     const retryable = !memorable(report);
+    const opened =
+      /* SAFETY: assigned inside runDir; the control-flow narrowing of a closure write is lost. */ iteration as Iteration | null;
     // A clean candidate whose gate run another call executed opens its iteration here.
     const settling =
-      opened.iteration ??
-      (report.refusals.every((refusal) => refusal.stage === "gates") ? this.openIteration() : null);
+      opened ?? (report.refusals.every((refusal) => refusal.stage === "gates") ? this.openIteration() : null);
     const { outcome, executed } =
       settling !== null && report.harness !== null && report.gated !== null
         ? await this.settle(candidate, report.harness, report.gated, settling, turn)

@@ -82,7 +82,7 @@ export type CandidateCheckOutcome = (
       /** The snapshot's four validated contracts, read once here; every later gate stage consumes
        *  these values instead of parsing the same bytes again. */
       bundle: ValidatedBundle;
-      /** What this candidate's declared tools resolve to on this host (path, source, digest) — the
+      /** What this candidate's declared tools resolve to on this host, each resolved entry whole — the
        *  half of its identity `snapshotId` cannot carry, because the tool tree is machine-local by
        *  construction. Null when the brief grounds no check on a tool, so there is nothing outside
        *  the bytes to move. */
@@ -483,10 +483,10 @@ function solverShellFindings(toolsSpec: ToolsSpec | null): ContractFinding[] {
  *   strikes end it. Accepting would spend the whole census before each run settled as a
  *   non-result, which reads as the domain being ungradable;
  * - every named tool resolved → the candidate evaluates over those exact executables, and the
- *   returned condition digest names their paths, sources, byte digests and the bytes of the
- *   interpreter a script runs under (null with no tool). The gate cache, the remembered preview
- *   and the no-op strike all key on it, so an interpreter-only change is a new condition, as it
- *   already was for `verifierEnvironmentHash`.
+ *   returned condition digest names every resolved entry whole (null with no tool): a projection
+ *   of four fields once left out the interpreter a script runs under. The gate cache, the
+ *   remembered preview and the no-op strike all key on it, so an interpreter-only change is a new
+ *   condition, as it already was for `verifierEnvironmentHash`.
  */
 function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], findings: ContractFinding[]) {
   if (toolIds.length === 0) return { engineCondition: null, verifierEnvironmentHash: null };
@@ -513,15 +513,7 @@ function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], f
   return {
     verifierEnvironmentHash: verifierEnvironmentHashOfTools(resolved.inventory),
     engineCondition: hashJsonValue(
-      Object.values(resolved.inventory)
-        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-        .map((entry) => ({
-          id: entry.id,
-          path: entry.path,
-          source: entry.source,
-          digest: entry.digest,
-          ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
-        })),
+      Object.values(resolved.inventory).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     ),
   };
 }

@@ -25,33 +25,25 @@ import { join } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 
 const resolvedTools = new Map<string, string>();
-let developerDir: string | null | undefined;
+let developerBinDirs: string[] | undefined;
 
-function activeDeveloperDir(): string | null {
-  if (developerDir !== undefined) return developerDir;
-  developerDir = null;
-  if (runtimeProcess.platform !== "darwin") return developerDir;
+function activeDeveloperBinDirs(): string[] {
+  if (developerBinDirs !== undefined) return developerBinDirs;
+  developerBinDirs = [];
+  if (runtimeProcess.platform !== "darwin") return developerBinDirs;
   try {
     const found = Bun.spawnSync({ cmd: ["xcode-select", "-p"], stdout: "pipe", stderr: "pipe" });
     const directory = found.success ? found.stdout.toString().trim() : "";
-    if (directory !== "") developerDir = directory;
+    if (directory !== "") {
+      developerBinDirs = [
+        join(directory, "usr", "bin"),
+        join(directory, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin"),
+      ];
+    }
   } catch {
     // No xcode-select on this host: the bare name is the answer and PATH resolves it.
   }
-  return developerDir;
-}
-
-/** The tool's own binary in the active developer directory, or null when it holds none. */
-function developerTool(name: string): string | null {
-  const directory = activeDeveloperDir();
-  if (directory === null) return null;
-  for (const bin of [
-    join(directory, "usr", "bin"),
-    join(directory, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin"),
-  ]) {
-    if (existsSync(join(bin, name))) return join(bin, name);
-  }
-  return null;
+  return developerBinDirs;
 }
 
 /** The first existing `<dir>/<name>` across PATH, or null when PATH holds no such tool. */
@@ -69,7 +61,12 @@ export function hostTool(name: string): string {
   const remembered = resolvedTools.get(name);
   if (remembered !== undefined) return remembered;
   const fromPath = firstPathResolution(name);
-  const direct = fromPath === join("/usr/bin", name) ? developerTool(name) : null;
+  const direct =
+    fromPath === join("/usr/bin", name)
+      ? activeDeveloperBinDirs()
+          .map((dir) => join(dir, name))
+          .find((path) => existsSync(path))
+      : undefined;
   const answer = direct ?? fromPath ?? name;
   resolvedTools.set(name, answer);
   return answer;

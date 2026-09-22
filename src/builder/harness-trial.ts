@@ -250,8 +250,10 @@ async function runTrial(
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const { binding, sourceBinding, loaded, solved, openedCandidateId } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
+  // A typed solver non-result outranks an accepted submit, as `gradeOutcome` orders the battery's
+  // branches: the case has no truth, so its bytes are not graded.
   const verifier =
-    candidate.stable && solved.acceptedSubmit
+    candidate.stable && solved.acceptedSubmit && solved.solved.nonResult === undefined
       ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
       : { status: "not-run" };
   let status = solved.acceptedSubmit ? "completed" : "unaccepted";

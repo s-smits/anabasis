@@ -58,7 +58,7 @@ import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { CaseRecord } from "./battery-record.ts";
-import { type Brief, applicableTruthChecks, requiredToolsOf } from "./brief.ts";
+import { type Brief, applicableTruthChecks, externalChecksOf, requiredToolsOf } from "./brief.ts";
 import { hostNonResult, uncoveredExternalCheckIds } from "./tool-runs.ts";
 import { solverNonResultReason } from "./runtime-blocker.ts";
 import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
@@ -411,13 +411,21 @@ export async function rehearseCase(
     if (scoped.cleanupPending) return { status: "non-result", kind: "cleanup-pending" };
     if (scoped.failure !== null) throw scoped.failure;
     signal.throwIfAborted();
-    const hostFailure = hostNonResult(verifier, { phase: "battery", subjectId: task.taskId, attempt: 1 });
-    if (hostFailure !== null) return { status: "non-result", kind: hostFailure.outcome };
-    // Exactly the aggregate the battery records as `truthOk`, and nothing beside it.
-    return {
-      status: "completed",
-      truthOk: scoped.verdict === null ? null : !blockingTruthFailure(scoped.verdict),
-    };
+    // The battery's own decision over the same evidence, so a grounded check that returned true
+    // without running its tool is no pass here either; only its aggregate bit leaves.
+    const subject = { phase: "battery" as const, subjectId: task.taskId, attempt: 1 };
+    const outcome = acceptedOutcome(
+      scoped,
+      hostNonResult(verifier, subject),
+      uncoveredExternalCheckIds(
+        checks.map((check) => check.id),
+        externalChecksOf(brief),
+        verifier.executedBindings(),
+        subject,
+      ),
+    );
+    if (outcome.kind === "non-result") return { status: "non-result", kind: outcome.nonResultKind };
+    return { status: "completed", truthOk: outcome.kind === "truth" ? outcome.truthOk : null };
   } catch (error) {
     return rehearsalFailure(error, signal, callerSignal);
   }

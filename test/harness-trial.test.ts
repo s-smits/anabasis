@@ -16,7 +16,8 @@ import { processGroupExists } from "../src/meta/subprocess.ts";
 import { loadValidatedBundle } from "../src/author/candidate-check.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
 import { loadBuiltControllerInterface } from "../src/truth/contracts.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { type Solver, type SolverNonResult, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { double, text } from "./helpers/doubles.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
@@ -43,7 +44,10 @@ function workspace(): string {
 /** A solver standing where the measured Built solver stands: the same confined generated-tool
  *  starter the production factory opens, driven by a fixed call list instead of a provider. What
  *  the tool does with the result — grade it, project it, bound it — is what these tests read. */
-function scriptedBuiltSolver(calls: Array<{ tool: string; arguments: JsonObject }>): Solver {
+function scriptedBuiltSolver(
+  calls: Array<{ tool: string; arguments: JsonObject }>,
+  nonResult?: SolverNonResult,
+): Solver {
   const solver: Solver = async (_task, toolset) => {
     const byName = new Map(toolset.tools.map((tool) => [tool.name, tool]));
     let seq = 0;
@@ -53,7 +57,13 @@ function scriptedBuiltSolver(calls: Array<{ tool: string; arguments: JsonObject 
       await tool.execute(`blind-${++seq}`, double(call.arguments));
     }
     await toolset.close?.();
-    return { turns: 2, completedTurns: 2, errors: [], toolCalls: calls.length };
+    return {
+      turns: 2,
+      completedTurns: 2,
+      errors: [],
+      toolCalls: calls.length,
+      ...keyIfDefined("nonResult", nonResult),
+    };
   };
   return withSolverBuiltStarterFactory(solver, async (slugDir, task, submission, publicArtifactSchema) =>
     createGeneratedToolStarter({
@@ -70,6 +80,7 @@ async function trial(
   dir: string,
   taskId: string,
   calls: Array<{ tool: string; arguments: JsonObject }> = SOLVES,
+  nonResult?: SolverNonResult,
 ) {
   const root = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-trial-lifetime-"));
   scratch.push(root);
@@ -77,7 +88,7 @@ async function trial(
   const tool = createHarnessTrialTool({
     workspace: dir,
     context: { slug: "matching", exactTasks: 4 },
-    builtSolver: () => scriptedBuiltSolver(calls),
+    builtSolver: () => scriptedBuiltSolver(calls, nonResult),
     verifierLifetime,
   });
   const result = await tool.execute("trial", { taskId });
@@ -259,6 +270,31 @@ describe("harness_trial", () => {
       expect(await lifetime.close()).toEqual([]);
     },
   );
+
+  it("grades as the battery does: a grounded check that ran no tool, or a solver non-result, is no pass", async () => {
+    const dir = workspace();
+    const brief = structuredClone(MATCHING_BRIEF);
+    for (const check of brief.truthChecks) {
+      if (check.id === "expected-binding") {
+        check.execution.evidence = { kind: "external", requiredToolIds: ["cat"] };
+      }
+    }
+    await Bun.write(join(dir, "correctness-model/brief.json"), JSON.stringify(brief));
+    await Bun.write(
+      join(dir, "correctness-model/evaluator.ts"),
+      'export const checks = { "parts-assigned": () => true, "expected-binding": () => true };',
+    );
+    const ungrounded = await trial(dir, "t1");
+    expect(ungrounded.verifier).toEqual({ status: "non-result", kind: "verifier" });
+    expect(ungrounded.truth).toEqual({ verdict: "not-run" });
+    const stopped = await trial(workspace(), "t1", SOLVES, {
+      kind: "provider",
+      message: "provider stopped after submit",
+    });
+    expect(stopped.status).toBe("non-result");
+    expect(stopped.solve).toMatchObject({ accepted: true });
+    expect(stopped.truth).toEqual({ verdict: "not-run" });
+  });
 
   it("reports a schema-rejected submission without presenting it as a correctness verdict", async () => {
     const dir = workspace();

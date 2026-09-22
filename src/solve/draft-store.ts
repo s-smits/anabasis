@@ -1,19 +1,12 @@
 /**
  * One open state map, optional files, and one explicitly prepared answer, under one owner.
  *
- * The store holds working state; it does not decide the answer's shape. `setArtifact` records any
- * bounded JSON value; public-schema validation belongs to the writer and submission paths.
- * A domain's working state and its answer can therefore have different shapes.
+ * The store holds working state of any JSON shape; it does not decide the answer's shape.
+ * `setArtifact` records any bounded JSON value; public-schema validation belongs to the writer and
+ * submission paths.
  *
- * Earlier versions modelled that working state as a node-and-edge graph carried over from v1. No
- * consumer ever read it: `draft-tool.ts` exposes no graph to generated code, `starters/` never
- * mentions one, and `inspect_draft` renders whatever the snapshot holds. It is gone. A domain that
- * wants a graph stores one under a key; a domain that wants a table, a list or a single number
- * stores that directly, without converting it to nodes and edges first.
- *
- * State and files both offer set, get, has, delete and a sorted snapshot, so callers use them
- * consistently. Both are Maps, which is also why a key called
- * `__proto__` is a key here and not a prototype.
+ * State and files both offer set, get, has, delete and a sorted snapshot. Both are Maps, so a key
+ * called `__proto__` is a key here and not a prototype.
  */
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -49,7 +42,7 @@ export interface DraftCheckpoint {
   materialization: ArtifactMaterializationRecord | null;
 }
 
-const byteLength = (value: string, _encoding?: string) => new TextEncoder().encode(value).byteLength;
+const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
 
 /** Canonical answer bytes share one limit across preparation and public validation. */
 export function preparedArtifactJson(value: unknown): string {
@@ -88,7 +81,7 @@ function materializationMalformed(record: ArtifactMaterializationRecord, seq: nu
   return (
     !isObject(record) ||
     !isString(record.artifactJson) ||
-    byteLength(record.artifactJson, "utf8") > ARTIFACT_JSON_MAX_BYTES ||
+    byteLength(record.artifactJson) > ARTIFACT_JSON_MAX_BYTES ||
     !/^[0-9a-f]{64}$/.test(record.artifactDigest) ||
     !Number.isSafeInteger(record.sourceSeq) ||
     record.sourceSeq < 0 ||
@@ -160,16 +153,11 @@ export class DraftStore {
   }
 
   /**
-   * Whole-map replacement, for a caller holding a complete new set rather than a list of edits —
-   * the shell hands back everything its command left behind (`built-bash.ts`).
+   * Whole-map replacement, for the shell's file exchange (`built-bash.ts`).
    *
-   * The sequence advances once per resulting file, minimum one, rather than once per call:
-   * `fromCheckpoint` refuses a checkpoint whose seq is below the mutations its own snapshot
-   * required, and that floor counts files. A single bump for ten applied files would make every
-   * later checkpoint of this store read as falsified.
-   *
-   * An identical map leaves the sequence unchanged. A command that only tested the files changed
-   * nothing, and `seq` is how a caller learns whether there is anything new to record.
+   * The sequence advances once per resulting file, minimum one, because `fromCheckpoint` requires
+   * a sequence at least the number of stored entries. An identical map leaves it unchanged, so
+   * `seq` tells a caller whether anything changed.
    */
   replaceFiles(files: Record<string, string>): void {
     const entries = Object.entries(files);
@@ -237,20 +225,16 @@ export class DraftStore {
     };
   }
 
-  /** Become a checkpoint, in place. The solver's tools are bound to one store for the whole case,
-   *  so returning to an earlier candidate has to change this instance rather than build a new one.
-   *  The checkpoint is validated by `fromCheckpoint` first, so a falsified one changes nothing. */
+  /** Become a checkpoint in place, since the solver's tools are bound to this instance. The
+   *  checkpoint is validated first, so a falsified one changes nothing. */
   adopt(cp: DraftCheckpoint): void {
     const restored = DraftStore.fromCheckpoint(cp);
     this.state.clear();
     for (const [key, value] of restored.state) this.state.set(key, value);
     this.files.clear();
     for (const [path, content] of restored.files) this.files.set(path, content);
-    // Returning to an earlier candidate is itself a mutation. The worker client refuses a
-    // checkpoint whose sequence fell below the one it already holds, so rewinding the sequence
-    // here turned an ordinary save, explore and restore into a "checkpoint regressed" protocol
-    // non-result. The restored answer keeps its standing across the rebase: what the sequence
-    // records about it is whether it is current, not the number it was current at.
+    // Restoring is itself a mutation, so the sequence moves forward (the worker client refuses a
+    // regressed one). A restored answer that was current stays current at the new sequence.
     const restoredIsCurrent =
       restored.materialization !== null && restored.materialization.sourceSeq === restored._seq;
     this._seq = Math.max(this._seq, restored._seq) + 1;
@@ -262,8 +246,7 @@ export class DraftStore {
 
   /** Restore content and its sequence, refusing an inconsistent checkpoint or answer identity. */
   static fromCheckpoint(cp: DraftCheckpoint): DraftStore {
-    // Read as a plain string, not as the literal the interface promises: this guard exists
-    // because a checkpoint can be falsified, and a type that says otherwise narrows the read away.
+    // Widened to string: a falsified checkpoint may not match the literal its type promises.
     const schema: string = cp.schema;
     if (schema !== DRAFT_CHECKPOINT_SCHEMA) {
       restoreRefused(`checkpoint schema "${schema}" != "${DRAFT_CHECKPOINT_SCHEMA}"`);
@@ -274,9 +257,7 @@ export class DraftStore {
       );
     }
     const draft = DraftStore.fromSnapshot(cp.snapshot);
-    // Every stored key took at least one mutation to arrive, so a snapshot states its own minimum
-    // sequence. A checkpoint claiming fewer mutations than its content required was not built by
-    // this class.
+    // Every stored entry took at least one mutation, so the snapshot sets a minimum sequence.
     const floor = Object.keys(cp.snapshot.state).length + Object.keys(cp.snapshot.files ?? {}).length;
     if (cp.seq < floor) {
       restoreRefused(

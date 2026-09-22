@@ -33,24 +33,14 @@ const codeFile = /\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/;
 const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
 
 /**
- * Shared network policy for both worker-isolation mechanisms.
- *
- * Generated tools stay offline; the separately confined Built shell permits network access.
- * The worker's boundary probe reports networkRefused to the controller, providing an executed
- * check of the denied connection. This restriction matters because the Builder has authored
- * protected evaluation material. It is one part of isolation, not a general proof of generated
- * code safety. Network access was tried on 2026-08-19 and reverted:
- * probe's live connect turned into a real round trip on every worker start, and 33 conformance,
- * runtime and verification cases failed on the missing refusal. Nothing had needed the egress.
+ * Generated tools stay offline, on both isolation mechanisms; the separately confined Built shell
+ * has network access. The boundary probe's networkRefused fact checks this on every start.
  */
 const GENERATED_WORKER_POSTURE: IsolationPosture = { network: false };
 
 /**
- * Bubblewrap builds this closed namespace from argv, not from policy text. Its profile field is
- * therefore a stable evidence descriptor rather than a second, independently constructed copy of
- * the launch. The structured identity binds the exact executable snapshot and bundle; construction
- * selects the actual argv once. Keeping this descriptor path-independent prevents a
- * temporary bundle directory from changing the policy representation.
+ * Bubblewrap builds its namespace from argv, so its profile field is a stable, path-independent
+ * descriptor rather than a second copy of the launch; a temporary bundle directory cannot change it.
  */
 const LINUX_POLICY_DESCRIPTOR =
   "linux-bwrap generated-tool worker: deny-default, system baseline plus bundle workdir, no network or writable paths";
@@ -68,9 +58,8 @@ export interface GeneratedWorkerPolicy {
   runtimeEnvironment: Record<string, string>;
 }
 
-/** Block runtime module namespaces. `bun:ffi` can bypass JavaScript restrictions by loading
- *  libc and calling posix_spawn directly; `bun` exposes the runtime's launch methods.
- *  Generated modules cannot import either, just as they cannot import Node builtins. */
+/** Runtime module namespaces are refused like Node builtins: `bun:ffi` can call posix_spawn
+ *  through libc, and `bun` exposes the runtime's launch methods. */
 function runtimeModule(specifier: string): boolean {
   return specifier === "bun" || specifier.startsWith("bun:");
 }
@@ -98,9 +87,7 @@ function generatedSourceEscape(source: string, filePath: string) {
               .filter((name) => name !== "Type");
     piRuntime ??= clause.name?.text ?? names[0] ?? null;
   }
-  // The first loader escape in document order. `forEachChild` returns whatever its visitor
-  // returns for the first child that answers, so the walk carries the finding back out instead of
-  // writing it into a variable this function then has to read past the closure.
+  // The first loader escape in document order; `forEachChild` stops at the first defined answer.
   const findLoader = (node: ts.Node): string | undefined => {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       return `import() at line ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`;
@@ -176,9 +163,8 @@ export function generatedWorkerPolicy(
   const isLinux = support.mechanismId === LINUX_BWRAP_ID;
   let runtimeClosure: ExactReadSnapshot[];
   try {
-    // Bubblewrap's baseline already binds both lexical and resolved Bun installation prefixes
-    // read-only. Keep executable and symlink forms for pre/post-run drift detection, but do not
-    // rediscover the same runtime through a second ldd-based closure and bind it again.
+    // Bubblewrap's baseline already binds the Bun installation read-only; the executable is
+    // snapshotted only for drift detection.
     runtimeClosure = snapshotExactReads(
       isLinux ? [runtimeExecutable] : darwinRuntimeReadPaths(runtimeExecutable),
     );
@@ -203,10 +189,7 @@ export function generatedWorkerPolicy(
         ...BUN_FLAGS,
       ]
     : ["-p", profile, runtimeExecutable, ...BUN_FLAGS];
-  // Record the same mechanism fields on both hosts. Platform-specific key names were a
-  // legacy presentation detail, not a distinct security contract; one object now prevents the
-  // Darwin and Linux branches from drifting while the profile value still records their distinct
-  // enforcement representation.
+  // One identity shape for both hosts; only the profile value differs by mechanism.
   const identity = hashJsonBytes({
     schema: POLICY_SCHEMA,
     mechanism: {

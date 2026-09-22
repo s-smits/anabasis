@@ -58,8 +58,7 @@ export function fileArtifactRoot(schema: PublicArtifactSchema): string {
   return root;
 }
 
-/** The same rule in report form: candidate validation and the worker starter surface the message as a
- *  finding or typed non-result instead of crashing at their boundary. */
+/** `fileArtifactRoot`'s rule as a message, or null when the schema satisfies it. */
 export function fileArtifactRootIssue(schema: PublicArtifactSchema): string | null {
   try {
     fileArtifactRoot(schema);
@@ -109,9 +108,8 @@ async function unsupported(member: string): Promise<Result<never, FileError>> {
   return err(new FileError("not_supported", `the draft file root has no ${member}`));
 }
 
-/** Pi's read, write and edit tools reach only the members with bodies below. The rest refuse as
- *  typed results rather than being left out, so a member Pi adds to `ExecutionEnv` fails the
- *  compile here instead of reaching a tool as `undefined`. */
+/** Pi's read, write and edit tools reach only the members with bodies below; the rest refuse as
+ *  typed results, so a member Pi adds to `ExecutionEnv` fails the compile here. */
 class DraftExecutionEnv implements ExecutionEnv {
   readonly cwd = ROOT;
   readonly artifactRoot: string;
@@ -286,10 +284,8 @@ function bind(tool: AgentHarnessTool<ExecutionToolContext>, env: DraftExecutionE
   };
 }
 
-/** Pi's own tools, bound to one DraftStore-backed ExecutionEnv. The shell is absent here on
- *  purpose: it needs a real directory and a real process, which this confined worker cannot host,
- *  so it is a controller tool instead (`built-bash.ts`) and exchanges the file map over the
- *  protocol. */
+/** Pi's own tools, bound to one DraftStore-backed ExecutionEnv. The shell needs a real directory and
+ *  process, so it is a controller tool instead (`built-bash.ts`). */
 export function createDraftFileTools(draft: DraftStore, schema: PublicArtifactSchema): AgentTool[] {
   const env = new DraftExecutionEnv(draft, schema);
   return [

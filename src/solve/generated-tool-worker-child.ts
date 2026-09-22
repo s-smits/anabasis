@@ -43,8 +43,7 @@ const CREDENTIAL_ENVIRONMENT =
   /(?:api[_-]?key|token|auth|credential|secret|password|codex|claude|anthropic|openrouter|aws|ssh)/i;
 
 /** Values installed by hideAmbientProcess: a silent console, a minimal process object and
- *  absent module hooks. Listing the console methods in the type keeps it aligned with the
- *  installed object; changing only one side produces a type error. */
+ *  absent module hooks. */
 type HiddenGlobalValue =
   | Readonly<Record<"log" | "info" | "warn" | "error" | "debug" | "dir" | "trace", () => undefined>>
   | Readonly<{
@@ -54,13 +53,11 @@ type HiddenGlobalValue =
     }>
   | undefined;
 
-/** The kernel/OS error names that mean a sandbox refused the operation. Anything else — a missing
- *  path, a socket nobody listens on, an unrelated runtime failure — proves nothing about isolation
- *  and must arrive as a typed non-result rather than as refusal evidence. */
+/** The error codes that mean a sandbox refused the operation; any other failure proves nothing. */
 const REFUSAL_CODES = new Set(["EPERM", "EACCES", "EROFS"]);
 
-/** The message `lockRuntimeLaunchMembers` installs. It is this worker's own refusal rather than the
- *  kernel's, so it is recognised only for the one route the kernel is required to leave open. */
+/** The refusal `lockRuntimeLaunchMembers` installs, recognised only for the interpreter re-exec
+ *  route the kernel must leave open. */
 const LOCKED_LAUNCH_MEMBER = /process execution is denied inside the generated-tool worker/;
 
 const nativeNextTick = (callback: (...args: unknown[]) => void, ...args: unknown[]): void =>
@@ -76,10 +73,8 @@ for (const name of ["Number", "Set", "WeakMap"] as const) {
   Object.defineProperty(globalThis, name, { value: globalThis[name], writable: false, configurable: false });
 }
 let starter: BuiltStarter | null = null;
-/** The one DraftStore behind the files preset, captured where the preset factory is handed it.
- *  The shell runs controller-side and exchanges the whole file map over the protocol, so the
- *  child needs a named handle to the same store the file tools write through. It stays null
- *  whenever the files preset is not selected, which is what refuses the exchange. */
+/** The DraftStore behind the files preset, for the shell's file exchange; null, and so refusing
+ *  the exchange, when that preset is not selected. */
 let draftFiles: DraftStore | null = null;
 let tools = new Map<string, AgentTool>();
 let protocolSecret: string | null = null;
@@ -89,8 +84,8 @@ let frameCounter = 0;
 let taskAccessSnapshot = (): GeneratedTaskAccess | undefined => undefined;
 let materializeTaskData: ReturnType<typeof tracePublicTask>["materialize"] | null = null;
 
-/** Null when the payload cannot be framed; the counter only advances on a frame that was written,
- *  because the parent verifies that the frames it receives are consecutive. */
+/** Returns the refusal text, or null once written. The counter advances only on a written frame,
+ *  because the parent requires consecutive counters. */
 function writeFrame(secret: string, message: GeneratedToolChildMessage): string | null {
   const counter = frameCounter + 1;
   let frame: string | null;
@@ -108,12 +103,8 @@ function writeFrame(secret: string, message: GeneratedToolChildMessage): string 
   return null;
 }
 
-/**
- * A tool's own result the protocol cannot carry is that call's failure, not the session's: the
- * solver is told and can ask for a smaller or finite value. Truss 2026-09-17 lost whole paid cases
- * to a utilisation of 1/0 in one tool's details, which arrived as a protocol non-result.
- * Everything else the worker sends is its own frame, and an unsendable one ends the session.
- */
+/** A tool result the protocol cannot carry fails that call only, so the solver can retry with a
+ *  smaller or finite value. Any other unsendable frame ends the session. */
 function send(message: GeneratedToolChildMessage): void {
   if (protocolSecret === null) return;
   const refusal = writeFrame(protocolSecret, message);
@@ -138,8 +129,7 @@ function send(message: GeneratedToolChildMessage): void {
   nativeExit(0);
 }
 
-/** The frame every failed path out of this worker sends. The kinds are the protocol's; a
- *  fourth one fails at `send` rather than reaching the parent as an unknown word. */
+/** The frame every failed path out of this worker sends. */
 function nonResult(kind: "runtime" | "protocol" | "sandbox", error: string): void {
   send({ type: "non_result", kind, error });
 }
@@ -154,9 +144,8 @@ function refusalCode(error: unknown): string | null {
   const code = (error as { code?: unknown } | null)?.code;
   if (isString(code) && REFUSAL_CODES.has(code)) return code;
   const text = errorMessage(error);
-  // Bun's TCP socket wrapper does not surface the kernel errno: the launch-time sandbox's
-  // connect denial arrives as a bare "Failed to connect". With the controller canary listening
-  // on that exact port, a bare connect failure is the denial shape, not a missing listener.
+  // Bun reports a sandbox connect denial as a bare "Failed to connect". The controller canary
+  // listens on that port, so this is a denial, not a missing listener.
   if (/failed to connect/i.test(text)) return "EACCES";
   if (/operation not permitted/i.test(text)) return "EPERM";
   if (/permission denied/i.test(text)) return "EACCES";
@@ -178,10 +167,8 @@ function probeOutcome(operation: () => void): GeneratedToolProbeOutcome {
   }
 }
 
-/** What an absent probed path proves. Seatbelt leaves the path visible and refuses the open, so
- *  ENOENT there says nothing about the wall. Bubblewrap's deny-default namespace never mounts the
- *  path at all, so ENOENT is its refusal shape, the same reading `observedRefusal` in
- *  `solve-sandbox.ts` applies to the session probe. */
+/** ENOENT proves refusal only under Bubblewrap, whose namespace never mounts the path; Seatbelt
+ *  leaves the path visible, so there it proves nothing. */
 function missingPathOutcome(operation: GeneratedToolProbeOutcome): GeneratedToolProbeOutcome {
   if (operation.status !== "non-result" || !operation.detail.includes("ENOENT")) return operation;
   if (runtimeProcess.platform === "linux") return { status: "proved", code: "ENOENT" };
@@ -205,8 +192,7 @@ async function networkProbe(port: number): Promise<GeneratedToolProbeOutcome> {
     const code = refusalCode(error);
     if (code !== null) return { status: "proved", code };
     const text = errorMessage(error);
-    // A canary is listening on this port, so ECONNREFUSED means something else consumed the
-    // connection attempt; it is not proof that the sandbox denied network access.
+    // With the canary listening, ECONNREFUSED does not prove a sandbox denial.
     return {
       status: "non-result",
       detail: `unclassified connect failure (${text.slice(0, 200)})`,
@@ -214,11 +200,9 @@ async function networkProbe(port: number): Promise<GeneratedToolProbeOutcome> {
   }
 }
 
-/** The route the OS wall cannot close on macOS: `sandbox-exec` compiles the Seatbelt profile and
- *  then execs the pinned interpreter, so that one literal has to stay executable for this worker
- *  to start. `generated-tool-exec-wall.ts` removes it from the reachable namespace instead, and
- *  this probe goes through that namespace — a captured handle would measure the kernel, which
- *  still allows the exec, rather than what generated code can do. */
+/** Re-executing the pinned interpreter, which Seatbelt must allow. The exec wall removes it from
+ *  the reachable namespace, so this probe goes through that namespace rather than a captured
+ *  handle. */
 function runtimeReExecProbe(): GeneratedToolProbeOutcome {
   try {
     const child = Bun.spawnSync({ cmd: [nativeExecutable, "--version"], stdout: "pipe", stderr: "pipe" });
@@ -279,8 +263,7 @@ function toolResult(value: unknown): AgentToolResult<unknown> {
   return {
     content: candidate.content,
     details: candidate.details ?? null,
-    // A generated callback cannot stop the Pi loop. Only the host-side submit proxy may return
-    // terminate after its retained SubmissionAuthority accepted exact bytes.
+    // `terminate` is dropped: only the host-side submit may stop the loop.
   };
 }
 
@@ -313,9 +296,7 @@ async function handle(message: GeneratedToolParentMessage): Promise<void> {
         });
         return;
       }
-      // Whole-batch or nothing: a partial apply would leave the draft in a state neither the
-      // command nor the file tools authored. `fileMapIssues` is the public artifact's own key
-      // rule, so what a command may hand back is what the answer would accept.
+      // The whole batch or nothing, under the artifact's own file-map rule.
       const issues = fileMapIssues(message.files, "files", (base, key) => `${base}[${key}]`);
       if (issues.length > 0) {
         const detail = issues
@@ -326,9 +307,7 @@ async function handle(message: GeneratedToolParentMessage): Promise<void> {
       }
       const before = draft.seq;
       draft.replaceFiles(message.files);
-      // The file tools record the answer whenever they change the draft (`draft-files.ts` binds
-      // that rule to every writer). A shell command that changed the files is the same event, so
-      // it records through the same owner instead of leaving a stale answer behind.
+      // A command that changed the files prepares the answer again, as the file tools do.
       const materialize = tools.get("materialize_files");
       if (draft.seq !== before && materialize !== undefined) {
         await materialize.execute(`apply-files-${message.requestId}`, {});
@@ -383,15 +362,10 @@ function hideAmbientProcess(): void {
   );
   hide("process", Object.freeze({ env: Object.freeze({}), pid: nativePid, nextTick: nativeNextTick }));
   for (const name of ["require", "module"]) hide(name, undefined);
-  // The runtime global itself cannot be hidden: JavaScriptCore pins it as a non-configurable,
-  // non-writable global, so a computed lookup always recovers the namespace object. What that
-  // handle can do is bounded elsewhere — the OS wall refuses its reads, writes and egress, and
-  // `denyProcessExecution` has already replaced its launch members with permanent refusals.
+  // The `Bun` global cannot be hidden; the OS wall and `denyProcessExecution` bound what it can do.
 }
 
-/** Require every isolation probe to pass before loading generated code. A violated or
- *  inconclusive probe ends the worker with a sandbox non-result, so tool execution cannot
- *  proceed under unproved isolation. */
+/** The first probe that did not prove its boundary, or null when all did. */
 function unprovenProbeDetail(probe: GeneratedToolBoundaryProbe): string | null {
   for (const name of PROBE_KEYS) {
     const outcome = probe[name];
@@ -404,8 +378,7 @@ function unprovenProbeDetail(probe: GeneratedToolBoundaryProbe): string | null {
 }
 
 /** The session start: the execution wall, the boundary probes, then candidate code. Nothing
- *  generated loads until the probes have proved the walls, and the tool map is the last thing
- *  set, so the phase the caller advances to on return is true of everything behind it. */
+ *  generated loads until the probes prove the walls. */
 async function startSession(
   message: GeneratedToolStart,
   loadFactory: () => Promise<DomainHarnessFactory>,
@@ -425,7 +398,6 @@ async function startSession(
     return;
   }
   hideAmbientProcess();
-  // The isolation probes passed; candidate code may now load through the trusted factory.
   send({ type: "wall_ready", workerInstanceId: message.workerInstanceId });
   const factory = await loadFactory();
   const traced = tracePublicTask(message.task, message.traceTaskAccess === true ? "traced" : "untraced");

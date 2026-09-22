@@ -22,21 +22,20 @@ interface TracePublicTaskResult {
   materialize: (value: unknown) => JsonValue;
 }
 
-/** Remove only our instrumentation proxies. Descriptor reads avoid invoking generated getters;
- * unknown proxies, executable values and cycles remain invalid transport data. */
 /** A plain object's prototype is `Object.prototype` or null; an array's is `Array.prototype`. */
 function isPlainPrototype(prototype: unknown, array: boolean): boolean {
   return prototype === null || prototype === (array ? Array.prototype : Object.prototype);
 }
 
+/** Remove only our instrumentation proxies. Descriptor reads avoid invoking generated getters;
+ *  unknown proxies, executable values and cycles remain invalid transport data. */
 function materializeTaskData(
   value: unknown,
   targets: WeakMap<object, object>,
   seen = new Set<object>(),
 ): JsonValue {
   if (value === null || isString(value) || isBoolean(value)) return value;
-  // A non-finite number becomes null, as JSON.stringify writes it in the tool's own text. Refusing it
-  // voided every call of a truss tool whose damaged state was a mechanism (9 of 25 tasks, 2026-09-17).
+  // A non-finite number becomes null, as JSON.stringify would write it, rather than failing the call.
   if (isNumber(value)) return Number.isFinite(value) ? value : null;
   if (!isObject(value)) throw new Error("generated tool result must be plain finite JSON");
   const target = targets.get(value) ?? value;
@@ -86,8 +85,7 @@ export function tracePublicTask(
     if (!isObject(value)) return value;
     const cached = proxies.get(value);
     if (cached !== undefined) return cached;
-    // A `get` trap must forward the receiver, so `target[property]` is not an equivalent: it would
-    // run an inherited getter with the wrong `this` and lose the identity the trace is recording.
+    // The receiver is forwarded so an inherited getter runs with the proxy as `this`.
     const proxy = new Proxy(value, {
       get(target, property, receiver) {
         // Reflect.get returns `any`; the trace forwards the value and reads nothing from it.

@@ -33,8 +33,8 @@ import type { GeneratedTaskAccess } from "./task-access-trace.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 
-/** Spelled here so the solve module graph does not load the brief reader behind
- *  PUBLIC_RESOURCES_TOOL; a test pins the two names together. */
+/** Spelled here so the solve module graph does not load the brief reader; a test pins it to
+ *  PUBLIC_RESOURCES_TOOL. */
 const BUILT_PUBLIC_RULES_TOOL = "read_public_resources";
 export const BUILT_STANDARD_TOOL_NAMES = [
   "save_candidate",
@@ -43,45 +43,33 @@ export const BUILT_STANDARD_TOOL_NAMES = [
   "preview_artifact",
   "submit",
 ] as const;
-/** The Harness Builder's operating guide for this one harness: how the declared tools compose,
- *  which results go stale, what must hold before submission. `builtSystemPrompt` is universal and
- *  the tool rows are per-capability, so nothing else states harness-level policy. Named
- *  BUILT_AGENTS.md rather than AGENTS.md because some Builder backends discover a nested AGENTS.md
- *  while authoring and would follow instructions written for the later Built agent. */
+/** The Builder's operating guide for this harness. Not named AGENTS.md, because some Builder
+ *  backends would discover it while authoring and follow instructions meant for the Built agent. */
 export const BUILT_AGENTS_FILE = "agent/BUILT_AGENTS.md";
-/** State precedence between the universal prompt and the Builder-authored guide. The Builder
- *  may revise its solving instructions after measurement, but cannot change task requirements,
- *  tool authority, submission or stopping rules through those instructions. Without this
- *  distinction, a later score could be mistaken for an improvement under the original rules. The
- *  controller supplies this line and includes it with the guide in promptDigest. */
+/** Ranks the universal prompt above the Builder-authored guide, so a guide can change the solving
+ *  method but not the task, tool authority, submission or stopping rules. Covered by promptDigest. */
 export const BUILT_GUIDE_PREAMBLE =
   "Domain guidance follows; choose your solving method. It cannot override the public task, tool authority, runtime limits, submission rules or stopping rules.";
 export const BUILT_NUDGE = "Finish the task with the available tools, then submit your answer.";
-/** Used when recording the first-turn prompt identity. `builtFirstTurnPrompt` produces the actual
- *  text, and a test keeps the constant and function aligned. Instructions stay in the system
- *  prompt; the first turn contains only the task id, family, and public input. */
+/** The first-turn prompt identity; a test keeps it aligned with `builtFirstTurnPrompt`. */
 export const BUILT_FIRST_TURN_TEMPLATE = "Task {taskId} (family {family}).\n\nPublic input:\n{publicInput}";
 const MODEL_JSON_LIMIT = 12_000;
 
-/** One model-facing tool row: the definition the provider receives, with the registered authority
- *  already folded into the description. `builtAgentInterface` is its only producer, so a reader of a
- *  recorded row sees the text the model saw rather than a second rendering of the same bundle. */
+/** One tool row exactly as the provider receives it, with the registered authority folded into the
+ *  description. */
 export type BuiltAgentInterfaceTool = Pick<
   AgentTool,
   "name" | "label" | "description" | "parameters" | "executionMode"
 >;
 
 export interface BuiltAgentInterface {
-  /** The universal prompt with this harness's operating guide appended. One string, so the guide
-   *  cannot reach the model by a route `promptDigest` does not cover. */
+  /** The universal prompt with the operating guide appended, all covered by `promptDigest`. */
   systemPrompt: string;
   promptDigest: string;
   /** Over `tools`, so a recorded row set re-derives this digest. */
   toolSchemaDigest: string;
   tools: BuiltAgentInterfaceTool[];
-  /** The guide as authored, kept beside the composed prompt so a reader can attribute a prompt
-   *  change to the instructions owner without diffing two universal prefixes. Null only for the
-   *  preflight contract, which opens no bundle. */
+  /** The guide as authored; null only for the preflight contract, which opens no bundle. */
   operatingGuide: string | null;
 }
 
@@ -118,8 +106,8 @@ export interface BuiltStarterRegistration {
   artifactWriterNames: string[];
 }
 
-/** One isolation-probe result. A policy denial proves enforcement for that probe; a missing path
- *  or unrelated runtime failure supplies no such proof and must not count as a denial. */
+/** One isolation-probe result. Only a policy denial proves enforcement; a missing path or
+ *  unrelated failure does not. */
 export type GeneratedToolProbeOutcome =
   | { status: "proved"; code: string }
   | { status: "violated"; detail: string }
@@ -131,8 +119,8 @@ export interface GeneratedToolBoundaryProbe {
   credentialEnvironmentAbsent: GeneratedToolProbeOutcome;
   networkRefused: GeneratedToolProbeOutcome;
   subprocessRefused: GeneratedToolProbeOutcome;
-  /** The pinned interpreter is the one binary the Darwin launch profile must allow, so this is the
-   *  route the OS wall cannot close. It measures the reachable namespace, not a captured handle. */
+  /** Re-executing the pinned interpreter is the route the Darwin profile must allow, so it is
+   *  probed separately. */
   runtimeReExecRefused: GeneratedToolProbeOutcome;
 }
 
@@ -156,18 +144,16 @@ export interface GeneratedToolWorkerEvidence extends GeneratedToolWorkerConditio
     | { status: "normal" }
     | ({
         status: "non-result";
-        /** Host-only close timeout after ready and all requests settled; re-attestation can replace it. */
+        /** The close handshake timed out after every request settled; re-attestation can replace it. */
         closeHandshakeTimeout?: true;
       } & BuiltStarterNonResult);
 }
 
 export interface BuiltStarterNonResult {
-  /** "crash" is generated code dying after the ready handshake — product-owned, never environment. */
+  /** "crash" is generated code dying after the ready handshake: a product defect, not environment. */
   kind: "runtime" | "protocol" | "sandbox" | "crash";
   message: string;
-  /** The controller timed out waiting for the ready or close handshake, rather than receiving
-   *  a failure from the child. `kind` still identifies the operation; this field records that
-   *  the host's wait limit ended it. */
+  /** The host's wait for the ready or close handshake expired, rather than the child failing. */
   deadline?: boolean;
 }
 
@@ -187,15 +173,12 @@ export interface BuiltStarter {
   close?(): Promise<GeneratedToolWorkerEvidence>;
 }
 
-/** How many candidates a solver may hold at once. A candidate carries its whole draft and any
- *  prepared answer, so this is a memory bound as much as an interface one; six is more distinct
- *  designs than a case has turns to build. */
+/** Each candidate holds a whole draft, so this bounds memory; six exceeds what a case can build. */
 const SAVED_CANDIDATES_MAX = 6;
 type ToolOwner = BuiltStarterRegistration["tools"][number]["owner"];
 type ToolBinding = { tool: AgentTool; owner: ToolOwner; authority: RegisteredToolAuthority };
 
-/** What a generated tool is bound against: the task it answers, the authority it was declared
- *  with, the public schema its writes must fit and the margins the domain published. */
+/** What a generated tool is bound against. */
 type DraftToolContext = {
   readonly task: PublicTask<unknown>;
   readonly declared: readonly DomainToolAuthority[];
@@ -203,9 +186,7 @@ type DraftToolContext = {
   readonly margins: readonly PublishedMargin[];
 };
 
-/** What the controller knows about this harness beyond the task and the generated factory. One
- *  object rather than five trailing positional arguments, so a call site that needs the last of
- *  them does not have to spell the four it does not. */
+/** What the controller knows about this harness beyond the task and the generated factory. */
 interface BuiltStarterOptions {
   controllerTools?: readonly AgentTool[];
   draftToolFactories?: readonly DraftToolFactory[];
@@ -215,23 +196,10 @@ interface BuiltStarterOptions {
   publishedMargins?: readonly PublishedMargin[];
 }
 
-/** The prompt points one way: prepare something that passes, then widen its worst margin until the
- *  wall. It used to point both ways, adding that a requirement is pass or fail so a checked answer
- *  is done — written for 2026-09-15, when truss solvers spent about 30 minutes a case improving
- *  answers that already passed by 22 per cent on median (21 verified, 0 failed). Two days later the
- *  regime was the opposite: 19 of 23 answers breached a published limit by the numbers they
- *  themselves reported. Stopping early is not the failure mode to guard, and the closing sentence
- *  says to submit once every requirement is met and the margin stops widening; it used to say
- *  "submit it and stop" at the first pass, which cancelled the two sentences before it.
- *
- *  The clauses that used to ask the solver to compare each reported value against each published
- *  limit, and to hold margin on limits its own model only approximates, are gone: `readMargins` now
- *  measures the prepared answer against every complete published boundary and the artifact-writer
- *  returns that table, so what was asked for is computed. The rest is what the solver cannot observe — that the last prepared answer is
- *  submitted at the wall (truss run eaf98f, 2026-09-14), and that a candidate worth keeping should
- *  be saved before the next experiment replaces it: of 2026-09-17's 21 failing cases, 2 shipped an
- *  untouched baseline 4.6 times over its budget (3141.539 kg of 681.6 kg) that the wall then
- *  submitted by default. */
+/** The universal Built prompt: prepare an answer that passes, then widen its worst margin until the
+ *  wall. It states what the solver cannot observe: that the wall submits the last prepared answer,
+ *  and that a candidate worth keeping must be saved before the next experiment replaces it. Margin
+ *  comparison is not asked for, because the artifact-writer returns it (`readMargins`). */
 export const builtSystemPrompt = (solveMs: number): string =>
   "Complete the task with the available tools and submit one answer. Choose your approach within the public task's requirements, and read every requirement before you build. " +
   "For source code or files, write complete working files, not fragments or descriptions. " +
@@ -244,15 +212,8 @@ export function builtFirstTurnPrompt(
 ): string {
   return `Task ${task.taskId} (family ${task.family}).\n\nPublic input:\n${capturedJsonStringify(task.publicInput, null, 2)}`;
 }
-/** The closed roster, stated to the agent that has it. `BUILT_SYSTEM_PROMPT` says "the available
- *  tools" and never names them, so an agent that wants a capability its roster lacks has nothing to
- *  read and guesses instead. On truss-w36-opus the solver made 182 calls to `Monitor`,
- *  `PushNotification` and `bash` — Claude Code tool names absent from every roster — and every one
- *  failed. 153 of them came from the two 7-tool variants; the three full-roster variants of
- *  the same run spent 29 between them (12 tools: 0 and 17; 11 tools: 12). Fewer tools drew more
- *  guesses in that recorded run. Compose the line
- *  from the rows this contract already discloses, so the sentence cannot drift from the roster it
- *  describes. */
+/** States the closed roster, so a solver does not guess at tool names it lacks. Composed from the
+ *  disclosed rows, so it cannot drift from them. */
 function builtRosterLine(rows: readonly BuiltAgentInterfaceTool[]): string {
   const roster = `Your tools this session are exactly: ${rows.map(({ name }) => name).join(", ")}. That list is closed and complete. A name absent from it does not exist here, however plausible it looks; when no tool provides a capability, do the work yourself and continue.`;
   // The first turn carries only the public input; the domain's published rules, schema and
@@ -325,8 +286,7 @@ function probeOutcomeStatus(outcome: unknown): GeneratedToolProbeOutcome["status
   return status === "proved" || status === "violated" || status === "non-result" ? status : null;
 }
 
-/** Every probe fact has a recognised status. Shape only: a violated or non-result fact is valid
- *  evidence of an unproven boundary, not proof of one. */
+/** Every probe fact has a recognised status; this checks shape, not that the boundary held. */
 function hasRecognisedProbeOutcomes(probe: unknown): probe is GeneratedToolBoundaryProbe {
   if (!isRecord(probe)) return false;
   const record =
@@ -334,17 +294,14 @@ function hasRecognisedProbeOutcomes(probe: unknown): probe is GeneratedToolBound
   return PROBE_KEYS.every((key) => probeOutcomeStatus(record[key]) !== null);
 }
 
-/** The controller's own reading of the ready frame: every fact is `proved`. The trusted child
- *  already refuses before loading generated code on any other status; this check stands on its
- *  own so a child regression cannot turn a signed ready frame into accepted evidence. */
+/** Every probe fact is `proved`. The child refuses otherwise too; this repeats the check so a child
+ *  regression cannot turn a signed ready frame into accepted evidence. */
 export function probeProvesBoundary(probe: unknown): probe is GeneratedToolBoundaryProbe {
   return hasRecognisedProbeOutcomes(probe) && PROBE_KEYS.every((key) => probe[key].status === "proved");
 }
 
-/** One window onto a value the model reads. A draft or a prepared answer can be larger than a turn
- *  should carry, so a long value arrives as a window rather than a cut: the text names the character
- *  the next window starts at, and `from` takes that number back. These two tools are idempotent, so
- *  the rest is still there to ask for; nothing has to be spilled to a file to stay recoverable. */
+/** One window onto a long value: the text names where the next window starts, and `from` takes
+ *  that number back. */
 function modelView(value: JsonValue | DraftSnapshot, draftSeq: number, from = 0) {
   const complete = trustedJson(value).bytes;
   const start = Math.min(Math.max(0, Math.trunc(from)), complete.length);
@@ -365,8 +322,7 @@ function modelView(value: JsonValue | DraftSnapshot, draftSeq: number, from = 0)
   };
 }
 
-/** The window control both readers share. Its own description is the only place this bound is
- *  stated: the result text already carries the remedy, so the tool descriptions do not repeat it. */
+/** The window control both readers share. */
 const WINDOW = Type.Object({
   from: Type.Optional(
     Type.Number({
@@ -377,8 +333,7 @@ const WINDOW = Type.Object({
   ),
 });
 
-/** The one shape a blocked submit returns, whether the draft never reached the door or the
- *  submission port refused the bytes at it. */
+/** The one shape a blocked submit returns. */
 function blocked(safeRemedy: string): AgentToolResult<unknown> {
   return { content: [{ type: "text", text: `Submit blocked: ${safeRemedy}` }], details: null };
 }
@@ -421,10 +376,8 @@ function preview(materialization: ArtifactMaterialization, draftSeq: number, fro
   return modelView(capturedJsonParse(materialization.record.artifactJson), draftSeq, from);
 }
 
-/** One owner for the submit description. `maxAttempts` is a public runtime fact, so the bound
- *  belongs in the text the agent reads. The generated-tool worker child builds its starter with no
- *  submission port and would otherwise register the unbounded sentence; the parent process, which
- *  holds the real port, restates this same text over the child's descriptor. */
+/** The submit description, naming the attempt bound when a port exists. The worker child has no
+ *  port; the parent restates this text over the child's descriptor. */
 export function submitToolDescription(submission: SubmissionPort | null): string {
   return submission === null
     ? "Send the prepared answer."
@@ -442,11 +395,8 @@ function standardTools(
 ): AgentTool[] {
   const held = () => (saved.size === 0 ? "none" : [...saved.keys()].join(", "));
   return [
-    // The solve wall submits the answer an artifact-writer last prepared, and a draft that has
-    // moved on from a prepared answer makes that answer stale and unsendable. Without somewhere to
-    // put a candidate that already met every requirement, a solver whose next experiment was worse
-    // had no route back to it and shipped the worse one. `DraftStore` could already take its own
-    // checkpoint; these two tools are what gives that a consumer.
+    // Saving and restoring candidates lets a solver return to a good answer after a worse experiment
+    // made its prepared answer stale.
     defineTool({
       name: "save_candidate",
       label: "Save candidate",
@@ -536,9 +486,8 @@ function bindDraftTools(
   context: DraftToolContext,
 ): ToolBinding[] {
   const { task, declared, publicArtifactSchema, margins } = context;
-  // A generated array can carry own `map`/iterator properties that would run generated code inside
-  // this registration walk and let it create binding rows. lockJsonGlobals froze Array.prototype, so
-  // this slice is the real one: it reads the elements once into a clean engine array.
+  // Copies the elements once through the frozen Array.prototype, so a generated array's own
+  // `map` or iterator cannot run inside this registration walk.
   const snapshot: DraftTool[] = Array.prototype.slice.call<readonly DraftTool[], [], DraftTool[]>(tools);
   if (snapshot.some((tool) => !isDraftTool(tool))) {
     throw new Error("createDomainHarness tools must be created with defineDraftTool");
@@ -564,11 +513,8 @@ function bindDraftTools(
     const exactArtifactWriter = authority === "artifact-writer" && publicArtifactSchema !== null;
     const boundTool: AgentTool = {
       ...tool,
-      // The host owns this tool's parameters and its execution, and the Builder wrote its
-      // description against neither. One truss writer's description ended "It runs no analysis and
-      // checks nothing against the published limits" while the bound execute below was returning
-      // the published-limit table. The authored sentence stays — it says what the tool is for in
-      // the domain's own words — and the host says what runs, at the one place it takes over.
+      // The host owns this writer's parameters and execution, so it appends what actually runs to
+      // the authored description.
       description: exactArtifactWriter ? `${tool.description} ${WRITER_BINDING_SENTENCE}` : tool.description,
       parameters: exactArtifactWriter
         ? /* SAFETY: exactArtifactWriter can be true only when publicArtifactSchema is non-null,
@@ -590,11 +536,8 @@ function bindDraftTools(
             }
             return await withDraftLease(draft, authority, tool.name, callId, (leased) => {
               leased.setArtifact(params);
-              // Measured here rather than at submit: this is the moment the answer becomes the one
-              // the wall would send, and a reading returned here costs no submit attempt.
+              // Measured when the answer is prepared, so a reading costs no submit attempt.
               const readings = readMargins(margins, task.family, task.publicInput, params);
-              // The readings ride the trace as well as the text, so a later run can ask whether a
-              // solver that was shown a breach then moved off it.
               return evidenceResult({
                 text: `Prepared the exact public answer.${renderMargins(readings)}`,
                 ...keysIf(readings.length > 0, () => ({ details: { margins: readings } })),
@@ -613,8 +556,7 @@ function bindDraftTools(
             ),
     };
     if (exactArtifactWriter) {
-      // A generated argument preparer belongs to its generated schema. Retaining it after the
-      // public schema replaces that contract would reopen a transformation before DraftStore.
+      // A generated argument preparer belongs to the schema the public one replaced.
       delete boundTool.prepareArguments;
     }
     return {
@@ -625,8 +567,7 @@ function bindDraftTools(
   });
 }
 
-/** What each starter-owned tool is registered as. `restore_candidate` moves draft content, so it is
- *  a writer; every other starter tool but `submit` only reads. */
+/** `restore_candidate` moves draft content, so it is a writer; the rest but `submit` only read. */
 function starterAuthority(name: string): ToolKind | "submission" {
   if (name === "submit") return "submission";
   if (name === "restore_candidate") return "writer";
@@ -708,10 +649,8 @@ export function createBuiltStarter(
   };
 }
 
-/** Close probed workers one at a time. Each has a one-second handshake timeout; closing many
- *  together caused timeouts in run truss-opus-20260907T210000000Z-6bf0e9. It opened about
- *  26 workers, nine timed out at once, and the refused candidate's agent bytes were identical
- *  to the ones the same session then submitted and had accepted. */
+/** Close probed workers one at a time: each has a one-second close handshake, which many
+ *  concurrent closes can exceed. */
 export async function closeOneAtATime<T>(opened: { close?: () => Promise<T> }[]) {
   const closed: (T | undefined)[] = [];
   for (const toolset of opened) closed.push(await toolset.close?.());

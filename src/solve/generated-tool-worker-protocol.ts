@@ -58,10 +58,8 @@ export type GeneratedToolParentMessage =
       arguments: Record<string, JsonValue>;
     }
   | { type: "materialization"; requestId: string }
-  // The shell's file exchange. The parent initiates both requests, as with `materialization`,
-  // so the request direction stays consistent and the parent needs no re-entrancy: a command runs
-  // inside a controller tool call, and a child-initiated request would arrive while the parent was
-  // still awaiting that same call's result.
+  // The shell's file exchange. The parent initiates it, so it never needs to answer a child
+  // request while awaiting the tool call that runs the command.
   | { type: "files"; requestId: string }
   | { type: "apply_files"; requestId: string; files: Record<string, string> }
   | { type: "close" };
@@ -77,8 +75,7 @@ export type GeneratedToolChildMessage =
       checkpoint: BuiltStarterCheckpoint;
       probe: GeneratedToolBoundaryProbe;
       /** Process-execution restriction: Landlock on Linux, Seatbelt plus a runtime namespace
-       *  lock on macOS. Install it before probing; unavailable enforcement ends the worker
-       *  before it can send this ready frame. */
+       *  lock on macOS. Without it the worker ends before sending this frame. */
       execWall: ExecWallMechanism;
       taskAccess?: GeneratedTaskAccess;
     }
@@ -109,18 +106,14 @@ export type GeneratedToolChildMessage =
       taskAccess?: GeneratedTaskAccess;
     }
   | {
-      /** Sent after isolation is installed and its probes pass, before candidate code loads.
-       *  It carries only the worker identity and tells the parent which phase was reached.
-       *  Before it, startup is host work: process launch, restriction setup and isolation probes.
-       *  A stall there belongs to the environment. After it, the
-       *  worker is loading and constructing generated code, and a stall there is the candidate's. */
+      /** Sent after isolation is installed and probed, before candidate code loads. A stall
+       *  before it belongs to the environment; a stall after it is the candidate's. */
       type: "wall_ready";
       workerInstanceId: string;
     }
   | { type: "non_result"; kind: "runtime" | "protocol" | "sandbox"; error: string };
 
-/** One file's ceiling on this transport. The whole map is bounded again by the recorded answer's own
- *  byte limit, which is what a file has to fit inside to be worth carrying at all. */
+/** One file's ceiling on this transport; the whole map is also bounded by the answer's byte limit. */
 export const BUILT_FILE_MAX_CHARS = 256 * 1024;
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).byteLength;
 const valueCheck = Value.Check.bind(Value);
@@ -208,8 +201,8 @@ const result = strict({
 });
 const fileMap = Type.Record(Type.String(), text(BUILT_FILE_MAX_CHARS));
 
-/** Shape, count and path safety in one place. `pathProblem` is the public artifact's own key rule,
- *  so a command cannot hand back a path the artifact would later refuse. */
+/** Shape, count and path safety. `pathProblem` is the artifact's own key rule, so a command cannot
+ *  return a path the artifact would refuse. */
 function validFileMap(value: JsonValue): value is Record<string, string> {
   if (!valueCheck(fileMap, value)) return false;
   const keys = Object.keys(value);
@@ -370,8 +363,7 @@ function validChildMessage(value: JsonValue): value is JsonValue & GeneratedTool
   if (!valueCheck(childMessage, value)) return false;
   // SAFETY: the line above returned unless `value` matched the childMessage schema.
   const message = value as GeneratedToolChildMessage;
-  // Every arm carrying a checkpoint is held to the same checkpoint rules. Two arms then add the
-  // one field their schema cannot state: who may write, and where a file may be written.
+  // Every checkpoint gets the same rules; two arms add a rule their schema cannot state.
   if ("checkpoint" in message && !validCheckpoint(message.checkpoint)) return false;
   if (message.type === "ready") return validRegistration(message.registration);
   if (message.type === "files_result") return validFileMap(message.files);
@@ -396,24 +388,20 @@ export class GeneratedToolWorkerNonResult extends Error {
     this.name = "GeneratedToolWorkerNonResult";
   }
 
-  /** The evidence shape of this failure. `deadline` is included only after a controller timeout, so an
-   *  ordinary failure keeps the two-field shape it had. */
+  /** The evidence shape of this failure; `deadline` appears only after a controller timeout. */
   nonResult(): BuiltStarterNonResult {
     return { kind: this.kind, message: this.message, ...keyIfTruthy("deadline", this.deadline) };
   }
 }
 
 /* ── the transport ───────────────────────────────────────────────────────────
- * A frame is one JSONL line carrying the canonical spelling of its value, so a
- * signature over the bytes and a check over the fields speak about the same frame.
- * The child's frames are signed under the secret the two agreed at start and a
- * counter that only counts up; the parent's are not, since the child has no reason
- * to doubt its own stdin. */
+ * A frame is one JSONL line in canonical spelling, so a signature over the bytes and a
+ * check over the fields describe the same frame. Child frames are signed with the start
+ * secret and an increasing counter; parent frames are not, since the child trusts its stdin. */
 
-/** The three checks every inbound line passes before its fields are read: it fits the frame
- *  ceiling, it is JSON, and it is the canonical spelling of what it parsed to. `canonicalJsonCopy`
- *  throws on a value `JSON.parse` widened past JSON — `1e400` reads back as Infinity — so a throw
- *  and a byte difference are the same answer here: not the canonical spelling of anything. */
+/** Every inbound line must fit the frame ceiling, parse as JSON and be the canonical spelling of
+ *  what it parsed to. A value outside JSON, such as `1e400`, makes canonicalisation throw, which
+ *  counts as non-canonical. */
 function readCanonicalLine(line: string, subject: string, fault: (message: string) => Error): JsonValue {
   if (utf8Bytes(line) > GENERATED_TOOL_FRAME_MAX_BYTES) {
     throw fault(`generated-tool worker ${subject} exceeded byte limit`);
@@ -442,9 +430,8 @@ function hmac(secret: string, body: string): string {
   return new Bun.CryptoHasher("sha256", secret).update(body).digest("hex");
 }
 
-/** Null for a payload the protocol cannot carry: a value that is not plain finite JSON, or bytes
- *  past the frame ceiling. The caller decides what that means — for one tool's result it is that
- *  call's failure, and only for the session's own frames is it a protocol non-result. */
+/** Null for a payload that is not plain finite JSON or exceeds the frame ceiling; the caller
+ *  decides whether that fails one call or the session. */
 export function trySignGeneratedToolFrame(
   secret: string,
   counter: number,
@@ -469,9 +456,7 @@ export function trySignGeneratedToolFrame(
   }
 }
 
-/** The frame a worker sends when the one it meant to send would not serialise. Its payload is a
- *  constant of three short strings, so the signer can only refuse it if the runtime's own JSON is
- *  broken, and then the worker cannot speak the protocol at all. */
+/** Signs the payload, falling back to a constant protocol non-result when it would not serialise. */
 export function signGeneratedToolFrame(
   secret: string,
   counter: number,

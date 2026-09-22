@@ -1,16 +1,8 @@
 /**
- * Select the campaign epoch (production restart audit, 2026-07-26). Each combination of request
- * digest, Builder condition and authoring pass identifies one epoch. Reusing that combination resumes
- * the same epoch after an interruption. A changed combination creates a successor that points
- * to the previous epoch while preserving its files. A corrected request can therefore restart
- * without hand-editing state or deleting a directory, resolving fullrun-live-01's restart
- * defect #2. The controller records successors and selects the current epoch in the root's
- * epochs.json; it appends new entries and updates the current pointer.
- *
- * A reopened authoring pass also changes the identity through `pass`. A rebuild therefore opens
- * its own epoch, preserving the directory that recorded the first build and its history.
- * Without this distinction, run52-opus-0903 finished with `current` pointing back to its initial
- * build epoch even though four later epochs had been created.
+ * Selects the campaign epoch. Each combination of request digest, Builder condition and authoring
+ * pass identifies one epoch: reusing it resumes that epoch, and a changed one creates a successor
+ * that points to its predecessor and keeps its files. The root's epochs.json records the entries
+ * in append order and the current pointer.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -35,11 +27,8 @@ export interface CampaignBindingInput {
   kickoff: string;
   /** Every condition that shapes Builder output. Null is reserved for injected test sessions. */
   builder?: CampaignBuilderCondition | null;
-  /** The evidence identity of a reopening authoring pass, when this selection is one. Absent for
-   *  pre-adoption continuations and the initial build. An evaluation correction carries its
-   *  own pass so it cannot resume an older generation's workspace. Absent leaves the key
-   *  byte-identical to what the binding alone produced, so every epoch written before this field
-   *  still resolves to its own directory. */
+  /** The evidence identity of a reopening authoring pass, so it opens its own epoch. Absent for
+   *  the initial build and pre-adoption continuations, leaving the key unchanged. */
   pass?: string;
 }
 
@@ -55,8 +44,7 @@ type EpochRecordEntry = {
   key: string;
   supersedes: string | null;
   createdAt: string;
-  /** Entries written before 2026-09-15 also carry `domain` and `engines: null` inside the hashed
-   *  binding; they still resolve because lookup compares these fields, not a recomputed key. */
+  /** Lookup compares these fields, not a recomputed key. */
   binding: {
     kickoffHash: string;
     builder: CampaignBuilderCondition | null;
@@ -71,8 +59,8 @@ interface EpochRecord {
   epochs: EpochRecordEntry[];
 }
 
-/** The supersession record, or null before the first epoch. A guessed-at lineage would let two
- *  epochs both believe they are current, so damage refuses instead of reading as absent. */
+/** The supersession record, or null before the first epoch. A damaged record refuses rather than
+ *  reading as absent. */
 function readEpochRecord(campaignRoot: string): EpochRecord | null {
   return readCompleted<EpochRecord>(
     join(campaignRoot, "epochs.json"),
@@ -115,9 +103,7 @@ function evidenceOf(campaignRoot: string, entry: EpochRecordEntry): CampaignEpoc
 }
 
 /** The epoch a reopening pass would supersede: its own when it has already opened, otherwise
- *  the latest pass on the same prompt and Builder condition. The next-move reader used to fall
- *  back to the pass-less initial build, which in 22 recorded campaigns with three or more passes
- *  skipped the pass that had actually just refused or repaired the product. */
+ *  the latest pass on the same prompt and Builder condition. */
 export function latestCampaignEpochForBinding(
   campaignRoot: string,
   input: CampaignBindingInput,
@@ -130,9 +116,7 @@ export function latestCampaignEpochForBinding(
   );
 }
 
-/** Find the epoch for this exact binding without changing the controller's current pointer.
- * Evidence selection uses this read-only check: following `current` would cross a corrected ask,
- * and selecting by kickoff alone could select a different Builder condition or authoring pass. */
+/** The epoch for this exact binding, read without moving the current pointer. */
 export function campaignEpochForBinding(
   campaignRoot: string,
   input: CampaignBindingInput,
@@ -142,15 +126,8 @@ export function campaignEpochForBinding(
 }
 
 /**
- * Select (or write) the epoch for a binding. Re-running an older binding re-points `current` at
- * its EXISTING epoch instead of creating a duplicate — completed iterations under it stay valid
- * memory because the binding they were built under is byte-identical. `current` therefore names
- * the epoch the last authoring pass wrote, which is what every later reader of this record means
- * by "current".
- *
- * A reopening pass carries `pass`, so it never lands in an epoch an earlier pass recorded: it creates
- * its own, supersedes whatever was current, and inherits that predecessor's memory the same way a
- * corrected ask does.
+ * Selects, or records, the epoch for a binding and points `current` at it. An existing binding
+ * reuses its epoch; a new one, including every reopening pass, supersedes the current epoch.
  */
 export function selectCampaignEpoch(
   campaignRoot: string,

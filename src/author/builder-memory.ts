@@ -1,14 +1,12 @@
-/** Builder-owned Markdown notes, bounded when read and carried between epochs.
- * The author edits these files in its existing session. No extra model turn rewrites them.
- * Notes stay outside the accepted bundle and carry no correctness authority. */
+/** Builder-owned Markdown notes, bounded when read and carried between epochs. The Builder edits
+ *  them directly; they stay outside the accepted bundle and carry no correctness authority. */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import { join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import type { CampaignEpochEvidence } from "./campaign-epoch.ts";
 
-/** The workspace under an epoch directory. Named here because MEMORY.md is the one thing
- *  that crosses epochs and so must resolve a workspace it is not currently running in. */
+/** The workspace under an epoch directory; carrying memory forward resolves a predecessor's. */
 export const WORKSPACE_DIR = "workspace";
 
 export const MEMORY_FILE = "MEMORY.md";
@@ -16,11 +14,9 @@ export const SCRATCHPAD_FILE = "SCRATCHPAD.md";
 export const EXPERIMENT_FILE = "EXPERIMENT.json";
 
 /**
- * Paths permitted in a candidate: directories end with "/", files match exactly. This list
- * supplies both the diff check below and the workspace exclusions in domain-repo.ts.
- * Every other path stays untracked. Extra workspace files, such as run 50's
- * `starter-pack/gen.py` or run 53's helpers in the workspace root, therefore stay outside
- * the candidate diff.
+ * Paths permitted in a candidate: directories end with "/", files match exactly. It drives both
+ * `candidatePathAllowed` and the workspace exclusions in domain-repo.ts; every other path stays
+ * untracked.
  */
 export const CANDIDATE_INTERFACE: readonly string[] = [
   AGENT_DIR,
@@ -30,10 +26,8 @@ export const CANDIDATE_INTERFACE: readonly string[] = [
   EXPERIMENT_FILE,
 ];
 
-/** File-size limits keep memory short enough to reread: 8 KB is roughly two thousand tokens,
- *  included once per pass. Longer text is cut at a line boundary and marked so the author can
- *  see that older content was removed. One constant per file limits both inherited writes and
- *  prompt reads, including reads after the Builder has edited the file directly. */
+/** Per-file size limits, applied both to inherited writes and to prompt reads. 8 KB is roughly
+ *  two thousand tokens, read once per pass. */
 export const MEMORY_CAP_BYTES = 8_000;
 const SCRATCHPAD_CAP_BYTES = 2_000;
 
@@ -67,63 +61,32 @@ const FILES: ReadonlyArray<readonly [string, string, number]> = [
   [SCRATCHPAD_FILE, STARTER_SCRATCHPAD, SCRATCHPAD_CAP_BYTES],
 ];
 
-/** The marker a cut leaves at the top of the file, and the pattern that finds an existing one so a
- *  second cut replaces it instead of stacking another line of bookkeeping. */
+/** Finds an existing cut marker, so a second cut replaces it rather than adding another line. */
 const CUT_MARKER_PATTERN = /^<!-- memory cut to \d+ bytes: (\d+) older bytes dropped -->\n/;
 
-/** Room reserved inside the ceiling for that marker line, which is about 60 bytes. */
+/** Room reserved inside the limit for the cut marker line (about 60 bytes). */
 const CUT_MARKER_RESERVE_BYTES = 96;
 
-/** The carry-forward marker `carryMemoryForward` writes at the head of an inherited file, and the
- *  climb line beside it. Both state what the text below them no longer describes, so a cut that
- *  dropped them would leave a predecessor's notes reading as this epoch's own. They sit at the
- *  head, which is the end a newest-first cut takes, so the cut keeps them explicitly. */
+/** The carry-forward markers at the head of an inherited file. A newest-first cut would drop the
+ *  head, so the cut keeps them explicitly; without them a predecessor's notes read as current. */
 const CARRY_MARKER_PATTERN =
   /^(?:<!-- (?:carried forward from|This epoch is a CLIMB|scratch\/ holds)[^\n]*-->\n+)+/;
 
-/**
- * A successor epoch opens on its predecessor's MEMORY.md instead of a blank starter. A climb changes
- * the kickoff, a changed binding writes a successor with a fresh workspace, and the engine and
- * representation lessons the next difficulty level most wants were exactly the ones being discarded (plan
- * review, 2026-07-27). Harness identity is untouched: memory sits outside both fingerprinted bundles
- * and enters no bundleSnapshot. Written before domain-repo seeds its starters, so the inherited text
- * lands in the successor's own root commit instead of arriving as an unexplained later edit.
- *
- * The marker is required rather than decoration: the binding changed, which is why this epoch
- * exists, so an inherited line may no longer hold and the Builder is told so instead of reading
- * the text as a description of its current ask. Only an authored file crosses, only into a slot
- * the successor has not written, and never fatally.
- *
- * A successor may come from a corrected request, engine identity or Builder condition.
- *
- * MEMORY.md alone crosses. SCRATCHPAD.md is the open-question list of one binding: its lines are
- * the questions that binding had not answered yet, so under a new binding they are neither
- * answered nor still open, only unattributable. It is dropped rather than migrated — a successor
- * that still needs a question keeps it in MEMORY.md, where the Builder had to decide it was worth
- * keeping.
- *
- * Beside the memory, the Builder's own helper scripts cross: small regular files at the top of
- * `scratch/` (generators, local checks, debug probes). Successor epochs rebuilt them from nothing,
- * about fifteen minutes each; in truss campaign -11 they were a few kilobytes while one output
- * directory beside them held 585 MB, so directories and large files stay behind. Scratch is
- * untracked, so nothing carried enters a candidate.
- */
+/** Small helper files at the top of `scratch/` cross epochs; directories and large files stay. */
 const SCRATCH_DIR = "scratch";
 const SCRATCH_FILE_LIMIT_BYTES = 256 * 1024;
 
-/** The single owner of "this tracked path may appear in a candidate's diff". */
+/** Whether a tracked path may appear in a candidate's diff. */
 export function candidatePathAllowed(path: string): boolean {
   return CANDIDATE_INTERFACE.some((entry) => (entry.endsWith("/") ? path.startsWith(entry) : path === entry));
 }
 
-/** Starter files as domain-repo seeds them; one owner for the bytes and for "is this authored". */
+/** Starter note files as domain-repo seeds them. */
 export const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FILES.map(
   ([name, starter]) => [name, starter] as const,
 );
 
-/** The authored body of one memory file, or "" when it is missing or still the untouched starter.
- *  Omit unwritten files from the prompt, so a first pass receives no empty memory section
- *  and keeps the same prompt it would receive without memory. */
+/** The authored body of one memory file, or "" when it is missing or still the starter text. */
 function authoredBody(workspace: string, file: string, starter: string): string {
   let text: string;
   try {
@@ -134,23 +97,8 @@ function authoredBody(workspace: string, file: string, starter: string): string 
   return text.trim() === starter.trim() ? "" : text.trim();
 }
 
-/**
- * Limit one memory file to its declared size, keeping the newest bytes and cutting at a line
- * boundary. Run 52's MEMORY.md grew to 8,660 and then 10,174 bytes against an 8,000-byte limit.
- * Keeping the start of the file removed the notes that the L2 and L3 climb authors had just
- * appended, which were the ones the next session needed.
- *
- * The marker names how many older bytes went, so a writer sees that its file was cut instead of
- * finding a shorter file with no explanation. A file already carrying a marker adds its count to
- * the new one rather than growing a second marker line. A carry-forward marker is kept inside the
- * ceiling wherever the cut runs, so the write path and the read path preserve it by one rule
- * instead of the writer passing it in and the reader losing it.
- */
-/**
- * A memory file that grew by appending the same headed section each pass (run c66e0d: three
- * identical "## Status" blocks) spends its byte cap on repetition. Keep one copy of each exact
- * section and drop a heading that carries nothing under it.
- */
+/** Keeps one copy of each identical `## ` section and drops headings with nothing under them, so
+ *  repeated appends do not spend the size limit. */
 export function withoutRepeatedSections(text: string): string {
   const seen = new Set<string>();
   const [head = "", ...sections] = `\n${text}`.split("\n## ");
@@ -164,6 +112,11 @@ export function withoutRepeatedSections(text: string): string {
   return [head, ...kept].join("\n## ").slice(1);
 }
 
+/**
+ * Limits a memory file to `bytes`, keeping the newest text and cutting at a line boundary. A marker
+ * states how many older bytes were dropped, merging any earlier marker's count, and carry-forward
+ * markers are kept at the head.
+ */
 function cappedToNewest(text: string, bytes: number): string {
   const encoder = new TextEncoder();
   if (encoder.encode(text).byteLength <= bytes) return text;
@@ -182,26 +135,10 @@ function cappedToNewest(text: string, bytes: number): string {
 }
 
 /**
- * The memory block for a session prompt. The persistent Builder receives it once per pass,
- * in builder-session.ts's firstPrompt. Later turns can read it in the same session context
- * without another copy, and the cached system prompt stays unchanged.
- * The block is empty until a pass has written something beyond the starter text.
- * A first build therefore receives the same prompt as a build without memory, with no empty
- * memory section added to its instructions.
- *
- * Rendered first in the kickoff. Previously, notes from an earlier pass or run condition appeared
- * below the current request, task condition, session limit and controller checks. That placement
- * could make the oldest text look like the latest instruction. The header now explains that
- * the model wrote these notes, that they may describe an earlier condition, and that the current
- * instructions below take precedence. The workspace path and the carried file's epoch marker
- * identify where the notes came from. They already provide the needed history, so the memory
- * block does not add another identity field.
- *
- * Apply the size limit when reading as well as when carrying notes forward. carryMemoryForward
- * limits what it stores, but the Builder can make MEMORY.md larger through direct file edits.
- * Prompt reads therefore apply the same per-file limits, preserve the newest text and mark
- * any removed content. Both operations use the same rule rather than choosing separate
- * limits or cutting different ends of the file.
+ * The memory block that opens a fresh session's first prompt; empty until a pass has written
+ * beyond the starter text. Its header marks the notes as model-authored and possibly stale, and
+ * says the instructions below take precedence. Reads apply the same size limits as carrying,
+ * because the Builder can grow the files directly.
  */
 export function builderMemoryBlock(workspace: string): string {
   const blocks = FILES.values()
@@ -234,19 +171,24 @@ function carryScratchHelpers(prior: string, next: string): string[] {
   return names;
 }
 
+/**
+ * Opens a successor epoch on its predecessor's MEMORY.md and small `scratch/` helpers, before the
+ * workspace is seeded, so the inherited text lands in the root commit. A marker says the binding
+ * changed and some lines may no longer hold. SCRATCHPAD.md does not cross: its open questions
+ * belong to the old binding. Only into an unwritten slot, and never fatally.
+ */
 export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvidence): void {
   const from = epoch.supersedes;
   if (from === null) return;
   const prior = join(campaignRoot, from, WORKSPACE_DIR);
-  // An epoch key never escapes its campaign root, even in a hand-damaged epochs.json. The root
-  // itself is not a workspace either, so the equal case refuses exactly as before.
+  // An epoch key never escapes its campaign root, and the root itself is no workspace.
   if (prior === campaignRoot || !containsPath(prior, campaignRoot)) return;
   const next = join(epoch.dir, WORKSPACE_DIR);
   let helpers: string[] = [];
   try {
     helpers = carryScratchHelpers(prior, next);
   } catch {
-    // Helpers are a convenience like memory: a failed copy leaves the Builder to rewrite them.
+    // Helpers are a convenience; a failed copy leaves the Builder to rewrite them.
   }
   const marker = [
     `<!-- carried forward from ${from}: the binding changed, this memory did not. Correct what no longer holds. -->`,
@@ -255,16 +197,13 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
       : []),
   ].join("\n");
   try {
-    // The predecessor's own carry markers named its predecessor; this epoch names
-    // only the file it inherits from. Kept, they stacked one line per epoch (run 1093c9
-    // opened its fourth epoch on three of them).
+    // Drop the predecessor's own carry markers so they do not stack one line per epoch.
     const body = authoredBody(prior, MEMORY_FILE, STARTER_MEMORY).replace(CARRY_MARKER_PATTERN, "");
     if (body === "" || existsSync(join(next, MEMORY_FILE))) return;
     mkdirSync(next, { recursive: true });
-    // The predecessor's file may already be over the ceiling, and the marker adds to it. Cap here
-    // so the successor opens on a file the read path passes through whole.
+    // Cap here so the successor opens on a file the read path passes through whole.
     writeFileSync(join(next, MEMORY_FILE), cappedToNewest(`${marker}\n\n${body}\n`, MEMORY_CAP_BYTES));
   } catch {
-    // Inherited memory is a convenience, never a precondition: the epoch starts empty instead.
+    // Inherited memory is never a precondition; the epoch starts empty instead.
   }
 }

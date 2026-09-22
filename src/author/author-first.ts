@@ -1,9 +1,6 @@
 /**
- * The byte identity of the paths one authoring session owns. The controller reads it to tell an
- * unchanged tree from a repaired one (builder-campaign.ts, battery-submission.ts,
- * fixed-harness-preflight.ts). The probe-budget monitor and the no-submit strike that once lived
- * beside it ended on 2026-09-14 (operator decision): neither fired in 414 recorded sessions, and
- * both would have ended a session that spent its first turns installing tools under .toolchain.
+ * The byte identity of the paths one authoring session owns, which tells an unchanged tree from a
+ * repaired one.
  */
 import { hashBundle } from "../claim/bundle-hash.ts";
 import { existsSync, lstatSync } from "../meta/filesystem.ts";

@@ -1,25 +1,11 @@
 /**
- * The one owner of "a tool run for this candidate reached no completed run again".
+ * Counts census refusals caused by a tool run that reached no completed run.
  *
- * The census gate settles a tool run that timed out or crashed as a repairable `correctness-model`
- * finding and writes the host's own record beside the iteration (census-gate.ts `settleNonResult`).
- * Campaign run25-sol-0830 showed what that leaves open: eleven recorded no-result records in one
- * campaign — crashes at exits 42 to 82, a pre-start sandbox refusal and a 60 s simulator timeout —
- * each refused a submit on a distinct tree, and nothing counted them. The no-op strike counter
- * could not: every tree was different, so the Builder kept rewriting the evaluator for 22 refused
- * submits inside one campaign.
+ * It owns two rules: the public code of a no-result record, one per failure family (a grouping
+ * label, not the stall identity), and the durable per-campaign, per-tool count with the ceiling
+ * at which the campaign settles instead of opening another authoring round.
  *
- * Two rules live here, and only these two:
- *
- *  1. The public code of a no-result record, one per failure family, derived from the host's own
- *     measured fields. The finding CLAIM stays constant on purpose (census-gate.ts): it is the
- *     stall identity, and one dead tool alternating crash and timeout must keep one identity.
- *     The code is the family label a reader groups by, not the identity.
- *  2. The durable per-campaign, per-tool count of those refusals, and the ceiling at which the
- *     campaign settles as `verifier-required` instead of opening another authoring round.
- *
- * Only host-measured facts and public authoring identities cross to the author: tool id, check id,
- * counts. Tool stdout and stderr stay in the protected record.
+ * Only tool ids, check ids and counts reach the author; tool output stays in the protected record.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -30,9 +16,8 @@ import { controllerValidatedFinding } from "../truth/brief.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 
-/** The census gate's own no-result record, written once per refused census. Its presence in a
- *  settled iteration directory IS the refusal, so the counter reads the host's own bytes instead
- *  of parsing a tool id back out of a claim sentence. */
+/** The census gate's no-result record, written once per refused census; its presence is the
+ *  refusal. */
 export const TOOL_NON_RESULT_FILE = "verifier-non-result.json";
 
 interface ToolNonResultStrike {
@@ -46,9 +31,8 @@ interface ToolNonResultStrike {
 /** Refused control censuses per tool id: the campaign's durable count. */
 export type ToolNonResultCounts = Record<string, number>;
 
-/** Written into a gate run directory when its record is charged. It names the run, so a copy of
- *  the directory into an iteration is the same charge, and a trial run that no iteration records
- *  is still counted after a relaunch. */
+/** Marks a gate run directory as charged and names its run, so copies count once and uncopied
+ *  trial runs still count after a relaunch. */
 const CHARGE_FILE = "verifier-non-result-charge.json";
 
 /** The public code for one no-result record: the host-measured outcome family. */
@@ -71,9 +55,8 @@ export function toolNonResultCode(evidence: Pick<VerifierExecutionEvidence, "out
 }
 
 /**
- * The tool a settled iteration's recorded census refusal names, or null when it recorded none. A
- * damaged or unreadable record counts as no refusal: this counter ends a campaign, so it must
- * never fire on bytes it could not read.
+ * The tool a settled iteration's recorded census refusal names, or null when it recorded none.
+ * An unreadable record counts as no refusal, since this counter can end a campaign.
  */
 function sealedNonResultToolId(iterationDir: string): string | null {
   const file = join(iterationDir, TOOL_NON_RESULT_FILE);
@@ -87,16 +70,12 @@ function sealedNonResultToolId(iterationDir: string): string | null {
 }
 
 /**
- * Per-tool-id counter over one campaign. Keyed by tool rather than by candidate identity, because
- * the tree changes on every repair while the failing tool run does not; cumulative rather than
- * consecutive, because a campaign alternating two broken tool runs is not making progress either.
- * A different tool id keeps its own count, so switching tools is a fresh start for the new one and
- * the old one's count stands as evidence.
+ * Cumulative per-tool-id counter over one campaign. Keyed by tool rather than candidate, because
+ * the tree changes on every repair while the failing tool does not.
  */
 export class ToolNonResultStrikes {
   private readonly counts: Map<string, number>;
-  /** Seeded from the campaign's own settled iterations, so a continuation invocation continues the
-   *  count instead of buying the ceiling again (run 25 spread 22 refused submits over four). */
+  /** Seeded from the campaign's settled iterations, so a restart continues the count. */
   constructor(seed: Readonly<ToolNonResultCounts> = {}) {
     this.counts = new Map(Object.entries(seed));
   }
@@ -108,10 +87,8 @@ export class ToolNonResultStrikes {
 }
 
 /**
- * The whole per-iteration decision in one call: read the host's own record for this settled
- * iteration, charge the strike to the tool it names, and return what the campaign must now do.
- * Null when the iteration recorded no census refusal, so an ordinary reject — a verdict the census
- * did not like — never counts toward the ceiling.
+ * Charges a strike to the tool named by this run's no-result record and returns it. Null when the
+ * run recorded no census refusal, so an ordinary reject never counts toward the ceiling.
  */
 export function chargeSealedNonResult(
   strikes: ToolNonResultStrikes,
@@ -123,8 +100,7 @@ export function chargeSealedNonResult(
   return strikes.strike(toolId);
 }
 
-/** The run a directory's charge belongs to: its marker's run, or the directory itself for an
- *  iteration settled before markers existed. */
+/** The run a directory's charge belongs to: its marker's run, or the directory itself. */
 function chargedRunOf(dir: string): string {
   try {
     const row = parseJsonAs<{ run?: unknown }>(readFileSync(join(dir, CHARGE_FILE), "utf8"));
@@ -164,8 +140,8 @@ export function replayNonResultRefusals(dirs: readonly string[]) {
 }
 
 /**
- * What the author is told about the strike. Below the ceiling it is the count the run-25 loop never
- * had; at the ceiling it is the settlement sentence. Both name only the tool id and the counts.
+ * What the author is told about the strike: the count below the ceiling, the settlement at it.
+ * Both name only the tool id and the counts.
  */
 export function toolNonResultFinding(strike: ToolNonResultStrike) {
   const ceiling = POLICY.loop.toolNonResultRefusals;

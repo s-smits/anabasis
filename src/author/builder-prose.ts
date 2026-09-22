@@ -2,13 +2,9 @@
  * The Builder's own words, recorded beside its execution record.
  *
  * Two kinds of row: the assistant text a turn returned (`message`) and a reasoning summary the
- * transport surfaced while the turn ran (`reasoning`). Nothing here is model-visible and nothing
- * here decides a pass, a claim or a promotion; the rows exist so an investigation can classify
- * how a session was reasoning at each submit instead of inferring it from tool counts. The epoch
- * used to record no Builder prose at all: on 2026-08-22 the only copy lived in a provider rollout
- * under a private Codex home, with nothing in the campaign pointing at it.
+ * transport surfaced while the turn ran (`reasoning`). Nothing here is model-visible or decides a
+ * pass, claim or promotion; the rows let an investigation read how a session was reasoning.
  */
-
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
@@ -20,8 +16,7 @@ const BUILDER_PROSE_CAPTURE_SCHEMA = "builder-prose-capture/v1";
 
 /** Rows beyond this are counted in `proseOmitted` and dropped; the count stays exact. */
 const MAX_PROSE_ROWS = 4000;
-/** Characters kept per row, about 1024 tokens: one reasoning item's parts concatenated, then cut.
- *  A row longer than this is cut and marked, not dropped (operator decision 2026-08-22). */
+/** Characters kept per row, about 1024 tokens. A longer row is cut and marked, not dropped. */
 export const MAX_PROSE_CHARS = 4000;
 
 export interface BuilderProseRow {

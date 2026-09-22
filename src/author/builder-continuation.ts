@@ -1,35 +1,23 @@
 /**
- * Instructions sent to the Builder between turns. Continuation wording and tool-failure notes
- * live here so their timing and tests can be maintained separately from the session loop.
- *
- * The continuation works like Codex's goal continuation (codex-rs/ext/goal, templates/goals/
- * continuation.md): every turn boundary restates the objective and the goal's standing facts, so a
- * long session never has to find its task or its spend in a transcript that compaction may have
- * cut. Completion stays the gate's: Codex lets the model declare its goal complete, and here only a
- * submit the gate accepts does.
+ * Instructions sent to the Builder between turns. Every turn boundary restates the objective and
+ * the round's standing facts, so a long session never depends on a compacted transcript. Only a
+ * submit the gate accepts completes the goal.
  */
 
-/** Completed turns with no submit before the continuation asks for authoring. Fixed rather than a
- *  share of a ceiling: recorded sessions used zero to seven turns (review of 338970480,
- *  2026-09-14), and a round has no turn ceiling unless the operator sets one. */
+/** Completed turns with no submit before the continuation asks for authoring. Fixed, because a
+ *  round has no turn ceiling unless the operator sets one. */
 const NO_SUBMIT_REMINDER_TURNS = 8;
 
 /** Time since the round opened with no submit before the Builder is asked to author, whichever of
- *  this and the turn count comes first. A turn is not a unit of time: a Claude session runs as one
- *  assistant turn, and one recorded truss Builder turn ran 6 h 27 m, so eight turns can be half an
- *  hour or most of a day, and a session that spent a night reading crosses no turn count at all.
- *  Two hours is the Builder's own bash install allowance, so the nudge cannot fire inside one
- *  permitted toolchain install. The same bound drives the one notice inside a running turn
- *  (`sessionClock` in builder-tool-receipts.ts). */
+ *  this and the turn count comes first, since a single turn can run for hours. It equals the bash
+ *  install allowance, so it cannot fire inside one install, and `sessionClock` reuses it. */
 export const NO_SUBMIT_REMINDER_MS = 7_200_000;
 
-/** Consecutive turns without one successful tool call that end the round as `no-progress`.
- *  Codex blocks a goal after three automatic turns without a tool call, or three whose commands
- *  failed with none succeeding (codex-rs/ext/goal/src/accounting.rs); one count covers both. */
+/** Consecutive turns without one successful tool call that end the round as `no-progress`. */
 export const STALLED_TURNS = 3;
 
-/** The ask once a round has run long without a submit. The continuation states it at a turn
- *  boundary and `sessionClock` inside a running turn, so the two cannot drift apart. */
+/** The ask once a round has run long without a submit, shared by the continuation and
+ *  `sessionClock`. */
 export const MOVE_TO_AUTHORING =
   "Preserve useful environment work, but move to authoring now: a refused submit returns actionable contract feedback, an unsubmitted candidate returns none.";
 
@@ -65,9 +53,8 @@ function goalFacts(goal: GoalState): string {
   return `This round so far: turn ${goal.activeTurn}${minutes}, ${submits}.${cap}`;
 }
 
-/** The one action the round's state asks for. A previous submit changes it from "author a
- *  candidate" to "repair and resubmit". No specific file is named: a repair that keeps tasks fixed
- *  must not edit correctness-model/tasks.json, so the permitted files stay the opening's to state. */
+/** The one action the round's state asks for: author, or after a submit repair and resubmit. It
+ *  names no file, because the permitted files are the opening's to state. */
 function nextAction(goal: GoalState): string {
   const stop = " Do not replace the candidate with an explanation of why you stopped.";
   if (goal.attempts > 0) {
@@ -92,10 +79,7 @@ export function continuePrompt(goal: GoalState): string {
   ].join("\n\n");
 }
 
-/** Public runtime fact for the next turn: the owned files are still as the session found them.
- *  The sixteen-call interrupt that once enforced this ended on 2026-09-14 (never fired in 414
- *  recorded sessions, and it would have cut a session installing its toolchain); the fact stays
- *  as one line the model weighs against its own plan. */
+/** Public runtime fact for the next turn: the owned files are still as the session found them. */
 export function unchangedAuthoringNote(owned: "unchanged" | "changed", paths: readonly string[]): string {
   return owned === "unchanged"
     ? `Note: nothing under ${paths.join(" or ")} has changed since this round opened; keep the environment work, and put the candidate in those files.`
@@ -103,9 +87,7 @@ export function unchangedAuthoringNote(owned: "unchanged" | "changed", paths: re
 }
 
 /** Public runtime fact for the next turn: which of the session's own tool calls just failed.
- *  The backend already returned each error in its tool result; this one bounded line saves the
- *  model re-deriving the tally from a long transcript. Run 66's session repeated an identical
- *  prompt for 32 turns with nothing naming the failures. Top three names keep it one line. */
+ *  One bounded line with the three most frequent names. */
 export function toolFailureNote(
   calls: { total: number; failed: number; failedByName: Record<string, number> } | undefined,
 ): string {

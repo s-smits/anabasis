@@ -1,43 +1,25 @@
 /**
- * What the turn currently running has already done.
+ * What the running turn has already done. Tool events are counted as they arrive, so a checkpoint
+ * taken mid-turn, or a killed turn, still shows the calls made; the completed turn's final counts
+ * replace these when it settles.
  *
- * The execution record used to receive tool counts only when a turn returned its final
- * result. A turn that never returned therefore contributed nothing: run w41-opus
- * was killed inside its first turn and recorded `turns: 0`, `toolCalls.total: 0`, an empty `byName`
- * and a null usage for a session that had made 24 controller-hosted tool calls over 5m31s. The
- * transport had emitted every one of those calls as an event, but the recorder did not count
- * them until the turn finished.
- *
- * This recorder counts those events as they arrive, so a checkpoint written during a turn
- * includes the calls already made. The completed turn's final counts then replace these
- * running counts. Clearing them when the turn finishes prevents the same calls from being
- * counted twice.
- *
- * It also identifies failed calls. Per-name counts alone left run w23's
- * "28 failed commandExecution" and run sol-329's 19 of 19 failures unexplained by the
- * execution record. A limited row per failure records the tool, time, request and response,
- * helping an investigation identify what failed. Both excerpts are redacted and cut, and both are null
- * when the transport carried nothing rather than an empty string that would read as "nothing was
- * asked".
+ * Each failed call also gets a bounded row with its tool, time, and redacted request and response
+ * excerpts, null when the transport carried nothing.
  */
 import type { AgentTurnEvent } from "../backends/backend-types.ts";
 import { redactTokens } from "../backends/diagnostic-redaction.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 
-/** Failure rows kept per session. Repeated failures can fill a session, so retain the first
- *  rows for diagnosis and count later failures without storing more excerpts. */
+/** Failure rows kept per session; later failures are only counted. */
 const MAX_FAILED_CALL_ROWS = 50;
-/** Characters kept per excerpt, after redaction. Long enough for a command line and a first error
- *  line, short enough that 50 rows cannot bloat the record. */
+/** Characters kept per excerpt, after redaction. */
 const MAX_FAILED_CALL_CHARS = 200;
-/** In-flight calls whose arguments are held for their end event. A transport that never ends a
- *  call would otherwise grow this map for the whole session. */
+/** Bound on in-flight calls whose arguments are held for their end event. */
 const MAX_OPEN_CALL_ARGS = 256;
 
 export interface BuilderFailedCall {
-  /** 1-based ordinal among this session's failures, including the ones beyond the row bound, so a
-   *  bounded list still says which failure each row is. */
+  /** 1-based ordinal among all of this session's failures, including those beyond the row bound. */
   ordinal: number;
   /** The session turn the failure was observed in. */
   turn: number;
@@ -47,12 +29,9 @@ export interface BuilderFailedCall {
   at: string;
   /** Milliseconds from session start, for joining against the record's other rows. */
   atMs: number;
-  /** Redacted, bounded excerpt of the call's arguments — the command or the file the tool was
-   *  asked for. Null when the transport reported no arguments (Codex carries none on its tool
-   *  events), never an empty string. */
+  /** Redacted, bounded excerpt of the call's arguments; null when the transport reported none. */
   request: string | null;
-  /** Redacted, bounded excerpt of what the tool returned. Null when the transport reported no
-   *  result text. */
+  /** Redacted, bounded excerpt of what the tool returned; null when there was no result text. */
   error: string | null;
 }
 
@@ -81,9 +60,8 @@ export function mergeCounts(left: Record<string, number>, right: Record<string, 
   return merged;
 }
 
-/** Credential-shaped content is removed before anything is kept. The wider provider-diagnostic
- *  redaction is deliberately not used here: it also removes home paths, and the path a failing
- *  command names is the part an investigation reads. */
+/** Redacts credential-shaped content and bounds the text. Home paths are kept on purpose, since
+ *  the path a failing command names is what an investigation reads. */
 function excerpt(text: string | undefined): string | null {
   if (text === undefined) return null;
   const redacted = redactTokens(text).replace(/\s+/g, " ").trim();
@@ -102,9 +80,8 @@ export class BuilderTurnObservation {
 
   constructor(private readonly since: () => number) {}
 
-  /** Count one starting call and hold its arguments for the end event. Only a call the transport
-   *  identified is held: an id-less pair cannot be matched, and guessing by name would attach one
-   *  call's command to another's failure. */
+  /** Counts one starting call and holds its arguments for the end event, only when the call has
+   *  an id to match it by. */
   started(event: Extract<ToolEvent, { type: "tool_started" }>): void {
     this.tally.total += 1;
     this.tally.byName[event.toolName] = (this.tally.byName[event.toolName] ?? 0) + 1;
@@ -138,8 +115,7 @@ export class BuilderTurnObservation {
     });
   }
 
-  /** The running turn's tally so far. Copied, because a checkpoint snapshot must not keep growing
-   *  after it was written. */
+  /** A copy of the running turn's tally so far. */
   turnTally(): BuilderTurnToolTally {
     return {
       total: this.tally.total,
@@ -149,8 +125,7 @@ export class BuilderTurnObservation {
     };
   }
 
-  /** Close the running turn: its settled accumulator tally replaces this one. Held arguments are
-   *  released too, since no later event can end a call from a turn that has returned. */
+  /** Closes the running turn, whose settled tally replaces this one, and releases held arguments. */
   turnSettled(): void {
     this.tally = emptyTally();
     this.openArgs.clear();

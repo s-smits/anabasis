@@ -311,7 +311,9 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     seedFile(join(modules, "hoisted-dep", "index.js"), 'export const value = "HOISTED";\n');
     const workspaceModules = join(binding.iterationDir, "node_modules");
     mkdirSync(workspaceModules, { recursive: true });
-    for (const name of ["linked-pkg", "hoisted-dep"]) symlinkSync(join(modules, name), join(workspaceModules, name));
+    for (const name of ["linked-pkg", "hoisted-dep"]) {
+      symlinkSync(join(modules, name), join(workspaceModules, name));
+    }
     const bun = runtimeProcess.execPath;
     const { profile } = candidateIsolationProfile(policy, "exec", [bun]);
     const env = bashEnv(binding.iterationDir);

@@ -34,6 +34,8 @@ import { ownedService, stopRun, validateStopPlan } from "../.claude/skills/launc
 import { serviceManager } from "../.claude/skills/launch-run/scripts/service.ts";
 import { solveIsolationPolicy, spawnUnderSolveIsolation } from "../src/verify/solve-sandbox.ts";
 
+// A custom one-liner beside the truss preset gives a batch two distinct presets and projects.
+const CUSTOM = ["custom", "--prompt", "Design steel roof trusses to Eurocode 3."];
 const dirs = [];
 const preparedPlans = [];
 function temp() {
@@ -47,8 +49,6 @@ afterEach(() => {
 });
 
 const source = { commit: "a".repeat(40), sourceDigest: "b".repeat(64), dirty: false };
-// A custom one-liner beside the truss preset gives a batch two distinct presets and projects.
-const CUSTOM = ["custom", "--prompt", "Design steel roof trusses to Eurocode 3."];
 const manager = serviceManager();
 /** What each manager prints for a loaded, running service owned by `dir`. */
 const liveState = (dir, label) =>

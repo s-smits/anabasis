@@ -32,7 +32,7 @@ export interface FullRunArgs {
    *  round in flight still records its battery, so nothing is killed (run c66e0d, 2026-09-07: a
    *  manual kill at the four-hour mark discarded 21 accepted artifacts minutes from verification). */
   stopAfterMs?: number;
-  /** Builder session turns per iteration (the session default is 32). A staged rehearsal sets a
+  /** Builder session turns per iteration; absent, a round has no turn cap. A staged rehearsal sets a
    *  small value so the session settles at the ceiling instead of running to a submit. */
   maxBuilderTurns?: number;
   expectedTasks?: number;

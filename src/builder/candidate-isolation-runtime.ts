@@ -1,15 +1,9 @@
 /**
- * The candidate workspace access rules' execution half: it runs one guarded operation under the
- * host isolation and records the row that lets a later reader ask whether the Builder read outside its
- * allowance. The policy module owns what is allowed; this module turns that decision into a child
- * process and a durable path record, with one writer and one spawn shape per host.
- *
- * Darwin uses the SBPL profile emitted by candidate-isolation-profile.ts. Linux uses Bubblewrap's mount
- * namespace: readable roots are bound read-only, the workshop cell is bound read-write, protected
- * nodes are overmounted, and network follows the shared policy. The evidence names the mechanism
- * and profile digest so a Darwin and Linux execution cannot be mistaken for the same isolation.
+ * Runs one guarded operation under the host isolation and records a path row for each path it
+ * touches. Darwin uses the Seatbelt profile from candidate-isolation-profile.ts; Linux uses a
+ * Bubblewrap mount namespace with read-only roots, a read-write cell and overmounted protected
+ * nodes. The recorded profile digest names the mechanism, so the two are never confused.
  */
-
 import { existsSync, readdirSync, realpathSync, statSync } from "../meta/filesystem.ts";
 import { isAbsolute, join, relative, sep } from "../meta/path.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
@@ -49,19 +43,14 @@ export interface IsolatedRequest {
   /** Every path this operation touches; each is guarded and gets a record row. */
   paths: string[];
   env?: OptionalEnvValues;
-  /** Exact standard input for a fixed isolated command. It is never included in argv or the path
-   *  record; the capability owner must bind its digest in its own request evidence. */
+  /** Standard input, kept out of argv and the path record; the caller records its digest. */
   stdin?: string;
-  /** Controller-owned regular files staged outside model-writable roots. They are admitted as
-   * exact read literals in the concrete OS profile, never through the model-facing guard. */
+  /** Controller-staged files admitted as exact read literals in the OS profile, not via the guard. */
   controllerReadFiles?: string[];
-  /** exec capabilities (bash) set this: a child command tripping the isolation on paths the guard
-   *  never checked is an expected isolation refusal and belongs in the command's own output, not a
-   *  derivation disagreement. Guarded-path capabilities leave it unset, so a refused spawn on
-   *  a guard-allowed target still throws as an isolation defect. */
+  /** Set by exec capabilities: an OS refusal on a path the guard never checked is the command's
+   *  own outcome. Unset, an OS refusal of a guard-allowed path throws as an isolation defect. */
   osRefusalIsOutcome?: boolean;
-  /** Deadline for this one command; the group is killed when it passes. Defaults to
-   *  `ISOLATED_TIMEOUT_MS`; a capability that lets the model ask for longer bounds it first. */
+  /** Deadline after which the process group is killed; defaults to `ISOLATED_TIMEOUT_MS`. */
   timeoutMs?: number;
   /** The caller's abort: the group is killed when it fires, as at the deadline. */
   signal?: AbortSignal | undefined;
@@ -81,28 +70,23 @@ export interface IsolatedOutcome {
   timedOut: boolean;
 }
 
-/** What a collected run may be given beyond its command line: bytes on stdin, and a wall other
- *  than the standing isolated one. */
+/** Optional stdin, deadline and abort signal for a collected run. */
 type CollectedRun = {
   readonly stdin?: string | undefined;
   readonly timeoutMs?: number | undefined;
   readonly signal?: AbortSignal | undefined;
 };
 
-/** The Bubblewrap identity fields carried into a candidate plan digest. The plan remains testable
- * with a synthetic mechanism on either host because only evidence-bound values appear here. */
+/** The Bubblewrap identity fields bound into a plan digest. */
 interface LinuxIsolationSupport {
   mechanismId: string;
   mechanismDigest: string | null;
   baselineDigest: string | null;
 }
 
-/** One directory's share of the walk below, as its listing decided it under one policy. The walk
- *  ran again for every confined call and grew with the workspace: 54 ms per `/bin/true` on the
- *  starter workspace and 185 ms once `.toolchain` held 20,000 files (anabasis VM, 2026-09-13). A
- *  directory's listing is reused while its own complete metadata is unchanged; adding, removing
- *  or renaming an entry moves the mtime, and a change deeper down is seen by the child it
- *  belongs to. The same `sameReadRootMetadata` rule guards Seatbelt's remembered support. */
+/** One directory's deny decisions under one policy, reused while the directory's own metadata is
+ *  unchanged so the walk does not grow with every confined call. An entry change moves the mtime;
+ *  deeper changes are seen by the child directory's own listing. */
 interface RememberedListing {
   metadata: ReadRootMetadata;
   denyDirs: string[];
@@ -110,18 +94,8 @@ interface RememberedListing {
   children: string[];
 }
 
-/**
- * Build the Bubblewrap argv and the mechanism-distinct digest for one guarded call. The
- * deny-default namespace grants the system baseline, then binds the policy's readable roots
- * read-only and its writable cell read-write. Protected regions inside those roots are overmounted
- * so they are absent, rather than merely refused by a path-string rule.
- *
- * The digest binds the policy identity and mechanism, not the transient set of existing files. It
- * therefore stays stable for a turn in the same way as the Darwin SBPL profile digest, while the
- * actual mount list still follows the guard's concrete decisions.
- */
-/** The Bubblewrap invocation and the identity it was derived under. The digest binds the policy,
- *  not the argv: the mount list follows the guard's concrete decisions and the identity does not. */
+/** The Bubblewrap argv and its digest. The digest binds the policy and mechanism, not the argv,
+ *  so it stays stable while the mount list follows the files that currently exist. */
 interface LinuxCandidatePlan {
   argv: string[];
   profileDigest: string;
@@ -129,8 +103,7 @@ interface LinuxCandidatePlan {
 
 type IsolatedPathDecision = { requested: string; decision: ReturnType<typeof guardPath> };
 
-/** What the OS did with an allowed request: which profile enforced it, whether the enforcement
- *  let it through, and the output it produced. */
+/** What the OS did with an allowed request. */
 type IsolatedRunEvidence = {
   readonly profileDigest: string;
   readonly enforcement: "os-refused" | "os-allowed";
@@ -139,7 +112,7 @@ type IsolatedRunEvidence = {
 
 const LISTINGS_BY_POLICY = new Map<string, RememberedListing>();
 
-/** A guard refusal or a guard/OS derivation disagreement — clean, model-actionable message. */
+/** A guard refusal or a guard/OS disagreement, with a model-actionable message. */
 export class CandidateIsolationRefusal extends Error {}
 /** The enforcement mechanism is unavailable; the campaign refuses, nothing runs degraded. */
 export class CandidateIsolationUnavailable extends Error {}
@@ -149,10 +122,8 @@ function looksOsRefused(status: number | null, stderr: string): boolean {
   return status !== 0 && /operation not permitted|sandbox/i.test(stderr);
 }
 
-/** A request that declares an environment resolves a relative command against that environment's PATH — the one
- * the process will actually run with; resolving against the controller's PATH picked a host rg
- * the workshop cell then refused (pr180: every `inspect` failed). A request that declares no
- * environment keeps the controller's PATH, as before. */
+/** Resolves a relative command against the PATH the process will run with: the request's
+ *  environment when it declares one, otherwise the controller's. */
 function resolveCommandPath(command: string, env: OptionalEnvValues | undefined): string {
   if (isAbsolute(command)) return realpathSync.native(command);
   const hit = ((env === undefined ? Bun.env.PATH : env.PATH) ?? "")
@@ -168,14 +139,14 @@ function resolveCommandPath(command: string, env: OptionalEnvValues | undefined)
 
 const liveCommands = new Set<Bun.Subprocess>();
 
-/** Kill every isolated command still running. Each child is detached into its own group, so a
- *  stop signal to the controller never reaches it; the controller's closure calls this instead. */
+/** Kills every isolated command still running. Children run in their own process groups, so a
+ *  signal to the controller does not reach them. */
 export function stopIsolatedCommands(): void {
   for (const child of liveCommands) killProcessGroup(child, "SIGKILL");
 }
 
-/** Exported for the microvm workshop runner, which spawns ssh instead of bwrap or sandbox-exec
- *  but keeps this module's capture caps, group-kill timeout and outcome shape. */
+/** Spawns a command with capped capture and a group-kill deadline. Also used by the microvm
+ *  workshop runner. */
 export async function spawnCollected(
   command: string,
   args: string[],
@@ -185,8 +156,7 @@ export async function spawnCollected(
 ): Promise<IsolatedOutcome> {
   const { stdin, signal } = run;
   const timeoutMs = run.timeoutMs ?? ISOLATED_TIMEOUT_MS;
-  // Detached: an isolated command can fork grandchildren, and signalling the group on timeout
-  // kills the tree instead of orphaning it.
+  // Detached into its own group so a timeout kills grandchildren too.
   const child = Bun.spawn({
     cmd: [command, ...args],
     cwd,
@@ -257,11 +227,8 @@ function isUnderPath(path: string, root: string): boolean {
 }
 
 /**
- * Collect the concrete nodes a Bubblewrap mount must hide. A denied directory prunes its whole
- * subtree; a denied file is replaced by /dev/null. The caller supplies the predicate because an
- * epoch root needs the full resolving guard, while a broad toolchain root needs only the lexical
- * secret-name and .git checks. Keeping the traversal here makes those two enforcement shapes share
- * the same pruning and error treatment without widening either policy.
+ * Collects the nodes a Bubblewrap mount must hide under `root`. A denied directory prunes its
+ * subtree; a denied file is later replaced by /dev/null. The caller supplies the deny predicate.
  */
 function collectDeniedNodes(
   policyDigest: string,
@@ -295,9 +262,8 @@ function collectDeniedNodes(
   for (const child of listing.children) collectDeniedNodes(policyDigest, child, denied, denyDirs, denyFiles);
 }
 
-/** Walk the roots this call binds and collect what the guard refuses inside them. Two owners decide
- *  it: under the epoch directory the resolving guard answers for every concrete node, and elsewhere
- *  under the repository the secret and `.git` name checks do, which keeps a large tree bounded. */
+/** Collects what must be hidden inside the bound roots: under the epoch directory the full guard
+ *  decides; elsewhere in the repository only the secret and `.git` name checks, which are cheaper. */
 function deniedMounts(
   policy: CandidateAccessPolicy,
   binds: readonly string[],
@@ -342,9 +308,8 @@ export function linuxCandidatePlan(
   extraReadPaths: readonly string[],
   environment: OptionalEnvValues = {},
 ): LinuxCandidatePlan {
-  // A host-wide scratch root becomes a fresh tmpfs: binding the real host /tmp would expose other
-  // runs. The workshop's own scratch cell is instead a real read-write bind. Laying the tmpfs
-  // first lets a repository cell under a scratch root be re-exposed by its later bind.
+  // A host scratch root becomes a fresh tmpfs so other runs' files stay hidden. The tmpfs goes
+  // first, so a repository cell under a scratch root is re-exposed by its later bind.
   const underRepo = (path: string) => isUnderPath(path, policy.repoRoot);
   const scratchRoots = mode === "read" ? [] : [...new Set(policy.scratchWriteRoots)].filter(existsSync);
   const scratchTmpfs = scratchRoots.filter((root) => !underRepo(root)).sort();
@@ -362,9 +327,8 @@ export function linuxCandidatePlan(
   const readBinds = [...new Set(readRuleRoots)]
     .filter((path) => existsSync(path) && !writeSet.has(path))
     .sort();
-  // A write-deny root stays readable, as under Seatbelt's `deny file-write*`: the workspace
-  // node_modules carries the @ana links the Builder's own `bun test` resolves through, so it is
-  // re-bound read-only over the writable workspace rather than hidden by a tmpfs.
+  // A write-deny root stays readable, as under Seatbelt: the workspace node_modules carries the
+  // @ana links `bun test` resolves through, so it is re-bound read-only rather than hidden.
   const readOnlyBinds = mode === "read" ? [] : policy.writeDenyRoots.filter(existsSync);
   const { tmpfsDenies, fileDenies } = deniedMounts(policy, [...readBinds, ...writeBinds], existsSync);
   const argv = [
@@ -390,17 +354,21 @@ export function linuxCandidatePlan(
   return { argv, profileDigest: hashJsonBytes(identity) };
 }
 
-/** The guard's typed refusal rows are the same whichever mechanism would have run the allowed
- *  request. This was exported for the microvm workshop runner alone; that runner calls
- *  `decideGuardedPaths` below now, so the refusal has one caller and stays inside the module. */
-function rejectGuardedPaths(
+/**
+ * Decides every requested path against the policy. Denied paths are recorded and the request is
+ * refused. Both the local runner and the microvm cell call this, so the decision has one owner.
+ */
+export function decideGuardedPaths(
   policy: CandidateAccessPolicy,
   record: PathRecord,
   request: IsolatedRequest,
-  decisions: readonly IsolatedPathDecision[],
-): void {
+): IsolatedPathDecision[] {
+  const decisions = request.paths.map((requested) => ({
+    requested,
+    decision: guardPath(policy, request.capability, request.mode, requested),
+  }));
   const denied = decisions.filter((entry) => entry.decision.decision === "deny");
-  if (denied.length === 0) return;
+  if (denied.length === 0) return decisions;
   for (const entry of denied) {
     record.append({
       capability: request.capability,
@@ -421,30 +389,8 @@ function rejectGuardedPaths(
   );
 }
 
-/**
- * Decide every requested path against the policy and refuse the request if any is denied.
- *
- * The two isolation runners — the in-process one below and the microvm cell — each spelled this
- * out, which meant two places deciding which paths a candidate may reach. One of them is enough,
- * and a guard whose answer depends on which runner asked is the defect worth ruling out.
- */
-export function decideGuardedPaths(
-  policy: CandidateAccessPolicy,
-  record: PathRecord,
-  request: IsolatedRequest,
-): IsolatedPathDecision[] {
-  const decisions = request.paths.map((requested) => ({
-    requested,
-    decision: guardPath(policy, request.capability, request.mode, requested),
-  }));
-  rejectGuardedPaths(policy, record, request, decisions);
-  return decisions;
-}
-
-/** Exported beside `decideGuardedPaths` for the microvm workshop runner: an allowed request
- *  writes the same row whichever mechanism ran it, and only what the OS reported about the
- *  enforcement differs. Written out twice, the two copies could disagree about a field the
- *  evidence reader joins on. */
+/** Records the allowed paths of a request that ran. Shared with the microvm runner so both write
+ *  the same row shape. */
 export function recordAllowedPaths(
   policy: CandidateAccessPolicy,
   record: PathRecord,
@@ -470,11 +416,9 @@ export function recordAllowedPaths(
 }
 
 /**
- * Run a guarded filesystem operation through the only capability path. The guard writes typed
- * refusals without spawning; an allowed request then runs under Darwin Seatbelt or Linux
- * Bubblewrap, both derived from the same policy. A Darwin guard-allowed/OS-refused pair is a
- * blocking derivation defect. Linux hides a denied node as absent, so its command outcome remains
- * the appropriate observable rather than a string-matched refusal.
+ * Runs a guarded operation. The guard refuses without spawning; an allowed request runs under
+ * Seatbelt or Bubblewrap derived from the same policy. On Darwin, an OS refusal of a guard-allowed
+ * request is a derivation defect.
  */
 export async function runIsolated(
   policy: CandidateAccessPolicy,
@@ -516,10 +460,8 @@ export async function runIsolated(
     timeoutMs: request.timeoutMs,
     signal: request.signal,
   });
-  // Partial refusals within an allowed tree can be normal command behaviour (for example a search
-  // skipping an unreadable child). Linux represents a denied path as absent, which is
-  // indistinguishable from a legitimate missing file; the disagreement check therefore remains
-  // specific to Darwin's observable Seatbelt refusal and leaves Linux child failures to callers.
+  // Only Darwin reports a refusal observably; Linux shows a denied path as absent, which a caller
+  // cannot tell from a missing file. A refusal with some output is normal partial behaviour.
   const enforcement =
     support.platform !== "linux" && looksOsRefused(outcome.status, outcome.stderr) && outcome.stdout === ""
       ? "os-refused"

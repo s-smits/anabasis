@@ -1,16 +1,13 @@
 // The controller's own transcript of each Builder session, and the pointer that names it.
 //
-// A pi session holds its history in memory and drops it on dispose, so the controller writes a
-// bounded event record of each session while it runs. Run 65 was killed while authoring and nothing
-// in the campaign named its transcript; the pointer is therefore written as the session opens and
-// rewritten at settlement. A continued session's rounds append to its one events file, each round
-// under a pointer of its own.
+// A pi session drops its history on dispose, so the controller writes a bounded event record while
+// the session runs. The pointer is written as the session opens, so a killed session is still
+// named, and rewritten at settlement. A continued session's rounds append to one events file, each
+// round under its own pointer.
 //
-// `verifyWrittenTranscript` is copied from pi-claude-bridge's session-verify.ts without its
-// record-count clause: a reader watching a file that is still being appended to cannot know the
-// count. The remaining checks hold while the file grows: it exists, it is readable, and its first
-// and last records both name the expected sessionId.
-
+// `verifyWrittenTranscript` follows pi-claude-bridge's session-verify.ts without its record-count
+// clause, which a growing file cannot satisfy: it checks the file exists, is readable, and that its
+// first and last records name the expected sessionId.
 import { existsSync, readFileSync, statSync, mkdirSync, appendFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -23,9 +20,7 @@ import type { CompactionRecord } from "../backends/backend-types.ts";
 
 export const BUILDER_TRANSCRIPT_POINTER_FILE = "builder-transcript.json";
 
-/** A controller-event transcript is not the provider's own session file, and it must never claim
- *  to be: `source` names what produced it so a reader never mistakes reconstructed events for a
- *  provider-native transcript. */
+/** `source` marks this as controller-reconstructed events, never a provider-native transcript. */
 export interface BuilderTranscriptPointerV2 {
   schema: "builder-transcript-pointer/v2";
   source: "controller-events";
@@ -57,9 +52,7 @@ interface TranscriptToolEvents {
 }
 
 /** One pointer per Builder round, like the execution records: the first round owns the bare name,
- *  each later round takes the next free numbered name. A single epoch-level path
- *  could not hold a multi-session epoch — a repair or rebuild session's pointer overwrote the
- *  opening build's, and that session's provider transcript was the one evidence naming it. */
+ *  each later round takes the next free numbered name, so no round overwrites another's. */
 function claimPointerPath(epochDir: string): string {
   let path = join(epochDir, BUILDER_TRANSCRIPT_POINTER_FILE);
   for (let session = 2; existsSync(path); session += 1) {
@@ -89,8 +82,7 @@ export function verifyWrittenTranscript(jsonlPath: string, expectedSessionId: st
     return warnings;
   }
   const lines = content.split("\n").filter((l) => l.trim().length > 0);
-  // Pi returned here on a record-count mismatch; the count is gone, but an empty file still has to
-  // be named, or the first-and-last comparison below reports it as a drift to `undefined`.
+  // An empty file is named here, or the comparison below would report a drift to `undefined`.
   if (lines.length === 0) {
     warnings.push(`transcript empty — path=${jsonlPath} bytes=${content.length}`);
     return warnings;
@@ -122,10 +114,8 @@ function bounded(text: string, cap: number): string {
 }
 
 /**
- * The controller's own record of one Builder session: a pi session holds its history in memory and
- * drops it on dispose. Records are bounded by construction — prompt and text fields are capped,
- * tool records carry intent-level detail plus at most a bounded bash command — because this file is
- * recorded campaign evidence first and a debugging aid second.
+ * The controller's own record of one Builder session. Records are bounded by construction: prompt
+ * and text fields are capped, and tool records carry at most a bounded bash command.
  *
  * Records buffer until `open`, then append in place; `seq` continues from the records an earlier
  * round of the same session left. The pointer records a digest on opening and again at settlement;
@@ -254,8 +244,7 @@ export class ControllerEventTranscript {
 }
 
 /** The per-session wiring around one writer: holds what the round records before the transcript
- *  opens, opens it with the session, and settles on every exit path. Keeps the session loop free of
- *  transcript mechanics. */
+ *  opens, opens it with the session, and settles on every exit path. */
 export class SessionTranscriptSink {
   private impl: ControllerEventTranscript | null = null;
   private readonly pending: Array<(t: ControllerEventTranscript) => void> = [];
@@ -266,8 +255,8 @@ export class SessionTranscriptSink {
     else if (!this.opened) this.pending.push(write);
   }
 
-  /** Open the transcript as the session opens, so a run killed inside its first turn still leaves
-   *  a pointer naming it (run 65). Without a directory nothing is recorded. */
+  /** Opens the transcript with the session, so a run killed in its first turn still leaves a
+   *  pointer. Without a directory nothing is recorded. */
   open(sessionId: string, transport: string, dir: string | undefined, cwd: string): void {
     if (this.opened) return;
     this.opened = true;

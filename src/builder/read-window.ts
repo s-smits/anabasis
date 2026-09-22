@@ -3,17 +3,9 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 /**
  * The one owner of how much text a model-facing read returns, and of saying what it left out.
  *
- * Every Builder tool result passes through `evidenceResult`, which throws when the text exceeds
- * `TOOL_TEXT_LIMITS.evidence` (64 KB). The admission ceilings above it are larger — user context
- * admits files up to 25 MB, the correctness-model workshop reads up to 256 KB, so a file in that gap was
- * admitted, listed in the manifest with its line count, and then threw on the read that the manifest
- * had just invited. The window is what closes that gap: a large file becomes several reads instead
- * of one refusal.
- *
- * Announcing the cut is the required half. A read that silently returns the first part of a file
- * reads exactly like a read that returned all of it, and a Builder that believes it has seen a whole
- * checker will author against the part it saw. Every window states `from`, `to` and `total`, so a
- * partial read is a fact the model holds rather than one it has to infer.
+ * Every Builder tool result must fit `TOOL_TEXT_LIMITS.evidence` (64 KB), while admitted files may
+ * be far larger, so a large file becomes several windowed reads instead of one refusal. Every window
+ * states `from`, `to` and `total`, so a partial read never looks like a whole one.
  */
 
 /** Lines per text read. Roughly a long source file's worth, and far enough under the evidence
@@ -21,12 +13,10 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 export const READ_WINDOW_LINES = 400;
 /** Rows per listing. Listings are denser per row than source lines, so the count is lower. */
 export const LIST_WINDOW_ROWS = 200;
-/** Code points per exact text page. Six thousand JSON control characters still fit below the
- *  64 KB tool-result ceiling after escaping, while ordinary UTF-8 stays considerably smaller. */
+/** Code points per exact text page: even all control characters fit the 64 KB ceiling once
+ *  JSON-escaped. */
 const CHARACTER_WINDOW_CHARS = 6_000;
-/** Code points of a thrown cause the Builder is shown. `harness_trial` and `correctness_check`
- *  each chose 3,000 for this independently; how much of a cause is worth reading belongs to the
- *  sentence that reports it, not to the tool that threw. */
+/** Code points of a thrown cause the Builder is shown. */
 const ERROR_PAGE_CHARS = 3_000;
 /** Headroom under the 64 KB evidence ceiling for the header line the caller adds around the body. */
 const WINDOW_BYTES = 48 * 1024;
@@ -43,8 +33,8 @@ interface WindowRange {
 export interface ReadWindow extends WindowRange {
   total: number;
   text: string;
-  /** The first line alone exceeded the byte guard and was returned cut mid-line. Stated because a
-   *  cut line otherwise reads exactly like a whole one, and line offsets cannot reach its tail. */
+  /** The first line alone exceeded the byte guard and was returned cut mid-line; line offsets
+   *  cannot reach its tail. */
   cut: boolean;
 }
 
@@ -61,8 +51,7 @@ interface JsonListPage extends WindowRange {
   count: number;
 }
 
-/** The shared arithmetic, so listings and text reads page by one convention. An offset past the
- *  end is an empty window rather than an error: it is how a caller walking a file finds the end. */
+/** The shared paging arithmetic. An offset past the end is an empty window, not an error. */
 export function windowRange(total: number, offset = 1, limit = READ_WINDOW_LINES): WindowRange {
   const from = Math.max(1, Math.trunc(offset));
   const count = Math.max(1, Math.trunc(limit));
@@ -70,18 +59,16 @@ export function windowRange(total: number, offset = 1, limit = READ_WINDOW_LINES
   return { from, to: Math.max(to, from - 1), more: to < total };
 }
 
-/** The hard cap on one exact character page, applied wherever a page is built — including by the
- *  streaming reader in file-window.ts, which pages a file it never holds. Stated once so a request
- *  for more cannot be honoured by one caller and refused by the other. */
+/** The hard cap on one exact character page, shared by every page builder including the streaming
+ *  reader in file-window.ts. */
 export function characterLimit(limit = CHARACTER_WINDOW_CHARS): number {
   return Number.isFinite(limit)
     ? Math.min(Math.max(1, Math.trunc(limit)), CHARACTER_WINDOW_CHARS)
     : CHARACTER_WINDOW_CHARS;
 }
 
-/** Exact character paging for minified or otherwise single-line text. `readWindow` remains the
- *  normal source reader because line numbers are useful; this is its reachable continuation when
- *  one line alone crosses the byte guard. The hard cap applies even when a caller asks for more. */
+/** Exact character paging for minified or single-line text, where one line crosses the byte guard.
+ *  The hard cap applies even when a caller asks for more. */
 export function characterWindow(text: string, offset = 1, limit = CHARACTER_WINDOW_CHARS): CharacterWindow {
   const characters = Array.from(text);
   const range = windowRange(characters.length, offset, characterLimit(limit));
@@ -93,11 +80,9 @@ export function characterWindow(text: string, offset = 1, limit = CHARACTER_WIND
 }
 
 /**
- * Window `text` by lines, then hold the result under the byte guard. Both cuts are needed: a line
- * count alone does not bound bytes, and minified data arrives as one very long line. A first line
- * that does not fit on its own is returned cut to the guard rather than refused, because a Builder
- * inspecting minified public data still needs to see its beginning. Cutting mid-character yields
- * one replacement character and never a decode failure.
+ * Windows `text` by lines, then holds the result under the byte guard, since a line count alone
+ * does not bound bytes. A first line too long on its own is returned cut rather than refused;
+ * cutting mid-character yields one replacement character, never a decode failure.
  */
 export function readWindow(text: string, offset?: number, limit?: number): ReadWindow {
   const lines = text.split(/\r?\n/);
@@ -123,15 +108,11 @@ export function readWindow(text: string, offset?: number, limit?: number): ReadW
 }
 
 /**
- * A listing the model receives as one JSON body. `windowRange` bounds the record count; the byte
- * guard here bounds the body as well, because a count-only window hands the shared 64 KB tool
- * ceiling (`evidenceResult` in solve/define-tool.ts) a body to cut mid-structure: the Builder then
- * reads `"to":200,"more":false` above 179 records and a fragment that will not parse. Stopping at
- * the guard keeps `to` and `more` naming the records the body actually carries, so the offset the
- * note offers is the one that continues the list.
+ * A listing the model receives as one JSON body. The byte guard stops before the tool ceiling
+ * would cut the JSON mid-structure, so `to` and `more` name the records the body carries.
  *
- * One record is always taken, so a caller paging a long list always advances; a single record past
- * the guard is left to the ceiling, exactly as `readWindow` leaves a single over-long line.
+ * One record is always taken, so paging always advances; a single record past the guard is left
+ * to the ceiling.
  */
 export function jsonListPage<T>(
   records: readonly T[],
@@ -141,7 +122,7 @@ export function jsonListPage<T>(
 ): JsonListPage {
   const range = windowRange(records.length, offset, limit);
   const encoder = new TextEncoder();
-  // The envelope is part of the body, so it is measured with the records rather than assumed small.
+  // The envelope is measured with the records.
   const body = (rows: readonly T[], to: number) =>
     capturedJsonStringify({
       from: range.from,
@@ -171,13 +152,8 @@ export function jsonListPage<T>(
 }
 
 /**
- * A thrown cause as the Builder may read it: one page, and the count of what did not fit. Held
- * here beside the paging it reports on because `harness_trial` and `correctness_check` each had a
- * byte-identical copy that differed only in its page size, and both of them said "1 characters
- * omitted" on the cause that is one character too long.
- *
- * This is deliberately not `windowNote`: there is no offset to call again with, so the sentence
- * must not offer one.
+ * A thrown cause as the Builder may read it: one page, and the count of what did not fit. Unlike
+ * `windowNote` it offers no offset, since there is nothing to call again.
  */
 export function visibleError(cause: unknown, limit = ERROR_PAGE_CHARS): string {
   const text = errorMessage(cause);
@@ -193,8 +169,7 @@ export function windowNote(
   offsetName = "offset",
 ): string {
   const seen = `${unit} ${window.from}-${window.to} of ${window.total}`;
-  // A cut line is stated in the same sentence as the range: without it, "lines 1-1 of 1" over a
-  // minified file reads as a complete read of a file whose later bytes no offset can reach.
+  // A cut line is stated with the range, or "lines 1-1 of 1" would read as complete.
   const cut =
     window.cut === true
       ? `; ${unit.replace(/s$/, "")} ${window.from} was cut at the byte guard and its remaining bytes are not reachable by offset`

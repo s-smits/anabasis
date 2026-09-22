@@ -1,26 +1,16 @@
 /**
- * An optional machine boundary for the Builder's correctness-model workshop cell.
+ * An optional VM boundary for the Builder's workshop cell, which runs third-party package
+ * lifecycle code. Seatbelt and Bubblewrap share the host kernel; this runner instead executes the
+ * allowed request over ssh in a libvirt/QEMU guest whose only interface is on a host-only network,
+ * under guest Bubblewrap with networking disabled.
  *
- * The workshop runs third-party package lifecycle code —
- * `bun install` and its relatives, the route every measured install session found unaided. Under
- * Seatbelt or Bubblewrap that code still shares the host kernel, so one kernel defect ends the
- * isolation. This runner substitutes a libvirt/QEMU guest for that one cell: the allowed request
- * executes over ssh inside a provisioned VM whose only network interface sits on a host-only
- * libvirt network. The runner checks that configuration and disables networking in guest
- * Bubblewrap. The design follows an earlier VM service by the same operator (2026-08-19):
- * cloud-image guest on a qcow2 backing file, per-VM ssh key and virtiofs share. The provisioner
- * creates a clean snapshot; reverting it remains an operator step.
+ * The cell root is a per-campaign child of the guest's virtiofs share, presented under
+ * `/srv/share`. The guard and path-record rows are unchanged; only the spawn differs, and a
+ * guest-side denial is a command outcome.
  *
- * The cell root is a per-campaign child of the guest's virtiofs share, so the workshop's host-side
- * reads and writes keep working unchanged while bwrap presents only those bytes under `/srv/share`.
- * The model-facing guard and its typed path-record rows stay exactly as under the OS mechanisms;
- * what changes is only the spawn. A guest-side denial is a command outcome.
- *
- * Opt-in and provisional: `ANA_WORKSHOP_VM=<name>` names a provisioned guest and is read once at
- * campaign mount; unset means the default OS isolation. A CLI flag should replace the variable
- * before this leaves experiment status. The runner refuses as `CandidateIsolationUnavailable`
- * (a typed non-result upstream) whenever the guest, its key, its isolated network or its transport
- * is not exactly as provisioned — nothing runs degraded.
+ * Opt-in: `ANA_WORKSHOP_VM=<name>` names a provisioned guest and is read once at campaign mount.
+ * Any deviation from the provisioned guest, key, network or transport throws
+ * `CandidateIsolationUnavailable`; nothing runs degraded.
  */
 import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { basename, isAbsolute, join, relative, sep } from "../meta/path.ts";
@@ -50,9 +40,7 @@ const GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 const OPEN_ATTEMPTS = 24;
 const OPEN_RETRY_MS = 5_000;
 const VIRSH_TIMEOUT_MS = 30_000;
-/* The guest key survives snapshot reverts (the disk reverts with it), but reprovisioning creates a
- * new one; pinning known_hosts would turn every reprovision into a manual cleanup on a network
- * only the host can reach. */
+/* Host keys are not pinned: reprovisioning creates a new one, and the network is host-only. */
 const SSH_OPTIONS = [
   "-o",
   "BatchMode=yes",
@@ -356,7 +344,7 @@ export function createVmWorkshopRunner(
     }
     const decisions = decideGuardedPaths(policy, record, request);
     opened ??= openCell(cell, transport).catch((error: Error) => {
-      opened = null; // A later call may find a repaired guest; a cached refusal never would.
+      opened = null; // Not cached, so a later call can find a repaired guest.
       throw error;
     });
     const open = await opened;
@@ -399,8 +387,7 @@ export function createVmWorkshopRunner(
       mode: request.mode,
     };
     const profileDigest = hashJsonBytes(identity);
-    // The VM is the boundary; a guest-side denial is a command outcome, the same posture Linux
-    // Bubblewrap has, so no os-refused derivation check exists here.
+    // As with Linux Bubblewrap, a guest-side denial is a command outcome, never "os-refused".
     recordAllowedPaths(policy, record, request, decisions, {
       profileDigest,
       enforcement: "os-allowed",

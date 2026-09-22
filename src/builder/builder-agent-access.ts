@@ -1,8 +1,6 @@
 /**
- * The host access facts for every Builder backend. `deriveCandidateIsolation` incorporates
- * these grants into the one policy enforced by the host file and command tools. Native
- * projections formerly dropped purpose-based denies and exposed evidence created after startup;
- * all backends now use the host tools rather than maintaining separate filesystem rules.
+ * The host access facts for every Builder backend. `deriveCandidateIsolation` folds these grants
+ * into the one policy the host file and command tools enforce.
  */
 import { controllerCheckoutRoot } from "../verify/wall-policy.ts";
 
@@ -17,9 +15,7 @@ type BuilderHostAccess = Record<string, BuilderHostVerb>;
 /**
  * Everything a Builder session may reach on the host outside its own tree, as one access map.
  *
- * The Builder may read host tools, but it writes only its workspace and the separately declared OS
- * scratch roots. An installer that expects HOME writes under the workspace's `.toolchain/home`; this
- * keeps the installed bytes useful for authoring without letting them masquerade as host-owned engines.
+ * The Builder may read host tools but writes only its workspace and the declared OS scratch roots.
  */
 export function builderHostAccess(workspace: string) {
   const verb = (paths: readonly string[], access: BuilderHostVerb) =>

@@ -1,10 +1,8 @@
 /**
  * The OS half of the Builder isolation: one policy value in, one Seatbelt profile out.
  *
- * `candidate-isolation.ts` defines the policy and checks requested paths.
- * This file expresses that policy in SBPL. Rule order determines the result:
- * Seatbelt takes the last matching rule, so the position of each grant and denial matters
- * as much as its presence.
+ * `candidate-isolation.ts` defines the policy; this file expresses it in SBPL. Seatbelt takes the
+ * last matching rule, so each rule's position matters as much as its presence.
  */
 import { readdirSync } from "../meta/filesystem.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -25,8 +23,7 @@ import {
   traversalMetadataRules,
 } from "../verify/wall-policy.ts";
 
-/** The Seatbelt profile text and the identity it was derived under. Both travel together: the
- *  digest is what evidence cites, and the text is what the sandbox is actually given. */
+/** The Seatbelt profile text the sandbox is given and the digest evidence cites. */
 interface CandidateIsolationProfile {
   profile: string;
   profileDigest: string;
@@ -35,22 +32,17 @@ interface CandidateIsolationProfile {
 /**
  * Both profiles allow metadata reads everywhere, including paths whose contents remain denied.
  *
- * A grant on a path does not make it reachable: `getcwd`, the dynamic loader, every
- * CommandLineTools shim and Node's own loader stat each directory above the path they open, so one
- * unstattable ancestor fails the call before the granted file is touched. Denying `/Users` that way
- * left the Builder able to write `correctness-model/evaluator.ts` and unable to run a line of it. Existence is
- * not what these walls protect: `file-read-data` still refuses opening any denied file and
- * enumerating any denied directory, so a session can stat only a path it can already name.
+ * Loaders and `getcwd` stat every ancestor of the path they open, so an unstattable ancestor would
+ * make a granted file unusable. Contents stay protected: opening a denied file or listing a denied
+ * directory is still refused.
  */
 const METADATA_EVERYWHERE = '(allow file-read-metadata (subpath "/"))';
 
 /** Top-level directories holding people's data rather than the platform: the two home roots and
- *  removable or network mounts. Everything else at the filesystem root is host-owned platform
- *  material the workshop may read. */
+ *  removable or network mounts. */
 const NON_PLATFORM_ROOTS = new Set(["Users", "home", "Volumes", "net"]);
 
-/** A path is a literal inside an SBPL regex: every metacharacter it happens to carry is escaped
- *  so `census.json` denies that name and not `censusXjson`. */
+/** Escapes a path for use as a literal inside an SBPL regex. */
 function sbplRegexEscape(path: string): string {
   return path.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
@@ -63,18 +55,9 @@ function globStemToSbplRegex(stem: string): string {
 }
 
 /**
- * The host's platform directories, derived from the filesystem root rather than named one by one.
- *
- * A fixed list needed a new entry whenever a session encountered another platform directory.
- * Those additions followed failed attempts to read an interpreter, trust store or toolchain.
- * Deriving the grants from the root directory makes newly installed platform directories
- * readable without maintaining a separate list of their names.
- *
- * It is not a grant of everything. The two home roots stay out, which keeps the user's files and
- * credentials unreadable and — the recorded reason this wall was tightened, after a sibling-worktree
- * leak — every other campaign's generated tree unreadable with them. The workspace and epoch paths
- * stay readable through the policy's own rules, and the secret-glob and repository denies still run
- * after these allows.
+ * The host's platform directories, derived from the filesystem root so a newly installed platform
+ * directory needs no list entry. The home roots stay out, keeping user files, credentials and
+ * other campaigns' trees unreadable; the secret and repository denies still follow these allows.
  */
 function platformReadRoots(): string[] {
   try {
@@ -83,8 +66,7 @@ function platformReadRoots(): string[] {
       .map((name) => `/${name}`)
       .sort();
   } catch {
-    // An unreadable filesystem root leaves the policy with its own rules, which refuses rather
-    // than silently widening.
+    // An unreadable root grants nothing extra, so the policy narrows rather than widens.
     return [];
   }
 }
@@ -100,13 +82,8 @@ function workshopReadRules(): IsolationRule[] {
 /**
  * The scratch roots split by whether they sit inside the repository.
  *
- * A subpath grant cannot be subtracted from. Darwin's ambient temp is a scratch root, so a
- * repository checked out under `/private/var/folders` or `/tmp` sits inside one, and a single
- * grant block re-allowed the whole repository the platform grant had just carved out. Measured
- * 2026-08-19 on the fixture repo, which lives in the OS temp tree: every key-shaped name seeded in
- * the repository became readable. Production's repository is under `/Users`, which is the only
- * reason this never showed there. The outer roots are granted before the repository is carved out
- * again, the inner ones after it.
+ * A repository checked out under a temp scratch root sits inside that grant, which would re-allow
+ * the repository. Outer roots are granted before the repository is carved out, inner ones after.
  */
 function splitScratchRoots(policy: CandidateAccessPolicy) {
   const insideRepo = (root: string) => posixContainsPath(root, policy.repoRoot);
@@ -117,38 +94,20 @@ function splitScratchRoots(policy: CandidateAccessPolicy) {
   } satisfies { outer: IsolationRule[]; inner: IsolationRule[] };
 }
 
-// The one name every wall denies, last of all so nothing re-opens it.
-//
-// The wider run-data list the Built Harness takes is not available here, and both of its generic
-// names proved it on 2026-08-19. `/campaigns/` is where a Builder authors, so denying it left the
-// cell unable to `stat` its own `.oss`: every command died on `cd` before its first instruction.
-// `/domains/` is an ordinary word, so `import sympy` failed on `sympy/polys/domains` — a package
-// that is neither run data nor the cell's own tree. A peer checkout is a different threat for a
-// Builder than for a Built Harness in any case: the Builder writes the correctness model rather
-// than being graded by it. Hidden tasks and credentials stay shut on both sides.
-// `.env` is left to the config names above, which are re-opened inside the cell's own HOME on
-// purpose; a grader's copy of the hidden tasks is re-opened nowhere, so it goes last of all.
+// Hidden tasks are denied last of all, so nothing re-opens them. The Built Harness's wider
+// run-data list does not apply: the Builder authors under `/campaigns/`, and `/domains/` is an
+// ordinary package path segment.
 const HIDDEN_TASKS_DENY_RULES = `${runDataDenyRules([HIDDEN_TASKS_DENY_PATTERN]).join("\n")}
 (deny file-write* (regex #"${HIDDEN_TASKS_DENY_PATTERN}"))`;
 
 /**
- * One profile text for both cells.
- *
- * The two cells were emitted by two hand-written rule orders. They now share a base
- * (`allow default`) and differ only in what each may reach, so the duplication bought nothing and
- * cost a defect: the authoring branch re-carved the repository out after its scratch grant and the
- * workshop branch did not, which left every key-shaped name in a repository hosted under the OS
- * temp tree readable from the workshop. One order, stated once, is what keeps that from recurring.
- *
- * The order matters because SBPL takes the last matching rule:
+ * One profile text, in one rule order, for both cells. SBPL takes the last matching rule:
  *
  *   base → close home and host writes → platform/scratch grants → close the repository →
  *   the policy's own grants → final cross-cell, measured-evidence and hidden-task denies.
  *
- * The remaining differences are passed per cell: the workshop imports the platform
- * profile and names the Mach services a confined verifier may ask for, and reads host platform
- * directories through the derived grant; the authoring session writes `/dev` and denies the
- * workshop tree. Both are passed as values rather than as a second copy of the order.
+ * The workshop also imports the platform profile, names the Mach services a confined verifier may
+ * use and reads host platform directories; the authoring session writes `/dev`.
  */
 function profileText(
   policy: CandidateAccessPolicy,
@@ -179,8 +138,6 @@ function profileText(
   const { outer: outerScratch, inner: innerScratch } = splitScratchRoots(policy);
   const block = (head: string, lines: readonly string[]) =>
     lines.length === 0 ? "" : `(${head}\n${lines.join("\n")})\n`;
-  // The workshop asks the platform for its toolchain and its services; the authoring session has
-  // the host's own and needs neither.
   const prelude = workshop
     ? `(import "${SEATBELT_BASELINE}")\n(allow process*)\n${SYSTEM_SERVICE_RULES}\n`
     : "";
@@ -199,10 +156,8 @@ function profileText(
     ),
     `${measuredDenyRules}\n${HIDDEN_TASKS_DENY_RULES}`,
   ].join("");
-  // The cell's own HOME and caches come after the name denies, and that order is what gives the
-  // cell its exemption from them: a cell writes its own `.env` and its own `auth.json` as ordinary
-  // runtime state, and only a neighbour's copy is the secret. The names are still shut everywhere
-  // else, the cell's own tree included, because the own-tree grant above is emitted before them.
+  // The cell's own HOME and caches follow the config-name denies, so the cell may write its own
+  // `.env` and `auth.json`; those names stay shut everywhere else.
   const cellHomeGrant = block(
     "allow file-read* file-write*",
     policy.cellRuntimeRoots.map((root) => `  (subpath ${sb(root)})`),

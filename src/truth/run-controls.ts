@@ -50,9 +50,8 @@ interface RunControlsOptions {
   stopped?: () => boolean;
 }
 
-/** Controls evaluated side by side, each in its own scope and cells. The compiler-bound censuses of
- *  2026-09-13 spent 12 minutes running 69 controls one after another; four lanes, because the
- *  heavy tools already use several cores each. Receipts and findings still settle in corpus order. */
+/** Controls evaluated side by side, each in its own scope. Four, because heavy tools already use
+ *  several cores each. Receipts and findings still settle in corpus order. */
 export const CENSUS_LANES = 4;
 
 // --- The control session ---------------------------------------------------------------------
@@ -62,28 +61,25 @@ interface ControlSession extends ReceiptSession {
   options: RunControlsOptions;
   evaluate: EvaluatorFn;
   verifier: VerifierHostHandle | undefined;
-  /** Each control uses its own saved task and the same correctness path as measured cases. The
-   * task is fixed before generated code runs, so each result has a real `publicTaskDigest`. */
+  /** Each control's bound task, committed before generated code runs. */
   boundTaskById: Map<string, { task: BuildTask; committed: ReturnType<typeof commitPublicTask> }>;
   findings: DiscriminationClaimabilityFinding[];
   stopped: boolean;
-  /** The one cleanup-pending finding is admitted at the first stopped control in corpus order. */
+  /** Whether the single cleanup-pending finding has been recorded. */
   cleanupReported: boolean;
   groups: Map<string, ControlGroup>;
 }
 
-/** One control's settled evaluation plus the fact only its scope could see: tool runs still
- *  going when the evaluate returned. Findings are admitted from this record in corpus order,
- *  never pushed from a lane, so four lanes and one lane write the same rows. */
+/** One control's settled evaluation plus the tool runs still going when evaluate returned.
+ *  Findings are admitted from this in corpus order, so the lane count cannot change them. */
 type Settled = { evaluation: ControlEvaluation; unboundRuns: number };
 
 type Control = ControlCorpus["accept"][number] | ControlCorpus["reject"][number];
 
 // --- Finding constructors --------------------------------------------------------------------
 
-/** Rows that read alike apart from the control, collected in corpus order and written once each,
- *  naming every control: the censuses of 2026-09-12 repeated "stdin is not a string leaf" for 344
- *  controls. `notes` keep each control's own text for evidence; `write` composes the one finding. */
+/** Findings that differ only by control, collected in corpus order and written once naming every
+ *  control. `notes` keep each control's own text; `write` composes the finding. */
 type ControlGroup = {
   ids: string[];
   notes: string[];
@@ -94,7 +90,7 @@ type Observation = Settled & { attempt: number };
 
 // --- Checks that apply to each task ----------------------------------------------------------
 
-/** List checks applicable to this task under the brief's declared family selection. */
+/** Sorted ids of the checks applicable to this task. */
 export function applicableCheckIds(
   brief: Brief,
   task: { family: string; hidden: Array<{ checkId: string }> },
@@ -104,6 +100,8 @@ export function applicableCheckIds(
     .sort();
 }
 
+/** Runs `work` over `items` in at most `lanes` parallel lanes, keeping results in item order.
+ *  A slot stays undefined when a stop or a failure prevented it from starting. */
 export async function inLanes<T, R>(
   items: readonly T[],
   lanes: number,
@@ -125,8 +123,7 @@ export async function inLanes<T, R>(
       }
     }
   };
-  // A thrown item stops admission and the group still settles every started sibling before it
-  // throws: the census gate retries a verifier non-result, and an unsettled lane would overlap it.
+  // A throw stops admission, but every started sibling settles first, so a retry cannot overlap it.
   const settled = await Promise.allSettled(
     Array.from({ length: Math.max(1, Math.min(lanes, items.length)) }, lane),
   );
@@ -146,17 +143,12 @@ async function evaluateControl(
   const { id: controlId, artifact } = control;
   const bound = run.boundTaskById.get(control.taskId);
   if (bound === undefined) return { evaluation: { unknownTask: true }, unboundRuns: 0 };
-  // One projection per evaluation: openSubject digests it synchronously and generated code gets a
-  // clone, so both consumers see the same bytes and cannot drift apart.
+  // One projection per evaluation, shared by the host subject and the evaluate request.
   const evaluateTask = evaluationPublicTask(run.options.brief, bound.task, bound.committed.view());
-  // A reject needs only its declared check to fail, so it runs that check alone; the other checks'
-  // verdicts on it decide nothing. A declared check outside the task's scope leaves nothing to run
-  // and settles as a thrown evaluation; validation names that reject first.
+  // A reject runs only its declared check, the one whose failure it must show.
   const only = "expectedCheckId" in control ? control.expectedCheckId : undefined;
-  // Bind the artifact before generated code runs (P0, steering 2026-07-11). The host checks
-  // requested tool inputs against this subject's declared data. The evaluation receives only
-  // this scope's tool port, which retains its subject binding even if generated code keeps
-  // a reference to it. A later control cannot replace the subject behind that port.
+  // The host binds the artifact before generated code runs; the scope's port keeps that binding
+  // even if generated code retains it.
   let scope: EvaluationScopeHandle | undefined;
   let result: CorrectnessModelResult | undefined;
   let failure: unknown;
@@ -175,12 +167,8 @@ async function evaluateControl(
       publicTask: evaluateTask,
       hidden,
     });
-
-    // One request shape for controls and measured cases: the correctnessModel cannot tell a
-    // calibration example from a real case, and every task-relative check executes against
-    // actual task facts (runs 76/77). The correctness model receives a clone
-    // (steering delta 2026-07-11): the canonical artifact was byte-captured at openSubject
-    // above, and generated code never holds the original.
+    // The same request shape as a measured case, so the evaluator cannot tell a control from a
+    // real case. It receives a clone; the host already captured the canonical bytes.
     result = await run.evaluate(
       trustedStructuredClone({ publicTask: evaluateTask, artifact, hidden }),
       scope === undefined ? undefined : { tools: scope.port },
@@ -189,10 +177,8 @@ async function evaluateControl(
   } catch (error) {
     failure = error;
   } finally {
-    // Evaluate-scoped tool runs (steering delta 2026-07-11): close in `finally` — return and
-    // throw alike — draining still-running children so their evidence is durable. A run still
-    // pending at close is a fire-and-forget tool run whose result this evaluate cannot have
-    // read; the control fails closed below.
+    // Close on return and throw alike, draining running children so their evidence is durable.
+    // A run still pending at close is one this evaluate cannot have read.
     try {
       closedScope = await scope?.close();
     } catch (error) {
@@ -210,14 +196,9 @@ async function evaluateControl(
   }
 }
 
-/** The host's own row first, whether the evaluate returned or threw: run
- *  Sol run 23a1bc lost a harness with 61 of 62 controls settled when one
- *  `arduino-compile` run hit its time limit and evaluation threw. The failure was attributed
- *  to the author while the host's timeout row went unread. One
- *  exception: a throw the generated check owns, such as its own fire-and-forget run. The host
- *  drains that run and records it too, but the generated-code failure retains its attribution.
- *  A host non-result is this one control's receipt, not the corpus's: the other controls still
- *  run, and the control's DISCRIMINATION_PROBE_NO_VERDICT row keeps the claim open. */
+/** The host's own non-result row wins over the evaluation, whether it returned or threw, so a
+ *  tool timeout is not charged to the author. A failure the generated check owns keeps its own
+ *  attribution. A host non-result settles this control only; the others still run. */
 function settleControlOutcome(
   run: ControlSession,
   input: {
@@ -240,8 +221,7 @@ function settleControlOutcome(
   }
   if (failure !== undefined) return settled({ threw: errorMessage(failure) });
   if (result === undefined) return settled({ threw: "check program returned no result" });
-  // A tool run still going when the evaluate returned is the one fact only this scope sees; the
-  // declared check read no result from it, and its finding is admitted in corpus order.
+  // A tool run still going when evaluate returned grounded nothing; its finding is admitted later.
   return { evaluation: result, unboundRuns: closedScope?.pendingInvocations ?? 0 };
 }
 
@@ -258,11 +238,9 @@ function addToGroup(
   run.groups.set(key, group);
 }
 
-/** A thrown check program groups by its public diagnosis. The thrown message is withheld evidence;
- *  the note names only the examples that threw and where to reproduce them. A verifier-contract
- *  refusal also carries the public tool-request violation (a leaf/binding/argument-shape diagnostic
- *  the host composed about the check's request, never verifier output) and the code's remedy. Run
- *  w11 spent 36 iterations on the payload-free label before this note existed. */
+/** Groups a thrown check program by its public diagnosis. The thrown message stays withheld; the
+ *  author sees the examples and, for a verifier-contract refusal, the host-composed request
+ *  violation and its remedy (never verifier output). */
 function addThrown(
   run: ControlSession,
   controlId: string,
@@ -294,9 +272,8 @@ async function evaluateInLane(
 ): Promise<Observation> {
   let attempt = 1;
   let settled = await evaluateControl(run, control, hidden, attempt);
-  // One fresh execution for an environment-owned refusal (sandbox, verifierUnavailable), the
-  // allowance the census gate gives itself; an author-owned kind (timeout, crash) settles at once.
-  // A run another lane has already stopped buys no retry.
+  // An environment-owned refusal earns one fresh execution; an author-owned kind settles at once,
+  // and a stopped run retries nothing.
   if (
     !run.stopped &&
     "hostNonResult" in settled.evaluation &&
@@ -309,9 +286,8 @@ async function evaluateInLane(
   return { ...settled, attempt };
 }
 
-/** Record one control's receipt side and admit its verdict, in corpus order. Every non-verdict
- *  outcome lands its finding here, so the accept and reject loops cannot diverge in how they admit
- *  one. Null means a finding (or a deliberate pending skip) already settled the control. */
+/** Records one control's receipt side and admits its verdict, in corpus order. Null means a
+ *  finding already settled the control. */
 function admitObservation(
   run: ControlSession,
   control: Control,
@@ -328,9 +304,8 @@ function admitObservation(
       message: `the correctnessModel returned while tool runs were still running for control ${notes.join(", ")}; await every run before returning, because a result the run did not wait for grounds nothing`,
     }));
   }
-  // A control the host could not run to a verdict witnesses no cell, so the claim stays open. Before
-  // 2026-09-15 only the executed isolation floor noticed; removing it let a battery whose rejects
-  // all met a vanished tool start solving. The kind is host structure and crosses; tool output does not.
+  // A control with no verdict witnesses no cell, so the claim stays open. The non-result kind is
+  // host structure and may cross to the author; tool output may not.
   if ("hostNonResult" in evaluation) {
     addToGroup(run, "no-verdict", control.id, `"${control.id}" (${evaluation.hostNonResult})`, (ids, notes) =>
       identityComposedFinding(
@@ -380,9 +355,8 @@ function admitObservation(
 
 // --- The accept and reject loops -------------------------------------------------------------
 
-/** How a blocking check's tool runs ended in the verifier cell: tool id and exit, never output. A
- *  tool that fails only under the verifier wall reads otherwise as a wrong check: truss run 406cca
- *  spent 38 calls finding that Frame3DD could not write its temporary file there. */
+/** How a blocking check's tool runs ended in the verifier cell: tool id and exit, never output,
+ *  so a tool that fails only under the wall does not read as a wrong check. */
 function failedToolRuns(
   run: ControlSession,
   controlId: string,
@@ -402,8 +376,7 @@ function failedToolRuns(
 }
 
 async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<void> {
-  // Verified under the bound task's own hidden expectations, the condition a measured case gets.
-  // Run w12: 11 of 29 accepts contradicted their task and passed only on empty hidden rows.
+  // Verified under the bound task's own hidden expectations, as a measured case is.
   const observations = await inLanes(
     corpus.accept,
     run.options.lanes ?? CENSUS_LANES,
@@ -417,9 +390,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
     if (observation === undefined) break;
     const observed = admitObservation(run, control, observation);
     if (observed?.side.outcome !== "fail") continue;
-    // Issue text is protected detail and stays on the evidence message. The author reads the
-    // example ids grouped by the declared checks that blocked them: an Opus run on 2026-08-22 read 30
-    // rows of "was rejected" while every one named the same eight checks.
+    // Issue text stays on the protected message; the author sees ids grouped by blocking checks.
     issues.push(`"${control.id}": ${blockingIssueSummary(observed.result)}`);
     const blockedBy = [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits);
     const checks = `[${blockedBy.join(", ") || "no named check"}]${failedToolRuns(run, control.id, observation.attempt, blockedBy)}`;
@@ -439,8 +410,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
 }
 
 async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<void> {
-  // A hidden-comparison reject is verified with its evaluate-side operand. External rejects carry no
-  // hidden data.
+  // A reject's own hidden rows override its task's; external rejects carry none.
   const hiddenOf = (control: ControlCorpus["reject"][number]) => {
     const hiddenById = new Map(
       (run.boundTaskById.get(control.taskId)?.task.hidden ?? []).map((row) => [row.checkId, row]),
@@ -454,8 +424,7 @@ async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<v
     (control) => evaluateInLane(run, control, hiddenOf(control)),
     () => laneStopped(run),
   );
-  // A reject counts only when its declared check fails; that check is the one the census ran, so
-  // an unrelated schema or empty-input failure cannot stand in for the intended mutation.
+  // A reject counts only when its declared check fails, so an unrelated failure cannot stand in.
   const missed: string[] = [];
   for (const [index, control] of corpus.reject.entries()) {
     const observation = observations[index];
@@ -470,7 +439,6 @@ async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<v
       );
     }
   }
-  // Every example stays on the evidence message; the author reads the first eight and a count.
   if (missed.length > 0) {
     run.findings.push(
       identityComposedFinding(

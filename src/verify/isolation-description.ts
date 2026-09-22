@@ -1,28 +1,14 @@
 /**
- * Shared rules for processes that may access only explicitly allowed paths, with the additions
- * needed by Seatbelt. The OS adapters turn these descriptions into launch policies.
+ * Shared rules for deny-default processes that may access only explicitly allowed paths, so one
+ * posture reaches the Seatbelt profile and the Bubblewrap argv alike.
  *
- * This description originated with the verifier host, generated-tool
- * worker and Built Harness shell. Each one stated its rules twice — once as Seatbelt profile
- * text for Darwin, once as Bubblewrap argv for Linux — so one wall's posture lived in two places
- * with no shared setting. On 2026-08-19 the Built Harness shell was given network access, and the
- * change needed five separate edits across two files; the Linux half of one was missed on the first
- * pass and only a second reading caught it. The shared description lets both adapters read
- * the same setting. The shell has since moved to an open-read policy with explicit denials;
- * it now constructs that policy separately in `solve-command-isolation.ts`.
- *
- * `shared` holds what both mechanisms express, so a change there
- * cannot reach one host and not the other. `seatbelt` holds what only Seatbelt has — its move
+ * `shared` holds what both mechanisms express. `seatbelt` holds what only Seatbelt has: its move
  * guards are string rules against a rename, while a bwrap bind stays attached to its dentry and
- * needs no counterpart. Bubblewrap has no matching section: its extra argument, a private PID
- * namespace, is a posture rather than a rule, so it sits in `IsolationPosture` beside the network
- * and the Darwin adapter ignores it. No additional Bubblewrap rule section is needed.
+ * needs no counterpart. Bubblewrap's private PID namespace is a posture rather than a rule, so it
+ * needs no section of its own.
  *
- * The Built Harness session isolation also has a separate description: it mounts the
- * host and hides protected roots behind empty tmpfs, which is the opposite construction and shares
- * no policy structure with deny-default callers. The Builder's candidate isolation defines its own
- * workspace and authoring permissions. Those policies stay in their respective modules;
- * including them here would require modes that ignore much of this description.
+ * The open-read shell policy (`solve-command-isolation.ts`), the Built Harness session isolation
+ * and the Builder's candidate isolation are built the opposite way and stay in their own modules.
  */
 import { SEATBELT_BASELINE, SYSTEM_SERVICE_RULES } from "./wall-policy.ts";
 import { sbRule } from "./seatbelt-path-guard.ts";
@@ -36,13 +22,10 @@ interface IsolationPaths {
 
 /**
  * The part of a wall's posture that carries no paths, so one constant can hold it and both
- * adapters can read that same constant. The paths differ per call - a scratch tree, a runtime
- * closure - but the posture does not, and the posture is what drifted.
+ * adapters read that same constant.
  */
 export interface IsolationPosture {
-  /** Whether the confined process may reach the network. One statement, both adapters. It is the
-   *  boolean Bubblewrap takes rather than a word, so the constant also supplies its launch options and
-   *  no translation step stands between the two mechanisms. */
+  /** Whether the confined process may reach the network, as the boolean Bubblewrap takes. */
   network: boolean;
 }
 
@@ -56,8 +39,8 @@ interface SharedIsolationRules extends IsolationPosture {
   deniedWrites?: readonly string[];
 }
 
-/** Seatbelt's own rules. Order matters: Seatbelt takes the last matching rule, so
- *  these are emitted after everything `shared` produces. */
+/** Seatbelt's own rules, emitted after everything `shared` produces since Seatbelt takes the last
+ *  matching rule. */
 interface SeatbeltOnlyRules {
   /** Verbatim rules that need Seatbelt's last-match ordering. Emitted after the shared denies and
    *  before move guards; callers keep their own re-allows adjacent to the exception they close. */
@@ -77,13 +60,9 @@ function allowRules(verb: string, paths: IsolationPaths): string[] {
 }
 
 /**
- * The Darwin adapter: Seatbelt profile text, with no trailing newline.
- *
- * `system.sb` is imported for the reason the verifier host imports it — a bare deny-default profile
- * cannot execute a binary at all — and `(allow process*)` follows it for the same reason.
- *
- * Two of the three callers pass the result straight into argv, where a trailing newline would be
- * one more byte in a recorded identity for no reason, so the one caller staging a file adds its own.
+ * The Darwin adapter: Seatbelt profile text, with no trailing newline since most callers pass it
+ * straight into argv. `system.sb` and `(allow process*)` are there because a bare deny-default
+ * profile cannot execute a binary at all.
  */
 export function seatbeltProfile({ shared, seatbelt }: IsolationDescription): string {
   return [
@@ -92,8 +71,8 @@ export function seatbeltProfile({ shared, seatbelt }: IsolationDescription): str
     `(import "${SEATBELT_BASELINE}")`,
     "(allow process*)",
     shared.network ? "(allow network*)" : "(deny network*)",
-    // A denied Mach lookup does not read as a denial: it panics tools that expect it to work.
-    // `wall-policy.ts` owns which services are open and which stay closed, and why.
+    // A denied Mach lookup panics tools that expect it to work; `wall-policy.ts` owns which are open.
+
     SYSTEM_SERVICE_RULES,
     ...allowRules("allow file-read-metadata", shared.metadata),
     ...allowRules("allow file-read*", shared.reads),

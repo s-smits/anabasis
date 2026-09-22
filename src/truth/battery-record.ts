@@ -2,8 +2,6 @@
  * Records for one battery run: the contents of `battery.json` and each `case-result.json`.
  * The runner writes these types; the claim gate and analysis readers consume them. Keeping the
  * definitions together gives writers and readers one vocabulary for the recorded evidence.
- * These definitions were separated from verification-runner on 2026-08-18 as part of the
- * operator-requested split of that module.
  */
 import { NEVER_ATTEMPTED_PREFIX } from "./battery-provider-stop.ts";
 import { recordedEvidence } from "../claim/evidence-log.ts";
@@ -27,9 +25,7 @@ import type { SolverNonResult } from "./solve.ts";
 export type CaseRecord = CaseVerdict & {
   taskId: string;
   family: string;
-  /** Solver telemetry for later investigation; scoring does not read it. falsifier-claude-008
-   *  could not explain its own 0/6 from its evidence: solver errors were fed to the classifier
-   *  and discarded, so the only durable evidence was spawned-CLI transcripts. */
+  /** Solver telemetry kept so a failure can be explained later; scoring does not read it. */
   solver: {
     turns: number;
     /** Provider results completed; the runtime-identity census denominator. */
@@ -119,24 +115,22 @@ export type BatteryRecord = {
   /** Terminal state projected into Claim.create. Recorded here so the write does not restate it. */
   terminalReason: string;
   /** What actually happened to this battery, as a closed value rather than free text or an
-   *  inference from row count. opus-331 recorded "complete" for a variant the provider-stop
-   *  rule had cut short at 7 of 25 and paired it against a variant that ran all 25. */
+   *  inference from row count, so a cut-short battery is never read as complete. */
   disposition: BatteryDisposition;
   /** Built-agent capability disclosure used by the claim. */
   capabilities: string[];
-  /** The run condition recorded with the battery (U0.4); the claim restates it and every case row
+  /** The run condition recorded with the battery; the claim restates it and every case row
    *  repeats it. */
   condition: RunCondition;
   cases: CaseRecord[];
   measured: MeasuredDifficulty;
-  /** Older fixed-harness batteries also carry `climbAuthoring`; nothing reads it. */
   experimentAuthoring?: ExperimentAuthoring;
   discrimination: DiscriminationExecution;
-  /** The immutable snapshot from which this battery imported its bundles (Gate 1). Its id is a
+  /** The immutable snapshot from which this battery imported its bundles. Its id is a
    *  content address checked against the fingerprint when loaded. The record allows readers to
    *  verify which bytes executed without inferring their identity from directory names. */
   bundleSnapshot: BundleSnapshotFact;
-  /** Host-created verifier execution evidence for this run (C1↔C3). The recorded
+  /** Host-created verifier execution evidence for this run. The recorded
    *  (phase, subjectId, attempt, checkId, adapterId) rows establish external tool coverage for each
    *  verified case and supply externalCheckCoverage. The environment hash enters both the claim
    *  and campaign ComparisonIdentity, so a tool change prevents a like-for-like comparison. */
@@ -145,19 +139,15 @@ export type BatteryRecord = {
    *  host-derived command digest. The durable form of "the tool ran, on these bytes". */
   executionEvidence: HostVerifierExecutionEvidence[];
   /** Execution counts for each declared intrinsic check over verifier-verified cases. The claim
-   *  gate reads these counts to detect checks that never ran, as happened with hw1's answer-key
-   *  comparison. Recording them with the battery preserves the evidence and includes it in the
-   *  evidence log, so later readers can inspect the same counts. */
+   *  gate reads them to detect checks that never ran. */
   truthCheckFiring: TruthCheckFiringEvidence;
-  /** The battery's estimation evidence (plan-pack W4): scored counts, raw rate, Wilson interval
-   *  at the registered confidence, and excluded outcomes by kind. Save these with the battery
-   *  so later readers can inspect the estimate and its denominator. */
+  /** The battery's estimation evidence: scored counts, raw rate, Wilson interval at the
+   *  registered confidence, and excluded outcomes by kind. */
   estimation: EstimationEvidence;
   /** Full-census independent judge aggregate, or the explicit off disclosure. */
   judge: JudgeEvidence;
   /** The maximum number of concurrent solves in this battery. Concurrency can affect contention
-   *  and non-result rates: three simultaneous solves and one-at-a-time solves run under different
-   *  conditions. Case rows alone do not disclose the configured limit. */
+   *  and non-result rates, and case rows alone do not disclose the configured limit. */
   solveExecution: { maxConcurrency: number; scheduling: "bounded-worker-pool" };
 };
 
@@ -196,10 +186,9 @@ export function publicControlReceipt(receipt: ControlReceipt): PublicControlRece
  * every kind belongs to ENVIRONMENT_OWNED_NONRESULT_KINDS. The battery produced operational
  * evidence but no capability measurement. This class represents the whole battery, unlike
  * VerifierExecutionNonResult, which represents one execution. It contains all the case kinds and
- * is raised after their evidence has been recorded, beyond the census gate's responsibility.
- * Previously this state reached Claim.create and became a product non-claim with an empty
- * denominator, even when the provider was unavailable (audit L4). The battery and case records
- * are already on disk when this throws, ready for review before a later rerun. A battery with
+ * is raised after their evidence has been recorded, so it never reaches Claim.create as a product
+ * non-claim with an empty denominator. The battery and case records are already on disk when this
+ * throws, ready for review before a later rerun. A battery with
  * any verified case or a kind outside the environment-owned list, such as verifier-throw,
  * follows the ordinary claim path and retains that path's findings.
  */
@@ -239,13 +228,9 @@ export function batteryDisposition(
 }
 
 /**
- * The human sentence recorded beside the disposition. "complete" stayed truthful only while every
- * battery ran its whole task set: a provider-stopped variant says how much it did not run, and a
- * completed battery names the three shapes that once lived only in diagnostic safeguard lines no
- * evidence reader opened (retired 2026-09-02): every case a typed non-result (opus326 recorded five
- * such batteries as "complete"), no case row at all (opus-331 recorded two, and every later
- * reader answered from an empty set), and no case that started a single tool call (opus326 again;
- * the Built solver likely never launched).
+ * The human sentence recorded beside the disposition. A provider-stopped battery says how much it
+ * did not run, and a completed battery names three degenerate shapes: every case a typed
+ * non-result, no case row at all, and no case that started a single tool call.
  */
 export function batteryTerminalReason(
   disposition: BatteryDisposition,

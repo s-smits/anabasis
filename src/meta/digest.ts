@@ -1,13 +1,8 @@
 import { readFileSync } from "./filesystem.ts";
 
 /**
- * Shared SHA-256 helper. Callers specify the bytes to hash; this function fixes the algorithm
- * and hexadecimal output format. Sixteen files previously repeated this operation. Keeping
- * it here makes digest comparisons consistent without requiring readers to inspect each
- * module's choice of algorithm and encoding.
- *
- * Streaming callers (a directory walk, an HTTP body) still hold their own `Bun.CryptoHasher` — they
- * hash chunks that are not held as one value, so they cannot use this whole-value helper.
+ * Shared SHA-256 helper with hexadecimal output, so digest comparisons agree across modules.
+ * Streaming callers keep their own `Bun.CryptoHasher`.
  */
 export function sha256(value: string | Uint8Array): string {
   return new Bun.CryptoHasher("sha256").update(value).digest("hex");

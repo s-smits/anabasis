@@ -15,8 +15,7 @@ import { characterWindow, windowRange } from "./read-window.ts";
 
 const GROUP_PAGE_ROWS = 20;
 const FIELD_PREVIEW_CHARS = 240;
-/** Over 189 recorded refusals of 2026-08-30 to 09-13 a group held 7 variants at the median and 23
- *  at p90, and a 240-character preview showed only the first. */
+/** Enough to list every variant of a typical large group, which one preview would hide. */
 const VARIANT_INDEX_ROWS = 32;
 const VARIANT_INDEX_CHARS = 160;
 
@@ -43,9 +42,8 @@ interface FindingDelta {
   introduced: number;
 }
 
-/** One distinct repair within a group. `alsoFor` lists the subjects of later rows that read the same
- *  apart from their subject, in arrival order: submit 3 of an Opus run on 2026-08-22 carried 80 control
- *  rows that differed only by example id. */
+/** One distinct repair within a group. `alsoFor` lists, in arrival order, the subjects of later rows
+ *  that differ from it only by subject. */
 interface Variant {
   detail: string;
   count: number;
@@ -77,10 +75,9 @@ function variantText({ detail, alsoFor }: Variant): string {
 }
 
 /**
- * Fold on (code, path), so one defect reads as one group even when its detail varies: w33
- * showed 632 groups for 638 findings under a (code, path, detail) key. Each distinct repair keeps its
- * count in first-seen order. The paged detail frames each variant with its count and character length
- * so the rendering stays reconstructible; a single variant pages bare.
+ * Folds on (code, path), so one defect reads as one group even when its detail varies. Each
+ * distinct repair keeps its count in first-seen order; the paged detail frames each variant with its
+ * count and character length, and a single variant pages bare.
  */
 export function groupAuthorFindings(findings: readonly ContractFinding[]): Group[] {
   const groups = new Map<string, Group>();
@@ -141,8 +138,7 @@ function variantIndex({ variants }: Group): string[] {
 }
 
 /** Multiset overlap by code: carried survive from the previous list, resolved left it, introduced
- *  arrived. A reworded detail or a moved path is not a new defect class, so the refusal line says
- *  "finding codes", not "findings". */
+ *  arrived. A reworded detail or a moved path is not a new defect class. */
 export function codeDelta(previous: readonly string[], current: readonly string[]): FindingDelta {
   const remaining = new Map<string, number>();
   for (const code of previous) remaining.set(code, (remaining.get(code) ?? 0) + 1);
@@ -296,8 +292,8 @@ export class BuilderAuthorFeedback {
   }
 }
 
-/** Gate feedback as submit and correctness_check both show it. A row without validated findings keeps
- *  its prose claim on evidence; the author reads only which gate refused. */
+/** Gate feedback as submit and correctness_check show it. A row without validated findings shows
+ *  only which gate refused. */
 export function gateFeedbackFindings(feedback: readonly CampaignFeedback[]): ContractFinding[] {
   return feedback.flatMap((row) =>
     row.findings !== undefined && row.findings.length > 0

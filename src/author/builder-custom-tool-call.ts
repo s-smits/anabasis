@@ -3,9 +3,7 @@ import { BUILDER_TOOLS } from "../builder/builder-tool-interface.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
-/** The controller's tool list, the same on every backend. Any other reported tool name is a
- *  provider-side tool such as web search. Deriving this set from the catalogue the entry gate
- *  checks keeps the counts in agreement with the tools each session actually has. */
+/** The controller's tool list, the same on every backend; any other name is a provider-side tool. */
 export const CUSTOM_TOOL_NAMES: ReadonlySet<string> = new Set<string>(BUILDER_TOOLS);
 
 export interface BuilderCustomToolCall {
@@ -30,16 +28,13 @@ export interface BuilderCustomToolCall {
     callCount?: number;
     toolNames?: string[];
   };
-  /** Milliseconds from session start. The recorder states it on every call; null stays for the
-   *  outcome reader, which reads recorded sessions whose removed transport fallback saw an end
-   *  without its start. */
+  /** Milliseconds from session start; null on recorded calls whose start was never seen. */
   startedAtMs: number | null;
   durationMs: number | null;
   /** Dispatch mechanics only. A returned tool result may itself report blocked or non-result. */
   dispatchOutcome: "returned" | "threw" | "in-flight";
-  /** Controller-authored, detail-free meaning of the returned result. Absent on a call that threw
-   *  or is still in flight, and on a result that carries no receipt. Never inferred from
-   *  model-visible prose. */
+  /** Controller-authored, detail-free meaning of the returned result, read from its receipt only.
+   *  Absent when the call threw, is in flight or returned no receipt. */
   semantic?: BuilderCustomToolSemantic;
 }
 
@@ -66,8 +61,7 @@ export interface BuilderCustomToolSemantic {
   findings?: number;
   /** Turns the rehearsed solve took. */
   turns?: number;
-  /** The rehearsal's aggregate bit, so a later census can read whether the Builder measured its
-   *  own battery before submitting and what it saw. */
+  /** The rehearsal's aggregate verdict. */
   truthVerdict?: string;
   repeated?: boolean;
   submitted?: boolean;
@@ -143,8 +137,7 @@ function feedbackTarget(args: Record<string, JsonValue> | undefined): CustomTarg
   return target;
 }
 
-/** The deliberately narrow projection used by both direct host dispatch and transport-event
- *  fallback. It names intent without copying values that may contain user context or checker code. */
+/** A call's action and public target, without copying values that may hold user context or code. */
 export function customCallIntent(tool: string, args: Record<string, JsonValue> | undefined) {
   const actionArg = args?.action;
   // Own-property lookup only: a declared name, never one the prototype supplies.
@@ -162,16 +155,13 @@ export function customCallIntent(tool: string, args: Record<string, JsonValue> |
   return { action, target };
 }
 
-/** The declared outcome a value spells, or null when it spells none of them. Two readers ask:
- *  this one to build a semantic from a live tool result, and the outcome reader to check a
- *  recorded row against the same vocabulary. */
+/** The declared outcome a value spells, or null when it spells none of them. */
 export function declaredSemanticOutcome(value: unknown): BuilderCustomToolSemantic["outcome"] | null {
   if (!isString(value)) return null;
   return SEMANTIC_OUTCOMES.find((known) => known === value) ?? null;
 }
 
-/** Copy only the declared controller receipt fields. Tool text may contain user context, source code,
- *  verifier output or repair prose and is deliberately never parsed here. */
+/** Copies only the declared receipt fields; the result's text is never parsed. */
 export function semanticFromResult(result: unknown): BuilderCustomToolSemantic | undefined {
   const receipt = asRecord(asRecord(asRecord(result)?.details)?.receipt);
   if (receipt === null) return undefined;

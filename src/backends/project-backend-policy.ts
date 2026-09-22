@@ -20,9 +20,7 @@ export interface ProjectBackendChoice {
 }
 
 const COMPLETE_INTERFACES = {
-  // Every kind serves every slot: the Builder and review slots run the one pi host session
-  // (pi-session.ts) with the campaign's host-enforced tools, and the Built slot runs pi in its
-  // confined child.
+  // Every kind serves every slot: Builder and review run the pi host session, Built its confined child.
   builder: ["claude", "codex", "openrouter"],
   built: ["codex", "claude", "openrouter"],
   review: ["codex", "claude", "openrouter"],
@@ -40,12 +38,7 @@ export function backendSupportsSlot(slot: ProjectBackendSlot, kind: BackendKind)
 
 /**
  * Refuse a resolved slot whose kind has no complete interface, beside the table that decides it.
- *
- * `harness-build.ts` and `harness-measure.ts` each spelled this guard themselves, and the Builder's
- * remedy also spelled the table back as prose — "pin builder to claude, codex, or openrouter" — so
- * a kind gaining support had to be written in two files for the refusal to stay true. The reason
- * clause stays with the caller, because what an incomplete slot costs differs: a Builder cannot
- * author the bundle, a Built battery cannot be verified.
+ * The caller supplies the reason, since what an incomplete slot costs differs per slot.
  */
 export function requireSlotSupport(
   slot: ProjectBackendSlot,

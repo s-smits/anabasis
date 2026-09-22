@@ -1,12 +1,8 @@
 /**
  * Who owns a controller abort.
  *
- * `prepareControllerTerminal` used to name an owner for five error classes and record `null` for
- * everything else. Run 25 measured the cost: invocation `c` ended with `abortClause: null` and a
- * free-text reason, so the review re-derived the environment owner from prose, and the abort-repeat
- * safeguard reported "no ownership category". Every abort now carries a clause. The classifier is
- * defined for every input: its fallback is `controller-unclassified`. A new failure without a
- * specific mapping therefore remains visible as an unclassified abort instead of becoming null.
+ * Every abort carries a clause, so no reader derives the owner from prose. The classifier is total:
+ * a failure without a specific mapping records `controller-unclassified` rather than null.
  *
  * The clause is the owner, never the diagnosis: the failure's own message is recorded beside it in
  * `terminalReason`.
@@ -24,10 +20,8 @@ import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
 const STORAGE_ERROR_CODES = new Set(["ENOSPC", "EDQUOT", "EFBIG", "EROFS"]);
 
 /**
- * A signal ended the run. Typed so the terminal records `signal-terminated` instead of the plain
- * `Error("fullrun received SIGTERM")` the closure used to raise, which reached the clause map as
- * an unrecognised failure and recorded no owner at all. A wall expiry keeps its own clause: the
- * deadline evidence, not this class, decides that one.
+ * A signal ended the run; typed so the terminal records `signal-terminated`. A wall expiry keeps
+ * its own clause, decided by the deadline evidence rather than this class.
  */
 export class ControllerSignalAbort extends Error {
   readonly kind = "controller-signal-abort" as const;

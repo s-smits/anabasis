@@ -1,21 +1,14 @@
 /**
  * One Builder conversation per controller run, with each round as its next prompt.
  *
- * This is pi's agent practice. One session holds the transcript, and before each prompt the caller
- * sets the tools and the system prompt that prompt runs with (`HostSession.configure`). The
- * conversation continues for as long as the run has something for it to do; a round is one such
- * prompt. The Builder builds and submits; the controller then measures, reviews and advises while
- * the session waits, never stopped; and the next round's facts arrive as its next user message.
- * Nothing the Builder read, installed, tried or decided is lost between rounds, and the session's
- * own compaction keeps the transcript inside the model's window.
+ * One session holds the transcript; before each prompt the caller sets its tools and system prompt
+ * (`HostSession.configure`). While the controller measures, reviews and advises, the session waits,
+ * and the next round's facts arrive as its next user message.
  *
- * The round's workspace, gates, recorder and submit state all live in its tools, so continuing the
- * session is only a matter of configuring it with the new round's roster. A round whose turn the
- * provider failed after its retries keeps the session too, as a Codex goal survives a failed turn;
- * a round that threw anything else leaves the session in a state nothing has classified, so the
- * next round opens a fresh one, which reads the Builder's notes (builder-memory.ts) exactly as a
- * first round does. A process restart loses the conversation in the same way. Nothing here is
- * durable, so nothing here can be damaged.
+ * A round's state lives in its tools, so continuing only reconfigures the roster. A round whose turn
+ * the provider failed keeps the session; a round that threw anything else, or a process restart,
+ * leaves the next round to open a fresh session that reads the Builder's notes. Nothing here is
+ * durable.
  */
 import type { HostSession, PiTool } from "../backends/pi-session.ts";
 

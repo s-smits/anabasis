@@ -2,11 +2,8 @@
  * The turn contract every model slot reports through: the Builder and the review slot through
  * their host sessions (pi-session.ts), the Built worker through its wire protocol.
  *
- * `runTurn` receives a prompt, emits events and returns the result of one agent turn. The caller
- * manages the task across turns: continuation prompts, stop conditions, the overall time limit and
- * persistent state, so each harness keeps its own rules for completing a task.
- *
- * This file declares types; pi-session.ts supplies the runtime.
+ * `runTurn` runs one agent turn. The caller owns everything across turns: continuation prompts,
+ * stop conditions, the overall time limit and persistent state.
  */
 import type { JsonValue } from "../meta/json-shape.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
@@ -22,14 +19,12 @@ export interface TurnUsage {
   costUsd: number | null;
 }
 
-/** The context size, in tokens, at which every slot compacts: through the pi session
- *  (pi-session.ts), or natively in the Claude CLI under `claude-ss`. Runs 70-72 reached the spend
- *  limit at 309k-615k tokens on a 1M window whose CLI default never fired. */
+/** The context size, in tokens, at which every slot compacts, through the pi session or natively
+ *  in the Claude CLI under `claude-ss`. Well below a 1M window, whose CLI default fires too late. */
 export const CONTEXT_COMPACT_WINDOW = 300_000;
 
-/** Who compacts the Claude slots' context, named by `CLAUDE_COMPACTION`. `claude-ss`, the default,
- *  leaves it to the Claude CLI, which compacts its own session as it did before the pi layer; `pi`
- *  compacts through the pi session, as the HTTP transports always do.
+/** Who compacts the Claude slots' context, named by `CLAUDE_COMPACTION`: `claude-ss` (default) the
+ *  Claude CLI itself, `pi` the pi session, as for the HTTP transports.
  *  TODO(codex compaction): `codex-ss`, OpenAI's server-side compaction; see openPiModel. */
 export const COMPACTION_MODES = ["pi", "claude-ss"] as const;
 export type CompactionMode = (typeof COMPACTION_MODES)[number];
@@ -41,16 +36,11 @@ export interface CompactionRecord {
   compacted: boolean;
 }
 
-/**
- * A shared turn event. Backends convert their native event streams to these event types.
- * Callers can record or display the shared fields without depending on provider-specific
- * messages; the `raw` variant retains additional native events when needed.
- */
+/** A provider-neutral turn event; `raw` carries a native event a caller may forward. */
 export type AgentTurnEvent =
   | { type: "turn_started" }
   | { type: "assistant_text"; delta: string; final?: boolean }
-  /** A reasoning summary the transport surfaced while the turn ran (Codex summary text, a Claude
-   *  thinking block). Evidence for the Builder prose log; never model-visible. */
+  /** A reasoning summary the transport surfaced; Builder prose-log evidence, never model-visible. */
   | { type: "reasoning_text"; text: string }
   /** One completed assistant message, whole, however it was streamed. */
   | { type: "message_text"; text: string }
@@ -74,9 +64,7 @@ export type AgentTurnEvent =
       compactions?: CompactionRecord[];
     }
   | { type: "turn_failed"; errorMessage: string; usage?: TurnUsage }
-  /** Backend-native richness a caller may forward verbatim (e.g. a Codex subagent item, file-change
-   *  counts) without the contract growing a case per provider. Callers that do not recognize it
-   *  ignore it. */
+  /** A backend-native event a caller may forward verbatim or ignore. */
   | { type: "raw"; backend: BackendId; native: unknown };
 
 export interface AgentTurnResult {
@@ -87,8 +75,7 @@ export interface AgentTurnResult {
   assistantText?: string;
   /** Provider/runtime error strings observed this turn. */
   errorMessages?: string[];
-  /** Per-tool call tally for this turn. `failedByName` splits `failed` the way `byName` splits
-   *  `total`: totals show how many calls failed, and names identify which tools failed. */
+  /** Per-tool call tally; `failedByName` splits `failed` as `byName` splits `total`. */
   toolCalls?: {
     byName: Record<string, number>;
     failedByName: Record<string, number>;
@@ -104,19 +91,17 @@ export interface AgentTurnResult {
 export interface RunTurnOptions {
   /** The prompt for THIS turn — the first task prompt, a nudge, or a continuation. */
   prompt: string;
-  /** Streamed turn events. The caller may also read the returned result after settle. */
+  /** Streamed turn events. */
   onEvent?: (event: AgentTurnEvent) => void;
-  /** Time limit for this turn; the session aborts the turn when it elapses. The caller still
-   *  owns the across-turn deadline and passes a shrinking value each turn. */
+  /** Time limit for this turn; the caller owns the across-turn deadline. */
   turnTimeoutMs?: number;
   /** Cooperative cancellation from the caller (e.g. a Next request signal). */
   signal?: AbortSignal;
 }
 
 /**
- * A live agent session: one conversation that runs repeated turns and keeps its context between
- * them. `runTurn` resolves only after the prompt's retries and compactions have settled, so a
- * caller's stop predicate never runs against half-written state.
+ * One conversation that keeps its context between turns. `runTurn` resolves only after retries
+ * and compactions settle, so a caller's stop predicate never reads half-written state.
  */
 export interface AgentSession {
   readonly backend: BackendId;

@@ -1,10 +1,6 @@
 /**
- * Shared path-containment checks: true when a resolved or realpathed path is
- * the root itself or lies under it. Previously hand-written at nine isolation and admission
- * guards; a lexical check here is not a symlink defence on its own.
- *
- * Kept separate from meta/path because that module contains only node:path
- * re-exports and these functions need a local binding.
+ * Shared path-containment checks: true when a resolved or realpathed path is the root itself or
+ * lies under it. The check is lexical, so it is not a symlink defence on its own.
  */
 import { sep } from "./path.ts";
 
@@ -16,9 +12,7 @@ export function containsPath(path: string, root: string): boolean {
   return path.startsWith(boundary);
 }
 
-/** Containment for POSIX paths. Seatbelt profiles and Bubblewrap arguments use "/"
- *  separators regardless of the caller's platform, so this check keeps their path format
- *  independent of the host's separator. */
+/** Containment for POSIX paths, as Seatbelt profiles and Bubblewrap arguments use on any host. */
 export function posixContainsPath(path: string, root: string): boolean {
   if (path === root) return true;
   if (root === "/") return path.startsWith("/");

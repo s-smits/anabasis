@@ -1,49 +1,34 @@
 /**
  * Prevent process execution from inside the generated-tool worker.
  *
- * On Linux, Bubblewrap builds its namespace from argv and offers no exec restriction, so the
- * trusted child installs a Landlock ruleset that handles `LANDLOCK_ACCESS_FS_EXECUTE` and grants
- * no rules: every later `execve` in this process tree fails with EACCES while unhandled rights
- * (reads, writes, network connect) keep their existing bounds. This also prevents launching the
- * interpreter again if generated code recovers a runtime handle through a computed global
- * lookup: the kernel still denies the process execution.
+ * On Linux, the trusted child installs a Landlock ruleset that handles
+ * `LANDLOCK_ACCESS_FS_EXECUTE` and grants no rules: every later `execve` in this process tree fails
+ * with EACCES, while reads, writes and network keep their existing bounds. Landlock needs kernel
+ * 5.13+ with the LSM enabled.
  *
- * Landlock needs kernel 5.13+ with the LSM enabled.
+ * On macOS, the Seatbelt profile must allow `process-exec` of the pinned interpreter, because
+ * `sandbox-exec` execs it to start this worker, and `sandbox_init` is refused inside a sandboxed
+ * process. That route is closed by removing the capability from the reachable namespace instead.
  *
- * macOS has no in-process equivalent: `sandbox_init` is refused inside an already sandboxed
- * process, and its Seatbelt profile has to allow one literal `process-exec` for the pinned
- * interpreter, because `sandbox-exec` compiles the profile and then execs that interpreter to
- * start this worker at all. That allowance was a live escape — generated code recovering the
- * runtime through a computed global lookup ran `spawnSync([Bun.argv[0]])` successfully inside an
- * otherwise isolated worker, measured 2026-08-22 — so the interpreter route is closed by removing
- * the capability from the reachable namespace rather than by asking the kernel twice. Every host
- * binary other than that one literal stays denied by the launch profile.
+ * The runtime lock runs on both platforms. `Bun.spawn`, `Bun.spawnSync`, `Bun.$` and `Bun.which` are
+ * writable own properties of one namespace object that the `bun` module re-exports, so redefining
+ * them non-writable is permanent; the trusted child keeps the handles it captured at import. The
+ * route around the lock is `bun:ffi`, which `generated-tool-source-policy.ts` refuses to generated
+ * modules, and which Landlock also closes on Linux.
  *
- * The runtime lock runs on both platforms and holds because `Bun.spawn`, `Bun.spawnSync`, `Bun.$` and
- * `Bun.which` are writable own properties of one namespace object, which the `bun` module
- * re-exports rather than rebuilds. Redefining them non-writable is permanent for the process, and
- * the trusted child keeps the handles it captured at import time, before this call. The route
- * around a JavaScript property lock is `bun:ffi`, so `generated-tool-source-policy.ts` refuses every `bun` and
- * `bun:*` specifier from generated modules the same way it refuses node builtins; on Linux
- * Landlock closes that route in the kernel as well.
- *
- * Unavailable enforcement on either platform produces a typed non-result:
- * caller refuses before loading any generated code.
+ * Unavailable enforcement returns a typed result, and the caller refuses before loading any
+ * generated code.
  */
-
-/** The two Landlock numbers are the same on x86-64 and on the generic table arm64 uses. Ordinary
- *  libc operations are called through their own symbols: their raw numbers differ per
- *  architecture (x86-64 prctl is 157, arm64 prctl is 167 and 157 is setsid), and a wrong number
- *  would report enforcement unavailable on every arm64 host. */
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
+/** The two Landlock numbers are the same on x86-64 and arm64. Other libc operations are called
+ *  through their own symbols, because their raw numbers differ per architecture. */
 const LANDLOCK_CREATE_RULESET = 444;
 const LANDLOCK_RESTRICT_SELF = 446;
 const LANDLOCK_ARCHITECTURES = new Set(["x64", "arm64"]);
 const PR_SET_NO_NEW_PRIVS = 38;
-/** LANDLOCK_ACCESS_FS_EXECUTE is bit 0 and exists since ABI v1; handling only this right keeps
- *  the ruleset valid on every ABI version instead of negotiating the newest feature bits. */
+/** Bit 0, present since ABI v1, so the ruleset is valid on every ABI version. */
 const LANDLOCK_ACCESS_FS_EXECUTE = 1n;
 
 /** Darwin is Seatbelt around the worker plus a runtime lock inside it: the launch profile must
@@ -60,15 +45,14 @@ export type ExecWall =
   | { status: "installed"; mechanism: ExecWallMechanism }
   | { status: "unavailable"; detail: string };
 
-/** glibc ships the syscall entry point as `libc.so.6`; musl as `libc.so` or its versioned name.
- *  `libc.so` alone is a linker script on glibc systems, so it is tried late and only as found. */
+/** glibc ships `libc.so.6`; musl `libc.so` or a versioned name. On glibc `libc.so` is a linker
+ *  script, so it is tried second. */
 const LIBC_CANDIDATES = ["libc.so.6", "libc.so", "libc.musl-x86_64.so.1", "libc.musl-aarch64.so.1"];
 
-/** The process-launching members of the runtime namespace. `which` is included because it reports
- *  which host binaries exist, which is the same host detail the read wall withholds. */
+/** The process-launching members of the runtime namespace, plus `which`, which would reveal the
+ *  host binaries the read wall withholds. */
 const RUNTIME_LAUNCH_MEMBERS = ["spawn", "spawnSync", "$", "which"] as const;
-/** A Worker is a fresh JavaScript instance with an unlocked `Bun`, so a computed constructor
- *  lookup plus a blob URL would recover `spawn` in a runtime this lock never touched. */
+/** A Worker is a fresh realm with an unlocked `Bun`, so its constructors are locked too. */
 const REALM_CONSTRUCTORS = ["Worker", "SharedWorker"] as const;
 
 function lockRuntimeLaunchMembers(): string | null {
@@ -120,9 +104,8 @@ export async function denyProcessExecution(platform: string): Promise<ExecWall> 
   let loadError = "";
   for (const name of LIBC_CANDIDATES) {
     try {
-      // `syscall` is variadic, so every argument is one machine word; the ruleset attribute is
-      // passed by address through `ptr` rather than through a pointer-typed parameter slot.
-      // `prctl` and `close` are fixed-signature symbols, so they carry their full argument list.
+      // `syscall` is variadic, so every argument is one machine word and the ruleset attribute is
+      // passed by address.
       const lib = ffi.dlopen(name, {
         syscall: {
           args: [ffi.FFIType.i64, ffi.FFIType.i64, ffi.FFIType.i64, ffi.FFIType.i64, ffi.FFIType.i64],

@@ -3,11 +3,9 @@
  * `numeric-boundary.ts` holds its declaration: `brief.ts` names the field, this file owns what a
  * well-formed row is, and `published-rules.ts` owns what citing one means.
  *
- * A rule had nowhere to go before this field. `decisions` is the coverage map and reaches no
- * reader, so run23's `panel-node` family stated its frame, ordering, threshold, bit-order
- * and latch rules there and scored 0 of 35 while the guide asked for "change-only frames" that
- * nothing defined; the truss run enforced a member join the brief stated nowhere. The split here
- * makes public correctness rules explicit and requires private decisions to declare that
+ * `decisions` is the coverage map and reaches no reader, so a rule stated there is invisible to
+ * the solver. This field makes public correctness rules explicit and requires private decisions to
+ * declare that
  * visibility: `public` rows are projected to the Built Harness and the Judge through
  * `briefPublicResources`, `private` rows — search order, allocation recipe, fallback chain,
  * internal tie-breaks that do not determine correctness — reach neither model, and no check may cite them.

@@ -117,8 +117,8 @@ export function exportBundle(repoRoot: string, bundleDirInput: string, outDirInp
   const toolTree = existsSync(toolTreeSource) ? "copied" : "absent";
   const leftOut: string[] = [];
   // Resolve the controller's adopted-tree link once. Nested links may name only this tree's bytes;
-  // a link to a host file or to nothing is left out and named. 08c0f2-i02's `.toolchain/bun` names
-  // the host's Bun, which the exported tool then finds on the host PATH.
+  // a link to a host file or to nothing is left out and named, and the exported tool then finds
+  // that program on the host PATH.
   if (toolTree === "copied") {
     const root = realpathSync(toolTreeSource);
     const copy = join(outDir, WORKSPACE_TOOL_TREE);

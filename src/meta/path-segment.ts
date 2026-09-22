@@ -1,8 +1,7 @@
-/** The one predicate behind every path-segment admission check in the tree.
- *
- * Project ids, run ids and observation ids are used verbatim in controller-owned paths. The
- * charset deliberately excludes separators and leading dots; the explicit `..` guard also
- * rejects traversal-shaped names inside the otherwise admitted character set.
+/**
+ * The one predicate behind every path-segment admission check. Project, run and observation ids
+ * are used verbatim in controller-owned paths, so the charset excludes separators and leading dots,
+ * and `..` is refused explicitly.
  */
 import { capturedJsonStringify } from "./json-runtime.ts";
 export function isSafePathSegment(value: string): boolean {
@@ -17,9 +16,8 @@ export function assertPathSegment(label: string, value: string): void {
   }
 }
 
-/** Names the controller itself derives beside an operator-selected project or run id. Generated
- * internal ids still pass `assertPathSegment`; only an external base identity is kept out of these
- * namespaces before any path is opened. */
+/** Names the controller derives beside an operator-selected project or run id; an external base
+ *  identity may not claim them. */
 export function assertExternalPathSegment(label: "project" | "runId", value: string): void {
   assertPathSegment(label, value);
   const reserved =

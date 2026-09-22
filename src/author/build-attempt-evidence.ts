@@ -1,8 +1,7 @@
 /**
- * Fallback evidence for a Builder authoring turn that settles without a candidate before the
- * normal iteration evidence can exist. It is deliberately separate from iteration.json: campaign
- * memory and admission read that filename as completed build state. Only operator projections read
- * these rows.
+ * Evidence for a Builder turn that settles without a candidate before iteration evidence exists.
+ * It stays out of iteration.json, which campaign memory reads as completed build state; only
+ * operator projections read these rows.
  */
 import { existsSync, mkdirSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";

@@ -1,13 +1,7 @@
 /**
- * One Git repository per campaign epoch records changes made by the authoring sessions.
- * Harness history is a sequence of commits in the same workspace rather than a set of sibling
- * snapshot directories (operator direction 2026-07-26:
- * "use git for each harness iteration"). Builder notes live in the two Markdown files managed
- * by builder-memory.ts. The content fingerprint separately identifies the measured bundle.
- *
- * This module runs the controller's Git operations against a domain workspace. It initialises
- * a repository over the seeded starter files rather than copying an existing `.git` directory.
- * On restart, it reuses the repository already present so the workspace keeps its history.
+ * The controller's Git operations on a domain workspace: one repository per campaign epoch, with
+ * harness history as a sequence of commits. The repository is initialised over the seeded starter
+ * files and reused on restart. The content fingerprint, not Git, identifies the measured bundle.
  */
 import {
   chmodSync,
@@ -47,23 +41,16 @@ const GIT_IDENTITY = [
 ] as const;
 
 /**
- * Where the workspace exposes the controller's own Bun runtime, and the name the starter's test
- * command uses. A bare `bun` would resolve through whatever environment the controller was
- * launched with, and `/bin/sh -lc` cannot repair it: the profile that exports a version manager's
- * shim sits in the home directory this isolation denies. One link answers it on every host.
- * It stays workspace scratch — the exclude rules track the candidate interface only.
+ * Where the workspace exposes the controller's own Bun runtime, as the starter's test command names
+ * it. A bare `bun` would depend on a login profile the isolation denies. The link is untracked
+ * scratch.
  */
 export const WORKSPACE_BUN_LINK = `${WORKSPACE_TOOL_TREE}/bun`;
 
 const PI_STARTER_PACK = new URL("../../starters/pi-built-harness", import.meta.url);
 const COMMIT_ID = /^[0-9a-f]{40}$/;
 
-/**
- * Stage everything and commit; returns the resulting head and the paths this commit changed.
- * A clean tree commits nothing and returns the current head with `changedPaths: []` — "no change"
- * is a first-class answer, not an error (it is how a repair pass proves the untouched layers
- * really stayed untouched).
- */
+/** The head before and after a commit, and the paths it changed; empty when nothing changed. */
 export type WorkspaceChange = {
   baseCommit: string;
   commit: string;
@@ -71,9 +58,9 @@ export type WorkspaceChange = {
   deletedPaths: string[];
 };
 
-/** Return one harness surface (the Builder's `harness_reset` scope, operator decision 2026-09-07) to the
- *  starter seed in one commit keyed on reopen evidence and scope; a resumed round never wipes its own work. */
+/** The harness surface `resetWorkspaceToStarter` returns to the starter seed. */
 type StarterResetScope = "agent" | "correctness-model" | "all";
+
 function git(dir: string, args: string[]): string {
   return runTextSyncOrThrow([hostTool("git"), "-C", dir, ...GIT_IDENTITY, ...args], {
     maxBuffer: CAPTURE_MAX_BYTES,
@@ -81,19 +68,12 @@ function git(dir: string, args: string[]): string {
 }
 
 /**
- * Git tracks exactly the candidate contract; every other path is workspace scratch. The rules
- * live in `.git/info/exclude` — controller-owned, never tracked, invisible to the Builder's
- * diff — so drift cannot enter a candidate commit at any commit point (authoring, salvage,
- * either campaign loop). Run 53's climb stalled on the old shape: a tracked `.gitignore`, then
- * two root helpers, blocked two passes with the task bytes unchanged, and the model answered
- * "delete the helpers" by adding more. Untracked scratch also keeps `workspaceStatus` meaning
- * "the Builder left candidate work unsettled": `.bundle-snapshots/` (measurement's recorded sidecar) once
- * made every iteration open with a salvage commit of bundleSnapshot bytes (epoch-3cafcd9e3cfc
- * `de6545f`, 11,721 insertions under that label). Starter reference (STARTER.md, starter-pack/)
- * stays on disk for reading but out of tracking — run 50's `starter-pack/gen.py` is scratch too.
+ * Git tracks exactly the candidate contract; every other path, starter reference included, is
+ * scratch. The rules live in `.git/info/exclude`, which is controller-owned and never tracked, so
+ * scratch cannot enter any candidate commit and `workspaceStatus` reports only candidate work.
  */
 const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "node_modules/", ".bundle-snapshots/"].join("\n")}\n`;
-/** The workspace contract as the pack ships it; its bytes are fixed by the recorded source commit. */
+/** Starter reference files, refreshed from the pack on every resume. */
 const STARTER_REFERENCES = [
   "STARTER.md",
   "starter-pack/contract.md",
@@ -101,10 +81,10 @@ const STARTER_REFERENCES = [
   "starter-pack/add-ons.json",
   "starter-pack/difficulty-ladder.md",
 ] as const;
-/** Point the workspace's runtime link at this controller's interpreter, resolved: a version
- *  manager's `bun` may be a per-shell shim that outlives no session, while the install behind it
- *  stays put. Refresh only an owned tree: a climb or evaluation repair inherits the adopted
- *  tool tree read-only, and resuming must never rewrite that earlier epoch's runtime. */
+
+/** Points the workspace runtime link at this controller's resolved interpreter, since a version
+ *  manager's shim may not outlive the session. A linked (inherited, read-only) tool tree is left
+ *  alone. */
 function linkWorkspaceRuntime(dir: string): void {
   const link = join(dir, WORKSPACE_BUN_LINK);
   if (lstatSync(dirname(link), { throwIfNoEntry: false })?.isSymbolicLink() === true) return;
@@ -113,10 +93,8 @@ function linkWorkspaceRuntime(dir: string): void {
   symlinkSync(realpathSync.native(runtimeProcess.execPath), link);
 }
 
-/** Run w29: generated package imports resolve by a node_modules walk-up past the measured tree,
- *  which a campaigns/ symlink broke entirely and run 52's workspace shim shadowed. Bun stops at
- *  the workspace node_modules that carries the @ana link, so both admitted scopes are linked
- *  explicitly. They are controller-owned scratch and re-created on every call. */
+/** Links the repository's packages into the workspace `node_modules`, so generated package imports
+ *  resolve without walking up past the workspace. Controller-owned scratch, re-created each call. */
 function linkWorkspacePackageScopes(dir: string): void {
   const modules = join(dir, "node_modules");
   const repositoryModules = realpathSync(new URL("../../node_modules", import.meta.url));
@@ -125,10 +103,9 @@ function linkWorkspacePackageScopes(dir: string): void {
   for (const name of new Bun.Glob("*").scanSync({ cwd: repositoryModules, onlyFiles: false })) {
     symlinkSync(join(repositoryModules, name), join(modules, name));
   }
-  // With Bun's preserve-symlinks mode, @ana barrel-relative imports resolve lexically beneath the
-  // workspace node_modules tree. Mirror only the source directory structure with links, then give
-  // those modules a lexical node_modules parent. The isolation policy still admits only the
-  // derived contract files at each physical target.
+  // Under preserve-symlinks, @ana barrel-relative imports resolve lexically, so mirror the source
+  // directories with links and give them a lexical node_modules parent. Isolation still admits
+  // only the contract files at each physical target.
   const source = join(modules, "src");
   mkdirSync(source, { recursive: true });
   const repositorySource = realpathSync(new URL("../../src", import.meta.url));
@@ -143,13 +120,12 @@ export function writeExcludeRules(dir: string): void {
   writeFileSync(join(dir, ".git", "info", "exclude"), EXCLUDE);
 }
 
-/** A repair owns its tool installs and HOME caches; the adopted tree remains read-only.
- * Copy before replacing its link, so a failed copy leaves the seed available for retry. */
+/** Replaces the linked, read-only seed tool tree with a writable copy the repair owns. The copy is
+ *  made before the link is replaced, so a failed copy leaves the seed for a retry. */
 function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
   const path = join(dir, WORKSPACE_TOOL_TREE);
   if (!lstatSync(path).isSymbolicLink()) return;
-  // Safeguard 53: a host kill inside the copy below skips its cleanup and leaves the partial tree
-  // beside the link; it is excluded from Git and otherwise invisible. Simulation 2026-09-15.
+  // Safeguard: a host kill during an earlier copy leaves a partial tree beside the link.
   const leftover = readdirSync(dir).filter((name) => name.startsWith(`${WORKSPACE_TOOL_TREE}-`));
   if (leftover.length > 0) {
     safeguardTriggered(
@@ -165,8 +141,8 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
   try {
     const source = realpathSync(path);
     cpSync(source, copy, { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
-    // Relative links already name the copied packages. Absolute internal links must move too;
-    // external runtime links keep their targets. Never walk a linked directory back into the seed.
+    // Relative links already point inside the copy. Absolute links into the seed are retargeted;
+    // external links keep their targets. Linked directories are not followed.
     for (const name of new Bun.Glob("**/*").scanSync({
       cwd: copy,
       dot: true,
@@ -177,14 +153,8 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
       if (!lstatSync(link).isSymbolicLink()) {
         counts.files += 1;
         const relocated = relocateToolLauncher(link, source, path, name);
-        // A file the copy cannot make stand alone is left out of it, not a reason to end the run.
-        // The refusal this replaces told its reader to recreate the installation in the repair
-        // workspace and then made that impossible: on 2026-09-20 it ended
-        // firmware run 4c67fc at round 2 over `acli/tmp/b1/Blink.ino.elf`, a test
-        // sketch the Builder had compiled inside the tool's own scratch directory, whose debug
-        // strings carry the path of the source it was built from. Dropping the file keeps the whole
-        // property the refusal defended — nothing in the repair tree resolves into the adopted one —
-        // and leaves the Builder a missing file to reinstall instead of no run to reinstall it in.
+        // A file that still embeds the adopted path is dropped rather than ending the run, so
+        // nothing in the copy resolves into the adopted tree; the Builder can reinstall it.
         if (relocated === "retains-adopted-path") {
           rmSync(link);
           dropped.push(name);
@@ -208,14 +178,14 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
     }
     rmSync(path);
     renameSync(copy, path);
-    // Safeguard 54: the relocation branch (b7dc474ed) had no evidence writer; these counts say it ran.
+    // Safeguard: record that relocation ran, with its counts.
     safeguardTriggered(
       "54-rebuild-seed-tool-tree-copied",
       `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
-    // Safeguard 55: relocation rewrites launchers only. A copied venv keeps `home =` in pyvenv.cfg,
-    // so its stdlib still resolves through the adopted tree (sys.base_prefix in the simulation).
+    // Safeguard: relocation rewrites launchers only, so a copied venv's `home =` in pyvenv.cfg may
+    // still point into the adopted tree.
     const homed = [
       ...new Bun.Glob("**/pyvenv.cfg").scanSync({ cwd: path, dot: true, followSymlinks: false }),
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
@@ -232,9 +202,9 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
 }
 
 /**
- * Ensure `dir` is the domain workspace repo: seed or refresh controller-owned STARTER.md, `git init`
- * when no `.git` exists, and record the starter or adopted seed in the root commit. A resumed campaign
- * reuses the repo it created, keeping history continuous across invocations.
+ * Ensures `dir` is the domain workspace repo. A new workspace is seeded from the starter (or an
+ * adopted bundle) and recorded in a root commit; an existing one keeps its history and has its
+ * starter references refreshed.
  */
 export function initWorkspace(
   dir: string,
@@ -248,8 +218,7 @@ export function initWorkspace(
   const created = !existsSync(join(dir, ".git"));
   if (created) {
     cpSync(PI_STARTER_PACK, dir, { recursive: true });
-    // Seed before Git marks this workspace initialised. A failed copy must remain retryable;
-    // an existing repo keeps its in-flight correction when the same pass resumes.
+    // Seed before `git init`, so a failed copy leaves the workspace uninitialised and retryable.
     if (seedFrom !== undefined) {
       materialiseAdoptedCandidate(seedFrom, dir, safeguard);
       if (writableSeedTools) copySeedToolTree(dir, safeguard);
@@ -276,8 +245,7 @@ export function initWorkspace(
       cpSync(new URL(`${PI_STARTER_PACK.href}/${path}`), join(dir, path));
     }
     settleTrackedInterface(dir);
-    // Safeguard 56: a resumed repair keeps its in-flight edits by design; name how many it carried,
-    // since accepted bytes decide attribution and a partial pass is otherwise indistinguishable.
+    // Safeguard: a resumed repair keeps its in-flight edits; record how many it carried.
     const { dirtyPaths } = workspaceStatus(dir);
     if (seedFrom !== undefined && dirtyPaths.length > 0) {
       safeguardTriggered(
@@ -291,17 +259,11 @@ export function initWorkspace(
 }
 
 /**
- * A repo born under wider rules keeps tracking paths the contract excludes — a legacy
- * `.gitignore`, swept-in bundleSnapshot bytes, starter reference, drift from an earlier pass. Bring
- * the exclude rules forward and untrack everything outside the contract, as its own commit — so
- * the migration is attributable and the next iteration's `changedPaths` carries authoring
- * alone. Idempotent: a repo already current stages nothing and commits nothing. History keeps
- * the bytes it recorded and the working tree keeps the files; only tracking ends.
+ * Rewrites the exclude rules and untracks every path outside the candidate contract, in its own
+ * commit, so the next `changedPaths` carries authoring alone. Files stay on disk. Idempotent.
  */
 function settleTrackedInterface(dir: string): void {
-  // A staged index at campaign start belongs to an interrupted pass. Committing it under this
-  // label would repeat the mislabelling the migration exists to end; beginIteration salvages it
-  // first and the next campaign start migrates.
+  // A staged index belongs to an interrupted pass; `beginIteration` salvages it first.
   if (git(dir, ["diff", "--name-only", "--cached"]) !== "") return;
   writeExcludeRules(dir);
   const outside = git(dir, ["ls-files"])
@@ -309,18 +271,12 @@ function settleTrackedInterface(dir: string): void {
     .filter((path) => path !== "" && !candidatePathAllowed(path));
   if (outside.length === 0) return;
   git(dir, ["rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ...outside]);
-  // The index is the one fact for "did anything change": comparing the file first would be a
-  // second reading of the same question.
   if (git(dir, ["diff", "--name-only", "--cached"]) === "") return;
   git(dir, ["commit", "-q", "-m", "workspace: only the candidate contract stays tracked"]);
 }
 
-/** HEAD read from the ref files instead of a `git rev-parse` process. This owner creates every
- *  workspace repo, so HEAD is a direct commit id or one symbolic ref under `.git/refs/`. Anything
- *  else — a packed ref, a chained symref, a `.git` file, a repo this owner did not create — reads
- *  as unknown and the answer comes from git, which stays the authority. The call is the most
- *  frequent one here (each commit path asks twice), and a repo with a hundred iterations spends
- *  more time starting git than reading its own head. */
+/** HEAD read from the ref files, avoiding a git process on the most frequent call. Handles a direct
+ *  commit id or one symbolic ref; anything else returns null and git answers instead. */
 function headFromRefFiles(dir: string): string | null {
   try {
     const head = readFileSync(join(dir, ".git", "HEAD"), "utf8").trim();
@@ -338,10 +294,8 @@ export function workspaceHead(dir: string): string {
   return headFromRefFiles(dir) ?? git(dir, ["rev-parse", "HEAD"]);
 }
 
-/** A content identity for a candidate that failed validation, from the committed tree objects of
- *  the two contract roots. The workspace-root note files (MEMORY.md, SCRATCHPAD.md) sit outside
- *  both roots, so note churn between identical resubmits does not create a new identity — the same
- *  exclusion the bundle snapshot id applies after successful validation. */
+/** A content identity for a candidate that failed validation: the committed tree objects of the two
+ *  contract roots. Note files at the workspace root cannot change it. */
 export function candidateTreeIdentity(dir: string, commit: string): string {
   const tree = (path: string): string => {
     try {
@@ -353,12 +307,12 @@ export function candidateTreeIdentity(dir: string, commit: string): string {
   return `candidate-tree-${tree("agent")}-${tree("correctness-model")}`;
 }
 
-/** Working-tree cleanliness — the candidate-check fact: a submission is the tree at a commit.
- * `-uall` lists untracked FILES instead of collapsing them to their directory. */
+/** Working-tree cleanliness and dirty paths. `-uall` lists untracked files rather than their
+ *  directories. */
 export function workspaceStatus(dir: string) {
   const porcelain = git(dir, ["status", "--porcelain", "-uall"]);
   if (porcelain === "") return { clean: true, dirtyPaths: [] };
-  // The helper trims stdout, which also drops the leading blank of an unstaged first row (" M path").
+  // Output is trimmed, so the first row may have lost its leading blank (" M path").
   const dirtyPaths = porcelain.split("\n").map((line) => {
     const path = line.replace(/^[ MADRCU?!]{1,2} /, "");
     const renamed = path.split(" -> ")[1];
@@ -367,9 +321,7 @@ export function workspaceStatus(dir: string) {
   return { clean: false, dirtyPaths };
 }
 
-/** Changed and deleted paths from one `--name-status` reading. A rename names its destination,
- *  the spelling `--name-only` already returned, and `D` lines are the deletions the second pass
- *  used to ask for separately. */
+/** Changed and deleted paths from one `--name-status` reading; a rename names its destination. */
 function changedAndDeleted(value: string) {
   const changedPaths: string[] = [];
   const deletedPaths: string[] = [];
@@ -383,9 +335,8 @@ function changedAndDeleted(value: string) {
   return { changedPaths, deletedPaths };
 }
 
-/** Record changes over an exact commit range. This also joins an interrupted-work recovery commit to
- * the later authoring commit without hiding the first half of the iteration diff. An empty span
- * (the commit that never happened) is answered without asking git. */
+/** Changes over an exact commit range, so a salvage commit and the later authoring commit read as
+ *  one iteration diff. */
 export function workspaceChangeBetween(dir: string, baseCommit: string, commit: string): WorkspaceChange {
   if (baseCommit === commit) return { baseCommit, commit, changedPaths: [], deletedPaths: [] };
   return {
@@ -395,9 +346,8 @@ export function workspaceChangeBetween(dir: string, baseCommit: string, commit: 
   };
 }
 
-/** The staged span is the same span the commit will carry, so one `--cached` diff answers both
- *  "is there anything to commit" and "what changed" — asking git twice cost a second process on
- *  every settled commit. An empty stage leaves HEAD where it was. */
+/** Stages everything and commits. One `--cached` diff answers both whether to commit and what
+ *  changed; an empty stage leaves HEAD where it was. */
 export function commitAll(dir: string, message: string): WorkspaceChange {
   const baseCommit = workspaceHead(dir);
   git(dir, ["add", "-A"]);
@@ -407,14 +357,14 @@ export function commitAll(dir: string, message: string): WorkspaceChange {
   return { baseCommit, commit: workspaceHead(dir), ...staged };
 }
 
-/** Open an iteration: salvage any uncommitted tree from an interrupted invocation (R0:
- * unsettled work is memory, never silently lost). The Pi starter is copied only when the
- * workspace is born; after that, agent/ and correctness-model/ are the child harness the next repair
- * continues from. Fingerprint and bundleSnapshot owners still decide which exact bytes may be measured. */
+/** Opens an iteration by committing any uncommitted tree left by an interrupted invocation, so
+ *  unsettled work is never lost. */
 export function beginIteration(dir: string, label: string): WorkspaceChange | null {
   return workspaceStatus(dir).clean ? null : commitAll(dir, `salvage: unsettled tree before ${label}`);
 }
 
+/** Returns one harness surface to the starter seed in one commit keyed on `resetKey` and scope, so
+ *  a resumed round never repeats the reset over its own work. False when the key already landed. */
 export function resetWorkspaceToStarter(
   dir: string,
   resetKey: string,
@@ -422,8 +372,7 @@ export function resetWorkspaceToStarter(
 ): boolean {
   const marker = `reset-key ${resetKey} scope ${scope}`;
   if (git(dir, ["log", "--fixed-strings", `--grep=${marker}`, "-n", "1", "--format=%H"]) !== "") return false;
-  // Salvage first: unsettled Builder work gets its own attributed commit, so the reset commit
-  // below carries only the controller's wipe and re-seed.
+  // Salvage first, so the reset commit carries only the controller's wipe and re-seed.
   beginIteration(dir, "rebuild reset");
   const surfaces = scope === "all" ? ["agent", "correctness-model"] : [scope];
   git(dir, ["rm", "-r", "-q", "--ignore-unmatch", "--", ...surfaces]);
@@ -431,8 +380,7 @@ export function resetWorkspaceToStarter(
     cpSync(new URL(`${PI_STARTER_PACK.href}/${surface}`), join(dir, surface), { recursive: true });
   }
   if (commitAll(dir, `rebuild: ${scope} reset to starter (${marker})`).changedPaths.length > 0) return true;
-  // A workspace already at the starter wipes nothing, but the key must still land in history:
-  // otherwise a session that authors after this no-op and dies would be wiped by its own resume.
+  // The key must land in history even when nothing changed, or a later resume would wipe new work.
   git(dir, ["commit", "-q", "--allow-empty", "-m", `rebuild: ${scope} already at starter (${marker})`]);
   return true;
 }
@@ -447,10 +395,8 @@ function makeAuthoringCopyWritable(path: string): void {
   } else throw new Error(`${path}: authoring copy contains an indirect or unsupported entry`);
 }
 
-/**
- * Rebuild agent/ and correctness-model/ byte-identical from the adopted tree, link its tool tree
- * (truss-run9-sol lost every control to a missing `.toolchain`).
- */
+/** Copies agent/ and correctness-model/ byte-identical from the adopted tree and links its tool
+ *  tree. */
 function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguard?: SafeguardContext): void {
   for (const bundle of ["agent", "correctness-model"] as const) {
     rmSync(join(slugDir, bundle), { recursive: true, force: true });
@@ -458,9 +404,8 @@ function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguar
     makeAuthoringCopyWritable(join(slugDir, bundle));
   }
   linkWorkspaceToolTree(seedFrom, slugDir);
-  // Safeguard 52: the version keeps its tool tree as a link into the adopted epoch. When that
-  // target is gone (archives moved), the link above is skipped and the seeded workspace has
-  // only the runtime link; the loss surfaced later as tool-missing findings with no cause.
+  // Safeguard: the version's tool tree is a link into the adopted epoch; when its target is gone
+  // the workspace gets no tool tree, which would otherwise surface only as tool-missing findings.
   const seedTree = join(seedFrom, WORKSPACE_TOOL_TREE);
   if (lstatSync(seedTree, { throwIfNoEntry: false })?.isSymbolicLink() === true && !existsSync(seedTree)) {
     safeguardTriggered(

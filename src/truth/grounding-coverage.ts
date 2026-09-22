@@ -34,8 +34,8 @@ interface GroundedControl {
   id: string;
   taskId: string;
   hidden?: readonly { checkId: string }[];
-  /** A reject's named check. It owes a completed tool run only for that check: a hollow design
-   *  another check refuses may leave the analysis unrun (truss run 406cca spent 27 calls on it). */
+  /** A reject's named check. It owes a completed tool run only for that check, since a hollow
+   *  design another check refuses may leave the analysis unrun. */
   expectedCheckId?: string | null;
 }
 
@@ -61,12 +61,8 @@ export const TOOL_REFUSED_CODE = "verifier-tool-refused";
  * One declared tool-grounded truth check as the control census actually exercised it.
  *
  * Two numbers, both host-measured: how often the host ran that tool for this check, and how many
- * reject controls the check itself blocked. Runs 22, 23 and 25 each shipped a firmware-compiles
- * style check declared as external-verifier grounding which held three to ten reject controls in
- * the census and rejected nothing at all over 73, 100 and 8 graded rows. In run 22 the nested
- * arduino-cli the check could spawn was never attested by the wall; in run 23 the build path was
- * defined and never called, and the check decided from a syntax scan. Both read as a working check
- * until the paid battery was already spent.
+ * reject controls the check itself blocked. An external check that never launches its tool, or
+ * never rejects anything, otherwise reads as working until the paid battery is spent.
  */
 export type ToolCheckCoverage = {
   checkId: string;
@@ -77,9 +73,8 @@ export type ToolCheckCoverage = {
   /** Reject controls this check was the blocking check for. Recorded beside the launches so a
    *  reader can see both; the per-family reject census, not this row, owns discrimination. */
   rejects: number;
-  /** The declared evidence kind, carried so a row is not read as independence it never claimed.
-   *  Truss run e6e332 declared all six checks `authored` over an installed `python3`; without this
-   *  field their rows are indistinguishable from a declared external instrument's. */
+  /** The declared evidence kind, carried so an authored check over an installed interpreter is not
+   *  read as a declared external instrument. */
   kind?: "authored" | "external";
 };
 
@@ -114,15 +109,12 @@ function externalChecksForControl(
  *
  *  An accept always owes a completed run: passing without the tool is a hollow pass. A reject
  *  aimed at the check may be refused before the analysis runs (a design declaring no loss path
- *  cannot be analysed for member loss, truss 805bcc) once another reject aimed at that check
+ *  cannot be analysed for member loss) once another reject aimed at that check
  *  completed a run, so the tool still takes part in rejecting something. A run the check started
  *  and did not complete is still owed on every example.
  *
- *  It used to be one finding per (control, check) pair, which states the same defect once per
- *  example: run w26 received 153 rows for six distinct missing check/tool pairs, repeated
- *  in iterations 01 to 06. A row per pair states the total count and names up to eight examples,
- *  with the remaining count when necessary. The Builder can then address six requirements
- *  without reading 153 repetitions. */
+ *  One row per check/tool pair, not per example: it states the total count and names up to eight
+ *  examples, with the remaining count when necessary. */
 export function unexecutedGroundingFindings(input: {
   brief: Brief;
   tasks: readonly GroundedTask[];
@@ -163,7 +155,7 @@ export function unexecutedGroundingFindings(input: {
     const applicable = externalChecksForControl(brief, externalChecks, taskById.get(control.taskId));
     const settled = input.settled.get(control.id);
     // A pair the host never ran for any example is inertToolFindings' one row, which the census
-    // also returns: census 2026-09 rows stated it twice, once per pair and once per example.
+    // also returns, so it is skipped here rather than stated twice.
     for (const check of applicable.filter((pair) =>
       evidence.some((row) => row.checkId === pair.checkId && row.toolId === pair.adapterId),
     )) {
@@ -178,10 +170,9 @@ export function unexecutedGroundingFindings(input: {
         continue;
       }
       // The check did call the tool and the host could not run it: that is the environment's
-      // row, not a missing call. A 2026-09 run read eight sandbox refusals as its own defect.
-      // Only a control the runner settled as that refusal counts; a timeout, crash or throw on the
-      // retry is the author's. A timeout or crash is still a call: truss run a23ca2 was told to
-      // call a tool whose six calls had timed out, and added calls instead of fixing the run.
+      // row, not a missing call. Only a control the runner settled as that refusal counts; a
+      // timeout, crash or throw on the retry is the author's, and is still a call rather than a
+      // missing one.
       const refusal =
         settled?.hostNonResult != null && environmentOwnedToolNonResult(settled.hostNonResult)
           ? rows.find((row) => environmentOwnedToolNonResult(row.outcome))
@@ -214,8 +205,8 @@ export function unexecutedGroundingFindings(input: {
   ];
 }
 
-/** Every quoted id an author finding names. A count of the rest left the Builder unable to find
- *  them: in 9 of 20 capped REJECT_PASSED rounds the next round cleared more than the eight shown. */
+/** Every quoted id an author finding names, since a bare count leaves the Builder unable to find
+ *  the rest. */
 export function namedExamples(controlIds: readonly string[]): string {
   return controlIds.map((id) => `"${id}"`).join(", ");
 }

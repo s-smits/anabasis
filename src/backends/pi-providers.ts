@@ -55,24 +55,19 @@ export interface PiProfile {
   transport: "claude" | "codex" | "openrouter";
   model: string;
   thinkingLevel: ModelThinkingLevel;
-  /** Upstream hosts the routed provider may serve this model from (openrouter only). A serving
-   *  condition, so the profile includes it in the worker's condition digest and boundary
-   *  evidence rather than passing it separately through the environment. */
+  // Every optional field below is part of the served condition, so it enters the condition digest.
+  /** Upstream hosts the routed provider may serve this model from (openrouter only). */
   providerPin?: string[];
-  /** Server-side web search for the agent. A capability condition, so the profile includes it
-   *  in the worker's condition digest and the boundary evidence like `providerPin` does. */
+  /** Server-side web search for the agent. */
   webSearch?: boolean;
-  /** The OpenAI-completions host serving this model when it is not OpenRouter (openrouter only).
-   *  Which host answered is part of the served condition, and the confined child reads no repo env,
-   *  so the profile includes the endpoint in the same way as `providerPin`. */
+  /** The OpenAI-completions host serving this model when it is not OpenRouter (openrouter only). */
   baseUrl?: string;
-  /** The context window this host declared (`CUSTOM_CONTEXT_WINDOW`); a serving fact like
-   *  `baseUrl`, because compaction against the wrong window ends as a provider failure. */
+  /** The context window this host declared (`CUSTOM_CONTEXT_WINDOW`), which compaction depends on. */
   contextWindow?: number;
-  /** Claude only: who compacts this slot's context (`CLAUDE_COMPACTION`). A serving condition
-   *  like `webSearch`, so the condition digest and the model selection evidence include it. */
+  /** Claude only: who compacts this slot's context (`CLAUDE_COMPACTION`). */
   compaction?: CompactionMode;
 }
+
 /** A pi credential, or the Claude CLI's setup-token, which only ever reaches the CLI's environment. */
 export type PiCredential = Credential | { type: "bearer"; token: string };
 
@@ -84,8 +79,7 @@ export interface PiSlotChoice {
   providerPin?: readonly string[] | undefined;
 }
 
-/** The level a slot opens at when it pins none, and whether it asks for server-side search. Each
- *  harness owns its own: the Builder searches and the review slot does not. */
+/** The effort a slot opens at when it pins none, and whether it asks for server-side search. */
 export interface PiSlotDefaults {
   effort: string;
   webSearch: boolean;
@@ -116,9 +110,8 @@ export interface ClaudeCli {
   configDir: string;
   baseEnv: OptionalEnvValues;
   cwd?: string | undefined;
-  /** The CLI's own `claude_code` preset ahead of the controller's prompt. The Built solver has run
-   *  under it since its first measured claude condition; the Builder and review slots send their
-   *  prompt as the whole system prompt, as their own transport did before the pi layer. */
+  /** Put the CLI's own `claude_code` preset ahead of the controller's prompt (the Built solver);
+   *  otherwise the prompt is the whole system prompt. */
   claudeCodePreset?: boolean;
 }
 
@@ -151,8 +144,7 @@ function piProfile(
   const thinkingLevel = THINKING_LEVELS.find((known) => known === effort);
   if (thinkingLevel === undefined) throw new Error(`${slot} reasoning effort "${effort}" is unsupported`);
   const openrouter = choice.kind === "openrouter";
-  // Upstream routing is OpenRouter's own mechanism: another host neither reads it nor is bound by
-  // it, so declaring a pin the served condition never had would misname that condition.
+  // Upstream routing is OpenRouter's own; a custom host ignores a pin, so it declares none.
   const custom = openrouter && endpoint?.custom === true ? endpoint.baseUrl : undefined;
   const pin = openrouter && custom === undefined ? choice.providerPin : undefined;
   return {
@@ -170,10 +162,8 @@ function piProfile(
 
 /**
  * The codex transport's credential. A login the Codex CLI's own rule makes due is refreshed first,
- * as the codex app-server this transport replaced refreshed itself: without it a host that runs no
- * Codex CLI sent a token the provider refused ("Provided authentication token is expired.", Lima
- * VM, 2026-09-21, eight days after its last refresh). A failed refresh keeps a token that has not
- * expired, so the provider decides; an expired one with nothing to renew it is a login fault.
+ * so a host that runs no Codex CLI still sends a current token. A failed refresh keeps a token that
+ * has not expired, so the provider decides; an expired one is a login fault.
  */
 async function codexCredential(env: OptionalEnvValues): Promise<Credential> {
   let login = codexLogin(env);
@@ -204,21 +194,16 @@ function credential(
   if (profile.provider === "openrouter") {
     if (endpoint === null) throw new Error("the openrouter route was not resolved");
     const { apiKeyEnv } = endpoint;
-    // The key belongs to the host the endpoint named, never to whichever key happens to be
-    // present: sending the OpenRouter key elsewhere would hand a paid credential to that host.
+    // Only the key the endpoint names, so the OpenRouter key never reaches another host.
     const key = loaded[apiKeyEnv];
     if (hasText(key)) return { type: "api_key", key };
-    // A keyless custom endpoint is deliberate; use a non-secret placeholder instead of confusing
-    // it with the real OpenRouter route, which still requires OPENROUTER_API_KEY.
+    // A keyless custom endpoint is deliberate and gets a non-secret placeholder.
     if (hasText(profile.baseUrl)) return { type: "api_key", key: "local-endpoint-no-key" };
     throw new EnvironmentRefusal(`${apiKeyEnv} is required for the openrouter transport`);
   }
-  // The claude transport hands this token to the official Claude CLI as CLAUDE_CODE_OAUTH_TOKEN;
-  // this uses the CLI's subscription login support without sending the token through our HTTP client.
-  // The CLI's own /login cannot serve this transport: its Keychain item is config-dir-scoped
-  // (measured 2026-08-01: a custom CLAUDE_CONFIG_DIR queries service "Claude Code-credentials-
-  // <dirhash>", which /login never created), while each bridge runs under its own config dir. The
-  // setup-token bypasses login state entirely and bills the same subscription quota.
+  // The claude transport hands this token to the official Claude CLI as CLAUDE_CODE_OAUTH_TOKEN.
+  // The CLI's own /login cannot serve it: its Keychain item is scoped to a config dir, and each
+  // bridge runs under a private one. The setup-token needs no login state.
   if (hasText(loaded.CLAUDE_CODE_OAUTH_TOKEN)) {
     return { type: "bearer", token: loaded.CLAUDE_CODE_OAUTH_TOKEN };
   }
@@ -249,9 +234,7 @@ export function claudeCompacts(profile: PiProfile): boolean {
 
 /**
  * One slot's served condition and credential, read from the repository env chain. Only the
- * openrouter kind resolves the OpenRouter or custom endpoint: resolving it
- * for a Claude or Codex condition made a `.env` that names CUSTOM_ADDRESS without
- * CUSTOM_CONTEXT_WINDOW abort a launch that never uses that host (rehearsal-0901).
+ * openrouter kind resolves an endpoint, so an incomplete custom endpoint cannot refuse another slot.
  */
 export function resolvePiSlot(
   slot: BackendSlot,
@@ -269,9 +252,8 @@ export function resolvePiSlot(
   let resolved: PiCredential | undefined;
   return {
     profile,
-    // Read when first asked. Preflight and every session open ask, so a missing login still refuses
-    // before a paid turn, while a caller that only reads the condition needs no login at all. A
-    // Codex login changes under this process, whoever refreshes it, so it is read again every time.
+    // Read when first asked, so a caller that only reads the condition needs no login. A Codex
+    // login can change under this process, so it is read again every time.
     auth:
       profile.provider === "openai-codex"
         ? () => codexCredential(repo.env)
@@ -280,8 +262,7 @@ export function resolvePiSlot(
 }
 
 /** The aliased Agent SDK's bundled Claude CLI binary, resolved on the host. The confined child
- *  receives this absolute path in the start frame because its esbuild bundle breaks the SDK's own
- *  relative binary discovery; the host bridges use the same binary. */
+ *  receives this path in its start frame, since its bundle breaks the SDK's own discovery. */
 let cachedClaudeCli: string | null = null;
 export function claudeCliExecutable(): string {
   if (hasText(cachedClaudeCli)) return cachedClaudeCli;
@@ -309,11 +290,9 @@ function providerFor(id: PiProfile["provider"]): Provider {
   return openrouterProvider();
 }
 
-/** The one model gate for every live transport: the profile's model must be servable, must
- *  support the requested thinking level, and the evidence names both. The two OAuth transports
- *  stay catalogue-gated — a pin they cannot serve is a configuration error. OpenRouter resolves
- *  through the shared owner instead, because its catalogue omits live slugs while the endpoint
- *  serves them; the evidence then reports which of the two cases applied. */
+/** The one model gate for every live transport: the profile's model must be servable and support
+ *  the requested thinking level, and the evidence names both. The OAuth transports are
+ *  catalogue-gated; OpenRouter also admits live slugs its catalogue omits, and says which applied. */
 function catalogueSelection(models: ReturnType<typeof createModels>, profile: PiProfile) {
   const { provider, model: slug, thinkingLevel: requested, providerPin, baseUrl, contextWindow } = profile;
   const resolved =
@@ -324,10 +303,8 @@ function catalogueSelection(models: ReturnType<typeof createModels>, profile: Pi
   if (!known) {
     throw new Error(`unsupported model: ${provider}/${slug} is absent from the Pi provider catalogue`);
   }
-  // A level the transport would serve as another level is refused as well, so the evidence never
-  // records an effort the model did not run at: codex's catalogue sends `minimal` as `low`, and the
-  // Claude CLI has no `minimal` and no `off` (the bridge sends `low` and the CLI default). `off`
-  // sent as the API's `none` is the same level.
+  // A level the transport would serve as another one is refused, so the evidence never records an
+  // effort the model did not run at (`off` sent as the API's `none` is the same level).
   const servedAs = known.thinkingLevelMap?.[requested];
   const renamed =
     (requested !== "off" && isString(servedAs) && servedAs !== requested) ||
@@ -352,9 +329,8 @@ export function piModelSelection(profile: PiProfile): ModelSelectionEvidence {
   return catalogueSelection(models, profile).modelSelection;
 }
 
-/** A credential store over one supplier: every read asks it again, and a refresh pi asks for is
- *  answered by reading again. The supplier owns renewal: a Codex login refreshes there, under the
- *  lock its `auth.json` shares with every other process, and pi's own OAuth refresh never runs. */
+/** A credential store over one supplier: every read and refresh asks it again, so the supplier
+ *  owns renewal and pi's own OAuth refresh never runs. */
 function suppliedCredentials(providerId: string, supply: () => Promise<Credential>): CredentialStore {
   const read = async (id: string) => (id === providerId ? await supply() : undefined);
   return {
@@ -366,10 +342,8 @@ function suppliedCredentials(providerId: string, supply: () => Promise<Credentia
 }
 
 /** The Claude CLI's environment: this process's own without its secrets, the slot's credential,
- *  and a config dir of its own, so the operator's auto-memory and settings never reach it. The
- *  entrypoint is named: without it the Agent SDK labels its calls as SDK usage, which a
- *  subscription bills as extra usage — on 2026-09-15 a setup-token the plain CLI served failed
- *  through this bridge with "400 You're out of extra usage". */
+ *  and a private config dir, so the operator's memory and settings never reach it. The named
+ *  entrypoint keeps a subscription from billing the calls as SDK extra usage. */
 function claudeCliEnv(auth: PiCredential, cli: ClaudeCli): Record<string, string | undefined> {
   if (auth.type === "oauth") throw new Error("the claude transport takes a setup-token or an API key");
   return {
@@ -381,13 +355,10 @@ function claudeCliEnv(auth: PiCredential, cli: ClaudeCli): Record<string, string
   };
 }
 
-/** Claude transport: pi stays the first layer (Agent, tools, evidence); the turn itself runs
- *  through the vendored pi-claude-bridge provider, which drives the official Claude CLI via the
- *  Agent SDK. Every registered tool is exposed over MCP; WebSearch is the one CLI builtin, enabled
- *  when the profile asks for search. Under `claude-ss` the CLI compacts at the shared window and
- *  reports each boundary. Under `pi` the pi session compacts, and the CLI takes the compacted
- *  history at its next query: one query spans a whole pi prompt, so a query already running keeps
- *  its own context, uncompacted. */
+/** Claude transport: pi keeps the Agent, tools and evidence; each turn runs through the vendored
+ *  pi-claude-bridge, which drives the Claude CLI via the Agent SDK. Tools are exposed over MCP, and
+ *  WebSearch is the one CLI builtin. Under `claude-ss` the CLI compacts at the shared window; under
+ *  `pi` the pi session compacts and the CLI takes that history at its next query. */
 function claudeModel(profile: PiProfile, auth: PiCredential, cli: ClaudeCli, hooks: PiModelHooks): PiModel {
   const models = createModels();
   models.setProvider(providerFor(profile.provider));
@@ -408,17 +379,13 @@ function claudeModel(profile: PiProfile, auth: PiCredential, cli: ClaudeCli, hoo
   return { model: known, streamFn, modelSelection, historyRewritten: streamFn.historyRewritten };
 }
 
-/** The Responses transports serve search as a built-in tool entry, which pi's `Tool` type cannot
- *  express — it carries a JSON-schema function and nothing else. Appending it to the request body
- *  through pi's own payload hook keeps the registered tool contract untouched. `webSearch` is a
- *  run condition, so an unrecognised payload fails the turn instead of quietly serving without it. */
+/** Adds the Responses built-in search tool, which pi's `Tool` type cannot express, through pi's
+ *  payload hook. An unrecognised payload fails the turn rather than serving without search. */
 function withServerWebSearch(stream: StreamFn): StreamFn {
   return (model, context, options) =>
     stream(model, context, {
       ...options,
-      // Composed, not replaced: pi keeps one payload hook per call, so overwriting an existing one
-      // would drop that caller's condition to serve this one, and the turn would run under a
-      // condition neither side declared.
+      // Composed with, not replacing, the caller's own payload hook.
       onPayload: async (payload, hookModel) => {
         const base = (await options?.onPayload?.(payload, hookModel)) ?? payload;
         if (!isRecord(base)) throw new Error("web-search payload hook expected the Responses request body");
@@ -450,8 +417,7 @@ export async function openPiModel(
     }
     return current;
   };
-  // Read once before pi's store does: its failed read wraps the typed refusal a missing login
-  // raises, and the controller classifies that refusal as the environment's.
+  // Read once before pi's store does, which would wrap a missing login's typed refusal.
   await supply();
   const models = createModels({ credentials: suppliedCredentials(profile.provider, supply) });
   models.setProvider(providerFor(profile.provider));
@@ -460,12 +426,9 @@ export async function openPiModel(
   }
   const { known, modelSelection } = catalogueSelection(models, profile);
   const stream: StreamFn = (model, context, options) => models.streamSimple(model, context, options);
-  // TODO(codex compaction): a `codex-ss` mode would compact on OpenAI's side, as the Codex
-  // app-server did before the pi layer: a `context_management: [{ type: "compaction",
-  // compact_threshold: CONTEXT_COMPACT_WINDOW }]` entry added here through the payload hook, the way
-  // withServerWebSearch adds its tool, with piSessionPolicy's compaction off for that mode. It waits
-  // on pi-ai carrying the returned `compaction` output item into the next request; its Responses
-  // stream drops every output item but reasoning, messages and tool calls.
+  // TODO(codex compaction): a `codex-ss` mode would add a `context_management` compaction entry
+  // through the payload hook, as withServerWebSearch does. It waits on pi-ai carrying the returned
+  // `compaction` output item into the next request.
   return {
     model: known,
     streamFn: profile.webSearch === true ? withServerWebSearch(stream) : stream,

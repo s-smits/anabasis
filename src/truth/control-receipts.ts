@@ -1,15 +1,8 @@
 /**
- * Saved results for each control. The control runner records what happened; this module shapes
- * those results, checks them against the declared corpus and calculates the summary totals a claim
- * compares against. Hidden values, correctness-model issues, commands and other private execution
- * details stay out. Which tool ran for a control is not copied here: the host's own evidence rows
- * carry it under the control's subjectId, and grounding-coverage.ts reads them directly.
- *
- * The hidden with/without differential went on 2026-09-18 with `control-receipt/v1`. Nothing had
- * written a v1 row since the check-program contract arrived — `controlReceiptFor` set
- * `hiddenPair: null` on every receipt, so `hiddenRejectsProven` could only ever be zero, and four
- * tests asserted exactly that. The validator, its pair-shape reader, the projection module that
- * compared the field and the type all existed to prove a dead branch validated itself.
+ * Saved results for each control: shaped from what the control runner observed, checked against
+ * the declared corpus, and summed into the totals a claim compares against. Hidden values,
+ * evaluator issues and other private execution details stay out; tool runs stay in the host's own
+ * evidence rows under the control's subjectId.
  */
 import { isNonResultKind, type NonResultKind } from "../claim/record-events.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
@@ -71,9 +64,8 @@ type ReceiptSettlement = {
   totals: ReceiptTotals;
 };
 
-/** Check a saved JSON value before matching it to the declared controls and calculating the totals
- * `Claim.create` compares against the saved summary. Extra fields, hidden values and verifier
- * detail are rejected; `totals` is null unless every row is valid, unique and declared. */
+/** The result of checking saved receipts; `totals` is null unless every row is valid, unique and
+ *  declared. */
 type ReceiptSetCheck = {
   findings: DiscriminationClaimabilityFinding[];
   totals: ReceiptTotals | null;
@@ -84,7 +76,7 @@ function expectedCheckIdOf(control: DeclaredControl): string | null {
   return "expectedCheckId" in control ? control.expectedCheckId : null;
 }
 
-/** `subject` is the control the message quotes, so author feedback folds one repair across controls. */
+/** `subject` names the control the message quotes, so feedback can fold one repair across controls. */
 export function controlReceiptInvalidFinding(
   message: string,
   subject?: string,
@@ -92,12 +84,8 @@ export function controlReceiptInvalidFinding(
   return { code: "DISCRIMINATION_CONTROL_RECEIPT_INVALID", message, ...keyIfDefined("subject", subject) };
 }
 
-/** The one attribution rule: an accept passes with no blocking check; a reject is attributed when
- *  its expected check is among the checks that blocked it. A reject that fails elsewhere but not
- *  on its named check proves nothing about that check. Until 2026-09-14 the blocking set had to be
- *  exactly the expected check; 61 recorded truss epochs spent most of their refusal rows on that
- *  cascade rule, and the adopted evaluators grew checks that pass on a broken declaration to
- *  satisfy it. */
+/** The attribution rule: an accept passes with no blocking check; a reject is attributed when its
+ *  expected check is among the checks that blocked it. Other checks may fail too. */
 export function sideMatchesExpected(
   side: ControlReceiptSide,
   expectedOutcome: "pass" | "fail",
@@ -411,7 +399,7 @@ function comparableTotals(totals: ReceiptTotals): string {
   return stableJson([totals.acceptsPassed, totals.rejectsFailed, totals.rejectsAttributed, attributed]);
 }
 
-/** Whether the older saved summary fields agree with totals calculated from the receipts. */
+/** Whether the saved summary fields agree with totals calculated from the receipts. */
 export function totalsMatchRecorded(stored: unknown, derived: ReceiptTotals): boolean {
   const recorded = recordedTotals(stored);
   return recorded !== null && comparableTotals(recorded) === comparableTotals(derived);

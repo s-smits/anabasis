@@ -1,10 +1,7 @@
 /**
  * The tools a generated harness declares: a host tool spec plus the DraftStore its run writes into.
- * Two things separate a draft tool from an ordinary one. Its result is framed for the worker
- * protocol, so text past the evidence ceiling stays a refusal rather than being shortened. And its
- * declared parameters are rewritten before the pinned validator sees them, because
- * `Type.Union([Type.Number(), Type.Null()])` is how a nullable value is spelled and null, zero and
- * a real number must all survive it exactly.
+ * A draft tool's result is framed for the worker protocol, so over-long text is refused rather than
+ * shortened, and its nullable numeric parameters are respelled so Pi keeps null and zero apart.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
@@ -16,9 +13,7 @@ import { isObject, isRecord, isString, type OpenRecord } from "../meta/json-shap
 
 const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
-/** `defineDraftTool` sets this marker and `isDraftTool` checks it. The optional property
- *  describes the shape inspected by that check; an ordinary object without the marker
- *  does not qualify as a draft tool. */
+/** The marker `defineDraftTool` sets and `isDraftTool` checks. */
 interface DraftToolBrand {
   readonly [DRAFT_TOOL]?: true;
 }
@@ -70,10 +65,7 @@ interface DefineDraftToolSpec<P extends TSchema, D> extends Omit<DefineToolSpec<
   run: (params: Static<P>, draft: DraftStore, signal?: AbortSignal) => Evidence<D> | Promise<Evidence<D>>;
 }
 
-/** The rewrite below reads a TypeBox schema by keyword through `OpenRecord`. TSchema declares no
- *  string index even though its keywords are enumerable, and its values stay `unknown` because
- *  TypeBox schemas are not parsed JSON. Each rewrite checks the fields it uses and hands the result
- *  back through TSchema. */
+/** Reads a TypeBox schema by keyword; each rewrite checks the fields it uses. */
 const isSchema = (value: unknown): value is OpenRecord => isRecord(value);
 
 function piAcceptsNull(schema: OpenRecord): boolean {
@@ -111,8 +103,7 @@ function exactNullableNumeric(schema: OpenRecord): OpenRecord | null {
   const { anyOf: _union, ...wrapper } = schema;
   if (Object.keys(wrapper).some((key) => !ANNOTATION_KEYS.has(key))) return null;
   const { type: numericType, ...numericRules } = numeric;
-  // The `find` above accepted only `"number"` or `"integer"`; this states that fact to the reader
-  // and to the compiler, which cannot follow a predicate through `Array.prototype.find`.
+  // Always true after the `find` above; stated for the compiler.
   if (!isString(numericType)) return null;
   const { type: _nullType, ...nullRules } = nullable;
   const conflicts = Object.keys(wrapper).some(
@@ -163,10 +154,9 @@ function mapSchemaChildren(schema: OpenRecord, visit: (child: OpenRecord) => Ope
   return next;
 }
 
-/** Pi 0.82.1 tries each `anyOf` branch after coercion. For an exact numeric/null union this turns
- *  null into zero when number is first, and zero into null when null is first. Its type-array path
- *  checks exact JSON types before coercion, so expose that equivalent spelling to Pi while the
- *  draft wrapper below still validates the received value against the author's original schema. */
+/** Pi coerces inside each `anyOf` branch, which turns null into zero or zero into null for a
+ *  numeric/null union. Its type-array path checks exact types first, so Pi receives that equivalent
+ *  spelling; the draft wrapper still validates against the author's original schema. */
 function piSafeDraftParameters<P extends TSchema>(schema: P): P {
   const visit = (value: OpenRecord): OpenRecord => {
     const next = mapSchemaChildren(value, visit);
@@ -191,10 +181,8 @@ export function defineDraftTool<P extends TSchema, D = unknown>(
       draft: DraftStore,
       signal?: AbortSignal,
     ): Promise<AgentToolResult<D>> => {
-      // `Static<P>` is erased at runtime, and the worker protocol hands the model's arguments to
-      // this wrapper unchecked, so the declared schema is enforced here — before any draft write.
-      // The pr180 truss review sent 18/18 malformed writer probes through unchecked. The thrown
-      // error crosses the worker boundary as an ordinary model-visible tool error.
+      // The worker protocol passes the model's arguments unchecked, so the declared schema is
+      // enforced here, before any draft write; the error reaches the model as a tool error.
       if (!Value.Check(spec.parameters, params)) {
         const [first] = Value.Errors(spec.parameters, params);
         throw new Error(

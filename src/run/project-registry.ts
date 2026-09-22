@@ -17,9 +17,8 @@ interface ProjectRegistry {
 
 const REGISTRY_SCHEMA = "harness-projects/v1";
 
-/** Under the campaign root rather than the checkout. Run worktrees share one campaign tree through
- *  a symlink, and a registry per checkout forgot every id whose campaign directory later went to the
- *  Trash, so `…-3fd52f9e-15` went to three unrelated runs between 16 and 21 September. */
+/** Under the campaign root rather than the checkout: run worktrees share one campaign tree, and a
+ *  per-checkout registry would forget ids and hand them to unrelated runs. */
 function registryPath(repoRoot: string): string {
   return join(campaignRoot(repoRoot), "projects.json");
 }

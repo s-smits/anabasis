@@ -7,17 +7,10 @@ const defineProperty = Object.defineProperty.bind(Object);
 
 /** Native JSON and clone references captured before generated modules can replace shared globals. */
 const nativeJsonParse = JSON.parse.bind(JSON);
-/**
- * Typed `JsonValue` rather than the native `any`. Parsing bytes proves the result is JSON and
- * nothing more, so this is the one place in the tree that states the fact instead of handing every
- * reader an `any` to re-widen. A reader that needs a declared contract uses `parseJsonAs` below.
- */
+/** Typed `JsonValue` rather than `any`: parsing proves the result is JSON and nothing more. */
 export const capturedJsonParse: (text: string) => JsonValue = nativeJsonParse;
-/**
- * `JSON.stringify` answers `undefined` for `undefined`, a function and a symbol, which
- * `lib.es5.d.ts` does not say: it declares `string`. Stating the real return here keeps the
- * callers' `?? "…"` fallbacks honest instead of leaving them looking like dead guards.
- */
+/** `JSON.stringify` returns `undefined` for `undefined`, a function or a symbol, although
+ *  `lib.es5.d.ts` declares `string`; this type states the real return. */
 export const capturedJsonStringify: <T>(
   value: T,
   replacer?: null,
@@ -28,27 +21,18 @@ export const capturedStructuredClone = globalThis.structuredClone;
 export const capturedIsProxy = types.isProxy;
 
 /**
- * Read JSON bytes as a declared contract.
- *
- * `JSON.parse` returns `any`, so every reader in the tree ended in `as T` — 148 of them. The type
- * parameter says the same thing in one place. It is a declaration about the writer of those bytes,
- * not a check on them: this owner narrows `any` and cannot observe a mismatch. A reader that must
- * refuse damaged bytes validates them itself; `readCompleted` in completed-json.ts is the example,
- * and it rejects a wrong `schema` field before returning.
- *
- * The captured binding is used rather than the ambient one, so a generated module that replaces
- * `JSON` after load does not change what the controller reads.
+ * Read JSON bytes as a declared contract. `T` is a declaration about the writer, not a check: a
+ * reader that must refuse damaged bytes validates them itself, as `readCompleted` does. The
+ * captured parser is used so a generated module that replaces `JSON` cannot change the result.
  */
 export function parseJsonAs<T>(text: string): T {
-  // SAFETY: `T` is the caller's declaration of the contract these bytes were written under. The
-  // assertion narrows the `any` that JSON.parse returns and asserts nothing else.
+  // SAFETY: `T` is the caller's declared contract; this only narrows JSON.parse's `any`.
   return nativeJsonParse(text) as T;
 }
 
-/** SHA-256 of native compact JSON bytes. Object insertion order is deliberately part of this identity.
- *  Callers hash shapes this module cannot prove: a vendor TypeBox schema keyed by symbols, a provider
- *  message list. Declaring `JsonValue` would put a runtime proof on a live digest path and throw on
- *  exactly those values, so the identity stays over whatever the captured stringify wrote. */
+/** SHA-256 of native compact JSON bytes; object insertion order is part of the identity. The
+ *  parameter is `unknown` because callers hash shapes that are not provably `JsonValue`, such as a
+ *  TypeBox schema keyed by symbols. */
 export function hashJsonBytes(value: unknown): string {
   return sha256(capturedJsonStringify(value) ?? "undefined");
 }

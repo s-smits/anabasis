@@ -2,12 +2,10 @@
  * Compare declared domain tools with the interfaces returned during conformance.
  *
  * A declared tool has two descriptions: the one `agent/tools-spec.json` declares and the one
- * `agent/tools.ts` serves to the agent. Conformance previously compared only the tool names,
- * so run 52 (2026-09-03) produced a `record_answer` whose description said it wrote a pin
- * plan only and that file tools were absent, while the spec declared the complete answer; the
- * drift passed conformance for six iterations. The spec is also the text the tools-spec validator
- * screens for a verifier-identity claim or a mode flag, so a served description that differs is
- * model-visible text that the spec validator never checked.
+ * `agent/tools.ts` serves to the agent. Comparing names alone lets the served description drift
+ * from the declared one. The spec is also the text the tools-spec validator screens for a
+ * verifier-identity claim or a mode flag, so a served description that differs is model-visible
+ * text that the spec validator never checked.
  */
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
 import type { BuiltStarter, GeneratedToolWorkerEvidence } from "../solve/built-starter.ts";
@@ -94,9 +92,8 @@ export function workerBindingDriftFindings(
 }
 
 /** One refusal per probed worker that did not settle. A close-handshake timeout after all probes
- *  settled concerns host cleanup: run 6bf0e9 (2026-09-07) refused agent bytes for that timeout
- *  and accepted the same bytes on the next submit, repeated over five rounds in the run. The
- *  Built slot treats the same termination as benign after a submit (pi-built.ts). */
+ *  settled concerns host cleanup, not the agent bytes, so it refuses nothing. The Built slot
+ *  treats the same termination as benign after a submit (pi-built.ts). */
 export function terminationFindings(
   closed: ReadonlyArray<{ termination: GeneratedToolWorkerEvidence["termination"] } | undefined>,
 ): ContractFinding[] {

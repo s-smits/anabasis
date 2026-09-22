@@ -8,7 +8,8 @@ import type { BuiltHarness } from "../author/campaign-types.ts";
 
 type Fingerprint = BuiltHarness["fingerprint"];
 
-/** Forty minutes. This bounds when a review happens, never how much one costs. */
+/** Bounds when a review happens, never how much one costs. */
+
 export const REVIEW_INTERVAL_MS = 40 * 60_000;
 
 /** What the next completed tool call owes the reviewer: a validated product snapshot, the live

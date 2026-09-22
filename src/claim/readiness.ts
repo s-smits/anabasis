@@ -60,7 +60,6 @@ export interface SolvabilityCaseEvidence {
 /** Full-task solve evidence created from the fixed accepted bundle. It identifies the exact
  * correctness model, task set, bundle and checking code. */
 export interface SolvabilityEvidence {
-  /** Evidence from v4 and earlier is historical only. `runBuild` refuses old schemas. */
   schema: "solvability/v8";
   policy: string;
   correctnessModelHash: string;
@@ -91,10 +90,8 @@ export interface ReadinessInput {
   taskSetHash: string | null;
   /**
    * Integrity findings for the run directory containing the claim's battery. Files written or
-   * changed outside the evaluation runner's write log cannot support readiness (steering-delta
-   * P1, introduced for in-process generated code). Null means verification never ran and
-   * prevents readiness (handover 2026-07-11). Only a completed check returning [] establishes
-   * that the reader found no violations.
+   * changed outside the evaluation runner's write log cannot support readiness. Null means
+   * verification never ran, which also prevents readiness; only [] means no violations.
    */
   evidenceStage: Array<{ code: string; path: string; detail: string }> | null;
 }

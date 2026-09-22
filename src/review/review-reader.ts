@@ -3,12 +3,8 @@
  * (`diagnosis-reader.ts`) and the epoch reviewer (`epoch-reviewer.ts`). Both open one fresh review
  * session, read within one bounded allowance, deliver through in-process tools, and dispose.
  * Neither may change a pass, an acceptance, a claim or a promotion: the result is advice
- * attached to controller-owned evidence, and the controller decides what to do with it.
- *
- * Two readers, one lifecycle. The four review callers removed on 2026-09-04 each carried their own
- * session factory, prompt assembly, response parser and evidence writer. This module is the part
- * they actually share. Reader-specific choices — what the session reads, what it may report,
- * and where its output is recorded — remain with each reader.
+ * attached to controller-owned evidence, and the controller decides what to do with it. What a
+ * session reads, what it may report and where its output is recorded stay with each reader.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -32,9 +28,8 @@ export type ReaderTurn = {
   error: string | null;
 };
 
-/** One reader session's deadline, continuations included. 246 recorded epoch reviews took a median
- *  of 4 minutes; one reached the Judge's 30-minute wall and lost its findings. An hour is the
- *  session's own turn ceiling. */
+/** One reader session's deadline, continuations included: well above a typical review's few
+ *  minutes, and above the Judge's 30-minute wall that once cut a review short. */
 export const READER_DEADLINE_MS = 60 * 60_000;
 
 interface ReaderTurnInput {
@@ -69,8 +64,8 @@ export function readerParameters(schema: Record<string, JsonValue>): never {
 }
 /**
  * One reader session: open, read within one deadline, dispose. A provider budget interruption
- * rethrows because the controller owns the run's stop; every other failure becomes a typed error so the caller
- * drops the turn's output and records why rather than reading an empty result as agreement.
+ * rethrows because the controller owns the run's stop; every other failure becomes a typed error,
+ * so an empty result is never read as agreement.
  */
 export async function runReaderTurn(input: ReaderTurnInput): Promise<ReaderTurn> {
   const { review, repoRoot, role, observer } = input;

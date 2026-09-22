@@ -15,9 +15,8 @@ type PiToolCall<D> = {
   readonly environment: ExecutionToolContext;
 };
 
-// Anabasis owns tool-call evidence and does not use Pi's durable AgentHarness session. The native
-// read/write/edit/bash tools do not consult invocation metadata. Refuse if a future tool does,
-// rather than inventing a durable turn identity or a replay memo.
+// Anabasis does not use Pi's durable AgentHarness session, and the native tools never read
+// invocation metadata, so any read of it throws rather than inventing an identity.
 function noHarnessSession(): never {
   throw new Error("Anabasis's Pi tool adapter has no durable AgentHarness session");
 }
@@ -48,8 +47,7 @@ export function executePiTool<T extends TSchema, D>(
     id,
     params,
     (result) => {
-      // Native bash marks periodic output snapshots for Pi's optional recovery journal. Anabasis owns
-      // persistence outside this adapter; the snapshot remains an ordinary progress update here.
+      // Native bash's recovery snapshots are ordinary progress updates here.
       onUpdate?.(result);
     },
     environment,

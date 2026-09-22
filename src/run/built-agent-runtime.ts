@@ -14,9 +14,8 @@ interface BuiltBatteryRuntime {
   solver(): Solver;
 }
 
-/** Observation phase used by the main battery. The stored value predates single-battery
- *  measurement, when it identified the condition with advisers. Retain it so existing
- *  observation readers can interpret both old and current rows. */
+/** Observation phase used by the main battery. The value is an established identifier that
+ *  observation readers match on, not a description. */
 const SHIPPING_PHASE = "measure-on";
 
 /** What a battery runtime is opened with beyond its runtime and observer: the turn wall, a

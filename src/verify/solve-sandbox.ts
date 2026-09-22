@@ -29,15 +29,13 @@ import {
   runIsolationProbe,
   sbRule,
 } from "./seatbelt-path-guard.ts";
-
 import { traversalMetadataRules } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
 
-/** Evidence discriminator for this mechanism family. The isolation vocabulary pairs it with the one
- *  session profile this mechanism activates, so a probe can never certify another family. */
-/** Kept as the Darwin alias so existing Seatbelt evidence bytes remain unchanged. */
+/** Evidence discriminators per mechanism, so a probe can never certify another family. The Darwin
+ *  one keeps its original name. */
 export const HOST_SOLVE_ISOLATION_FIXTURE = "host-seatbelt-read-deny/v1" as const;
 export const HOST_BWRAP_SOLVE_ISOLATION_FIXTURE = "host-bwrap-read-deny/v1" as const;
 type HostSolveIsolationFixture =
@@ -46,40 +44,36 @@ type HostSolveIsolationFixture =
 export const HOST_SOLVE_ISOLATION_PROFILE_ID = "harness-host-solve-isolated";
 
 const CANARY_MARKER = "ANA-HOST-ISOLATION-PROBE-CANARY-DO-NOT-TRUST";
-/** Linux policies are argv, not a second textual policy language. This stable descriptor is kept
- * in the shared evidence field for human inspection; `isolationArgv` below is the only launch authority. */
+/** Linux evidence descriptor for human inspection; `isolationArgv` alone builds the launch. */
 const LINUX_SOLVE_ISOLATION_DESCRIPTOR =
   "linux-bwrap solve isolation: allow-default host mount, protected roots overmounted, network preserved";
 export interface SolveIsolationPolicy {
   profileId: typeof HOST_SOLVE_ISOLATION_PROFILE_ID;
-  /** Darwin's exact Seatbelt text, or Linux's stable Bubblewrap descriptor. The Linux argv is
-   * assembled only by isolationArgv, so the evidence cannot become a second policy implementation. */
+  /** Darwin's exact Seatbelt text, or Linux's stable Bubblewrap descriptor. */
   profile: string;
-  /** sha256 over the policy identity (mechanism digest + denied roots). The verified session's
-   *  evidence carries this, and the probe's evidence carries the same field, so the two checks bind
-   *  identical policy inputs instead of a shared label. */
+  /** sha256 over the policy identity; the probe and the verified session both record it, so they
+   *  bind identical policy inputs rather than a shared label. */
   policyHash: string;
   deniedReadRoots: string[];
   deniedWriteRoots: string[];
   /** Exact runtime paths reopened read-only inside a denied home or repository. */
   allowedReadRoots: string[];
   mechanismPath: string;
-  /** `darwin-seatbelt/v1` or `linux-bwrap/v1` — the mechanism `isolationArgv` and the probe launch. */
+  /** `darwin-seatbelt/v1` or `linux-bwrap/v1`. */
   mechanismId: string;
 }
 
 export interface HostSolveIsolationEvidence {
   fixture: HostSolveIsolationFixture;
-  /** True only when every denial, control, discrimination, and relocation check held. A run fingerprints
-   * physical iff this is true; a mechanism failure remains an unproven, contractual isolation. */
+  /** True only when every denial, control, discrimination and relocation check held; otherwise the
+   *  isolation stays contractual. */
   isolated: boolean;
   /** False when the mechanism or a required probe could not run. */
   available: boolean;
   deniedReadRefused: boolean;
   controlReadSucceeded: boolean;
   discriminationReadSucceeded: boolean;
-  /** Both isolations execute an ancestor-rename probe here. Seatbelt relies on path rules; Bubblewrap
-   * proves its tmpfs mount stays attached across the host rename in guarded and lifted steps. */
+  /** Whether an ancestor rename failed to expose a protected path, on either mechanism. */
   moveGuardRefused: boolean;
   /** The probed policy's digest; the verified session's evidence must carry the same value. */
   profileDigest: string | null;
@@ -92,9 +86,8 @@ function hostSolveIsolationFixture(mechanismId: string): HostSolveIsolationFixtu
 }
 
 /**
- * Author the solve isolation for one repository. `liftDeniesCovering` is the probe's discrimination
- * check only: the same rules with the deny entries covering one concrete path removed, so a
- * refusal can be attributed to those rules instead of to a broken mechanism.
+ * The solve isolation for one repository. `liftDeniesCovering` serves the probe's discrimination
+ * check alone: it removes the denies covering one path, so a refusal can be attributed to them.
  */
 export function solveIsolationPolicy(input: {
   repoRoot: string;
@@ -107,9 +100,7 @@ export function solveIsolationPolicy(input: {
     return { unsupported: support.reason ?? "the OS isolation mechanism is unavailable" };
   }
   const home = homedir();
-  // Compare both path forms of the lifted target: a `/var/...` target under a `/private/var/...`
-  // deny is still denied, and a discrimination check that silently fails to lift its own rule
-  // reports "the mechanism is broken" when the mechanism is fine.
+  // Both path forms of the target: a `/var/...` target is still covered by a `/private/var/...` deny.
   const lifted = input.liftDeniesCovering === undefined ? [] : canonicalForms(input.liftDeniesCovering);
   const keep = (root: string): boolean => !lifted.some((target) => covers(root, target));
   const repoRoots = canonicalForms(input.repoRoot);
@@ -133,16 +124,9 @@ export function solveIsolationPolicy(input: {
     deniedWrites: writes,
     allowedReads,
   };
-  // Linux confines the same allow-except posture with Bubblewrap. It begins with the host mount
-  // tree so the Built Harness can still reach its provider, then overmounts every protected root
-  // with empty tmpfs so those paths are neither readable nor reachable. The profile below is a
-  // human-readable evidence descriptor; isolationArgv owns the actual launch bytes.
-  //
-  // Seatbelt needs path-rename rules because it matches path strings. A Bubblewrap tmpfs mount
-  // remains attached when an ancestor directory moves, so that rule family is inert on Linux. The
-  // focused Bubblewrap test checks this with a guarded and lifted probe. The Seatbelt arm is
-  // last-match-wins: close broad roots, reopen exact runtime bytes, then guard their ancestors
-  // against relocation.
+  // Linux builds the same allow-except posture in `isolationArgv`. Seatbelt is last-match-wins:
+  // close broad roots, reopen exact runtime paths, then guard ancestors against a rename, which
+  // only a path-string matcher needs.
   const profile =
     support.platform === "linux"
       ? LINUX_SOLVE_ISOLATION_DESCRIPTOR
@@ -153,9 +137,7 @@ export function solveIsolationPolicy(input: {
           ...sbRule("deny file-write*", "subpath", writes),
           ...traversalMetadataRules(allowedReads),
           ...sbRule("allow file-read*", "subpath", allowedReads),
-          // Nothing above survives a rename of a protected root's parent; see
-          // seatbelt-path-guard.ts, where that bypass is measured against this profile without
-          // these lines.
+          // Without these, renaming a protected root's parent would bypass every rule above.
           ...moveBlockingRules(reads),
           "",
         ].join("\n");
@@ -172,10 +154,8 @@ export function solveIsolationPolicy(input: {
 }
 
 /**
- * The one argv construction for this mechanism. The probe checks and the verified sessions both go
- * through here, so "the rules the probe executed" and "the rules the session ran under" are the
- * same bytes in the same argument position by construction. Two hand-built argvs would let a flag
- * change reach one check while the other still tests an isolation no session uses.
+ * The one argv construction for this mechanism, shared by the probe and the verified sessions, so
+ * the rules the probe executed are the rules a session runs under.
  */
 export function isolationArgv(
   policy: Pick<SolveIsolationPolicy, "profile" | "mechanismId" | "deniedReadRoots" | "allowedReadRoots">,
@@ -190,8 +170,7 @@ export function isolationArgv(
       ...bwrapWholeRootArgs("--dev-bind"),
       ...bwrapTmpfsDenies(policy.deniedReadRoots),
       ...bwrapReadBinds(policy.allowedReadRoots),
-      // After the re-exposing binds: a write into a hidden root fails with EROFS instead of landing
-      // on namespace memory the host never sees.
+      // After the re-exposing binds, so a write into a hidden root fails with EROFS.
       ...policy.deniedReadRoots.flatMap((path) => ["--remount-ro", path]),
       ...bwrapEnvironmentArgs(environment),
       command,
@@ -201,8 +180,7 @@ export function isolationArgv(
   return ["-p", policy.profile, command, ...args];
 }
 
-/** Spawn a transport's own process under the isolation with native Bun pipes. The owning transport
- * drains stderr because some workers persist a bounded diagnostic while others forward it. */
+/** Spawns a transport's process under the isolation; the transport drains stderr itself. */
 export function spawnUnderSolveIsolation(
   policy: SolveIsolationPolicy,
   options: {
@@ -220,28 +198,18 @@ export function spawnUnderSolveIsolation(
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    // Own the isolation wrapper group. Pi also reaps Bubblewrap's separately witnessed worker
-    // group, so neither path needs process-name matching.
+    // Own the wrapper's process group; Pi reaps Bubblewrap's witnessed worker group separately.
     detached: true,
     ...keyIfDefined("signal", options.signal),
   });
 }
 
 /**
- * What counts as an observed refusal for each isolation fixture (the Codex family's probe imports
- * this too). A denial requires an observable refusal: a generic non-zero exit is not evidence,
- * because a broken mechanism or an invalid profile must leave the isolation contractual rather than
- * earn `physical` by failing. The canary's presence in the output refutes a refusal outright.
+ * Whether a probe's output shows an observable refusal. A bare non-zero exit is not one, since a
+ * broken mechanism must not earn `physical` by failing, and the canary in the output refutes it.
  *
- * The mechanism shapes the refusal string. Seatbelt denies a read with "Operation not permitted".
- * Bubblewrap does not deny the read: it never mounts the protected path into the namespace, so the
- * kernel reports "No such file or directory" (ENOENT). For the bwrap mechanism ENOENT therefore
- * counts as a refusal, provided the accompanying controls succeed: the same-policy control
- * read must return its canary (so `cat` and the marker format work) and the deny-lifted
- * discrimination read must return the protected canary (so the path is readable once un-hidden),
- * which a broken or absent-file probe could not satisfy. The default (Darwin, or an
- * unspecified mechanism) keeps the strict shape, so "no such file" from a broken Seatbelt profile
- * still fails to earn `physical`.
+ * Bubblewrap hides a protected path rather than refusing it, so ENOENT counts as a refusal there;
+ * the probe's control and lifted reads rule out a broken probe. Seatbelt keeps the strict shape.
  */
 export function observedRefusal(
   combined: string,
@@ -269,11 +237,8 @@ function runUnderPolicy(
   return runIsolationProbe(policy.mechanismPath, isolationArgv(policy, command, args, {}), cwd);
 }
 
-/** The Bubblewrap half of the host's live probe. It reuses the probe workspace so the guarded and
- * lifted controls are part of one evidence lifecycle instead of opening a second scratch sandbox.
- * A tmpfs mount stays attached to its dentry when its parent is renamed, unlike a Seatbelt path
- * rule; the lifted step proves that the hidden result comes from that mount rather than a failed
- * host rename. */
+/** The Bubblewrap rename probe, in the probe workspace: a tmpfs mount should stay attached when its
+ *  parent is renamed, and the lifted step proves the hiding came from that mount. */
 function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuardCheck {
   try {
     const run = (name: string, hidden: boolean) => {
@@ -327,9 +292,8 @@ function linuxMoveGuardCheck(mechanismPath: string, workRoot: string): MoveGuard
 }
 
 /**
- * Execute the host solve isolation's discriminating fixture. Never throws: an unavailable mechanism is
- * `{available:false}`, which the isolation vocabulary reads as contractual. The caller receives
- * an unproven result and can enforce the run's isolation requirements.
+ * Executes the host solve isolation's discriminating fixture. Never throws: an unavailable
+ * mechanism yields `available: false`, an unproven result the caller may enforce against.
  */
 export function probeHostSolveReadDeny(opts: {
   repoRoot: string;
@@ -366,7 +330,7 @@ export function probeHostSolveReadDeny(opts: {
     workRoot = mkdtempSync(join(parent, "run-"));
     const controlCanary = join(workRoot, "control-canary.txt");
     writeFileSync(controlCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
-    // Put the deny target inside the protected root, where the live policy must refuse reads.
+    // The deny target sits inside the protected root, where the live policy must refuse reads.
     repoCanaryDir = mkdtempSync(join(resolve(opts.repoRoot), ".ana-host-isolation-probe-"));
     const repoCanary = join(repoCanaryDir, "canary.txt");
     writeFileSync(repoCanary, `${CANARY_MARKER}\n`, { mode: 0o600 });
@@ -391,7 +355,7 @@ export function probeHostSolveReadDeny(opts: {
         try {
           rmSync(dir, { recursive: true, force: true });
         } catch {
-          // cleanup of a home that may already be gone
+          // The directory may already be gone.
         }
       }
     }

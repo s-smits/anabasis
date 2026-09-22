@@ -1,5 +1,5 @@
-/** Sequence discrimination, concurrent solves, ordered grading and advisory judgement.
- * An unclaimable corpus stops before solver spend; battery.json binds the recorded phases. */
+/** Runs one battery: control replay, concurrent solves, ordered grading and the advisory Judge.
+ *  An unclaimable control corpus stops before any solver spend. */
 import { join } from "../meta/path.ts";
 import type { ExperimentAuthoring } from "../run/experiment-freeze.ts";
 import { measureDifficulty, type MeasuredDifficulty } from "../claim/battery-difficulty.ts";
@@ -89,11 +89,12 @@ export interface VerificationRunnerOptions {
   /** Exact operator request for the public Judge context; a direct measurement may omit it and records null. */
   publicRequest?: string;
   runId: string;
-  /** The caller's run condition (U0.4), recorded in battery.json for later comparison. */
+  /** The caller's run condition, recorded in battery.json for later comparison. */
   condition: RunCondition;
   /** Fresh host per battery. Generated checks receive only its subject-bound execution port. */
   createVerifier?: () => VerifierHostHandle;
-  toolRetryWaitMs?: number; // wait before an environment-owned control refusal's one retry; tests pass 0
+  /** Wait before retrying an environment-owned control refusal once; tests pass 0. */
+  toolRetryWaitMs?: number;
   /** One independently resolved judge slot. Omitted means explicitly off; it is never inherited. */
   judge?: JudgeSession;
   experimentAuthoring?: ExperimentAuthoring;
@@ -125,8 +126,7 @@ interface BatteryContext {
   runDir: string;
 }
 
-/** Execute through the immutable, content-addressed bundleSnapshot rather than the repairable live
- *  tree; validate the recorded brief before anything reads it as a contract. */
+/** Loads the contract from the immutable bundle snapshot, validating the brief before any use. */
 async function loadRecordedContract(bundleSnapshotDir: string, verifierLifetime: VerifierLifetime) {
   const briefUnknown = trustedJsonParse(await Bun.file(join(bundleSnapshotDir, BRIEF_FILE)).text());
   throwIfInvalid(validateBrief(briefUnknown), "bundle snapshot brief failed validation");
@@ -174,8 +174,7 @@ async function prepareBattery(
     brief.artifactSchema,
     corpus.accept.map((accept) => accept.artifact),
   );
-  // A missing tool refuses at the census before adoption; a measured tree that lost one since
-  // records host-observed non-results, which the runner reads per case.
+  // A tool missing here yields per-case host non-results; the census already refused it at adoption.
   const { verifier } = resolveVerifier({
     toolTree: bundleSnapshot.toolTree,
     bundleDir: bundleSnapshot.dir,
@@ -199,19 +198,14 @@ async function prepareBattery(
     publicArtifactSchema,
     verifier,
     externalChecks,
-    // The provenance consequence is settled with the Builder before any battery (the
-    // external-grounding-provenance declaration in builder-campaign.ts); no battery-time notice.
     checkIdsByTask: new Map(tasks.map((task) => [task.taskId, applicableCheckIds(brief, task)])),
-    // One write owner for the whole run directory (steering-delta P1): all evidence, including the
-    // verdict-bearing judge session, goes through the ordinary manifest-bound evidence writer.
-    // `live/` remains telemetry-only.
+    // The single writer for the run directory; `live/` stays telemetry-only.
     evidence: new EvidenceLog(runDir),
     runDir,
   };
 }
 
-/** The one battery.json assembler — the skipped-battery and the completed-battery records differ
- *  only in what this receives, so the two writes cannot drift apart field by field. */
+/** Assembles and writes battery.json for both skipped and completed batteries. */
 function recordBatteryRecord(
   ctx: BatteryContext,
   parts: {
@@ -274,10 +268,9 @@ async function measuredPhase<T>(
   }
 }
 
-/** One per-checkId counter, seeded at zero for the ids its record declares. The record has a null
- *  prototype because a model-authored checkId may be "__proto__" or "constructor". `declared` counts
- *  only a seeded id; `any` also opens a row for an id the declared set never named, which is
- *  evidence of a defect rather than a count to discard. */
+/** A per-checkId counter seeded at zero. The record has a null prototype because a model-authored
+ *  id may be "__proto__". `declared` counts only seeded ids; `any` also records an undeclared id,
+ *  which is evidence of a defect. */
 function checkCounter(ids: Iterable<string>) {
   const counts: Record<string, number> = Object.create(null);
   for (const id of ids) counts[id] = 0;
@@ -293,9 +286,8 @@ function checkCounter(ids: Iterable<string>) {
   };
 }
 
-/** Derive the firing counts from verified case verdicts and the host's completed runs.
- * Raw evaluator output overruled by a host non-result remains evidence, but is not a verified case.
- * Only the first battery attempt counts; one subject counts once per external check. */
+/** Firing counts from verified case verdicts and the host's completed runs. Only the first battery
+ *  attempt counts, and each subject counts once per external check. */
 function truthCheckFiring(ctx: BatteryContext, gradedCases: readonly GradedCase[]): TruthCheckFiringEvidence {
   const authored = ctx.brief.truthChecks
     .filter((check) => check.execution.evidence.kind === "authored")
@@ -335,7 +327,7 @@ function truthCheckFiring(ctx: BatteryContext, gradedCases: readonly GradedCase[
   };
 }
 
-/** Grade and write in task order, retaining finished case evidence if killed before battery publication. */
+/** Grades one case and writes its evidence; returns false once the verifier has stopped. */
 async function recordSolvedCase(
   ctx: BatteryContext,
   gradedCases: GradedCase[],
@@ -364,6 +356,10 @@ async function recordSolvedCase(
     recordCaseTracePointer(ctx.runDir, task.taskId),
   );
   gradedCases.push(graded);
+  return verifierStillUsable(ctx);
+}
+
+function verifierStillUsable(ctx: BatteryContext): boolean {
   try {
     ctx.options.verifierLifetime?.assertUsable();
   } catch (cause) {
@@ -373,7 +369,7 @@ async function recordSolvedCase(
   return true;
 }
 
-/** The same eligibility projection supplies the offered census and the Judge's actual subjects. */
+/** The Judge's subjects; the same list sizes the offered census. */
 function judgeSubjects(ctx: BatteryContext, gradedCases: readonly GradedCase[]): JudgeCensusSubject[] {
   if (ctx.options.judge === undefined) return [];
   return gradedCases.flatMap(({ record, submittedArtifact }) => {
@@ -392,10 +388,8 @@ function judgeSubjects(ctx: BatteryContext, gradedCases: readonly GradedCase[]):
   });
 }
 
-/** Stop before paid solving when control evidence already prevents a claim (the audit's
- *  computed-then-ignored finding). Preserve the battery record with an empty case list and
- *  the complete discrimination findings, so later readers can see why measurement was skipped
- *  without inferring the reason from a missing file. */
+/** Records a skipped battery when the controls already prevent a claim: no cases, and the full
+ *  discrimination findings so a reader sees why measurement was skipped. */
 function recordUnclaimableBattery(
   ctx: BatteryContext,
   discrimination: DiscriminationExecution,
@@ -411,9 +405,7 @@ function recordUnclaimableBattery(
     cases: [],
     measured: measureDifficulty([]),
     discrimination,
-    // No task was verified (the paid loop was skipped), so every intrinsic check fired zero
-    // times over zero truth-verified cases — present-zero, never absent. The claim already
-    // blocks on the discrimination findings; the never-fired clause stays inert at count 0.
+    // Every authored check is present at zero rather than absent.
     truthCheckFiring: {
       firedByCheck: Object.fromEntries(
         ctx.brief.truthChecks
@@ -430,26 +422,23 @@ function recordUnclaimableBattery(
   });
 }
 
-/** Concurrent solves own submission authority and evidence, without verifier access; grading has one open subject.
- * The provider stop counts only provider failures (opus326); other non-results still run the complete battery. */
-/** The width this battery runs at: what the harness declared, unless the operator bounded it. */
+/** The declared solve width, unless the operator bounded it. */
 const solveWidth = (ctx: BatteryContext) =>
   builtSolveConcurrency(harnessSettings(ctx.bundleSnapshot.dir).solveConcurrency);
 
-/** The run-wide spans this pool opens and closes. Per-case rows reuse the phase and say their own
- *  summary; these two say the same thing every time, so only their state changes. */
+/** The run-wide spans of the solve pool; only their state changes. */
 const SOLVING = { phase: "solve", summary: "Built Harness solve pool" } as const;
 const GRADING = { phase: "grade", summary: "Ordered host grading" } as const;
 
+/** Solves concurrently without verifier access, then grades in task order with one open verifier
+ *  subject. Only provider failures stop the pool early. */
 async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> {
   const { observer } = ctx.options;
   const gradedCases: GradedCase[] = [];
   let gradingStarted = false,
     gradingStopped = false;
-  // How many cases the ordered reader below has taken. A solve that finishes at a later index is
-  // held until every earlier one has been delivered, which is deliberate — a rerun then reports
-  // the same failing case — but nothing said so, and a held case looked exactly like a stalled
-  // verifier from outside. This counts deliveries so the hold can name what it is waiting on.
+  // Cases handed to the ordered grader. A later solve waits for every earlier one, so a rerun
+  // reports the same failing case; the count lets the hold name what it waits on.
   let delivered = 0;
   observer?.phase({ ...SOLVING, state: "started" });
   try {
@@ -484,7 +473,7 @@ async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> 
       async (solvedCase) => {
         delivered += 1;
         if (gradingStopped) {
-          // 45: streaming owner review at ce4f77c7c; solve receipts do not name this omitted grading.
+          // Solve receipts do not show that this case went ungraded.
           safeguardTriggered(
             "45-case-grading-skipped",
             `run=${ctx.options.runId} task=${solvedCase.task.taskId} graded=${gradedCases.length}`,
@@ -512,10 +501,9 @@ async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> 
   return gradedCases;
 }
 
-/** A host-bound subset is authoritative even when every changed task returned no result. It is
- *  recorded as two counts; every rate and interval downstream is read back from them. */
+/** Measured difficulty, plus attempt and pass counts for the experiment's changed tasks. */
 function measuredExperiment(ctx: BatteryContext, gradedCases: readonly GradedCase[]): MeasuredDifficulty {
-  // Climb dive F5: admission-refused attempts stay in the tally; only non-results are censored.
+  // Admission-refused attempts stay in the tally; only non-results are censored.
   const observations = gradedCases.flatMap(({ record }) =>
     record.pass === null ? [] : [{ taskId: record.taskId, item: record.family, pass: record.pass }],
   );
@@ -541,8 +529,7 @@ function publishBattery(
   const { options } = ctx;
   const cases = gradedCases.map((graded) => graded.record);
   const unboundFindings = gradedCases.flatMap((graded) => graded.unboundFindings);
-  // An unbound tool result during measurement prevents a claim. Add it to the discrimination
-  // findings with claimable=false so Claim.create applies the shared refusal path.
+  // An unbound tool result prevents a claim through the shared discrimination refusal.
   const discrimination =
     unboundFindings.length === 0
       ? executed
@@ -557,8 +544,7 @@ function publishBattery(
     `correctness-model@${ctx.input.fingerprint.correctnessModelHash}`,
     options.backendPin,
     judgeCases,
-    // Offered eligible subjects, not completed observations: an abort must keep the unattempted
-    // remainder inside censusSize.battery.
+    // Offered subjects, so an abort keeps the unattempted remainder in the census size.
     { battery: judgeCaseCount },
   );
   const battery = recordBatteryRecord(ctx, {
@@ -593,8 +579,7 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
   }
   if (options.backendStartup !== undefined) ctx.evidence.write(BACKENDS_FILE, options.backendStartup);
 
-  // Prove the corpus before solver spend. A control's non-result stays one receipt, not an
-  // abort of the corpus (truss-run16-sol-0903); runControls owns that distinction.
+  // Prove the controls before solver spend; a control non-result is one receipt, not an abort.
   const discrimination = await measuredPhase(options.observer, "controls", "Control replay", () =>
     runControls(
       ctx.evaluate,
@@ -616,9 +601,7 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
     return { runId: options.runId, ...batteryClaimInput(battery, ctx.checkIdsByTask, ctx.corpus) };
   }
 
-  // Task ids become case-directory names below. validateTasks normally refuses unsafe ids;
-  // repeat the check for direct callers with an unvalidated list and throw before writing
-  // outside the run directory.
+  // Task ids become directory names; recheck for callers that bypassed validateTasks.
   const unsafeId = tasks.find((t) => !SAFE_TASK_ID.test(t.taskId));
   if (unsafeId) {
     throw new Error(
@@ -626,7 +609,6 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
     );
   }
 
-  // Concurrent solves own their submissions; ordered grading keeps one open verifier subject.
   const gradedCases = await solveAndGradeBattery(ctx);
   const subjects = judgeSubjects(ctx, gradedCases);
 
@@ -635,17 +617,10 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
     publishBattery(ctx, discrimination, gradedCases, [], subjects.length);
   }
 
-  let cleanupStopped = false;
-  try {
-    ctx.options.verifierLifetime?.assertUsable();
-  } catch (cause) {
-    if (!(cause instanceof VerifierOperationalStop)) throw cause;
-    cleanupStopped = true;
-  }
-
+  const verifierUsable = verifierStillUsable(ctx);
   const { judge } = options;
   const judgeCases =
-    judge === undefined || cleanupStopped
+    judge === undefined || !verifierUsable
       ? []
       : await measuredPhase(options.observer, "judge", "Judge census", () =>
           runJudgePhase({
@@ -657,8 +632,8 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
 
   const completed = publishBattery(ctx, discrimination, gradedCases, judgeCases, subjects.length);
   options.verifierLifetime?.assertUsable();
-  // Only host-bound environment failures classify the whole battery as environment-blocked. Publish first so
-  // a thrown non-result preserves every verdict; mixed cases remain the claim owner's decision.
+  // Only host-bound environment failures block the whole battery. Publishing first keeps every
+  // verdict if this throws; mixed batteries are the claim's decision.
   const blockedKinds = environmentBlockedBattery(completed.battery.cases, {
     discriminationClaimable: completed.discrimination.claimable,
     solverOriginCaseIds: new Set(

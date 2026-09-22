@@ -15,7 +15,6 @@ import {
 } from "../meta/filesystem.ts";
 import { basename, dirname, join, relative } from "../meta/path.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
-
 import { sha256 } from "../meta/digest.ts";
 import { hashJsonBytes, capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { RuntimeSignal } from "../meta/runtime-values.ts";
@@ -109,10 +108,8 @@ interface WorkshopProcess {
   output: string;
 }
 
-/** The process facts of a command the wall launched, recorded beside the reason: `null` says the
- *  wall refused before launch, an exit code says the command ran and chose it. Rounds 07-14 of a
- *  Sol run on 2026-08-22 needed this distinction from the evidence alone; output stays in the
- *  tool result. The ported row type in verifier-workshop-evidence.ts points here. */
+/** Process facts recorded beside the reason, so evidence alone tells a wall refusal (`null`
+ *  process) from a command that ran and chose its exit code. Output stays in the tool result. */
 export interface WorkshopProcessFacts {
   exitCode: number | null;
   signal: string | null;
@@ -263,9 +260,8 @@ class Workshop implements VerifierWorkshop {
     });
   }
 
-  /** Create a requested workshop directory through the same isolated cell that will use it.
-   *  The nearest existing ancestor is resolved first, so a symlink cannot turn convenient
-   *  auto-setup into a path escape. */
+  /** Creates a workshop directory inside the isolated cell. The nearest existing ancestor is
+   *  resolved first, so a symlink cannot turn creation into a path escape. */
   private async ensureDirectory(requested: string): Promise<string> {
     const lexical = workshopPath(this.root, requested);
     if (existsSync(lexical)) {
@@ -491,8 +487,7 @@ class Workshop implements VerifierWorkshop {
         if (outcome.stdout.includes("\0")) {
           throw new VerifierWorkshopRequestRefusal("workshop read admits text files only");
         }
-        // Checker sources can span thousands of lines, and the whole file rarely fits a tool result.
-        // The window carries its own line range, so a partial read cannot pass for a complete one.
+        // The window carries its line range, so a partial read cannot pass for a complete one.
         const window = readWindow(outcome.stdout, offset, limit);
         return { path: relative(this.root, target), bytes, sha256: sha256(outcome.stdout), ...window };
       },

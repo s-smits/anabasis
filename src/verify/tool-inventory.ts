@@ -1,15 +1,8 @@
 /**
  * The tool inventory: which installed executables a candidate snapshot's checks may run. It is
- * derived, never declared. A brief names tools by adapterId; this resolves each id against the
- * candidate workspace's `.toolchain` tree first and the host search path second, hashes the
- * executable, and records where it came from. A missing id is a `verifier-required` fact the
- * Builder can act on (install the tool); it is never a refusal of the check's logic.
- *
- * This replaces `correctness-model/engines.json` and its admission chain (2026-09-03). Of the 306
- * engine declarations written in the first three September days, every one named an interpreter
- * over a Builder-written script, and the firmware ones shipped their own `Arduino.h`; a declared
- * registry attested the interpreter, not the check, and let the author supply the world the
- * artifact was judged in.
+ * derived, never declared. Each adapterId resolves against the candidate workspace's `.toolchain`
+ * tree first and the host search path second, and its executable is hashed with its source. A
+ * missing id is a `verifier-required` fact the Builder can act on by installing the tool.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { openSync, readSync, closeSync, statSync } from "../meta/filesystem.ts";
@@ -62,9 +55,7 @@ function shebangCommand(path: string): string | null {
     .split(/\s+/)
     .filter((word) => word !== "");
   // `env` forwards to the first word that is neither one of its flags (`-S`, `-i`, `--`) nor a
-  // `NAME=value` assignment; the 2026-09-05 replay over 43 recorded tool shapes met none of these,
-  // but a synthetic `#!/usr/bin/env -S PYTHONUNBUFFERED=1 python3` read the assignment as the
-  // interpreter.
+  // `NAME=value` assignment.
   return basename(words[0] ?? "") === "env"
     ? (words.find(
         (word, index) => index > 0 && !word.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word),
@@ -81,11 +72,9 @@ export function toolProvenance(path: string): Pick<ToolEntry, "kind" | "interpre
   return { kind: "script", interpreter: command === "" ? null : basename(command) };
 }
 
-/** The bytes of the interpreter a script tool will run under, found the way the verifier cell finds
- *  it: an absolute shebang names its file, and `env` searches the cell's own path. eaf98f
- *  (2026-09-14) graded 148 census rows with a script whose tool digest never moved while its
- *  `python3` changed from 3.9 to 3.14 underneath it; the tool digest alone called both one
- *  environment. Undefined when the interpreter cannot be found, which the run itself then reports. */
+/** The digest of the interpreter a script tool runs under, found the way the verifier cell finds it:
+ *  an absolute shebang names its file, and `env` searches the cell's own path. A script's own digest
+ *  does not move when its interpreter changes. Undefined when the interpreter cannot be found. */
 export function interpreterDigest(path: string, toolTree: string | null): string | undefined {
   const command = shebangCommand(path);
   if (command === null || command === "") return undefined;
@@ -113,7 +102,7 @@ function resolveOne(
     // turn /usr/bin/cc into /usr/bin/git; hash the selected path without renaming it.
     const path = resolve(dir, id);
     if (!isExecutableFile(path)) continue;
-    const entry: ToolEntry = {
+    return {
       id,
       path,
       digest: sha256OfFile(path),
@@ -121,7 +110,6 @@ function resolveOne(
       ...toolProvenance(path),
       ...keyIfDefined("interpreterDigest", interpreterDigest(path, toolTree)),
     };
-    return entry;
   }
   return null;
 }
@@ -135,8 +123,9 @@ export function resolveToolInventory(input: ResolveToolInventoryInput): Resolved
   const envDirs = (Bun.env.PATH ?? "").split(":").filter((dir) => dir !== "" && isAbsolute(dir));
   const searchDirs = [
     ...treeDirs.map((dir) => ({ dir, source: "workspace-toolchain" as const })),
-    // `toolchainPathDirs()` stays inside the `??`: a caller that supplies its own directories is
-    // measuring a tree this process must not read.
+    // `toolchainPathDirs()` stays inside the `??`: a caller's own directories name a tree this
+    // process must not read.
+
     ...(input.pathDirs ?? [...new Set([...toolchainPathDirs(), ...envDirs])]).map((dir) => ({
       dir,
       source: "host" as const,

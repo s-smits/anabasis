@@ -3,19 +3,12 @@ import { basename, join } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 import { errorCode, errorMessage, type RuntimeSignal } from "./runtime-values.ts";
 
-/** Capture at load so replacing process.kill later cannot hide a surviving process group.
- *  test/trusted-runtime.test.ts replaces it and checks that the group is still detected. */
+/** Captured at load, so replacing process.kill later cannot hide a surviving process group. */
 const processKill = runtimeProcess.kill.bind(runtimeProcess);
 
 /**
- * How much output a captured command may produce before it is stopped.
- *
- * Bun 1.4.2 caps nothing by default — measured, an 80 MB stdout came back whole — so without this
- * a runaway command is a host process holding its entire output in memory. Past the cap Bun kills
- * the child, and `runSyncOrThrow` reports the capture rather than that kill, because the kill is a
- * race the child can win. Four callers spelled this number out beside a comment claiming the
- * default truncates at 1 MiB, which is Node's contract rather than Bun's, and none of them had
- * ever been reached.
+ * How much output a captured command may produce before it is stopped. Bun caps nothing by
+ * default, so without this a runaway command holds its entire output in host memory.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -52,8 +45,7 @@ type SpawnSyncOptions = {
 };
 
 /** Signal one exact controller-owned process identity: its group, or the process alone when it
- *  leads no group. Bubblewrap's confined command sits below the namespace init that took the
- *  session, so its own pid is the only identity the host can signal. */
+ *  leads no group (as under bubblewrap's namespace init). */
 export function killProcessGroupId(processGroupId: number, signal: RuntimeSignal): boolean {
   if (!Number.isSafeInteger(processGroupId) || processGroupId <= 1) return false;
   for (const target of [-processGroupId, processGroupId]) {
@@ -136,13 +128,8 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
   };
   try {
     const result = Bun.spawnSync(spawnOptions);
-    // Bun enforces `maxBuffer` by killing the child, and on a loaded host the child can finish
-    // first: the kill never lands, `signalCode` is null, and a capture that may be short comes
-    // back behind a zero exit — the silent truncation the cap exists to prevent, and a gate
-    // failure on 2026-09-20 under a load average of 26 on 12 cores. The captured length is the
-    // fact and the signal is the race, so a capture at or past the cap is the ending even where
-    // those bytes were all there was. Bun reads in 64 KiB chunks and does not clamp to the cap,
-    // so the length is a lower bound on what the command wanted to write.
+    // Bun enforces `maxBuffer` by killing the child, which can finish first and exit zero with a
+    // short capture. The captured length decides instead: a capture at or past the cap is capped.
     const { maxBuffer } = options;
     const cappedAt = maxBuffer !== undefined && result.stdout.length >= maxBuffer ? maxBuffer : null;
     return {
@@ -153,9 +140,7 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
       stderr: result.stderr,
     };
   } catch (error) {
-    // A command that never started has no streams of its own, so its stderr is why: without this
-    // the caller was told `git exited null` with nothing after the colon, for every missing tool,
-    // unreadable cwd and bad argument shape alike.
+    // A command that never started has no streams, so its stderr carries the spawn error.
     const reason = new TextEncoder().encode(errorMessage(error));
     return { cappedAt: null, exitCode: null, signal: null, stdout: EMPTY, stderr: reason };
   }
@@ -164,11 +149,9 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
 /**
  * Run a command and return its stdout bytes, throwing with the captured stderr on any failure.
  *
- * The four endings are four different problems and the message names which: a command that ran
- * and refused, one the host stopped on a timeout, one whose capture reached `maxBuffer`, and one
- * that never started. The cap is read first because it is the only one of the four a zero exit can
- * hide. `basename` keeps the resolved path `hostTool` hands over from turning every git refusal
- * into a sentence beginning with the Xcode developer directory.
+ * The message names the ending: a non-zero exit, a signal or timeout, a capture that reached
+ * `maxBuffer`, or a command that never started. The cap is read first because a zero exit can
+ * hide it. The command is named by its basename, not its resolved path.
  */
 export function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
   const result = runSync(cmd, options);
@@ -193,12 +176,8 @@ export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptio
 
 /**
  * Bundle one entry point into the worker file a confined child runs, and return that file's path.
- *
- * Three callers build a worker — the Pi Built child, the generated tool worker and the evaluator —
- * and until 2026-09-20 each spelled the same seven build options itself. The options are a decision
- * rather than a default: the child is launched by the returned name, and a `format`, `target` or
- * `splitting` that drifted in one copy would break that one child at runtime with no build error.
- * It lives beside the process-group owner because the bundle is the image those children run.
+ * Every worker shares these build options, since a drifted `format`, `target` or `splitting`
+ * would break its child at runtime with no build error.
  */
 export async function buildWorkerBundle(
   failure: string,

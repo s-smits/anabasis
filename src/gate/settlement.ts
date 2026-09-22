@@ -68,9 +68,9 @@ export function settleGateRun(input: GateSettlementInput): IterationStep {
       },
     };
   }
-  // The stall detector reads this hash to tell an exact repeat from a changed diagnosis. Owner,
-  // claim and the finding codes and paths belong in it; the per-finding detail does not, because a
-  // per-execution record id there makes an identical diagnosis read as new work (w26, five rounds).
+  // The stall detector reads this hash to tell an exact repeat from a changed diagnosis. It leaves
+  // out per-finding detail, whose per-execution record ids would make a repeat read as new work.
+
   const findingsHash = semanticFindingsIdentity(blocking, null);
   const evidence: IterationEvidence = {
     ordinal,

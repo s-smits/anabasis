@@ -11,42 +11,23 @@
  * The matcher excludes bare "aborted" and "timeout". A
  * stall after real tool calls is a slow but real attempt, and a timeout without a recognised
  * runtime message is a genuine (failed) attempt. The narrow exceptions require zero tool calls,
- * zero tool starts, and no accepted submit: the agent never reached the loop, so whatever it
- * "failed" at was never a task attempt (runtime-probe-14 004-L0 zero-tool aborts). live-run-08
- * added the second shape: a spend-limit outage made the SDK settle every turn without the declared
- * model billing anything, the provider-degraded markers matched neither the canonical matcher nor
- * the aborted/failed shape, and 50 provider-dead cases were booked as product fails — so a solve
- * whose every outer turn completed no provider result, with zero work, is classified on the
- * controller's own completed-turn count instead of on marker prose.
+ * zero tool starts and no accepted submit, so the agent never reached the loop: a turn that did
+ * not complete, or a solve whose every outer turn completed no provider result, judged on the
+ * controller's own completed-turn count rather than on marker prose.
  *
- * Three later gaps, each closed with one clause: the claude run's spend-limit wording ("out of
- * extra usage") filed three provider-limit cases as unaccepted; base-sol i02's close-coded
- * "WebSocket closed 1006" missed the `$` anchor (a numeric suffix is now admitted); the
- * campaigns -4/-5 codex thread-creation fatal ("Session data … looks corrupt or unreadable") recorded two
- * bare aborts with no owner — anchored to the thread-open wording, so a solver's own prose about
- * corrupt session data stays a genuine failed attempt.
- *
- * A fourth gap, 2026-09-03: during the OpenAI incident "Elevated errors across ChatGPT and Codex"
- * every Codex responses call returned 404 with an empty body. pi-ai words an empty-body error as
- * the bare HTTP status text, so the Built slot's errors read `["Not Found", "turn 1 failed"]`;
- * 404 was not in the status list and the bare text matched nothing, so run57-sol-0903's
- * battery i02 recorded 25 solver-kind non-results one by one instead of stopping after five
- * provider-kind ones and re-measuring once. The status list now carries 404, and the bare status
- * text is admitted only as a whole message (`^not found$`), so a solver's own "file not found"
- * prose stays a genuine failed attempt.
+ * Provider wordings are anchored so a solver's own prose does not match: the thread-open fatal
+ * binds to the thread-open wording, and an empty-body HTTP error, which pi-ai words as the bare
+ * status text, is admitted only as a whole message (`^not found$`).
  */
-
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
 
-/** The Codex app-server's thread-open fatal. No transport produces it since the slots moved onto
- *  pi, but recorded runs carry it, and a replay must still read those cases as non-results. The
- *  thread-open wording binds it: a bare "session data ... corrupt" clause also matches a solver's
- *  own output in a session-store domain, and that genuine failed attempt would leave the
- *  denominator. */
+/** The Codex app-server's thread-open fatal, which a replay of recorded cases still reads as a
+ *  non-result. The thread-open wording binds it, since a bare "session data ... corrupt" clause
+ *  could be a solver's own output. */
 export const CODEX_THREAD_OPEN_FATAL = /error creating thread[^\n]*session data[^\n]*(?:corrupt|unreadable)/i;
 
 /** Explicit provider allowance exhaustion also ends authoring retries. The SDK wrapper binds
- * its otherwise ambiguous "hit your limit" text to the provider (Opus alt1 i02, three cases). */
+ * its otherwise ambiguous "hit your limit" text to the provider. */
 export const PROVIDER_ALLOWANCE =
   /you'?ve hit your (?:(?:monthly|weekly) )?(?:spend|usage|session) limit|you'?ve hit your (?:monthly|weekly) limit|claude code returned an error result: you'?ve hit your limit\b|claude\.ai\/settings\/usage|upgrade to increase your usage limit/i;
 
@@ -108,7 +89,7 @@ export function solverNonResultReason(signals: SolverSignals): string | null {
     if (stopped !== undefined) {
       return `zero completed tool calls and zero tool starts with "${stopped}" and no accepted submit — the agent never reached the loop`;
     }
-    // The no-completed-result condition (live-run-08): every outer turn ended without a
+    // The no-completed-result condition: every outer turn ended without a
     // provider result, judged on the controller's completed-turn count instead of marker prose.
     // Zero starts and zero completions above restrict this exception to solves with no tool
     // work. Tool activity prevents this clause from removing a failed attempt from the count.

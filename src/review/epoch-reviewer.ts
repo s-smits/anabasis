@@ -1,29 +1,24 @@
 /**
- * The epoch reviewer examines whether measured passes reflect the requested capability or a
- * weakness in the evaluation. It reads tasks, agent code, the correctness model and protected
- * verifier material (operator decision 2026-08-15), alongside battery results when available.
- * The same reader can inspect an authoring checkpoint before measurement, where it assesses
- * source requirements without claiming that the draft has succeeded in a run.
+ * The epoch reviewer asks whether measured passes reflect the requested capability or a weakness
+ * in the evaluation. It reads tasks, agent code, the correctness model, protected verifier
+ * material and, when measured, battery results. At an authoring checkpoint it reviews the source
+ * alone and claims no run result.
  *
- * This file is the reading session, and a session is three questions in order.
+ * A session answers three questions in order:
  *
- *   May this review run at all?   `openSession` — the slot, the tree on disk, and whether this
- *                                 exact condition and procedure were already read to completion.
- *                                 Every no is recorded as `skipped` with its reason, so a campaign
- *                                 never reads an absent review as a clean one.
- *   What is the reviewer shown?   `orientation` and the three tools — read_source over a closed
- *                                 path set, one bounded probe, one finding recorder.
- *   What came back?               `recordedReview` — coverage, probes and, only from a turn that
- *                                 finished, the findings.
+ *   May this review run at all?   `openSession`: the slot, the tree on disk, and whether this
+ *                                 condition was already reviewed. Every no is recorded as
+ *                                 `skipped` with its reason.
+ *   What is the reviewer shown?   `orientation` and three tools: read_source over a closed path
+ *                                 set, a bounded probe and the finding recorder.
+ *   What came back?               `recordedReview`: coverage, probes and, only from a finished
+ *                                 turn, the findings.
  *
- * What a review is worth afterwards, and what the reviewer may record, belong together in
- * `epoch-review-findings.ts`.
+ * `epoch-review-findings.ts` owns what the reviewer may record and what earlier reviews prove.
  *
- * Its authority is limited: one finding tool, one bounded experiment, no claim naming a task, at
- * most one routable blocking harness defect per review, and no power over a pass, an acceptance, a
- * claim or a promotion. Its second effect is the issue dispute — a finding may argue that a
- * standing issue belongs to the evaluation rather than the harness, which suspends that issue in
- * the issue register so the next authoring pass does not rebuild the agent around it.
+ * The reviewer cannot change a pass, an acceptance, a claim or a promotion. It may record at most
+ * one blocking harness defect per review, and a finding may dispute a standing issue as belonging
+ * to the evaluation, which withholds that issue's agent advice.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
@@ -78,14 +73,11 @@ export interface EpochReviewInput {
   treeRoot: string;
   /** Null before measurement; the same reader then reviews source without a capability claim. */
   analysis: IterationAnalysis | null;
-  /** The latest recorded advice packet, or null when none exists. Two parts of it reach the
-   *  review: the issues it may dispute, and — at an authoring checkpoint — the counts of the
-   *  battery the packet was derived from. The packet this review's own battery produces is derived
-   *  after it runs, so nothing circular crosses. */
+  /** The latest recorded advice packet, or null. The review reads its standing issues and, at an
+   *  authoring checkpoint, its battery counts. */
   priorAdvice: RebuildAdvicePacket | null;
-  /** Whether the prior packet's battery measured the version the tree under review was seeded
-   *  from, where the caller can read it off the controller ledger. False means the packet
-   *  measured a candidate this tree is not; null leaves the comparison unmade. */
+  /** Whether the prior packet's battery measured the version this tree was seeded from; null when
+   *  that is not known. */
   priorAdviceOnSeededTree?: boolean | null;
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
@@ -103,8 +95,7 @@ export interface EpochReviewInput {
 type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
 type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
-/** A session that may read, with everything the read depends on, or one that may not and already
- *  knows what it owes its campaign. */
+/** A session admitted to read, with what the read needs, or a refused one with its evidence. */
 type OpenSession =
   | { admitted: false; evidence: EpochReviewEvidence }
   | {
@@ -115,10 +106,9 @@ type OpenSession =
       verifier: ReviewVerifierEvidence;
     };
 
-/** The settlement work a review owes beyond its source: each contested case with its direction,
- *  checks and artifact bytes, and each standing issue it may dispute. Bytes rather than the
- *  run-bound path identify a readable artifact, so remeasuring identical cases is not new work;
- *  an unreadable artifact contributes its path. */
+/** A digest of what the review must settle beyond its source: the contested cases and the
+ *  disputable issues. A readable artifact is identified by its bytes, so remeasuring identical
+ *  cases is not new work; an unreadable one contributes its path. */
 function obligationsDigest(input: EpochReviewInput, issues: readonly AdviceIssue[]): string {
   const bytes = (artifact: string | null) => {
     if (artifact === null) return null;
@@ -145,9 +135,8 @@ function obligationsDigest(input: EpochReviewInput, issues: readonly AdviceIssue
 /** The standing issues a review may dispute. */
 const disputableIssues = (input: EpochReviewInput) => (input.priorAdvice?.issues ?? []).filter(isStanding);
 
-/** Decide whether this review reads anything, and settle the condition it would read under. The
- *  verifier identity is part of that condition, so it is resolved before the reuse question is
- *  asked: the same product measured by a different verifier is a different condition. */
+/** Decide whether this review runs, and the condition it reads under. The verifier identity is
+ *  part of the condition, so it is resolved before checking for an earlier review. */
 function openSession(input: EpochReviewInput): OpenSession {
   const { analysis, repoRoot, treeRoot } = input;
   const analysisDir = join(campaignDir(repoRoot, input.slug), "analysis");
@@ -159,9 +148,8 @@ function openSession(input: EpochReviewInput): OpenSession {
           builtPin: analysis.identities.backendPin,
           verifierIdentity: null,
         });
-  // Every field a skipped or failed review still owes its campaign. `requestDigest` is the
-  // procedure's identity, so a review recorded under a different prompt or policy cannot stand in
-  // for this one; that is why the probe moved it to v5.
+  // The record a skipped review still writes. `requestDigest` identifies the procedure, so a review
+  // under a different prompt or policy cannot stand in for this one.
   const blank: EpochReviewEvidence = {
     schema: EPOCH_REVIEW_SCHEMA,
     slug: input.slug,
@@ -209,8 +197,7 @@ function openSession(input: EpochReviewInput): OpenSession {
   return { admitted: true, evidence, root, analysisDir, verifier };
 }
 
-/** Per-family passed/verified counts for review. A family that never fails may merit inspection,
- *  but its pass rate alone cannot establish an evaluation defect. */
+/** Per-family passed/verified counts, sorted by family. */
 function familyLine(analysis: IterationAnalysis): string {
   const rows = new Map<string, { verified: number; passed: number }>();
   for (const row of analysis.cases) {
@@ -235,8 +222,7 @@ function contestedArtifact(treeRoot: string, row: ContestedCase): string | null 
   return row.artifact === null ? null : relative(treeRoot, row.artifact);
 }
 
-/** The cases the Judge and the verifier settled differently, in the one shape both directions
- *  share: which side each took, its reason, and where the artifact is for the reviewer to open. */
+/** One line per case the Judge and the verifier settled differently, with the artifact to open. */
 function contestedLines(input: EpochReviewInput): string[] {
   const line = (label: string, row: ContestedCase, middle: string) =>
     `${label}: ${row.taskId} (${row.family}) ${middle}: ${row.rationale ?? "(no reason recorded)"}. Artifact: ${contestedArtifact(input.treeRoot, row) ?? "not recorded"}.`;
@@ -254,31 +240,8 @@ function contestedLines(input: EpochReviewInput): string[] {
   ];
 }
 
-/**
- * What an authoring checkpoint is told about measurement. A checkpoint has no battery of its own,
- * and until now it was told only that: it then reasoned about what a solver can reach from the
- * accept control, which its author pinned to the published limit by construction. Three
- * consecutive reviews of campaign 3fd52f9e-10 did exactly that. Each read the mass limit equal to
- * the accept control's own mass, probed that one catalogue size or one 0.1 m joint move loses the
- * check, concluded that "an all-fail battery is the likely outcome for any solver whose search
- * differs", and asked the next author to publish the limits with deliberate slack. Both batteries
- * measured on those limits passed 6 of 6, from 6.7 to 30.8 per cent under them; the third review
- * wrote its finding after the first of them had settled. The counts come from the packet the
- * caller already reads for its standing issues, so the fix carries a field rather than adding a
- * reader.
- *
- * Whose battery those counts are is the other half. The issue register advances on every measured
- * battery, held candidates included, because an issue that survived a held candidate is still an
- * issue — but the tree seeded for the next pass is then the version that candidate failed to
- * displace, not the one the counts measured. Run de8b40 called i02's 22 of 25 across five families
- * "the previous battery of this product" to a reviewer reading i01's six tasks in three, and the
- * reviewer spent a controller-defect finding on the contradiction it had been handed, closing with
- * "my other findings describe these six tasks, not the 25 that were measured". A finding it did not
- * need costs the next authoring pass a round, so the sentence now says which it is.
- */
-/** Whose battery the counts are. The controller ledger answered whether the packet's battery
- *  measured the version this tree was seeded from; null means it could not, and a null that fell
- *  through to the confident sentence was exactly the claim the null was there to withhold. */
+/** Whose battery the prior counts describe. A held candidate's battery did not measure the tree
+ *  under review, and an unknown answer is stated as unknown. */
 function whoseBattery(runId: string, counts: string, onSeededTree: boolean | null): string {
   if (onSeededTree === null) {
     return `A previous battery of this campaign (${runId}) ${counts}. Which product version it measured is not recorded, so read the counts as evidence about the campaign rather than as a description of these bytes.`;
@@ -287,6 +250,8 @@ function whoseBattery(runId: string, counts: string, onSeededTree: boolean | nul
   return `A previous battery of this campaign (${runId}) ${counts}. Its candidate was not adopted, so the tree you are reading is not the one those counts measured: read them as evidence about the campaign, never as a description of these bytes, and expect no family they name to be present here.`;
 }
 
+/** What an authoring checkpoint is told about measurement: the prior battery's counts, so the
+ *  reviewer does not infer solver reach from an accept control placed at a published limit. */
 function checkpointLines(advice: RebuildAdvicePacket | null, onSeededTree: boolean | null): string[] {
   const head =
     "Authoring checkpoint before measurement. No new battery result or verifier execution is supplied. Review the current source; previous scores and a clear gate do not prove the next result.";
@@ -303,20 +268,8 @@ function checkpointLines(advice: RebuildAdvicePacket | null, onSeededTree: boole
   ];
 }
 
-/**
- * Where a battery landed against the band the campaign climbs towards.
- *
- * The reviewer is the only component that reads the measured tree against the original request,
- * and until 2026-09-18 it was the only one that did not know what a battery aims for. It was shown
- * "20 of 25 verified cases passed" and asked to inspect a "perfect or near-perfect" battery; 20 of
- * 25 is neither, and it is eight passing cases above the top of the aim, which is the shape prior
- * 10 exists to catch. `placeOnBand` already owns that reading for the author's note and for the
- * climb readout, so the review reads the same one rather than inventing a second standard.
- *
- * The band is declared policy, stated to the Builder in every measurement note and in the starter
- * pack, so nothing protected crosses here. It is a lead and not a verdict: what a placement buys
- * the review is a question, and that question is still answered from the source.
- */
+/** Where a battery landed against the band, read through `placeOnBand` as the author's readout
+ *  reads it. The band is public policy; the placement is a lead, not a verdict. */
 function bandLine(passed: number, verified: number): string {
   const placement = placeOnBand(passed, verified, climbThresholds().band);
   return placement === null
@@ -324,21 +277,9 @@ function bandLine(passed: number, verified: number): string {
     : `Aim: ${bandReading(placement)}${lead(placement.toAim)}`;
 }
 
-/**
- * The question a placement opens. A battery on the aim opens none: it measured the limit it was
- * climbing towards, so there is nothing about its position to explain.
- *
- * The two sides do not open the same question, and until 2026-09-18 both were handed the one
- * written for the side above the aim, where the tasks demand too little of the request. Below the
- * aim the count says the opposite, and two things produce it without the tasks being hard: a rule
- * the checks apply that the brief does not publish, and a valid answer the writer tool cannot
- * express. Each fails every task, and neither can be told from difficulty by the count alone.
- *
- * This review is where they are separable. The Builder never sees a verifier verdict, so it reads
- * the same count either way; `probe_check` runs the declared checks here. The probe runs in the
- * opposite direction on the two sides: above the aim it looks for a check that does not move on a
- * field the request constrains, below it for one that moves on a field the brief leaves free.
- */
+/** The question a placement opens; a battery on the aim opens none. Above the aim the tasks may
+ *  demand too little of the request. Below it, an unpublished rule or a writer that cannot express
+ *  a valid answer fails every task just as hardness would, and `probe_check` can tell them apart. */
 function lead(toAim: number): string {
   if (toAim === 0) return "";
   return toAim < 0
@@ -395,9 +336,8 @@ function orientation(
   ].join("\n");
 }
 
-/** Resume a reader that stopped while pages remain, and count the resumption. It resumes only
- *  while reads are still arriving: a session that has stopped reading is finishing its synthesis,
- *  not stalling, and pushing it round the same loop again would buy nothing. */
+/** Resume a reader that stopped while pages remain, counting each resumption. It resumes only when
+ *  the reader made new reads since the last prompt; a reader that stopped reading is finishing. */
 function unreadSourcePrompt(state: ReviewState, sourcePaths: ReadonlySet<string>): () => string | null {
   let lastReads = 0;
   return () => {
@@ -414,8 +354,7 @@ function unreadSourcePrompt(state: ReviewState, sourcePaths: ReadonlySet<string>
 }
 
 /** What the session recorded. A failed turn keeps its reads, coverage and probes but drops its
- *  findings: a review that did not finish has not weighed what it read, and a half-formed finding
- *  would reopen an authoring area on its own. */
+ *  findings, since an unfinished review has not weighed what it read. */
 function recordedReview(
   evidence: EpochReviewEvidence,
   turn: ReaderTurn,
@@ -470,9 +409,8 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     }),
   );
   const sourcePaths = new Set([...inventory.files, ...Object.keys(verifier.tools), ...contested.keys()]);
-  // The tasks this review may name in a finding. A measured battery supplies them; a draft is read
-  // from its own task file, and a partial draft still gets a reading. An unreadable battery cannot
-  // grant public identities or complete coverage, so it is recorded as a missing core file.
+  // Task ids a finding may not name: from the battery, or from a draft's task file. An unreadable
+  // task file is recorded as a missing core file.
   let taskIds: string[] = input.analysis?.cases.map((row) => row.taskId) ?? [];
   if (input.analysis === null) {
     try {
@@ -481,8 +419,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       inventory.missing.push(TASKS_FILE);
     }
   }
-  // The reader rethrows a provider-budget stop, so the probe lifetime settles in `finally`; an
-  // unresolved cleanup is suppressed only behind that propagating failure.
+  // The probe lifetime closes in `finally`, because the reader rethrows a provider-budget stop.
   let failed = false;
   let turn: ReaderTurn;
   try {

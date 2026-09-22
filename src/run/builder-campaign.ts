@@ -1,5 +1,4 @@
 /** Fresh, repair and battery-only authoring through one persistent Builder and submit path. */
-
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { cpSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -12,7 +11,6 @@ import { WORKSPACE_DIR } from "../author/builder-memory.ts";
 import type { ExperimentSubmission } from "../author/experiment-proposal.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
-
 import {
   type BuilderSessionDeps,
   type BuilderSubmitOutcome,
@@ -98,8 +96,7 @@ export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicT
   expectedTasks: number;
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
-  /** The run's pass-rate band, so the difficulty sentences quote the counts the recorded placement
-   *  is actually read against. Absent, they fall back to the code-owned policy row. */
+  /** The run's pass-rate band, quoted by the difficulty sentences; absent, the policy row applies. */
   band?: [number, number];
   /** The controller's starting condition; accepted bytes determine the realised scope. */
   experiment?: HarnessAuthoring;
@@ -111,16 +108,16 @@ export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicT
   advisoryNote?: string;
   readHistory?: HarnessInspectBinding["readHistory"];
   maxTurns?: number;
-  /** Present when the controller's reopen decision lets harness_reset return a surface to the
-   *  starter seed in the session. The value keys idempotence: a resumed rebuild finds its own key in
-   *  workspace history and keeps its in-flight work, while new reopen evidence carries a new key. */
+  /** Present when a reopen lets harness_reset return a surface to the starter seed. The value keys
+   *  idempotence: a resumed rebuild finds its own key in workspace history and keeps its work. */
   rebuildReset?: string;
 }
 
 export interface BuilderCampaignDeps {
-  /** The Epoch Reviewer over an authoring tree: `repair` reads a validated product snapshot, `backstop` the live workspace. Its return is the public advice the Builder reads. */
+  /** The Epoch Reviewer: `repair` reads a validated snapshot, `backstop` the live workspace. Returns
+   *  the public advice the Builder reads. */
   reviewAuthoring?(root: string, trigger: "repair" | "backstop"): Promise<string>;
-  /** Test-only shortened backstop clock; production uses REVIEW_INTERVAL_MS (40 minutes). */
+  /** Test-only backstop clock; production uses REVIEW_INTERVAL_MS. */
   reviewIntervalMs?: number;
   open: BuilderSessionDeps["open"];
   recordSession?: BuilderSessionDeps["recordSession"];
@@ -129,17 +126,15 @@ export interface BuilderCampaignDeps {
   tools: BuilderSessionDeps["tools"];
   /** Construct path-bound probes only after submit has fixed the candidate directory. */
   toolsProbes: (candidateDir: string) => AgentToolsProbes;
-  /** The measured Built solver harness_trial rehearses one task with. Absent for a scripted
-   *  runtime with no Built slot; the tool then refuses rather than measuring a different agent. */
+  /** The measured Built solver for harness_trial; absent, the tool refuses. */
   builtSolver?: (providerBudget?: ProviderResourceBudget) => Solver;
   verifierLifetime?: VerifierLifetime;
   gates?: Gate;
   turnTimeoutMs?: number;
-  /** The optional members are retained only at the structural boundary; finite production
-   *  callers are rejected unless campaignAttemptGate proves the canonical pair. */
+  /** Finite production budgets must pass campaignAttemptGate's check of the canonical pair. */
   budget?: CampaignBudgetGate &
     Partial<Pick<SavedCampaignBudgetGate, "startAttempt" | "assertAttemptAvailable" | "campaignRoot">>;
-  /** Shared per-model-call gate used by both ordinary Builder and climb paths. */
+  /** Per-model-call gate. */
   attemptGate?: ModelAttemptGate;
   providerBudget?: ProviderResourceBudget;
   observer?: RunObserver;
@@ -162,34 +157,22 @@ type Accepted = {
 
 type Iteration = { ordinal: number; dir: string; iterationDir: string };
 
-/** Elapsed time only makes a review due at the next completed host tool call; the clock restarts
- *  when a review finishes.
- *
- *  Forty minutes, not the 120 of 2026-09-10, because 120 was longer than the sessions it bounded
- *  and so never fired. Across the eleven authoring sessions recorded under it, every review was
- *  triggered by the Builder's own `correctness_check`, whose median first call landed at minute 56
- *  of a session ending near minute 100; only one session ran past 120 minutes at all. Truss run
- *  truss-opus-20260916T151117729Z-064960 authored for 92 minutes with no preview and no review,
- *  then took three checks and two reviews in its last 18 minutes and submitted 7 minutes after the
- *  last one — 3,465 and 2,033 characters of advice arriving with no time left to act on them. A
- *  backstop that fires while the session can still spend is the point of having one. */
+/** One authoring round's submit, preview and review handling over the Builder workspace. */
 class BuilderCampaignController {
-  /** When this session hears from the Epoch Reviewer, and over which bytes. */
+  /** When the Epoch Reviewer is due, and over which bytes. A review becomes due only at the next
+   *  completed host tool call. */
   private readonly reviewClock: AuthoringReviewClock;
   readonly workspace: string;
   readonly iterations: IterationEvidence[] = [];
   accepted: Accepted | null = null;
   experimentProposal: ExperimentSubmission | undefined;
-  /** The contract-root identity this call submitted; undefined until a candidate was captured, so
-   *  a controller stop that inspected no tree reports none. */
+  /** The contract-root identity this call submitted; undefined until a candidate was captured. */
   private submittedTree: string | undefined;
   terminalClause: CampaignClause | null = null;
-  /** Immutable Git boundary for the whole controller invocation. A blocked iteration may not
-   * become the next attribution base, because its forbidden bytes were never accepted. */
+  /** The round's attribution base; a blocked iteration never becomes it. */
   private readonly roundBaseCommit: string;
   private lastRecordedTurn = 0;
-  /** What this session already knows about the candidates it has seen, and what that memory
-   *  permits it to spend next. */
+  /** Remembered refusals and strikes for the candidates this session has seen. */
   private readonly candidates: CandidateMemory<Refused>;
 
   constructor(
@@ -262,16 +245,13 @@ class BuilderCampaignController {
     }
     const candidate = checkCandidate(this.workspace, this.candidateCheckContext());
     this.experimentProposal = candidate.experimentProposal;
-    // A repaired executable is a new submission condition even when the candidate files did not
-    // change. Cache and no-op accounting share the condition key; malformed bundles retain their
-    // committed contract-root identity. Neither key changes with memory or proposal prose.
-    // One identity for these bytes, resolved once: the candidate memory keys its remembered refusals and
-    // no-op strikes on it, and the execution record now compares submissions on the same value.
+    // A valid candidate is keyed by its submission condition, so a repaired executable is new even
+    // with unchanged files; a malformed one by its contract-root tree. Refusal memory, no-op strikes
+    // and the execution record all use this one key.
     const tree = candidateTreeIdentity(this.workspace, candidate.commit);
     this.submittedTree = tree;
     const candidateId = candidate.ok ? conditionKey(candidate) : tree;
-    // Bundle findings, a missing installed tool among them, are ordinary repairable defects: the
-    // refusal keeps the session and the no-op resubmit strikes end it.
+    // Bundle findings are repairable: the refusal keeps the session, and no-op resubmits strike.
     if (!candidate.ok) {
       return this.strike(candidateId, {
         ...candidate,
@@ -279,11 +259,10 @@ class BuilderCampaignController {
       });
     }
     // Admission reads EXPERIMENT.json, which the key leaves out, so it is recomputed beside a
-    // remembered refusal (A → B → A) rather than remembered with it.
+    // remembered refusal rather than remembered with it.
     const cached = this.candidates.refusalFor(candidateId);
     if (cached !== undefined) {
       const admission = admissionFindings(candidate, this.pipelineInput());
-      // A remembered refusal of the executed stages for this call's commit, admission first.
       if (admission.length > 0 || cached.findings.length > 0) {
         return this.strike(
           candidateId,
@@ -299,8 +278,7 @@ class BuilderCampaignController {
       }
     }
     const { outcome, retryable } = await this.validate(candidate, turn);
-    // A typed runtime non-result or a host refusal says nothing about these bytes, so resubmitting
-    // them is not a no-op: campaign 199f6a55 (2026-09-08) struck the same commit twice for one worker crash.
+    // A runtime non-result or host refusal says nothing about these bytes, so it is not struck.
     if (outcome.ok || outcome.terminal === true || retryable) return outcome;
     return this.strike(candidateId, outcome);
   }
@@ -313,11 +291,9 @@ class BuilderCampaignController {
   }
 
   /**
-   * Run the pipeline on submit's own snapshot load, sharing the gate run. Every stage that can
-   * run reports; only a candidate clean through admission and conformance writes an iteration, so
-   * the persisted diagnosis history counts gate verdicts alone. Run 52 made 17 submissions in one
-   * provider turn, so the executed stages are remembered per condition, and a runtime non-result
-   * or host refusal is not.
+   * Runs the pipeline on submit's snapshot, sharing the gate run. Only a candidate clean through
+   * admission and conformance writes an iteration. Executed stages are remembered per condition; a
+   * runtime non-result or host refusal is not.
    */
   private async validate(
     candidate: CandidateSnapshot,
@@ -348,10 +324,8 @@ class BuilderCampaignController {
       settling !== null && report.harness !== null && report.gated !== null
         ? await this.settle(candidate, report.harness, report.gated, settling, turn)
         : this.unsettled(candidate, report);
-    // Safeguard 33 (stack simulation G8 and G9, 2026-09-06): the preview promises parity with
-    // submit on unchanged bytes. A clear check followed by a refused submit of the same snapshot
-    // says the two paths diverged, and nothing else records the pair. Admission is left out: it
-    // reads EXPERIMENT.json, which the preview judged separately and may have seen change since.
+    // Preview and submit must agree on unchanged bytes; a clear preview followed by a refused
+    // submit records the divergence. Admission is left out, since EXPERIMENT.json may have changed.
     if (clear !== undefined && !outcome.ok && executed.findings.length > 0) {
       safeguardTriggered(
         "33-preview-clear-submit-refused",
@@ -371,8 +345,7 @@ class BuilderCampaignController {
     return { ordinal, dir, iterationDir: join(this.input.campaignDir, dir) };
   }
 
-  /** The disk-replayed trailing run of blocked findings hashes, extended by this session's own
-   *  settled iterations under the one shared rule. */
+  /** The trailing run of blocked findings hashes from disk, extended by this session's iterations. */
   private trailingBlockedFindingsHashes(): string[] {
     return this.iterations.reduce(extendTrailingBlockedFindings, this.memory.trailingBlockedFindingsHashes);
   }
@@ -396,9 +369,8 @@ class BuilderCampaignController {
     };
   }
 
-  /** The continuous span from the round-entry commit, not only the candidate diff: a bundle refusal, a
-   *  settled gates-blocked iteration or a preview commit must not make forbidden bytes part of the
-   *  next baseline merely because the Builder left them untouched afterwards. */
+  /** The whole change since the round-entry commit, so bytes from a refused or blocked candidate
+   *  never become part of the baseline merely by being left untouched. */
   private attributableChange(candidate: CandidateSnapshot) {
     return candidate.baseCommit === this.roundBaseCommit
       ? {
@@ -410,12 +382,9 @@ class BuilderCampaignController {
       : workspaceChangeBetween(this.workspace, this.roundBaseCommit, candidate.commit);
   }
 
-  /** Submit without adoption, for correctness_check: the same candidate check, stages and gate on the same
-   *  snapshot, into `trials/<conditionKey>`. One outcome is remembered per candidate/tool condition and the attempt
-   *  slot is reserved before any stage runs (so blocked and non-result outcomes spend it too), so
-   *  unchanged bytes never buy the validation sequence twice. Changed bytes may preview without limit
-   *  (operator decision 2026-09-14: the Opus truss run reached the former ceiling in its first build and
-   *  submitted unchecked). */
+  /** Submit without adoption, for correctness_check: the same checks, stages and gate on the same
+   *  snapshot, into `trials/<conditionKey>`. One outcome is remembered per condition, so unchanged
+   *  bytes never run the sequence twice; changed bytes may preview without limit. */
   async preview(gates: Gate): Promise<GateReport> {
     const report = await previewCandidate(this.workspace, this.candidateCheckContext(), {
       input: this.pipelineInput(),
@@ -434,8 +403,7 @@ class BuilderCampaignController {
     return report;
   }
 
-  /** At a quiescent tool checkpoint, review validated repairs on their snapshot or the live draft
-   *  when due. Accepted products are reviewed after measurement. */
+  /** At a tool checkpoint, reviews a validated repair's snapshot or the live draft when due. */
   async reviewIfDue(): Promise<string | null> {
     if (this.deps.reviewAuthoring === undefined || this.terminalClause !== null) return null;
     const due = this.reviewClock.due();
@@ -468,8 +436,7 @@ class BuilderCampaignController {
       dir,
       priorBlockedFindingsHashes: this.trailingBlockedFindingsHashes(),
     });
-    // Charged before the copy, so the iteration's copy carries the run's charge marker and a
-    // replay counts the run once.
+    // Charged before the copy, so the copy carries the charge marker and a replay counts it once.
     const toolStrike =
       step.kind === "build-admissible" ? { terminal: false, findings: [] } : this.chargeToolNonResult(run);
     if (run.trialDir !== iterationDir) cpSync(run.trialDir, iterationDir, { recursive: true });
@@ -525,9 +492,8 @@ class BuilderCampaignController {
     return { outcome: refused, executed: { ...refused, findings: gated } };
   }
 
-  /** One strike per executed gate run whose host reached no completed tool run. At the declared
-   *  ceiling the campaign settles as the verifier-required terminal instead of opening another
-   *  authoring round against the same failing tool. */
+  /** One strike per gate run whose tool reached no completed run; at the ceiling the campaign ends
+   *  as `verifier-required`. */
   private chargeToolNonResult(run: GateRun) {
     const strike = this.candidates.chargeToolNonResult(run.trialDir);
     if (strike?.terminal === true) this.terminalClause = "verifier-required";
@@ -555,8 +521,7 @@ class BuilderCampaignController {
   }
 }
 
-/** Where a refusal is recorded: an admission refusal is a gate rule and a conformance refusal a
- *  bundle one, as submit's candidate evidence has always named them. */
+/** An admission refusal is recorded as `gates`, a conformance refusal as `bundle`. */
 function evidenceStage(admission: readonly unknown[], conformance: readonly unknown[]): Refused["stage"] {
   return admission.length === 0 && conformance.length > 0 ? "bundle" : "gates";
 }
@@ -580,18 +545,14 @@ function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport) {
   return { outcome, executed };
 }
 
-/** The advisory tools the session mounts beside submit: static inspection, one bounded
- *  solve-side rehearsal, the reopen reset and the pre-adoption validation sequence. None is an acceptance authority. */
+/** The advisory tools mounted beside submit: inspection, rehearsal, reset and the validation
+ *  preview. None accepts a candidate; all use submit's candidate-check context. */
 function mountAuthoringTools(
   input: BuilderCampaignInput,
   deps: BuilderCampaignDeps,
   controller: BuilderCampaignController,
   feedback: BuilderAuthorFeedback,
 ) {
-  // Compose inspection and trial where the candidate-check context is available. Both must use
-  // the same slug, task count and fresh-candidate contract as submit; a check under different
-  // rules could advise the wrong repair. Trial also receives the measured Built solver.
-  // The shared feedback channel carries inspection findings into later Builder turns, while acceptance remains with submit and its gates.
   const toolContext = controller.candidateCheckContext();
   const inspect = createHarnessInspectTool({
     workspace: controller.workspace,
@@ -614,9 +575,7 @@ function mountAuthoringTools(
     workspace: controller.workspace,
     ...keyIfDefined("resetKey", input.rebuildReset),
   });
-  // Submit without adoption: the controller's own validation sequence on the same workspace, candidate-check context, probe
-  // pack and gate, so the rows the Builder reads here are the rows a submit refusal would carry. A
-  // scripted session that mounts no gate has no validation sequence to preview and gets no such tool.
+  // Without a gate there is no validation sequence to preview.
   const { gates } = deps;
   if (gates === undefined) return [inspect, trial, reset];
   const correctnessCheck = createCorrectnessCheckTool({
@@ -638,10 +597,9 @@ function withCanonicalAttemptGate(deps: BuilderCampaignDeps): BuilderCampaignDep
 }
 
 /**
- * One persistent session authors files and repeatedly calls the same submit tool. Each successful
- * candidate snapshot is reconstructed from disk, conformance-probed, and passed through the adoption gates.
- * Repairable gate findings return through the tool result inside the same model context. Only a
- * clean gate settlement becomes build-admissible.
+ * One persistent session authors files and calls submit repeatedly. Each candidate snapshot is
+ * probed and gated; repairable findings return in the same session. Only a clean gate settlement
+ * becomes build-admissible.
  */
 export async function runBuilderCampaign(
   input: BuilderCampaignInput,
@@ -651,7 +609,7 @@ export async function runBuilderCampaign(
   const memory = resumeCampaignMemory(input.campaignDir, input.slug, hashJsonValue(input.kickoff));
   const refused = preSessionRefusal(input, memory);
   if (refused !== null) return refused;
-  // A spent durable cap is a pre-session terminal, before any provider turn (it was found only at first submit).
+  // A spent durable cap ends the campaign before any provider turn.
   if (deps.budget?.status() === "budget_limited") {
     return { buildAdmissible: false, clauses: ["budget-limited"], iterations: [] };
   }
@@ -664,7 +622,7 @@ export async function runBuilderCampaign(
   const controller = new BuilderCampaignController(input, deps, memory);
   const feedback = new BuilderAuthorFeedback();
   const authoringTools = mountAuthoringTools(input, deps, controller, feedback);
-  // One writer for checkpoints and the settled record; a host kill between writes leaves the snapshot as evidence.
+  // One writer for checkpoints and the settled record.
   const writeExecution = builderExecutionEvidenceWriter(input.campaignDir);
   let outcome: Awaited<ReturnType<typeof runBuilderSession>>;
   try {
@@ -681,12 +639,8 @@ export async function runBuilderCampaign(
         submit: (request) => controller.submit(request),
         feedback,
         onExecution: writeExecution,
-        // The execution record survives a host kill at this boundary; the authoring tree did not.
-        // Epoch 309ad53cab4a holds only its seed commit because the run died between gates, so
-        // hours of authored bytes exist in no history and no cycle series can read them. The
-        // salvage commit beginIteration already makes is the same one the next iteration would
-        // have made, it returns null on a clean tree, and attributableChange already spans the
-        // round base, so a gate's changed paths and its unchanged reading are untouched.
+        // Commit the authoring tree at each checkpoint so a host kill loses no authored bytes.
+        // attributableChange spans the round base, so these commits leave attribution unchanged.
         onCheckpoint: (evidence) => {
           writeExecution(evidence);
           beginIteration(controller.workspace, "checkpoint");

@@ -5,16 +5,8 @@
  * Two rules end repeated work. The in-session no-op counter strikes a byte-identical resubmit of
  * a refused condition (POLICY.loop.noopSubmitStrikes); the persisted identical-diagnosis ceiling
  * counts refused authoring passes across rounds (POLICY.loop.stalledFindingsRepeats). Each repeat
- * below its ceiling is steered with its count. One repeat used to end a session outright: runs w26
- * and w28 each died on a single byte-identical resubmit whose transcript already recorded a
- * concrete next move. The changed-tree cycle strike and the no-submit strike ended on 2026-09-14
- * (operator decision): a changed tree with the same diagnosis is ordinary repair, not a stall.
- *
- * Run 52 paid for census and F2 seventeen times in one provider turn on bytes it had already
- * checked; run 35 made 141 submissions; campaign 199f6a55 struck the same commit twice for one
- * worker crash it did not cause; run25-sol-0830 refused 22 submits over eleven no-verdict
- * records on eleven different trees, so no candidate identity ever repeated while one tool kept
- * failing. The tool no-verdict count keeps its own owner (tool-non-result.ts) because its count
+ * below its ceiling is steered with its count. A changed tree with the same diagnosis is ordinary
+ * repair, not a stall. The tool no-verdict count has its own owner (tool-non-result.ts) because it
  * outlives a session.
  */
 import type { AuthorRepairFinding } from "../author/campaign-types.ts";
@@ -64,9 +56,9 @@ export function findingsRepeatRun(
   return priorBlockedFindingsHashes.length - differs;
 }
 
-/** The steering between the second identical diagnosis and the ceiling. A Sol run on 2026-08-22
- *  recorded one findings hash five rounds in a row on five different trees and nothing told the
- *  author the diagnosis had not moved. Projected where it is rendered. */
+/** The steering between the second identical diagnosis and the ceiling, so the author learns the
+ *  diagnosis has not moved. Projected where it is rendered. */
+
 export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {
   const ceiling = POLICY.loop.stalledFindingsRepeats;
   return {

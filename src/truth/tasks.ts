@@ -3,9 +3,8 @@
  * the public fields reaches an agent.
  *
  * Every finding names a path, an id, a count or a key shape, so it survives author projection like
- * the brief and controls diagnostics beside it. Run 36 attempt 2 shows the cost of the unmarked
- * default: the battery kept a self-invented task shape through 16 submits because all eight
- * findings reached the Builder as one `generated-execution-unclassified` label.
+ * the brief and controls diagnostics beside it, rather than reaching the Builder as the
+ * detail-free `generated-execution-unclassified` label.
  *
  * The field gate runs alone — the rules below it read fields it is the only proof of. After it,
  * one pass binds each task to the checks applicable to it, and each rule reads those rows. None of
@@ -63,8 +62,8 @@ export interface TaskValidationContext {
   /** The smallest accepted size when the round leaves the count to the Builder; absent when the ask
    *  states one size. */
   minTasks?: number | null;
-  /** New authoring enforces public variation. Previously fingerprinted trees retain their
-   * recorded policy. */
+  /** True for new authoring, which enforces public variation; a fingerprinted tree keeps its
+   *  recorded policy. */
   authoring?: boolean;
 }
 

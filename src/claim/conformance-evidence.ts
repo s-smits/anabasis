@@ -28,10 +28,9 @@ export type ConformanceEvidence = {
     generatedSourceDigest: string;
     workerPolicyIdentity: string;
     registrationDigest: string;
-    /** The label, description, input schema and execution mode offered for each domain tool.
-     *  The probe requires the same digest on every task. Before each measured case,
-     *  `workerBindingRefusal` checks it again, preventing changed tool descriptions or schemas
-     *  from being served under evidence for the original contract. */
+    /** The label, description, input schema and execution mode offered for each domain tool. The
+     *  probe requires the same digest on every task, and `workerBindingRefusal` rechecks it before
+     *  each measured case. */
     toolSchemaDigest: string;
     artifactWriterNames: string[];
   };

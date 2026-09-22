@@ -11,10 +11,8 @@ import { isRecord } from "../meta/json-shape.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 import { EXPERIMENT_FILE } from "./builder-memory.ts";
 
-/** Author claims about the next experiment, never host-certified difficulty or a verdict. The target
- * is bound before outcomes: a verified-pass count over the submitted battery's own slots, whose
- * denominator the host derives from the captured measurement. The host derives what the bytes
- * moved. */
+/** Author claims about the next experiment, never a verdict. The target is a verified-pass count
+ *  bound before outcomes; the host derives its denominator and what the bytes moved. */
 const ExperimentProposalSchema = Type.Object(
   {
     scope: Type.Union([Type.Literal("tasks"), Type.Literal("product")]),
@@ -77,7 +75,7 @@ function parseExperimentProposal(value: unknown): Parsed {
   return { ok: true, proposal };
 }
 
-/** Historical intent remains author text, but only a captured, digest-bound declaration crosses. */
+/** A recorded submission, or null unless it parses and its digest matches. */
 export function parseExperimentSubmission(value: unknown): ExperimentSubmission | null {
   if (!isRecord(value)) return null;
   const { digest, ...proposal } = value;
@@ -85,7 +83,7 @@ export function parseExperimentSubmission(value: unknown): ExperimentSubmission 
   return parsed.ok && digest === hashJsonValue(parsed.proposal) ? { ...parsed.proposal, digest } : null;
 }
 
-/** Capture intent once, independently of candidate identity. Rewording this file is not progress. */
+/** Captures and digests EXPERIMENT.json, independently of candidate identity. */
 export function captureExperimentSubmission(
   workspace: string,
 ): { ok: true; experiment: ExperimentSubmission } | { ok: false; findings: ContractFinding[] } {

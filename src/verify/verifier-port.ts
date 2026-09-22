@@ -1,10 +1,8 @@
 /**
- * Tool-run types. The correctness model runs in a fresh confined process. When a check needs
- * external software it asks the host to run an installed tool over the submitted artifact; the
+ * Tool-run types. A check that needs external software asks the host to run an installed tool; the
  * host resolves the executable, applies isolation, starts the process and records its result.
- * The check reads that result. External evidence binds tool inputs to declared artifact/public bytes. Authored
- * computation may construct private test inputs from its check-local operands; the receipt
- * keeps that mode explicit rather than calling an authored simulator independent grounding.
+ * External evidence binds tool inputs to declared artifact and public bytes; authored computation
+ * may build private inputs from its check-local operands, and the receipt names which mode ran.
  */
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { VerifierCleanup } from "./verifier-lifetime.ts";
@@ -13,10 +11,7 @@ import type { BriefTruthCheck } from "../truth/brief.ts";
 /**
  * What either wall mechanism is asked to confine: one resolved command and its arguments, the
  * directory it runs in, the exact files it may read and the roots those reads may come from.
- *
- * Darwin, Bubblewrap, the read preparation both share and the dispatch that selects between them
- * each declared these five fields for themselves until 2026-09-20. A field added to one of four
- * copies is a field the other three silently drop.
+ * Declared once so Darwin, Bubblewrap and their shared read preparation cannot drift.
  */
 export interface VerifierConfinementRequest {
   workdir: string;
@@ -35,9 +30,7 @@ export interface ToolEntry {
   digest: string;
   /** Where the id resolved: the candidate workspace's `.toolchain` tree, or the host PATH. */
   source: "workspace-toolchain" | "host";
-  /** What the executable bytes are: a compiled binary, or a text script behind a shebang. Every
-   *  truss battery of 2026-09-04 was graded by a 179-line Python file the Builder wrote into
-   *  `.toolchain/bin`; `source` alone called it the same thing as a downloaded cross compiler. */
+  /** A compiled binary or a text script behind a shebang, which `source` alone cannot tell apart. */
   kind: "binary" | "script";
   /** The shebang command's basename for a script (`python3`, `sh`); null for a binary. */
   interpreter: string | null;
@@ -65,8 +58,7 @@ export interface ToolRunRequest {
   files?: Record<string, string>;
   /** Omit for no input. Supplied bytes, including an empty string, obey the same binding as `files`. */
   stdin?: string;
-  /** Timeout for this run: defaults to and is capped at 300_000 ms (`TOOL_TIMEOUT_CEILING_MS`).
-   *  Set a shorter one for a tool that should settle quickly. */
+  /** Timeout for this run; defaults to and is capped at `TOOL_TIMEOUT_CEILING_MS`. */
   timeoutMs?: number;
 }
 
@@ -85,9 +77,8 @@ export interface ToolRunResult {
 }
 
 /**
- * Host-provided execution context: the subject being verified. The runner binds it around
- * every evaluate() call; generated code cannot see or set it, so a tool always runs over the
- * artifact the runner is verifying.
+ * The subject being verified, bound by the runner around every evaluate() call. Generated code
+ * cannot see or set it, so a tool always runs over the artifact the runner is verifying.
  */
 export interface VerifierSubject {
   /** Controller-selected applicable checks. Null is reserved for direct host probes. */
@@ -185,16 +176,15 @@ export interface ExecutedCheckBinding {
   adapterId: string;
 }
 
-/** The evaluator-facing contract — run and nothing else. The artifact comes from the bound
- *  subject, and evidence readers live on the runner's handle where generated code cannot reach
- *  them. A port is created by exactly one evaluate scope and closes over it. */
+/** The evaluator-facing contract. Evidence readers live on the runner's handle, out of generated
+ *  code's reach; each port belongs to exactly one evaluate scope. */
 interface VerifierPort {
   /** Run an installed tool for one truth check inside this scope's cell. Throws on an unknown
    *  toolId or empty checkId — authoring defects, never environment facts. A call made after the
    *  owning scope closed fails closed as a sandbox non-result without spawning. */
   run(request: ToolRunRequest): Promise<ToolRunResult>;
-  /** Close the scope now, before the evaluate returns: a run still in flight completes for its
-   *  evidence row but binds nothing. Used when the evaluator returned with a run it never awaited. */
+  /** Close the scope before the evaluate returns: a run still in flight records evidence but binds
+   *  nothing. */
   abandon(): void;
 }
 
@@ -202,9 +192,9 @@ interface VerifierPort {
  *  its port, and closes it in `finally` — on return, non-result and throw alike. */
 export interface EvaluationScopeHandle {
   port: VerifierPort;
-  /** Close the scope and settle runs still in flight before evidence is written. Remove cells
-   *  only after cleanup is confirmed, and report how many invocations were pending at close.
-   *  More than zero means the evaluator returned before reading all its tool results. */
+  /** Settle runs still in flight, remove cells once cleanup is confirmed, and report how many
+   *  invocations the evaluator left unread. */
+
   close(): Promise<{ pendingInvocations: number; cleanup?: VerifierCleanup }>;
 }
 

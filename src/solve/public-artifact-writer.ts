@@ -48,15 +48,11 @@ function writerNode(node: PublicArtifactSchemaNode): TSchema {
   );
 }
 
-/** The model-visible structured writer contract. It is derived from the same compiled schema that
- *  submit enforces, so a generated tool can no longer narrow numbers/strings or widen object and
- *  file-map keys behind a second hand-written schema. */
+/** The model-visible structured writer contract, derived from the same compiled schema submit
+ *  enforces, so a generated tool cannot narrow or widen it behind a second schema. */
 export function publicArtifactWriterParameters(schema: PublicArtifactSchema): TSchema {
-  // The controller compiled and recorded this schema before the canonical worker frame was built.
-  // Canonical framing sorts object keys, while the schema's existing hash deliberately commits to
-  // compile-time insertion order, so re-running the storage validator in the child would reject
-  // the same schema solely because its wire representation is canonical. The child consumes the
-  // already authenticated root and the parent retains the original hash for binding evidence.
+  // The schema is not re-validated here: canonical framing sorted its keys, so its hash, which
+  // commits to insertion order, would no longer match. The parent keeps the original hash.
   return writerNode(schema.root);
 }
 

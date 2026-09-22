@@ -1,12 +1,10 @@
 /**
- * Check the fingerprinted candidate's census: required task count, control coverage and
- * discrimination, followed by F2 reference solvability. This gate was extracted from
- * harness-build.ts to keep the checks together while that module handles build orchestration.
- * Results are recorded for the candidate and returned as authoring feedback.
+ * The census gate over a fingerprinted candidate: task count, control coverage and discrimination,
+ * and the F2 reference solve. Results are recorded beside the candidate and returned as authoring
+ * feedback.
  */
 import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { existsSync, readFileSync, readdirSync } from "../meta/filesystem.ts";
-
 import { join, relative, sep } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { BuiltHarness, CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
@@ -41,13 +39,12 @@ interface CensusGateOptions {
   probeControls: ProbeControls;
   /** Required battery size; the census must cover the complete task set. */
   expectedTasks: number;
-  /** F2: full-task reference-solve census, run beside the control census. It also
-   *  carries the representation census, which reads F2's witnesses and returns `brief` findings
-   *  of its own — two decisions behind one slot, because only there are the witnesses in hand. */
+  /** F2 reference solve of every task, run beside the control census. It also runs the
+   *  representation census, which needs F2's witnesses. */
   solvability?: SolvabilityCensusGate;
-  /** Wait before the one fresh execution an environment-owned refusal earns; tests pass 0. */
+  /** Wait before the one retry an environment-owned refusal earns; tests pass 0. */
   toolRetryWaitMs?: number;
-  /** The census wall in milliseconds; unset reads ANA_CENSUS_WALL_MS, then the candidate's agent/config.yaml. */
+  /** Census wall in milliseconds; unset reads ANA_CENSUS_WALL_MS, then agent/config.yaml. */
   censusWallMs?: number;
 }
 
@@ -58,29 +55,21 @@ type CensusEvidence = {
   tasks: number;
   expectedTasks: number;
   findings: ContractFinding[];
-  /** Advisory rows the gate returned beside its verdict: the unpublished-name screen and the
-   *  representation census. They reach the Builder in-session and select no owner, so this field
-   *  is the only durable trace that a screen fired. Absent when the gate exited before the screen
-   *  ran. */
+  /** Advisory rows returned beside the verdict; the only durable trace that a screen fired.
+   *  Absent when the gate exited before the screens ran. */
   advisory?: CampaignFeedback[];
-  /** Public results from the live control check. Hidden values and verifier detail stay private.
-   * A missing list stays missing instead of becoming zero controls. */
+  /** Public results of the live control check. A missing list is not zero controls. */
   controlReceipts?: PublicControlReceipt[];
-  /** Per declared tool-backed check: how often the host ran that tool for it, and how many rejects
-   *  the check blocked. Both are public counts; zero runs is the refusal above. */
+  /** Per tool-backed check: how often the host ran its tool and how many rejects it blocked. */
   toolCheckCoverage?: ToolCheckCoverage[];
-  /** What each check cost this census in dispatches, wall time and attested tool runs. The author
-   *  reads it back through `correctness_check`, which is the only place a check's own price is
-   *  visible while there is still session left to change it. */
+  /** Each check's cost in dispatches, wall time and tool runs, read back by `correctness_check`. */
   checkCost?: CheckCost[];
-  /** Every blocking row behind a `fail`, by owner and public finding codes. `findings` above holds
-   *  only the executed control census; the battery count, reject coverage and F2 rows blocked 44
-   *  of 46 recorded census fails on this host while `findings` stayed empty, so the fail said nothing. */
+  /** Every blocking row behind a `fail`, by owner and finding codes; `findings` holds only the
+   *  control census. */
   blocking: Array<{ owner: FeedbackOwner; claim: string; codes: string[] }>;
   verdict: "pass" | "fail" | { kind: "non-result"; evidence: TracePointer };
-  /** The protected non-result file, bound by digest, when a tool run the author chose failed and
-   *  the verdict is an ordinary `fail`. The environment path binds the same file through the
-   *  verdict pointer; without this a candidate failure would leave it merely adjacent on disk. */
+  /** The protected non-result file, bound by digest, when an authored tool run failed and the
+   *  verdict is an ordinary `fail`. */
   verifierNonResultEvidence?: TracePointer;
 };
 
@@ -89,9 +78,7 @@ type EnvironmentEvidence =
   | { kind: "vendor-resolution-broken"; package: string; detail: string }
   | { kind: typeof TOOL_REFUSED_CODE; detail: string };
 
-/** One gate call: what it runs against, and the options the gate was made with. Every settlement
- *  below needs the same three of these, so they travel together rather than as a parameter prefix
- *  repeated down the chain. */
+/** One gate call: its subject and the options the gate was made with. */
 type CensusContext = {
   options: CensusGateOptions;
   harness: BuiltHarness;
@@ -101,8 +88,7 @@ type CensusContext = {
   scope: GateScope;
 };
 
-/** What one gate call covers. A candidate whose generated tools did not load or conform still
- *  gets its control census, which runs the evaluator and never the tools; F2 needs the tools. */
+/** What one gate call covers. The control census never runs generated tools; F2 does. */
 export interface GateScope {
   referenceSolve: boolean;
 }
@@ -112,8 +98,7 @@ type CensusStage = "controls" | "reference solve";
 /** The longest a cut census waits for its started controls or reference tasks to finish. */
 const CENSUS_SETTLE_GRACE_MS = 60_000;
 
-/** What one census attempt finished before a stage failed. Its public rows and control receipts
- *  stay beside the failure instead of being discarded with the failed sibling. */
+/** What one census attempt finished before a stage failed; recorded beside the failure. */
 interface Completed {
   probe?: ProbeControlsResult;
   rows: CampaignFeedback[];
@@ -126,8 +111,8 @@ interface CensusFailure {
   completed: Completed;
 }
 
-/** The operator's override, resolved once when the gate is made so a malformed value refuses before
- *  any session spends; null leaves the wall to the candidate's `gate.census_minutes`. */
+/** The operator's wall override, resolved when the gate is made so a malformed value refuses before
+ *  any spend; null leaves the wall to the candidate's `gate.census_minutes`. */
 function censusWallOverrideMs(explicit: number | undefined): number | null {
   const raw = Bun.env.ANA_CENSUS_WALL_MS;
   if (explicit === undefined && raw === undefined) return null;
@@ -149,11 +134,9 @@ class CensusWallExceeded extends Error {
   }
 }
 
-/** One wall per census attempt, raced against each stage that runs tools. The control census and
- *  F2 run side by side, so the wall names the controls while they are still running and the
- *  reference solve otherwise. At the wall no stage admits a further control or reference task and
- *  none writes evidence; `settle` then waits a bounded grace for the started ones, so the next
- *  submit does not overlap their tool cells. */
+/** One wall per census attempt, raced against each stage that runs tools. It names the controls
+ *  while they run and the reference solve otherwise. Past the wall no stage starts new work;
+ *  `settle` waits a bounded grace for started work so the next attempt does not overlap it. */
 function censusWall(wallMs: number) {
   const running = new Set<CensusStage>();
   let stopped = false;
@@ -189,11 +172,8 @@ function censusWall(wallMs: number) {
   };
 }
 
-/** Every census record, pass or fail: the corpus counts, whatever the controls completed, and the
- *  rows behind the verdict. Conformance is persisted beside it (gap closed 2026-07-26: readiness
- *  could only ever read conformance-unprobed); adoption carries it into the domain tree.
- *  Conformance is independent of the host call, so a later census non-result must not erase its
- *  completed evidence. */
+/** Every census record, pass or fail: corpus counts, completed control results and the rows behind
+ *  the verdict. Conformance evidence is written beside it whatever the census verdict. */
 function persistCensus(
   { options, harness, iterationDir }: CensusContext,
   feedback: readonly CampaignFeedback[],
@@ -228,8 +208,7 @@ function persistCensus(
   }
 }
 
-/** A failure row first, then every completed row; the settled controls keep their receipts,
- *  coverage and host rows. */
+/** A failure row first, then every completed row. */
 function persistFailure(
   context: CensusContext,
   failure: CampaignFeedback[],
@@ -243,9 +222,8 @@ function persistFailure(
 }
 
 /**
- * One settlement for a census the host environment refused: the recorded evidence behind a digest
- * pointer, and one environment-owned refusal. Nothing else is written, so an F2 outage leaves no
- * solvability.json — which is what keeps adoption closed, readiness requiring that file to exist.
+ * Settles a census the host environment refused with one environment-owned row. No solvability.json
+ * is written, which keeps adoption closed.
  */
 function settleEnvironment(
   context: CensusContext,
@@ -264,8 +242,7 @@ function settleEnvironment(
   );
 }
 
-/** The @ana package specifiers a generated directory's own sources quote, node_modules excluded.
- *  Only these need to resolve: a bundle that imports nothing has no resolution requirement. */
+/** The @ana package specifiers a generated directory's own sources quote, node_modules excluded. */
 function importedAnaPackages(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const names = new Set<string>();
@@ -280,21 +257,7 @@ function importedAnaPackages(dir: string): string[] {
   return [...names].sort();
 }
 
-/**
- * Generated modules must load the controller's own vendor bytes. Two recorded failures share that
- * one condition: run 52's workspace @ana replacements shadowed the vendor links (seven repairs
- * attributed to the Builder), and run w29's snapshot sat under a campaigns/ symlink whose parent
- * lookup never reached them (four repairs). Ask Bun to resolve the packages directly:
- * resolve every @ana package the generated sources import, from the directory that imports it,
- * and compare entry bytes with the host's own resolution.
- *
- * Where resolution points determines the owner. Inside the candidate workspace it is the Builder's
- * own stand-in — run50-opus (2026-09-02) pointed tsconfig `paths` at `scratch/shim` after its
- * tests could not load the barrel — and the remedy is public, so it is a blocking Builder finding
- * that the next authoring turn can act on. Anywhere else, or a resolution that throws, is the
- * environment: the campaign ended after one turn on that terminal in run50, with 29 minutes of
- * authoring behind it, for a defect the Builder could have undone in one command.
- */
+/** A workspace file shadows a vendored package: a blocking finding the Builder can undo. */
 function settleShadow(context: CensusContext, dir: string, name: string, shadow: string): CampaignFeedback[] {
   return persistFailure(
     context,
@@ -318,13 +281,16 @@ function settleShadow(context: CensusContext, dir: string, name: string, shadow:
   );
 }
 
+/**
+ * Generated modules must load the controller's own vendor bytes. Each @ana package the generated
+ * sources import is resolved from the importing directory and its entry bytes compared with the
+ * host's. A resolution into the workspace is the Builder's shadow; anywhere else, or a resolution
+ * that throws, belongs to the environment.
+ */
 function settleModuleResolution(context: CensusContext): CampaignFeedback[] | null {
   const { slugDir } = context;
-  // Anchor each Bun probe where the importing code lives so a root-anchored probe cannot miss a
-  // local package shadow.
-  // The @ana packages the controller itself declares. Only these are environment property: an
-  // invented or misspelt @ana specifier in generated code is an authoring defect and stays with
-  // the generated-module-load finding its own probe raises.
+  // Only packages the controller declares are checked here; a misspelt @ana specifier is an
+  // authoring defect that the module-load probe reports.
   const host =
     /* SAFETY: the controller's own package.json; only optional `dependencies` is read and its keys are filtered by prefix. */ capturedJsonParse(
       readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
@@ -363,28 +329,10 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 }
 
 /**
- * A tool run that started and then failed is the Builder's defect, not the environment's.
- *
- * Run truss-w37-sol declared `node checker.js contract` and the host ran it in a cell where
- * `checker.js` was never materialised: exit 1, MODULE_NOT_FOUND, no verdict. Run w37-opus met
- * a pre-spawn refusal. Both settled as `environment` and both ended their campaign with no
- * candidate and no battery — in the opus case discarding two earlier iterations that had produced
- * ordinary repairable findings.
- *
- * The host now records every outcome kind itself, so the gate uses it for repair
- * ownership: `timeout` and `crash` are the run of a tool the evaluator chose over inputs the
- * artifact produced, which the author can act on; `sandbox` and `verifierUnavailable` are the OS
- * isolation or installed tool failing before or around execution, attributed to the environment
- * by verifier-nonresult.ts. Generated tools cannot choose their own host outcome classification.
+ * What the author may read about a failed tool run: identities it wrote itself and host-measured
+ * process facts (how it ended, duration, output sizes, a `sandbox` reason) plus the cell facts it
+ * cannot observe from its own session. Tool stdout and stderr stay protected.
  */
-
-/** What the author may read about it: the identities it wrote itself and the facts the host
- *  measured around the process — how it ended, how long it ran, how many bytes it wrote, and a
- *  `sandbox` reason, which is host-authored text about the request (a file outside the cell, a
- *  changed tool digest, an unavailable wall). Tool stdout and stderr stay protected with the stderr
- *  tail. The cell facts are what the Builder cannot observe from its own session, where the same
- *  command works (sol-fix 2026-08-22 ran eight rounds on a tool that needed HOME). A solvability
- *  subject is a task id, so only a control names one. */
 export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): string {
   const subject = evidence.phase === "discrimination" ? ` on control "${evidence.subjectId}"` : "";
   const reason =
@@ -404,30 +352,26 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
   return `Tool "${evidence.toolId}" (${evidence.toolSource}, run as \`${[evidence.command, ...evidence.args].join(" ")}\`) reached no completed run for check "${evidence.checkId}"${subject} (attempt ${evidence.attempt}): outcome "${evidence.outcome}"${reason}. Process facts: ${ended}, ${evidence.durationMs} ms, ${evidence.stdoutBytes} stdout bytes, ${evidence.stderrBytes} stderr bytes.${advice}`;
 }
 
-/** Which census met the failure. Host structure, so it crosses to the author; the kind, tool and
- *  subject stay in the evidence. */
+/** Which census met the failure; the kind, tool and subject stay in the evidence. */
 const censusName = (error: VerifierExecutionNonResult): string =>
   error.evidence.phase === "solvability" ? "solvability census" : "control census";
 
-/** A tool run that reached no completed run, wherever under this gate it happened. Which census
- *  met it is host structure and crosses; the kind, tool and subject stay in the evidence. */
+/**
+ * A tool run that started and failed (`timeout`, `crash`) is the Builder's to repair; the host,
+ * not the generated tool, classifies the outcome.
+ */
 function settleNonResult(
   context: CensusContext,
   error: VerifierExecutionNonResult,
   completed: Completed,
 ): CampaignFeedback[] {
-  // One name, shared with the durable per-tool counter that reads this record back
-  // (tool-non-result.ts): the writer and its reader cannot drift apart.
   writeCompleted(join(context.iterationDir, TOOL_NON_RESULT_FILE), error.evidence);
   const feedback: CampaignFeedback[] = [
     {
       owner: "correctness-model",
       severity: "blocking",
-      // The tool is in the claim on purpose and the outcome kind is not: the claim is part of the
-      // stall identity. A different tool is a moved diagnosis; the same tool failing as crash one
-      // round and timeout the next is not (an Opus run on 2026-08-22 alternated two kinds for eleven
-      // rounds), and naming the kind here would have let that loop run past the stall ceiling. The
-      // Finding code below groups the failure kind; it is not the stall identity.
+      // The claim is part of the stall identity: it names the tool but not the outcome kind, so a
+      // tool alternating between crash and timeout still counts as one repeated diagnosis.
       claim: `${censusName(error)}: runs of tool "${error.evidence.toolId}" reached no completed run`,
       evidence: "census gate: protected verifier non-result evidence (census.json)",
       findings: controllerValidatedFindings([
@@ -458,11 +402,8 @@ function settleToolUnavailable(
   );
 }
 
-/** A census the wall cut settles like a tool run that timed out: the candidate's checks and
- *  reference solve are its own bytes, so the time they take is the Builder's to cut. As an
- *  environment non-result it ended truss run 7d433e's session at its first submit, after two
- *  previews had met the same wall with 22 controls and nothing else wrong. A timeout stays
- *  diagnosable unless evidence proves the environment owns it (rule 9). */
+/** A census the wall cut is the Builder's to repair, like a tool run that timed out: the checks
+ *  and reference solve are the candidate's own bytes. */
 function settleCensusWall(
   context: CensusContext,
   error: CensusWallExceeded,
@@ -490,15 +431,9 @@ function settleCensusWall(
 }
 
 /**
- * Run the census on a fingerprinted candidate. Check module resolution, then execute the controls
- * through the host verifier and, beside them, the F2 reference solve when the scope includes it.
- * A census refusal no longer skips F2: the author reads every blocking row of one tree in one
- * call instead of meeting F2's rows only after the census is repaired. Persist census.json beside
- * the iteration evidence and return findings through the existing feedback channel. Execution
- * records establish what ran, not tool independence by themselves. Controls and F2 share one
- * failure handling for verifier executions that returned no verdict, and whichever failure is
- * reported, the work either stage started drains within the wall's grace before a retry or a
- * settlement: the next attempt must not overlap an abandoned stage's tool cells.
+ * Runs the census on a fingerprinted candidate: module resolution, then the controls and, beside
+ * them, the F2 reference solve, so one call reports every blocking row. Writes census.json and
+ * returns the findings. Started work drains within the wall's grace before a retry or settlement.
  */
 export function makeCensusGate(
   options: CensusGateOptions,
@@ -561,7 +496,7 @@ function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
 /** The control findings, with the drift the census observed against the identity captured at submit. */
 function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): ContractFinding[] {
   const captured = harness.conformance?.verifierEnvironmentHash;
-  // A census stopped before its controls (run 805bcc's unloadable evaluator) reports no identity.
+  // A census stopped before its controls reports no identity.
   if (
     captured === undefined ||
     probe.verifierEnvironmentHash === undefined ||
@@ -602,15 +537,14 @@ async function runCensus(
   ]);
   const probe = controls.status === "fulfilled" ? controls.value : undefined;
   const findings = probe === undefined ? [] : controlFindings(harness, probe);
-  // A check that called its tool and met a sandbox or unreadable-tool refusal twice is the
-  // environment's non-result (rule 15), not a correctness-model finding for the Builder to repair.
+  // A tool refused twice by the sandbox or as unreadable is the environment's non-result.
   const refusal = findings.find((finding) => finding.code === TOOL_REFUSED_CODE);
   const referenceRows = reference.status === "fulfilled" ? reference.value : [];
   const completed: Completed = {
     ...keyIfDefined("probe", probe),
     rows: [...controlsRows(findings.filter((finding) => finding !== refusal)), ...referenceRows],
   };
-  // Controls first: the reported failure is the earlier stage's, and the other's rows ride beside it.
+  // Report the controls' failure first; the other stage's rows ride beside it.
   if (controls.status === "rejected") return { failure: controls.reason, completed };
   if (reference.status === "rejected") return { failure: reference.reason, completed };
   if (refusal !== undefined) {
@@ -625,11 +559,7 @@ async function runCensus(
     };
   }
   const feedback = completed.rows;
-  // A row's presence alone does not fail the census: advisory findings do not refuse a candidate.
-  // Campaign memory keeps blocking rows for later authoring through settleUnresolved, while
-  // advisory rows remain in the iteration record and may be returned to the current session;
-  // correctness_check reports their count. The representation census uses the same advisory
-  // treatment (solvability-gate.ts).
+  // Only blocking rows fail the census; advisory rows stay in the record.
   const verdict = feedback.some((row) => row.severity === "blocking") ? "fail" : "pass";
   persistCensus(context, feedback, probe, verdict, {
     findings,

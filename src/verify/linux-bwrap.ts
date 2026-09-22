@@ -1,13 +1,11 @@
 /**
  * Linux's OS isolation, the peer of Darwin Seatbelt. Bubblewrap builds a fresh mount namespace from
- * explicit binds, while callers keep ownership of the shared policy data: readable roots, denied
- * roots, writable roots, and network posture. An unbound path is absent from the namespace, which
- * gives the Linux isolations their deny-default form without enumerating every host path to close.
+ * explicit binds; callers own the policy data (readable, denied and writable roots, network). An
+ * unbound path is absent from the namespace.
  *
- * A tmpfs or bind mount remains attached to its dentry when an ancestor is renamed. Therefore the
- * path-relocation rules needed by the Darwin string policy have no Linux counterpart; the focused
- * Bubblewrap test checks that an ancestor rename cannot reveal a tmpfs-hidden probe file.
- * Support fails closed when Bubblewrap or unprivileged user namespaces are unavailable.
+ * A mount stays attached to its dentry when an ancestor is renamed, so the Darwin path-relocation
+ * rules have no Linux counterpart. Support fails closed when Bubblewrap or unprivileged user
+ * namespaces are unavailable.
  */
 
 import { existsSync, lstatSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
@@ -32,7 +30,7 @@ export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
 export interface LinuxBwrapRuntime {
   platform?: RuntimePlatform;
   bwrapPath?: string;
-  /** A surrounding sandbox is not verifier-specific proof; mirror the Darwin gate and refuse. */
+  /** A surrounding sandbox is not verifier-specific isolation, so support refuses. */
   outerSandboxed?: boolean;
   /** Skip the namespace probe for tests or re-attestation after initial support was checked. */
   skipNamespaceCheck?: boolean;
@@ -43,21 +41,16 @@ interface LinuxBwrapSupport {
   reason: string | null;
   mechanismPath: string;
   mechanismDigest: string | null;
-  /** Hash of the system roots granted on this host. Mutable root contents are intentionally not
-   * hashed; this evidence records which roots are opened, not their contents. */
+  /** Hash of which system roots this host grants, not of their contents. */
   baselineDigest: string | null;
 }
 
-/** An option this bubblewrap does not know. Bubblewrap prints the rejected flag, so the remedy can
- * name it instead of asking the operator to read a baseline argv they never see. */
+/** An option this bubblewrap does not know; the remedy names the rejected flag. */
 const UNKNOWN_OPTION = /Unknown option (--[a-z0-9-]+)/;
 
-/** The last attestation per bwrap binary, the Linux twin of Seatbelt's `SUPPORT_BY_RUNTIME`. The
- *  support is resolved for every confined child, so each Builder tool call hashed the binary and
- *  ran the `/bin/true` canary again (3.5 ms per call in the anabasis VM). Both are reused while
- *  the binary keeps identical complete metadata (device, inode, mode, size, mtime, ctime); a
- *  remembered canary also stands in for a skipped one. The baseline digest is recomputed each
- *  call: it reads a few system roots and the resolver link, which is cheap and may move. */
+/** The last attestation per bwrap binary. Support is resolved for every confined child, so the
+ *  digest and canary are reused while the binary's complete metadata is unchanged; a remembered
+ *  canary also stands in for a skipped one. The cheap, movable baseline digest is recomputed. */
 const ATTESTED_BWRAP = new Map<
   string,
   { metadata: ReadRootMetadata; mechanismDigest: string; canaryRan: boolean }
@@ -65,32 +58,26 @@ const ATTESTED_BWRAP = new Map<
 
 const isSignalName = (name: string): name is RuntimeSignal => name in constants.signals;
 
-/** Bubblewrap reports a command killed by a signal as exit 128 + signal number, with no signal of
- *  its own: exit 137 from a confined command is SIGKILL, not a completed exit. The host's own
- *  signal table names it, since bwrap only ever runs on the host that reads the exit. */
+/** Bubblewrap reports a command killed by a signal as exit 128 + signal number (137 is SIGKILL).
+ *  The host's signal table names it, since bwrap runs on the host that reads the exit. */
 export function bwrapWrappedSignal(exitCode: number | null): RuntimeSignal | null {
   if (exitCode === null || exitCode <= 128) return null;
   const name = Object.entries(constants.signals).find(([, number]) => number === exitCode - 128)?.[0];
   return name !== undefined && isSignalName(name) ? name : null;
 }
 
-/** Candidate Bubblewrap locations in resolution order. PATH wins so a normal package install is
- * found; the fixed roots support a controller with a deliberately small environment. */
+/** Fallback Bubblewrap locations after PATH, for a controller with a deliberately small environment. */
 const BWRAP_CANDIDATES = ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"] as const;
 
 /**
- * The read-only system baseline shared by all Bubblewrap postures. These roots cover the
- * interpreter and ordinary dynamic libraries without admitting a worktree or an operator home.
- * Missing architecture-specific roots are skipped: /lib64 is normal on some Linux hosts and absent
- * on others, so presence is part of the host-bound baseline identity below.
+ * The read-only system baseline shared by all Bubblewrap postures: interpreters and dynamic
+ * libraries, no worktree or operator home. Absent roots such as /lib64 are skipped, so presence is
+ * part of the host-bound baseline identity.
  */
 export const LINUX_SYSTEM_READ_ROOTS = ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"] as const;
 
-/** The resolver file a network posture needs. `/etc/resolv.conf` arrives with the `/etc` baseline,
- * but on a systemd-resolved host it is a symlink into `/run`, which no posture binds: the child
- * then has a socket and no way to turn a name into an address, measured 2026-08-18 in the Lima
- * `anabasis` VM as `curl: (6) Could not resolve host` for every hostname. The link target alone is
- * bound, never the directory holding it. */
+/** The resolver file a network posture needs. On a systemd-resolved host `/etc/resolv.conf` links
+ *  into `/run`, which no posture binds, so the link target alone is bound, never its directory. */
 export function networkResolverReadPaths(): string[] {
   try {
     const target = realpathSync.native("/etc/resolv.conf");
@@ -120,11 +107,9 @@ function underSystemRoot(path: string): boolean {
 }
 
 /**
- * Grant the running runtime's installation when it lives outside the system baseline, such as a
- * private prefix. The directory two levels above the executable normally contains bin and lib,
- * allowing the runtime and its bundled modules without opening the enclosing home directory.
- * A symlinked executable contributes both lexical and resolved prefixes; a prefix under /usr or
- * another system root is omitted as redundant.
+ * The running runtime's installation prefix (two levels above the executable) when it lies outside
+ * the system baseline, so it is readable without opening the enclosing home. A symlinked executable
+ * contributes both lexical and resolved prefixes.
  */
 export function nodeRuntimeReadRoots(): string[] {
   const roots = new Set<string>();
@@ -132,7 +117,7 @@ export function nodeRuntimeReadRoots(): string[] {
   try {
     candidates.push(realpathSync.native(runtimeProcess.execPath));
   } catch {
-    // an unresolvable executable is simply not a candidate
+    // An unresolvable executable is not a candidate.
   }
   for (const exe of candidates) {
     const prefix = dirname(dirname(exe));
@@ -141,8 +126,7 @@ export function nodeRuntimeReadRoots(): string[] {
   return [...roots].sort();
 }
 
-/** The executable directories inside the runtime prefixes. A bind does not alter command
- * lookup, so children also receive these directories through their explicit PATH. */
+/** The executable directories inside the runtime prefixes, which children also need on PATH. */
 export function nodeRuntimeBinDirs(): string[] {
   return nodeRuntimeReadRoots()
     .map((root) => join(root, "bin"))
@@ -150,8 +134,7 @@ export function nodeRuntimeBinDirs(): string[] {
     .sort();
 }
 
-/** The full deny-default baseline: present system roots plus a private runtime installation when
- * needed. Keeping it here makes the bound roots and the hashed support identity use one owner. */
+/** The full deny-default baseline, bound and hashed from this one list. */
 export function baselineReadRoots(): string[] {
   return [...presentSystemReadRoots(), ...nodeRuntimeReadRoots()];
 }
@@ -170,11 +153,9 @@ function onlyChild(pid: number): number | null {
   }
 }
 
-/** The host pid of the worker below `bwrapPid` that reported `reportedPid` as its own pid. Every
- * Bubblewrap child here runs in a private pid namespace: bwrap forks the namespace init, the init
- * forks the command, and the command sees itself as pid 2. Two exact parent links reach the
- * command, and the kernel's last `NSpid` column must equal what it reported. Anything else fails
- * the witness closed. */
+/** The host pid of the worker below `bwrapPid` that reported `reportedPid` as its own. bwrap forks
+ *  the namespace init, which forks the command; the command's last `NSpid` column must equal what
+ *  it reported, or the witness fails closed. */
 export function bwrapConfinedWorker(reportedPid: number, bwrapPid: number): number | null {
   const init = onlyChild(bwrapPid);
   const command = init === null ? null : onlyChild(init);
@@ -188,8 +169,7 @@ export function bwrapConfinedWorker(reportedPid: number, bwrapPid: number): numb
   }
 }
 
-/** Bubblewrap's own stderr messages for a refused unprivileged user namespace. Match them
- * literally: they are what the installed bwrap prints, not text this module owns. */
+/** Bubblewrap's own stderr for a refused unprivileged user namespace, matched literally. */
 const USER_NAMESPACE_REFUSALS = [
   "loopback: Failed RTM_NEWADDR",
   "loopback: Failed RTM_NEWLINK",
@@ -209,33 +189,25 @@ function runBwrap(
   }
 }
 
-/** The installed bubblewrap's own version string, for a remedy that says what is actually here.
- *  Null when the binary cannot report one: an unreadable version is not worth a second failure. */
+/** The installed bubblewrap's version for the remedy text, or null when it cannot report one. */
 function installedBwrapVersion(bwrapPath: string): string | null {
   const probe = runBwrap(bwrapPath, ["--version"]);
   if (probe instanceof Error || !probe.success || probe.exitedDueToTimeout === true) return null;
   return /bubblewrap\s+(\S+)/.exec(probe.stdout.toString())?.[1] ?? null;
 }
 
-/** Name the cause of a failed Bubblewrap launch from its stderr. A recognised user-namespace
- * refusal keeps its remedy; any other refusal carries one capped stderr line so a host non-result
- * can distinguish a kernel policy from a rejected bind without rerunning the canary.
+/** Names the cause of a failed Bubblewrap launch from its stderr. A recognised user-namespace
+ *  refusal keeps its remedy; any other carries one capped stderr line.
  *
- * The unknown-option case is separated because it is the one refusal an operator can fix in a
- * minute and could not previously act on. The baseline hardening includes `--disable-userns`,
- * which an older bubblewrap does not carry: Ubuntu 22.04 LTS ships 0.6.1, where every launch
- * refuses with a bare "Unknown option --disable-userns". Measured 2026-08-07 on 0.6.1, that string
- * reached 74 test failures across five files and named neither the package nor the remedy. The
- * isolation still fails closed — dropping the flag would quietly weaken it, since it is what stops a
- * confined child nesting its own user namespace. */
+ *  An unknown option usually means a bubblewrap too old for `--disable-userns`, so the remedy names
+ *  the upgrade. The isolation still fails closed: dropping the flag would let a confined child nest
+ *  its own user namespace. */
 export function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string {
   const unknown = UNKNOWN_OPTION.exec(stderr);
   if (unknown !== null) {
     const version = bwrapPath === undefined ? null : installedBwrapVersion(bwrapPath);
     const installed = version === null ? "" : ` (installed bubblewrap ${version})`;
-    // 0.8.0 rather than "newer": measured 2026-08-07, Debian 12 ships 0.8.0 and it carries the
-    // flag, Ubuntu 22.04 ships 0.6.1 and does not. Naming a version an operator can check beats
-    // asking them to bisect their package manager.
+    // 0.8.0 is the oldest common packaged version that carries the flag.
     return `this bubblewrap does not support ${unknown[1]}${installed} — the OS isolation needs bubblewrap 0.8.0 or newer; upgrade the bubblewrap package`;
   }
   if (USER_NAMESPACE_REFUSALS.some((signature) => stderr.includes(signature))) {
@@ -262,8 +234,7 @@ function attestBwrap(
     remembered !== undefined && sameReadRootMetadata(remembered.metadata, metadata) ? remembered : null;
   const canaryRan = current?.canaryRan ?? false;
   if (namespaceCheck === "require" && !canaryRan) {
-    // Exercise the exact baseline a posture grants. /bin/true must load from the bound libraries,
-    // so this proves a usable namespace rather than merely that Bubblewrap accepted its flags.
+    // /bin/true must load from the bound libraries, proving a usable namespace, not just accepted flags.
     const canary = runBwrap(bwrapPath, [...bwrapBaselineArgs({ network: false }), "/bin/true"], {});
     if (canary instanceof Error || !canary.success || canary.exitedDueToTimeout === true) {
       return {
@@ -320,8 +291,7 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
       baselineDigest: hashJsonBytes({
         schema: LINUX_BWRAP_ID,
         readBaselineRoots: baselineReadRoots(),
-        // Recorded unconditionally, although only a network posture binds it: the identity states
-        // which grants this host's baseline decides, not which one posture used.
+        // Recorded for every posture: the identity states what this host's baseline decides.
         resolverReadPaths: networkResolverReadPaths(),
       }),
     };
@@ -331,9 +301,8 @@ export function linuxBwrapSupport(runtime: LinuxBwrapRuntime = {}): LinuxBwrapSu
 }
 
 /** The whole-machine exposure both bwrap callers open with: a cleared environment, the host root
- *  bound at `/` — writable for the solve sandbox, read-only for the workshop guest — and the
- *  namespace's own `/proc` and `/dev`. The two agreed on seven of these eight arguments by being
- *  written out twice, and the guest's copy is hashed into `sandboxPlanDigest`. */
+ *  bound at `/` (writable for the solve sandbox, read-only for the workshop guest) and the
+ *  namespace's own `/proc` and `/dev`. The guest's copy is hashed into `sandboxPlanDigest`. */
 export function bwrapWholeRootArgs(rootBind: "--dev-bind" | "--ro-bind"): string[] {
   return ["--clearenv", rootBind, "/", "/", "--proc", "/proc", "--dev", "/dev"];
 }
@@ -343,9 +312,6 @@ export function bwrapWholeRootArgs(rootBind: "--dev-bind" | "--ro-bind"): string
  * capabilities, and separate IPC, UTS, and cgroup namespaces. Callers select network isolation;
  * a failed setup is an unavailable isolation rather than a weakened launch.
  *
- * The normal worker keeps the host PID namespace because it reports a host-visible pid for the
- * controller's witness. Verifier calls add a private PID namespace in bwrapBaselineArgs because
- * their model does not need that correlation.
  */
 export function bwrapIsolationArgs(options: { network: boolean }): string[] {
   const args = [
@@ -358,13 +324,10 @@ export function bwrapIsolationArgs(options: { network: boolean }): string[] {
     "--unshare-ipc",
     "--unshare-uts",
     "--unshare-cgroup",
-    // A private pid namespace: the confined command dies with bwrap's init, so ending the wrapper
-    // ends the command too, and procfs (mounted after this flag) shows no host process. Without it,
-    // `--new-session` leaves the command outside the wrapper's group and a group kill orphans it
-    // with its pipes open. The init also keeps the inherited stdio open, so a command closing its
-    // stdin never breaks the host's pipe; the request wall bounds that case instead. Running the
-    // command as pid 1 itself would drop an unhandled SIGTERM from the host (all measured in the
-    // anabasis VM, 2026-09-13).
+    // A private pid namespace: the command dies with bwrap's init, so ending the wrapper ends it,
+    // and procfs shows no host process. Without it `--new-session` leaves the command outside the
+    // wrapper's group, so a group kill would orphan it. The init also keeps inherited stdio open,
+    // and spares the command pid 1's habit of dropping an unhandled SIGTERM.
     "--unshare-pid",
   ];
   if (!options.network) args.push("--unshare-net");
@@ -372,10 +335,8 @@ export function bwrapIsolationArgs(options: { network: boolean }): string[] {
 }
 
 /**
- * Clear inherited environment and add only deterministic explicit grants. A controller environment
- * may carry a provider credential or another capability, so it must not flow into a child by
- * default. Sorted names make argv stable; malformed POSIX names or values fail before option
- * parsing could be affected.
+ * Explicit, sorted `--setenv` grants; the controller environment may hold credentials and never
+ * flows into a child. Malformed names or values throw before they can affect option parsing.
  */
 export function bwrapEnvironmentArgs(environment: OptionalEnvValues): string[] {
   const entries = Object.entries(environment)
@@ -403,16 +364,10 @@ export function bwrapBaselineArgs(options: { network: boolean }): string[] {
  * The allow-default read posture: the whole host mount tree, read-only, with a fresh procfs and a
  * minimal /dev over it.
  *
- * `bwrapBaselineArgs` enumerates the roots it binds, which is right for a declared verifier engine:
- * one pinned command whose needs are known. It is wrong for a shell a model may name, because the
- * enumeration then decides which programs exist. Measured 2026-08-18 in the Lima `anabasis` VM
- * under the enumerated baseline, `/usr/bin/cc` ran while a binary at `~/.cargo/bin` reported "not
- * found" and a file at `~/.local/lib` reported "No such file or directory" — the toolchain was on
- * disk and simply not in the namespace.
- *
- * The caller hides what must stay closed with `bwrapTmpfsDenies` and binds its writable tree after,
- * which is the same order the session isolation uses. `/proc` and `/dev` are mounted after the root
- * bind because a bind over `/` would otherwise cover them.
+ * `bwrapBaselineArgs` enumerates roots, which suits one pinned verifier command; for a model's
+ * shell the enumeration would decide which installed programs exist. The caller hides protected
+ * paths with `bwrapTmpfsDenies` and binds its writable tree after. `/proc` and `/dev` follow the
+ * root bind, which would otherwise cover them.
  */
 export function bwrapOpenReadArgs(options: { network: boolean }): string[] {
   const args = [...bwrapIsolationArgs(options), "--clearenv"];
@@ -431,13 +386,11 @@ export function bwrapWriteBinds(paths: readonly string[]): string[] {
   return paths.flatMap((path) => ["--bind", path, path]);
 }
 
-/** Overmount each protected root with an empty tmpfs in an allow-default namespace. The bytes are
- * absent rather than merely refused, and an ancestor rename cannot relocate that mount. */
+/** Overmounts each protected root with an empty tmpfs, so its bytes are absent and a rename of an
+ *  ancestor cannot relocate the mount. */
 export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
-  // A file-shaped path takes `/dev/null` read-only instead: that denies both read and write with
-  // EACCES and leaves the host file untouched, where an empty tmpfs file would read as empty rather
-  // than refuse. The probe's witness requires an observable refusal, because an isolation that
-  // returns "" instead of an error cannot be told apart from one that is not running.
+  // A file takes `/dev/null` read-only instead, which refuses reads and writes with EACCES; the
+  // probe needs an observable refusal, since an empty read looks like no isolation at all.
   return paths.flatMap((path) =>
     isRegularFileDeny(path) ? ["--ro-bind", "/dev/null", path] : ["--tmpfs", path],
   );
@@ -446,24 +399,14 @@ export function bwrapTmpfsDenies(paths: readonly string[]): string[] {
 /**
  * Whether a protected path is a plain file on this host, and so cannot take a tmpfs.
  *
- * `--tmpfs` mounts a directory. Bubblewrap creates a missing mountpoint, so an absent path is
- * fine, and a directory is fine — but an existing regular file refuses the whole launch with
- * "Can't mkdir <path>: Not a directory", and one refused mountpoint takes the entire isolation with it.
+ * `--tmpfs` mounts a directory; an existing regular file (such as `~/.claude.json`) refuses the
+ * whole launch with "Can't mkdir <path>: Not a directory".
  *
- * Three of the protected home paths are file-shaped: `.netrc`, `.npmrc` and `.claude.json`. A
- * fresh Linux VM has none of them, which is why a clean-VM gate run passes; an operator machine
- * that has actually run Claude Code has `~/.claude.json` and every confined call refuses.
- * Measured 2026-08-07 on Ubuntu 22.04 with Bubblewrap 0.11.1 — the same version a clean VM passed
- * on — so this is host state rather than a bubblewrap version.
- *
- * `lstat` rather than `stat`: a symbolic link to a directory must not be treated as a directory
- * here, because the tmpfs would land on the link's target and leave the named path readable.
- *
- * This is why the predicate is written out rather than shared. `isRegularFile` in
- * `exact-read-attestation.ts` and `regularGuard` in `command-guard.ts` are the same four lines
- * with `stat`, and both are right to follow the link, because they ask what a path leads to. This
- * one asks what the path is. Merging them would be a silent hole here.
+ * `lstat`, not `stat`: a tmpfs on a symlinked directory would land on the target and leave the
+ * named path readable. That is why this predicate is not shared with the `stat`-based ones in
+ * `exact-read-attestation.ts` and `command-guard.ts`, which ask what a path leads to.
  */
+
 function isRegularFileDeny(path: string): boolean {
   try {
     return lstatSync(path).isFile();

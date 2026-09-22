@@ -1,15 +1,9 @@
 /**
  * Recursive declared-key allowlist for the one review surface that carries a controller-built
- * object to a model: the Main Judge's public context. (A second surface, the removed Repair
- * Engineer's packet, was declared here until 2026-09-04.)
- *
- * It used to rebuild only top-level keys. `sanitizeForEvaluator` normalizes text but does not
- * check whether each key is declared. Hostile review probes on w29 and w47-sol
- * planted an undeclared field inside a declared object
- * (`domain.toolContract.tools[0].<planted>`) and it reached the Judge prompt 2/2 and the packet
- * 1/1. The isolation contract excludes verifier output, private source, repair advice,
- * reference artifacts and per-task failure locations from this model context. Checking only
- * top-level keys therefore left a nested path for protected data to reach the model.
+ * object to a model: the Main Judge's public context. `sanitizeForEvaluator` normalizes text but
+ * does not check keys, so an undeclared field planted inside a declared object (for example
+ * `domain.toolContract.tools[0].<planted>`) would otherwise carry protected data to the model.
+ * Every depth is therefore checked, not only the top level.
  *
  * The declarations below follow the public fields in judge-contract.ts and case-record.ts.
  * A declaration that omits a field still promised by those types loses data, which the owning

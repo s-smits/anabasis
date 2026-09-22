@@ -9,28 +9,20 @@
  *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
  *
  * The rename rules are copied, with the two departures named below, from `generateMoveBlockingRules`
- * in
- * anthropic-experimental/sandbox-runtime, `src/sandbox/macos-sandbox-utils.ts`, Apache-2.0, pinned
- * at 295f0e1af832131efe40db22f2c65a57f461d849 (shipped as @anthropic-ai/sandbox-runtime 0.0.67).
+ * in anthropic-experimental/sandbox-runtime, `src/sandbox/macos-sandbox-utils.ts`, Apache-2.0,
+ * pinned at 295f0e1af832131efe40db22f2c65a57f461d849 (@anthropic-ai/sandbox-runtime 0.0.67).
  *
- * Why the rules exist. `(deny file-read* (subpath P))` names P as a string. A confined process that
- * can rename an ancestor of P relocates the protected bytes to a path no rule mentions and reads
- * them there. Measured 2026-07-27 against the profile `solve-sandbox.ts` emitted before this file:
- * a direct read of the canary was refused, renaming the denied directory itself was refused, and
- * renaming its parent succeeded and returned the canary at exit 0. Adding these rules refused the
- * same rename. The verifier isolation never had the hole: `darwin-seatbelt.ts` is deny-by-default and
- * allows writes only under its private workdir, so a rename elsewhere has no allow to match. The
- * hole belongs to the allow-by-default posture this solve isolation needs in order to let a verified
- * session reach its provider.
+ * The hole belongs to the allow-by-default posture the solve isolation needs to reach its provider:
+ * without these rules, renaming the parent of a denied directory makes its contents readable. The
+ * verifier isolation (`darwin-seatbelt.ts`) is deny-by-default and allows writes only under its
+ * private workdir, so it does not need them.
  *
  * Two deliberate departures from upstream:
- * - No `(with message ...)` log tag. Upstream tags rules so a log stream can attribute violations,
- *   and the tag carries a per-session `Math.random()` suffix. This profile's bytes are hashed into
- *   the isolation check result, so a random tag would give every run a different policy digest and break the
- *   `profileDigest === policyHash` comparison that connects probe evidence to the session policy.
- * - Literal paths only. Upstream also accepts glob patterns through `globToRegex`; every path
- *   reaching this isolation is an already-canonicalised absolute root, so that branch would be dead code
- *   carrying its own escaping risk.
+ * - No `(with message ...)` log tag. Upstream's tag carries a random suffix, and this profile's
+ *   bytes are hashed: a random tag would break the `profileDigest === policyHash` comparison that
+ *   connects probe evidence to the session policy.
+ * - Literal paths only. Every path reaching this isolation is an already-canonicalised absolute
+ *   root, so a glob branch would be dead code carrying its own escaping risk.
  */
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
@@ -43,10 +35,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 const MOVE_GUARD_CANARY = "ANA-MOVE-GUARD-CANARY-DO-NOT-TRUST";
 
-/** Shared with solve-sandbox.ts's deny-read check (`HOST_ISOLATION_PROBE_TIMEOUT_MS`): the move-guard
- *  probe here and the read-deny probe there contribute to the same `HostSolveIsolationEvidence`
- *  result (`moveGuardRefused` joins `deniedReadRefused`). Each process gets the same timeout
- *  value rather than one of two independently maintained 20s constants (sol review, run-16 review). */
+/** One timeout for every probe feeding `HostSolveIsolationEvidence`, the move guard and the read deny. */
 const HOST_ISOLATION_PROBE_TIMEOUT_MS = 20_000;
 
 export interface MoveGuardCheck {
@@ -59,7 +48,7 @@ export interface MoveGuardCheck {
 }
 
 /** Both path forms of a root: a deny that names only the symlink form leaves the real one open
- *  (`/var` vs `/private/var` on Darwin). Both forms must be considered when constructing denials. */
+ *  (`/var` vs `/private/var` on Darwin). */
 export function canonicalForms(path: string): string[] {
   const abs = resolve(path);
   try {
@@ -76,9 +65,8 @@ export function covers(root: string, target: string): boolean {
   return posixContainsPath(target, root);
 }
 
-/** One SBPL rule block: a verb and its path filters, or nothing when no path applies. Every
- *  profile in this family emits through here so two isolations cannot drift on quoting or on what an
- *  empty path list means. */
+/** One SBPL rule block: a verb and its path filters, or nothing when no path applies. Shared so no
+ *  two profiles drift on quoting or on what an empty path list means. */
 export function sbRule(verb: string, form: "subpath" | "literal", paths: readonly string[]): string[] {
   return paths.length === 0
     ? []
@@ -90,9 +78,8 @@ export function sbRule(verb: string, form: "subpath" | "literal", paths: readonl
  *  available. */
 const MOVE_OPS = ["file-write-unlink", "file-write-create"] as const;
 
-/** One process result shape for every live isolation probe. The caller owns policy construction; this
- * owner keeps the empty environment, bounded wait and stdout/stderr collection identical across
- * ordinary reads and both ancestor-rename controls. */
+/** Run one live isolation probe with an empty environment and a bounded wait, collecting its
+ *  combined output. */
 export function runIsolationProbe(mechanismPath: string, args: readonly string[], cwd: string) {
   try {
     const result = Bun.spawnSync({
@@ -140,13 +127,9 @@ export function moveBlockingRules(protectedRoots: readonly string[]): string[] {
 }
 
 /**
- * Execute the rename bypass against these rules, on scratch paths.
- *
- * This check tests whether the rule form refuses a rename on this host
- * and mechanism. It uses scratch directories because failure on a real protected ancestor could
- * move the operator's home. That the verified
- * profile carries these rules for its own roots is asserted structurally, over the emitted profile
- * text, in `test/solve-sandbox.test.ts`.
+ * Execute the rename bypass against these rules on scratch paths, since a failure on a real
+ * protected ancestor could move the operator's home. That the session profile carries the rules
+ * for its own roots is asserted over its text in `test/solve-sandbox.test.ts`.
  */
 export function probeMoveGuardCheck(mechanismPath: string): MoveGuardCheck {
   let workRoot: string | null = null;
@@ -154,9 +137,9 @@ export function probeMoveGuardCheck(mechanismPath: string): MoveGuardCheck {
     const parent = join(tmpdir(), "ana-move-guard-probe");
     mkdirSync(parent, { recursive: true, mode: 0o700 });
     workRoot = mkdtempSync(join(parent, "run-"));
-    // Seatbelt matches the canonical path, and `tmpdir()` hands back the `/var/folders/...` symlink
-    // form on Darwin. Rules written against the symlink form match nothing, which the first run of
-    // this check reported as a permitted rename: the guard was fine and its own paths were not.
+    // Seatbelt matches the canonical path, and `tmpdir()` returns the `/var/folders/...` symlink
+    // form on Darwin, against which rules match nothing.
+
     const real = realpathSync.native(workRoot);
     const guarded = renameUnderRules(real, "guarded", mechanismPath);
     const lifted = renameUnderRules(real, "lifted", mechanismPath);

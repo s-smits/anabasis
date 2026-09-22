@@ -4,7 +4,6 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { resolve } from "../meta/path.ts";
-
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
@@ -156,9 +155,8 @@ export async function runFullRun(
   const safeguardContext = createSafeguardContext(
     safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
   );
-  // 2026-08-30/31: 171,290 entries in the per-user temp root stalled every fresh child spawn in
-  // getdirentries64. Remove this product's own stale scratch first (bounded sweep), then let
-  // safeguard 21 report any pressure that remains. The run proceeds either way.
+  // A crowded temp root stalls every child spawn. Sweep this product's own stale scratch (bounded),
+  // then let the safeguard report any pressure that remains; the run proceeds either way.
   const swept = cleanStaleTempRootScratch();
   if (swept.removed > 0 || swept.failed > 0) {
     console.error(
@@ -226,9 +224,8 @@ function ensureDcgForBuilder(args: FullRunArgs, deps: FullRunDeps, builder: Camp
   }
 }
 
-/** An unset --max-iterations reads as Infinity, so there is no default round cap (operator
- *  decision 2026-07-29, reaffirmed 2026-08-19). Budgets and typed operational stops still apply.
- *  This cap fires only when the operator supplies one. */
+/** An unset --max-iterations reads as Infinity: there is no default round cap, and budgets and
+ *  typed operational stops still apply. */
 export function roundCapTerminal(round: number, roundLimit: number): string | null {
   return round >= roundLimit
     ? `operator-interrupted: round cap ${roundLimit} reached after completed round ${round} (--max-iterations sets it)`
@@ -363,15 +360,9 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
     slots,
     providerBudget,
   });
-  // The verifier lifetime resolves the selected product, and the selector reads it again inside
-  // round one. Either read can refuse a damaged or unreadable retained version — 105 of the 109
-  // retained on one machine, with their product bytes intact. Both refusals used to land before
-  // the opening existed, and closeControllerRun prepares a terminal only once it does, so the
-  // campaign died with exit 2 and no recorded reason; working rule 6 says a clause present only
-  // in stdout is not durable evidence. `openIfUnopened` gives the close path an opening to record
-  // against. It binds the epoch on the base kickoff, which is right precisely here: a round that
-  // decided nothing has no climb kickoff to preserve, and a round that reached its own decision
-  // has already opened on it.
+  // Reading the selected product can refuse a damaged retained version before any round opens the
+  // run. `openIfUnopened` gives the close path an opening to record that refusal against, bound on
+  // the base kickoff, since a round that decided nothing has no climb kickoff to preserve.
   state.openIfUnopened = () => {
     if (state.opening === null) openRun(baseKickoff, undefined);
   };
@@ -452,10 +443,7 @@ if (invokedAsScript) {
         // The outcome JSON is the programmatic result; the recorded terminal evidence's closure line
         // is the only end-of-run summary.
         console.log(capturedJsonStringify(outcome, null, 2));
-        // Derive exit status from the terminal reason. Previously, testing whether the last
-        // round measured gave candidate-held and budget-limited a zero status, and a normal
-        // stopped result a one. CI could therefore report success for an incomplete run and
-        // failure for one that reached its intended stop.
+        // The exit status follows the terminal code, not whether the last round measured.
         runtimeProcess.exitCode = fullRunExitStatus(outcome.terminal);
       },
       (error) => {

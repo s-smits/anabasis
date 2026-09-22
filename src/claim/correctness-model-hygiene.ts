@@ -31,11 +31,7 @@ interface SharedDecidingComputation {
 }
 
 /** How many computations two modules must share before the agent counts as carrying the deciding
- *  one. Measured: across the 386 recorded bundles under `campaigns/`, 351 share none and 35 share
- *  five or more, so the band from one to four is empty. The name comparison this replaced split
- *  that corpus identically, so no recorded verdict moves. The identity below was narrowed on
- *  2026-09-20 to stop collapsing distinct named operations; a narrower identity can only drop
- *  collisions, and a genuine copy keeps the globals and members that now separate them. */
+ *  one. Recorded bundles share either none or five or more, so two sits inside that gap. */
 const SHARED_COMPUTATION_FLOOR = 2;
 
 function unwrapParentheses(node: ts.Expression): ts.Expression {
@@ -221,9 +217,7 @@ function isMemberName(node: ts.Identifier, parent: ts.Node | null): boolean {
 }
 
 /** One identifier's part of the identity: an ordinal when the module declares the name, and the
- *  name itself otherwise. Until 2026-09-20 every identifier became an ordinal, which made
- *  `Math.min` and `Math.max` one computation — two agent-side computations that differed only in
- *  the named operation they called then reached the floor below and refused a valid bundle. */
+ *  name itself otherwise, so `Math.min` and `Math.max` stay distinct computations. */
 function identifierPart(
   node: ts.Identifier,
   parent: ts.Node | null,
@@ -258,8 +252,8 @@ function computationId(root: ts.Node, declared: ReadonlySet<string>): string {
 }
 
 /** One file's exported computations, keyed by identity and named for the report. A shared
- *  interface or schema constant is the representation contract the two bundles are required to
- *  agree on (rule 13); only a shared computation is the finding. */
+ *  interface or schema constant is the representation contract both bundles must agree on; only
+ *  a shared computation is a finding. */
 function computationsOf(dir: string, file: BundleFile): Map<string, string> {
   const source = parseGeneratedSource(readFileSync(join(dir, file.path), "utf8"), file.path);
   const declared = declaredNames(source);
@@ -288,12 +282,10 @@ function computationsOf(dir: string, file: BundleFile): Map<string, string> {
 }
 
 /**
- * Agent modules carrying the verifier's own computation. `bundle-validation` closes the import
- * route; a copy leaves no import to find, and two runs on 2026-09-18 shipped exactly that.
- * Comparing structure rather than name closes the cheapest way out of this refusal, a rename of
- * the copied exports. A partly rewritten computation is still not detected, and scoring a
- * candidate the solver already wrote against published limits is legitimate support (rule 9),
- * which is why the floor is several computations, not one.
+ * Agent modules carrying a copy of the verifier's own computation, which the import check in
+ * `bundle-validation` cannot see. Comparing structure rather than names survives renamed exports.
+ * A partly rewritten computation is not detected, and checking a candidate against published
+ * limits is legitimate solving support, so the floor is several shared computations, not one.
  */
 export function agentCarriesDecidingComputation(
   agentDir: string,

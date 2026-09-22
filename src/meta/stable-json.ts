@@ -22,14 +22,11 @@ export function compareCodeUnits(left: string, right: string): number {
 
 /**
  * Sorted-key JSON text, the one encoder behind every recorded identity and evidence digest. Keys
- * sort by UTF-16 code unit so identity is independent of locale; before 2026-08-05 the evidence
- * copy used `localeCompare`, allowing the host's collation to affect a recorded digest.
+ * sort by UTF-16 code unit so identity is independent of locale.
  *
- * The two encodings differ only in `undefined`. Identity (`"omit"`) drops undefined object
- * properties and writes any other undefined as null, so adding an optional field and leaving it
- * unset preserves the digest; campaign epoch keys and candidate handoffs rely on this. Evidence
- * (`"keep"`) writes `undefined` literally, so a truth check can tell an unresolved path from a
- * path holding null.
+ * The two encodings differ only in `undefined`. Identity (`"omit"`) drops undefined properties and
+ * writes any other undefined as null, so an unset optional field preserves the digest. Evidence
+ * (`"keep"`) writes `undefined` literally, so a truth check can tell an unresolved path from null.
  */
 function encodeSorted(value: unknown, undefinedValues: "omit" | "keep"): string {
   if (isArray(value)) return `[${arrayFrom(value, (item) => encodeSorted(item, undefinedValues)).join(",")}]`;
@@ -98,9 +95,8 @@ export function hashJsonValue(value: unknown): string {
   return sha256(stableJson(value));
 }
 
-/** Validate values received from vendor objects or untyped readers before recording them.
- *  Reject non-JSON values explicitly: JSON.stringify would silently omit a function or symbol
- *  from object properties, changing what the snapshot records. */
+/** Validate a vendor or untyped value before recording it. Non-JSON values are refused, since
+ *  JSON.stringify would silently omit a function or symbol property. */
 export function requireJsonValue(value: unknown): JsonValue {
   if (!isPlainFiniteJson(value, "rejected")) throw new Error("value is not plain finite JSON");
   return /* SAFETY: isPlainFiniteJson just admitted the complete finite JSON closure. */ value as JsonValue;

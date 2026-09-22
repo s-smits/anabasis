@@ -24,12 +24,10 @@ export interface BuilderSessionIsolationEvidence {
 }
 
 export interface BuilderSessionEvidence {
-  /** The `contract` field below, not this string, says whether the production opener reconciled
-   *  the complete roster: a contractless probe was once spelled `v2` and a reconciled session `v4`. */
+  /** Whether the production opener reconciled the roster is `contract`'s job, not this string's. */
   schema: typeof BUILDER_SESSION_EVIDENCE_SCHEMA;
   /** The path-record stream every session on this composition writes; many sessions, one id.
-   *  A session that opens and touches no path leaves an empty record — the evidence is then
-   *  the only record, which is why these fields restate what record rows also carry. */
+   *  These fields restate the record rows because a session touching no path leaves none. */
   pathRecordSessionId: string;
   /** Composed path capabilities with the isolation modes each declares. */
   isolated: Record<string, readonly IsolationMode[]>;

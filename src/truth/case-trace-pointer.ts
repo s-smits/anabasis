@@ -2,12 +2,8 @@
  * The per-case half of the transcript pointer problem, written when the case is recorded.
  *
  * `solveCase` writes `cases/<taskId>/trace.json` as soon as the case ends, including on a typed
- * non-result (pi-built.ts hands `recorder.trace()` to both outcome shapes). Nothing pointed at it
- * until `appendRecordedCaseRows` (run-driver.ts) created the record row, and that runs only when the
- * whole battery is recorded. A battery killed mid-run therefore left intact traces on disk that the one
- * verified read (`readVerifiedTrace`) could not reach, because it reads through pointers and there
- * were none — the same shape as run 65's 326-record Builder transcript surviving with nothing in
- * the campaign naming it.
+ * non-result. Recording the pointer with the case, rather than with the whole battery, keeps the
+ * traces of a battery killed mid-run reachable by `readVerifiedTrace`, which reads through pointers.
  *
  * The checks are the ones `src/builder/session-transcript.ts` copied from pi's session-verify and
  * that hold at any moment: present, readable, non-empty, and carrying the identity the reader will
@@ -15,8 +11,8 @@
  * trace document it is the schema version, since that is what `CASE_TRACE_SCHEMA` names.
  *
  * Unlike the Builder pointer this function does not write. The battery run dir has one write owner
- * (steering-delta P1) and every evidence goes through the manifest-bound `EvidenceLog`, so the
- * recording caller writes what this returns.
+ * and every evidence goes through the manifest-bound `EvidenceLog`, so the recording caller writes
+ * what this returns.
  */
 import { readFileSync, statSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";

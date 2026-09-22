@@ -1,6 +1,6 @@
+/** Shared types for the authoring campaign, kept separate from the loop implementation. */
 import type { ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
-/** Shared types for the authoring campaign, kept separate from the loop implementation. */
 import type { SourceIdentity } from "../run/source-identity.ts";
 import type { ExperimentScope } from "../run/experiment-freeze.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
@@ -59,8 +59,7 @@ export type CampaignFeedback = {
 export interface PriorEvidence {
   digest: string;
   feedback: CampaignFeedback[];
-  /** Required, so the two provenance readers are plain field picks: while this was optional,
-   *  each reader carried its own `?? "admitted-packet"` default and the copies could drift. */
+  /** Required, so provenance readers need no default. */
   kind: "admitted-packet";
 }
 
@@ -69,9 +68,8 @@ export type DiagnosisInput = {
   digest: string | null;
 };
 
-/** A current-policy admission packet that seeded no owner: the digest the build read and why it
- * carried nothing. Lineage is evidence, never a decision — a build with lineage and no
- * priorEvidence takes exactly the same course as one with neither. */
+/** An admission packet that seeded no owner: the digest the build read and why it carried
+ *  nothing. Lineage is evidence only and changes no decision. */
 export type AdmissionLineage = {
   digest: string;
   /** "evaluation-identity-unadopted": the packet was observed under a correctness model or battery
@@ -93,15 +91,13 @@ export type IterationEvidence = {
   findingsHash: string | null;
   fingerprint: { agentHash: string; correctnessModelHash: string; taskSetHash: string | null } | null;
   feedback: CampaignFeedback[];
-  /** Candidate and installed tools, joined with captured difficulty metadata when present.
-   *  `stampSubmissionCondition` sets it before the record is written; a completed record without
-   *  it is refused. */
+  /** Candidate and installed tools, joined with captured difficulty metadata when present. Always
+   *  set before the record is written; a completed record without it is refused. */
   submissionConditionId?: string;
   /** Battery-only authoring's gate identity excludes explanatory metadata from repetition accounting. */
   candidateConditionId?: string;
   consumedEvidenceDigests?: string[];
-  /** Present exactly when this iteration read a current-policy packet that seeded no owner, so a
-   * review can tell an unseeded build from one that had no packet at all. */
+  /** Present exactly when this iteration read a packet that seeded no owner. */
   admissionLineage?: AdmissionLineage;
   diagnosisInput?: DiagnosisInput | null;
   source?: SourceIdentity | null;
@@ -132,11 +128,8 @@ export type CampaignOutcome = (
       experimentScope?: ExperimentScope;
       harness: BuiltHarness;
       iterations: IterationEvidence[];
-      /** Strikes already spent on the commit this candidate carries, counting this round: the
-       *  durable per-commit unchanged tally the campaign replayed from disk, extended by this
-       *  invocation's own iterations. The round reads it when the candidate turns out to equal
-       *  its own round entry, so the ceiling is reached at the same total whether the strikes
-       *  fell inside one invocation or across fourteen. */
+      /** Unchanged-candidate strikes already spent on this candidate's commit, across invocations
+       *  and counting this round. */
       unchangedCandidateSubmissions: number;
     }
   | { buildAdmissible: false; clauses: CampaignClause[]; iterations: IterationEvidence[] }

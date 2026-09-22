@@ -15,9 +15,8 @@ import { containsPath } from "../meta/path-containment.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 /** What the copy did to one file: a Python launcher header rewritten (uv's single-quoted form
- *  separately, since run 8729bb aborted on it), a Mach-O install name moved (run e6e332 aborted
- *  on one), nothing, or `retains-adopted-path` — the copy still names the tree it came from and
- *  nothing here can move that name. The caller drops such a file; this function only reports it. */
+ *  reported separately), a Mach-O install name moved, nothing, or `retains-adopted-path` when the
+ *  copy still names its source tree. The caller drops such a file. */
 type LauncherRelocation =
   | "rewritten"
   | "rewritten-single-quoted"
@@ -25,7 +24,7 @@ type LauncherRelocation =
   | "retains-adopted-path"
   | null;
 
-/** Scan binaries too, without holding an installed executable in memory. */
+/** Whether a file, binary included, still names `root`; read in chunks, never whole. */
 function retainsRoot(path: string, root: string): boolean {
   const needle = Buffer.from(`${root}/`);
   const overlap = needle.length - 1;
@@ -46,13 +45,9 @@ function retainsRoot(path: string, root: string): boolean {
   }
 }
 
-/** A Mach-O library records its own absolute path as its install name. Nothing here loads the copy
- *  through it: cpython's interpreter reaches its library by `@executable_path`, which the copy keeps.
- *  Move that identity rather than refuse the tree over an address nothing reads. `install_name_tool`
- *  ships with the Command Line Tools and re-signs ad hoc, and `hostTool` skips its xcrun shim; on
- *  another platform, for a file that is not Mach-O, or with the tool absent, the bytes stay as they
- *  were and the caller still refuses. Inlining the platform guard reads `relocateToolLauncher` at 22
- *  against the ceiling of 21 in `tools/loc/complexity-policy.ts`. */
+/** Moves a Mach-O library's install name, its recorded absolute path, to the copy. Nothing loads the
+ *  copy through that name, so moving it beats refusing the tree. Elsewhere, or when the tool fails,
+ *  the bytes stay as they were and the caller still refuses. */
 function relocateInstallName(file: string, target: string): void {
   if (runtimeProcess.platform !== "darwin") return;
   Bun.spawnSync({
@@ -88,12 +83,8 @@ export function relocateToolLauncher(
       const absolute = join(realpathSync(dirname(interpreter)), basename(interpreter));
       if (containsPath(absolute, source)) {
         const target = join(destination, relative(source, absolute));
-        // The header below quotes the target in a `sh` string, so a destination carrying a quote,
-        // a backslash, a backtick, `$` or a newline cannot be written into one safely. That
-        // destination derives from the project slug and the campaign root, so it is the same for
-        // every launcher in the tree: throwing here ended the whole rebuild, with advice to
-        // recreate the environment in a repair workspace the throw had just prevented. The launcher
-        // still names the adopted tree, which is what this row means, and the caller drops it.
+        // A target the `sh` header cannot quote safely is reported, not thrown, so the caller
+        // drops this launcher and the rebuild continues.
         if (/['"`$\n\\]/.test(target)) return "retains-adopted-path";
         const header = `#!/bin/sh\n'''exec' "${target}" "$0" "$@"\n' '''\n`;
         writeFileSync(file, header + text.slice(launcher[0].length));

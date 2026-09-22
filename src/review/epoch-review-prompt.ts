@@ -1,56 +1,7 @@
 /**
- * The epoch reviewer's standing instruction. It lives beside the reviewer rather than inside it
- * because it is text, not logic: the reviewer's file owns the admission rules that decide what a
- * finding becomes, and this file owns what the reviewer is asked to do. Both are condition
- * identities — `requestDigest` hashes this text, so an edit here correctly refuses to reuse a
- * review recorded under the previous wording.
- *
- * The wording is measured against the 314 epoch reviews recorded under earlier versions of it.
- * Three of those measurements moved text here on 2026-09-16.
- *
- * No blocking finding exists in the corpus: 393 advisory, 104 with no severity field, 0 blocking.
- * Of the 25 reviews carrying an admission record, two severity rows exist and both are
- * blocking demoted to advisory. Two paragraphs settling a Judge veto and its mirror image spent
- * 1,170 characters instructing a reopen that has never happened, over a Judge exit that is `none`
- * for most batteries and whose control census was removed on 2026-09-14; they are now one
- * paragraph covering both directions, and the blocking floor names the demonstration that can
- * actually reach it.
- *
- * 180 of 497 findings carry no checkId, no artifactSchemaPath and no publicInputPath, and 103 are
- * `hardness` or `diagnosis-uncertain`, which route to no owner while spending a finding slot.
- * Nothing said that the claim itself never crosses, so the routing paragraph now does, and the
- * three separate sentences telling the reviewer to stay advisory when uncertain are one.
- *
- * The 2026-09-16 replay of run truss-opus-20260916T151117729Z-064960 ran eight probes, wrote a
- * finding whose own text narrates what they returned, and cited none of them in `probeIds`, so the
- * first-occurrence blocking route that probing opens stayed shut. `record_finding` now asks.
- *
- * 2026-09-19: the backstop fires forty minutes into a session whether or not anything has been authored
- * yet. de8b40's first review read a tree whose `brief.json` was `{}` and whose `tools.ts` returned no
- * tools, and spent its one blocking finding saying so, against a placeholder the next turn replaced.
- * The orientation sentence now says a seed placeholder is unwritten work, so the reading costs the
- * session nothing while the parts already authored — that review also found every task carrying
- * `massLimitKg: 0` — are still read.
- *
- * 2026-09-18: the curriculum sentence asked for "a perfect or near-perfect battery" while the
- * campaign it reviews aims at 5 to 12 of 25. Every score between those two readings — the whole
- * `over-aim` zone, whose own name says the limit is not measured — was a battery the reviewer had
- * no stated reason to inspect. The orientation now states where the battery landed, and this
- * paragraph reads against that placement rather than against perfection.
- * 2026-09-20: a firmware bundle's `admissible()` tested `prescaler >= 1` and never tested membership
- * in the board's own `prescalerChoices`, while the file two functions above exported that catalogue
- * as the reference search's candidate list; the check applies to the submitted config, so a
- * prescaler the board does not offer had nothing to refuse it. A review found it independently and
- * filed it advisory. The shape is general — a public input publishing a closed set, a check reading
- * the field and testing only a bound on it — and it is exactly what one probe settles, so the probe
- * paragraph now names the replacement to reach for.
- *
- * 2026-09-20: across four bundles in two unrelated domains, exactly one `ruleDecisions` row was
- * private in each, 133 to 265 characters, and in all four no declared check read the decision it
- * described — both were the reference's own search order, which never enters a verdict. Rule 4's
- * floor, every check citing a public rule, was met; the ceiling was not, and twelve reviews and 25
- * findings never once read it. The reviewer already holds the tree and the probe, so this was a
- * missing duty rather than a missing input.
+ * The epoch reviewer's standing instruction. The reviewer's file owns the admission rules that
+ * decide what a finding becomes; this file owns what the reviewer is asked to do. `requestDigest`
+ * hashes this text, so any edit here is a new condition and no earlier review is reused.
  */
 export const EPOCH_REVIEW_PROMPT = [
   "You are the epoch reviewer for an agent-harness campaign. Read the task set, solving agent and correctness model. The orientation distinguishes a measured battery from an authoring checkpoint; use verifier execution and scores only when supplied. An authoring checkpoint has no new battery result, so assess the requirements in source without inferring runtime success or failure. It is also read mid-flight: a file still holding the seed's placeholder — an empty brief, an evaluator exporting only the seed's example, a tools module returning no tools — is work not yet done rather than a defect, and the turn after yours was going to write it. Review what has been authored; where nothing has been, say so and record nothing. You decide nothing: you cannot change a pass, an acceptance, a claim or a promotion. Record findings, then close with a short synthesis using the host-recorded severity record_finding returned.",

@@ -1,11 +1,10 @@
 /**
- * The two authoring-time probes the gate spends before a candidate is admitted: the control
- * census, which runs the declared checks over every task-bound accept and reject and joins the
- * host's own tool-run rows to them, and the conformance probe, which opens every task through
- * every generated tool and reconciles what the worker serves with agent/tools-spec.json.
+ * The two authoring-time probes the gate runs before admission. The control census runs the
+ * declared checks over every task-bound accept and reject and joins the host's tool-run rows to
+ * them. The conformance probe opens every task through the generated tools and reconciles what the
+ * worker serves with agent/tools-spec.json.
  *
- * Neither decides correctness. They decide whether this candidate's own declared contract holds,
- * and every finding they return routes to one FeedbackOwner in the same session.
+ * Neither decides correctness; they check the candidate's own declared contract.
  */
 import { type BuiltStarter, closeOneAtATime } from "../solve/built-starter.ts";
 import { harnessSettings } from "./harness-config.ts";
@@ -91,10 +90,9 @@ export type ProbeControls = (
   brief: Brief,
   corpus: ControlCorpus,
   tasks: readonly BuildTask[],
-  stopped?: () => boolean, // true once the census wall cut the probe
+  /** True once the census wall has cut the probe. */
+  stopped?: () => boolean,
 ) => Promise<ProbeControlsResult>;
-
-/** Where every generated-toolset finding points: the file the Builder writes its tools in. */
 
 export interface ProbeControlsOptions {
   verifierLifetime?: VerifierLifetime;
@@ -109,8 +107,7 @@ interface ConformanceProbeResult {
 
 export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeControls {
   return async (slugDir, brief, corpus, tasks, stopped) => {
-    // The author cannot see what one of its checks costs: the gate returns one verdict. Summing
-    // the dispatches here is what puts that bill in the same result the author already reads.
+    // Per-check evaluation cost, reported back to the author with the census result.
     const spend = new Map<string, { evaluations: number; totalMs: number }>();
     let evaluate: EvaluatorFn;
     let verifier: VerifierHostHandle | undefined;
@@ -204,7 +201,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         evidence: hostEvidence,
         rejects: (checkId) => rejectsBlockedBy(execution.controlReceipts, checkId),
       });
-      // A throw skips the check's later tool calls; 077e56 read four unlaunched rows beside one throw.
+      // A throw skips the check's later tool calls, so unlaunched rows would be misread.
       if (!execution.controlReceipts.some((receipt) => receipt.nonResultKind === "verifier-throw")) {
         findings = withGroundingFindings(
           findings,
@@ -227,8 +224,8 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),
         executionEvidence: hostEvidence,
-        // The declared tool set as resolved now, the identity submit hashed: hashing only the tools
-        // some control ran refused every candidate whose controls left one declared tool unrun.
+        // Every declared tool as resolved now, the same identity submit hashes, not only the
+        // tools some control ran.
         verifierEnvironmentHash: verifierEnvironmentHashOfTools(
           resolveToolInventory({
             toolIds: [...new Set(brief.truthChecks.flatMap((check) => requiredToolsOf(check.execution)))],
@@ -259,10 +256,9 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
   };
 }
 
-/** The grounding rows name the tool and check of an external non-result, so the discrimination
- *  no-verdict row repeats them when they cover every example that reached no verdict. An example
- *  no grounding row names (an authored check's own tool run, say) keeps the no-verdict row, or the
- *  claim would close on a subject nothing reports (review of 1f6abeb22). */
+/** Appends the grounding and inert-tool findings. The no-verdict row is dropped only when grounding
+ *  rows already name every example that reached no verdict; otherwise an unreported example could
+ *  let the claim close. */
 export function withGroundingFindings(
   findings: ContractFinding[],
   grounding: GroundingFinding[],
@@ -296,46 +292,45 @@ async function submitProbeFindings(
   tools: BuiltStarter["tools"],
   probeAuthority: ReturnType<typeof createSubmissionAuthority>,
 ): Promise<ContractFinding[]> {
-  const findings: ContractFinding[] = [];
   if (probeAuthority.finalSubmission()?.accepted === true) {
-    findings.push({
-      code: "vacuous-submitted",
-      path: GENERATED_TOOLS_FILE,
-      detail:
-        "the harness submitted an answer while it was loading, before any tool ran; submit only after the agent creates the artifact",
-    });
-  } else {
-    const submitTool = tools.find((tool) => tool.name === "submit");
-    if (submitTool?.execute) {
-      await submitTool
-        .execute(
-          "conformance-probe",
-          /* SAFETY: `submit` takes no arguments; `never` is the roster's parameter type, not a claim about this value. */ {} as never,
-        )
-        .catch(() => undefined);
-      const submitFact = probeAuthority.finalSubmission();
-      if (submitFact?.accepted === true) {
-        const summary = boundedDraftSummary(submitFact.artifactJson);
-        findings.push(
-          controllerValidatedFinding({
-            code: "empty-green-submit",
-            path: GENERATED_TOOLS_FILE,
-            detail: `submit accepted a draft before any writer ran. It must reject an empty draft until the agent creates the artifact (sha256=${submitFact.artifactDigest ?? "unknown"}, shape=${summary})`,
-          }),
-        );
-      } else if (submitFact?.rejection?.code === "artifact-public-schema") {
-        findings.push(
-          controllerValidatedFinding({
-            code: "submit-public-schema-rejected",
-            path: GENERATED_TOOLS_FILE,
-            detail: submitFact.rejection.safeRemedy,
-          }),
-        );
-      }
-    }
+    return [
+      {
+        code: "vacuous-submitted",
+        path: GENERATED_TOOLS_FILE,
+        detail:
+          "the harness submitted an answer while it was loading, before any tool ran; submit only after the agent creates the artifact",
+      },
+    ];
   }
-
-  return findings;
+  const submitTool = tools.find((tool) => tool.name === "submit");
+  if (!submitTool?.execute) return [];
+  await submitTool
+    .execute(
+      "conformance-probe",
+      /* SAFETY: `submit` takes no arguments; `never` is the roster's parameter type, not a claim about this value. */ {} as never,
+    )
+    .catch(() => undefined);
+  const submitFact = probeAuthority.finalSubmission();
+  if (submitFact?.accepted === true) {
+    const summary = boundedDraftSummary(submitFact.artifactJson);
+    return [
+      controllerValidatedFinding({
+        code: "empty-green-submit",
+        path: GENERATED_TOOLS_FILE,
+        detail: `submit accepted a draft before any writer ran. It must reject an empty draft until the agent creates the artifact (sha256=${submitFact.artifactDigest ?? "unknown"}, shape=${summary})`,
+      }),
+    ];
+  }
+  if (submitFact?.rejection?.code === "artifact-public-schema") {
+    return [
+      controllerValidatedFinding({
+        code: "submit-public-schema-rejected",
+        path: GENERATED_TOOLS_FILE,
+        detail: submitFact.rejection.safeRemedy,
+      }),
+    ];
+  }
+  return [];
 }
 
 export async function probeConformanceWithEvidence(
@@ -398,7 +393,7 @@ export async function probeConformanceWithEvidence(
       );
     }
     const specNames = expectedBuiltToolNames(spec, {
-      // Use the same availability check as the tool loader above.
+      // The same availability check the tool loader uses.
       publicResources: readPublicResources(slugDir).length > 0,
     });
     const builtNames = toolset.tools.map((tool) => tool.name);

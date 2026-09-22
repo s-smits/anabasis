@@ -5,8 +5,7 @@ export type RuntimePlatform = typeof runtimeProcess.platform;
 
 export type RuntimeSignal = NonNullable<Bun.Subprocess["signalCode"]>;
 
-/** The `code` of a caught cause, when it carries one as a string. The parameter is the rule-exempt
- *  `cause`: this helper exists only at catch boundaries over values the language types `unknown`. */
+/** The `code` of a caught cause, when it carries one as a string. */
 export function errorCode(cause: unknown): string | undefined {
   return cause instanceof Error && "code" in cause && isString(cause.code) ? cause.code : undefined;
 }
@@ -16,19 +15,15 @@ export function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-/** A caught cause as an Error, for the callers that must keep a stack or a `cause` chain rather
- *  than only its text. An Error passes through, so the original stack survives. */
+/** A caught cause as an Error; an Error passes through, so its stack survives. */
 export function asError(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(errorMessage(cause));
 }
 
 declare global {
   interface ObjectConstructor {
-    /** A record with no prototype, for keys a model authored: on a plain `{}`, `out["__proto__"]`
-     *  reads Object.prototype and a write to it no-ops through the inherited setter, so a tally
-     *  keyed by check id would silently drop exactly that id. The library types it `any`; an object
-     *  with no prototype and no own properties is an empty record, which the declared type of the
-     *  variable it initialises then widens. */
+    /** A record with no prototype, for model-authored keys: on a plain `{}` a `__proto__` key
+     *  would be silently dropped. Typed as an empty record rather than the library's `any`. */
     create(o: null): Record<never, never>;
   }
 }

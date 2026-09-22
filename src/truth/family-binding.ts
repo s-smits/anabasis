@@ -119,8 +119,7 @@ async function searchDonor(
       donor,
     );
     // Host outages throw before this point, so an unsettled evaluate is the correctness model's own
-    // failure. Truss run dffb11 read "did not settle … unknown" routed to the environment, with no
-    // hint that its evaluator threw on a sibling's well-formed design.
+    // failure, reported as the author's rather than routed to the environment.
     if (!verified.settled) {
       return {
         kind: "stop",
@@ -200,12 +199,10 @@ function familyDonors(witnesses: readonly FamilyWitness[], roots: readonly strin
  *
  * Two shortcuts avoid evaluations that cannot add evidence. Sibling deliverables that
  * serialise identically need no evaluation: substituting equal bytes leaves an already passing
- * artifact unchanged — and the family stops at its first donor that no sibling rejects. The W20
- * family therefore needs zero extra evaluations rather than seventy-two.
+ * artifact unchanged — and the family stops at its first donor that no sibling rejects.
  *
  * Donor searches are independent, so they run in the census lanes and settle in family and donor
- * order: four lanes and one lane return the same findings. A clear 25-task truss census ran its
- * transplants one after another after the reference solves had used four lanes.
+ * order: four lanes and one lane return the same findings.
  *
  * Two limits, stated rather than implied. This disproves uniformity for the witnesses it has; it
  * does not prove that no universal artifact exists anywhere in the solution space. And a rejection
@@ -281,8 +278,7 @@ function hybridArtifact(target: JsonValue, donor: JsonValue, roots: readonly str
 }
 
 /** The brief a hybrid is evaluated under: a hybrid runs only the checks that read a moved root. The
- *  others get the projected bytes the target's accepted witness gave them and already passed;
- *  truss census 0aad0d ran them all. */
+ *  others get the projected bytes the target's accepted witness gave them and already passed. */
 function materialBrief(brief: Brief): Brief {
   const materialIds = familyMaterialCheckIds(brief);
   return { ...brief, truthChecks: brief.truthChecks.filter((check) => materialIds.has(check.id)) };

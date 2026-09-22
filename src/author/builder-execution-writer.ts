@@ -9,9 +9,7 @@ import { BUILDER_EXECUTION_EVIDENCE_FILE, type BuilderExecutionEvidence } from "
 import { proseSidecarExists, writeBuilderProse } from "./builder-prose.ts";
 
 /** One file per authoring session: the first session owns the bare name, each later session takes
- *  the next free numbered name. The epoch-level single path could not hold a multi-session epoch —
- *  run 12x's repair session overwrote the opening build's record and left 3 of 4 sessions
- *  unobservable. */
+ *  the next free numbered name, so no session overwrites another's record. */
 function claimEvidencePath(epochDir: string): string {
   let path = join(epochDir, BUILDER_EXECUTION_EVIDENCE_FILE);
   for (let session = 2; existsSync(path) || proseSidecarExists(path); session += 1) {
@@ -24,8 +22,7 @@ function jsonEvidence(evidence: BuilderExecutionEvidence): JsonValue {
   return capturedJsonParse(capturedJsonStringify(evidence));
 }
 
-/** Write the JSON record and prose from one evidence object. Store prose rows separately in
- *  `builder-prose(-NN).jsonl`, using the same session number as the execution record. */
+/** Writes the record and its prose sidecar, `builder-prose(-NN).jsonl`, with the same number. */
 function writeRecordAndProse(path: string, evidence: BuilderExecutionEvidence, captureId: string): void {
   const { prose, ...record } = evidence;
   if (prose === undefined) {
@@ -79,10 +76,8 @@ export function writeBuilderExecutionEvidence(epochDir: string, evidence: Builde
   writeRecordAndProse(path, withClosure(evidence, epochDir, path), crypto.randomUUID());
 }
 
-/** Choose a numbered file on the first write and update it on each later write from this session.
- *  Checkpoints and the final result therefore share one record, rather than leaving separate
- *  partial records. Another session gets the next unused name from claimEvidencePath,
- *  preserving one execution file per session. */
+/** A writer that claims its file on the first write and overwrites it on each later one, so a
+ *  session's checkpoints and final result share one record. */
 export function builderExecutionEvidenceWriter(
   epochDir: string,
 ): (evidence: BuilderExecutionEvidence) => void {

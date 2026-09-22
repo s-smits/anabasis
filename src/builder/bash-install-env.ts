@@ -1,15 +1,9 @@
 /**
  * Shell environment for a Builder authoring session. HOME points into the workspace's `.toolchain`
- * directory, which tool admission makes available later. HOME-based installers and
- * tools (Arduino's `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip) therefore write within
- * the workspace and leave files admission can reuse. Two conventional user bin directories join PATH so Python,
- * Rust and similar installs run without extra flags.
- *
- * The redirect used to depend on the network policy, on the reasoning that only an installer writes
- * to HOME. An offline session writes there too: on run opus-n2b2 the Builder's first
- * `arduino-cli version` answered `open ~/Library/Arduino15/inventory.yaml: operation not
- * permitted`, because the wall denies the host home that HOME still pointed at. The tool then reads
- * as broken rather than as denied access, which is the failure hostToolchainEnv already names.
+ * directory under every network policy, so HOME-based installers and tools write inside the
+ * workspace, where admission can reuse them, instead of into the denied host home. Two
+ * conventional user bin directories join PATH so Python, Rust and similar installs run without
+ * extra flags.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { HARNESS_CONFIG_FILE, type HarnessSettings, harnessSettings } from "../truth/harness-config.ts";
@@ -20,21 +14,8 @@ import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts
 import { ISOLATED_TIMEOUT_MS } from "./candidate-isolation-runtime.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 
-/**
- * The bash tool description for the composed policy; `pathCard` is the shared path sentence.
- *
- * It used to say "it can write only there" and "host secrets are not [available]". Neither was
- * true after the cells were opened so a domain could install what it needs: the Seatbelt profile
- * bases on `(allow default)` and subtracts named roots, and the in-process guard checks only the
- * command's `cwd`, not the paths inside the command. A tool description is a runtime fact the
- * model cannot observe (tenet 5), so it states what the wall actually closes and leaves the
- * workspace as the instruction it is, rather than describing a confinement that is not there.
- */
-/** The longest one bash call may run. Control generation with an FEA or a toolchain compile ran
- *  past the 10-minute default in 18 campaigns; the alternative the Builder found was a
- *  background job polled with `sleep`, which the same deadline killed. Two hours since
- *  2026-09-14 for a firmware toolchain build; truss Builders then waited 47 to 52 minutes on one
- *  search call (2026-09-15), so the description reserves it for builds. */
+/** The longest one bash call may run: long enough for a toolchain build, which a background job
+ *  cannot outlive. The description reserves it for builds. */
 export const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
 
 /** The workspace-local environment for the host-dispatched Builder shell tool. */
@@ -49,11 +30,8 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_DATA_HOME: join(home, ".local", "share"),
-    // The workspace's packages are links into the repository's node_modules, whose own directory
-    // the wall does not list, so a bare `bun` resolving a package from its real path cannot find a
-    // hoisted dependency beside it: truss run fa03b7's first script stopped at pi-ai's
-    // `partial-json`. Resolving from the link's path, as the starter's `--preserve-symlinks` test
-    // command already does, finds it in the workspace's node_modules.
+    // Workspace packages link into the repository's node_modules, which the wall does not list;
+    // resolving from the link's path finds hoisted dependencies in the workspace's node_modules.
     NODE_PRESERVE_SYMLINKS: "1",
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
@@ -67,10 +45,8 @@ export function bashTimeoutMs(seconds: number | undefined): number {
   return Math.min(BASH_TIMEOUT_MAX_MS, Math.round(seconds * 1000));
 }
 
-/** What a killed command tells the model: a bare exit 137 read as memory, and the retry was killed too.
- *  The host load is a runtime fact the Builder cannot otherwise tell from a slow command: truss run
- *  5211e7's reference search was killed at 3,000 s with the host at load 40 on 12 cores, and its rerun had
- *  about a tenth of one core (2026-09-14). */
+/** What a killed command tells the model, including the host load, which the Builder cannot
+ *  otherwise tell apart from a slow command. */
 export function bashKilledNotice(timeoutMs: number): string {
   const load = (loadavg()[0] ?? 0).toFixed(1);
   return `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${load} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`;
@@ -80,19 +56,9 @@ export function bashKilledNotice(timeoutMs: number): string {
  * What one long authoring call cost against the budget this harness gives its own solver, or null
  * when the call would have fitted inside it.
  *
- * The Builder's shell runs for up to two hours and nothing shortens it, because searching a domain
- * is not solving one of its tasks. The solver it is writing those limits for gets
- * `solver.shell_timeout_max_seconds` per command, `gate.check_seconds` per correctness check and
- * `solver.solve_minutes` for a whole solve — all three from the `agent/config.yaml` in this same
- * workspace, which the Builder wrote and can read. Nothing in the loop ever stated the exchange
- * rate: truss run c1d2a7 spent 61.0, 36.1 and 23.0 minutes in three serial calls of one authoring
- * round settling its mass limits, for a solver holding 15 minutes per command, and the round
- * carried that mismatch into the battery unexamined (operator raised it 2026-09-18).
- *
- * This is a nudge, not a wall: the call already ran, and every number in it is the Builder's own.
- * Both levers are the Builder's too — the settings, and the installed tools whose accuracy-for-time
- * settings decide what those seconds buy. Silent at or below the smallest budget, because a call
- * the solver could itself have made needs no note.
+ * The budgets are the solver's per-command, per-check and whole-solve walls from the workspace's
+ * own `agent/config.yaml`. This is a nudge, not a wall: the call already ran. Silent at or below
+ * the smallest budget, since the solver could have made that call itself.
  */
 export function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
   const commandMs = settings.shellMaxSeconds * 1000;
@@ -102,8 +68,8 @@ export function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings)
   return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)}, one correctness check ${against(settings.checkWallMs)} and a whole solve ${against(settings.solveMs)}. Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
 }
 
-/** The same notice for a workspace, silent while its config is unreadable — the submit gate owns
- *  reporting a defective one, and a nudge must never be the thing that fails a shell call. */
+/** The same notice for a workspace, silent while its config is unreadable: the submit gate reports
+ *  a defective config, and a nudge never fails a shell call. */
 export function workspaceSolverBudgetNotice(workDir: string, elapsedMs: number): string | null {
   try {
     return solverBudgetNotice(elapsedMs, harnessSettings(workDir));
@@ -112,6 +78,8 @@ export function workspaceSolverBudgetNotice(workDir: string, elapsedMs: number):
   }
 }
 
+/** The bash tool description, stating what the wall actually closes; `pathCard` is the shared path
+ *  sentence. */
 export function bashDescription(policy: CandidateAccessPolicy, pathCard: string): string {
   const closed =
     "The wall closes the verified repository, this campaign's run evidence and the host's credential and key files; keep your own work inside the workspace.";

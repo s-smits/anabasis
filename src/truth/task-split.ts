@@ -25,7 +25,7 @@ export interface PublicTask<PublicInput> {
 }
 
 /**
- * Capture the public task before solving (steering 2026-07-11 item 2). Its canonical bytes and
+ * Capture the public task before solving. Its canonical bytes and
  * digest come from the authoritative task before generated code runs. A toolset factory or
  * solver can then mutate only its own clone. Computing the digest after solving would identify
  * the mutated view instead of the original question, losing the comparison this record preserves.

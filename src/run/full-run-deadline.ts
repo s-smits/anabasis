@@ -62,10 +62,9 @@ export class FullRunClosure {
   /**
    * Settle the provider, then record the terminal — even when settlement itself fails.
    *
-   * The active-reservation check used to throw before `close()`. If calls remained active, the
-   * controller never reached `closeControllerRun`, leaving no terminal and retaining its lock.
-   * Terminal recording now runs in `finally`; signal handlers are removed afterwards, so a
-   * SIGTERM during cleanup is still handled instead of ending the process immediately.
+   * Terminal recording runs in `finally`, so a failed settlement still leaves a terminal and
+   * releases the lock. Signal handlers are removed afterwards, so a SIGTERM during cleanup is still
+   * handled instead of ending the process immediately.
    */
   async settleAndClose(cause: unknown): Promise<void> {
     if (this.closed) return;
@@ -89,10 +88,8 @@ export class FullRunClosure {
       }
       if (cause == null && this.primaryCause !== null) throw this.primaryCause;
     } catch (settlement) {
-      // Record a settlement failure if no earlier failure exists. Previously, finally used the
-      // original cause, which was null on a successful path, and recorded `completed` even with
-      // active reservations. A retry then did nothing because this.closed was already true.
-      // rememberPrimaryCause preserves the first non-null cause throughout cleanup.
+      // A settlement failure becomes the cause when no earlier failure exists, so active
+      // reservations never record `completed`; rememberPrimaryCause keeps the first cause.
       this.rememberPrimaryCause(settlement);
       throw this.primaryCause ?? settlement;
     } finally {

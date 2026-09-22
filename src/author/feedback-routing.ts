@@ -63,21 +63,15 @@ export function feedbackOwner(feedback: readonly CampaignFeedback[]): FeedbackOw
   return owners.size === 1 ? (feedback[0]?.owner ?? null) : null;
 }
 
-/** The owner label with the file it names. Nothing model-visible mapped "instructions" to
- *  agent/BUILT_AGENTS.md: in the week of 2026-09-07, 15 packets pointing at it preceded a measured
- *  successor, and 12 of those successors kept the guide byte-identical. */
+/** The owner label with the files it names, so "instructions" points at the operating guide. */
 export function ownerTarget(owner: FeedbackOwner): string {
   const files = routableOwner(owner) ? ownerWritableFiles(owner) : [];
   return files.length === 0 ? owner : `${owner} (${files.join(", ")})`;
 }
 
 /** How a feedback row reaches the Builder: one line per projected finding, or one line naming the
- *  owner when the row has no findings.
- *
- *  The row names the owner's own file, not the finding's recorded path. Of the 416 findings in the
- *  admission records under `campaigns/`, 411 cite a file under `campaigns/` and 5 under `domains/`:
- *  all 416 are controller evidence the Builder's file wall denies, so the citation spent about a
- *  hundred characters a row on a file the session could not open. The record keeps it. */
+ *  owner when the row has no findings. Each row names the owner's file rather than the finding's
+ *  recorded path, which is controller evidence the Builder cannot open. */
 export function advisory(feedback: CampaignFeedback[]): string | undefined {
   if (feedback.length === 0) return undefined;
   return feedback

@@ -13,9 +13,7 @@ import type { JudgeInput } from "./judge.ts";
 
 /**
  * Tell the Judge the request includes its public task. Every subject is a measured case that
- * carries its task, so the Judge can apply task-dependent rules. live-run-01 recorded nine wrong
- * verdicts without a usable abstention path; run 68 recorded abstentions on all 20 accepts under
- * the opposite wording. Both lacked the task context needed for those decisions.
+ * carries its task, so the Judge can apply task-dependent rules.
  *
  * This states the request shape, never what would make an artifact valid: the no-hints boundary
  * owns the second, and disclosing the request shape is not disclosing verifier detail.

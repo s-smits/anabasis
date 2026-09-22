@@ -1,21 +1,12 @@
 /**
  * Append-only controller observations of model-visible inputs and lifecycle events. This is
- * telemetry: validators, evaluators, claims, promotion decisions and Builder prompts do not
- * read this file. Missing observations reduce visibility into the run but do not supply or
- * change a verdict.
+ * telemetry: no validator, evaluator, claim, promotion decision or Builder prompt reads it, so a
+ * missing observation never changes a verdict.
  *
- * A `response` row existed for the prose review callers whose answer survived only as a parse;
- * those callers were removed on 2026-09-04 and the row went with them. A judge census verdict
- * never had one: `judge/controls/NNNN.json` already records its verdict, rationale and error per
- * subject, and a second copy here would be a second owner of one fact.
- *
- * Rows form a tree. `parentId` identifies the enclosing row: run → case → turn → steering or
- * follow-up. Null places the row directly under the run named by `runId`. Emit a parent first,
- * then use `child(id)` to write its children. `kind` describes the node: a span contains work,
- * a generation represents a model call, and an event records an instant. Consumers can use
- * those categories without enumerating every event type. The emitter also derives severity
- * in `level` from each row's state, giving readers one consistent classification rather than
- * requiring each view to interpret several state vocabularies.
+ * Rows form a tree. `parentId` identifies the enclosing row (run → case → turn → steering or
+ * follow-up); null places the row directly under the run. Emit a parent first, then use
+ * `child(id)` for its children. `kind` says whether a row is a span, a model call (generation) or
+ * an instant (event), and the emitter derives `level` from each row's state.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
@@ -40,11 +31,8 @@ const OBSERVATION_ENVELOPE_KEYS = new Set([
   "type",
 ]);
 
-/** Only interfaces with a producer today: Builder sessions, the Built solver, and the Judge census
- *  session. A value nothing emits is vocabulary the reader must handle and never sees.
- *
- *  The runtime list is the one owner: the operator projection validates `--contract` against it
- *  rather than repeating the members. */
+/** The observed interfaces that have a producer. The operator projection validates `--contract`
+ *  against this list. */
 export const OBSERVED_INTERFACES = ["builder", "built", "judge-census"] as const;
 export type ObservedInterface = (typeof OBSERVED_INTERFACES)[number];
 
@@ -52,8 +40,7 @@ export type ObservedInterface = (typeof OBSERVED_INTERFACES)[number];
  *  an instant. */
 type ObservationKind = "span" | "generation" | "event";
 
-/** The one severity axis across every row type. Derived by the emitter, so it cannot disagree
- *  with the state it summarises. */
+/** The one severity axis across every row type, derived by the emitter from the row's state. */
 export type ObservationLevel = "default" | "warning" | "error";
 
 interface PromptEvent {
@@ -68,8 +55,7 @@ interface PromptEvent {
 
 interface SteeringEvent {
   /** Where the statement comes from: code, recorded evidence, a model hypothesis or the
-   *  operator. Readers cannot infer that authority from descriptive fields. The old category
-   *  field repeated information available from type, phase, contract, hook and owner. */
+   *  operator. */
   authority: "deterministic" | "evidence-observation" | "model-hypothesis" | "operator" | "unknown";
   claim: string;
   owner?: string;
@@ -88,10 +74,7 @@ interface HookEvent {
 }
 
 interface PhaseEvent {
-  /** Only steps an emitter reaches. `gates`, `measure-off` and `critic` sat here without a
-   *  producer: the gate's decision is the authoring iteration's own `stage`, measurement has run
-   *  a single battery since the adviser condition went, and the critic's move is `next`. A name
-   *  no row carries reads to a census as a step that never ran. */
+  /** Only steps an emitter reaches. */
   phase:
     | "input"
     | "build"
@@ -105,11 +88,8 @@ interface PhaseEvent {
     | "analyse"
     | "admission"
     | "next";
-  /** `deferred` is a step this run holds rather than runs: it already read as a warning in
-   *  `levelOf` with no producer at all. The solve pool delivers its results in input order, so a
-   *  case that finishes while an earlier one is still solving waits before it is graded, and from
-   *  outside that wait was indistinguishable from a stalled verifier — run truss `…4c67fc` closed
-   *  its last case span at `Case canopy-skewed-heads submitted` and said nothing further. */
+  /** `deferred` marks a held step: the solve pool delivers results in input order, so a finished
+   *  case may wait for an earlier one before grading, and this tells that wait from a stall. */
   state: "started" | "completed" | "failed" | "deferred";
   summary: string;
   evidence?: string[];
@@ -117,25 +97,19 @@ interface PhaseEvent {
   subjectId?: string;
 }
 
-/** One settled authoring iteration, from its already-recorded evidence identities. Run w11 wrote
- *  nine observation rows in 5h35m and was silent for its final 3h10m while 36 iterations settled
- *  `gates-blocked` on one focus owner; a live reader could not see the convergence failure
- *  without opening every iteration.json. Telemetry only: iteration.json stays the evidence. */
+/** One settled authoring iteration, from its recorded evidence identities, so a live reader can
+ *  see convergence. Telemetry only: iteration.json stays the evidence. */
 interface IterationEvent {
   ordinal: number;
   outcome: string;
-  /** The gate stage the iteration settled at, `null` when it reached none. The stderr line has
-   *  always named it; without it here a reader sees that 36 iterations were blocked and not
-   *  whether they were blocked at one stage or at 36 different ones. */
+  /** The gate stage the iteration settled at, `null` when it reached none. */
   stage: string | null;
   focusOwner: string | null;
   findingsHash: string | null;
 }
 
-/** One completed model turn's tool tally, emitted at the turn boundary. The per-session
- *  aggregate has no time axis: run 48's evidence could not say when its 30 failed Bash calls
- *  happened or whether they clustered, so the review re-read the raw transcript. Telemetry
- *  only: builder-execution.json stays the evidence. */
+/** One completed model turn's tool tally, emitted at the turn boundary so failures have a time
+ *  axis. Telemetry only: builder-execution.json stays the evidence. */
 interface TurnToolsEvent {
   turn: number;
   toolCalls: number;
@@ -144,10 +118,8 @@ interface TurnToolsEvent {
   failedByName: Record<string, number>;
 }
 
-/** Event fields appended after the shared row metadata. Prompt events also include the digest
- *  and length calculated from their text. This union restricts emitters to declared event
- *  shapes; the previous object type accepted arbitrary records. The emitter separately
- *  prevents any event field from replacing shared metadata. */
+/** Event fields appended after the shared row metadata; prompt events also carry their text's
+ *  digest and length. The emitter refuses any field that would replace the metadata. */
 type ObservationBody =
   | (PromptEvent & { promptDigest: string; chars: number })
   | SteeringEvent
@@ -203,17 +175,14 @@ function priorSequence(file: string): number {
       const value = parseJsonAs<{ seq?: unknown }>(line);
       if (isNumber(value.seq) && Number.isInteger(value.seq)) maximum = Math.max(maximum, value.seq);
     } catch {
-      // A malformed historical row remains visible to the reader. It cannot make sequence reuse.
+      // A malformed row stays for the reader; it does not affect the sequence.
     }
   }
   return maximum;
 }
 
 /** A state that stopped something is an error; a state that refused one is a warning. `deferred`
- *  sat in the warning list with no producer, left behind by a steering hardcode that has gone.
- *  The phase state of that name now has one, and it stays at the default level: a case held
- *  behind an earlier one is how the ordered pool is built to work, so two thirds of a healthy
- *  battery would read as warnings and the real ones would be lost among them. */
+ *  stays at the default level, because a case held behind an earlier one is normal. */
 function levelOf(state: string): ObservationLevel {
   if (state === "failed") return "error";
   if (state === "rejected" || state === "suppressed") return "warning";
@@ -271,8 +240,6 @@ export function createRunObserver(repoRoot: string, slug: string, runId: string)
       );
     },
     steering(event) {
-      // Steering rows carried shadow `mode`/`status` fields no verdict read; the only non-default
-      // level ever derived came from a hardcoded "deferred". Telemetry states facts, not severity.
       return emit({ type: "steering-ingested", kind: "event", level: "default", parentId }, event);
     },
     hook(event) {
@@ -344,10 +311,8 @@ export function startFullRunObservation(
 export function observeNextMove(
   observer: RunObserver,
   decision: { move: string; reason: string },
-  /** The climb reading a rebuild was sized from, when this move recorded one. It is durable in
-   *  difficulty-decisions/, which the campaign watcher reads, but a live reader of the stream saw
-   *  the word "rebuild" and never the score it answered — the run's most consequential decision
-   *  arriving as a bare verb. */
+  /** The climb reading a rebuild was sized from, when this move recorded one, so the stream shows
+   *  the score behind the move. */
   difficulty?: { evidence: string; action: string; rationale: string } | null,
 ): void {
   observer.steering({
@@ -408,20 +373,15 @@ export function observeAnalysisResult(
   }
 }
 
-/** The one [fullrun] stderr emitter. Every line carries its moment (UTC, seconds) because runs
- *  13/14 liveness triage had to correlate file mtimes by hand — no emitted line said when. The
- *  tag stays first so grep-based watches (`rg "\[fullrun\]"`) keep matching. Telemetry only,
- *  like the stream above: no verdict reads a log line. */
+/** The one [fullrun] stderr emitter. Every line carries a UTC timestamp; the tag stays first so
+ *  grep-based watches keep matching. Telemetry only: no verdict reads a log line. */
 export function fullrunLine(message: string): void {
   console.error(`[fullrun] ${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")} ${message}`);
 }
 
 export function campaignProgressOptions(slug: string): CampaignProgressOptionsResult {
   return {
-    // The number counts author calls used by the session, so the label states the unit. Run 16 logged
-    // "controls ok (attempt 6)" against a per-call cap of 3, because the controls session sums its
-    // calls across candidate corpora and patch rounds while every other session's count is one
-    // loop's rounds. Both readings agree on "calls"; only "attempt" implied an ordinal.
+    // The number is the session's author calls, not an attempt ordinal.
     onPhase: (phase, ok, attempts) =>
       fullrunLine(
         `${slug}: session ${phase} ${ok ? "ok" : "FAILED"} (${attempts} author call${attempts === 1 ? "" : "s"})`,

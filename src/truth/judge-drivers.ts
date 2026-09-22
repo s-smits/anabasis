@@ -70,9 +70,8 @@ function isVerdictWord(value: string): value is VerdictWord {
 
 /** The rules a fail may cite for this subject: each shown validity assertion, each shown public
  *  rule-decision statement, and the two fixed citations. A fail that names anything else, or
- *  nothing, is a protocol non-result, not a verdict: run 69's hold rested on agent tool text no rule
- *  stated, and the prompt alone did not stop that. The rule decisions are on the Judge's domain
- *  card because the solver reads them too; a fail resting on one used to become a non-result. */
+ *  nothing, is a protocol non-result, not a verdict, so a fail cannot rest on text no rule states.
+ *  Rule decisions are citable because the solver reads them too. */
 function citableRules(input: JudgeInput): ReadonlySet<string> {
   const shown = input.publicContext.publicTask?.publicValidityRules?.map((rule) => rule.assertion) ?? [];
   const decisions = input.publicContext.domain.publicResources.find(

@@ -1,12 +1,9 @@
 /**
  * Every sentence the climb readout sends a Builder, in one literal.
  *
- * The text used to live in five modules — the first-battery guidance, the next-experiment contract,
- * the sizing note, the measurement note and the ledger note — and each carried its own count of
- * the same battery. Tuning one sentence meant finding which of them owned it, and a reworded
- * sentence changed no recorded identity. Here a sentence is a line in one object, `fill` refuses a
- * placeholder it cannot fill, and `FRAME_REVISION` names the exact frame a recorded decision was
- * rendered from, so a wording change is a new recorded condition rather than an invisible one.
+ * Each sentence is one line of `FRAME`, `fill` refuses a placeholder it cannot fill, and
+ * `FRAME_REVISION` names the exact frame a recorded decision was rendered from, so a wording change
+ * is a new recorded condition.
  *
  * Placeholders are `{name}`, letters only; the JSON example in the contract keeps its quoted keys
  * and never matches.

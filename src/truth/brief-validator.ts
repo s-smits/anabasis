@@ -1,7 +1,5 @@
-/**
- * Validate the Builder's brief before candidate execution. This module checks field types,
- * declared check inputs, join ownership, artifact roots and rule citations.
- */
+/** Validates the Builder's brief before candidate execution: field types, declared check inputs,
+ *  join ownership, artifact roots and rule citations. */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
   type Brief,
@@ -24,11 +22,8 @@ import {
 } from "../meta/json-shape.ts";
 import { numericBoundaryFieldFindings, numericBoundaryFindings } from "./numeric-boundary.ts";
 
-/**
- * Exactly what the shape pass proves: the named fields are present with the right container kind,
- * and nothing at all about their elements. Naming it lets the six element walks below read the
- * parsed JSON values directly instead of asserting each container back down from the contract.
- */
+/** What the shape pass proves: the named fields exist with the right container kind, and nothing
+ *  about their elements, which the element walks below then check. */
 type BriefRecord = JsonObject & {
   slug: string;
   domain: string;
@@ -118,8 +113,7 @@ function checkExecutionFieldFindings(value: unknown, path: string): ContractFind
 }
 
 function briefFieldFindings(value: JsonObject): ContractFinding[] {
-  const declared = value;
-  if (declared.correctnessContract !== "check-program/v1") {
+  if (value.correctnessContract !== "check-program/v1") {
     return [
       finding(
         "unsupported-correctness-contract",
@@ -130,7 +124,7 @@ function briefFieldFindings(value: JsonObject): ContractFinding[] {
   }
   const findings: ContractFinding[] = [];
   for (const field of ["slug", "domain"] as const) {
-    if (!isString(declared[field])) findings.push(fieldFinding(field, "a string", declared[field]));
+    if (!isString(value[field])) findings.push(fieldFinding(field, "a string", value[field]));
   }
   for (const field of [
     "decisions",
@@ -140,21 +134,18 @@ function briefFieldFindings(value: JsonObject): ContractFinding[] {
     "artifactSchema",
     "designRuleConstants",
   ] as const) {
-    if (!Array.isArray(declared[field])) findings.push(fieldFinding(field, "an array", declared[field]));
+    if (!Array.isArray(value[field])) findings.push(fieldFinding(field, "an array", value[field]));
   }
-  if (declared.designRuleSets !== undefined && !Array.isArray(declared.designRuleSets)) {
-    findings.push(fieldFinding("designRuleSets", "an array (optional)", declared.designRuleSets));
+  if (value.designRuleSets !== undefined && !Array.isArray(value.designRuleSets)) {
+    findings.push(fieldFinding("designRuleSets", "an array (optional)", value.designRuleSets));
   }
-  if (declared.ruleDecisions !== undefined && !Array.isArray(declared.ruleDecisions)) {
-    findings.push(fieldFinding("ruleDecisions", "an array (optional)", declared.ruleDecisions));
+  if (value.ruleDecisions !== undefined && !Array.isArray(value.ruleDecisions)) {
+    findings.push(fieldFinding("ruleDecisions", "an array (optional)", value.ruleDecisions));
   }
   if (findings.length > 0) return findings;
-  // SAFETY: the loops above pushed a finding for every field of BriefRecord that is missing or of
-  // the wrong container kind, and the line before returns when any finding was pushed.
+  // SAFETY: the loops above found every BriefRecord field present with the right container kind.
   const brief = value as BriefRecord;
-  // The static type promises string[] but nothing checked the entries: a brief whose decision
-  // rows were objects or blank strings still validated. Decisions are the coverage map, so
-  // each row must be a note a reader can actually read.
+  // Decisions are the coverage map, so each row must be a readable non-empty note.
   brief.decisions.forEach((entry, i) => {
     if (!isString(entry) || entry.trim() === "") {
       findings.push(fieldFinding(`decisions[${i}]`, "a non-empty string", entry));
@@ -182,8 +173,7 @@ function artifactSchemaFieldFindings(brief: BriefRecord): ContractFinding[] {
         fieldFinding(`artifactSchema[${i}].allowedValues`, "an array (optional)", field.allowedValues),
       );
     } else if (field.taskConditioned !== undefined && field.taskConditioned !== true) {
-      // Literal true only, like fileMap: the census reads the mark as a boundary, and a truthy
-      // string or 1 would silently move a root the author did not mean to declare material.
+      // Literal true only: a truthy string or 1 would move a boundary the author did not declare.
       findings.push(
         fieldFinding(
           `artifactSchema[${i}].taskConditioned`,
@@ -208,8 +198,8 @@ function artifactSchemaFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-/** Shape of each truth check: identity, assertion, execution block and declared ids, with the
- *  superseded deciding fields refused by name. */
+/** Shape of each truth check: identity, assertion, execution block and declared ids. Deciding
+ *  fields outside `execution` are refused by name. */
 function truthCheckFieldFindings(brief: BriefRecord): ContractFinding[] {
   const findings: ContractFinding[] = [];
   brief.truthChecks.forEach((check, i) => {
@@ -314,9 +304,8 @@ function designRuleFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-/** The truth-check pass, and the artifact roots those checks declared they read. "$" includes the
- *  whole artifact. Declaration makes a value available but does not prove semantic use; only paths
- *  input validation accepted are added, so the unread-root check below reads the same selections. */
+/** Truth-check findings, and the artifact roots the checks declare they read ("$" is the whole
+ *  artifact). Only valid paths count as read. */
 function truthCheckFindings(brief: Brief) {
   const findings: ContractFinding[] = [];
   const checkIds = new Set<string>();
@@ -367,8 +356,8 @@ function truthCheckFindings(brief: Brief) {
   return { findings, readRoots };
 }
 
-/** Each join is owned by exactly one check and carries the distinct decoy classes that make its
- *  discrimination evidence about the join rather than about label completeness. */
+/** Each join has exactly one owning check and distinct decoy classes, so its discrimination
+ *  evidence is about the join rather than label completeness. */
 function joinFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const joinOwners = new Map<string, string[]>();
@@ -444,11 +433,8 @@ function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): C
       );
     }
     fieldNames.add(field.name);
-    // In run 80, the schema declared firmware source roots and the reference solve filled them,
-    // and every check read only the derived summary — so replacing or omitting every source file
-    // was accepted 25/25. Refuse roots absent from every check's declared inputs before F2
-    // executes. A check selecting the whole artifact ("$") covers every root. When no checks
-    // exist, brief-no-truth-checks already reports the failure without duplicating it here.
+    // A root no check reads measures nothing. "$" covers every root; with no checks at all,
+    // brief-no-truth-checks already reports the failure.
     if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
       findings.push(
         finding(
@@ -520,8 +506,7 @@ export function validateBrief(value: unknown): ValidationResult {
     ? briefFieldFindings(value)
     : [fieldFinding("$", "a JSON object with the brief fields", value)];
   if (fieldFindings.length > 0) return { ok: false, findings: fieldFindings };
-  // SAFETY: briefFieldFindings returned no finding, which it does only when every field of the
-  // brief and every element it walks carries its declared type.
+  // SAFETY: briefFieldFindings found every field and every walked element of its declared type.
   const brief = value as Brief;
   const checks = truthCheckFindings(brief);
   const findings: ContractFinding[] = [];
@@ -547,11 +532,3 @@ export function validateBrief(value: unknown): ValidationResult {
   findings.push(...artifactSchemaFindings(brief, checks.readRoots), ...designRuleConstantFindings(brief));
   return { ok: findings.length === 0, findings };
 }
-
-/**
- * A structured kickoff may already name the canonical top-level representation. In that case the
- * fresh brief specialist refines shapes and truth, but cannot rename or flatten those roots. The
- * external-verifier-005 specimen declared a SubmissionPackage wrapper while the brief emitted flat
- * manifest/records fields; every real verifier accept then failed on representation before validation.
- * Free-text kickoffs and JSON kickoffs without artifactSchema remain unconstrained.
- */

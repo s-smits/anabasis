@@ -1,9 +1,7 @@
 /**
- * Refuse a required external executable whose bytes are also candidate-authored source.
- * This detects one concrete self-grounding shape, not algorithm provenance. A public package
- * and an authored replacement can both live under `.toolchain` or on PATH; location, script
- * versus binary, and absence from this result establish no independence. Host receipts attest
- * invocation and inputs. Control challenges and semantic review retain their separate roles.
+ * Refuse a required external executable whose bytes are also candidate-authored source. This
+ * detects one concrete self-grounding shape, not algorithm provenance: location, script versus
+ * binary, and absence from this result establish no independence.
  */
 import { compareCodeUnits } from "../meta/stable-json.ts";
 
@@ -11,15 +9,13 @@ type ToolProvenance = { source: "workspace-toolchain" | "host"; kind: "binary" |
 
 type SelfGroundedCheck = { checkId: string; adapterId: string };
 
-/** Treat an argument above this size, or containing a line break, as possible program text.
- *  81% of the 13,090 recorded python3 rows of 2026-09-08 carried the whole checker as
- *  `-c "<source>"`. This bounded rule restricts external checks; it does not classify every program. */
+/** Treat an argument above this size, or containing a line break, as possible program text, such
+ *  as a whole checker passed as `-c "<source>"`. */
 export const PROGRAM_ARGUMENT_MAX_BYTES = 256;
 
 type ProgramArgumentCheck = { checkId: string; toolId: string; bytes: number };
 
-/** Refuse only checks whose every named tool has known candidate-authored bytes. Mixed
- * helper/domain-engine checks retain their receipts; this test cannot establish independence. */
+/** Refuse only checks whose every named tool has known candidate-authored bytes. */
 export function selfGroundedChecks(
   groundings: ReadonlyArray<{ checkId: string; adapterId: string | null }>,
   tools: Readonly<Record<string, ToolProvenance>>,
@@ -49,11 +45,11 @@ function programArgument(arg: string): boolean {
   return /[\r\n]/.test(arg) || new TextEncoder().encode(arg).byteLength > PROGRAM_ARGUMENT_MAX_BYTES;
 }
 
-/** The second self-grounding shape, read from the host's own evidence rows: an external-evidence
- *  check whose tool run carried its program as an argument. The attested bytes are then the
- *  interpreter's while the deciding bytes are the candidate's, so the tool digest proves nothing
- *  about independence. Files and stdin must match declared input leaves; args previously had no
- *  equivalent restriction on added source. Authored checks may pass program text: they claim no independence. */
+/** The second self-grounding shape, read from the host's evidence rows: an external-evidence check
+ *  whose tool run carried its program as an argument, so the attested bytes are the interpreter's
+ *  and the deciding bytes the candidate's. Authored checks may pass program text: they claim no
+ *  independence. */
+
 export function programArgumentChecks(
   rows: ReadonlyArray<{ checkId: string; toolId: string; args: readonly string[] }>,
   externalCheckIds: ReadonlySet<string>,

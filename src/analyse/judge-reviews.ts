@@ -2,8 +2,8 @@
  * The Main Judge's recorded battery review, revalidated here without another model call. It writes
  * no measurement evidence; the caller persists the projection. Two outputs matter: the contested
  * rows (every verified case where the Judge and the verifier disagreed, named without a threshold)
- * and the Judge exit, which is advice only. The Judge never blocks and never routes an owner
- * (operator decision 2026-09-14); its disagreements reach the rebuild advice packet by family.
+ * and the Judge exit, which is advice only. The Judge never blocks and never routes an owner; its
+ * disagreements reach the rebuild advice packet by family.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -87,8 +87,8 @@ function runDirVerifier(): (runDir: string) => EvidenceLogViolation[] {
   };
 }
 
-/** The run's own judge record when it states its cited rules, which every Judge attempt records;
- *  a record without them (written before 2026-09-15) reads as no judge evidence for its case. */
+/** The run's own judge record when it states its cited rules; a record without them reads as no
+ *  judge evidence for its case. */
 function asCurrentJudgeEvidence(value: unknown): JudgeSubjectEvidence | null {
   if (!isRecord(value) || !Array.isArray(value.rules)) return null;
   return /* SAFETY: the recorded reader returned the run's own judge evidence, and it states the rules field older records lack. */ value as JudgeSubjectEvidence;
@@ -194,11 +194,8 @@ function judgeExit(contested: readonly ContestedCase[], verified: number): Judge
   return {
     ...base,
     kind: "advisory",
-    // What `vetoed` counts is a cited fail a second sample repeated, and the clause used to read
-    // "N citing shown rules". c1d2a7's round two reported "0 citing shown rules" for a fail that
-    // cited one — the catalogue-mass rule, with a 0.00061 kg disagreement against a 0.0005 kg
-    // tolerance — and was not repeated on the re-sample. The author reads this sentence to decide
-    // whether the disagreement is worth its attention, so it names both halves.
+    // A veto is a cited fail that a second sample repeated; the sentence names both halves so a
+    // cited fail the re-sample dropped is not read as uncited.
     reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }

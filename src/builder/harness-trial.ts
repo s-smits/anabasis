@@ -1,18 +1,10 @@
-/** One authored task, solved blind by the measured Built solver and graded by the existing host.
+/** `harness_trial`: one authored task, solved blind by the measured Built solver and graded by the
+ *  host verifier.
  *
- * The solver receives only the public task and the tools the Builder wrote; it never sees the
- * hidden expectations, the reference solve or the author's intent. What comes back is one
- * aggregate pass/fail bit over the bytes it submitted, plus how far it got. Failing check ids,
- * counterexamples, the artifact and every verifier diagnostic stay protected, and submit remains
- * the sole admission path.
- *
- * This is the only instrument in the authoring loop that can observe a battery being easier than
- * its stated target, and it is why no prompt has to exhort the Builder about difficulty: a round
- * that wants tasks its solver misses can measure one before paying for twenty-five. Until
- * 2026-09-19 this tool ran a call sequence the Builder supplied, which made it the author playing
- * solver while holding the answer key; across eight recorded authoring sessions it was called
- * twice, and the three campaigns that used none of it each declared "at most 2 verified passes"
- * and measured six of six.
+ * The solver receives only the public task and the Builder's tools. The Builder gets back one
+ * aggregate pass/fail bit and how far the solve got; check ids, counterexamples, the artifact and
+ * verifier output stay protected. It lets a round see that a battery is too easy before paying to
+ * measure it; submit remains the only admission path.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -43,9 +35,7 @@ import {
 } from "../truth/solve-case.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
 
-/** How many blind rehearsals one authoring session may run. Each one costs a measured case, so
- *  the bound is the session's own experiment budget: two tasks read at the start of a round and
- *  two after hardening them, with two spare. A Builder that wants more measurement has submit. */
+/** Blind rehearsals per authoring session; each costs one measured case. */
 const MAX_REHEARSALS = 6;
 
 const Params = Type.Object({
@@ -57,9 +47,7 @@ interface HarnessTrialBinding {
   workspace: string;
   /** The same authoring contract static inspection and submit use. */
   context: CandidateCheckContext;
-  /** The measured Built solver, under the battery's own runtime, isolation and turn cap. Absent
-   *  for a scripted runtime with no Built slot; the tool then refuses rather than substituting a
-   *  different solver, because a rehearsal against another agent measures nothing. */
+  /** The measured Built solver. Without it the trial refuses rather than substitute another. */
   builtSolver?: () => Solver;
   /** Where each rehearsal's solve evidence is written, one directory per call. Absent in tests. */
   rehearsalDir?: string;
@@ -68,8 +56,8 @@ interface HarnessTrialBinding {
 
 type LoadedTrial = Extract<ReturnType<typeof loadTrialCandidate>, { ok: true }>;
 
-/** One blind grading: the snapshot it grades against, the source tree it was authored in, the
- *  loaded trial, the case the solver produced and the candidate the session has open. */
+/** One blind grading: the snapshot binding, the source binding, the loaded trial, the solved case
+ *  and the candidate id when the trial opened. */
 type BlindGrade = {
   readonly binding: HarnessTrialBinding;
   readonly sourceBinding: HarnessTrialBinding;
@@ -147,20 +135,16 @@ function candidateView(
   };
 }
 
-/** The directory this rehearsal's evidence goes in: its session ordinal, or the next free name
- *  above it. The ordinal counts rehearsals within one session and the directory is the campaign's,
- *  so a second authoring session started at `rehearsal-1` again and wrote over the first session's
- *  solve — the record rule 6 asks each session to keep. Taking the next free name instead follows
- *  `claimEvidencePath`, which answered the same collision for the execution record. */
+/** The rehearsal's evidence directory: `rehearsal-<ordinal>`, or the next free ordinal, so a later
+ *  session never overwrites an earlier session's solve. */
 function claimRehearsalDir(dir: string, ordinal: number): string {
   let path = join(dir, `rehearsal-${String(ordinal)}`);
   for (let next = ordinal + 1; existsSync(path); next += 1) path = join(dir, `rehearsal-${String(next)}`);
   return path;
 }
 
-/** One directory per rehearsal under the campaign, so a solve the Builder paid for stays readable
- *  after the session. A binding with no directory discards it; nothing else changes. The name is
- *  claimed on the first write of a rehearsal, so every later file of that one solve joins it. */
+/** Writes a rehearsal's solve evidence into one directory, claimed on its first write. Without a
+ *  directory the evidence is discarded. */
 function rehearsalWriter(dir: string | undefined, ordinal: number) {
   let claimed: string | undefined;
   return (path: string, value: SolveCaseEvidence): void => {
@@ -172,9 +156,8 @@ function rehearsalWriter(dir: string | undefined, ordinal: number) {
   };
 }
 
-/** Solve the selected task once, exactly as a measured case solves it: the Built runtime's own
- *  turn cap and solve wall, the generated tools as registered, the controller's submission
- *  authority. Nothing here tells the solver which task it is rehearsing. */
+/** Solves the task once, exactly as a measured case does; the solver is not told it is a
+ *  rehearsal. */
 async function solveBlind(
   binding: HarnessTrialBinding,
   loaded: LoadedTrial,
@@ -225,11 +208,7 @@ async function runTrial(
   }
   if (!loaded.ok) return loaded.body;
   const openedCandidateId = candidateId(binding);
-  // The expensive half starts here: a Built solve runs under the harness's own wall, which may be
-  // hours, and nothing reads the result of a cancelled call. The caller's signal reached only the
-  // verifier stage, so a cancelled rehearsal still paid for its whole solve first. `blocked` is the
-  // faithful receipt kind for it — the action could not run, which is a separate count from a
-  // failure (AGENTS.md working rule 6) — and it keeps the refund below to one condition.
+  // A cancelled call skips the solve, which may take hours; `blocked` also refunds the rehearsal.
   if (signal?.aborted === true) {
     return { status: "blocked", stage: "cancelled", error: "the call was cancelled before its solve began" };
   }
@@ -250,8 +229,7 @@ async function runTrial(
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const { binding, sourceBinding, loaded, solved, openedCandidateId } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
-  // A typed solver non-result outranks an accepted submit, as `gradeOutcome` orders the battery's
-  // branches: the case has no truth, so its bytes are not graded.
+  // A solver non-result outranks an accepted submit, as in a battery: its bytes are not graded.
   const verifier =
     candidate.stable && solved.acceptedSubmit && solved.solved.nonResult === undefined
       ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
@@ -261,13 +239,9 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   if (verifier.status === "execution-failed") status = "verifier-failed";
   if (verifier.status === "non-result") status = "non-result";
   if (!candidate.stable) status = "candidate-changed";
-  // Execution and truth are separate facts with separate readers, so the bit lives in `truth` alone
-  // and the verifier view keeps reporting only how far execution got. Only one of the rehearsal's
-  // three shapes carries the bit, so the default in front of the spread gives every one of them the
-  // key the rest then removes.
+  // The truth bit moves to `truth`; the verifier view reports only how far execution got.
   const { truthOk, ...execution } = { truthOk: null, ...verifier };
-  // The aggregate bit alone. A rehearsal that never reached the check program says so rather than
-  // reading as a failure, and a non-result stays a non-result.
+  // A rehearsal that never reached the check program reads as not-run, not as a failure.
   const graded = candidate.stable && verifier.status === "completed" ? truthOk : null;
   return {
     status,
@@ -289,12 +263,7 @@ function trialOutcome(status: string, verdict: string): BuilderCustomToolSemanti
   return verdict === "not-run" ? "incomplete" : "completed";
 }
 
-/** A rehearsal that never reached a solve has no solver verdict to report, so what the Builder
- *  needs back is the candidate's own cause. Stages that name their own keep it — the reader below
- *  prefers the body's text, because the same fact under two owners drifts — and this covers the
- *  ones that carry none. Until 2026-09-20 no branch here read `blocked` at all, so a blank taskId,
- *  an unreadable bundle and a refused fingerprint each came back as "Your solver missed this task":
- *  a solver verdict for a call in which no solver ran. */
+/** The next step for a rehearsal blocked before any solve, by the stage that blocked it. */
 function blockedNextAction(stage: string): string {
   if (stage === "request") {
     return "The call named no task, so nothing was rehearsed. Use harness_inspect inventory to choose an authored taskId and repeat it.";
@@ -338,8 +307,7 @@ function trialResultSummary(value: unknown, remaining: number) {
   if (stage !== "") receipt.stage = stage;
   return {
     validation: { ...counted, rehearsalsLeft: remaining },
-    // A body that already named its own cause keeps it, rather than having the reading recomputed
-    // from the status alone and written over the more specific sentence the stage produced.
+    // A body's own, more specific next action wins over one derived from the status.
     nextAction: isString(row?.nextAction)
       ? row.nextAction
       : trialNextAction(status, verdict, remaining, stage),
@@ -369,10 +337,8 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
       }
       spent += 1;
       const result = await runTrial(binding, params.taskId, spent, signal);
-      // The bound rations measurement, and a rehearsal blocked before its solve measured nothing
-      // and cost no case. Charging it spent a sixth of the session's only difficulty instrument on
-      // a mistyped taskId. Nothing was written under this ordinal either, so the next call reuses
-      // it without colliding.
+      // A rehearsal blocked before its solve cost no case and wrote nothing, so it is refunded
+      // and its ordinal reused.
       if (result.status === "blocked") spent -= 1;
       const summary = trialResultSummary(result, MAX_REHEARSALS - spent);
       return {

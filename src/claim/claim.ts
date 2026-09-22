@@ -1,13 +1,11 @@
 /**
  * Writing a claim from recorded evidence, rather than from completion stated in prose.
  *
- * `Claim.create()` reads the evidence first and returns every blocking clause at once, because a
- * repair loop that peels one clause per round pays for a full rerun per defect. Only when the list
- * is empty does the write happen, and the write itself is guarded twice: a private constructor
- * stops callers at compile time, and a module-private token stops them at runtime. The audit that
- * prompted the brand found `{ ok: true, statement }` compiling clean with no `new` and no cast.
+ * `Claim.create()` returns every blocking clause at once, so a repair loop can fix them all in one
+ * round. It writes a claim only when there are none. A private constructor and a module-private
+ * token make `Claim.create()` the only way to obtain a `Claim`.
  *
- * `claim-evidence.ts` owns the vocabulary these clauses read. This module owns the decisions.
+ * `claim-evidence.ts` owns the vocabulary these clauses read; this module owns the decisions.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { GroundingEvidence } from "../truth/grounding.ts";
@@ -29,16 +27,13 @@ import { PROVIDER_STOPPED_REASON_PREFIX } from "./record-events.ts";
 import { runtimeIdentityFindings } from "./runtime-model-identity.ts";
 import { hasText } from "../meta/text.ts";
 
-/** Whether a clause's remedy is in-loop. `BLOCKING` needs the product rebuilt before another run;
- *  `IN_LOOP` is resume, rerun or prediction closure, and a refusal is repairable only when every
- *  clause on it is. They are read from the first clause producer below, so they are declared here. */
+/** A clause's remedy. `BLOCKING` needs the product rebuilt before another run; `IN_LOOP` is a
+ *  resume, rerun or prediction closure. A refusal is repairable only when every clause is in-loop. */
 const BLOCKING = "blocking";
 const IN_LOOP = "in-loop";
 
-/** The evidence a run has once every clause producer stayed silent. Each field is nullable on
- *  {@link ClaimEvidence} and proved present by a named producer: `bundles` by `bundleClauses`
- *  and `grounding` by `groundingClauses`. Narrowing once here is what lets the statement be
- *  assembled without repeating an assertion per field. */
+/** Evidence once every clause producer stayed silent: `bundleClauses` proved `bundles` present and
+ *  `groundingClauses` proved `grounding` present. */
 type ClaimableEvidence = ClaimEvidence & {
   bundles: BundleHashesEvidence;
   grounding: GroundingEvidence;
@@ -61,9 +56,7 @@ export class NonClaimable {
 export class Claim {
   readonly ok = true as const;
   readonly statement: ClaimStatement;
-  // A class without a private member can be satisfied by an object literal: the audit's
-  // { ok: true, statement } compiled without calling Claim.create(). A private brand makes
-  // TypeScript reject that shortcut, requiring callers to pass through evidence validation.
+  // Without a private member, an object literal `{ ok: true, statement }` would satisfy the type.
   declare private readonly brand: typeof WRITE;
 
   private constructor(token: typeof WRITE, statement: ClaimStatement) {
@@ -79,13 +72,8 @@ export class Claim {
    */
   static create(input: ClaimCreationInput): Claim | NonClaimable {
     const { evidence, score } = input;
-
-    // One evaluator for both identity consumers: the supported-transport blocking clause and the
-    // modelIdentity disclosure derive from the same findings, so they can never drift apart.
-    // The clauses consume `blocking` and `contradicted`, never `unattested`; the disclosure
-    // additionally requires the pin to name both segments and every identity to be attested by
-    // the pinned transport, so relabelled rows or a blank-model pin read unverified instead of
-    // provider-native.
+    // The identity clauses and the `modelIdentity` disclosure read the same findings. Clauses
+    // refuse on `blocking` and `contradicted`; the disclosure also needs no `unattested` row.
     const identityFindings = runtimeIdentityFindings(
       pinSegments(evidence.backendPin),
       evidence.runtimeIdentities,
@@ -115,13 +103,12 @@ export class Claim {
         ),
       ]);
     }
-    // SAFETY: every nullable field ClaimableEvidence narrows pushes its own missing clause above,
-    // and the empty clause list is what reaching this line means.
+    // SAFETY: each field ClaimableEvidence narrows has a producer above that adds a clause when it
+    // is missing, and the clause list is empty here.
     return Claim.write(input, evidence as ClaimableEvidence, identityFindings, buildInputsHash);
   }
 
-  /** Assemble the statement. Reached only with an empty clause list, so every value here is one the
-   *  clause producers established rather than one this function has to check again. */
+  /** Assemble the statement; reached only with an empty clause list. */
   private static write(
     input: ClaimCreationInput,
     evidence: ClaimableEvidence,
@@ -185,11 +172,8 @@ function clause(name: string, detail: string, remedy: "in-loop" | "blocking"): C
   return { clause: name, detail, repairable: remedy === "in-loop" };
 }
 
-/** Read a count safely when the Builder chose the checkId. The evaluation runner creates maps
- *  with no prototype, but parsing saved JSON creates ordinary objects with Object.prototype.
- *  Without an own-key check, an unrecorded checkId such as `constructor` could return an
- *  inherited value instead of 0. The never-observed check would then be skipped, incorrectly
- *  allowing claim creation. */
+/** A count keyed by a Builder-chosen checkId. Only own keys count, so a checkId such as
+ *  `constructor` cannot read an inherited value from a parsed JSON object. */
 function recordedCount(record: Record<string, number>, checkId: string): number {
   return Object.hasOwn(record, checkId) ? (record[checkId] ?? 0) : 0;
 }
@@ -202,13 +186,9 @@ function pinSegments(backendPin: string | null) {
   return { kind: backendPin.slice(0, slash), model: backendPin.slice(slash + 1) };
 }
 
-/** The grounding-coverage rows scoped to the battery's verified cases: a run on a control or an
- *  unverified attempt grounds no verified verdict. Admission computes the same rows over the
- *  control census, and readiness reads these through the same finding, so "this check's tool ran"
- *  has one computation. A check gets a row only where a verified case applied it (the case's
- *  `checkIds`, from the one applicability owner): a check whose only applicable case became a
- *  non-result had no verified opportunity, and zero launches there say nothing about its tool.
- *  Empty when nothing was verified: a zero-verified claim keeps its clauses. */
+/** Grounding-coverage rows over the battery's verified cases only; a run on a control or an
+ *  unverified attempt grounds no verified verdict. A check gets a row only when a verified case
+ *  applied it. Empty when nothing was verified. */
 function externalCheckCoverage(
   groundings: ClaimStatement["groundings"],
   execution: GroundingEvidence["execution"],
@@ -273,7 +253,7 @@ function caseIdentityClauses(score: ScoredCase[]): ClaimClause[] {
 function runStatusClauses(evidence: ClaimEvidence): ClaimClause[] {
   const clauses: ClaimClause[] = [];
   if (evidence.runStatus.state === "interrupted") {
-    // Interrupted ≠ failed: non-claimable, and the remedy is resume/rerun — never "failure".
+    // An interruption is not a failure: the remedy is to resume or rerun.
     clauses.push(
       clause(
         "run-interrupted",
@@ -307,8 +287,8 @@ function runStatusClauses(evidence: ClaimEvidence): ClaimClause[] {
   return clauses;
 }
 
-/** One identity clause, or none when nothing was found. The findings are the detail: at most four
- *  are quoted and the rest counted, so a census of 25 cases does not become the clause. */
+/** One identity clause, or none without findings. At most four findings are quoted; the rest are
+ *  counted. */
 function identityClause(name: string, prefix: string, findings: readonly string[]): ClaimClause[] {
   if (findings.length === 0) return [];
   const overflow = findings.length > 4 ? `; +${findings.length - 4} more` : "";
@@ -321,17 +301,12 @@ function conditionIdentityClauses(
   identityFindings: IdentityFindings,
 ): ClaimClause[] {
   const clauses: ClaimClause[] = [];
-  // An `unattested` row leaves `modelIdentity` unverified in the statement without refusing:
-  // both Astra claims of 2026-09-08 were refused on a route that reports no served model at
-  // all, which is a fact about the route, not about the scored cases.
+  // An `unattested` row only marks `modelIdentity` unverified: a route that reports no served
+  // model says nothing about the scored cases.
   //
-  // Absence and contradiction refuse alike but are named apart, because one reader downstream
-  // treats them differently. `climb-battery-admission.ts` admits a battery refused only for an
-  // unproven identity into the difficulty population: the environment failed to record who
-  // solved the tasks, and the scores still describe these tasks. A contradicted census says
-  // something else — another model or transport produced them — so that battery measured a
-  // different condition and belongs to no product's climb. One clause name could not carry both
-  // readings, and until 2026-09-20 the climb took a contradicted battery as its own.
+  // Absence and contradiction both refuse but carry separate names, because the climb still
+  // counts a battery whose identity is merely unproven, while a contradicted one measured another
+  // condition.
   const supportedTransport = ["claude/", "codex/"].some((prefix) => evidence.backendPin.startsWith(prefix));
   if (supportedTransport) {
     clauses.push(
@@ -350,8 +325,8 @@ function conditionIdentityClauses(
   return clauses;
 }
 
-/** Contradictory review evidence is a producer error; throw instead of returning a claim refusal.
- *  A clause would invite a repair loop to route around a defect in the producer. */
+/** Contradictory review evidence is a producer error, so it throws rather than becoming a clause a
+ *  repair loop could route around. */
 function assertReviewEvidenceConsistent(evidence: ClaimEvidence): void {
   validateJudgeEvidence(evidence.judge);
   if (evidence.judge.judge === "off") return;
@@ -412,27 +387,16 @@ function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimCl
   ];
 }
 
-/** Every declared check must have been observed doing something: an external check by an
- *  execution bound to its exact (checkId, adapterId), and both kinds by a reject control that
- *  failed on exactly this check. */
+/** Every non-exception check must have a reject control that failed on exactly that check;
+ *  running a check proves execution, not that it can reject. Whether an external tool ran is
+ *  decided by `caseGroundingClauses`. */
 function declaredGroundingClauses(
   grounding: GroundingEvidence,
   attributedCheckIds: Record<string, number>,
 ): ClaimClause[] {
   const clauses: ClaimClause[] = [];
-  // Whether an external check's tool ran is owned by the grounding-coverage rows: admission
-  // refuses a never-launched tool before the battery, caseGroundingClauses refuses a verified case
-  // without its own subject-bound run, and readiness names a check that ran on no verified case.
   for (const { checkId, grounding: g } of grounding.declared) {
     if (g.kind === "exception") continue;
-    // In-process checks have no separate host tool call to attest. A reject control failing
-    // only this check establishes that it discriminated that invalid artifact. This does not
-    // establish which primitive caused the verdict; source and import validation are
-    // authoring checks, not execution evidence. With no attributed rejects, the check has
-    // not demonstrated that it can reject an invalid artifact. External checks need the same
-    // evidence, under their existing clause id so older claims retain their vocabulary.
-    // Launching an adapter proves only execution: runs 20 and 21 recorded complete
-    // engine-adapter executions, but no control had ever made the adapter reject an artifact.
     if (recordedCount(attributedCheckIds, checkId) === 0) {
       clauses.push(
         clause(
@@ -446,10 +410,8 @@ function declaredGroundingClauses(
   return clauses;
 }
 
-/** Per-case coverage (handover 2026-07-11). Run-level evidence previously allowed one case's
- *  or control's tool execution to satisfy the requirement for every case using the same check.
- *  Require each applicable external check to have its own execution record for the specific
- *  verified case being scored. */
+/** Each verified passing case needs its own recorded run of every tool its applicable external
+ *  checks declare; another case's run does not cover it. */
 function caseGroundingClauses(
   execution: GroundingEvidence["execution"],
   externalByCheck: Map<string, string[]>,
@@ -463,8 +425,7 @@ function caseGroundingClauses(
     ),
   );
   for (const scored of score) {
-    // A fail decided by a check with complete evidence needs no run of the tool it skipped: that
-    // run could only have withheld a pass (solve-case.ts `acceptedOutcome`).
+    // A failed case needs no run of a tool it skipped: that run could only have withheld a pass.
     if (!scored.truthVerified || !scored.passed) continue;
     for (const checkId of scored.checkIds) {
       for (const adapterId of externalByCheck.get(checkId) ?? []) {
@@ -497,12 +458,8 @@ function executionResolutionClauses(execution: GroundingEvidence["execution"]): 
   ];
 }
 
-/** Detect authored checks that never ran despite having applicable verified cases. In hw1,
- *  all 16 cases passed without the answer-key comparison executing, yet the claim was ready.
- *  These runtime counts complement tasks-check-unexercised, which establishes only that
- *  tasks declare a check. This function covers intrinsic and authored checks. External checks
- *  have their own grounding clauses, and exception groundings have no executable predicate.
- *  Cases with no accepted artifact cannot establish whether an applicable check would run. */
+/** Refuse an intrinsic or authored check that never ran although verified cases applied it.
+ *  External checks have their own grounding clauses; exceptions have no executable predicate. */
 function truthCheckFiringClauses(evidence: ClaimEvidence): ClaimClause[] {
   const intrinsicCheckIds =
     evidence.grounding === null
@@ -511,8 +468,7 @@ function truthCheckFiringClauses(evidence: ClaimEvidence): ClaimClause[] {
           .filter((d) => d.grounding.kind === "intrinsic" || d.grounding.kind === "authored")
           .map((d) => d.checkId);
   const firing = evidence.truthCheckFiring;
-  // No artifact reached the correctness model: the empty-denominator, non-result and paid-agent
-  // clauses own that, and a check cannot fire where nothing verified.
+  // With nothing verified, no check could fire; other clauses own that case.
   if (intrinsicCheckIds.length === 0 || firing.verifierVerifiedCount === 0) return [];
   const neverFired = intrinsicCheckIds.filter(
     (checkId) =>
@@ -557,13 +513,8 @@ function predictionClauses(predictions: PredictionItem[] | null): ClaimClause[] 
   );
 }
 
-/**
- * Explain why too many attempted cases are absent from the score denominator. The ratio decides
- * whether the clause applies; the terminal reason can identify a provider stop. Read that recorded
- * reason rather than inferring an outage from the ratio alone. The producer in
- * src/truth/battery-record.ts uses the shared `PROVIDER_STOPPED_REASON_PREFIX`, keeping this
- * reader aligned with the recorded reason format.
- */
+/** Why too many attempted cases are missing from the denominator. A provider stop is named only
+ *  when the recorded terminal reason says so, never inferred from the ratio. */
 function nonResultRatioDetail(reason: string | null, nonResultTotal: number, attempted: number): string {
   const counted = `${nonResultTotal}/${attempted} attempted case(s) were non-results (>25%)`;
   return reason?.startsWith(PROVIDER_STOPPED_REASON_PREFIX) === true
@@ -571,9 +522,8 @@ function nonResultRatioDetail(reason: string | null, nonResultTotal: number, att
     : `${counted}; too many cases could not be measured to support a claim, so rerun when the environment is healthy`;
 }
 
-/** Require enough operationally valid evidence for a claim. Reporting only the two measured
- *  cases from a battery with 38 crashes would conceal how little was measured. Counting those
- *  crashes as failures would also be wrong (plan-revision finding 6). */
+/** Require enough measured cases for a claim. Non-results are neither hidden nor counted as
+ *  failures; too many of them refuse the claim. */
 function denominatorClauses(runStatus: RunStatusEvidence, n: number): ClaimClause[] {
   const clauses: ClaimClause[] = [];
   if (n !== runStatus.verified) {
@@ -598,9 +548,8 @@ function denominatorClauses(runStatus: RunStatusEvidence, n: number): ClaimClaus
     );
   }
   const attempted = runStatus.verified + nonResultTotal;
-  // Threshold policy: >25% of attempted cases unmeasured, with at least 2 non-results so a
-  // single flake in a tiny battery does not block (a 1-of-3 transient stays claimable; a
-  // mostly-unmeasured battery never does).
+  // More than 25% unmeasured refuses, but at least two non-results are needed so one flake in a
+  // tiny battery does not.
   if (nonResultTotal >= 2 && attempted > 0 && nonResultTotal / attempted > 0.25) {
     clauses.push(
       clause(

@@ -1,16 +1,13 @@
 /**
  * Bounded content hashing and mutation checks for verifier input files.
  *
- * Input identity is host evidence, so hashing must have a finite cost. Shared budgets limit the
- * number of files, logical bytes and elapsed time. Each file is read in chunks, with metadata
- * checked before and after the read on both the path and the open descriptor. Those comparisons
- * detect observed replacement, truncation, mode and timestamp changes. Symbolic links are
- * refused by this file reader; the exact-read caller records and resolves them separately.
+ * Input identity is host evidence, so hashing has a finite cost: shared budgets bound files, bytes
+ * and time. Each file is read in chunks, with path and descriptor metadata checked before and after,
+ * which detects replacement, truncation, mode and timestamp changes. This reader refuses symbolic
+ * links; the exact-read caller resolves them.
  *
- * This is not an OS snapshot. A same-UID writer can still replace a path and restore bytes and
- * metadata between observations (the pathname ABA case); the host records a typed refusal when
- * a transition is visible, but this module does not claim to exclude that operator-level
- * race without a filesystem snapshot or a separate writer boundary.
+ * This is not an OS snapshot: a same-UID writer can replace a path and restore bytes and metadata
+ * between observations (pathname ABA). A visible transition is refused; that race is not excluded.
  */
 import {
   closeSync,
@@ -22,8 +19,7 @@ import {
   readlinkSync,
 } from "../meta/filesystem.ts";
 
-/** The largest recorded tool tree (campaign w47) has 109,509 entries; retain finite headroom above
- *  that shape. */
+/** About twice the largest tool tree seen in practice. */
 const READ_ROOT_MAX_ENTRIES = 250_000;
 /** One declared root may contribute at most sixteen GiB of logical file and link bytes. */
 export const READ_ROOT_MAX_BYTES = 16n * 1024n * 1024n * 1024n;
@@ -37,7 +33,7 @@ const READ_ROOT_READ_CHUNK_BYTES = 1024 * 1024;
 
 type ReadRootKind = "directory" | "file" | "symlink";
 
-/** Private metadata: it is deliberately not part of the condition digest. */
+/** Private metadata, deliberately not part of the condition digest. */
 export interface ReadRootMetadata {
   path: string;
   kind: ReadRootKind;
@@ -62,8 +58,7 @@ export interface ReadRootBudget {
   /** Entries and logical bytes charged by the one content-hashing attestation. */
   entries: number;
   contentBytes: bigint;
-  /** Metadata-only revalidation is separately bounded work; it never silently resets the
-   * aggregate counters for the content walk that made the digest. */
+  /** Metadata-only revalidation is bounded separately and never resets the content counters. */
   metadataEntries: number;
   metadataBytes: bigint;
   startedAt: number;
@@ -81,18 +76,14 @@ interface RootWalkBudget {
   startedAt: number;
 }
 
-/** Digests this process has already computed, reusable while the file's complete metadata
- *  (device, inode, mode, size, mtime, ctime) is identical: the rule the same-host metadata
- *  revalidation applies to whole roots. The Bun runtime closure is attested when a worker policy
- *  is built and again before and after every confined execution, so without this one battery of
- *  four tasks hashed the same 62 MB executable about 170 times. */
+/** Digests already computed in this process, reused while the file's complete metadata (device,
+ *  inode, mode, size, mtime, ctime) is identical; runtime closures are re-attested around every
+ *  confined execution. */
 const DIGEST_BY_METADATA = new Map<string, { metadata: ReadRootMetadata; digest: string }>();
 
 /**
- * POSIX permits directory names and symlink targets which are not UTF-8. They cannot be represented
- * by the JSON condition identity without an ambiguous replacement character, so the host refuses
- * such a root. The buffer API is important here: the default string API has already performed a
- * lossy decode before we can make that decision.
+ * Refuses a non-UTF-8 name or symlink target, which JSON identity could only hold ambiguously.
+ * Callers pass buffers, because the string API has already decoded lossily.
  */
 function utf8PathBytes(value: string | Uint8Array, description: string): string {
   if (!(value instanceof Uint8Array)) return value;
@@ -216,9 +207,7 @@ const READ_ROOT_OPEN_FLAGS = (() => {
   return O_RDONLY | O_NONBLOCK | O_NOFOLLOW;
 })();
 
-/** One read buffer for every file digest. The walk is synchronous, so no two reads overlap, and
- *  allocating a zeroed 1 MiB buffer per file made a root of 20,000 one-byte files cost two
- *  seconds in memset alone. */
+/** One read buffer for every file digest; the walk is synchronous, so reads never overlap. */
 const READ_CHUNK = new Uint8Array(READ_ROOT_READ_CHUNK_BYTES);
 
 function readFileDigest(
@@ -232,9 +221,8 @@ function readFileDigest(
   reserveBytes(budget, size, path);
   const known = DIGEST_BY_METADATA.get(path);
   if (known !== undefined && sameReadRootMetadata(known.metadata, expected)) return known.digest;
-  // O_NONBLOCK prevents a lstat→open replacement with a FIFO from blocking the host. O_NOFOLLOW
-  // refuses a symlink replacement. Descriptor fstat below remains necessary for regular-file
-  // replacement and for a race which swaps the path back before the second path check.
+  // O_NONBLOCK keeps a FIFO swapped in after lstat from blocking; O_NOFOLLOW refuses a symlink swap.
+  // The descriptor fstat below catches a regular-file swap and a path swapped back before the recheck.
   const handle = openSync(path, READ_ROOT_OPEN_FLAGS);
   const bytes = READ_CHUNK;
   const hasher = new Bun.CryptoHasher("sha256");
@@ -279,11 +267,11 @@ function descriptorMetadata(path: string, handle: number): ReadRootMetadata {
 }
 
 /**
- * Hash one host file with a bounded reader that checks the open descriptor.
- * Callers use this for command binaries and declared attested files; whole-file readFileSync is
- * deliberately absent from those identity paths. The file's recorded size is charged before open,
- * so an oversized or sparse file becomes a typed unavailable/non-result without allocation.
+ * Hashes one host file with a bounded reader that checks the open descriptor, for command binaries
+ * and attested files. The recorded size is charged before open, so an oversized or sparse file is
+ * refused without allocation.
  */
+
 export function attestReadRootFile(
   path: string,
   budget: ReadRootBudget = createReadRootBudget(),

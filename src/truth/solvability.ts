@@ -1,10 +1,7 @@
 /**
- * F2: execute the generated reference solve for every task and verify what it produced. The
- * controller owns the task bytes, committed public solve input, schema validation, ordinary
- * verification, tool scopes, family comparisons and snapshot identity checks that make the results
- * usable as evidence. Reference artifacts remain protected; they do not become controls or Built
- * Harness inputs. A passing witness establishes this submission path using public inputs, within
- * the declared checks.
+ * F2: runs the generated reference solve for every task and verifies what it produced. Reference
+ * artifacts stay protected; they never become controls or Built Harness inputs. A passing witness
+ * proves the submission path from public inputs, within the declared checks.
  *
  * The census runs as stages, each reading declared bytes:
  *
@@ -92,13 +89,13 @@ export interface SolvabilityProbeOptions {
   createVerifier?: () => VerifierHostHandle;
   /** Test override; production gives each reference solve REFERENCE_SOLVE_TIMEOUT_MS. */
   referenceSolveTimeoutMs?: number;
-  /** Test override for a host-side pre-ready spawn failure. Production always uses the pinned Bun executable. */
+  /** Test override for a pre-ready spawn failure; production uses the pinned Bun executable. */
   referenceSolveExecutable?: string;
-  /** Test override for a host whose surrounding sandbox cannot nest the production generated-tool wall. */
+  /** Test override for a host whose sandbox cannot nest the generated-tool wall. */
   createSolvabilityStarter?: (options: GeneratedToolStarterOptions) => Promise<BuiltStarter>;
 }
 
-/** Everything the census reads out of the recorded candidate once, before any witness runs. */
+/** What the census reads from the recorded candidate once, before any witness runs. */
 interface SolvabilityContract {
   bundleSnapshot: BundleSnapshot;
   evaluator: CheckRunner;
@@ -113,8 +110,7 @@ interface SolvabilityContract {
 
 type Loaded<T> = { ok: true; value: T } | { ok: false; finding: ContractFinding };
 
-/** What one case needs beyond its own task: the recorded bytes to solve against, the submission
- * contract to pass, the census condition to be judged under, and the stage memory. */
+/** What one case needs beyond its task: the bundle, submission contract, census and stage memory. */
 interface SolvabilityCaseSession {
   bundleDir: string;
   bundleSnapshotId: string;
@@ -161,8 +157,7 @@ function parseBattery(dir: string): Loaded<{ brief: Brief; tasks: BuildTask[] }>
     }
     const brief =
       /* SAFETY: `validateBrief` returned ok directly above, which is the only proof of this shape. */ briefUnknown as Brief;
-    // Held at `unknown` on purpose: `trustedJsonParse` proves these bytes are JSON, and
-    // `validateTasks` below is the only thing that proves they are a battery.
+    // Stays `unknown` until `validateTasks` proves it is a battery.
     const tasksUnknown: unknown = trustedJsonParse(readFileSync(join(dir, TASKS_FILE), "utf8"));
     const batteryUnknown = { tasks: tasksUnknown };
     const tasksValidation = validateTasks(brief, batteryUnknown, {});
@@ -184,9 +179,7 @@ function parseBattery(dir: string): Loaded<{ brief: Brief; tasks: BuildTask[] }>
   }
 }
 
-/** Stage 1: read the recorded candidate or return a finding naming the failed requirement: an
- * unbound task set, a broken snapshot, a correctnessModel that will not load, contract bytes that are
- * not a brief and a battery, and an accept corpus whose submission schema will not compile. */
+/** Stage 1: reads the recorded candidate, or returns a finding naming the requirement it failed. */
 async function loadSolvabilityContract(
   slugDir: string,
   fingerprint: FingerprintEvidence,
@@ -219,7 +212,7 @@ async function loadSolvabilityContract(
   let evaluator: CheckRunner;
   let evaluatorDigest: string;
   try {
-    // Both calls share one bundle per package identity, so the digest names the bytes the runner executes.
+    // Both calls share one bundle, so the digest names the bytes the runner executes.
     evaluator = await loadCorrectnessModel(bundleSnapshot.dir, verifierLifetime);
     evaluatorDigest = (await bundleEvaluator(bundleSnapshot.dir)).portableDigest;
   } catch (error) {
@@ -238,10 +231,8 @@ async function loadSolvabilityContract(
   const battery = parseBattery(bundleSnapshot.dir);
   if (!battery.ok) return battery;
   const { brief, tasks } = battery.value;
-  // The compiled public submission schema is what submit-time acceptance enforces. Run 81's F2
-  // checked only declared top-level roots, so truth-correct reference artifacts passed here and
-  // every real solve was refused at submit. The loader returns null when controls or accepts are
-  // absent, which the submission path refuses; a corpus that fails compilation is a finding here.
+  // F2 checks against the compiled public schema that submit enforces. A null schema (no accepts)
+  // is refused by the submission path; a corpus that fails to compile is a finding here.
   const publicSchema = loadSolvabilityPublicSchema(bundleSnapshot.dir, brief.artifactSchema);
   if (!publicSchema.ok) return { ok: false, finding: publicSchema.finding };
   return {
@@ -280,10 +271,9 @@ function bundleSnapshotDriftFinding(
   }
 }
 
-/** Stage 2: resolve tools as measurement does. Missing tools refuse before witnesses: a run on
- *  2026-08-23 charged 25 product failures to a verifier which had never started. An external check
- *  whose executable digest matches candidate-authored source is refused too (a different digest or
- *  installation directory still does not establish independence). */
+/** Stage 2: resolves tools as measurement does. Missing tools refuse before any witness runs, so a
+ *  verifier that never started is not charged as product failures. An external check whose
+ *  executable digest matches candidate-authored source is refused too. */
 function admitTools(
   contract: SolvabilityContract,
   fingerprint: FingerprintEvidence,
@@ -327,9 +317,8 @@ function admitTools(
   return { inventory: resolved.inventory, externalIds, findings };
 }
 
-/** Solve (or reuse the keyed solve) and submit one task. The submission path always runs on this
- * snapshot and attributes its own refusals; a throw out of the solve is the process failure's when
- * typed, and the product's otherwise. */
+/** Solves (or reuses the keyed solve) and submits one task. A typed process failure keeps its
+ *  owner; any other throw from the solve belongs to the product. */
 async function attemptReferenceSubmission(
   session: SolvabilityCaseSession,
   task: CommittedPublicTask<JsonValue>,
@@ -389,8 +378,7 @@ function failureAttribution(attempt: ReferenceSubmissionAttempt): Attribution {
   };
 }
 
-/** Stage 3, one case: solve, submit, verify and record. A passed row carries no failure attribution;
- * an unpassed row always names an owner, even when the attempt itself never said who. */
+/** Stage 3, one case: solve, submit, verify and record. Every unpassed row names an owner. */
 async function runSolvabilityCase(
   session: SolvabilityCaseSession,
   task: BuildTask,
@@ -463,10 +451,8 @@ function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
   };
 }
 
-/** Stage 3: cases run in the control census's lanes and are recorded in task order. The 7d433e truss
- *  candidate solved 25 tasks one after another inside the same ten-minute wall as its controls,
- *  and met that wall on all three gate calls. After a stop no task starts; every case that ran
- *  keeps its row, and the cleanup finding is admitted once. */
+/** Stage 3: cases run in the control census's lanes and are recorded in task order. After a stop
+ *  no task starts; every case that ran keeps its row, and the cleanup finding is recorded once. */
 async function solveInLanes(
   session: SolvabilityCaseSession,
   tasks: readonly BuildTask[],
@@ -484,8 +470,7 @@ async function solveInLanes(
     async (task) => {
       const fullTaskJson = trustedJsonStringify(task);
       taskJson.set(task.taskId, fullTaskJson);
-      // One commit for the whole case: `view()` re-parses its own bytes on each call, so every reader
-      // still gets an independent object.
+      // One commit per case; each `view()` call re-parses, so every reader gets its own object.
       const roundTripped: unknown = trustedJsonParse(fullTaskJson);
       const committed = commitPublicTask(
         /* SAFETY: this loop's own serialisation of a battery member. */ roundTripped as BuildTask,
@@ -536,9 +521,8 @@ async function solveInLanes(
   return { cases, witnesses, findings, taskJson };
 }
 
-/** Stage 4: external checks with arguments matching the program-text rule. Program text can make an
- *  attested interpreter execute candidate-authored logic (truss 0908: 81% of python3 rows used
- *  `-c`). The bounded rule detects some such cases without proving provenance. */
+/** Stage 4: external checks whose arguments look like program text, which would make an attested
+ *  interpreter run candidate-authored logic. The rule is a bounded detection, not a provenance proof. */
 function programArgumentFindings(
   verifier: VerifierHostHandle,
   externalIds: ReadonlySet<string>,
@@ -554,7 +538,7 @@ function programArgumentFindings(
   ];
 }
 
-/** One policy-owned implementation for the mandatory BuildDeps probe. */
+/** The BuildDeps solvability probe. */
 export function makeProbeSolvability(
   options: SolvabilityProbeOptions = {},
   purpose: "adoption" | "readiness" = "adoption",
@@ -565,8 +549,7 @@ export function makeProbeSolvability(
     const contract = loaded.value;
     const { bundleSnapshot, evaluator, brief } = contract;
     const tools = admitTools(contract, fingerprint, options);
-    // A known admission refusal cannot earn an F2 witness: keep the findings and open neither the
-    // verifier nor the reference solver for a candidate that already cannot be adopted.
+    // A tool refusal already blocks adoption; open neither the verifier nor the reference solver.
     if (tools.findings.length > 0) return { evidence: null, findings: tools.findings };
     const verifier = (
       options.createVerifier ??
@@ -595,8 +578,7 @@ export function makeProbeSolvability(
     const solved = await solveInLanes(session, contract.tasks, cut);
     if (cut()) return { evidence: null, findings: [] };
     const findings = [...solved.findings, ...programArgumentFindings(verifier, tools.externalIds)];
-    // Only adoption decides family discrimination: readiness re-verifies every public solve, and a
-    // missing witness already refuses the candidate and cannot support a family comparison.
+    // Family comparisons run at adoption only, and only when every case produced a witness.
     let familyBinding: SolvabilityStageReceipt | null = null;
     try {
       if (

@@ -1,13 +1,8 @@
 /**
- * Resolve the Builder and Built Harness slots. This was split from resolve.ts after
- * live-run-02 failed preflight: resolveSide hardcoded an unconfigured default of codex,
- * but the support table did not then list a Codex authoring session. Fresh projects therefore
- * failed before building. Defaults now come from project-backend-policy (builder → claude,
- * built → claude), which also records slot support. Adding a transport does not itself change
- * the default. Selection precedence remains: operator file kind, then environment pin,
- * then the declared default. Unknown kinds and unavailable transports are refused with their
- * configuration source. Models resolve through the descriptor registry and named environment
- * variables; operator files may not set them.
+ * Resolve the Builder and Built Harness slots. Precedence: operator file kind, then environment
+ * pin, then the default from project-backend-policy. Unknown kinds and unavailable transports are
+ * refused with their configuration source. Models resolve through the descriptor registry and
+ * named environment variables; operator files may not set them.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -134,9 +129,7 @@ export function resolveSide(
       `${operatorPath}: ${side}.model is not an operator field — models are denominated by the descriptor registry (env for slug engines) so run records stay comparable`,
     );
   }
-  // `disabled` is the review slot's off switch and only that slot has an off state. Ignoring it here
-  // would resolve this slot to the standing default with no sign the operator asked for anything
-  // else — a silent slot substitution, which is the defect class this whole file refuses.
+  // `disabled` and `inherit` are review-only; ignoring them here would silently substitute a slot.
   if (operator?.disabled !== undefined) {
     throw new Error(
       `${operatorPath}: ${side}.disabled is review-only; choose a backend kind or remove the key`,

@@ -1,5 +1,5 @@
-/** `harness_reset`: on a reopen rebuild, the Builder's one recorded choice of which harness
- *  surface returns to the starter seed (operator decision 2026-09-07). Outside a reopen it refuses. */
+/** `harness_reset`: on a reopen rebuild, returns one harness surface to the starter seed. Outside a
+ *  reopen it refuses. */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { resetWorkspaceToStarter } from "../author/domain-repo.ts";

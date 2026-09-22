@@ -240,8 +240,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         // `--regexp` binds the pattern as a value: a positional `-o …` was read as a flag (run 1aa6e6).
         args.push("--regexp", params.pattern, target);
         let outcome = await isolatedRead("grep", "rg", args, target, true);
-        // A pattern that is no regex is searched as the text it spells, and the result says so: run
-        // fa03b7's Builder searched `exit(12` and got `rg: regex parse error: … unclosed group`.
+        // A pattern rg cannot parse is searched as literal text, and says so (run fa03b7: `exit(12`).
         const asText = params.literal !== true && outcome.stderr.includes("regex parse error");
         if (asText) outcome = await isolatedRead("grep", "rg", ["--fixed-strings", ...args], target, true);
         throwIfTraversalError("grep", outcome);
@@ -268,13 +267,8 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       ),
       async execute(_id, params: { pattern: string; path?: string; limit?: number }) {
         const target = abs(params.path ?? ".");
-        const outcome = await isolatedRead(
-          "find",
-          "rg",
-          ["--files", "--hidden", "-g", params.pattern, target],
-          target,
-          true,
-        );
+        const args = ["--files", "--hidden", "-g", params.pattern, target];
+        const outcome = await isolatedRead("find", "rg", args, target, true);
         throwIfTraversalError("find", outcome);
         const limit = Math.max(1, params.limit ?? 1000);
         const rows = outcome.stdout.split("\n").filter((line) => line !== "");
@@ -293,7 +287,6 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       async execute(_id, params: { path?: string; limit?: number }) {
         const target = abs(params.path ?? ".");
         const outcome = await isolatedRead("ls", "/bin/ls", ["-1Ap", target], target, true);
-        throwIfTraversalError("ls", outcome);
         if (outcome.status !== 0 && outcome.stdout === "") {
           throw new Error(outcome.stderr.trim() || `ls exited ${outcome.status}`);
         }

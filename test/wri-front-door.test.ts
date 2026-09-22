@@ -419,6 +419,7 @@ describe("deterministic lane catalogue", () => {
     name: string;
     label: string;
     collect?: boolean;
+    needs?: (context: { campaign: string }) => string | null;
   }
   const lanes: Lane[] = LANES;
   const args = (values: Record<string, string>, flags: string[] = []) => ({
@@ -448,6 +449,15 @@ describe("deterministic lane catalogue", () => {
     expect(() => select({ lanes: "12" })).toThrow("no lane 12");
     expect(() => select({ lanes: "velocity" })).toThrow("no lane velocity");
     expect(() => select({ lanes: "" })).toThrow("no lane");
+  });
+
+  // A run still in its first build has no versions directory, and the lane died on ENOENT.
+  it("skips the climb lane until the campaign has adopted a version", () => {
+    const campaign = temp("wri-climb-");
+    const climb = lanes.find((lane) => lane.name === "climb");
+    expect(climb?.needs?.({ campaign })).toBe("no adopted version, so no battery yet");
+    mkdirSync(join(campaign, "versions"));
+    expect(climb?.needs?.({ campaign })).toBeNull();
   });
 
   it("prints one numbered row per lane and marks the four collect runs", () => {

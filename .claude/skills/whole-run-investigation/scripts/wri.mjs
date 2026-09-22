@@ -110,6 +110,7 @@ export const LANES = [
   {
     name: "climb",
     label: "climb velocity",
+    needs: (c) => (existsSync(join(c.campaign, "versions")) ? null : "no adopted version, so no battery yet"),
     cmd: (c) => [BUN, "--no-env-file", script("climb-velocity.mjs"), c.campaign],
   },
   {

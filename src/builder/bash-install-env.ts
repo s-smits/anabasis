@@ -49,6 +49,12 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_DATA_HOME: join(home, ".local", "share"),
+    // The workspace's packages are links into the repository's node_modules, whose own directory
+    // the wall does not list, so a bare `bun` resolving a package from its real path cannot find a
+    // hoisted dependency beside it: truss run fa03b7's first script stopped at pi-ai's
+    // `partial-json`. Resolving from the link's path, as the starter's `--preserve-symlinks` test
+    // command already does, finds it in the workspace's node_modules.
+    NODE_PRESERVE_SYMLINKS: "1",
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
     PATH: [localBin, cargoBin, dirname(runtimeProcess.execPath), inheritedPath].filter(Boolean).join(":"),

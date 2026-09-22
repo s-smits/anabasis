@@ -12,6 +12,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";
@@ -29,6 +30,9 @@ import {
   guardPath,
 } from "../src/builder/candidate-isolation.ts";
 import { candidateIsolationProfile } from "../src/builder/candidate-isolation-profile.ts";
+import { bashEnv } from "../src/builder/bash-install-env.ts";
+import type { OptionalEnvValues } from "../src/backends/scrub-env.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
 import { darwinSeatbeltSupport } from "../src/verify/darwin-seatbelt.ts";
 import { PROTECTED_HOME_NAMES } from "../src/verify/wall-policy.ts";
 import { proveCandidateIsolation } from "./helpers/candidate-isolation-proof.ts";
@@ -295,6 +299,33 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     expect(sh(`echo evil > ${join(repoRoot, "pwned.txt")}`).status).not.toBe(0);
     expect(sh(`cat ${join(repoRoot, ".env")}`).stdout).not.toContain("SECRET=1");
     expect(sh(`cat ${join(binding.iterationDir, "census.json")}`).stdout).not.toContain("remedy");
+  });
+
+  it("resolves a linked package's hoisted dependency from the Builder cell's environment", () => {
+    // The workspace links each repository package as `linkWorkspacePackageScopes` does; the wall
+    // never lists the repository root, so resolving from a package's real path misses its sibling.
+    const modules = join(repoRoot, "node_modules");
+    seedFile(join(modules, "linked-pkg", "package.json"), '{"name":"linked-pkg","type":"module"}\n');
+    seedFile(join(modules, "linked-pkg", "index.js"), 'export { value } from "hoisted-dep";\n');
+    seedFile(join(modules, "hoisted-dep", "package.json"), '{"name":"hoisted-dep","type":"module"}\n');
+    seedFile(join(modules, "hoisted-dep", "index.js"), 'export const value = "HOISTED";\n');
+    const workspaceModules = join(binding.iterationDir, "node_modules");
+    mkdirSync(workspaceModules, { recursive: true });
+    for (const name of ["linked-pkg", "hoisted-dep"]) symlinkSync(join(modules, name), join(workspaceModules, name));
+    const bun = runtimeProcess.execPath;
+    const { profile } = candidateIsolationProfile(policy, "exec", [bun]);
+    const env = bashEnv(binding.iterationDir);
+    const load = (childEnv: OptionalEnvValues) =>
+      spawnSync(
+        "/usr/bin/sandbox-exec",
+        ["-p", profile, bun, "--no-env-file", "-e", 'console.log((await import("linked-pkg")).value)'],
+        { cwd: binding.iterationDir, env: childEnv, timeout: 30_000 },
+      );
+    const resolved = load(env);
+    expect(resolved.stdout.trim()).toBe("HOISTED");
+    const realPath = load({ ...env, NODE_PRESERVE_SYMLINKS: undefined });
+    expect(realPath.status).not.toBe(0);
+    expect(realPath.stderr).toContain("Cannot find package 'hoisted-dep'");
   });
 
   it("closes ordinary host-home files while keeping the candidate tree reachable", () => {

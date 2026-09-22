@@ -1,0 +1,63 @@
+/**
+ * The SolvabilityCaseEvidence fields shared by two census-gate test suites.
+ * Extracted from test/solvability-gate.test.ts when test/representation-census.test.ts became its
+ * second consumer, so a field added to the evidence is added once here instead of in two fixtures.
+ *
+ * These are doubled evidence rows for testing what the gate projects. A test that needs the census
+ * to actually run over a bundle on disk wants `solvability-specimen.ts` instead.
+ */
+import type { BuildDeps } from "../../src/truth/build-deps.ts";
+import { double } from "./doubles.ts";
+
+export interface CaseSpec {
+  taskId: string;
+  status: "passed" | "failed" | "non-result";
+  /** The reference artifact the representation census reads; omitted means the row carries none. */
+  artifact?: unknown;
+  /** Declared truth-checks this case's evaluate rejected; the concentration projection reads them. */
+  failedCheckIds?: string[];
+  failureKind?: "representation-defect";
+  error?: string;
+}
+
+export function solvabilityCase(spec: CaseSpec) {
+  const { status } = spec;
+  return {
+    taskId: spec.taskId,
+    fullTaskDigest: "d",
+    publicTaskDigest: "p",
+    artifactDigest: "artifact" in spec ? "a" : null,
+    artifact: spec.artifact ?? null,
+    status,
+    nonResultKind: status === "non-result" ? "reference-solve-host" : null,
+    failureOwner: status === "passed" ? null : status === "non-result" ? "environment" : "product",
+    failureKind: spec.failureKind ?? null,
+    submissionPath: null,
+    referenceSolve: null,
+    failedCheckIds: spec.failedCheckIds ?? [],
+    predicateFailures: [],
+    error: spec.error ?? null,
+  };
+}
+
+/** A probe returning exactly these rows; null returns the evidence-less bundleSnapshot-integrity failure.
+ *  `findings` carries the probe's own contract findings, which the gate routes beside the cases. */
+export function probeReturning(
+  specs: CaseSpec[] | null,
+  findings: Array<{ code: string; path: string; detail: string; owner?: string }> = [],
+): BuildDeps["probeSolvability"] {
+  const result =
+    specs === null
+      ? {
+          evidence: null,
+          findings: [
+            {
+              code: "solvability-bundleSnapshot-integrity",
+              path: ".bundle-snapshots",
+              detail: "bundleSnapshot digest drifted mid-probe",
+            },
+          ],
+        }
+      : { evidence: { schema: "solvability/v8", cases: specs.map(solvabilityCase) }, findings };
+  return () => Promise.resolve(double<Awaited<ReturnType<BuildDeps["probeSolvability"]>>>(result));
+}

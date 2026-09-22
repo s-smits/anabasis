@@ -1,0 +1,7 @@
+version = 1
+name = "Anabasis"
+
+[setup]
+script = '''
+bash "$CODEX_WORKTREE_PATH/scripts/worktree.sh" setup "$CODEX_WORKTREE_PATH"
+'''

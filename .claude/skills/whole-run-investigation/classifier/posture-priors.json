@@ -1,0 +1,495 @@
+{
+  "schema": "builder-posture-priors/v1",
+  "classifierSchema": "builder-prose-posture/v4",
+  "anchorSha256": "5cd1c7956d5d0b413ce0866c34034ba02619234446c6b1393133160a0816ce5e",
+  "corpus": {
+    "generatedAt": "2026-09-14T02:12:13.073Z",
+    "campaigns": 96,
+    "states": {
+      "classified": 93,
+      "integrity-failure": 3
+    },
+    "byBackend": {
+      "claude": 338,
+      "codex": 379
+    },
+    "rows": 22301,
+    "submits": 717
+  },
+  "byDominant": {
+    "blocked-environment": {
+      "accepted": 2,
+      "refused": 14,
+      "refusedRate": 0.875
+    },
+    "confident": {
+      "accepted": 5,
+      "refused": 11,
+      "refusedRate": 0.688
+    },
+    "diagnosing": {
+      "accepted": 3,
+      "refused": 29,
+      "refusedRate": 0.906
+    },
+    "disputing-verifier": {
+      "accepted": 0,
+      "refused": 3,
+      "refusedRate": 1
+    },
+    "editing": {
+      "accepted": 12,
+      "refused": 30,
+      "refusedRate": 0.714
+    },
+    "intro": {
+      "accepted": 13,
+      "refused": 9,
+      "refusedRate": 0.409
+    },
+    "planning": {
+      "accepted": 93,
+      "refused": 60,
+      "refusedRate": 0.392
+    },
+    "reporting-status": {
+      "accepted": 8,
+      "refused": 12,
+      "refusedRate": 0.6
+    },
+    "researching": {
+      "accepted": 2,
+      "refused": 5,
+      "refusedRate": 0.714
+    },
+    "running-checks": {
+      "accepted": 48,
+      "refused": 29,
+      "refusedRate": 0.377
+    },
+    "submitting": {
+      "accepted": 38,
+      "refused": 52,
+      "refusedRate": 0.578
+    },
+    "uncertain": {
+      "accepted": 0,
+      "refused": 1,
+      "refusedRate": 1
+    },
+    "workaround": {
+      "accepted": 3,
+      "refused": 9,
+      "refusedRate": 0.75
+    }
+  },
+  "byLast": {
+    "blocked-environment": {
+      "accepted": 2,
+      "refused": 5,
+      "refusedRate": 0.714
+    },
+    "confident": {
+      "accepted": 13,
+      "refused": 18,
+      "refusedRate": 0.581
+    },
+    "diagnosing": {
+      "accepted": 5,
+      "refused": 17,
+      "refusedRate": 0.773
+    },
+    "disputing-verifier": {
+      "accepted": 6,
+      "refused": 4,
+      "refusedRate": 0.4
+    },
+    "editing": {
+      "accepted": 6,
+      "refused": 11,
+      "refusedRate": 0.647
+    },
+    "intro": {
+      "accepted": 11,
+      "refused": 2,
+      "refusedRate": 0.154
+    },
+    "planning": {
+      "accepted": 15,
+      "refused": 16,
+      "refusedRate": 0.516
+    },
+    "reporting-status": {
+      "accepted": 23,
+      "refused": 28,
+      "refusedRate": 0.549
+    },
+    "researching": {
+      "accepted": 1,
+      "refused": 6,
+      "refusedRate": 0.857
+    },
+    "running-checks": {
+      "accepted": 43,
+      "refused": 38,
+      "refusedRate": 0.469
+    },
+    "submitting": {
+      "accepted": 71,
+      "refused": 100,
+      "refusedRate": 0.585
+    },
+    "uncertain": {
+      "accepted": 23,
+      "refused": 6,
+      "refusedRate": 0.207
+    },
+    "workaround": {
+      "accepted": 8,
+      "refused": 13,
+      "refusedRate": 0.619
+    }
+  },
+  "byBackend": {
+    "claude": {
+      "dominant": {
+        "blocked-environment": {
+          "accepted": 2,
+          "refused": 1,
+          "refusedRate": 0.333
+        },
+        "confident": {
+          "accepted": 3,
+          "refused": 10,
+          "refusedRate": 0.769
+        },
+        "disputing-verifier": {
+          "accepted": 0,
+          "refused": 1,
+          "refusedRate": 1
+        },
+        "editing": {
+          "accepted": 7,
+          "refused": 22,
+          "refusedRate": 0.759
+        },
+        "intro": {
+          "accepted": 10,
+          "refused": 7,
+          "refusedRate": 0.412
+        },
+        "planning": {
+          "accepted": 5,
+          "refused": 11,
+          "refusedRate": 0.688
+        },
+        "reporting-status": {
+          "accepted": 0,
+          "refused": 2,
+          "refusedRate": 1
+        },
+        "researching": {
+          "accepted": 1,
+          "refused": 1,
+          "refusedRate": 0.5
+        },
+        "running-checks": {
+          "accepted": 2,
+          "refused": 15,
+          "refusedRate": 0.882
+        },
+        "submitting": {
+          "accepted": 1,
+          "refused": 6,
+          "refusedRate": 0.857
+        },
+        "workaround": {
+          "accepted": 0,
+          "refused": 5,
+          "refusedRate": 1
+        }
+      },
+      "last": {
+        "confident": {
+          "accepted": 3,
+          "refused": 10,
+          "refusedRate": 0.769
+        },
+        "editing": {
+          "accepted": 4,
+          "refused": 7,
+          "refusedRate": 0.636
+        },
+        "intro": {
+          "accepted": 5,
+          "refused": 2,
+          "refusedRate": 0.286
+        },
+        "planning": {
+          "accepted": 3,
+          "refused": 12,
+          "refusedRate": 0.8
+        },
+        "reporting-status": {
+          "accepted": 2,
+          "refused": 6,
+          "refusedRate": 0.75
+        },
+        "researching": {
+          "accepted": 0,
+          "refused": 2,
+          "refusedRate": 1
+        },
+        "running-checks": {
+          "accepted": 7,
+          "refused": 23,
+          "refusedRate": 0.767
+        },
+        "submitting": {
+          "accepted": 4,
+          "refused": 14,
+          "refusedRate": 0.778
+        },
+        "uncertain": {
+          "accepted": 1,
+          "refused": 0,
+          "refusedRate": 0
+        },
+        "workaround": {
+          "accepted": 2,
+          "refused": 5,
+          "refusedRate": 0.714
+        }
+      }
+    },
+    "codex": {
+      "dominant": {
+        "blocked-environment": {
+          "accepted": 0,
+          "refused": 13,
+          "refusedRate": 1
+        },
+        "confident": {
+          "accepted": 2,
+          "refused": 1,
+          "refusedRate": 0.333
+        },
+        "diagnosing": {
+          "accepted": 3,
+          "refused": 29,
+          "refusedRate": 0.906
+        },
+        "disputing-verifier": {
+          "accepted": 0,
+          "refused": 2,
+          "refusedRate": 1
+        },
+        "editing": {
+          "accepted": 5,
+          "refused": 8,
+          "refusedRate": 0.615
+        },
+        "intro": {
+          "accepted": 3,
+          "refused": 2,
+          "refusedRate": 0.4
+        },
+        "planning": {
+          "accepted": 88,
+          "refused": 49,
+          "refusedRate": 0.358
+        },
+        "reporting-status": {
+          "accepted": 8,
+          "refused": 10,
+          "refusedRate": 0.556
+        },
+        "researching": {
+          "accepted": 1,
+          "refused": 4,
+          "refusedRate": 0.8
+        },
+        "running-checks": {
+          "accepted": 46,
+          "refused": 14,
+          "refusedRate": 0.233
+        },
+        "submitting": {
+          "accepted": 37,
+          "refused": 46,
+          "refusedRate": 0.554
+        },
+        "uncertain": {
+          "accepted": 0,
+          "refused": 1,
+          "refusedRate": 1
+        },
+        "workaround": {
+          "accepted": 3,
+          "refused": 4,
+          "refusedRate": 0.571
+        }
+      },
+      "last": {
+        "blocked-environment": {
+          "accepted": 2,
+          "refused": 5,
+          "refusedRate": 0.714
+        },
+        "confident": {
+          "accepted": 10,
+          "refused": 8,
+          "refusedRate": 0.444
+        },
+        "diagnosing": {
+          "accepted": 5,
+          "refused": 17,
+          "refusedRate": 0.773
+        },
+        "disputing-verifier": {
+          "accepted": 6,
+          "refused": 4,
+          "refusedRate": 0.4
+        },
+        "editing": {
+          "accepted": 2,
+          "refused": 4,
+          "refusedRate": 0.667
+        },
+        "intro": {
+          "accepted": 6,
+          "refused": 0,
+          "refusedRate": 0
+        },
+        "planning": {
+          "accepted": 12,
+          "refused": 4,
+          "refusedRate": 0.25
+        },
+        "reporting-status": {
+          "accepted": 21,
+          "refused": 22,
+          "refusedRate": 0.512
+        },
+        "researching": {
+          "accepted": 1,
+          "refused": 4,
+          "refusedRate": 0.8
+        },
+        "running-checks": {
+          "accepted": 36,
+          "refused": 15,
+          "refusedRate": 0.294
+        },
+        "submitting": {
+          "accepted": 67,
+          "refused": 86,
+          "refusedRate": 0.562
+        },
+        "uncertain": {
+          "accepted": 22,
+          "refused": 6,
+          "refusedRate": 0.214
+        },
+        "workaround": {
+          "accepted": 6,
+          "refused": 8,
+          "refusedRate": 0.571
+        }
+      }
+    }
+  },
+  "perClass": {
+    "planning": {
+      "rows": 4602,
+      "reasoning": 4275,
+      "message": 327,
+      "lowMargin": 2122,
+      "lowMarginRate": 0.461
+    },
+    "running-checks": {
+      "rows": 3414,
+      "reasoning": 2381,
+      "message": 1033,
+      "lowMargin": 1648,
+      "lowMarginRate": 0.483
+    },
+    "submitting": {
+      "rows": 3041,
+      "reasoning": 1302,
+      "message": 1739,
+      "lowMargin": 1022,
+      "lowMarginRate": 0.336
+    },
+    "diagnosing": {
+      "rows": 1932,
+      "reasoning": 1545,
+      "message": 387,
+      "lowMargin": 1094,
+      "lowMarginRate": 0.566
+    },
+    "workaround": {
+      "rows": 1660,
+      "reasoning": 1293,
+      "message": 367,
+      "lowMargin": 1150,
+      "lowMarginRate": 0.693
+    },
+    "editing": {
+      "rows": 1625,
+      "reasoning": 1457,
+      "message": 168,
+      "lowMargin": 755,
+      "lowMarginRate": 0.465
+    },
+    "reporting-status": {
+      "rows": 1600,
+      "reasoning": 285,
+      "message": 1315,
+      "lowMargin": 905,
+      "lowMarginRate": 0.566
+    },
+    "researching": {
+      "rows": 1452,
+      "reasoning": 1313,
+      "message": 139,
+      "lowMargin": 722,
+      "lowMarginRate": 0.497
+    },
+    "intro": {
+      "rows": 994,
+      "reasoning": 709,
+      "message": 285,
+      "lowMargin": 420,
+      "lowMarginRate": 0.423
+    },
+    "blocked-environment": {
+      "rows": 701,
+      "reasoning": 456,
+      "message": 245,
+      "lowMargin": 335,
+      "lowMarginRate": 0.478
+    },
+    "uncertain": {
+      "rows": 454,
+      "reasoning": 310,
+      "message": 144,
+      "lowMargin": 228,
+      "lowMarginRate": 0.502
+    },
+    "disputing-verifier": {
+      "rows": 419,
+      "reasoning": 189,
+      "message": 230,
+      "lowMargin": 275,
+      "lowMarginRate": 0.656
+    },
+    "confident": {
+      "rows": 407,
+      "reasoning": 18,
+      "message": 389,
+      "lowMargin": 268,
+      "lowMarginRate": 0.658
+    }
+  }
+}

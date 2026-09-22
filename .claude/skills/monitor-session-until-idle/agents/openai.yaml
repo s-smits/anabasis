@@ -1,0 +1,4 @@
+interface:
+  display_name: "Critical Session Supervisor"
+  short_description: "Audit claims, intervene, and prove closure"
+  default_prompt: "Use $monitor-session-until-idle to critically supervise this Codex task with closure, material-claim, and intervention ledgers; challenge unsupported claims and stop only after receipt-backed closure."

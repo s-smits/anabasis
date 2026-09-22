@@ -1,0 +1,11 @@
+{
+  "builder": {
+    "kind": "claude"
+  },
+  "built": {
+    "kind": "claude"
+  },
+  "review": {
+    "kind": "claude"
+  }
+}

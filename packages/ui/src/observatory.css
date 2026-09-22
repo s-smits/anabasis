@@ -1,0 +1,582 @@
+.ana-stack {
+  display: grid;
+  gap: 14px;
+}
+.ana-evaluation-detail {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ana-key-values {
+  display: grid;
+  padding: 0;
+}
+
+.ana-key-values > div {
+  align-items: start;
+  border-bottom: 1px solid var(--ana-border-soft);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 110px minmax(0, 1fr);
+  padding: 12px 14px;
+}
+
+.ana-key-values > div:last-child {
+  border-bottom: 0;
+}
+
+.ana-key-values span {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ana-key-values strong {
+  font-size: 0.78rem;
+  font-weight: 500;
+  min-width: 0;
+}
+
+.ana-file-mini-list {
+  display: grid;
+  gap: 4px;
+}
+
+.ana-evidence-link {
+  background: none;
+  border: 0;
+  color: var(--ana-accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.ana-evidence-link:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+dt {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+dd {
+  font-size: 0.75rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ana-filters {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ana-filters input,
+.ana-filters select {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  min-height: 40px;
+  padding: 9px 12px;
+}
+
+.ana-search {
+  flex: 1 1 260px;
+  position: relative;
+  min-width: 0;
+}
+.ana-search > svg {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 16px;
+  height: 16px;
+  color: var(--ana-faint);
+  pointer-events: none;
+}
+.ana-search input {
+  width: 100%;
+  padding-left: 38px;
+}
+.ana-search input::placeholder {
+  color: var(--ana-faint);
+}
+
+.ana-filters label {
+  display: grid;
+  gap: 4px;
+}
+
+.ana-filters label span {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ana-record-meta,
+.ana-record-foot,
+.ana-chip-row {
+  align-items: center;
+  color: var(--ana-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  gap: 8px;
+}
+
+.ana-record-meta time {
+  margin-left: auto;
+}
+
+.ana-file-content {
+  background: #070708;
+  border: 1px solid var(--ana-border);
+  color: #d4d4d8;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0;
+  max-height: 560px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
+.ana-table tbody tr {
+  cursor: default;
+}
+
+.ana-table tbody tr.is-selected {
+  background: var(--ana-info-bg);
+}
+
+.ana-row-select {
+  background: none;
+  border: 0;
+  color: var(--ana-accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  min-height: 28px;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.ana-case-detail {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.ana-case-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ana-case-grid h3 {
+  font-family: var(--font-technical);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.ana-case-grid p {
+  color: var(--ana-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.ana-tool-list {
+  display: grid;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ana-tool-list li {
+  background: var(--ana-card-2);
+}
+
+.ana-tool-call summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  padding: 12px;
+}
+
+.ana-tool-call summary::-webkit-details-marker {
+  display: none;
+}
+.ana-tool-call summary > strong {
+  flex: 1;
+}
+.ana-tool-call summary > span:first-child {
+  width: 24px;
+}
+.ana-tool-call[open] .ana-caret {
+  transform: rotate(90deg);
+}
+
+.ana-tool-call summary > span:first-child,
+.ana-tool-call summary > .ana-caret,
+.ana-tool-call summary > small {
+  color: var(--ana-faint);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.ana-tool-list strong {
+  font-size: 0.73rem;
+}
+
+.ana-tool-content {
+  padding: 0 16px 16px 41px;
+}
+.ana-tool-content h4 {
+  margin: 16px 0 8px;
+}
+.ana-tool-content p {
+  color: var(--ana-dim);
+  font-size: 0.8rem;
+}
+.ana-tool-content pre {
+  background: var(--ana-bg);
+  border: 1px solid var(--ana-border);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.ana-inspector {
+  background: #0b0b0d;
+  bottom: 0;
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.32);
+  display: grid;
+  gap: 14px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: auto;
+  padding: 16px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: min(620px, 48vw);
+  z-index: 80;
+}
+
+.ana-shell.has-inspector .ana-main {
+  margin-right: min(620px, 48vw);
+}
+
+.ana-inspector-head {
+  align-items: start;
+  border-bottom: 1px solid var(--ana-border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+
+.ana-inspector-head > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ana-inspector-head span {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ana-inspector-head strong {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.ana-inspector .ana-file-content {
+  max-height: none;
+}
+
+.ana-empty-workspace {
+  display: grid;
+  gap: 14px;
+  margin: 20vh auto;
+  max-width: 680px;
+  padding: 24px;
+}
+
+.ana-empty-workspace .ana-brand-mark {
+  height: 36px;
+  width: 36px;
+}
+
+.ana-empty-workspace h1,
+.ana-empty-workspace p {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .ana-case-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ana-inspector {
+    width: min(720px, calc(100vw - var(--ana-sidebar-collapsed)));
+  }
+
+  .ana-shell.has-inspector .ana-main {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .ana-main,
+  .ana-shell.is-collapsed .ana-main {
+    margin-left: 0;
+  }
+
+  .ana-page {
+    padding: 18px 14px;
+  }
+
+  .ana-story-head > .ana-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .ana-inspector {
+    width: 100vw;
+  }
+}
+
+.ana-review-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ana-review-counts,
+.ana-review-counts > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ana-review-counts {
+  gap: 20px;
+  margin-block: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ana-review-counts > span:first-child svg {
+  color: var(--ana-good);
+}
+.ana-review-counts > span:last-child svg {
+  color: var(--ana-bad);
+}
+.ana-review-status .ana-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: #fb923c;
+}
+.ana-review-status .ana-status-dot.is-good {
+  background: var(--ana-good);
+}
+.ana-record {
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+.ana-record dl {
+  margin: 0;
+}
+.ana-record-field {
+  display: flex;
+  gap: 20px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ana-border-soft);
+}
+.ana-record-field dt {
+  flex: 0 0 30%;
+  color: var(--ana-dim);
+}
+.ana-record-field dd {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.ana-record-input > dl > .ana-record-field {
+  display: block;
+}
+.ana-record-input > dl > .ana-record-field > dt {
+  margin-bottom: 8px;
+}
+.ana-record-input > dl > .ana-record-field > dd {
+  width: fit-content;
+  max-width: 100%;
+}
+.ana-record-input .ana-record-field dt,
+.ana-record-input .ana-record-field dd,
+.ana-record-group .ana-record-field dt,
+.ana-record-group .ana-record-field dd {
+  flex: initial;
+}
+.ana-record-input .ana-record-group > .ana-record {
+  margin-left: 0;
+}
+.ana-record-field:has(> dd > .ana-record-empty) {
+  opacity: 0.5;
+}
+.ana-record-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ana-record-group {
+  width: fit-content;
+  max-width: 100%;
+}
+.ana-record-group summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+.ana-record:not(.ana-record-input) > dl > .ana-record-field > dd > .ana-record-group {
+  margin-top: -8px;
+}
+.ana-record-group[open] > summary {
+  background: rgb(255 255 255 / 3%);
+}
+.ana-record-group summary small {
+  color: var(--ana-dim);
+  margin-left: 8px;
+}
+.ana-record-group > .ana-record {
+  margin: 8px 0 0 14px;
+}
+.ana-record-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.ana-record-action {
+  justify-self: start;
+  gap: 8px;
+}
+
+.ana-review-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.ana-status-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: help;
+  border-radius: 6px;
+}
+.ana-status-trigger:focus-visible {
+  outline: 1px solid var(--ana-accent);
+  outline-offset: 2px;
+}
+.ana-status-tooltip {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  padding: 9px 12px;
+  width: max-content;
+  max-width: min(280px, 65vw);
+  color: var(--ana-text);
+  background: var(--ana-card-2);
+  border: 1px solid var(--ana-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #0006;
+  font: 12px / 1.5 var(--font-body);
+}
+
+.ana-task-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ana-table tbody tr:hover {
+    background: rgb(255 255 255 / 3%);
+  }
+  .ana-table tbody tr.is-selected:hover {
+    background: var(--ana-info-bg);
+  }
+  .ana-record-group summary:hover,
+  .ana-disclosure > summary:hover,
+  .ana-tool-call summary:hover {
+    background: rgb(255 255 255 / 4%);
+  }
+}
+.ana-table tbody tr:focus-within {
+  background: rgb(76 194 255 / 6%);
+}
+@media (max-height: 540px) and (min-width: 761px) {
+  .ana-sidebar {
+    overflow-y: auto;
+  }
+  .ana-picker-panel {
+    width: calc(100% - 16px);
+  }
+}
+@media (pointer: coarse) {
+  .ana-button,
+  .ana-picker-button,
+  .ana-row-select,
+  .ana-evidence-link,
+  .ana-filters input,
+  .ana-filters select {
+    min-height: 44px;
+  }
+}
+
+.ana-filters + * {
+  margin-top: 16px;
+}
+.ana-table .ana-hash:not(.is-revealed),
+.ana-table .ana-row-select {
+  white-space: nowrap;
+}
+
+.ana-variant-card > p {
+  margin: 0;
+}
+.ana-card > .ana-disclosure {
+  background: transparent;
+  border-color: var(--ana-border-soft);
+  border-radius: var(--ana-radius-inner);
+}

@@ -1,0 +1,111 @@
+# FROZEN THRESHOLDS (§11). Tightenable; never lowerable after observing an outcome.
+# This is the Critic's entire authority — without a frozen manifest it has nothing to refuse
+# against. It is a FILE the harness re-reads, never prompt text: an agent that lost its guardrail
+# during compaction began deleting email without approval, because the guardrail lived in context.
+#
+# DIGEST BINDING IS PARTIAL (updated 2026-08-10). Production records this digest in batteries and
+# claims; climb history excludes another digest, so it identifies the comparable threshold window.
+# No owner classifies tightening versus lowering: "never lowerable" remains human policy, and the
+# compact record still makes no content-attestation claim.
+#
+# On 2026-09-18 minLevelN was removed: the Wilson interval already widens with a thin sample, and
+# the second floor discarded the placement whenever a Builder changed fewer than four tasks.
+#
+# On 2026-09-04 the repair experiment was removed from the product, and with it the rows that
+# only served it: significanceGate (its z moved to climb.wilsonZ), alphaAttenuation,
+# frozenScoreMargin, trivialBaselineVariant,
+# auditUnit, taskSet, identityBy, anchorSet, censusCorrectnessModelIdentity, criticPredicates and
+# informativeBattery. Deleting keys moves the manifest digest, so batteries sealed before that
+# date start a fresh comparable window.
+
+frozenOn: 2026-07-25
+frozenBefore: M4            # frozen before M4 produced a number, never after
+
+# --- Rule 1, which outranks the table -------------------------------------------------------
+sizeCeiling:
+  authority: hard-merge-gate-1
+  newFileLines: 800          # 400 -> 600 (operator, 2026-08-03): the analyse reviews outgrew 400
+                              # through documented behaviour; the gate followed that day and this
+                              # row on 2026-08-14. 600 -> 800 and 80 -> 115 on 2026-09-20, when
+                              # `biome format` first ran over the tree: the same code measures
+                              # larger once a formatter owns the line breaks, by 1.330 per file
+                              # and 1.425 per function at the 90th percentile, and the ceilings
+                              # carry that rather than the source being cut to fit a ruler that
+                              # changed. The function ceiling stays the structural guard.
+  newFunctionLines: 115
+  # Copied code is exempt at its copied size and frozen there: a file that arrives at 1,232 lines
+  # and stays there is fine; one that starts at 236 and reaches 1,261 is not.
+  copiedFilesFrozenAtArrival: true
+  appliedPer: file
+  operationalForm: a finding may not be fixed in the file where it was observed
+  tieBreak: if owner count and LOC disagree, owner integrity wins
+
+# --- Construction-phase gate, replacing an off-switch ---------------------------------------
+# Net deletion binds on zero of six milestones as written: M1-M3 are declared inactive and M5/M6
+# are also pure additions arriving AFTER the stated reactivation. So during the phase in which
+# ~100% of Anabasis is written, one hard gate is off by declaration, one exempts the majority (copied
+# code), and one had no denominator. This replaces the off-switch with a live numeric gate.
+additionsBudget:
+  authority: hard-merge-gate-2
+  M1: 900                     # scaffolding 88 + transfer 90 + record/validator ~500 + Critic skeleton
+  M2: manifest-copied-total-plus-10pct
+  M3: manifest-copied-total-plus-10pct
+  M5: 800
+  M6: 6000
+netDeletionPerPR:
+  authority: hard-merge-gate-2b
+  activeFrom: M4
+  exemptWhen: the PR declares a new owner
+
+# --- One owner per decision -----------------------------------------------------------------
+oneOwnerPerDecision:
+  authority: hard-merge-gate-3
+  note: >-
+    Third of three in authority order, and not sufficient on its own: it names a file as the right
+    home for a class of logic and then rewards putting more logic there.
+
+# --- Recorded difficulty policy -------------------------------------------------------------
+# Where a battery lands on the band, and how long the product then stays fixed. They prescribe no
+# next experiment or stop: the Builder chooses task variance and product changes.
+climb:
+  band: [0.2, 0.50]            # Wilson interval band used by difficulty evidence and family conflict.
+                               # Ceiling: 0.5 → 0.75 (2026-08-10) → 0.60 (operator, 2026-08-19)
+                               # → 0.40 (operator, 2026-09-15: a battery is at the limit at 5 to 10 of 25;
+                               # 34 of 41 scored openings since 2026-09-01 passed 22 or more)
+                               # → 0.50 (operator, 2026-09-16: 20 to 50 per cent, 5 to 12 of 25;
+                               # a 25-case battery is significantly too easy from 18 of 25).
+  confidence: 0.95             # Two-sided confidence of every reported interval. `REPORTING_Z` in
+                               # src/claim/estimation.ts is the normal quantile for this row and the
+                               # only z any reader uses; wilsonZ: 1.96 was replaced by it on
+                               # 2026-09-18, when the second Wilson implementation was removed.
+
+# --- Control corpus floors (plan W4 pilot floors, previously code-only) ---------------------
+# Declared values equal the code fallbacks in src/critic/policy.ts. Authoring requires at least
+# this many accept and reject controls. The Judge-only calibration floors were removed with the
+# control census on 2026-09-14; the same day the minimum fell from 20 to 5, since the per-check
+# and per-family witnesses already say what a corpus must cover.
+evaluatorCalibration:
+  minimumKnownPasses: 5
+  minimumKnownFailures: 5
+
+# --- Run-quality gates ----------------------------------------------------------------------
+controlCensus:
+  completeBeforePaidScoring: 1.0
+  nonResultAborts: true       # a control non-result is environment, never a product score
+  # Phase 1 has no non-result session in the dry run, so `recovery` would become a ratio over
+  # survivors (14 evaluate, 6 time out => 14/14 = 1.0). Denominator is DECLARED injected defects.
+  denominator: declared-injected-defects
+controlRecoveryFloor:
+  declaredTarget: 0.60        # a declared target, NOT the correctnessModel's own measured recovery: freezing
+                              # the floor at what the correctnessModel scored lets a correctnessModel missing two
+                              # thirds of defects certify itself forever
+judgeDeAnchoring:
+  commitBeforeSeeingCandidate: true
+  predictionsMustBeFalsifiable: true    # zero predictions, or any not "proposed", or any uncited => invalid
+  predictionsMustBeDisposed: true       # phase 2 resolves EXACTLY the proposed id set, none left proposed
+  commitAllTasksInPhaseZero: true       # per-task isolation: one judge session that already scored
+                                        # tasks 1-4 is anchored when it commits for task 5
+  fallbackConfigured: false             # typed as the literal false: a judge run with a configured
+                                        # model fallback cannot produce a valid evidence at all
+judgeRuntime:
+  turnTimeoutMs: 1800000                # valid live batches needed about 24 minutes; contain broker silence at 30

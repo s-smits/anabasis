@@ -1,0 +1,9 @@
+# codex-luna-swarm:start
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = 'bun "$(git rev-parse --show-toplevel)/.claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs" --stop-hook'
+timeout = 5
+statusMessage = "Checking Luna swarm progress"
+# codex-luna-swarm:end

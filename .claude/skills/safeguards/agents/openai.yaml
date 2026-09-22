@@ -1,0 +1,4 @@
+interface:
+  display_name: "Safeguards"
+  short_description: "Add and reconcile log-only runtime safeguards"
+  default_prompt: "Use $safeguards to add or reconcile a measured, log-only runtime safeguard, keeping authority, receipts, retirement and backtracking explicit."

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 110
+  },
+  "linter": { "enabled": false },
+  "javascript": { "formatter": { "quoteStyle": "double", "quoteProperties": "preserve" } },
+  "overrides": [
+    {
+      "includes": [
+        "**/vendor/pi-agent-session/agent-session.ts",
+        "**/vendor/pi-agent-session/session-context.ts",
+        "**/vendor/pi-agent-session/sleep.ts",
+        "**/vendor/pi-built/jsonl.ts",
+        "**/vendor/pi-claude-bridge/agents-md.ts",
+        "**/vendor/pi-claude-bridge/convert.ts",
+        "**/vendor/pi-claude-bridge/extract-tool-results.ts",
+        "**/vendor/pi-claude-bridge/mcp-server.ts",
+        "**/vendor/pi-claude-bridge/models.ts",
+        "**/vendor/pi-claude-bridge/prompt-stream.ts",
+        "**/vendor/pi-claude-bridge/provider.ts",
+        "**/vendor/pi-claude-bridge/query-state.ts",
+        "**/vendor/pi-claude-bridge/session-verify.ts",
+        "**/vendor/pi-claude-bridge/skills.ts"
+      ],
+      "formatter": { "enabled": false }
+    }
+  ],
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!**/.agents"]
+  }
+}

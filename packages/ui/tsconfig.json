@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "dist-types",
+    "jsx": "react-jsx",
+    "target": "ES2025",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "serve.ts",
+    "build.ts",
+    "workspace-plugin.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,754 @@
+/**
+ * A condition is reviewed once, and a defect earns its severity by recurring.
+ *
+ * Review spend is bounded by the measured-condition digest, so the question is what counts as
+ * a new condition and what is the same one seen twice. On top of that sits the severity rule:
+ * an agent-side defect advises on its first reading and blocks on its second, and a probe that
+ * actually executed may block on the first.
+ */
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { join } from "../src/meta/path.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { CITATIONS, DEMO, REVIEW_IDENTITY, call, reviewState } from "./helpers/review-fixtures.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
+import { ownerTier } from "../src/author/feedback-routing.ts";
+import { publicEpochReview } from "../src/review/epoch-review-public.ts";
+import {
+  EPOCH_REVIEW_SCHEMA,
+  conditionAlreadyReviewed,
+  measuredConditionOf,
+  recordFindingTool,
+  recurringDefects,
+} from "../src/review/epoch-review-findings.ts";
+import type { MeasuredCondition } from "../src/review/epoch-review-findings.ts";
+
+afterAll(cleanupScratch);
+
+describe("a condition is reviewed once", () => {
+  const condition = (taskSetHash: string | null): MeasuredCondition =>
+    measuredConditionOf({
+      agentHash: "a",
+      correctnessModelHash: "c",
+      taskSetHash,
+      builtPin: "claude/claude-opus-5/medium",
+      verifierIdentity: "verifier-a",
+    });
+
+  const dir = () => {
+    const root = scratchDir("ana-epoch-review-");
+    mkdirSync(root, { recursive: true });
+    return root;
+  };
+
+  const write = (root: string, runId: string, body: Record<string, JsonValue>) =>
+    writeFileSync(
+      join(root, `${runId}-epoch-review.json`),
+      JSON.stringify({
+        ...REVIEW_IDENTITY,
+        schema: EPOCH_REVIEW_SCHEMA,
+        findings: [],
+        coverage: { complete: true },
+        ...body,
+      }),
+    );
+
+  test("a completed review of the same condition is not bought twice", () => {
+    const root = dir();
+    write(root, "r1", { status: "completed", condition: condition("t1") });
+    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(true);
+    expect(
+      conditionAlreadyReviewed(root, condition("t1"), {
+        ...REVIEW_IDENTITY,
+        reviewerPin: "another-model/effort",
+      }),
+    ).toBe(false);
+    expect(
+      conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: "medium" }),
+    ).toBe(false);
+    expect(
+      conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: null }),
+    ).toBe(false);
+    expect(
+      conditionAlreadyReviewed(root, condition("t1"), {
+        ...REVIEW_IDENTITY,
+        requestDigest: "another-request",
+      }),
+    ).toBe(false);
+    // New contested artifacts or standing issues under the same condition are new settlement work.
+    expect(
+      conditionAlreadyReviewed(root, condition("t1"), {
+        ...REVIEW_IDENTITY,
+        obligationsDigest: "another-obligation-set",
+      }),
+    ).toBe(false);
+    expect(conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerPin: null })).toBe(
+      false,
+    );
+  });
+
+  test("a review recorded under the previous schema is not reused", () => {
+    const root = dir();
+    write(root, "r1", { schema: "epoch-review/v3", status: "completed", condition: condition("t1") });
+    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
+  });
+
+  test("recurrence counts distinct measured conditions, not duplicate findings or replay files", () => {
+    const root = dir();
+    const finding = { kind: "harness-defect", checkId: "bounds", claim: "private", evidence: "e" };
+    write(root, "r1", { status: "completed", condition: condition("t1"), findings: [finding, finding] });
+    write(root, "r1-replay", { status: "completed", condition: condition("t1"), findings: [finding] });
+    write(root, "r2-partial", {
+      status: "completed",
+      condition: condition("t2"),
+      coverage: { complete: false },
+      findings: [finding],
+    });
+    expect(recurringDefects(root, condition("t1")).size).toBe(0);
+    expect(recurringDefects(root, condition("next")).get("bounds")).toBe(1);
+    write(root, "r2", { status: "completed", condition: condition("t2"), findings: [finding] });
+    expect(recurringDefects(root, condition("next")).get("bounds")).toBe(2);
+  });
+
+  test("review procedure changes do not count as new measured conditions, and incomplete identities are excluded", () => {
+    const root = dir();
+    const finding = { kind: "harness-defect", checkId: "bounds", claim: "private", evidence: "e" };
+    const current = condition("t1");
+    write(root, "old-prompt", {
+      status: "completed",
+      condition: { ...current, digest: "earlier-prompt-and-policy" },
+      findings: [finding],
+    });
+    expect(conditionAlreadyReviewed(root, current, REVIEW_IDENTITY)).toBe(false);
+    expect(recurringDefects(root, current).size).toBe(0);
+    write(root, "another-prompt", {
+      status: "completed",
+      condition: { ...current, digest: "another-review-procedure" },
+      findings: [finding],
+    });
+    write(root, "missing-condition", { status: "completed", condition: null, findings: [finding] });
+    for (const field of [
+      "agentHash",
+      "correctnessModelHash",
+      "taskSetHash",
+      "builtPin",
+      "verifierIdentity",
+    ]) {
+      write(root, `missing-${field}`, {
+        status: "completed",
+        condition: { ...condition(`unknown-${field}`), [field]: null },
+        findings: [finding],
+      });
+    }
+    expect(recurringDefects(root, condition("next")).get("bounds")).toBe(1);
+    expect(recurringDefects(root, condition(null)).size).toBe(0);
+  });
+
+  test("recurrence never promotes an advisory suspicion without its own demonstrated, cited case", async () => {
+    const state = reviewState();
+    const tool = recordFindingTool([], [], "e", state, {
+      identities: { schemaRoots: [], checkIds: ["bounds"] },
+      recurring: new Map([["bounds", 1]]),
+    });
+    const args = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      checkId: "bounds",
+      severity: "advisory",
+      claim: "a possible boundary gap",
+    };
+    await call(tool, args);
+    await call(tool, { ...args, demonstration: DEMO });
+    expect(await call(tool, { ...args, demonstration: DEMO, citations: CITATIONS })).toContain("as blocking");
+    expect(state.findings.map((row) => row.severity)).toEqual(["advisory", "advisory", undefined]);
+  });
+
+  test("a new task set is a new condition", () => {
+    const root = dir();
+    write(root, "r1", { status: "completed", condition: condition("t1") });
+    expect(conditionAlreadyReviewed(root, condition("t2"), REVIEW_IDENTITY)).toBe(false);
+  });
+
+  test("changed or unknown verifier identity cannot reuse a completed review", () => {
+    const root = dir();
+    write(root, "r1", { status: "completed", condition: condition("t1") });
+    expect(
+      conditionAlreadyReviewed(
+        root,
+        measuredConditionOf({ ...condition("t1"), verifierIdentity: "verifier-b" }),
+        REVIEW_IDENTITY,
+      ),
+    ).toBe(false);
+    expect(
+      conditionAlreadyReviewed(
+        root,
+        measuredConditionOf({ ...condition("t1"), verifierIdentity: null }),
+        REVIEW_IDENTITY,
+      ),
+    ).toBe(false);
+  });
+
+  test("partial and legacy coverage cannot suppress another review", () => {
+    for (const body of [
+      { status: "incomplete", coverage: { complete: false } },
+      { status: "completed", coverage: { files: 400, opened: 400, chars: 800 } },
+      { status: "completed", condition: null },
+      { status: "completed", reviewerEffort: null },
+    ]) {
+      const root = dir();
+      write(root, "r1", { condition: condition("t1"), ...body });
+      expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
+    }
+  });
+
+  test("a harness defect whose check an earlier review named is admitted as blocking", async () => {
+    const root = dir();
+    const prior = {
+      kind: "harness-defect",
+      claim: "private prose",
+      evidence: "e",
+      proposedOwner: "brief",
+      severity: "advisory",
+      checkId: "sections-minimal-mass",
+      artifactSchemaPath: "layout.members",
+    };
+    write(root, "r1", { status: "completed", condition: condition("t1"), findings: [prior] });
+    write(root, "r2", {
+      status: "failed",
+      condition: condition("t2"),
+      findings: [{ ...prior, checkId: "unfinished-review" }],
+    });
+    const recurring = recurringDefects(root, condition("next"));
+    expect([...recurring.keys()]).toEqual(["sections-minimal-mass"]);
+    const state = reviewState();
+    const tool = recordFindingTool([], [], "e", state, {
+      identities: { schemaRoots: ["layout"], checkIds: ["sections-minimal-mass", "other-check"] },
+      recurring,
+    });
+    const named = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      severity: "advisory",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      artifactSchemaPath: "layout.members",
+    };
+    await call(tool, { ...named, claim: "a different check on the same path", checkId: "other-check" });
+    await call(tool, { ...named, claim: "the same gap again", checkId: "sections-minimal-mass" });
+    expect(state.findings[0]?.severity).toBe("advisory");
+    expect(state.findings[1]?.severity).toBeUndefined();
+    expect(recurringDefects(join(root, "absent"), condition("next")).size).toBe(0);
+  });
+
+  test("a bare schema root is not a defect identity, and a path inside the artifact is", async () => {
+    // Run esp32-opus-20260919T042430000Z-17f9de. That domain's artifactSchema has one root,
+    // `files`, so every finding naming no check named that one word: 2,448 of them across the
+    // campaign. A floating-point rule, a header contract and a new pin binding therefore shared an
+    // identity, and i03's pin finding arrived carrying two recurrences it had nothing to do with.
+    // A path below a root still identifies a place, which is how the truss reviews spell theirs.
+    const root = dir();
+    const unnamed = (artifactSchemaPath: string, claim: string) => ({
+      kind: "harness-defect",
+      claim,
+      evidence: "e",
+      proposedOwner: "correctness-model",
+      severity: "advisory",
+      artifactSchemaPath,
+    });
+    write(root, "r1", {
+      status: "completed",
+      condition: condition("t1"),
+      findings: [
+        unnamed("files", "no check reads the floating-point rule"),
+        unnamed("design.members", "no check reads the member table"),
+      ],
+    });
+    write(root, "r2", {
+      status: "completed",
+      condition: condition("t2"),
+      findings: [
+        unnamed("files", "no check reads the header contract"),
+        unnamed("design.members", "the member table is still unread"),
+      ],
+    });
+    const recurring = recurringDefects(root, condition("next"));
+    expect([...recurring.keys()]).toEqual(["design.members"]);
+
+    // So a third finding on the one root is read as what it is, a first one, and the severity its
+    // own demonstration earned stands.
+    const identities = { schemaRoots: ["files", "design"], checkIds: [] };
+    const named = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the two I2C pin roles are bound by no declared check",
+    };
+    const onRoot = reviewState();
+    await call(recordFindingTool([], [], "e", onRoot, { identities, recurring }), {
+      ...named,
+      artifactSchemaPath: "files",
+    });
+    expect(onRoot.findings[0]?.severity).toBeUndefined();
+
+    // The ceiling itself is untouched: where the identity really did recur, it still holds the
+    // third naming at advice.
+    const onPath = reviewState();
+    expect(
+      await call(recordFindingTool([], [], "e", onPath, { identities, recurring }), {
+        ...named,
+        artifactSchemaPath: "design.members",
+      }),
+    ).toBe("recorded harness-defect as advisory");
+  });
+
+  test("an agent-side harness defect advises on its first reading and blocks on its second", async () => {
+    // Run truss-opus-20260907T160200000Z-bdd329 round 4: a first blocking tools-spec finding
+    // sent a 25/25 harness back to the starter seed under the old loop. These checks retain
+    // the distinction between agent and evaluation owners when assigning review severity.
+    expect(ownerTier("tools-spec")).toBe("agent");
+    expect(ownerTier("correctness-model")).toBe("rebuild");
+    const state = reviewState();
+    const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check", "budget-check"] };
+    const first = recordFindingTool([], [], "e", state, { identities, recurring: new Map() });
+    const named = {
+      kind: "harness-defect",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the tool supplies the remaining decision",
+    };
+    await call(first, { ...named, owner: "tools-spec", checkId: "shortcut-check" });
+    expect(state.findings[0]?.severity).toBe("advisory");
+    // The same supported finding for an evaluation owner keeps its blocking severity. This
+    // checks owner-based severity here; the run loop decides the subsequent authoring move.
+    const evaluatorSide = reviewState();
+    await call(recordFindingTool([], [], "e", evaluatorSide, { identities, recurring: new Map() }), {
+      ...named,
+      owner: "correctness-model",
+      checkId: "budget-check",
+    });
+    expect(evaluatorSide.findings[0]?.severity).toBeUndefined();
+    // A finding on the same check in a later condition now qualifies for blocking severity.
+    const second = reviewState();
+    await call(
+      recordFindingTool([], [], "e", second, { identities, recurring: new Map([["shortcut-check", 1]]) }),
+      {
+        ...named,
+        owner: "tools-spec",
+        checkId: "shortcut-check",
+      },
+    );
+    expect(second.findings[0]?.severity).toBeUndefined();
+  });
+
+  test("what a probe executed reaches the author, whatever severity the finding is held at", async () => {
+    // The two-occurrence ceiling exists because forcing blocking a third time had not repaired
+    // anything: run esp32-opus-20260908T214013792Z-23a1bc named `target-compiles` in three reviews
+    // and "the defect persisted while the public projection supplied only its check name". The
+    // review had run the candidate's own checks over its own changed field; the author read a
+    // check id. The live review of campaign 3fd52f9e-4's i09 battery on 2026-09-18 is the same
+    // shape: it probed `design.nodes.0.role`, watched `node-placement` refuse the changed artifact
+    // over a naming rule no published decision states, and was held at advice because two earlier
+    // conditions had named that check. Advisory or blocking, the probe is what the author needs.
+    const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
+    const named = {
+      kind: "harness-defect",
+      owner: "tools-spec",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the tool supplies the remaining decision",
+      checkId: "shortcut-check",
+    };
+    const probed = (recurrences: Map<string, number>) => {
+      const state = reviewState();
+      state.probes.rows.push({
+        id: 1,
+        controlId: "accept-a",
+        taskId: "t0",
+        path: "layout.span",
+        value: '"widened"',
+        refused: null,
+        baseline: { outcome: "pass", blockingCheckIds: [] },
+        mutated: { outcome: "fail", blockingCheckIds: ["shortcut-check"] },
+        movedCheckIds: ["shortcut-check"],
+      });
+      return { state, tool: recordFindingTool([], [], "e", state, { identities, recurring: recurrences }) };
+    };
+
+    const first = probed(new Map());
+    await call(first.tool, { ...named, probeIds: [1] });
+    expect(first.state.findings[0]?.severity).toBeUndefined();
+    expect(first.state.findings[0]?.probes).toEqual([
+      { controlId: "accept-a", path: "layout.span", movedCheckIds: ["shortcut-check"] },
+    ]);
+    const line =
+      "Executed against this candidate's own declared checks: changing layout.span on accept control accept-a moved shortcut-check.";
+    expect(publicEpochReview({ status: "completed", ...first.state }).findings[0]?.claim ?? "").toContain(
+      line,
+    );
+
+    // Held at advice by the ceiling, and deferred on top of that: the same line still crosses. This
+    // is the round the ceiling was written for, and the round that used to project a bare check id.
+    const worn = probed(new Map([["shortcut-check", 2]]));
+    expect(await call(worn.tool, { ...named, probeIds: [1] })).toBe("recorded harness-defect as advisory");
+    const deferred = publicEpochReview(
+      { status: "completed", ...worn.state },
+      { brief: null, deferAdvisory: true },
+    );
+    expect(deferred.findings[0]?.claim ?? "").toContain(line);
+
+    // The replacement value is a counterexample the reviewer generated and `blockingCheckIds` is
+    // verifier detail. Neither crosses; the control, the path and the moved checks are the class
+    // the finding's own `checkId` already crosses by.
+    for (const projection of [publicEpochReview({ status: "completed", ...first.state }), deferred]) {
+      expect(projection.findings[0]?.claim ?? "").not.toContain("widened");
+    }
+
+    // A source-only reading says so with `probeIds: []` and carries no such line.
+    const source = reviewState();
+    await call(recordFindingTool([], [], "e", source, { identities, recurring: new Map() }), {
+      ...named,
+      probeIds: [],
+    });
+    expect(source.findings[0]?.probes).toBeUndefined();
+    expect(publicEpochReview({ status: "completed", ...source }).findings[0]?.claim ?? "").not.toContain(
+      "Executed against",
+    );
+  });
+
+  test("a probe-backed agent-side defect blocks on its first reading, and an uncited probe does not", async () => {
+    // The agent-tier floor above exists because a reviewer reading source can only suspect. Run
+    // truss-opus-20260916T151117729Z-064960 is the other half of that: its one harness-defect
+    // conceded in its own claim that "no current artifact can distinguish the two readings", and
+    // the finding could go no further. A probe row is the candidate's own declared checks ruling
+    // on the candidate's own accept control, so the first-occurrence floor does not apply to it.
+    const named = {
+      kind: "harness-defect",
+      owner: "tools-spec",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the tool supplies the remaining decision",
+      checkId: "shortcut-check",
+    };
+    const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
+    const side = (outcome: "pass" | "fail" | "non-result", blockingCheckIds: string[] = []) => ({
+      outcome,
+      blockingCheckIds,
+    });
+    const ran = (id: number, refused: string | null) => ({
+      id,
+      controlId: "accept-a",
+      taskId: "t0",
+      path: "layout.span",
+      value: "1",
+      baseline: side("pass"),
+      mutated: side("fail", ["shortcut-check"]),
+      movedCheckIds: ["shortcut-check"],
+      refused,
+    });
+
+    const backed = reviewState();
+    backed.probes.rows.push(ran(1, null));
+    expect(
+      await call(recordFindingTool([], [], "e", backed, { identities, recurring: new Map() }), {
+        ...named,
+        probeIds: [1],
+      }),
+    ).toBe("recorded harness-defect as blocking");
+    expect(backed.findings[0]?.severity).toBeUndefined();
+    expect(backed.findings[0]?.claim).toContain("Executed probes: 1");
+
+    // Citing a probe the host refused credits the request, not a result.
+    const refused = reviewState();
+    refused.probes.rows.push(ran(1, "the checks did not settle"));
+    expect(
+      await call(recordFindingTool([], [], "e", refused, { identities, recurring: new Map() }), {
+        ...named,
+        probeIds: [1],
+      }),
+    ).toBe("recorded harness-defect as advisory");
+    expect(refused.findings[0]?.claim).not.toContain("Executed probes");
+
+    // A pair that returned without deciding is not a result. `runControls` does not throw when a
+    // check times out or an evaluation fails: the receipt comes back `non-result` with no blocking
+    // checks, which reads exactly like "no check moved" to anything that only asks whether the
+    // probe ran.
+    const unsettled = reviewState();
+    unsettled.probes.rows.push({ ...ran(1, null), mutated: side("non-result"), movedCheckIds: [] });
+    expect(
+      await call(recordFindingTool([], [], "e", unsettled, { identities, recurring: new Map() }), {
+        ...named,
+        probeIds: [1],
+      }),
+    ).toBe("recorded harness-defect as advisory");
+    expect(unsettled.findings[0]?.claim).not.toContain("Executed probes");
+
+    // Nor is a changed artifact informative against an original the checks already refuse.
+    const unsound = reviewState();
+    unsound.probes.rows.push({ ...ran(1, null), baseline: side("fail", ["shortcut-check"]) });
+    expect(
+      await call(recordFindingTool([], [], "e", unsound, { identities, recurring: new Map() }), {
+        ...named,
+        probeIds: [1],
+      }),
+    ).toBe("recorded harness-defect as advisory");
+
+    // Every other limit still applies: two prior conditions hold the defect at advice.
+    const worn = reviewState();
+    worn.probes.rows.push(ran(1, null));
+    expect(
+      await call(
+        recordFindingTool([], [], "e", worn, { identities, recurring: new Map([["shortcut-check", 2]]) }),
+        {
+          ...named,
+          probeIds: [1],
+        },
+      ),
+    ).toBe("recorded harness-defect as advisory");
+  });
+
+  test("a defect recorded after a probe ran must say whether it rests on it", async () => {
+    // The 2026-09-16 replay of run truss-opus-20260916T151117729Z-064960 ran all eight probes, wrote
+    // a harness-defect whose own claim narrates what they returned, and left `probeIds` unset. The
+    // finding was therefore not probe-backed: it took the source-derived advisory floor, and its
+    // recorded claim carries no link to the rows that support it. Asking costs one argument.
+    const named = {
+      kind: "harness-defect",
+      owner: "tools-spec",
+      severity: "advisory",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the tool supplies the remaining decision",
+      checkId: "shortcut-check",
+    };
+    const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
+    const side = (outcome: "pass" | "fail" | "non-result", blockingCheckIds: string[] = []) => ({
+      outcome,
+      blockingCheckIds,
+    });
+    const ran = (id: number, refused: string | null = null) => ({
+      id,
+      controlId: "accept-a",
+      taskId: "t0",
+      path: "layout.span",
+      value: "1",
+      baseline: side("pass"),
+      mutated: side("fail", ["shortcut-check"]),
+      movedCheckIds: ["shortcut-check"],
+      refused,
+    });
+
+    const silent = reviewState();
+    silent.probes.rows.push(ran(1), ran(2));
+    const asked = await call(
+      recordFindingTool([], [], "e", silent, { identities, recurring: new Map() }),
+      named,
+    );
+    expect(asked).toContain("this review executed probes 1, 2");
+    expect(asked).toContain("probeIds: [] when you read this from source alone");
+    expect(silent.findings).toHaveLength(0);
+
+    // `probeIds: []` is the answer for a reading taken from source alone, and it records.
+    expect(
+      await call(recordFindingTool([], [], "e", silent, { identities, recurring: new Map() }), {
+        ...named,
+        probeIds: [],
+      }),
+    ).toBe("recorded harness-defect as advisory");
+    expect(silent.findings[0]?.claim).not.toContain("Executed probes");
+
+    // A probe that decided nothing is not evidence, so there is nothing to ask about.
+    const inconclusive = reviewState();
+    inconclusive.probes.rows.push({ ...ran(1), baseline: side("fail", ["shortcut-check"]) });
+    expect(
+      await call(recordFindingTool([], [], "e", inconclusive, { identities, recurring: new Map() }), named),
+    ).toBe("recorded harness-defect as advisory");
+
+    // Only a harness-defect can be admitted blocking on a probe, so only it is asked.
+    const observed = reviewState();
+    observed.probes.rows.push(ran(1));
+    expect(
+      await call(recordFindingTool([], [], "e", observed, { identities, recurring: new Map() }), {
+        kind: "hardness",
+        claim: "the mass limits leave no headroom",
+        severity: "advisory",
+      }),
+    ).toBe("recorded hardness as advisory");
+  });
+
+  test("the same check named at a moved path, and under another kind, still counts as recurrence", async () => {
+    // Run truss-opus-20260907T160200000Z-bdd329: check `change-budget` was recorded as a harness
+    // defect at artifact path `members` and then, in the next review, as hardness at no path. The
+    // old identity read those two namings as two defects and never escalated.
+    const root = dir();
+    write(root, "r1", {
+      status: "completed",
+      condition: condition("t1"),
+      findings: [
+        {
+          kind: "harness-defect",
+          claim: "private prose",
+          evidence: "e",
+          proposedOwner: "correctness-model",
+          severity: "advisory",
+          checkId: "change-budget",
+          artifactSchemaPath: "layout.members",
+        },
+      ],
+    });
+    write(root, "r2", {
+      status: "completed",
+      condition: condition("t2"),
+      findings: [
+        {
+          kind: "hardness",
+          claim: "private prose",
+          evidence: "e",
+          severity: "advisory",
+          checkId: "other-check",
+        },
+      ],
+    });
+    expect([...recurringDefects(root, condition("next")).keys()].sort()).toEqual([
+      "change-budget",
+      "other-check",
+    ]);
+    const state = reviewState();
+    const tool = recordFindingTool([], [], "e", state, {
+      identities: { schemaRoots: ["layout"], checkIds: ["change-budget", "other-check", "fresh-check"] },
+      recurring: recurringDefects(root, condition("next")),
+    });
+    const named = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      severity: "advisory",
+      claim: "the same check again",
+      demonstration: DEMO,
+      citations: CITATIONS,
+    };
+    // The path moved and the earlier kind differed; the check is the declared decision, so both
+    // escalate. A check no review has named stays where the reviewer put it.
+    await call(tool, { ...named, checkId: "change-budget" });
+    expect(state.findings[0]?.severity).toBeUndefined();
+    await call(tool, { ...named, checkId: "fresh-check" });
+    expect(state.findings[1]?.severity).toBe("advisory");
+  });
+
+  test("a check named in two earlier conditions receives advisory severity on its next finding", async () => {
+    // Run esp32-opus-20260908T214013792Z-23a1bc: check `target-compiles` was named in reviews
+    // i02, i03 and i04. The host forced i03 and i04 blocking, each ordered a full rebuild that
+    // discarded a 25/25 harness, and the one-line projection never led the author to the gap.
+    // The first recurrence can still become blocking. After two earlier conditions named the
+    // check, its next finding stays advisory; this test does not prescribe the next experiment.
+    const root = dir();
+    const finding = {
+      kind: "harness-defect",
+      claim: "private prose",
+      evidence: "e",
+      proposedOwner: "correctness-model",
+      checkId: "target-compiles",
+      artifactSchemaPath: "files",
+    };
+    write(root, "r1", { status: "completed", condition: condition("t1"), findings: [finding] });
+    write(root, "r2", { status: "completed", condition: condition("t2"), findings: [finding] });
+    expect(recurringDefects(root, condition("next")).get("target-compiles")).toBe(2);
+    const identities = { schemaRoots: ["files"], checkIds: ["target-compiles"] };
+    const named = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+      claim: "the same gap a third time",
+      checkId: "target-compiles",
+    };
+    const third = reviewState();
+    await call(
+      recordFindingTool([], [], "e", third, {
+        identities,
+        recurring: recurringDefects(root, condition("next")),
+      }),
+      named,
+    );
+    expect(third.findings[0]?.severity).toBe("advisory");
+    // With only one earlier occurrence, the same supported finding still becomes blocking.
+    const second = reviewState();
+    await call(
+      recordFindingTool([], [], "e", second, { identities, recurring: new Map([["target-compiles", 1]]) }),
+      {
+        ...named,
+        severity: "advisory",
+      },
+    );
+    expect(second.findings[0]?.severity).toBeUndefined();
+  });
+
+  test("an unattributed observation is not an earlier naming of its check", async () => {
+    // Run truss-opus-20260907T210000000Z-6bf0e9: round 2 recorded a `diagnosis-uncertain` on
+    // `determinate-stable-topology`, and in round 3 that alone forced a harness defect on the same
+    // check to blocking, over a battery that had passed 25 of 25.
+    const root = dir();
+    write(root, "r1", {
+      status: "completed",
+      condition: condition("t1"),
+      findings: [
+        {
+          kind: "diagnosis-uncertain",
+          claim: "private prose",
+          evidence: "e",
+          severity: "advisory",
+          checkId: "topology",
+        },
+      ],
+    });
+    write(root, "r2", {
+      status: "completed",
+      condition: condition("t2"),
+      findings: [
+        {
+          kind: "hardness",
+          claim: "private prose",
+          evidence: "e",
+          severity: "advisory",
+          checkId: "capacity",
+        },
+      ],
+    });
+    expect([...recurringDefects(root, condition("next")).keys()].sort()).toEqual(["capacity"]);
+    const state = reviewState();
+    const tool = recordFindingTool([], [], "e", state, {
+      identities: { schemaRoots: ["layout"], checkIds: ["topology", "capacity"] },
+      recurring: recurringDefects(root, condition("next")),
+    });
+    const named = {
+      kind: "harness-defect",
+      owner: "correctness-model",
+      claim: "the same check again",
+      citations: CITATIONS,
+      demonstration: DEMO,
+    };
+    // The uncertain naming does not escalate; the positive one still does.
+    await call(tool, { ...named, severity: "advisory", checkId: "topology" });
+    expect(state.findings[0]?.severity).toBe("advisory");
+    await call(tool, { ...named, severity: "advisory", checkId: "capacity" });
+    expect(state.findings[1]?.severity).toBeUndefined();
+  });
+
+  test("a failed review does not count as coverage", () => {
+    const root = dir();
+    write(root, "r1", { status: "failed", condition: condition("t1") });
+    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
+  });
+
+  test("no analysis directory yet is not coverage", () => {
+    expect(conditionAlreadyReviewed(join(dir(), "absent"), condition("t1"), REVIEW_IDENTITY)).toBe(false);
+  });
+
+  test("an absent task set hash still separates conditions", () => {
+    expect(condition(null).digest).not.toBe(condition("t1").digest);
+  });
+});

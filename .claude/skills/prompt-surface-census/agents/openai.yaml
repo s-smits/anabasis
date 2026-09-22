@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prompt Surface Census"
+  short_description: "Map model-visible text and its guard logic"
+  default_prompt: "Use $prompt-surface-census to generate and tune an AST-derived census of model-visible text in this repository."

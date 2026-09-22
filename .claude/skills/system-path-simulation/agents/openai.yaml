@@ -1,0 +1,4 @@
+interface:
+  display_name: "System Path Simulation"
+  short_description: "Prepare and check one real system path without launch authority"
+  default_prompt: "Use $system-path-simulation to prepare and test one uncertain Anabasis path at the smallest real layer, freeze the condition manifest and predictions, and return only reachability evidence; never launch, spend, or change authority."

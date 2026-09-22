@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Luna Swarm"
+  short_description: "Launch and collect independent Luna sessions"
+  default_prompt: "Use $codex-luna-swarm to derive or structurally parse complete bounded session tasks, launch them without pausing for approval, and collect only when requested."

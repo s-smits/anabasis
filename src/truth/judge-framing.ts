@@ -1,0 +1,28 @@
+import { ACTIVE_JUDGE_PROMPTS } from "./judge-prompt-policy.ts";
+import { trustedJsonStringify } from "./trusted-runtime.ts";
+/**
+ * Assemble the public context and shared instructions for each Judge subject. The policy module
+ * owns the base prompt, judge-drivers.ts owns the output instructions, and judge.ts records the
+ * subject evidence. Both output methods use this assembly, so their context wording stays aligned.
+ *
+ * The original split kept prompt changes separate from the ported runner. This remains the
+ * useful distinction: disclosure rules constrain what the Judge reads, while transport code
+ * delivers that text and captures the response.
+ */
+import type { JudgeInput } from "./judge.ts";
+
+/**
+ * Tell the Judge the request includes its public task. Every subject is a measured case that
+ * carries its task, so the Judge can apply task-dependent rules. live-run-01 recorded nine wrong
+ * verdicts without a usable abstention path; run 68 recorded abstentions on all 20 accepts under
+ * the opposite wording. Both lacked the task context needed for those decisions.
+ *
+ * This states the request shape, never what would make an artifact valid: the no-hints boundary
+ * owns the second, and disclosing the request shape is not disclosing verifier detail.
+ */
+const TASK_SENTENCE = "This input contains a public task. Decide whether the output solves that task.";
+
+/** Both output methods receive the same instructions. Only their final output sentence differs. */
+export function judgeTurnPrompt(input: JudgeInput, checkSentence: string): string {
+  return `${ACTIVE_JUDGE_PROMPTS.census} ${TASK_SENTENCE} ${checkSentence}\n\nPublic context:\n${trustedJsonStringify(input.publicContext, null, 2)}\n\nSubmitted artifact:\n${trustedJsonStringify(input.submittedArtifact, null, 2)}`;
+}

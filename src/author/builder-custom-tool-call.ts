@@ -1,0 +1,206 @@
+import { keyIfDefined } from "../meta/optional-key.ts";
+import { BUILDER_TOOLS } from "../builder/builder-tool-interface.ts";
+import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { hashJsonValue } from "../meta/stable-json.ts";
+
+/** The controller's tool list, the same on every backend. Any other reported tool name is a
+ *  provider-side tool such as web search. Deriving this set from the catalogue the entry gate
+ *  checks keeps the counts in agreement with the tools each session actually has. */
+export const CUSTOM_TOOL_NAMES: ReadonlySet<string> = new Set<string>(BUILDER_TOOLS);
+
+export interface BuilderCustomToolCall {
+  /** Dispatch order across the session, independent of whether calls complete out of order. */
+  sequence: number;
+  turn: number;
+  tool: string;
+  /** A declared action when recognised, the sole action when implicit, or `unknown`. */
+  action: string;
+  /** Public identifiers only. Raw arguments, paths, queries, URLs, commands, contents and result
+   *  text never enter this record. */
+  target: {
+    taskId?: string;
+    taskIdDigest?: string;
+    runId?: string;
+    runIdDigest?: string;
+    family?: string;
+    familyDigest?: string;
+    contextId?: string;
+    feedbackGroup?: number;
+    feedbackField?: string;
+    callCount?: number;
+    toolNames?: string[];
+  };
+  /** Milliseconds from session start. The recorder states it on every call; null stays for the
+   *  outcome reader, which reads recorded sessions whose removed transport fallback saw an end
+   *  without its start. */
+  startedAtMs: number | null;
+  durationMs: number | null;
+  /** Dispatch mechanics only. A returned tool result may itself report blocked or non-result. */
+  dispatchOutcome: "returned" | "threw" | "in-flight";
+  /** Controller-authored, detail-free meaning of the returned result. Absent on a call that threw
+   *  or is still in flight, and on a result that carries no receipt. Never inferred from
+   *  model-visible prose. */
+  semantic?: BuilderCustomToolSemantic;
+}
+
+export interface BuilderCustomToolSemantic {
+  outcome:
+    | "completed"
+    | "incomplete"
+    | "clear"
+    | "findings"
+    | "blocked"
+    | "failed"
+    | "non-result"
+    | "accepted"
+    | "refused"
+    | "terminal-closed";
+  stage?: string;
+  reason?: string;
+  resultDigest?: string;
+  /** Host-authored verifier-workshop action identity, distinct from this session's call sequence. */
+  workshopSequence?: number;
+  subjectDigest?: string;
+  candidateId?: string;
+  artifactDigest?: string;
+  findings?: number;
+  /** Turns the rehearsed solve took. */
+  turns?: number;
+  /** The rehearsal's aggregate bit, so a later census can read whether the Builder measured its
+   *  own battery before submitting and what it saw. */
+  truthVerdict?: string;
+  repeated?: boolean;
+  submitted?: boolean;
+  /** Finding-code delta of a correctness_check against the previous check or submit. */
+  carried?: number;
+  resolved?: number;
+  introduced?: number;
+}
+
+type CustomTarget = BuilderCustomToolCall["target"];
+
+const CUSTOM_TOOL_ACTIONS = {
+  bash: ["execute"],
+  context: ["list", "read", "search"],
+  edit: ["edit"],
+  find: ["find"],
+  grep: ["grep"],
+  harness_inspect: [
+    "readiness",
+    "summary",
+    "task",
+    "tools",
+    "typecheck",
+    "inventory",
+    "coverage",
+    "feedback",
+    "history",
+  ],
+  harness_reset: ["reset"],
+  harness_trial: ["run"],
+  ls: ["list"],
+  public_source: ["fetch"],
+  read: ["read"],
+  submit: ["submit"],
+  correctness_check: ["run"],
+  verifier_workshop: ["inspect", "read", "write", "run", "export"],
+  write: ["write"],
+} as const;
+
+const SEMANTIC_OUTCOMES: readonly BuilderCustomToolSemantic["outcome"][] = [
+  "completed",
+  "incomplete",
+  "clear",
+  "findings",
+  "blocked",
+  "failed",
+  "non-result",
+  "accepted",
+  "refused",
+  "terminal-closed",
+];
+
+export function bareCustomToolName(name: string): string {
+  return name.startsWith("mcp__harness__") ? name.slice("mcp__harness__".length) : name;
+}
+
+function boundedIdentity(value: JsonValue | undefined, field: "taskId" | "runId" | "family"): CustomTarget {
+  if (!isString(value) || value.length === 0) return {};
+  if (value.length <= 256) return { [field]: value };
+  return { [`${field}Digest`]: hashJsonValue(value) };
+}
+
+function feedbackTarget(args: Record<string, JsonValue> | undefined): CustomTarget {
+  const target: CustomTarget = {
+    ...keyIfDefined(
+      "feedbackGroup",
+      isNumber(args?.group) && Number.isFinite(args.group) ? Math.trunc(args.group) : undefined,
+    ),
+  };
+  if (args?.field === "code" || args?.field === "path" || args?.field === "detail") {
+    target.feedbackField = args.field;
+  }
+  return target;
+}
+
+/** The deliberately narrow projection used by both direct host dispatch and transport-event
+ *  fallback. It names intent without copying values that may contain user context or checker code. */
+export function customCallIntent(tool: string, args: Record<string, JsonValue> | undefined) {
+  const actionArg = args?.action;
+  // Own-property lookup only: a declared name, never one the prototype supplies.
+  const allowed: readonly string[] =
+    Object.entries(CUSTOM_TOOL_ACTIONS).find(([name]) => name === tool)?.[1] ?? [];
+  const implicit = allowed.length === 1 ? allowed[0] : undefined;
+  const action = isString(actionArg) && allowed.includes(actionArg) ? actionArg : (implicit ?? "unknown");
+  const target: CustomTarget = {
+    ...boundedIdentity(args?.taskId, "taskId"),
+    ...boundedIdentity(args?.runId, "runId"),
+    ...boundedIdentity(args?.family, "family"),
+  };
+  if (tool === "context" && isString(args?.id) && args.id.length <= 256) target.contextId = args.id;
+  if (tool === "harness_inspect") Object.assign(target, feedbackTarget(args));
+  return { action, target };
+}
+
+/** The declared outcome a value spells, or null when it spells none of them. Two readers ask:
+ *  this one to build a semantic from a live tool result, and the outcome reader to check a
+ *  recorded row against the same vocabulary. */
+export function declaredSemanticOutcome(value: unknown): BuilderCustomToolSemantic["outcome"] | null {
+  if (!isString(value)) return null;
+  return SEMANTIC_OUTCOMES.find((known) => known === value) ?? null;
+}
+
+/** Copy only the declared controller receipt fields. Tool text may contain user context, source code,
+ *  verifier output or repair prose and is deliberately never parsed here. */
+export function semanticFromResult(result: unknown): BuilderCustomToolSemantic | undefined {
+  const receipt = asRecord(asRecord(asRecord(result)?.details)?.receipt);
+  if (receipt === null) return undefined;
+  const outcome = declaredSemanticOutcome(receipt.outcome);
+  if (outcome === null) return undefined;
+  const semantic: BuilderCustomToolSemantic = { outcome };
+  for (const key of [
+    "stage",
+    "reason",
+    "resultDigest",
+    "subjectDigest",
+    "candidateId",
+    "artifactDigest",
+    "truthVerdict",
+  ] as const) {
+    const value = receipt[key];
+    if (isString(value)) semantic[key] = value;
+  }
+  for (const key of ["findings", "turns", "carried", "resolved", "introduced"] as const) {
+    const value = receipt[key];
+    if (isNumber(value) && Number.isFinite(value)) semantic[key] = Math.max(0, Math.trunc(value));
+  }
+  const { workshopSequence } = receipt;
+  if (isNumber(workshopSequence) && Number.isSafeInteger(workshopSequence) && workshopSequence > 0) {
+    semantic.workshopSequence = workshopSequence;
+  }
+  for (const key of ["repeated", "submitted"] as const) {
+    const value = receipt[key];
+    if (isBoolean(value)) semantic[key] = value;
+  }
+  return semantic;
+}

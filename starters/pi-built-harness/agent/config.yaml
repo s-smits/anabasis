@@ -1,0 +1,17 @@
+# Runtime settings of this harness, read from the submitted candidate. A change is a product change.
+# Lowering a value is always allowed; the host refuses a value far above its seeded one, and a
+# longer solve makes every measured round slower.
+solver:
+  solve_minutes: 120 # whole solve time of one task
+  max_turns: 24 # model turns per task
+  shell_timeout_seconds: 300 # one shell command, when it passes no timeout
+  shell_timeout_max_seconds: 900 # the longest timeout a command may pass
+gate:
+  reference_solve_seconds: 120 # one reference solve of one task
+  census_minutes: 30 # all controls and reference solves of one check or submit
+  check_seconds: 600 # one check with its tool runs
+  tool_run_seconds: 300 # one verifier tool run
+battery:
+  solve_concurrency: 3 # tasks solved at once in a measured battery; the host has more cores than
+                       # this, and a wider battery finishes a round sooner, but every case in
+                       # flight holds a model session, a solver child and its tool children

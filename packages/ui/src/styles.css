@@ -1,0 +1,1235 @@
+/*
+ * Presentation baseline:
+ * zinc-black canvas, blue instrument accent, editorial eyebrow, altimeter hero rule,
+ * rounded shadcn-style cards, compact evidence tables and the collapsible sidebar.
+ *
+ * TYPE ROLES. A named face that is not shipped silently renders as system-ui or Georgia, so
+ * every display or editorial voice would lose its face. The four faces are bundled (see
+ * main.tsx) and reached through ROLE tokens rather than family names, because the role is what a
+ * rule actually means:
+ *
+ *   display   — page titles. Electrolize: an instrument face, wide and even, at large sizes only.
+ *   editorial — eyebrows and asides. Newsreader, italic, the one serif voice on the page.
+ *   body      — everything a person reads in sentences. Manrope.
+ *   technical — figures: metric values, counts, tallies. Space Grotesk with tabular figures, so
+ *               columns of numbers line up. It is a sans, not a monospace, and is never used for
+ *               a hash or a path.
+ *   mono      — identity: hashes, paths, ids, JSON, log lines. A true monospace, because 0/O and
+ *               1/l have to be distinguishable in a value someone will compare by eye.
+ */
+:root {
+  color-scheme: dark;
+  --font-display: Electrolize, ui-sans-serif, system-ui, sans-serif;
+  --font-editorial: "Newsreader Variable", Newsreader, Georgia, "Times New Roman", serif;
+  --font-body: "Manrope Variable", Manrope, ui-sans-serif, system-ui, sans-serif;
+  --font-technical: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-body);
+  font-synthesis: none;
+  --ana-bg: #09090b;
+  --ana-card: #131316;
+  --ana-card-2: #1c1c20;
+  --ana-text: #fafafa;
+  --ana-dim: #a1a1aa;
+  --ana-faint: #8b8b94;
+  --ana-border: rgba(255, 255, 255, 0.1);
+  --ana-border-soft: rgba(255, 255, 255, 0.06);
+  --ana-accent: #4cc2ff;
+  --ana-good: #34d399;
+  --ana-bad: #fb7185;
+  --ana-warn: #fbbf24;
+  --ana-info: #4cc2ff;
+  --ana-neutral: #a1a1aa;
+  --ana-good-bg: rgba(52, 211, 153, 0.15);
+  --ana-bad-bg: rgba(251, 113, 133, 0.15);
+  --ana-warn-bg: rgba(251, 191, 36, 0.15);
+  --ana-info-bg: rgba(76, 194, 255, 0.15);
+  --ana-radius: 10px;
+  /* Nested corners use a smaller radius than the surrounding card. Subtracting the padding from
+     a 10px outer radius would leave no radius with 14px padding; this design keeps a small 3px
+     radius instead. Shared across nested controls and disclosures, it gives them quieter corners
+     without choosing a separate value for each component. */
+  --ana-radius-inner: 3px;
+  --ana-shadow: inset 0 1px 0 rgb(255 255 255 / 3%), 0 2px 8px rgb(0 0 0 / 18%);
+  --ana-sidebar-width: 264px;
+  --ana-sidebar-collapsed: 64px;
+  /* The altimeter rule: a fine tick every 12px, a major tick every 60px. One definition, used by
+     the hero, by the no-signal band and by nothing else — it is the identity's one texture. */
+  --ana-ticks:
+    repeating-linear-gradient(90deg, var(--ana-border-soft) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, var(--ana-border) 0 1px, transparent 1px 60px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  overflow-y: scroll;
+  scrollbar-color: rgba(76, 194, 255, 0.42) rgba(255, 255, 255, 0.04);
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--ana-bg);
+  color: var(--ana-text);
+}
+
+button,
+select,
+input {
+  color: inherit;
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ana-accent);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--ana-accent);
+}
+
+/*
+ * Icon weight follows text weight. lucide ships a 2px stroke, which next to 400-weight labels
+ * reads heavier than the words it sits beside; 1.6 matches. Scoped to lucide's own class so the
+ * brand mark and wordmark keep the stroke widths their geometry was drawn for.
+ */
+svg.lucide {
+  stroke-width: 1.6;
+}
+
+code,
+pre,
+/* One block, not two. `.ana-code` was declared here and again nine lines down, which meant a reader
+   changing the mono face could not tell whether the rule below overrode it. */
+.ana-code {
+  color: #d4d4d8;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.ana-num {
+  font-family: var(--font-technical);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A hash that can be taken off the page. The dotted underline is the only affordance it needs:
+   the value still reads as the identity it is, not as a control. */
+button.ana-hash {
+  background: none;
+  border: 0;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ana-faint) 60%, transparent);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+button.ana-hash:hover,
+button.ana-hash:focus-visible {
+  border-bottom-color: var(--ana-accent);
+  color: #fff;
+}
+
+button.ana-hash.is-copied {
+  border-bottom-color: var(--ana-good);
+  color: var(--ana-good);
+}
+
+button.ana-hash.is-revealed {
+  border-bottom-style: solid;
+}
+
+.ana-shell {
+  min-height: 100vh;
+}
+
+.ana-main {
+  margin-left: var(--ana-sidebar-width);
+  min-width: 0;
+}
+
+.ana-shell.is-collapsed .ana-main {
+  margin-left: var(--ana-sidebar-collapsed);
+}
+
+.ana-skip-link {
+  background: var(--ana-accent);
+  color: #09090b;
+  left: 12px;
+  padding: 8px 12px;
+  position: fixed;
+  top: 8px;
+  transform: translateY(-160%);
+  z-index: 100;
+}
+
+.ana-skip-link:focus {
+  transform: translateY(0);
+}
+
+/* sidebar shell */
+.ana-sidebar {
+  background: #0b0b0d;
+  border-right: 1px solid var(--ana-border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100vh;
+  left: 0;
+  overflow: visible;
+  padding: 20px 12px;
+  position: fixed;
+  top: 0;
+  width: var(--ana-sidebar-width);
+  z-index: 40;
+}
+
+.ana-sidebar.is-collapsed {
+  width: var(--ana-sidebar-collapsed);
+}
+
+.ana-sidebar-header {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.ana-brand {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  height: 40px;
+  padding: 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-brand:hover {
+  background: var(--ana-card-2);
+}
+
+.ana-sidebar.is-collapsed .ana-brand {
+  display: grid;
+  justify-items: center;
+  padding: 8px 0;
+}
+
+.ana-brand-mark {
+  color: var(--ana-accent);
+  flex: 0 0 18px;
+  height: 18px;
+  width: 18px;
+}
+
+.ana-brand-word {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+/* The wordmark is a path-only SVG with no intrinsic size: without a height here it collapses to
+   nothing and the brand silently disappears. */
+.ana-brand-word svg {
+  color: var(--ana-text);
+  height: 15px;
+  width: auto;
+}
+
+.ana-sidebar.is-collapsed .ana-brand-word {
+  display: none;
+}
+
+/* Project selection keeps long identities readable in the expanded menu. */
+.ana-picker {
+  border-bottom: 1px solid var(--ana-border-soft);
+  display: grid;
+  gap: 6px;
+  padding: 12px 8px 18px;
+  position: relative;
+}
+
+.ana-picker-label {
+  color: var(--ana-faint);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ana-picker-button {
+  align-items: center;
+  background: none;
+  border: 0;
+  color: var(--ana-text);
+  cursor: pointer;
+  display: grid;
+  font-family: var(--font-technical);
+  font-size: 0.86rem;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 13px;
+  min-height: 28px;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-picker-button svg {
+  color: var(--ana-faint);
+  height: 13px;
+  width: 13px;
+}
+
+.ana-picker.is-open .ana-picker-button svg {
+  transform: rotate(180deg);
+}
+
+.ana-picker-button:disabled {
+  color: var(--ana-faint);
+  cursor: not-allowed;
+}
+
+.ana-picker-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ana-picker-panel {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
+  left: 8px;
+  max-height: min(420px, 60dvh);
+  overflow-y: auto;
+  padding: 4px;
+  position: absolute;
+  width: min(420px, calc(100vw - 40px));
+  top: calc(100% - 4px);
+  z-index: 40;
+}
+
+.ana-picker-group + .ana-picker-group {
+  border-top: 1px solid var(--ana-border-soft);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.ana-picker-group-label {
+  color: var(--ana-faint);
+  font-family: var(--font-technical);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  padding: 5px 8px 3px;
+  text-transform: uppercase;
+}
+
+.ana-picker-option {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ana-dim);
+  cursor: pointer;
+  display: grid;
+  font-size: 0.8rem;
+  gap: 10px;
+  grid-template-columns: 12px minmax(0, 1fr);
+  line-height: 1.5;
+  min-height: 40px;
+  padding: 9px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-picker-option span {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.ana-picker-option.is-active {
+  background: var(--ana-card-2);
+  color: var(--ana-text);
+}
+
+.ana-picker-option.is-current {
+  color: var(--ana-text);
+}
+
+.ana-picker-tick {
+  height: 12px;
+  opacity: 0;
+  width: 12px;
+}
+
+.ana-picker-option.is-current .ana-picker-tick {
+  color: var(--ana-accent);
+  opacity: 1;
+}
+
+.ana-sidebar.is-collapsed .ana-picker {
+  display: none;
+}
+
+.ana-section-intro {
+  color: var(--ana-dim);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.ana-project-backends {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ana-project-backends label {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.ana-project-backends label > span {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ana-project-backends select {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius-inner);
+  color: var(--ana-text);
+  cursor: pointer;
+  min-height: 38px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.ana-project-backends select:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.ana-project-backends small {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  min-height: 2.8em;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The nav: one row per subject.
+ *
+ * A flat list of buttons needs no group state. A <details open={derivedState}> group would
+ * override the browser's toggle, so a reader who collapsed it would see it open again on the
+ * next render.
+ */
+.ana-sidebar-nav {
+  display: grid;
+  gap: 2px;
+  padding: 6px 0;
+}
+
+/* The active row keeps the altimeter tick as its location marker. */
+.ana-nav-item {
+  align-items: baseline;
+  background: none;
+  border: 0;
+  border-left: 2px solid var(--ana-border-soft);
+  color: var(--ana-dim);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  padding: 12px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.ana-nav-item svg {
+  align-self: center;
+  color: var(--ana-faint);
+  height: 15px;
+  width: 15px;
+}
+
+.ana-nav-label {
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ana-nav-item:hover {
+  border-left-color: var(--ana-border);
+  color: var(--ana-text);
+}
+
+.ana-nav-item:hover svg {
+  color: var(--ana-dim);
+}
+
+.ana-nav-item.is-active {
+  background: linear-gradient(90deg, rgb(76 194 255 / 7%), transparent);
+  border-left-color: var(--ana-accent);
+  color: var(--ana-text);
+}
+
+.ana-nav-item.is-active svg {
+  color: var(--ana-accent);
+}
+
+.ana-nav-item.is-active .ana-nav-label {
+  font-weight: 600;
+}
+
+.ana-sidebar.is-collapsed .ana-nav-item {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.ana-sidebar.is-collapsed .ana-nav-label,
+.ana-sidebar.is-collapsed .ana-nav-note {
+  display: none;
+}
+
+.ana-sidebar-footer {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.ana-status-dot {
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.ana-status-dot--good {
+  background: var(--ana-good);
+}
+.ana-status-dot--bad {
+  background: var(--ana-bad);
+}
+.ana-status-dot--warn {
+  background: var(--ana-warn);
+}
+.ana-status-dot--info {
+  background: var(--ana-info);
+}
+.ana-status-dot--neutral {
+  background: var(--ana-faint);
+}
+
+.ana-sidebar.is-collapsed .ana-collapse-button {
+  justify-content: center;
+}
+
+.ana-sidebar.is-collapsed .ana-collapse-button span {
+  display: none;
+}
+
+.ana-page {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 36px 32px 56px;
+  width: 100%;
+}
+
+.ana-eyebrow {
+  color: var(--ana-dim);
+  font-family: var(--font-editorial);
+  font-size: 17px;
+  font-style: italic;
+  margin: 0;
+}
+
+.ana-section {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ana-section-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.ana-section h2,
+.ana-section-head h2,
+.ana-group-label {
+  color: var(--ana-faint);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.ana-card {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  box-shadow: var(--ana-shadow);
+  min-width: 0;
+  padding: 14px;
+}
+
+/* auto-fit, not repeat(4): a page that has three facts to state should show three full-width
+   cards, not three cards and a gap where a fourth used to be. */
+.ana-metric-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.ana-metric {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  overflow: hidden;
+  padding: 20px;
+  position: relative;
+}
+
+.ana-metric-tick {
+  background: var(--ana-neutral);
+  height: 2px;
+  left: 20px;
+  position: absolute;
+  top: 0;
+  width: 28px;
+}
+
+.ana-metric--good .ana-metric-tick {
+  background: var(--ana-good);
+}
+.ana-metric--bad .ana-metric-tick {
+  background: var(--ana-bad);
+}
+.ana-metric--warn .ana-metric-tick {
+  background: var(--ana-warn);
+}
+.ana-metric--info .ana-metric-tick {
+  background: var(--ana-info);
+}
+
+.ana-metric-label {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* `overflow-wrap: anywhere` has to stay — a metric value is sometimes a hash — but it will also
+   break an ordinary word like "unoccupied" the moment the column is narrower than the word. The
+   size therefore has to be one that fits the longest state word in the narrowest column. */
+.ana-metric-value {
+  font-family: var(--font-technical);
+  font-size: clamp(1.25rem, 2.2vw, 1.9rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.ana-metric-detail {
+  align-self: end;
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin-top: auto;
+  overflow-wrap: anywhere;
+}
+
+.ana-badge {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  min-height: 21px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.ana-badge--good {
+  background: var(--ana-good-bg);
+  color: var(--ana-good);
+}
+.ana-badge--bad {
+  background: var(--ana-bad-bg);
+  color: var(--ana-bad);
+}
+.ana-badge--warn {
+  background: var(--ana-warn-bg);
+  color: var(--ana-warn);
+}
+.ana-badge--info {
+  background: var(--ana-info-bg);
+  color: var(--ana-info);
+}
+.ana-badge--neutral {
+  background: var(--ana-card-2);
+  border-color: var(--ana-border);
+  color: var(--ana-neutral);
+}
+
+.ana-button {
+  align-items: center;
+  background: var(--ana-card-2);
+  border: 1px solid var(--ana-border);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.75rem;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.ana-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ana-accent) 60%, var(--ana-border));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ana-button:not(:focus-visible) {
+    transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .ana-button:active:not(:disabled):not(:focus-visible) {
+    transform: scale(0.97);
+  }
+}
+
+.ana-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ana-callout {
+  background: var(--ana-card-2);
+  border: 1px solid var(--ana-border-soft);
+  border-radius: var(--ana-radius-inner);
+  color: var(--ana-dim);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  padding: 14px 16px;
+}
+
+.ana-callout b {
+  color: var(--ana-text);
+}
+
+.ana-callout--warn {
+  border-color: color-mix(in srgb, var(--ana-warn) 45%, transparent);
+}
+.ana-callout--bad {
+  border-color: color-mix(in srgb, var(--ana-bad) 55%, transparent);
+}
+
+/*
+ * Empty-state panel.
+ *
+ * The dashed box this replaces read as a placeholder for content that failed to load. The ruled
+ * band reuses the header's tick-mark texture. It gives an intentional empty state its own style,
+ * while the accompanying text explains whether evidence is absent or could not be read.
+ */
+.ana-nosignal {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border-soft);
+  border-radius: var(--ana-radius-inner);
+  display: grid;
+  gap: 8px;
+  padding: 20px 18px;
+}
+
+.ana-nosignal-rule {
+  background-image: var(--ana-ticks);
+  background-repeat: no-repeat;
+  background-size:
+    100% 4px,
+    100% 8px;
+  display: block;
+  height: 8px;
+  opacity: 0.5;
+}
+
+.ana-nosignal strong {
+  color: var(--ana-text);
+  font-size: 0.86rem;
+}
+
+.ana-nosignal p {
+  color: var(--ana-faint);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 74ch;
+}
+
+.ana-nosignal--bad {
+  border-color: color-mix(in srgb, var(--ana-bad) 50%, transparent);
+}
+
+/* `.ana-archive-link` previously gave the round page a second route to Archive. It was removed
+   when Archive moved into the sidebar; today's navigation uses Evidence for run records. */
+
+.ana-caret {
+  color: var(--ana-faint);
+  display: inline-block;
+  font-size: 1rem;
+}
+
+.ana-collapse[open] .ana-collapse-title .ana-caret {
+  transform: rotate(90deg);
+}
+
+.ana-table-wrap {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ana-table {
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  width: 100%;
+}
+
+.ana-table th,
+.ana-table td {
+  border-bottom: 1px solid var(--ana-border-soft);
+  line-height: 1.45;
+  padding: 14px 16px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ana-table th {
+  color: var(--ana-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  width: 180px;
+}
+
+.ana-table thead th {
+  background: rgb(255 255 255 / 2%);
+  font-size: 0.65rem;
+  border-bottom-color: var(--ana-border);
+  width: auto;
+}
+
+.ana-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.ana-table td.ana-num {
+  text-align: right;
+}
+
+.ana-task-detail,
+.ana-disclosure {
+  background: var(--ana-card);
+  border: 1px solid var(--ana-border);
+  border-radius: var(--ana-radius);
+}
+
+.ana-task-detail > summary,
+.ana-disclosure > summary {
+  align-items: center;
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(150px, 1fr) auto 16px;
+  list-style: none;
+  padding: 16px 18px;
+}
+
+.ana-disclosure > summary {
+  grid-template-columns: 16px minmax(0, 1fr);
+  font-size: 0.76rem;
+}
+
+.ana-task-detail > summary::-webkit-details-marker,
+.ana-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ana-task-detail[open] .ana-caret,
+.ana-disclosure[open] .ana-caret {
+  transform: rotate(90deg);
+}
+
+.ana-task-detail > div,
+.ana-disclosure-body {
+  border-top: 1px solid var(--ana-border-soft);
+  color: var(--ana-dim);
+  display: grid;
+  font-size: 0.78rem;
+  gap: 10px;
+  line-height: 1.6;
+  padding: 18px;
+}
+
+.ana-trial-figures .ana-num {
+  color: var(--ana-dim);
+  font-size: 0.72rem;
+}
+
+.ana-trace-step--submission .ana-code,
+.ana-trace-step--verdict .ana-code {
+  color: var(--ana-text);
+  font-weight: 600;
+}
+
+@media (max-width: 1000px) {
+  .ana-project-backends {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .ana-main,
+  .ana-shell.is-collapsed .ana-main {
+    margin-left: 0;
+  }
+
+  .ana-sidebar,
+  .ana-sidebar.is-collapsed {
+    position: relative;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--ana-border);
+  }
+
+  .ana-sidebar .ana-brand,
+  .ana-sidebar .ana-collapse-button {
+    display: none;
+  }
+
+  .ana-sidebar.is-collapsed .ana-picker {
+    display: grid;
+  }
+
+  .ana-sidebar-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .ana-sidebar .ana-nav-item,
+  .ana-sidebar.is-collapsed .ana-nav-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 2px;
+  }
+
+  .ana-sidebar.is-collapsed .ana-nav-label {
+    display: block;
+  }
+
+  .ana-sidebar-footer {
+    margin-top: 0;
+  }
+
+  .ana-page {
+    gap: 20px;
+    padding: 20px 16px 44px;
+  }
+}
+
+@media (max-width: 540px) {
+  .ana-metric-grid,
+  .ana-trial-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .ana-trial-row > :not(.ana-caret) {
+    grid-column: 1;
+  }
+
+  .ana-trial-row > .ana-caret {
+    grid-column: 2;
+    grid-row: 1 / 4;
+  }
+
+  .ana-table th {
+    width: 130px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── run analysis panels ──────────────────────────────────────────────────────
+   Added for the Overview status cards, the measured conditions and the decision
+   evidence. The scale is deliberately flat: no display type for a run slug, one
+   card weight, and figures in the tabular technical face so two conditions line up
+   under each other and can be read as a pair. */
+
+.ana-run-head {
+  align-items: end;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 14px;
+}
+
+.ana-run-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 4.4vw, 48px);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.ana-note {
+  color: var(--ana-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0 0 10px;
+  max-width: 76ch;
+}
+
+.ana-preview {
+  color: var(--ana-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
+.ana-section-aside {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+/* Cards for the run's three configured model slots. These show configuration, not verdicts. */
+.ana-trust-strip {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 0;
+}
+
+.ana-trust {
+  display: grid;
+  gap: 4px;
+  padding: 20px;
+}
+
+.ana-trust strong {
+  font-family: var(--font-technical);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.ana-trust small {
+  color: var(--ana-faint);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.ana-variant-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.ana-variant-card h3 {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.92rem;
+  gap: 8px;
+  margin: 0;
+}
+
+.ana-clause-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The sidebar footer keeps only the collapse action. */
+
+.ana-collapse-button {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--ana-border-soft);
+  border-radius: 5px;
+  color: var(--ana-faint);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-technical);
+  font-size: 0.74rem;
+  gap: 7px;
+  justify-content: center;
+  letter-spacing: 0.04em;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.ana-collapse-button:hover {
+  border-color: color-mix(in srgb, var(--ana-accent) 55%, var(--ana-border));
+  color: var(--ana-text);
+}
+
+.ana-collapse-button {
+  padding: 7px 10px;
+  width: 100%;
+}
+
+.ana-collapse-button svg {
+  height: 13px;
+  width: 13px;
+}
+
+/* Forge truth chart */
+.ana-climb-chart {
+  width: 100%;
+  height: 360px;
+  min-width: 0;
+  font: 11px var(--font-technical);
+}
+.ana-climb-chart .recharts-cartesian-axis-tick text {
+  fill: var(--ana-dim);
+}
+.ana-climb-chart .recharts-cartesian-grid line {
+  stroke: var(--ana-border-soft);
+}
+.ana-chart-tooltip {
+  display: grid;
+  gap: 8px;
+  max-width: 400px;
+  border: 1px solid var(--ana-border);
+  background: var(--ana-card);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: var(--ana-shadow);
+  overflow-wrap: anywhere;
+}
+.ana-chart-tooltip small {
+  color: var(--ana-dim);
+}
+.ana-forge-climb {
+  padding: 24px;
+}
+.ana-chart-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ana-dim);
+  font-size: 11px;
+  padding-top: 16px;
+}
+.ana-metric-value {
+  overflow-wrap: anywhere;
+}
+.ana-family-rate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ana-family-rate meter {
+  width: 100px;
+  accent-color: var(--ana-accent);
+}
+@media (max-width: 700px) {
+  .ana-climb-chart {
+    height: 280px;
+  }
+  .ana-forge-climb {
+    padding: 12px;
+  }
+  .ana-chart-caption {
+    flex-direction: column;
+  }
+}
+
+.ana-run-head::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background-image: var(--ana-ticks);
+  background-position: left bottom;
+  opacity: 0.85;
+}
+.ana-run-head {
+  padding-bottom: 24px;
+}
+
+.ana-file-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.ana-file-pagination > span {
+  margin-right: auto;
+  color: var(--ana-dim);
+  font: 13px var(--font-technical);
+}
+
+.ana-case-grid:not(:has(> :nth-child(2))) {
+  grid-template-columns: minmax(0, 1fr);
+}

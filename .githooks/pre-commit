@@ -1,0 +1,76 @@
+#!/bin/sh
+# Two refusals, both about facts a commit records permanently: an author who cannot be attributed,
+# and a credential-shaped literal. Between them sit the formatter, the linter and an advisory slop
+# report over the staged source. This is the last moment either is still cheap to fix — once a
+# commit reaches a remote, rewriting history does not un-publish it.
+#
+# Activated by `bun run hooks:install`:
+#   git config core.hooksPath .githooks
+#
+# The scan reads added lines only — a hook cannot repair history, and re-reporting a line that is
+# already committed teaches the operator to reach for --no-verify by reflex.
+set -eu
+
+# An email under an RFC 2606 reserved domain can never resolve to a GitHub account, so the commit
+# lands as an unlinked user. A stale `user.email = pin@example.test` in .git/config recorded 139
+# such commits between 31 July and 2 August 2026 before anyone noticed; none of them are attributed
+# and none can be re-attributed without rewriting 16 open pull requests. `git var` resolves the
+# same precedence `git commit` uses, so this checks the value that will actually be recorded.
+author_email=$(git var GIT_AUTHOR_IDENT)
+author_email=${author_email#*<}
+author_email=${author_email%%>*}
+
+case "$author_email" in
+*@*.test | *@*.invalid | *@*.example | *@example.com | *@example.net | *@example.org)
+  echo "pre-commit: author email '$author_email' is a reserved placeholder domain (RFC 2606)." >&2
+  echo "GitHub cannot attribute it, so this commit would record an unlinked author." >&2
+  echo "If it came from a stale repository override, drop it:" >&2
+  echo "  git config --local --unset user.email && git config --local --unset user.name" >&2
+  echo "If the placeholder is deliberate, commit with --no-verify." >&2
+  exit 1
+  ;;
+esac
+
+root=$(git rev-parse --show-toplevel)
+
+# A tree without the scan cannot prove the commit carries no credential, so it refuses instead of
+# recording an unscanned commit; an intentionally older checkout commits with --no-verify.
+for file in tools/secrets/scan.ts; do
+  if [ ! -f "$root/$file" ]; then
+    echo "pre-commit: $root/$file is missing, so this tree cannot scan the commit." >&2
+    echo "Commit with --no-verify only from a checkout that is meant to predate it." >&2
+    exit 1
+  fi
+done
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun is not on PATH, so the secret scan could not run." >&2
+  echo "Install the Bun release named in .bun-version, or commit with --no-verify." >&2
+  exit 1
+fi
+
+# The formatter and the linter over the staged source files only. The pre-push gate still runs
+# both over the whole tree; this is the same check at the moment a finding is one file old rather
+# than one branch old. The linter reads the working-tree bytes of each staged path, so a partially
+# staged file is judged on what is on disk, not on what the index holds.
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.mjs')
+if [ -n "$staged" ]; then
+  cd "$root"
+  # A commit may stage only files biome.json leaves unformatted, such as the copied pi sources;
+  # without the flag biome refuses the empty set as if the files were unformatted.
+  # shellcheck disable=SC2086
+  bun node_modules/@biomejs/biome/bin/biome format --no-errors-on-unmatched $staged || {
+    echo "pre-commit: staged files are not formatted; run bun run format and stage the result." >&2
+    exit 1
+  }
+  ANA_LINT_PATHS="$staged" bun tools/runtime/lint.ts || {
+    echo "pre-commit: staged files fail bun run lint; fix the findings and stage again." >&2
+    exit 1
+  }
+  # The slop report: the whole-tree simplify scans, narrowed to the lines this commit changes, with
+  # an id per site for the not-slop ledger. It prints and never refuses — its scans are heuristics
+  # (tools/oxlint/staged-slop.ts says why) — so a scan that fails to finish costs one line here.
+  bun tools/oxlint/staged-slop.ts || echo "pre-commit: the slop report did not finish; the commit goes ahead." >&2
+fi
+
+exec bun "$root/tools/secrets/scan.ts" --staged

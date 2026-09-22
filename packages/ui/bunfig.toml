@@ -1,0 +1,4 @@
+# The dev server bundles index.html itself; the virtual evidence module comes from the same plugin
+# the static build uses.
+[serve.static]
+plugins = ["./workspace-plugin.ts"]

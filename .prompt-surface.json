@@ -1,0 +1,59 @@
+{
+  "dirs": ["src", "starters", "vendor"],
+  "doc": [
+    "starters",
+    "starters/pi-built-harness/correctness-model/evaluator.test.ts",
+    "starters/pi-built-harness/correctness-model/harness.test.ts"
+  ],
+  "deny": [
+    "safeguardTriggered",
+    "renderPage",
+    "configDenyBlocks",
+    "privateKeyDenyRules",
+    "sbRule",
+    "roots\\.map"
+  ],
+  "audiences": {
+    "src/solve": "built agent",
+    "src/author": "builder",
+    "src/builder": "builder",
+    "src/critic": "controller policy (reaches no model)",
+    "src/gate": "builder (check and submit results)",
+    "src/analyse": "judge census plus findings routed to the author",
+    "src/review": "judge census",
+    "src/truth/judge": "judge",
+    "src/truth": "shared contracts",
+    "src/backends": "transport (all audiences)",
+    "src/observe": "telemetry (verify: may reach no model)",
+    "src/run": "orchestration",
+    "src/claim": "receipts (operator; reaches a model only if a packet quotes it)",
+    "src/verify": "sandbox walls (operator)",
+    "src/meta": "internal",
+    "starters/pi-built-harness/agent": "built agent",
+    "starters/pi-built-harness/correctness-model": "builder",
+    "starters": "builder",
+    "vendor/pi-claude-bridge": "transport (all audiences)",
+    "vendor/pi-built": "transport (all audiences)",
+    "vendor": "shared contracts"
+  },
+  "vocab": [
+    "paragraph",
+    "landed",
+    "fromAbove",
+    "drawnFrom",
+    "passTargets",
+    "obligation",
+    "veto",
+    "dispute",
+    "repair",
+    "publicAct",
+    "orientation",
+    "renderRow",
+    "excerpt",
+    "toolOutcomes",
+    "sinceLast",
+    "measuredAs",
+    "^gate$",
+    "^exact$"
+  ]
+}

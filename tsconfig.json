@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2025"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["bun"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "tools/**/*.ts",
+    "vendor/**/*.ts",
+    "starters/**/*.ts",
+    "test/**/*.ts",
+    ".claude/skills/**/*.ts",
+    ".claude/skills/**/*.mts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    ".claude/skills/run-cycles",
+    ".claude/skills/harness-query/judge/free-proxy-judge.mts"
+  ]
+}

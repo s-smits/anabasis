@@ -1,0 +1,10 @@
+env = false
+
+[test]
+# Automatic dotenv loading is disabled above; the baseline additionally neutralises process-exported
+# sandbox toggles and credential-shaped variables for the test process.
+preload = ["./test/env-baseline.ts"]
+
+# Discovery excludes for controller-owned trees: their fixture suites are recorded campaign
+# material, not repository tests. Spelled here once instead of in every test invocation.
+pathIgnorePatterns = ["**/campaigns/**", "**/domains/**", "**/starters/**"]

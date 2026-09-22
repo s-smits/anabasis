@@ -1,0 +1,31 @@
+{
+  "name": "@ana/ui",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": "1.4.2"
+  },
+  "scripts": {
+    "dev": "bun serve.ts",
+    "build": "bun run typecheck && bun build.ts",
+    "test": "cd ../.. && bun run test -- packages/ui/test",
+    "typecheck": "bun ../../node_modules/typescript/bin/tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@fontsource/electrolize": "^5.3.0",
+    "lucide-react": "1.38.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "recharts": "3.8.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5"
+  }
+}

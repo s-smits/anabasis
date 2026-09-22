@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "plugins": ["typescript", "unicorn"],
+  "categories": {
+    "correctness": "off",
+    "perf": "off",
+    "pedantic": "off",
+    "restriction": "off",
+    "style": "off",
+    "suspicious": "off"
+  },
+  "jsPlugins": [
+    {
+      "name": "ana",
+      "specifier": "./ana/index.ts"
+    }
+  ],
+  "rules": {}
+}

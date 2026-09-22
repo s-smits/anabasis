@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Climb Lab"
+  short_description: "Test one climb question or a bounded climb programme"
+  default_prompt: "Use $run-climb-lab to choose the smallest authorised horizon that can answer the climb question, preserve accepted-parent lineage and one-variable attribution, review only unresolved evidence, and adopt, restore, or hold without an automatic follow-on."

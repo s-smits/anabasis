@@ -1,0 +1,28 @@
+<!-- codex-luna-swarm:start -->
+## Luna subagents
+
+When the operator requests Luna agents, use `$codex-luna-swarm` first; another skill may define
+the questions but does not replace it. Resolve every named packet or attachment from the current
+message once. If one is absent but the repository and request still define count, authority, and
+output, continue and derive the session scopes from the repository. Ask only when the missing material
+determines the work. Treat “launch” alone as launch-only; wait and drain only when the
+operator also asks to collect, review, or summarise. Say `preparing` until every native call is
+accepted or the fallback emits `luna_sessions.started`; only then say `launched`.
+
+Make bounded assumptions and proceed to accepted transport in the same turn. Do not pause for a
+plan, task-list, or command approval unless the operator explicitly requested a preview.
+
+Use `max` when no effort is named. Preserve explicit `high`, `xhigh`, or `max`; never silently
+upgrade an effort. Native `luna_worker` is fixed to `max`, so use it only for max at 1-15 sessions.
+One native catalogue rejection is enough to use the direct launcher for the complete max set.
+Use the direct launcher with `--reasoning-effort high` or `xhigh` at every session count. For 16 or
+more, use its `--tasks-file` route directly regardless of effort. It has no session-count ceiling.
+Resolve that launcher beside the installed repo-scoped Skill; never use a global or copied
+launcher. Give every session one distinct owned angle, starting point, authority, and outcome. Keep
+common evidence in one packet, require hypotheses only for causal or defect questions, and validate
+meaning rather than exact phrases. Let read-only sessions propose fixes; implement only in the main
+session after verification unless write sessions have isolated ownership. Use `--launch-only` for
+start-only work; omit it for collection and verify the host loads the Stop hook before relying on it. Preserve
+Luna identity and never substitute Sol, Terra, or a coordinator. Do not read or reimplement the
+launcher.
+<!-- codex-luna-swarm:end -->

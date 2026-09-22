@@ -1,0 +1,75 @@
+# The composed gate on GitHub Actions: the same deterministic runtime, typecheck, lint and test
+# boundary as the pre-push hook in .githooks/pre-push. A concurrency group cancels superseded runs.
+#
+# Both jobs use the stable release in .bun-version, shared with local setup and launch.
+#
+# Two runners, because the OS isolation now has two mechanisms and each one is only exercised on its own
+# platform. The Darwin job proves Seatbelt; the Linux job proves Bubblewrap. Neither substitutes for
+# the other: on 2026-08-07 the whole suite passed on macOS while 74 Linux tests failed for one
+# reason, and no macOS run could have shown it.
+#
+# The earlier revision of this comment said the gate was "Darwin-only by design
+# (tools-probe-runtime-policy.ts refuses other platforms)". That file does not exist in the
+# repository, and `assertSupportedHostRuntime` accepts Linux — it pins the runtime, not the OS.
+name: gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  darwin:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install ripgrep
+        # Three builder-tools tests read rg output and fail without naming the missing binary.
+        run: brew install ripgrep
+      - run: bun install --frozen-lockfile
+      - run: bun run gate
+
+  linux:
+    # A VM runner, not a container. Bubblewrap needs to create user and mount namespaces, which an
+    # ordinary container withholds: measured 2026-08-07 on Docker 28.2.2, the baseline argv fails
+    # with "Can't mount proc on /newroot/proc" without seccomp and CAP_SYS_ADMIN. A `container:`
+    # job here would report an unavailable mechanism for every confined test.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install ripgrep and bubblewrap
+        # ripgrep for the same three builder-tools tests as the Darwin job. ubuntu-24.04 packages
+        # bubblewrap 0.9.0, above the version the isolation needs, so the runner's own package is used.
+        run: sudo apt-get update && sudo apt-get install -y ripgrep bubblewrap
+
+      - name: Confirm the isolation mechanism is usable on this runner
+        # Separated from the gate so a runner or kernel policy change does not read as a source
+        # regression: the gate's own failure text names an unavailable mechanism either way.
+        #
+        # 0.8.0 is the floor because that is where `--disable-userns` appears. Measured 2026-08-07
+        # on Ubuntu 22.04: 0.6.1 refuses every launch and fails 74 tests, while 0.8.0 and 0.11.1
+        # each pass the whole gate. The runner's 0.9.0 sits between two verified-good versions.
+        run: |
+          set -euo pipefail
+          bwrap --version
+          installed=$(bwrap --version | awk '{print $2}')
+          if [ "$(printf '%s\n0.8.0\n' "$installed" | sort -V | head -1)" != "0.8.0" ]; then
+            echo "bubblewrap $installed is older than the 0.8.0 the OS isolation needs" >&2
+            exit 1
+          fi
+          bwrap --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup \
+                --cap-drop ALL --disable-userns --die-with-parent --new-session \
+                --bind / / --proc /proc --dev /dev /bin/true
+          echo "bubblewrap $installed confines on this runner"
+
+      - run: bun install --frozen-lockfile
+      - run: bun run gate

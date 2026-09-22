@@ -1,0 +1,306 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "ignorePatterns": ["node_modules", "campaigns", "domains", "tmp"],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./tools/oxlint/anti-slop/index.ts"
+    },
+    {
+      "name": "ana",
+      "specifier": "./tools/oxlint/ana/index.ts"
+    }
+  ],
+  "overrides": [
+    {
+      "files": ["test/**"],
+      "rules": {
+        "typescript/await-thenable": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["**/*.mjs", "**/*.js"],
+      "env": {
+        "builtin": true,
+        "node": true,
+        "es2024": true
+      },
+      "globals": {
+        "Bun": "readonly"
+      },
+      "rules": {
+        "anti-slop/no-runtime-typeof": "off",
+        "typescript/no-base-to-string": "off",
+        "typescript/no-misused-spread": "off",
+        "typescript/require-array-sort-compare": "off",
+        "typescript/restrict-template-expressions": "off",
+        "eslint/no-undef": "error",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["tools/oxlint/anti-slop/**"],
+      "rules": {
+        "ana/no-inline-slop-answer": "off",
+        "typescript/switch-exhaustiveness-check": [
+          "error",
+          {
+            "considerDefaultExhaustiveForUnions": true
+          }
+        ]
+      }
+    },
+    {
+      "files": ["**/src/backends/oauth/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/json-runtime.ts"],
+                "importNames": ["parseJsonAs"],
+                "message": "OAuth bytes are external input: use capturedJsonParse and validate the fields before use."
+              }
+            ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "JSON",
+            "property": "parse",
+            "message": "Use capturedJsonParse so external input remains JsonValue until checked."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["vendor/pi-claude-bridge/**"],
+      "rules": {
+        "ana/no-inline-slop-answer": "off",
+        "ana/no-alias-restating-return": "off",
+        "ana/no-argument-already-carried": "off",
+        "ana/no-arms-differing-in-one-term": "off",
+        "ana/no-deep-nesting": "off",
+        "ana/no-hand-rolled-sleep": "off",
+        "ana/no-inline-block-reducer": "off",
+        "ana/no-inline-schema-literal": "off",
+        "ana/no-lifetime-outside-owner": "off",
+        "ana/no-pass-through-wrapper": "off",
+        "ana/no-renaming-temporary": "off",
+        "ana/no-repeated-string-literal": "off",
+        "ana/no-side-effect-in-predicate": "off",
+        "ana/no-single-use-const-chain": "off",
+        "ana/no-tangled-ternary": "off",
+        "ana/no-thrice-spelled-object": "off",
+        "ana/prefer-condition-over-boolean-returns": "off",
+        "ana/prefer-const-conditional": "off",
+        "ana/prefer-entries-over-keys-lookup": "off",
+        "ana/prefer-find-over-loop": "off",
+        "ana/prefer-flatmap-over-map-filter": "off",
+        "ana/prefer-lookup-over-equality-chain": "off",
+        "ana/prefer-some-over-filter-length": "off",
+        "eslint/no-else-return": "off",
+        "typescript/prefer-nullish-coalescing": "off",
+        "unicorn/no-lonely-if": "off",
+        "unicorn/no-negated-condition": "off",
+        "unicorn/prefer-array-flat": "off",
+        "unicorn/prefer-at": "off",
+        "unicorn/prefer-string-raw": "off"
+      }
+    },
+    {
+      "files": ["vendor/pi-agent-session/**"],
+      "rules": {
+        "ana/prefer-key-if-defined": "off",
+        "typescript/no-explicit-any": "off",
+        "typescript/no-unsafe-argument": "off"
+      }
+    },
+    {
+      "files": ["packages/ui/**"],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-non-null-assertion": "off"
+      }
+    },
+    {
+      "files": [".claude/**/*.ts", ".claude/**/*.mts"],
+      "rules": {
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-return": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ],
+  "rules": {
+    "ana/declarations-before-the-first-function": "error",
+    "ana/no-alias-restating-return": "error",
+    "ana/no-argument-already-carried": "error",
+    "ana/no-arms-differing-in-one-term": "error",
+    "ana/no-deep-nesting": "error",
+    "ana/no-hand-rolled-error-render": "error",
+    "ana/no-hand-rolled-sleep": "error",
+    "ana/no-hand-spelled-tree-root": "error",
+    "ana/no-inline-block-reducer": "error",
+    "ana/no-inline-schema-literal": "error",
+    "ana/no-lifetime-outside-owner": "error",
+    "ana/no-pass-through-wrapper": "error",
+    "ana/no-positional-boolean-parameter": "error",
+    "ana/no-property-read-on-function": "error",
+    "ana/no-renaming-temporary": "error",
+    "ana/no-repeated-string-literal": "error",
+    "ana/no-side-effect-in-predicate": "error",
+    "ana/no-single-caller-helper": "error",
+    "ana/no-single-use-const-chain": "error",
+    "ana/no-tangled-ternary": "error",
+    "ana/no-thrice-spelled-object": "error",
+    "ana/no-transposed-argument": "error",
+    "ana/no-unknown-union": "error",
+    "ana/prefer-condition-over-boolean-returns": "error",
+    "ana/prefer-const-conditional": "error",
+    "ana/prefer-entries-over-keys-lookup": "error",
+    "ana/prefer-find-over-loop": "error",
+    "ana/prefer-flatmap-over-map-filter": "error",
+    "ana/prefer-includes-over-some-equals": "error",
+    "ana/prefer-key-if-defined": "error",
+    "ana/prefer-lookup-over-equality-chain": "error",
+    "ana/prefer-some-over-filter-length": "error",
+    "ana/no-inline-slop-answer": "error",
+    "ana/require-captured-json-runtime": "error",
+    "ana/require-meta-runtime-import": "error",
+    "ana/require-type-for-null-default": "error",
+    "ana/unproven-unknown-parameter": "error",
+    "anti-slop/no-array-filter-map": "error",
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-shape-in-symbol-names": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-unsafe-dictionary-type": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/prefer-subpath-import": [
+      "error",
+      {
+        "relativeOnly": ["src", "starters", "tools/harness", "vendor"]
+      }
+    ],
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "eslint/curly": ["error", "multi-line"],
+    "eslint/max-params": ["error", 5],
+    "eslint/no-else-return": "error",
+    "eslint/no-empty": "error",
+    "eslint/no-extend-native": "error",
+    "eslint/no-fallthrough": "error",
+    "eslint/no-implicit-coercion": "error",
+    "eslint/no-param-reassign": "error",
+    "eslint/no-shadow": "error",
+    "eslint/no-unmodified-loop-condition": "error",
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "ignoreRestSiblings": true,
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "eslint/preserve-caught-error": "error",
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "no-useless-assignment": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-array-delete": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-extraneous-class": "error",
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "ignoreVoid": false
+      }
+    ],
+    "typescript/no-for-in-array": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-misused-spread": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-useless-default-assignment": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-nullish-coalescing": [
+      "error",
+      {
+        "ignorePrimitives": {
+          "string": true,
+          "number": true
+        }
+      }
+    ],
+    "typescript/prefer-optional-chain": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/prefer-readonly": "error",
+    "typescript/require-array-sort-compare": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/strict-boolean-expressions": [
+      "error",
+      {
+        "allowAny": true
+      }
+    ],
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/unbound-method": "error",
+    "unicorn/explicit-length-check": "error",
+    "unicorn/no-array-reverse": "error",
+    "unicorn/no-lonely-if": "error",
+    "unicorn/no-negated-condition": "error",
+    "unicorn/prefer-array-find": "error",
+    "unicorn/prefer-array-flat": "error",
+    "unicorn/prefer-array-flat-map": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-set-has": "error",
+    "unicorn/prefer-string-raw": "error"
+  },
+  "plugins": ["import", "oxc", "typescript", "unicorn"]
+}

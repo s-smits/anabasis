@@ -1,0 +1,230 @@
+/**
+ * What the recorded evidence says was used: Builder tool findings per epoch, and which runtime
+ * safeguards fired against the inventory in src/meta/safeguard.ts. It reads; it decides nothing.
+ */
+import type { BuilderToolsReport, EpochToolCensus } from "./builder-tools.ts";
+import { builderFailureFindings } from "./builder-failed-calls.ts";
+import type { BuilderExecutionEvidence } from "../../src/author/builder-execution.ts";
+import { existsSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
+import { join } from "../../src/meta/path.ts";
+import { SAFEGUARDS_LOG_FILE, SAFEGUARD_INVENTORY } from "../../src/meta/safeguard.ts";
+
+/* Fired-safeguard report: a safeguard that never fired within an epoch of its introduction is
+ * removed by operator decision; this answers which fired, where, and which never did. */
+/** The exact line shape safeguardTriggered writes: `<iso timestamp> | <name> | <detail>`. */
+const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+) \| (\S+) \| /;
+
+interface SafeguardUsageRow {
+  readonly name: string;
+  readonly introduced: string;
+  fired: number;
+  firstFired: string | null;
+  lastFired: string | null;
+  campaigns: string[];
+}
+
+interface SafeguardUsageReport {
+  readonly rows: SafeguardUsageRow[];
+  /** Inventory names with zero fired lines across every log read — the lifecycle candidates. */
+  readonly neverFired: string[];
+  /** Fired names absent from the inventory: a removed safeguard's old logs, or a naming drift. */
+  readonly unknownNames: string[];
+  readonly logsRead: number;
+  readonly malformedLines: number;
+}
+
+/**
+ * What the execution evidence says about the session's activity. `recordRows` is the path
+ * record's row count for the same epoch: stating it beside the native-call count is the point, since
+ * the record stopped seeing native Read/Edit/Bash and its silence was being read as an idle Builder.
+ */
+function executionFindings(epoch: string, execution: BuilderExecutionEvidence, recordRows: number): string[] {
+  const out: string[] = [];
+  const submits = execution.submitCounts.raw;
+  const candidateSubmits = execution.submitCounts.candidates;
+  const comparisonDenominator =
+    execution.submitCounts.controllerTerminals > 0 ? "candidate submissions" : "submissions";
+  if (execution.unchangedTreeSubmits > 0) {
+    out.push(
+      `${epoch}: ${execution.unchangedTreeSubmits} of ${candidateSubmits} ${comparisonDenominator} completed at the commit the submission before them had already completed — the tree did not move`,
+    );
+  }
+  if (execution.repeatedFindingSubmits > 0) {
+    out.push(
+      `${epoch}: ${execution.repeatedFindingSubmits} of ${candidateSubmits} ${comparisonDenominator} were refused with the findings the submission before them had already returned`,
+    );
+  }
+  if (execution.toolCalls.native > 0) {
+    out.push(
+      `${epoch}: ${execution.toolCalls.native} of ${execution.toolCalls.total} tool calls ran on the backend's native contract, which the path record's ${recordRows} rows do not cover`,
+    );
+  }
+  if (execution.submitCounts.controllerTerminals > 0) {
+    out.push(
+      `${epoch}: ${execution.submitCounts.candidates} candidate submissions and ${execution.submitCounts.controllerTerminals} controller-terminal event(s) among ${submits} raw submit rows`,
+    );
+  }
+  return out;
+}
+
+/** Compare the path record with the session configuration: undeclared policies, the first
+ *  successful workspace read, and capabilities denied every time. */
+function pathRecordFindings(epoch: EpochToolCensus): string[] {
+  const { record, composed } = epoch;
+  const out: string[] = [];
+  const declaredPolicies = new Set(composed?.isolations.map((isolation) => isolation.policyDigest) ?? []);
+  const undeclaredPolicies = record?.policyDigests.filter((digest) => !declaredPolicies.has(digest)) ?? [];
+  if (undeclaredPolicies.length > 0) {
+    out.push(
+      `${epoch.epoch}: record rows used policies the session evidence never composed: ${undeclaredPolicies.join(", ")}`,
+    );
+  }
+  const firstRead = record?.firstAllowedRead ?? null;
+  if (record !== null && firstRead === null) {
+    out.push(`${epoch.epoch}: no successful primary workspace read was recorded`);
+  } else if (firstRead !== null && !/(^|\/)STARTER\.md$/.test(firstRead.resolved ?? firstRead.requested)) {
+    out.push(
+      `${epoch.epoch}: first successful primary workspace read was ${firstRead.requested}, not STARTER.md`,
+    );
+  }
+  for (const [name, use] of Object.entries(record?.byCapability ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (use.allowed === 0 && use.denied > 0) {
+      out.push(
+        `${epoch.epoch}: ${name} was denied all ${use.denied} times (${use.reasons.join(", ")}) — the Builder kept asking for access it never had`,
+      );
+    }
+  }
+  return out;
+}
+
+function epochToolFindings(epoch: EpochToolCensus): string[] {
+  // Failed calls are execution evidence, so they stay readable in exactly the epoch the other
+  // evidence sources miss: run 66 recorded 41 failed native calls beside null session
+  // evidence and a path record that covered none of them.
+  const failures = builderFailureFindings(epoch.epoch, epoch.failures);
+  const { record, composed } = epoch;
+  if (composed === null && record === null) {
+    return [
+      `${epoch.epoch}: no builder session evidence and no path record — nothing was composed here`,
+      ...failures,
+    ];
+  }
+  const out: string[] = [];
+  out.push(...pathRecordFindings(epoch));
+  if (epoch.undeclared.length > 0) {
+    out.push(
+      `${epoch.epoch}: record names capabilities the evidence never composed: ${epoch.undeclared.join(", ")}`,
+    );
+  }
+  if (epoch.workshop !== null && (epoch.workshop.failed > 0 || epoch.workshop.nonResults > 0)) {
+    const reasons = Object.entries(epoch.workshop.byReason)
+      .map(([reason, count]) => `${reason}=${count}`)
+      .join(", ");
+    out.push(
+      `${epoch.epoch}: verifier workshop completed ${epoch.workshop.failed} failed and ${epoch.workshop.nonResults} non-result actions${reasons === "" ? "" : ` (${reasons})`}`,
+    );
+  }
+  if (epoch.neverUsed !== null && epoch.neverUsed.length > 0) {
+    out.push(
+      `${epoch.epoch}: composed and never used: ${epoch.neverUsed.join(", ")} — path capabilities the Builder carried and did not touch`,
+    );
+  }
+  if (epoch.neverUsed === null && composed !== null) {
+    out.push(`${epoch.epoch}: no path record, so capability use is unknown`);
+  }
+  if ((epoch.executionUnavailable?.length ?? 0) > 0) {
+    out.push(
+      `${epoch.epoch}: Builder execution evidence unavailable: ${epoch.executionUnavailable?.join("; ")}`,
+    );
+  }
+  for (const evidence of epoch.authoring.nonResults) {
+    out.push(
+      `${epoch.epoch}: authoring non-result at ${evidence.terminal.role} (${evidence.terminal.status}); ${evidence.sessions.length} session states and ${Object.values(evidence.authorCalls).reduce((sum, count) => sum + count, 0)} started author calls receipted`,
+    );
+  }
+  out.push(...failures);
+  epoch.execution.forEach((execution, index) => {
+    const label = epoch.execution.length === 1 ? epoch.epoch : `${epoch.epoch} session ${String(index + 1)}`;
+    out.push(...executionFindings(label, execution, record?.rows ?? 0));
+  });
+  return out;
+}
+
+/** Strict, diagnostic findings derived from the report; they never change acceptance. */
+export function builderToolFindings(report: BuilderToolsReport): string[] {
+  const out: string[] = [];
+  if (report.customToolCalls !== null && report.customToolCalls.neverCalled.length > 0) {
+    const rows = report.customToolCalls.neverCalled.map((name) => {
+      const use = report.customToolCalls?.byName[name];
+      return `${name} (exposed ${use?.sessionsExposed ?? 0}, exposure unknown ${use?.sessionsExposureUnknown ?? 0})`;
+    });
+    out.push(
+      `campaign: custom tools never called where exposure is recorded: ${rows.join(", ")} — overhead evidence, not deletion proof`,
+    );
+  }
+  for (const epoch of report.epochs) out.push(...epochToolFindings(epoch));
+  return out;
+}
+
+function logFilesUnder(campaignDir: string): string[] {
+  const root = join(campaignDir, "safeguards");
+  if (!existsSync(root)) return [];
+  const files: string[] = [];
+  for (const runId of readdirSync(root)) {
+    const file = join(root, runId, SAFEGUARDS_LOG_FILE);
+    if (existsSync(file)) files.push(file);
+  }
+  return files;
+}
+
+export function safeguardUsageReport(campaignDirs: readonly string[]): SafeguardUsageReport {
+  const rows = new Map<string, SafeguardUsageRow>(
+    SAFEGUARD_INVENTORY.map((entry) => [
+      entry.name,
+      { ...entry, fired: 0, firstFired: null, lastFired: null, campaigns: [] },
+    ]),
+  );
+  const unknown = new Set<string>();
+  let logsRead = 0;
+  let malformedLines = 0;
+  /** One recorded firing: its time widens the row's window and its campaign joins the list. */
+  const count = (row: SafeguardUsageRow, at: string, campaignDir: string): void => {
+    row.fired += 1;
+    if (row.firstFired === null || at < row.firstFired) row.firstFired = at;
+    if (row.lastFired === null || at > row.lastFired) row.lastFired = at;
+    if (!row.campaigns.includes(campaignDir)) row.campaigns.push(campaignDir);
+  };
+  for (const campaignDir of campaignDirs) {
+    for (const file of logFilesUnder(campaignDir)) {
+      logsRead += 1;
+      for (const line of readFileSync(file, "utf8").split("\n")) {
+        if (line === "") continue;
+        const match = LOG_LINE.exec(line);
+        if (match?.[1] === undefined || match[2] === undefined) {
+          malformedLines += 1;
+          continue;
+        }
+        const row = rows.get(match[2]);
+        if (row === undefined) {
+          unknown.add(match[2]);
+          continue;
+        }
+        count(row, match[1], campaignDir);
+      }
+    }
+  }
+  const ordered = [...rows.values()];
+  return {
+    rows: ordered,
+    neverFired: ordered
+      .values()
+      .filter((row) => row.fired === 0)
+      .map((row) => row.name)
+      .toArray(),
+    unknownNames: [...unknown].sort(),
+    logsRead,
+    malformedLines,
+  };
+}

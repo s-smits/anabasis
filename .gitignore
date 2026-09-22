@@ -1,0 +1,58 @@
+# both forms: the trailing slash matches a real directory, the bare name a worktree's symlink
+node_modules/
+node_modules
+dist/
+coverage/
+.env
+.env.*
+*.local
+# runtime state stays local; operator backend pins are visible config the resolver reads
+.harness/*
+!.harness/backends/
+.DS_Store
+*.tsbuildinfo
+
+# test scratch
+.scratch/
+# A fixture whose modules must resolve against this repository's node_modules makes its scratch
+# inside the checkout. Two readers have to skip it: `test/test-discovery-completeness.test.ts`
+# lists untracked files through Git, and oxlint honours this file. One entry per fixture prefix
+# drifted: of the thirty-two live prefixes eighteen had none, five entries named a fixture that
+# no longer exists, and a fourteenth entry was added for one more. So the family has one name,
+# and the case named above enforces it.
+**/.ana-scratch-*/
+
+# domain runtimes: written by uv, never tracked (§7 — 488k lines of vendored numpy)
+**/.venv/
+**/.uv-cache/
+
+# run outputs: the case record points at these; they are not source
+runs/
+# except the runs CLI, which is source under tools/ like every other file there
+!tools/runs/
+!tools/runs/**
+# build outputs: authored by the Builder at run time, never source
+campaigns/
+domains/
+# a run worktree's links to the shared roots (launch-run), which a directory pattern misses
+/campaigns
+/domains
+
+# measured per-file test durations; refreshed by every test run
+test/.test-timings.json
+# safeguard watchdogs append here at runtime; test fixtures fire them in-repo
+SAFEGUARDS_LOG.txt
+# operator-local: working notes, account and sweep tooling, the free judge proxy and host pins stay
+# on the operator's machine and are not published
+/notes/
+.claude/skills/claude-accounts/
+.claude/skills/run-cycles/
+.claude/skills/merge-train/
+.claude/skills/harness-query/judge/cliproxy.free.yaml
+.claude/skills/harness-query/judge/free-proxy.env.example
+.claude/skills/harness-query/judge/free-proxy-judge.mts
+.claude/skills/harness-query/judge/backends.free-proxy.json
+.config/m1-runner.json
+tools/test-remote.sh
+.harness/backends/bb28.json
+.harness/backends/consumer-hw.json

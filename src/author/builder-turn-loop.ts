@@ -1,0 +1,218 @@
+/** One persistent Builder turn: record it and choose the next prompt. */
+import type { AgentSession, AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/backend-types.ts";
+import type { RunObserver } from "../observe/run-observer.ts";
+import { observeBuilderTurn } from "../observe/model-turn-observer.ts";
+import type { ContractFinding } from "../truth/brief.ts";
+import type { CandidateCheckOutcome } from "./candidate-check.ts";
+import { BuildAgentTurnNonResult, runModelAttempt } from "./build-agent.ts";
+import type { ModelAttemptGate } from "../run/campaign-budget.ts";
+import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
+import {
+  continuePrompt,
+  STALLED_TURNS,
+  toolFailureNote,
+  unchangedAuthoringNote,
+} from "./builder-continuation.ts";
+import { authoringIdentity } from "./author-first.ts";
+import type { BuilderExecutionRecorder } from "./builder-execution.ts";
+import { awaitTurnRetry, type TurnRetryContext } from "./turn-retry.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
+
+const LIVENESS_CHECKPOINT_MS = 60_000;
+
+/** Timeout for a Builder turn when no session timeout was supplied. Without it, an absent
+ * `turnTimeoutMs` would use the session's one-hour default cap (pi-session.ts) and end the turn
+ * as a typed non-result. Each turn gets up to twenty-four hours (operator decision 2026-09-14:
+ * four recorded turns were cut at the earlier six-hour cap mid-work); the next turn starts a new
+ * window. The campaign's review schedule (builder-campaign.ts) never cancels a turn. */
+export const BUILDER_TURN_SETTLE_MS = 86_400_000;
+
+export interface BuilderTurnState {
+  accepted: Extract<CandidateCheckOutcome, { ok: true }> | null;
+  attempts: number;
+  lastRefusal: ContractFinding[];
+  activeTurn: number;
+  terminal: boolean;
+  terminalClause: "no-progress" | "budget-limited" | null;
+  /** Consecutive completed turns in which no tool call succeeded. */
+  idleTurns: number;
+}
+
+interface BuilderTurnInput {
+  session: AgentSession;
+  state: BuilderTurnState;
+  recorder: BuilderExecutionRecorder;
+  prompt: string;
+  turn: number;
+  onTurnEvent: (event: AgentTurnEvent) => void;
+  checkpoint: () => void;
+  /** The operator's request, which every continuation restates. */
+  kickoff: string;
+  /** The operator's turn cap; absent, the round has none. */
+  maxTurns?: number;
+  /** The session driver owns its transcript projection; this callback keeps it complete even
+   *  when this loop classifies a failed turn before it can return. */
+  onTurnCompleted?(turn: number, result: AgentTurnResult): void;
+  observer?: RunObserver;
+  turnTimeoutMs?: number;
+  attemptGate?: ModelAttemptGate;
+  providerBudget?: ProviderResourceBudget;
+  /** Test interface for the transient-failure backoff, matching `BuildAgentSessions.waitMs`. */
+  waitMs?: (ms: number) => Promise<void>;
+  /** The owned authoring paths and their identity when the session opened; the next-turn prompt
+   *  says when they are still unchanged. */
+  authoring: { workspace: string; paths: readonly string[]; openingIdentity: string };
+  /** When the session opened, so the continuation can read elapsed time and not only turns. */
+  openedAtMs: number;
+}
+
+/** The turn's event sink, including at most one liveness checkpoint per minute. */
+export function turnEventRecorder(
+  recorder: BuilderExecutionRecorder,
+  checkpoint: () => void,
+): (event: AgentTurnEvent) => void {
+  let lastLivenessMs = 0;
+  return (event) => {
+    if (event.type === "tool_started" || event.type === "tool_ended") {
+      // Both edges reach the recorder: the start counts the call, the end says whether it failed
+      // and what it returned. A checkpoint from either edge therefore records a running tally that a
+      // killed turn would never settle.
+      recorder.turnToolEvent(event);
+      if (Date.now() - lastLivenessMs >= LIVENESS_CHECKPOINT_MS) {
+        lastLivenessMs = Date.now();
+        checkpoint();
+      }
+    } else if (event.type === "reasoning_text") {
+      recorder.reasoning(event.text);
+    } else if (event.type === "message_text") {
+      recorder.message(event.text);
+    } else if ((event.type === "turn_ended" || event.type === "turn_failed") && event.usage !== undefined) {
+      // A turn the caller interrupted and a turn that failed both settle before the provider's own
+      // account of them arrives, so their usage is whatever the transport had in flight.
+      recorder.reportedUsage(
+        event.usage,
+        event.type === "turn_ended" && event.stopReason !== "aborted" ? "final" : "estimated",
+      );
+    }
+  };
+}
+
+function observeTurnTools(
+  observer: RunObserver | undefined,
+  turn: number,
+  calls: AgentTurnResult["toolCalls"],
+): void {
+  if (observer === undefined || calls === undefined) return;
+  observer.turnTools({
+    turn,
+    toolCalls: calls.total,
+    failed: calls.failed,
+    failedByName: { ...calls.failedByName },
+  });
+}
+
+/** One provider attempt. Review cadence is campaign-scoped and uses tool boundaries, so
+ * retries and outer turns cannot reset it or turn a timer expiry into an abort. */
+async function runBuilderAttempt(input: BuilderTurnInput): Promise<AgentTurnResult> {
+  let usage: TurnUsage | undefined;
+  return runModelAttempt(
+    input.attemptGate,
+    "builder",
+    () =>
+      input.session.runTurn({
+        prompt: input.prompt,
+        onEvent: (event) => {
+          if ((event.type === "turn_ended" || event.type === "turn_failed") && event.usage !== undefined) {
+            usage ??= event.usage;
+          }
+          input.onTurnEvent(event);
+        },
+        ...keyIfDefined("turnTimeoutMs", input.turnTimeoutMs),
+        ...keyIfDefined("signal", input.providerBudget?.cancellationSignal),
+      }),
+    input.providerBudget,
+    () => usage,
+  );
+}
+
+/** The retry context for this turn: same role, same gates, same recorder as the attempt itself. */
+function turnRetryContext(input: BuilderTurnInput): TurnRetryContext {
+  return {
+    role: "builder",
+    turn: input.turn,
+    recorder: input.recorder,
+    ...keyIfDefined("attemptGate", input.attemptGate),
+    ...keyIfDefined("providerBudget", input.providerBudget),
+    ...keyIfDefined("wait", input.waitMs),
+  };
+}
+
+export async function runBuilderTurn(input: BuilderTurnInput): Promise<{ prompt: string }> {
+  const { state } = input;
+  state.activeTurn = input.turn;
+  observeBuilderTurn(input.observer, { prompt: input.prompt, turn: input.turn });
+  for (let retried = 0; ; retried += 1) {
+    const result = await runBuilderAttempt(input);
+    input.recorder.turnCompleted(result);
+    observeTurnTools(input.observer, input.turn, result.toolCalls);
+    input.checkpoint();
+    input.onTurnCompleted?.(input.turn, result);
+    if (result.status !== "completed") {
+      const errors = result.errorMessages ?? [];
+      if (state.accepted === null && !state.terminal) {
+        if (await awaitTurnRetry(turnRetryContext(input), retried, result.status, errors)) continue;
+        throw new BuildAgentTurnNonResult("builder", result.status, errors, input.turn);
+      }
+    }
+    countIdleTurn(state, result.toolCalls);
+    return { prompt: nextTurnPrompt(input, result) };
+  }
+}
+
+/** Codex's no-progress rule: a turn in which no tool call succeeded makes no progress, and
+ *  `STALLED_TURNS` of them in a row end the round as `no-progress`. The backend's tally counts the
+ *  Claude CLI's own tools as well as the hosted ones; a backend that reports none leaves the count
+ *  alone, since an unknown tally is not zero calls. A round that settled in this turn is left as it
+ *  settled. The run may retry the build, and the conversation continues. */
+function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCalls"]): void {
+  if (calls === undefined) return;
+  state.idleTurns = calls.total > calls.failed ? 0 : state.idleTurns + 1;
+  if (state.idleTurns < STALLED_TURNS || state.accepted !== null || state.terminal) return;
+  state.terminal = true;
+  state.terminalClause = "no-progress";
+}
+
+/** The prompt for the next turn: the continuation for the session's progress, last turn's tool
+ *  failures, and whether the owned files are still as the session found them.
+ *
+ *  The third part replaces the author-first interrupt removed on 2026-09-14. That monitor counted
+ *  sixteen tool calls over unchanged owned paths and then cut the turn with a finding; it never
+ *  fired in 414 recorded sessions, and a session installing frame3dd or a compiler under
+ *  .toolchain would have been cut mid-install for doing the right thing. The fact behind it is
+ *  still worth stating: a Builder that has read and probed for a whole turn without touching
+ *  agent/ or correctness-model/ may not have noticed, and the transcript it would need to re-read
+ *  to notice is long. So the turn boundary states the fact once, in one line, and leaves the
+ *  decision with the model: keep installing, or start writing. Nothing counts and nothing ends. */
+function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): string {
+  const { state, authoring } = input;
+  // "Unchanged" is byte identity against the session's opening, not this turn's: a turn that
+  // validates files written in an earlier turn is not a turn without authoring. `authoringIdentity`
+  // hashes the owned paths (agent/ and correctness-model/ on a build; the battery files on a
+  // task-only round, where the rest of the tree must stay fixed), so the note names the paths the
+  // controller actually opened for this round.
+  const owned = authoringIdentity(authoring) === authoring.openingIdentity ? "unchanged" : "changed";
+  const goal = {
+    kickoff: input.kickoff,
+    attempts: state.attempts,
+    activeTurn: state.activeTurn,
+    maxTurns: input.maxTurns,
+    elapsedMs: Date.now() - input.openedAtMs,
+  };
+  return [
+    continuePrompt(goal),
+    toolFailureNote(result.toolCalls),
+    unchangedAuthoringNote(owned, authoring.paths),
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n");
+}

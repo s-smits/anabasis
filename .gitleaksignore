@@ -1,0 +1,10 @@
+# Historical false positives, verified by source inspection (not real credentials, no rotation
+# needed). These are redaction/secret-scanner test fixtures written before test/secret-scan.test.ts
+# and tools/secrets/rules.ts existed. The commits themselves cannot be edited without a history
+# rewrite (disallowed); this file suppresses the known-safe fingerprints for local and CI gitleaks
+# runs. GitGuardian's own dashboard has a separate "mark as false positive" action for the same
+# incidents; this file does not affect that.
+0166d3ae796ba594cd8a69962f912173e1884b0b:test/secret-scan.test.ts:generic-api-key:21
+775370871d8e15add92109255340abb2db2beb27:test/diagnostic-redaction.test.ts:generic-api-key:33
+775370871d8e15add92109255340abb2db2beb27:test/diagnostic-redaction.test.ts:generic-api-key:34
+276a9bf17f49c015269521c383809b8bdb68dad7:test/builder-tools.test.ts:jwt:200

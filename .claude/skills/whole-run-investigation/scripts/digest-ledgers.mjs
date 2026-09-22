@@ -16,6 +16,7 @@ import { wilsonInterval } from "#src/claim/estimation.ts";
 import { MEMORY_CAP_BYTES, MEMORY_FILE, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
 import { isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
+import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 
 /** AGENTS.md: explicit credit/allowance exhaustion is a normal operational interruption; a generic
  *  429, timeout or crash is not proof of exhaustion and must be investigated as a failure. */
@@ -480,11 +481,10 @@ export function admissionLedgerLines({ campaign }) {
   for (const name of reviews) {
     const record = readJsonFileOrNull(join(dir, name));
     const findings = Array.isArray(record?.findings) ? record.findings : [];
-    const unowned = findings.filter(
-      (finding) => finding?.proposedOwner === null || finding?.proposedOwner === undefined,
-    ).length;
+    // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
+    const unroutable = findings.filter((finding) => authorSessionOwner(finding).owner === null).length;
     lines.push(
-      `${name.replace(/-epoch-review\.json$/, "")}: epoch review ${record?.status ?? "?"} · findings ${findings.length} · unowned ${unowned} · reads ${Array.isArray(record?.reads) ? record.reads.length : "?"}`,
+      `${name.replace(/-epoch-review\.json$/, "")}: epoch review ${record?.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record?.reads) ? record.reads.length : "?"}`,
     );
   }
   if (unrouted > 0) {

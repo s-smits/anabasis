@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 // biome-ignore format: the directive below only reaches the specifier while this import is one line
 // @ts-expect-error plain-JS skill script without type declarations
-import { batteryTallies, checkInformativenessLines, exhaustionClass, familyCoverageLines, roleSpendLines } from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
+import { admissionLedgerLines, batteryTallies, checkInformativenessLines, exhaustionClass, familyCoverageLines, roleSpendLines } from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 
 test("join targets are declared IDs, not Boolean flags", () => {
   const lines = checkInformativenessLines({
@@ -88,4 +90,23 @@ test("explicit allowance errors reveal old misclassification without rewriting a
   expect(roleSpendLines({ ...options, batteryOf: () => null }).join("\n")).toContain(
     "missing rows leave censoring unobservable",
   );
+});
+
+test("an epoch review counts a finding unrouted only when the author router gives it no owner", async () => {
+  const campaign = join(tmpdir(), `digest-ledgers-${crypto.randomUUID()}`);
+  const finding = (kind: string, proposedOwner: string | null) => ({ kind, proposedOwner });
+  await Bun.write(
+    join(campaign, "analysis", "authoring-a-epoch-review.json"),
+    JSON.stringify({
+      status: "completed",
+      findings: [
+        finding("curriculum-defect", null),
+        finding("harness-defect", null),
+        finding("harness-defect", "brief"),
+      ],
+      reads: [],
+    }),
+  );
+  // Truss run fa03b7 read its one curriculum finding as unowned, though it routes to `tests`.
+  expect(admissionLedgerLines({ campaign }).join("\n")).toContain("findings 3 · unrouted 1 · reads 0");
 });

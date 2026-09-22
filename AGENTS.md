@@ -964,6 +964,23 @@ emoji or exclamation marks. Explain rules with small examples. Prefer "one owner
 to negative-first contrasts. Make routine minor changes directly; raise only decisions the operator
 must make.
 
+Shape a commit or PR body as problems and their repairs, one arrow each, rather than as "The gap"
+and "What this adds". Those two headings make a reader join two lists by hand, and they invite an
+inventory of edits where a defect belongs. Write what misbehaves and what that costs, then `->`,
+then what happens instead. Name the thing that misbehaves — the Builder, the round, a reader, the
+gate — not the file that holds it.
+
+```text
+The Builder loses the round's task count at compaction and buys it back with a gate call
+  -> `harness_inspect readiness` serves the same contract bytes the round opened with.
+The off-aim allowance is stated once, and the history rows cannot reconstruct it
+  -> it rides the history page, ahead of the rows the character window truncates.
+```
+
+Order the arrows by what each defect costs, keep one arrow per defect, and put the evidence —
+counts, runs, files — beneath them rather than inside them. A change with no defect behind it says
+so in one line; do not invent a problem to give it this shape.
+
 Several operator terms cover more than one system — resolve them aloud in one clause rather than
 silently. "Queries" may mean harness-query probes, review lanes or subagent sessions; "judges" may
 mean the in-run Judge slot or the review lanes; "the run" is reserved for the paid full run;

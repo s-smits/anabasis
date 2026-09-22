@@ -40,6 +40,7 @@ Both use Claude Opus 5 at medium thinking and the same verifier; Anabasis is slo
 ## Run it
 
 We use **Bun 1.4.2** (Stable) and support macOS or Linux. Both need `ripgrep`, which the Builder searches with; Linux also needs `bubblewrap`.
+On Ubuntu 24.04 and later, `bubblewrap` also needs unprivileged user namespaces, which AppArmor restricts by default: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
 So first, if you haven’t already, please install Bun:
 ```sh
 curl -fsSL https://bun.com/install | bash -s "bun-v1.4.2"

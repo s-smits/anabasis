@@ -8,8 +8,12 @@
  * most of its otool time in that measurement.
  *
  * Search PATH first, preserving a Homebrew installation, custom build or test executable found
- * before the Apple shim. Only an exact `/usr/bin/<tool>` match is replaced with a path under
- * the directory reported by `xcode-select -p`. This avoids invoking the shim for each call.
+ * before the Apple shim. Only an exact `/usr/bin/<tool>` match is replaced with the binary under
+ * the directory reported by `xcode-select -p`, and only when that binary exists: Command Line
+ * Tools keep every tool in `usr/bin`, while a full Xcode keeps `git` there and `otool` and
+ * `install_name_tool` in its default toolchain. A developer directory holding neither keeps the
+ * shim. On a GitHub macOS runner, which selects a full Xcode, the unchecked `usr/bin/otool` did not
+ * exist, so every runtime-closure attestation failed as a sandbox non-result.
  * Both that developer directory and each tool's resolved path are cached for this process;
  * later environment or developer-directory changes do not refresh them. If PATH contains no
  * matching entry, return the bare name and leave resolution or failure to process creation.
@@ -21,20 +25,33 @@ import { join } from "./path.ts";
 import { runtimeProcess } from "./process.ts";
 
 const resolvedTools = new Map<string, string>();
-let developerBinDir: string | null | undefined;
+let developerDir: string | null | undefined;
 
-function activeDeveloperBinDir(): string | null {
-  if (developerBinDir !== undefined) return developerBinDir;
-  developerBinDir = null;
-  if (runtimeProcess.platform !== "darwin") return developerBinDir;
+function activeDeveloperDir(): string | null {
+  if (developerDir !== undefined) return developerDir;
+  developerDir = null;
+  if (runtimeProcess.platform !== "darwin") return developerDir;
   try {
     const found = Bun.spawnSync({ cmd: ["xcode-select", "-p"], stdout: "pipe", stderr: "pipe" });
     const directory = found.success ? found.stdout.toString().trim() : "";
-    if (directory !== "") developerBinDir = join(directory, "usr", "bin");
+    if (directory !== "") developerDir = directory;
   } catch {
     // No xcode-select on this host: the bare name is the answer and PATH resolves it.
   }
-  return developerBinDir;
+  return developerDir;
+}
+
+/** The tool's own binary in the active developer directory, or null when it holds none. */
+function developerTool(name: string): string | null {
+  const directory = activeDeveloperDir();
+  if (directory === null) return null;
+  for (const bin of [
+    join(directory, "usr", "bin"),
+    join(directory, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin"),
+  ]) {
+    if (existsSync(join(bin, name))) return join(bin, name);
+  }
+  return null;
 }
 
 /** The first existing `<dir>/<name>` across PATH, or null when PATH holds no such tool. */
@@ -52,11 +69,8 @@ export function hostTool(name: string): string {
   const remembered = resolvedTools.get(name);
   if (remembered !== undefined) return remembered;
   const fromPath = firstPathResolution(name);
-  const directory = activeDeveloperBinDir();
-  const answer =
-    fromPath !== null && directory !== null && fromPath === join("/usr/bin", name)
-      ? join(directory, name)
-      : (fromPath ?? name);
+  const direct = fromPath === join("/usr/bin", name) ? developerTool(name) : null;
+  const answer = direct ?? fromPath ?? name;
   resolvedTools.set(name, answer);
   return answer;
 }

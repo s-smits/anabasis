@@ -28,25 +28,42 @@ describe("hostTool", () => {
   });
 
   it.skipIf(runtimeProcess.platform !== "darwin")(
-    "bypasses the shim only where PATH itself named /usr/bin, keeping DEVELOPER_DIR semantics with the spawn",
+    "takes a tool from wherever the developer directory holds it, and keeps the shim where it holds none",
     () => {
-      // A tool only /usr/bin holds: PATH's canonical resolution is the Apple shim path, so the
-      // active developer directory's direct binary is the answer.
-      expect(existsSync("/usr/bin/otool")).toBe(true);
-      const previousPath = Bun.env.PATH;
-      Bun.env.PATH = "/usr/bin:/bin";
-      try {
-        const probe = Bun.spawnSync({ cmd: ["xcode-select", "-p"], stdout: "pipe", stderr: "pipe" });
-        const directory = probe.success ? probe.stdout.toString().trim() : "";
-        if (directory === "") {
-          expect(hostTool("otool")).toBe("/usr/bin/otool");
-        } else {
-          expect(hostTool("otool")).toBe(join(directory, "usr", "bin", "otool"));
-        }
-      } finally {
-        if (previousPath === undefined) delete Bun.env.PATH;
-        else Bun.env.PATH = previousPath;
-      }
+      // A full Xcode keeps nm in usr/bin and otool in its default toolchain. The GitHub macOS runner
+      // selects one, and the unchecked usr/bin/otool failed every runtime-closure attestation there.
+      const developer = join(
+        tmpdir(),
+        `ana-hosttool-xcode-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      scratch.push(developer);
+      const usrBin = join(developer, "usr", "bin");
+      const toolchain = join(developer, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin");
+      mkdirSync(usrBin, { recursive: true });
+      mkdirSync(toolchain, { recursive: true });
+      writeFileSync(join(usrBin, "nm"), "#!/bin/sh\nexit 0\n");
+      writeFileSync(join(toolchain, "otool"), "#!/bin/sh\nexit 0\n");
+      expect(existsSync("/usr/bin/lipo")).toBe(true);
+      // A spawn without `env` passes the environment the process started with, so xcode-select
+      // sees DEVELOPER_DIR only in a child started with it.
+      const module = join(import.meta.dir, "../src/meta/host-tool.ts");
+      const child = Bun.spawnSync({
+        cmd: [
+          runtimeProcess.execPath,
+          "-e",
+          `const { hostTool } = await import(${JSON.stringify(module)});` +
+            'console.log(JSON.stringify(["otool", "nm", "lipo"].map(hostTool)));',
+        ],
+        env: { ...Bun.env, PATH: "/usr/bin:/bin", DEVELOPER_DIR: developer },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(child.stderr.toString()).toBe("");
+      expect(JSON.parse(child.stdout.toString())).toEqual([
+        join(toolchain, "otool"),
+        join(usrBin, "nm"),
+        "/usr/bin/lipo",
+      ]);
     },
   );
 });

@@ -51,6 +51,11 @@ jobs:
         # bubblewrap 0.9.0, above the version the isolation needs, so the runner's own package is used.
         run: sudo apt-get update && sudo apt-get install -y ripgrep bubblewrap
 
+      - name: Allow unprivileged user namespaces
+        # Ubuntu 24.04 restricts them through AppArmor, and bwrap then fails with "setting up uid
+        # map: Permission denied": the first public run, 35734926609 on 2026-09-22, stopped there.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Confirm the isolation mechanism is usable on this runner
         # Separated from the gate so a runner or kernel policy change does not read as a source
         # regression: the gate's own failure text names an unavailable mechanism either way.

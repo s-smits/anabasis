@@ -5,10 +5,7 @@ import {
   VerifierContractError,
   type VerifierContractCode,
 } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import {
-  ADVISORY_DISCRIMINATION_CODES,
-  type DiscriminationClaimabilityFinding,
-} from "../claim/discrimination-claimability.ts";
+import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
@@ -94,21 +91,6 @@ type ControlGroup = {
 };
 
 type Observation = Settled & { attempt: number };
-
-/** A reject must fail on its declared check. An unrelated schema or empty-input failure does
- *  not establish that the intended mutation was detected; further failures beside the declared
- *  check are allowed. */
-/** What the reject corpus showed about one declared check. A check is isolated once some reject
- *  failed it and nothing else: that is the observation which establishes the check refuses an
- *  artifact its neighbours accept. Without it the corpus proves the aggregate verdict and leaves
- *  the check's own comparison unexercised — truss run de8b40 carried four member-loss rejects, all
- *  of one mutation class, every one of which already failed strength-and-buckling. */
-interface CheckIsolation {
-  ids: string[];
-  classes: Set<string>;
-  beside: Set<string>;
-  isolated: boolean;
-}
 
 // --- Checks that apply to each task ----------------------------------------------------------
 
@@ -456,27 +438,6 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
   );
 }
 
-function isolationFinding(byCheck: Map<string, CheckIsolation>): DiscriminationClaimabilityFinding[] {
-  const gaps = byCheck
-    .entries()
-    .filter(([, row]) => !row.isolated)
-    .map(
-      ([checkId, row]) =>
-        `"${checkId}" (${namedExamples(row.ids)}, mutation class(es) [${[...row.classes].sort(compareCodeUnits).join(", ")}], each also failing [${[...row.beside].sort(compareCodeUnits).join(", ")}])`,
-    )
-    .toArray();
-  if (gaps.length === 0) return [];
-  return [
-    identityComposedFinding(
-      {
-        code: "DISCRIMINATION_CHECK_NOT_ISOLATED",
-        message: `${gaps.length} declared check(s) have no reject that fails them alone: ${gaps.join("; ")}`,
-      },
-      `${gaps.length} declared check(s) have no reject control that fails on them alone: ${gaps.join("; ")}. Every reject naming one of those checks is also refused by another declared check, so the census does not show it refusing anything its neighbours accept. Add one reject per check that fails that check and no other`,
-    ),
-  ];
-}
-
 async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<void> {
   // A hidden-comparison reject is verified with its evaluate-side operand. External rejects carry no
   // hidden data.
@@ -493,37 +454,22 @@ async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<v
     (control) => evaluateInLane(run, control, hiddenOf(control)),
     () => laneStopped(run),
   );
-  // A reject counts only when its declared check fails; that check is the one the census ran.
+  // A reject counts only when its declared check fails; that check is the one the census ran, so
+  // an unrelated schema or empty-input failure cannot stand in for the intended mutation.
   const missed: string[] = [];
-  const byCheck = new Map<string, CheckIsolation>();
   for (const [index, control] of corpus.reject.entries()) {
     const observation = observations[index];
     if (observation === undefined) break;
     const observed = admitObservation(run, control, observation);
     if (observed === null) continue;
-    const expected = control.expectedCheckId;
-    if (!sideMatchesExpected(observed.side, "fail", expected)) {
+    if (!sideMatchesExpected(observed.side, "fail", control.expectedCheckId)) {
       missed.push(
         control.mutationClass === undefined
           ? `"${control.id}"`
           : `"${control.id}" (${control.mutationClass})`,
       );
-      continue;
     }
-    const row = byCheck.get(expected) ?? {
-      ids: [],
-      classes: new Set<string>(),
-      beside: new Set<string>(),
-      isolated: false,
-    };
-    row.ids.push(control.id);
-    row.classes.add(control.mutationClass ?? "unnamed");
-    const beside = [...blockingFailedCheckIds(observed.result)].filter((checkId) => checkId !== expected);
-    if (beside.length === 0) row.isolated = true;
-    for (const checkId of beside) row.beside.add(checkId);
-    byCheck.set(expected, row);
   }
-  run.findings.push(...isolationFinding(byCheck));
   // Every example stays on the evidence message; the author reads the first eight and a count.
   if (missed.length > 0) {
     run.findings.push(
@@ -566,8 +512,7 @@ export async function runControls(
     rejects: corpus.reject.length,
     ...settled.totals,
     controlReceipts: settled.controlReceipts,
-    // An advisory row names a control gap; it does not refuse the candidate or the claim.
-    claimable: !run.findings.some((finding) => !ADVISORY_DISCRIMINATION_CODES.has(finding.code)),
+    claimable: run.findings.length === 0,
     findings: run.findings,
   };
 }

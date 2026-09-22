@@ -27,7 +27,6 @@ import {
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
-import { ADVISORY_DISCRIMINATION_CODES } from "../claim/discrimination-claimability.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -545,30 +544,17 @@ function settleFailure(
   return attempt === "first" ? "retry" : settleToolUnavailable(context, failure, completed);
 }
 
-/** The control census's rows: the findings that refuse the candidate, and beside them the advisory
- *  ones, which report a gap the author may close without failing the gate. */
+/** The control census's one row: every finding it returned refuses the candidate. */
 function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
-  const row = (severity: "blocking" | "advisory", rows: ContractFinding[]): CampaignFeedback[] =>
-    rows.length === 0
-      ? []
-      : [
-          {
-            owner: "correctness-model",
-            severity,
-            claim: `control census against the installed tools returned ${rows.length} finding(s)`,
-            evidence: "census gate: executed discrimination evidence (census.json)",
-            findings: controllerValidatedFindings(rows),
-          },
-        ];
+  if (findings.length === 0) return [];
   return [
-    ...row(
-      "blocking",
-      findings.filter((finding) => !ADVISORY_DISCRIMINATION_CODES.has(finding.code)),
-    ),
-    ...row(
-      "advisory",
-      findings.filter((finding) => ADVISORY_DISCRIMINATION_CODES.has(finding.code)),
-    ),
+    {
+      owner: "correctness-model",
+      severity: "blocking",
+      claim: `control census against the installed tools returned ${findings.length} finding(s)`,
+      evidence: "census gate: executed discrimination evidence (census.json)",
+      findings: controllerValidatedFindings(findings),
+    },
   ];
 }
 

@@ -99,9 +99,8 @@ test("a live cascading rejection that includes the declared check is attributed;
   );
   expect(cascade.rejectsFailed).toBe(1);
   expect(cascade.rejectsAttributed).toBe(1);
-  // The cascade attributes, and the corpus's one reject never fails "parts-assigned" alone, so the
-  // isolation gap is reported without refusing the candidate.
-  expect(cascade.findings.map((row) => row.code)).toEqual(["DISCRIMINATION_CHECK_NOT_ISOLATED"]);
+  // A reject may fail further checks beside its declared one (operator decision 2026-09-14).
+  expect(cascade.findings).toEqual([]);
   expect(cascade.claimable).toBe(true);
   const alone = await runControls(
     () => ({

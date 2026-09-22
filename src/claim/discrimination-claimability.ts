@@ -18,20 +18,7 @@ type DiscriminationClaimabilityCode =
   // From runControls: a control the host could not run to a verdict (timeout, crash, sandbox,
   // unavailable tool).
   | "DISCRIMINATION_PROBE_NO_VERDICT"
-  | "DISCRIMINATION_CONTROL_RECEIPT_INVALID"
-  // From runControls: every reject naming a check also fails another declared check, so the corpus
-  // never shows that check refusing an artifact the others accept. Weakening or dropping the
-  // comparison would leave the census passing on the strength of its neighbours.
-  | "DISCRIMINATION_CHECK_NOT_ISOLATED";
-
-/** Codes that report a gap without refusing the candidate. A reject is built from its accept by
- *  changing one fact and may fail further checks by design (operator decision 2026-09-14), and a
- *  check whose condition another subsumes cannot be isolated at all, so this reads as a control
- *  gap to close rather than a contract the candidate broke. `runControls` keeps such a row out of
- *  `claimable` and the census gate reads the same set for its row severity: one list, two readers. */
-export const ADVISORY_DISCRIMINATION_CODES: ReadonlySet<string> = new Set<DiscriminationClaimabilityCode>([
-  "DISCRIMINATION_CHECK_NOT_ISOLATED",
-]);
+  | "DISCRIMINATION_CONTROL_RECEIPT_INVALID";
 
 export type DiscriminationClaimabilityFinding = {
   code: DiscriminationClaimabilityCode;

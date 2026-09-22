@@ -14,6 +14,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { type JsonObject, isRecord } from "../meta/json-shape.ts";
@@ -23,6 +24,7 @@ import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import { OPERATOR_BACKENDS_DIR } from "../backends/operator-selection.ts";
 import { bundleSlug, loadContract } from "./bundle-entry.ts";
 import { externalChecksOf } from "../truth/brief.ts";
+import { relocateToolLauncher } from "../author/toolchain-relocation.ts";
 import { readJsonFile, writeJsonFile } from "../meta/completed-json.ts";
 
 /** Repository parts an exported bundle imports at runtime. `bun.lock` carries every version pin;
@@ -53,7 +55,8 @@ interface ExportedBundle {
   /** Top-level entries of the exported directory, sorted. */
   entries: string[];
   toolTree: "copied" | "absent";
-  /** Tool-tree links to host files or to nothing, left out; such a tool resolves from the host PATH. */
+  /** Tool-tree links to host files or to nothing, and files that still name the adopted tree after
+   *  relocation, left out; such a tool resolves from the host PATH. */
   leftOut: string[];
 }
 
@@ -118,7 +121,8 @@ export function exportBundle(repoRoot: string, bundleDirInput: string, outDirInp
   // the host's Bun, which the exported tool then finds on the host PATH.
   if (toolTree === "copied") {
     const root = realpathSync(toolTreeSource);
-    cpSync(root, join(outDir, WORKSPACE_TOOL_TREE), {
+    const copy = join(outDir, WORKSPACE_TOOL_TREE);
+    cpSync(root, copy, {
       recursive: true,
       dereference: true,
       filter: (source) => {
@@ -127,6 +131,13 @@ export function exportBundle(repoRoot: string, bundleDirInput: string, outDirInp
         return inside;
       },
     });
+    // The copy runs from its new place, as a rebuild's seed copy does: a Python launcher or Mach-O
+    // install name naming the adopted tree moves with it, and a file that cannot move is left out.
+    for (const name of new Bun.Glob("**/*").scanSync({ cwd: copy, dot: true })) {
+      if (relocateToolLauncher(join(copy, name), root, copy, name) !== "retains-adopted-path") continue;
+      rmSync(join(copy, name));
+      leftOut.push(name);
+    }
   }
   // A package name is lowercase with no separators beyond `-`, `.` and `_`.
   const slug =

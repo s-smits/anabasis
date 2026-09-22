@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -149,6 +150,26 @@ describe("an exported Built Harness bundle", () => {
     expect(header).toMatch(
       /host PATH: (dangling|unselected), (dangling|unselected)\. Its checks run: tool\.$/,
     );
+  });
+
+  it("moves a launcher naming the adopted tree into the export and leaves out a file that cannot move", () => {
+    const bundle = join(scratch, "launcher-tools");
+    const tools = join(scratch, "launcher-adopted");
+    const target = join(scratch, "launcher-export");
+    writeMatchingBuildFixture(bundle);
+    mkdirSync(join(tools, "venv", "bin"), { recursive: true });
+    const executable = (path: string, text: string) => writeFileSync(path, text, { mode: 0o755 });
+    const adopted = realpathSync(tools);
+    executable(join(tools, "venv", "bin", "python"), "#!/bin/sh\n");
+    executable(join(tools, "venv", "bin", "field-cli"), `#!${adopted}/venv/bin/python\nprint(1)\n`);
+    executable(join(tools, "stuck"), `#!/bin/sh\nexec ${adopted}/venv/bin/python\n`);
+    symlinkSync(tools, join(bundle, ".toolchain"));
+    const result = exportBundle(REPO_ROOT, bundle, target);
+    expect(readFileSync(join(target, ".toolchain", "venv", "bin", "field-cli"), "utf8")).toBe(
+      `#!/bin/sh\n'''exec' "${join(target, ".toolchain", "venv", "bin", "python")}" "$0" "$@"\n' '''\nprint(1)\n`,
+    );
+    expect(result.leftOut).toEqual(["stuck"]);
+    expect(existsSync(join(target, ".toolchain", "stuck"))).toBe(false);
   });
 
   it("names a retained version after the project its record names, not its run id", () => {

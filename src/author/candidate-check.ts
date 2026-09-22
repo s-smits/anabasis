@@ -483,7 +483,10 @@ function solverShellFindings(toolsSpec: ToolsSpec | null): ContractFinding[] {
  *   strikes end it. Accepting would spend the whole census before each run settled as a
  *   non-result, which reads as the domain being ungradable;
  * - every named tool resolved → the candidate evaluates over those exact executables, and the
- *   returned condition digest names their paths, sources and byte digests (null with no tool).
+ *   returned condition digest names their paths, sources, byte digests and the bytes of the
+ *   interpreter a script runs under (null with no tool). The gate cache, the remembered preview
+ *   and the no-op strike all key on it, so an interpreter-only change is a new condition, as it
+ *   already was for `verifierEnvironmentHash`.
  */
 function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], findings: ContractFinding[]) {
   if (toolIds.length === 0) return { engineCondition: null, verifierEnvironmentHash: null };
@@ -512,7 +515,13 @@ function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], f
     engineCondition: hashJsonValue(
       Object.values(resolved.inventory)
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-        .map((entry) => ({ id: entry.id, path: entry.path, source: entry.source, digest: entry.digest })),
+        .map((entry) => ({
+          id: entry.id,
+          path: entry.path,
+          source: entry.source,
+          digest: entry.digest,
+          ...keyIfDefined("interpreterDigest", entry.interpreterDigest),
+        })),
     ),
   };
 }

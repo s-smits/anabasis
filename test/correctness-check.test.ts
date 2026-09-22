@@ -207,7 +207,7 @@ const rowsOf = (body: JsonObject) => ({ ...body, stages: undefined, repeated: un
  *  for this candidate, because it contains no environment failure. */
 const PRODUCT_GATE_FEEDBACK: CampaignFeedback[] = GATE_FEEDBACK.filter((row) => row.owner !== "environment");
 
-it("rechecks changed installed-tool bytes, preserves both trials and remembers each condition", async () => {
+it("rechecks changed installed-tool or interpreter bytes, preserves every trial and remembers each condition", async () => {
   const dir = workspace("tool-condition");
   const model = join(dir, "correctness-model");
   const brief = parseJsonAs<Brief>(readFileSync(join(model, "brief.json"), "utf8"));
@@ -255,6 +255,23 @@ it("rechecks changed installed-tool bytes, preserves both trials and remembers e
   install(2);
   expect((await preview()).status).toBe("clear");
   expect(trials).toHaveLength(3);
+  // The interpreter a script runs under is part of its condition, as it is of the verifier
+  // environment hash: a remembered gate run must not answer for interpreter bytes it never ran on.
+  const interpreter = join(bin, "field-interp");
+  const interpret = (body: string) => {
+    writeFileSync(interpreter, `#!/bin/sh\n# ${body}\n`);
+    chmodSync(interpreter, 0o755);
+  };
+  interpret("a");
+  writeFileSync(join(bin, "field-engine"), `#!${interpreter}\nexit 0\n`);
+  expect((await preview()).repeated).toBeUndefined();
+  expect(trials).toHaveLength(4);
+  expect((await preview()).repeated).toBeDefined();
+  interpret("b");
+  const reinterpreted = await preview();
+  expect(reinterpreted.repeated).toBeUndefined();
+  expect(reinterpreted.snapshotId).toBe(first.snapshotId);
+  expect(trials).toHaveLength(5);
 });
 
 describe("correctness_check", () => {

@@ -1,8 +1,7 @@
 /**
  * The battery's consecutive-provider stop rule. A provider outage or usage limit can affect every
- * live case at once (run truss-w35-opus lost 15 of 25 contest cases in one outage), and the
- * judge census already stops its paid calls after five consecutive provider errors. The battery
- * mirrors that rule: after BATTERY_PROVIDER_STOP_CONSECUTIVE consecutive provider-kind solver
+ * live case at once, so, as the Judge does for its paid calls, after
+ * BATTERY_PROVIDER_STOP_CONSECUTIVE consecutive provider-kind solver
  * non-results, no further case is scheduled. Every unscheduled task still records a typed provider
  * non-result naming the stop, so the denominator stays complete. A single provider failure never
  * stops scheduling. A non-provider result resets the count, and active cases finish normally.

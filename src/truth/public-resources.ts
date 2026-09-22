@@ -1,7 +1,6 @@
 /**
- * A brief may contain public design constants and allowed values. Run 50 showed that the Judge
- * needed these rules as well as the domain name and artifact schema. Without them, it could only
- * abstain on controls that depended on a design rule.
+ * A brief may contain public design constants and allowed values, which both the solver and the
+ * Judge need beside the domain name and artifact schema to decide anything a design rule governs.
  *
  * `briefPublicResources` returns public rule assertions and paths beside `designRuleConstants`
  * and `designRuleSets` to the solver, together with public rule decisions and the artifact schema.
@@ -136,13 +135,11 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   }));
   if (publicRules.length > 0) resources.push(makePublicResource("public-validity-rules", publicRules));
   // The statement half of a rule whose paths the row above carries. A check's assertion is one
-  // sentence; a frame format, an ordering rule or a membership join needs more than a sentence,
-  // and before this resource the only place with room for it was `decisions`, which nothing reads.
+  // sentence; a frame format, an ordering rule or a membership join needs more room than that.
   const ruleDecisions = publicRuleDecisions(brief);
   if (ruleDecisions.length > 0) resources.push(makePublicResource("public-rule-decisions", ruleDecisions));
-  // The Judge card has always carried the artifact schema; the solver did not. Run w12 lost all 14
-  // of its verified failures to validity conventions written only in artifact-schema field notes the
-  // Judge could read and the solver could not, so the same public interface now reaches both.
+  // The solver receives the artifact schema too, since its field notes can state validity
+  // conventions the Judge also reads.
   if (brief.artifactSchema.length > 0) {
     resources.push(makePublicResource("artifact-schema", publicArtifactSchemaRows(brief)));
   }
@@ -156,8 +153,8 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   return resources;
 }
 
-/** The one public card every review model receives: run 50 added it for the Main Judge's census,
- *  so a review reads the domain rules from one card instead of inferring them from the trace. */
+/** The one public card every review model receives, so a review reads the domain rules from one
+ *  card instead of inferring them from the trace. */
 export function judgePublicDomainOf(
   brief: Brief,
   context: Pick<JudgePublicDomain, "publicRequest" | "toolContract" | "runtimeFacts">,
@@ -171,15 +168,10 @@ export function judgePublicDomainOf(
       // The card already carries the schema as its own field, and public rules enter per task.
       ({ name }) => name !== "public-validity-rules" && name !== "artifact-schema",
     ),
-    // Both cards exclude `brief.decisions`. It maps which task families the harness covers
-    // and leaves out; it is not the declaration of a public correctness rule. A
-    // Judge-only `design-decisions` resource once carried it here (added after run 69's
-    // missed derived-field rules), but a rule the solver never receives is not a public
-    // validity condition. Giving that free text only to the Judge let it apply conditions
-    // unavailable to the solver. Both cards instead use truthChecks,
-    // designRuleConstants, designRuleSets and the public ruleDecisions rows, which reach
-    // this card through `briefPublicResources` precisely because the solver receives them
-    // too. The same public rules must be available to both consumers.
+    // Both cards exclude `brief.decisions`: it maps which task families the harness covers, not
+    // a public correctness rule, and a rule only the Judge sees is not a public validity
+    // condition. Both cards use the rows `briefPublicResources` returns, so the solver and the
+    // Judge read the same public rules.
     toolContract: trustedStructuredClone(context.toolContract),
     runtimeFacts: trustedStructuredClone(context.runtimeFacts),
   };

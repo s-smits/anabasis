@@ -18,8 +18,7 @@ export type SolverNonResult = {
 };
 
 /** `solve-wall`: the whole-solve wall stopped a solver that had already called tools. The case
- *  stays unaccepted with this typed cause; eaf98f (2026-09-14) recorded two such cuts as
- *  `non-result / runtime` here while their case rows said unaccepted with no kind. */
+ *  stays unaccepted with this typed cause, not a runtime non-result. */
 type BuiltWorkerTermination =
   | { status: "normal" }
   | { status: "solve-wall"; message: string }

@@ -1,9 +1,7 @@
 /**
- * The F2 reference-solve stage: run the generated public reference package for one public task
- * under the generated-worker wall and report what it produced. The stage reads exactly the
- * portable reference bundle digest, the confined runtime identity, the canonical public request
- * and the wall and output constants below; its settled product outcomes are remembered under
- * that key (solvability-stages.ts). Reference artifacts remain protected evidence.
+ * The F2 reference-solve stage: runs the generated reference package for one public task under the
+ * generated-worker wall. Settled product outcomes are remembered under a key of the bundle digest,
+ * runtime identity, request bytes and the limits below. Reference artifacts stay protected.
  */
 
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
@@ -52,9 +50,7 @@ const REFERENCE_SOLVE_STDERR_MAX = 65_536;
 const REFERENCE_SOLVE_STAGE = "reference-solve-stage/v1";
 const REFERENCE_SOLVE_TIMEOUT_ERROR = /^reference solve child exceeded \d+ms$/;
 
-/** The generated-solve kinds plus the one the host owns: a controller deadline before the worker
- *  was ready or closed is the host's, while a worker that answered and then broke its protocol is
- *  the candidate's. */
+/** The generated-solve kinds plus the host's own: a failure before the child was ready. */
 type ReferenceSolveFailureKind = GeneratedSolveFailureKind | "reference-solve-host";
 
 /** One bounded stream read: the bytes kept, and whether the child wrote past its cap. */
@@ -63,8 +59,7 @@ interface CappedRead {
   overflow: boolean;
 }
 
-/** Everything the host observed about one finished reference-solve child, before any of it is read
- * as an answer. */
+/** What the host observed about one finished reference-solve child. */
 interface ReferenceSolveChildOutput {
   ready: boolean;
   timedOut: boolean;
@@ -113,8 +108,8 @@ interface ReferenceSolveStageInput {
   memory: SolvabilityStageMemory<ReferenceSolveOutcome> | undefined;
 }
 
-/** A reference solve the per-task wall stopped: the controller wrote this error, so its count is
- *  public to the author while the task identities stay protected. */
+/** Whether the per-task wall stopped this reference solve. The controller wrote the error, so the
+ *  count may reach the author; task identities stay protected. */
 export function referenceSolveTimedOut(row: { error: string | null }): boolean {
   return row.error !== null && REFERENCE_SOLVE_TIMEOUT_ERROR.test(row.error);
 }
@@ -130,9 +125,8 @@ export class ReferenceSolveProcessFailure extends Error {
   }
 }
 
-/** Decide what the child produced. The controller ready marker is the whole owner rule: a child
- * that never reached it failed before generated solve code ran, so the host owns the failure; after
- * it, every remaining refusal is the generated correctnessModel's. */
+/** Decides what the child produced. The ready marker decides the owner: before it, the host owns a
+ *  failure; after it, generated code does. */
 function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   const stdoutText = new TextDecoder().decode(output.stdout.bytes);
   const { ready } = output;
@@ -357,8 +351,8 @@ async function runReferenceChild({ bundle, policy, request, timeoutMs, lifetime 
   }
 }
 
-/** Bundle the public reference closure and fix the confined runtime. A failure here happens before
- *  any generated code runs, so the host owns it. */
+/** Bundles the public reference closure and fixes the confined runtime. A failure here precedes
+ *  generated code, so the host owns it. */
 async function prepareReferenceSolve(
   slugDir: string,
   task: PublicTask<JsonValue>,
@@ -389,7 +383,7 @@ async function prepareReferenceSolve(
   return { bundle, policy, request, timeoutMs, lifetime: verifierLifetime };
 }
 
-/** Run only the public reference dependency closure under the real generated-worker wall. */
+/** Runs only the public reference closure under the generated-worker wall. */
 export async function executeIsolatedReferenceSolve(
   slugDir: string,
   task: PublicTask<JsonValue>,
@@ -415,9 +409,8 @@ export function isReferenceSolveIsolationFailure(cause: unknown): boolean {
   );
 }
 
-/** Settled and product-owned: an artifact, or a refusal the generated solve itself reported. A crash
- *  can be a host kill, a timeout is the wall's cut, and a path error names the wall; none of those
- *  is a verdict on these bytes. */
+/** Only a verdict on the bytes is remembered: an artifact or a refusal the generated solve
+ *  reported. Crashes, timeouts and path errors may be the host's or the wall's. */
 function rememberable(outcome: ReferenceSolveOutcome): boolean {
   if (outcome.kind === "artifact") return true;
   const { kind, owner, detail } = outcome.failure;
@@ -440,8 +433,8 @@ function referenceSolveStageKey(
   });
 }
 
-/** Solve one public task, or reuse a settled outcome recorded under the same key. Preparation
- *  failures and untyped throws propagate with no receipt: nothing keyed was read to completion. */
+/** Solves one public task, or reuses a settled outcome under the same key. Preparation failures
+ *  and untyped throws propagate with no receipt. */
 export async function referenceSolveStage(
   input: ReferenceSolveStageInput,
 ): Promise<{ outcome: ReferenceSolveOutcome; receipt: SolvabilityStageReceipt }> {

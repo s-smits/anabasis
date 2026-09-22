@@ -12,29 +12,11 @@ const JUDGE_PROMPT_TARGETS = ["census"] as const;
 type JudgePromptTarget = (typeof JUDGE_PROMPT_TARGETS)[number];
 
 /**
- * Census: run 53's maintainer candidate, adopted verbatim. Later edits, each on operator
- * instruction: the abstain example names absent rules only (2026-08-06, run 68 abstained on 20 of
- * 20 accept controls because "the task is not stated" matched every taskless control); a failure
- * may not rest on a convention the Judge was never shown (2026-08-19, run 69's hold was built on
- * agent tool text); a declared value is compared against its whole shown definition (2026-09-02,
- * truss-run6-opus-0902 passed peaks of -33.63 kN against a "largest absolute" rule after
- * recomputing only the magnitude; the two verifier capabilities the KDD 2026 verifier taxonomy
- * finds text-only judges miss most are recomputing a derived figure and checking signs, Dücker
- * et al., Verifying Agents in Rubric-Graded Environments, Table 1); a recomputation failure states
- * both values and the tolerance and survives only a gap beyond the Judge's own rounding
- * (2026-09-15, replay of truss-opus-0aad0d-i03 forbidden-volumes-02: the recorded fail rested on a
- * 12 g gap in 1134 kg from rounded member lengths; the same input recomputed at full precision passed);
- * a recomputation supplies neither its own tolerance nor its own intermediates (2026-09-19, run
- * de8b40 bridge-01: both samples failed a verifier-passed case on "gap 0.149 kg > 0.05 kg
- * tolerance", where the bound task publishes `reportToleranceRelative` 0.01 — 2.88 kg on a 288 kg
- * design — and the member lengths the confirmation summed differ from the submitted design's in
- * the second decimal, 31.941088 m against 31.910804 m. The 2026-09-15 rounding clause did not
- * reach it: the sample states the gap is "well beyond my rounding", and it was, because the error
- * was in lengths it derived from joint coordinates rather than in the arithmetic over them);
- * a run the Judge cannot perform is not decided by predicting it (2026-09-15 census of 10,358
- * recorded verdicts: the largest verifier-pass/Judge-fail shape was one predicted compile failure
- * repeated across five run52 iterations, each passed by the verifier's real compile; the largest
- * verifier-fail/Judge-pass shape was a pass on "all scenarios" the Judge never ran).
+ * The census prompt. Beyond the core instruction it states that an abstention names absent rules
+ * only; a failure rests on shown rules, not an unseen convention; a declared value is compared
+ * against its whole shown definition, signs included; a recomputation states both values and the
+ * published tolerance, and fails only beyond the Judge's own rounding; and a run the Judge cannot
+ * perform is not decided by predicting its outcome.
  */
 export const ACTIVE_JUDGE_PROMPTS = {
   census: [

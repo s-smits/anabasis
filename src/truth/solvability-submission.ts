@@ -38,8 +38,8 @@ type SolvabilitySubmissionResult =
   | { status: "non-result"; detail: string };
 type SolvabilitySubmissionPathFailure = Exclude<SolvabilitySubmissionResult, { status: "accepted" }>;
 
-/** One reference artifact's submission result, before any truth verdict exists. A failed
- * outcome already carries its whole attribution: owner, kind and the author-visible classification. */
+/** One reference artifact's submission result, before any truth verdict. A failed outcome carries
+ *  its whole attribution: owner, kind and author-visible classification. */
 export interface SolvabilitySubmissionOutcome {
   artifactJson: string | null;
   submissionPath: SolvabilitySubmissionPathEvidence | null;
@@ -61,27 +61,6 @@ export const UNATTRIBUTED: SolvabilitySubmissionOutcome = {
   failureKind: null,
 };
 
-/**
- * The second spelling of absence. Where the reference answer writes null, null is how the
- * contract says "does not apply"; a writer schema that also accepts the empty string there gives
- * one meaning two spellings, and the agent picks. Run w6 is why: its writer declared
- * `Type.Union([Type.String(), Type.Null()])`, the agent wrote `""` on the rows the answer leaves
- * absent, and eight of twenty-five cases failed on that alone, with every other field correct.
- *
- * The empty string alone, not representation-census.ts's wider ABSENCE vocabulary. That census
- * reads what the reference answer wrote and may assess "n/a" in the domain; this checks what a
- * writer permits the agent to write. "n/a" or "none" can be legitimate free text. This rule
- * specifically treats an empty string beside a reference null as an ambiguous absence value.
- *
- * The comparison uses the writer schema and reference artifact without running the verifier.
- * Its findings still follow the protected submission-result feedback path.
- *
- * One traversal finds each null and probes a copy of the artifact with `""` at that position. The
- * copy is built from shallow copies along the walked path, so nothing shared is mutated. Array
- * indices collapse to `[]` only in the reported path. Deduplicate on the exact position because a
- * tuple types its positions separately and collapsing them would let the first element decide for
- * a later one the writer types differently.
- */
 /** No writer types this marker object where a reference answer writes null, so a schema that
  *  accepts it at a null position has not declared that position at all. */
 const UNDECLARED_POSITION_PROBE: JsonValue = { "ana-absence-spelling-probe": true };
@@ -133,8 +112,7 @@ function schemaAccepts(tool: AgentTool<never>, artifact: Record<string, JsonValu
   }
 }
 
-/** The declared domain artifact-writers whose own parameter schema accepts this artifact. A writer
- *  whose schema refuses the payload never carries F2, so its spellings are not this artifact's problem. */
+/** The domain artifact-writers whose parameter schema accepts this artifact. */
 function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonValue>): AgentTool<never>[] {
   return starter.registration.tools
     .filter(({ owner, authority }) => owner === "domain" && authority === "artifact-writer")
@@ -142,6 +120,15 @@ function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonVa
     .filter((tool): tool is AgentTool<never> => tool !== undefined && schemaAccepts(tool, artifact));
 }
 
+/**
+ * The first position where the writer accepts `""` although the reference answer writes null,
+ * giving absence two spellings for the agent to choose between. Only the empty string counts:
+ * "n/a" or "none" can be legitimate free text.
+ *
+ * Each probe replaces one null in a shallow copy along the walked path, so nothing shared is
+ * mutated. Array indices collapse to `[]` only in the reported path; deduplication uses the exact
+ * position, because a tuple may type its positions differently.
+ */
 export function absenceSpellingAdmitted(
   tool: AgentTool<never>,
   artifact: Record<string, JsonValue>,
@@ -157,9 +144,8 @@ export function absenceSpellingAdmitted(
       if (probed.has(exact)) return null;
       probed.add(exact);
       if (!schemaAccepts(tool, build(""))) return null;
-      // A non-strict Check ignores undeclared positions, so "" alone proves nothing: a subset
-      // writer paired with the whole artifact "admits" every null root it never typed (run w12,
-      // eight blind iterations). The position is this writer's only when it can also reject there.
+      // A non-strict Check ignores undeclared positions, so "" alone proves nothing. The position
+      // is this writer's only when it can also reject there.
       return schemaAccepts(tool, build(UNDECLARED_POSITION_PROBE)) ? null : { path };
     }
     if (Array.isArray(value)) {
@@ -186,11 +172,8 @@ export function absenceSpellingAdmitted(
   return null;
 }
 
-/** Check each compatible domain writer for a second spelling of absence before selecting a
- *  submission path. Whole-artifact writers and the files preset are alternatives, so a check
- *  inside only one path could be bypassed by another. Earlier code also had a trace-replay
- *  alternative with the same risk. This uses tool schemas and the reference artifact without
- *  executing a writer, and reports the same ambiguity whichever path will carry F2. */
+/** Checks every compatible writer for a second spelling of absence before choosing a submission
+ *  path, so no alternative path can bypass it. Uses schemas only; no writer runs. */
 function absenceSpellingRefusal(starter: BuiltStarter, artifact: Record<string, JsonValue>): string | null {
   for (const tool of acceptingWriters(starter, artifact)) {
     const ambiguous = absenceSpellingAdmitted(tool, artifact);
@@ -207,16 +190,9 @@ function absenceSpellingRefusal(starter: BuiltStarter, artifact: Record<string, 
 }
 
 /**
- * Attribute a worker failure. A child that answered its ready handshake ran the isolation probe
- * before generated code loaded. A `runtime` or `protocol` failure
- * after that is the generated factory, its registration or its execution — a product defect, not a
- * host outage under this classifier. `sandbox` remains an environment failure.
- *
- * A controller deadline is the exception, whatever kind it carries. The clock says the child
- * did not answer in time, never that the bytes are wrong: run 51 round 2 recorded one worker that
- * timed out before its handshake and one that missed the 1 s close deadline, on adopted bytes that
- * passed 25/25 both before and after, and the census read them as a representation defect and sent
- * the Builder to repair its writer. These deadlines return an operational non-result.
+ * Attributes a worker failure. After the ready handshake, a `runtime` or `protocol` failure is the
+ * generated code's: a representation defect. `sandbox` stays an environment failure. A controller
+ * deadline of any kind is a non-result, since a slow child says nothing about its bytes.
  */
 function startedWorkerFailure(failure: BuiltStarterNonResult): SolvabilitySubmissionPathFailure {
   const detail = failure.message;
@@ -298,8 +274,8 @@ async function executePath(
       /* SAFETY: the inherited submit tool takes no argument; `never` is the controller-side parameter type for a schema it does not model. */ {} as never,
     );
     const final = authority.finalSubmission();
-    if (final === null) throw new Error("submit produced no accepted artifact bytes");
-    if (final.artifactJson === null) throw new Error("submit produced no accepted artifact bytes");
+    if (final === null || final.artifactJson === null)
+      throw new Error("submit produced no accepted artifact bytes");
     const accepted = trustedJsonParse(final.artifactJson);
     if (!sameJsonValue(artifact, accepted)) {
       throw new Error("the writer cannot materialise the reference artifact without changing its value");
@@ -422,8 +398,8 @@ async function structuredWriterPath(
   return last;
 }
 
-/** Only the public JSON artifact enters this confined worker from the isolated reference solver;
- * verifier results, hidden task data and repair details do not cross. */
+/** Only the public JSON artifact enters this confined worker; verifier results, hidden task data
+ *  and repair details do not. */
 async function traverseReferenceArtifact(options: Traversal): Promise<SolvabilitySubmissionResult> {
   let controller: ControllerInterface;
   try {
@@ -456,7 +432,7 @@ async function traverseReferenceArtifact(options: Traversal): Promise<Solvabilit
   }
 }
 
-/** Serialise, public-schema check, write, materialise and submit one isolated solve result. */
+/** Serialises, schema-checks, writes, materialises and submits one isolated solve result. */
 export async function submitSolvabilityReferenceArtifact(
   options: SolvabilitySubmissionRequest,
 ): Promise<SolvabilitySubmissionOutcome> {

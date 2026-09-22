@@ -9,8 +9,7 @@ const PRESET_TOOL_NAMES = {
   "public-data": [DATA_READER_TOOL],
   files: ["read", "write", "edit", "materialize_files", "bash"],
   // The same shell without the draft-file answer: a structured answer keeps its artifact-writer,
-  // and the solver still computes, searches and tests in a real directory (operator decision
-  // 2026-09-14; the files preset needs a file-shaped root, so 62 truss epochs declined it).
+  // and the solver still computes, searches and tests in a real directory.
   shell: ["bash"],
 } satisfies Record<BuiltPresetId, readonly string[]>;
 

@@ -1,6 +1,6 @@
 /** `agent/config.yaml`: the runtime settings a Built Harness declares for itself, read from the
- *  submitted snapshot by the solver, the submit gate and measurement (operator decision
- *  2026-09-16). The Builder is told the file exists, not what it holds. The host maximums live
+ *  submitted snapshot by the solver, the submit gate and measurement. The Builder is told the
+ *  file exists, not what it holds. The host maximums live
  *  only here, under `src/truth/`, which the Builder cannot read; each is ten times its default. */
 
 import { existsSync, readFileSync } from "../meta/filesystem.ts";

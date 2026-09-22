@@ -109,8 +109,8 @@ async function start(row: EvaluatorStart, load: () => Promise<CheckModule>): Pro
   const checks = mod.checks as Record<string, CheckFn>;
   const check: unknown = Object.getOwnPropertyDescriptor(checks, row.checkId)?.value;
   if (!isFunction(check)) throw new Error("selected check export is missing");
-  // Run 077e56 destructured `{ artifact, runtime }` from the request and threw on every accept;
-  // the port rides in both places so either way of reading it reaches the host.
+  // The port rides both on the request and as the second argument, so either way of reading it
+  // reaches the host.
   const request: Parameters<CheckFn>[0] = { ...row.request, ...keyIfDefined("runtime", runtime) };
   // SAFETY: the selected own export is a function; the host supplies the CheckFn request and validates its result below.
   const result: unknown = await (check as CheckFn)(request, runtime);

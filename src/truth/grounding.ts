@@ -1,5 +1,5 @@
 /**
- * Recorded evidence-source declarations for truth checks (scientific-verifier handover, C1).
+ * Recorded evidence-source declarations for truth checks.
  * Current checks distinguish authored computation and required tool execution; the union also
  * retains intrinsic and exception declarations for readers of earlier evidence.
  *

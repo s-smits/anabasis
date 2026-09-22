@@ -3,8 +3,7 @@
  * A census finding's message is evidence and may hold issue text or a thrown message. The producer
  * states once what the author may read: a sentence composed only of public authoring identities —
  * control row ids, mutation classes, family names and declared check ids — or a withheld
- * classification. Run w11 spent 36 iterations on the payload-free label because no census finding
- * composed such a sentence. The disclosure travels on the finding row itself, so a copied or
+ * classification. The disclosure travels on the finding row itself, so a copied or
  * recorded row keeps it. A finding the producer did not mark stays withheld. */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";

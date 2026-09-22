@@ -1,8 +1,4 @@
-/** Shared limit for retained diagnostic text, including Codex stderr and Judge errors.
- *  Both use this value instead of defining separate 500-character limits (Sol review,
- *  run-16 review). Other outputs have different needs: scrub-env.ts allows 800 characters,
- *  while the Codex console line allows 300. Those limits remain with their callers because
- *  they govern different records and displays. */
+/** Shared limit for retained diagnostic text, such as Codex stderr and Judge errors. */
 export const DEFAULT_DIAGNOSTIC_MAX_CHARS = 500;
 
 /**
@@ -15,17 +11,15 @@ export function redactTokens(text: string): string {
     .replace(/\b(?:github_pat|gho|ghp|ghs|sk|or|xox[baprs]?)[-_][A-Za-z0-9_=-]{8,}\b/g, "[redacted-token]")
     .replace(/([?&](?:token|key|signature|sig|access_token)=)[^\s&]+/gi, "$1[redacted]")
     .replace(
-      // Start only at the field's left edge. Without this boundary, a long alphanumeric diagnostic
-      // retries the greedy key prefix at every byte before deciding it is not a secret field.
+      // Start only at the field's left edge, so a long alphanumeric run is not rescanned per byte.
       /(?<![A-Za-z0-9_-])(["']?)([A-Za-z0-9_-]*(?:api[_-]?key|token|secret|password|authorization|credential|private[_-]?key|database[_-]?url|session[_-]?cookie)[A-Za-z0-9_-]*)\1\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/gi,
       (_match, quote: string, key: string) => `${quote}${key}${quote}=[redacted]`,
     );
 }
 
 /**
- * Provider SDK diagnostics can include useful outage signatures plus account, header, or local-path
- * details. Keep the diagnostic usable for runtime-blocker matching, but remove private/account-shaped
- * details and cap the string before it is persisted in turn-summary evidence.
+ * Redact account, header and local-path details from a provider diagnostic while keeping its outage
+ * signature, and cap it before it is persisted.
  */
 export function redactProviderDiagnostic(text: string, maxChars = DEFAULT_DIAGNOSTIC_MAX_CHARS): string {
   const redacted = redactTokens(text)

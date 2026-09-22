@@ -1,12 +1,7 @@
 /**
- * Shared task-id scan for text-access checks. A plain `includes` can match `t1` inside `t12`
- * or `slot-t1x`, unnecessarily withholding or redacting text. A one-character id such as `a`
- * also matches ordinary English words. Checking identifier boundaries distinguishes `t1`
- * from longer ids, while skipping ids shorter than the minimum avoids treating articles as
- * task references. Even word boundaries cannot distinguish the task `a` from the article.
- * Two-letter ids that are words, such as `of`, remain scannable and may match ordinary prose.
- * The candidate check reports the id in its finding so the Builder can choose a less
- * ambiguous task name.
+ * Shared task-id scan for text-access checks. Identifier boundaries keep `t1` from matching inside
+ * `t12` or `slot-t1x`, and ids shorter than the minimum are skipped because a task `a` is
+ * indistinguishable from the article. Two-letter word ids such as `of` may still match prose.
  */
 const IDENTIFIER_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-";
 export const MIN_SCANNABLE_TASK_ID = 2;
@@ -23,10 +18,8 @@ export function namesTask(text: string, taskId: string): boolean {
   return false;
 }
 
-/** Censoring and leak checks retain substring matching: `task-901-fix` identifies task-901
- *  even with the joining hyphen. A false positive replaces text with a fallback or records
- *  a non-result. Skip only ids below the minimum length; the former bare `includes` matched
- *  ordinary sentences whenever a battery contained a task called `a`. */
+/** Substring match for censoring and leak checks, where `task-901-fix` names task-901 and a false
+ *  positive only costs a fallback. Ids below the minimum length are skipped. */
 export function mentionsTask(text: string, taskId: string): boolean {
   return taskId.length >= MIN_SCANNABLE_TASK_ID && text.includes(taskId);
 }

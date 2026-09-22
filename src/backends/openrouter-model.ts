@@ -1,14 +1,9 @@
 /**
- * The one owner of an OpenRouter model pin and its provider routing, shared by the host transport
- * (Builder, review) and the confined Built child so all three slots resolve one slug the same way.
+ * The one owner of an OpenRouter model pin and its provider routing, shared by every slot:
  *
- * Two facts live here:
- *
- * - Which model entry a slug resolves to. The Pi catalogue is incomplete: it omits `:free`
- *   variants and dated snapshots, while OpenRouter's endpoint accepts any live slug. Refusing an
- *   unlisted slug rejects real models, and synthesizing a generic entry for one drops the
- *   catalogue's `compat` flags (DeepSeek needs `requiresReasoningContentOnAssistantMessages`), so
- *   a dated snapshot takes its listed base model's metadata under the requested id.
+ * - Which model entry a slug resolves to. The Pi catalogue omits live slugs such as `:free`
+ *   variants and dated snapshots; a dated snapshot takes its listed base model's metadata (and
+ *   `compat` flags) under the requested id, and anything else gets a generic entry.
  * - Which upstream host serves it. `OPENROUTER_PROVIDER` names one or more provider slugs;
  *   pi-ai sends `model.compat.openRouterRouting` as the request's `provider` field.
  */
@@ -29,19 +24,18 @@ const OPENROUTER_PROVIDER_ENV = "OPENROUTER_PROVIDER";
 const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** The output allowance a synthesised entry promises, and the smallest input reserve a declared
- *  custom window must leave beside it. One pair owns both numbers so they cannot drift apart. */
+ *  custom window must leave beside it. */
 const CUSTOM_MAX_TOKENS = 16_384;
 const MIN_INPUT_RESERVE = 8_192;
 
 export interface OpenRouterEndpoint {
   /** The OpenAI-completions base a request is sent to, with `/chat/completions` appended. */
   baseUrl: string;
-  /** The env var name holding this endpoint's key. Names only; the value is never logged. */
+  /** The env var name holding this endpoint's key; the value is never logged. */
   apiKeyEnv: string;
   /** Somewhere other than OpenRouter, so it serves its own slugs and reads no upstream routing. */
   custom: boolean;
-  /** The context window this host serves, when `CUSTOM_CONTEXT_WINDOW` declares one. Prompt
-   *  admission and compaction read it; an absent value keeps the conservative default. */
+  /** The context window `CUSTOM_CONTEXT_WINDOW` declares; compaction reads it. */
   contextWindow?: number;
 }
 
@@ -67,8 +61,7 @@ export function openRouterProviderPin(env: Record<string, string | undefined>): 
 
 /**
  * A pin is ordered and exclusive: `order` preserves preference, `only` restricts routing to the
- * named hosts, and `allow_fallbacks: false` refuses a substitute. A run that silently moved to
- * another host would compare two servings of the same slug as one condition.
+ * named hosts, and `allow_fallbacks: false` refuses a substitute, so the served condition is fixed.
  */
 function openRouterRouting(pin: readonly string[] | undefined): OpenRouterRouting | undefined {
   if (pin === undefined) return undefined;
@@ -96,17 +89,15 @@ function genericEntry(
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow,
-    // Output never promises more than half the window, so a small declared context cannot be
-    // handed an output allowance the server cannot serve.
+    // Output never promises more than half the window.
     maxTokens: Math.min(CUSTOM_MAX_TOKENS, Math.floor(contextWindow / 2)),
   } satisfies Model<"openai-completions">;
 }
 
 /**
- * The listed base model of a dated snapshot, re-identified as the requested slug.
- * `deepseek/deepseek-v4-flash-0731` takes `deepseek/deepseek-v4-flash`'s entry. Only a `-` suffix
- * qualifies: a snapshot date carries its base model's context window, compat flags and thinking
- * levels, while `:free` and other tags change the terms of service enough to price differently.
+ * The listed base model of a dated snapshot, re-identified as the requested slug:
+ * `deepseek/deepseek-v4-flash-0731` takes `deepseek/deepseek-v4-flash`'s entry. Only a dated `-`
+ * suffix qualifies; `:free` and other tags may change terms and pricing.
  */
 function datedVariantOf(
   models: ReturnType<typeof createModels>,
@@ -115,7 +106,7 @@ function datedVariantOf(
   const baseId = DATED_VARIANT_ID.exec(id)?.[1];
   if (baseId === undefined) return undefined;
   const base =
-    /* SAFETY: the catalogue serves one completions provider, so every entry it returns for it carries that transport. */ models.getModel(
+    /* SAFETY: every entry of the one completions provider carries that transport. */ models.getModel(
       GENERATION_PROVIDER,
       baseId,
     ) as Model<"openai-completions"> | undefined;
@@ -125,15 +116,9 @@ function datedVariantOf(
 /**
  * Resolve one slug to the entry a turn will be served with, plus the pinned upstream provider.
  *
- * A `baseUrl` is given only when the turn goes somewhere other than OpenRouter, and that host
- * answers for its own slugs: every catalogue entry carries OpenRouter's own `baseUrl`, so returning
- * one would send the turn to OpenRouter while the operator believed they had pinned that host.
- *
- * A custom host's context window is a declared fact, not an inferred one. One measured llama.cpp
- * server ran `n_ctx` 262144, but the endpoint abstraction serves any OpenAI-compatible host, so an
- * undeclared window falls back to the same conservative 128k default an unlisted OpenRouter slug
- * gets; an operator of a larger or smaller server names it with `CUSTOM_CONTEXT_WINDOW`. Compaction
- * reads this value, so an inflated default would compact too late and fail at the server boundary.
+ * A `baseUrl` names a host other than OpenRouter, which answers for its own slugs; a catalogue
+ * entry would carry OpenRouter's `baseUrl` and send the turn there instead. Its context window is
+ * the declared one, else the conservative 128k default an unlisted slug gets.
  */
 export function resolveOpenRouterModelPin(
   id: string,
@@ -150,7 +135,7 @@ export function resolveOpenRouterModelPin(
   const models = createModels();
   models.setProvider(openrouterProvider());
   const listed =
-    /* SAFETY: the catalogue serves one completions provider, so every entry it returns for it carries that transport. */ models.getModel(
+    /* SAFETY: every entry of the one completions provider carries that transport. */ models.getModel(
       GENERATION_PROVIDER,
       id,
     ) as Model<"openai-completions"> | undefined;
@@ -164,8 +149,7 @@ export function resolveOpenRouterModelPin(
   };
 }
 
-/** A declared custom context window. Positive integer or nothing; anything else is a refusal
- *  that names the variable rather than a silent fallback a later compaction would contradict. */
+/** A declared custom context window: a positive integer or nothing; anything else is refused. */
 function declaredContextWindow(env: OptionalEnvValues): number | undefined {
   const raw = env.CUSTOM_CONTEXT_WINDOW?.trim();
   if (raw === undefined || raw === "") return undefined;
@@ -173,8 +157,7 @@ function declaredContextWindow(env: OptionalEnvValues): number | undefined {
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`CUSTOM_CONTEXT_WINDOW must be a positive integer of tokens, got "${raw}"`);
   }
-  // A window that cannot hold the output allowance plus a minimal input reserve would fail at the
-  // provider on every turn; refusing here names the fact instead of burning a paid turn.
+  // A window without room for the output allowance and an input reserve would fail every turn.
   if (parsed < CUSTOM_MAX_TOKENS + MIN_INPUT_RESERVE) {
     throw new Error(
       `CUSTOM_CONTEXT_WINDOW must allow ${CUSTOM_MAX_TOKENS} output tokens plus ${MIN_INPUT_RESERVE} input reserve, got ${String(parsed)}`,
@@ -201,11 +184,7 @@ function normalizeBaseUrl(configured: string): string {
 
 /**
  * Resolve the OpenAI-completions endpoint and its credential name from one set of env values.
- *
- * A free remote tier can fail through rate limiting (run 71 ended on a provider 429); a local
- * server provides another test option through the same protocol. Pi's openai-completions API reads
- * `model.baseUrl` and sends an ordinary chat completion, so llama.cpp, vLLM and other
- * OpenAI-compatible servers use this transport without a separate implementation.
+ * Any OpenAI-compatible server (llama.cpp, vLLM) can serve through this transport.
  *
  * Host and key resolve together so a key can never be sent to a host it does not belong to.
  * `OPENROUTER_BASE_URL` may tune the path on OpenRouter's own origin; another origin must use the
@@ -224,8 +203,7 @@ export function openRouterEndpointFrom(env: OptionalEnvValues): OpenRouterEndpoi
   }
   const custom = env.CUSTOM_ADDRESS?.trim();
   if (hasText(custom)) {
-    // The window is a required declaration, not a guess: compaction reads it, and a guessed
-    // window burns a long turn before the provider rejects the prompt.
+    // The window must be declared, because compaction reads it.
     const contextWindow = declaredContextWindow(env);
     if (contextWindow === undefined) {
       throw new EnvironmentRefusal(

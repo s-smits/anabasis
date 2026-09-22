@@ -5,8 +5,7 @@ interface SlotDefaults {
   reasoningEffort?: string;
 }
 
-/** Role-specific transport defaults. Keep a transport upgrade here instead of changing the
- * shared descriptor fallback. Explicit slot and transport env pins still win in resolve.ts. */
+/** Role-specific transport defaults, ahead of the descriptor fallback; env pins still win. */
 const BACKEND_SLOT_DEFAULTS = new Map<BackendKind, Partial<Record<BackendSlot, SlotDefaults>>>([
   [
     "codex",

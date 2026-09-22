@@ -3,7 +3,6 @@
  * manual paste fallback for headless hosts, and the race between them. The provider modules keep
  * only their endpoints, client ids and token shapes.
  */
-
 import { oauthErrorHtml, oauthHtmlResponse, oauthSuccessHtml } from "./oauth-page.ts";
 import { parseAuthorizationInput } from "./paste-input.ts";
 import type { OAuthAuthInfo, OAuthPrompt } from "./types.ts";
@@ -17,8 +16,7 @@ export type OAuthLoginOptions = {
   onPrompt: (prompt: OAuthPrompt) => Promise<string>;
   onProgress?: (message: string) => void;
   onManualCodeInput?: () => Promise<string>;
-  /** Called when the browser callback wins the race: the manual stdin reader is the losing
-   *  route, and without a release it stays a second stdin consumer until process exit. */
+  /** Called when the browser callback wins, to release the manual stdin reader. */
   onManualCodeCancel?: () => void;
 };
 
@@ -39,9 +37,8 @@ type CallbackRoute = {
   provider: string;
 };
 
-/** Open the callback server on its fixed port. A port that is already taken settles nothing and
- *  leaves the login to the manual paste fallback: a second login session must not make the first
- *  unusable. */
+/** Open the callback server on its fixed port. A taken port leaves the login to the manual paste
+ *  fallback, so a second login session cannot break the first. */
 export function startCallbackServer(route: CallbackRoute): CallbackServer {
   let settleWait: ((value: Callback | null) => void) | undefined;
   const waitForCodePromise = new Promise<Callback | null>((resolveWait) => {
@@ -128,9 +125,7 @@ export async function resolveAuthorizationCode(
         manualError = asError(error);
         server.cancelWait();
       });
-    // The assignment above happens inside a callback the checker cannot follow, so after the first
-    // read it narrows `manualError` to `undefined` and calls the second read dead. Reading through
-    // a closure keeps the declared type at both sites.
+    // A closure read keeps `manualError`'s declared type; the checker cannot see the callback assign it.
     const throwManualFailure = (): void => {
       if (manualError !== undefined) throw manualError;
     };
@@ -138,9 +133,7 @@ export async function resolveAuthorizationCode(
     const result = await server.waitForCode();
     throwManualFailure();
     if (hasText(result?.code)) {
-      // The browser route won: release the losing manual stdin reader. Its promise settles on
-      // its own after the release and must not be awaited here — an embedded manual source may
-      // legitimately never resolve.
+      // Release the manual reader without awaiting it: an embedded manual source may never resolve.
       options.onManualCodeCancel?.();
       code = result.code;
       state = result.state;

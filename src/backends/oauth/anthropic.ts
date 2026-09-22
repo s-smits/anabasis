@@ -1,11 +1,8 @@
 /**
- * Anthropic OAuth flow (Claude Pro/Max subscription).
- *
- * Ported from the PrimeIntellect-ai/prime-agent implementation of the same flow: authorization
- * code plus PKCE against `claude.ai`, one local callback server on port 53692, and a manual paste
- * fallback for headless hosts. The callback server and the paste race live in callback-flow.ts.
+ * Anthropic OAuth flow (Claude Pro/Max subscription), ported from PrimeIntellect-ai/prime-agent:
+ * authorization code plus PKCE against `claude.ai`, a local callback server on port 53692 and a
+ * manual paste fallback (both in callback-flow.ts).
  */
-
 import { capturedJsonParse, capturedJsonStringify } from "../../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "../../meta/json-shape.ts";
 import { errorMessage } from "../../meta/runtime-values.ts";

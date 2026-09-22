@@ -57,22 +57,17 @@ interface WorkerState {
   failure: SolverNonResult | null;
   failureNotified(): void;
   timer: ReturnType<typeof setTimeout> | null;
-  /** Armed with each permit, restarted by every message of that turn and cleared by its end;
-   *  independent of the whole-solve timer. */
+  /** Silence wall of the active turn: armed by its permit, restarted by each message, cleared at its end. */
   turnTimer: ReturnType<typeof setTimeout> | null;
-  /** A worker the whole-solve wall stopped after it called a tool was still answering, since the
-   *  silence wall had not fired; one that never reached the tool loop stays a non-result. */
+  /** A worker the whole-solve wall stops after a tool call is an unaccepted attempt, not a non-result. */
   calledTool: boolean;
-  /** Tool calls run in this process, not the worker's group: a stop aborts them and settlement waits,
-   *  so the wall's submit and the generated worker's close follow the last call that could write. */
+  /** In-process tool calls; settlement aborts them and waits, so nothing writes after the worker closes. */
   dispatches: Set<Promise<void>>;
   toolAbort: AbortController;
   turnWallMs: number;
   readyWallMs: number;
   solveWallMs: number | null;
-  /** The OS isolation mechanism, so the confined-pid witness knows how the spawned pid relates to the
-   *  worker's self-reported pid: identical under Seatbelt (exec-replace), a private pid namespace
-   *  beneath the wrapper under bubblewrap. */
+  /** Tells the confined-pid witness how the spawned pid relates to the worker's reported pid. */
   mechanismId: string;
   turnReservations: Map<number, ProviderTurnReservation>;
   nextPermitTurn: number;
@@ -85,8 +80,7 @@ interface WorkerResources {
   releaseResources(reason: Error): void;
 }
 
-/** Everything a worker's line is read against. It is fixed for the worker's whole life, so the
- *  reader takes it once and each line supplies only itself. */
+/** Everything a worker's line is read against; fixed for the worker's whole life. */
 type WorkerBinding = {
   readonly child: PiChild;
   readonly write: (message: PiWire.PiBuiltParentMessage, end?: boolean) => void;
@@ -121,8 +115,7 @@ type PiBuiltWorkerOpening = {
   readonly conditionDigest: string;
   readonly tools: ReadonlyMap<string, AgentTool>;
   readonly onMessage: (message: Forwarded) => void;
-  // Absent and `undefined` mean the same thing for a call record, so both spellings are accepted
-  // rather than making every caller reach for `keyIfDefined`.
+  // Absent and `undefined` mean the same, so callers need not use `keyIfDefined`.
   readonly reserveTurn?: ((turn: number) => ProviderTurnReservation) | undefined;
   readonly signal?: AbortSignal | undefined;
 };
@@ -141,11 +134,9 @@ export class PiBuiltWorkerNonResult extends Error {
 
 /** The longest a permitted turn may stay silent: one model call plus one shell command at its
  *  ceiling. Every worker message restarts it, so it catches a stalled provider or worker, not a
- *  solver still working. Before this bound a provider stall on turn one held the case for the
- *  full hour (three 3,600 s non-results in astra-20260908T214013792Z). It was a wall on the
- *  whole turn until 2026-09-14, when truss run 406cca's resilient-bridge-h was cut after 18
- *  traced tool calls inside one native turn and recorded as a runtime non-result. */
+ *  solver still working. */
 export const builtTurnWallMs = (shellMaxSeconds: number): number => TURN_TIMEOUT_MS + shellMaxSeconds * 1000;
+
 function dispatchTool(
   write: (message: PiWire.PiBuiltParentMessage, end?: boolean) => void,
   tools: ReadonlyMap<string, AgentTool>,
@@ -202,8 +193,7 @@ function modelSelectionMatches(
 
 function killWorkerProcesses(child: PiChild, state: WorkerState, signal: RuntimeSignal): void {
   killProcessGroup(child, signal);
-  // Bubblewrap's --new-session puts its witnessed direct worker below the detached wrapper group.
-  // That ready PID is controller-admitted, so it is a second exact group identity, not PID search.
+  // Under bubblewrap the witnessed worker runs in its own group below the wrapper's.
   if (state.pid !== null && state.pid !== child.pid) killProcessGroupId(state.pid, signal);
 }
 
@@ -280,8 +270,7 @@ function variantTimer(child: PiChild, state: WorkerState, milliseconds: number, 
   state.timer = setTimeout(() => stopWorker(child, state, "runtime", message), milliseconds);
 }
 
-/** Any message of the active turn shows the worker is still answering. The name carries a
- *  two-part guard that inlined would push `receiveWorkerMessage` past its complexity ceiling. */
+/** Any message of the active turn shows the worker is still answering. */
 function restartTurnSilence(child: PiChild, state: WorkerState): void {
   if (state.activeTurn !== null && state.turnTimer !== null) armTurnTimer(child, state, state.activeTurn);
 }

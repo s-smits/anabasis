@@ -1,11 +1,9 @@
 /**
- * Stores credentials for provider logins. Codex credentials are written in the
- * exact `auth.json` shape the official Codex CLI reads (verified against a live CLI file);
- * A Claude login is one file under `.harness/auth/`: refresh material plus the access token, which
- * `loadRepoEnv` reads as its last fallback for CLAUDE_CODE_OAUTH_TOKEN. Nothing here reads secrets
- * back for display; `login status` reports source and expiry only.
+ * Stores credentials for provider logins. Codex credentials are written in the exact `auth.json`
+ * shape the Codex CLI reads. A Claude login is one file under `.harness/auth/`: refresh material
+ * plus the access token, which `loadRepoEnv` reads as its last fallback for CLAUDE_CODE_OAUTH_TOKEN.
+ * Nothing here reads secrets back for display.
  */
-
 import { capturedJsonStringify } from "../../meta/json-runtime.ts";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "../../meta/filesystem.ts";
 import { readJsonFile } from "../../meta/completed-json.ts";
@@ -18,8 +16,8 @@ import { codexAuthFile, codexLogin } from "../login-state.ts";
 import { claudeCredentialFile } from "../env.ts";
 import type { OptionalEnvValues } from "../scrub-env.ts";
 
-/** How long a process waits for another's Codex refresh before it takes the lock over: the holder
- *  died mid-refresh, since one token exchange is bounded well inside this. */
+/** How long a process waits for another's Codex refresh before taking the lock over; one token
+ *  exchange finishes well inside this, so a holder past it has died. */
 const CODEX_REFRESH_LOCK_WAIT_MS = 60_000;
 
 /** The credential payload of a Claude login: refreshable OAuth state plus its access token. */
@@ -33,16 +31,11 @@ type ClaudeCredential = {
 function writePrivateFile(file: string, contents: string): void {
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   writeFileSync(file, contents);
-  // `writeFileSync` mode only applies at creation; a rewrite of an existing file keeps its old
-  // permissions, so the private mode is enforced on every write.
+  // `writeFileSync` sets the mode only at creation, so enforce it on every write.
   chmodSync(file, 0o600);
 }
 
-/**
- * Persist a ChatGPT login as the Codex CLI's own `auth.json`. Field names and nesting match the
- * structure of the live CLI file; `OPENAI_API_KEY` stays null because this login
- * never holds an API key.
- */
+/** Persist a ChatGPT login as the Codex CLI's own `auth.json`; this login never holds an API key. */
 export function writeCodexAuthJson(login: OpenAICodexLogin, env: Record<string, string | undefined>): string {
   const file = codexAuthFile(env);
   writePrivateFile(
@@ -103,11 +96,9 @@ function refreshedAuthJson(stored: JsonValue, next: OpenAICodexLogin): Record<st
 }
 
 /**
- * Refresh the stored Codex login when it is due, once across processes. The first process to take
- * the lock reads the file again (another may have refreshed it meanwhile), exchanges the refresh
- * token through `refresh` and writes the result back; the rest wait and then find the login no
- * longer due. The refresh token rotates, so two processes exchanging the same one would leave the
- * second, and the file, holding a spent token.
+ * Refresh the stored Codex login when it is due, once across processes. The refresh token rotates,
+ * so the lock holder re-reads the file, exchanges the token and writes the result; the others wait
+ * and then find the login no longer due.
  */
 export async function refreshCodexAuthJson(
   env: OptionalEnvValues,

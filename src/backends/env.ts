@@ -1,7 +1,6 @@
 /**
- * Shared repository environment loader. Every caller uses util.parseEnv through
- * meta/env-parser.ts and receives a merged object without changing the process environment,
- * so the displayed and launched backends read the same values.
+ * Shared repository environment loader. It returns a merged object without changing the process
+ * environment, so the displayed and launched backends read the same values.
  *
  * Precedence:
  *   process env  >  .env.cloud  >  .env.local  >  .env  >  stored Claude login (token only)
@@ -22,8 +21,7 @@ export interface RepoEnv {
   sources: Record<string, string>;
 }
 
-/** The stored login's file name, which is also the provenance label `loadRepoEnv` reports and
- *  `tools/login/cli.ts` tests for, since only that source records an expiry. */
+/** The stored login's file name, also the provenance label `loadRepoEnv` reports for it. */
 export const CLAUDE_CREDENTIAL_FILE = "claude-oauth.json";
 
 /** The `bun run login -- claude` credential; the loader's last fallback for CLAUDE_CODE_OAUTH_TOKEN. */

@@ -1,17 +1,11 @@
 /**
- * Operator-owned backend choices for one project.
- *
- * `.harness/backends/<project>.json` is the only mutable source. The runtime resolver reads it;
- * this module validates and atomically updates it. Generated domains and historical run evidence
- * are never edited when an operator changes the backend for a future run.
+ * Operator-owned backend choices for one project. `.harness/backends/<project>.json` is the only
+ * mutable source: the resolver reads it and this module validates and atomically updates it.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { dirname } from "../meta/path.ts";
-// The project registry determines whether a project exists.
-// This dependency (backends → run) lets the selection check read that registry instead of inferring
-// existence from output directories. That inference missed fresh projects registered without output and
-// refused run 14's launch flags (2026-07-28).
+// The project registry, not an output directory, decides whether a project exists.
 import { recordedProjects } from "../run/project-registry.ts";
 import { type JsonValue, isRecord } from "../meta/json-shape.ts";
 import {
@@ -44,10 +38,7 @@ function readOperatorObject(path: string): JsonObject {
 }
 
 function nextOperatorObject(prior: JsonObject, slot: ProjectBackendSlot, selection: ProjectBackendSelection) {
-  // Write an explicit disabled marker: since the resolver layers
-  // default.json under a project file per slot, an absent review slot means "nobody chose" and
-  // takes the standing default. Only this marker keeps an operator's off decision through a later
-  // write to some other slot — and it is what separates a chosen off from a silent one.
+  // An absent review slot takes the standing default, so an off decision needs an explicit marker.
   if (selection === "disabled") return { ...prior, review: { disabled: true } };
   const next = { ...prior };
   if (selection === "inherit") {
@@ -58,13 +49,11 @@ function nextOperatorObject(prior: JsonObject, slot: ProjectBackendSlot, selecti
   return next;
 }
 
-/** The flag-side admission for one slot selection: the same vocabulary and support rows the
- *  write side enforces, exported so a CLI refuses a typo before a run acquires any state. The
- *  vocabulary is kind-level — "codex", never "codex/gpt-5.5" — because models are resolver-owned
- *  per kind and a model in a pin would be a second owner for that fact. */
+/** Admit one slot selection from a CLI flag with the write side's own rules, so a typo is refused
+ *  before a run acquires state. Selections name a kind only; models are resolver-owned. */
 export function admitBackendSelection(slot: ProjectBackendSlot, value: string): ProjectBackendSelection {
   const selection =
-    /* SAFETY: the assertion on the next line throws unless the value is one of the admitted selections, so this function returns only admitted ones. */ value as ProjectBackendSelection;
+    /* SAFETY: the assertion on the next line throws unless the value is an admitted selection. */ value as ProjectBackendSelection;
   assertProjectBackendSelection(slot, selection);
   return selection;
 }

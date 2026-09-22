@@ -1,12 +1,9 @@
 /**
- * What each provider's login looks like on this host, read without activating anything. `login
- * status` reports all three; the shared provider layer (pi-providers.ts) reads the Codex access
- * token here and refuses a missing login itself, naming the operator's fix. Codex login state is a
- * current access token, or the refresh token that renews it, in `auth.json` under `$CODEX_HOME` (or
- * `~/.codex`); claude login state is the explicit credential in the merged repo env; OpenRouter's is
- * its endpoint's key.
+ * What each provider's login looks like on this host, read without activating anything. Codex:
+ * a current access token, or the refresh token that renews it, in `auth.json` under `$CODEX_HOME`
+ * (or `~/.codex`). Claude: the explicit credential in the merged repo env. OpenRouter: its
+ * endpoint's key.
  */
-
 import { existsSync } from "../meta/filesystem.ts";
 import { homedir } from "../meta/os.ts";
 import { isAbsolute, join } from "../meta/path.ts";
@@ -29,8 +26,7 @@ type CodexLogin =
   | { ok: true; token: string; expiresAt: number; refreshToken: string | null; refreshDueAt: number }
   | { ok: false; reason: string };
 
-/** The Codex CLI refreshes a login whose last refresh is eight days old, or whose access token is
- *  about to expire. This process keeps the same rule, so it never refreshes earlier than the CLI. */
+/** The Codex CLI's own refresh rule: eight days after the last refresh, or just before expiry. */
 const CODEX_REFRESH_INTERVAL_MS = 8 * 24 * 60 * 60 * 1000;
 const CODEX_EXPIRY_MARGIN_MS = 5 * 60 * 1000;
 
@@ -64,8 +60,7 @@ function readCodexAuthJson(env: OptionalEnvValues): CodexAuthRead {
   } catch {
     return { ok: false, reason: "auth.json is malformed" };
   }
-  const stored = /* SAFETY: the Codex auth file is read at its boundary; every field is tested for a
-       non-empty string below before any use. */ value as {
+  const stored = /* SAFETY: every field is tested for a non-empty string below before use. */ value as {
     tokens?: { access_token?: unknown; refresh_token?: unknown };
     last_refresh?: unknown;
   } | null;
@@ -117,9 +112,8 @@ export function codexAccessTokenExpiresAt(env: OptionalEnvValues): Date | null {
   return expiry === null ? null : new Date(expiry);
 }
 
-/** Login state of Claude: an explicit OAuth subscription token or API key in the repo env. The
-    CLI's own keychain fallback is deliberately not accepted here — it cannot serve the Built
-    transport and silently books sessions against whatever account last ran `/login`. */
+/** Login state of Claude: an explicit OAuth token or API key in the repo env. The CLI's keychain
+ *  login is not accepted: it cannot serve the Built transport and names no fixed account. */
 export function claudeLoginState(env: OptionalEnvValues): LoginState {
   if (hasText(env.CLAUDE_CODE_OAUTH_TOKEN)) return { ok: true };
   if (hasText(env.ANTHROPIC_API_KEY)) return { ok: true };

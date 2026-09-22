@@ -440,7 +440,10 @@ gates; a completed Built Harness task requires live evidence.
     the retained-product transaction. A zero-verified or environment-blocked candidate is held with
     `candidate-zero-verified` and never becomes the baseline; its non-result and unaccepted kinds
     reach the next round through the advice packet. There is no contest between a candidate and the
-    current harness.
+    current harness. These clauses govern a candidate that would replace a selected product
+    (`candidate-promotion.ts`). The first admitted build has none to replace, so
+    `selectInitialProduct` (`src/run/product-versions.ts`) selects it at adoption, before its
+    battery, and that battery measures it whatever it verifies.
 
     The rebuild advice packet is deterministic, recorded at
     `analysis/<runId>-rebuild-advice.json` (with `rebuild-advice-latest.json` beside it) and bound

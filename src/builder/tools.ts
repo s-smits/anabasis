@@ -239,7 +239,11 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         if (params.glob !== undefined && params.glob !== "") args.push("--glob", params.glob);
         // `--regexp` binds the pattern as a value: a positional `-o …` was read as a flag (run 1aa6e6).
         args.push("--regexp", params.pattern, target);
-        const outcome = await isolatedRead("grep", "rg", args, target, true);
+        let outcome = await isolatedRead("grep", "rg", args, target, true);
+        // A pattern that is no regex is searched as the text it spells, and the result says so: run
+        // fa03b7's Builder searched `exit(12` and got `rg: regex parse error: … unclosed group`.
+        const asText = params.literal !== true && outcome.stderr.includes("regex parse error");
+        if (asText) outcome = await isolatedRead("grep", "rg", ["--fixed-strings", ...args], target, true);
         throwIfTraversalError("grep", outcome);
         const limit = Math.max(1, params.limit ?? 100);
         const rows = outcome.stdout.split("\n").filter((line) => line !== "" && line !== "--");
@@ -249,7 +253,9 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           const line = `${rel(pathOf(row))}${row.slice(row.indexOf("\0")).replace("\0", ":")}`;
           return line.length > GREP_MAX_LINE_LENGTH ? `${line.slice(0, GREP_MAX_LINE_LENGTH)}...` : line;
         });
-        return result(kept.length > 0 ? kept.join("\n") : "No matches", { matches: guarded.length, limit });
+        const found = kept.length > 0 ? kept.join("\n") : "No matches";
+        const text = asText ? `[Not a regular expression; searched as literal text.]\n${found}` : found;
+        return result(text, { matches: guarded.length, limit });
       },
     }),
     makeTool({

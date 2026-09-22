@@ -50,7 +50,7 @@ function makeFixtureRepo(): MakeFixtureRepoResult {
     rootFiles: { ".env": "SECRET=hunter2\n", "package.json": "{}\n" },
     iterationFiles: {
       "slug/correctness-model/brief.json": '{"authored":true}\n',
-      "slug/poem.txt": "line one\nline two\nline three\na -dash row\n",
+      "slug/poem.txt": "line one\nline two\nline three\na -dash row\nstopped at exit(12\n",
       "census.json": JSON.stringify({ findings: [{ detail: REMEDY_LEAK }] }),
     },
   });
@@ -287,6 +287,16 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     const poem = workspacePath("slug", "poem.txt");
     expect(await run("grep", { pattern: "-dash", path: poem, literal: true })).toBe(`${poem}:4:a -dash row`);
     expect(await run("grep", { pattern: "-absent", path: poem })).toBe("No matches");
+  });
+
+  it("grep: a pattern that is no regular expression is searched as the text it spells", async () => {
+    const poem = workspacePath("slug", "poem.txt");
+    const literal = "[Not a regular expression; searched as literal text.]";
+    expect(await run("grep", { pattern: "exit(12", path: poem })).toBe(
+      `${literal}\n${poem}:5:stopped at exit(12`,
+    );
+    expect(await run("grep", { pattern: "exit(13", path: poem })).toBe(`${literal}\nNo matches`);
+    expect(await run("grep", { pattern: "exit.12", path: poem })).toBe(`${poem}:5:stopped at exit(12`);
   });
 
   it("find and ls: enumerate the candidate tree, drop denied names, and record the drops", async () => {

@@ -6,7 +6,16 @@
 // iteration's contest names that owner as the selected repair owner.
 // Current-loop rows use currentDiagnosis to measure advice retention; repair benefit needs
 // later evidence from the Builder and measurement.
-import { findingKey, findingKeys, iterationRunIds, nextRepair, readAnalysis, report } from "./common.mjs";
+import {
+  CURRENT_LOOP_SCHEMAS,
+  findingKey,
+  findingKeys,
+  iterationRunIds,
+  iterationSchema,
+  nextRepair,
+  readAnalysis,
+  report,
+} from "./common.mjs";
 import { currentDiagnosis } from "./current-readers.mjs";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
 
@@ -69,7 +78,7 @@ function consumer(runId, admission, owned) {
 }
 
 function row(campaignDir, runId, nextRunId) {
-  if (readAnalysis(campaignDir, runId, "analysis")?.schema === "iteration-analysis/v4") {
+  if (CURRENT_LOOP_SCHEMAS.has(iterationSchema(campaignDir, runId))) {
     return currentDiagnosis(campaignDir, runId);
   }
   const judges = readAnalysis(campaignDir, runId, "judges");

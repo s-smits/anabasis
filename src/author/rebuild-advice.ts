@@ -130,6 +130,10 @@ export type RebuildAdvicePacket = {
   families: AdviceFamilyRow[];
   /** Verified failures per declared check, as the battery recorded them. */
   blockingByCheck: Record<string, number>;
+  /** Verified cases each declared check applied to: the denominator the line above is read
+   *  against, and the difference between a rule that let 25 artifacts through and one no task
+   *  posed. */
+  applicableByCheck: Record<string, number>;
   issues: AdviceIssue[];
   judge: { exit: JudgeReviewsResult["exit"]["kind"]; reason: string; contestedFamilies: string[] } | null;
   /** The admitted findings a rebuild may read: aggregate rows only, no per-case subject. */
@@ -389,6 +393,7 @@ export function deriveRebuildAdvice(
     analysisDigest: hashJsonBytes(analysis),
     families,
     blockingByCheck: analysis.battery.blockingByCheck,
+    applicableByCheck: analysis.battery.applicableByCheck,
     issues: advanceIssues(previous?.issues ?? [], observed, analysis.runId, families, judgeReview),
     // Advice only: counts and families, never task ids.
     judge:
@@ -514,10 +519,17 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
     : lines;
 }
 
-/** Which declared checks blocked shipping artifacts and which blocked none. Every declared check is
- *  seeded at zero, so the zeros name checks that refused nothing. Silent until a case is verified. */
+/** Which declared checks decided anything, on both sides. `truthCheckFiring` seeds the record
+ *  with every declared check at zero, so the zeros are the roster of checks that let every
+ *  shipping artifact through. The roster then splits on the applicable count, because "refused
+ *  nothing over 25 verified cases" and "no verified case posed it" ask for opposite repairs --
+ *  raise the rule, or give the battery a task that reaches it. Across the recorded corpus 74 of
+ *  670 untripped rows were not the shape one sentence implied: 54 applied to some verified cases,
+ *  20 to none. Zero verified cases prove no check untripped, so this stays silent until a battery
+ *  graded something. */
 function blockingLine(
   blockingByCheck: Record<string, number>,
+  applicableByCheck: Record<string, number>,
   verified: number,
   passed: number,
 ): string | null {
@@ -530,15 +542,22 @@ function blockingLine(
     .filter(([, count]) => count === 0)
     .map(([checkId]) => checkId)
     .sort();
+  const applied = untripped.filter((checkId) => (applicableByCheck[checkId] ?? 0) > 0);
+  // A recorded zero, never an absent row: "no verified case posed it" is a measurement, and the
+  // packet may state it only where the battery measured it.
+  const unposed = untripped.filter((checkId) => applicableByCheck[checkId] === 0);
   // Only when one check carries every failure.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
   return [
     blocked.length === 0
       ? null
       : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
-    untripped.length === 0
+    applied.length === 0
       ? null
-      : `Declared checks that blocked no shipping artifact over ${verified} verified case(s): ${untripped.join(", ")}.`,
+      : `Declared checks that blocked no shipping artifact, with the verified cases each applied to (of ${verified}): ${applied.map((checkId) => `${checkId} ${applicableByCheck[checkId]}`).join(", ")}.`,
+    unposed.length === 0
+      ? null
+      : `Declared checks no verified case posed, so this battery measured nothing about them: ${unposed.join(", ")}.`,
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
@@ -554,7 +573,7 @@ export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
     disputed.length === 0
       ? null
       : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness, so do not rebuild the agent around them: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
-    blockingLine(packet.blockingByCheck, totals.verified, totals.passed),
+    blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null
       : `Judge review: ${packet.judge.reason}${packet.judge.contestedFamilies.length > 0 ? ` (families: ${packet.judge.contestedFamilies.join(", ")})` : ""}.`,

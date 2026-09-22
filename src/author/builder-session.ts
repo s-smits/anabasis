@@ -44,7 +44,7 @@ export {
   builderSystemPrompt,
 } from "./builder-start-prompt.ts";
 
-export interface BuilderSessionInput {
+interface BuilderSessionInput {
   slug: string;
   /** The operator's ask, verbatim. */
   kickoff: string;
@@ -206,7 +206,7 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // session may run as a single turn.
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build and check the candidate, and submit once you are confident` +
       ` that a clear preview and your own checks are sufficient evidence that it works; further polish belongs to the` +
-      ` next round. A refused submit returns actionable contract feedback, an unsubmitted candidate returns none.`,
+      ` next round.`,
   ];
   if (input.advisory !== undefined && input.advisory.trim() !== "") {
     rows.push(`Authoring context:\n${input.advisory}`);

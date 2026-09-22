@@ -25,6 +25,9 @@ import {
   unchangedCandidateSubmissions,
 } from "../author/campaign-memory.ts";
 import { safeguardRepeatedRefusalCode } from "../truth/run-safeguards.ts";
+import { POLICY } from "../critic/policy.ts";
+import { renderBatteryContract } from "./climb-readout.ts";
+import { taskCountSentence } from "./battery-sizing.ts";
 import { ITERATION_FILE } from "../builder/campaign-iterations.ts";
 import { safeguardTriggered } from "../meta/safeguard.ts";
 import { type CandidateSnapshot, checkCandidate, conditionKey } from "../author/candidate-check.ts";
@@ -78,11 +81,6 @@ import type { RunObserver } from "../observe/run-observer.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-evidence.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
-import {
-  builderSessionRequest,
-  preSessionRefusal,
-  proposesExperiment,
-} from "./builder-campaign-preflight.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../truth/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
@@ -157,6 +155,52 @@ type Accepted = {
 
 type Iteration = { ordinal: number; dir: string; iterationDir: string };
 
+/** A draft never opens scope: only the controller's adopted continuation does. */
+function proposesExperiment(input: Pick<BuilderCampaignInput, "adoptedDir" | "rebuildReset">): boolean {
+  return input.adoptedDir !== undefined && input.rebuildReset === undefined;
+}
+
+/** Refuse exhausted authoring and environment blockers before opening a model session. */
+export function preSessionRefusal(
+  input: Pick<BuilderCampaignInput, "priorEvidence" | "rebuildReset">,
+  memory: CampaignMemory,
+): CampaignOutcome | null {
+  if (memory.clause !== null) return { buildAdmissible: false, clauses: [memory.clause], iterations: [] };
+  // The durable half of the unchanged-candidate ceiling. The round that reached it recorded an
+  // authoring-stalled terminal, but the terminal binds one invocation: truss-run1-sol-0830 opened
+  // fourteen of them on the same campaign and each started its counters at zero, so the same
+  // commit was submitted unchanged 21 times. Reading the replayed per-commit tally here makes a
+  // relaunch continue the count rather than restart it, and costs no model turn.
+  //
+  // The tally counts strikes at the commit this campaign would resubmit. A rebuild resets the
+  // workspace to the starter before any session opens, so the counted commit is exactly the tree
+  // the round will not resubmit; refusing on it made every rebuild of a stalled epoch a permanent
+  // stop, since the epoch key derives from the kickoff and no fresh epoch could open either.
+  if (
+    input.rebuildReset === undefined &&
+    unchangedCandidateSubmissions(memory, []) >= POLICY.loop.unchangedCandidateStrikes
+  ) {
+    return { buildAdmissible: false, clauses: ["authoring-stalled"], iterations: [] };
+  }
+  const feedback = [...memory.carried, ...(input.priorEvidence?.feedback ?? [])];
+  if (feedback.some((row) => row.severity === "blocking" && row.owner === "environment")) {
+    return { buildAdmissible: false, clauses: ["environment-blocked"], iterations: [] };
+  }
+  return null;
+}
+
+/** What the controller asks of this round: how many tasks, and the contract those tasks are
+ *  written under. The round states it once, and `harness_inspect readiness` serves these same
+ *  bytes, so a session whose opening turn compaction cut recovers the ask without a gate call.
+ *  One owner rather than two: a second author would drift, and `FRAME_REVISION` identifies these
+ *  lines as a recorded condition. */
+function roundContract(input: BuilderCampaignInput): string {
+  return [
+    taskCountSentence(input),
+    renderBatteryContract(input.expectedTasks, input.minTasks, input.band, proposesExperiment(input)),
+  ].join("\n\n");
+}
+
 /** One authoring round's submit, preview and review handling over the Builder workspace. */
 class BuilderCampaignController {
   /** When the Epoch Reviewer is due, and over which bytes. A review becomes due only at the next
@@ -189,13 +233,15 @@ class BuilderCampaignController {
     this.candidates = new CandidateMemory(memory);
   }
 
-  /** Measured feedback and iteration history advise the author without choosing its repair scope. */
-  openingAdvisory(): string | undefined {
+  /** Everything the opening turn carries, in the order the author reads it: what the round asks
+   *  for, then what the measured evidence advises without choosing its repair scope. */
+  openingContext(): string {
     const feedback = [...this.memory.carried, ...(this.input.priorEvidence?.feedback ?? [])];
     const history = iterationMemoryFindings(this.input.campaignDir)
       .map((finding) => finding.detail)
       .join("\n");
-    return [history, this.input.advisoryNote, advisory(feedback)].filter(Boolean).join("\n\n") || undefined;
+    const advice = [history, this.input.advisoryNote, advisory(feedback)];
+    return [roundContract(this.input), ...advice].filter(Boolean).join("\n\n");
   }
 
   recordNonResult(error: BuildAgentTurnNonResult): void {
@@ -350,7 +396,7 @@ class BuilderCampaignController {
     return this.iterations.reduce(extendTrailingBlockedFindings, this.memory.trailingBlockedFindingsHashes);
   }
 
-  candidateCheckContext() {
+  private candidateCheckContext() {
     return {
       slug: this.input.slug,
       exactTasks: this.input.expectedTasks,
@@ -385,7 +431,7 @@ class BuilderCampaignController {
   /** Submit without adoption, for correctness_check: the same checks, stages and gate on the same
    *  snapshot, into `trials/<conditionKey>`. One outcome is remembered per condition, so unchanged
    *  bytes never run the sequence twice; changed bytes may preview without limit. */
-  async preview(gates: Gate): Promise<GateReport> {
+  private async preview(gates: Gate): Promise<GateReport> {
     const report = await previewCandidate(this.workspace, this.candidateCheckContext(), {
       input: this.pipelineInput(),
       gates,
@@ -519,6 +565,53 @@ class BuilderCampaignController {
     };
     return { outcome, executed: refused.executed };
   }
+
+  /** The advisory tools the session mounts beside submit: static inspection, one bounded
+   *  solve-side rehearsal, the reopen reset and the pre-adoption validation sequence. None is an
+   *  acceptance authority. A method rather than a free function because every context it hands a
+   *  tool is the controller's own, and passing them back in let a caller compose a different one. */
+  authoringTools(feedback: BuilderAuthorFeedback) {
+    const { input, deps } = this;
+    // Compose inspection and trial where the candidate-check context is available. Both must use
+    // the same slug, task count and fresh-candidate contract as submit; a check under different
+    // rules could advise the wrong repair. Trial also receives the measured Built solver.
+    // The shared feedback channel carries inspection findings into later Builder turns, while acceptance remains with submit and its gates.
+    const toolContext = this.candidateCheckContext();
+    const inspect = createHarnessInspectTool({
+      workspace: this.workspace,
+      context: toolContext,
+      feedback,
+      contract: roundContract(input),
+      ...keyIfDefined("readHistory", input.readHistory),
+    });
+    const { builtSolver } = deps;
+    const trial = createHarnessTrialTool({
+      workspace: this.workspace,
+      context: toolContext,
+      rehearsalDir: join(input.campaignDir, "rehearsals"),
+      ...keyIfDefined(
+        "builtSolver",
+        builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
+      ),
+      ...keyIfDefined("verifierLifetime", deps.verifierLifetime),
+    });
+    const reset = createHarnessResetTool({
+      workspace: this.workspace,
+      ...keyIfDefined("resetKey", input.rebuildReset),
+    });
+    // Submit without adoption: the controller's own validation sequence on the same workspace, candidate-check context, probe
+    // pack and gate, so the rows the Builder reads here are the rows a submit refusal would carry. A
+    // scripted session that mounts no gate has no validation sequence to preview and gets no such tool.
+    const { gates } = deps;
+    if (gates === undefined) return [inspect, trial, reset];
+    const correctnessCheck = createCorrectnessCheckTool({
+      preview: () => this.preview(gates),
+      expectedTasks: input.expectedTasks,
+      ...keyIfDefined("minTasks", input.minTasks),
+      feedback,
+    });
+    return [inspect, trial, reset, correctnessCheck];
+  }
 }
 
 /** An admission refusal is recorded as `gates`, a conformance refusal as `bundle`. */
@@ -543,48 +636,6 @@ function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport) {
     findings: [...admission, ...executed.findings],
   };
   return { outcome, executed };
-}
-
-/** The advisory tools mounted beside submit: inspection, rehearsal, reset and the validation
- *  preview. None accepts a candidate; all use submit's candidate-check context. */
-function mountAuthoringTools(
-  input: BuilderCampaignInput,
-  deps: BuilderCampaignDeps,
-  controller: BuilderCampaignController,
-  feedback: BuilderAuthorFeedback,
-) {
-  const toolContext = controller.candidateCheckContext();
-  const inspect = createHarnessInspectTool({
-    workspace: controller.workspace,
-    context: toolContext,
-    feedback,
-    ...keyIfDefined("readHistory", input.readHistory),
-  });
-  const { builtSolver } = deps;
-  const trial = createHarnessTrialTool({
-    workspace: controller.workspace,
-    context: toolContext,
-    rehearsalDir: join(input.campaignDir, "rehearsals"),
-    ...keyIfDefined(
-      "builtSolver",
-      builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
-    ),
-    ...keyIfDefined("verifierLifetime", deps.verifierLifetime),
-  });
-  const reset = createHarnessResetTool({
-    workspace: controller.workspace,
-    ...keyIfDefined("resetKey", input.rebuildReset),
-  });
-  // Without a gate there is no validation sequence to preview.
-  const { gates } = deps;
-  if (gates === undefined) return [inspect, trial, reset];
-  const correctnessCheck = createCorrectnessCheckTool({
-    preview: () => controller.preview(gates),
-    expectedTasks: input.expectedTasks,
-    ...keyIfDefined("minTasks", input.minTasks),
-    feedback,
-  });
-  return [inspect, trial, reset, correctnessCheck];
 }
 
 /** One attempt gate for the campaign: the durable reservation when the budget provides one, else
@@ -621,13 +672,21 @@ export async function runBuilderCampaign(
   const seed = created ? fresh : "resumed";
   const controller = new BuilderCampaignController(input, deps, memory);
   const feedback = new BuilderAuthorFeedback();
-  const authoringTools = mountAuthoringTools(input, deps, controller, feedback);
+  const authoringTools = controller.authoringTools(feedback);
   // One writer for checkpoints and the settled record.
   const writeExecution = builderExecutionEvidenceWriter(input.campaignDir);
   let outcome: Awaited<ReturnType<typeof runBuilderSession>>;
   try {
     outcome = await runBuilderSession(
-      { ...builderSessionRequest(input, controller.workspace, controller.openingAdvisory()), seed },
+      {
+        slug: input.slug,
+        kickoff: input.kickoff,
+        workspace: controller.workspace,
+        seed,
+        advisory: controller.openingContext(),
+        ...keyIfDefined("maxTurns", input.maxTurns),
+        ...keyIfDefined("webSearch", input.webSearch),
+      },
       {
         open: deps.open,
         ...keyIfDefined("recordSession", deps.recordSession),

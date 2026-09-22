@@ -15,7 +15,7 @@ import {
   type IterationAnalysis,
   FEEDBACK_POLICY,
   admitFindings,
-  blockingCounts,
+  checkCounts,
   hostFindings,
 } from "../src/analyse/iteration-analysis.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
@@ -60,7 +60,7 @@ function packet(overrides?: {
   cases?: IterationAnalysis["cases"];
 }): IterationAnalysis {
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug: SLUG,
     runId: RUN,
     treeRoot: `domains/${SLUG}`,
@@ -83,6 +83,7 @@ function packet(overrides?: {
       claimClauses: [],
       readinessClauses: [],
       blockingByCheck: {},
+      applicableByCheck: {},
       summary: summary(overrides?.summary ?? {}),
     },
     cases: overrides?.cases ?? [],
@@ -574,9 +575,9 @@ describe("the per-case feedback restriction", () => {
   });
 });
 
-describe("blockingCounts — the recorded blocking-check ledger as a count map", () => {
+describe("checkCounts — a recorded firing ledger as a count map", () => {
   it("keeps a check id spelled __proto__ as a counted key instead of losing it to the inherited setter", () => {
-    const counts = blockingCounts(JSON.parse('{"__proto__": 3, "tc-a": 1}'));
+    const counts = checkCounts(JSON.parse('{"__proto__": 3, "tc-a": 1}'));
     expect(counts).not.toBeNull();
     expect(Object.entries(counts ?? {})).toEqual([
       ["__proto__", 3],
@@ -585,8 +586,8 @@ describe("blockingCounts — the recorded blocking-check ledger as a count map",
   });
 
   it("returns null for a non-record or a non-count value, as before", () => {
-    expect(blockingCounts(null)).toBeNull();
-    expect(blockingCounts({ "tc-a": -1 })).toBeNull();
-    expect(blockingCounts({ "tc-a": 1.5 })).toBeNull();
+    expect(checkCounts(null)).toBeNull();
+    expect(checkCounts({ "tc-a": -1 })).toBeNull();
+    expect(checkCounts({ "tc-a": 1.5 })).toBeNull();
   });
 });

@@ -62,11 +62,12 @@ function analysis(
   cases: IterationAnalysis["cases"],
   runId = RUN,
   blockingByCheck: Record<string, number> = {},
+  applicableByCheck?: Record<string, number>,
 ): IterationAnalysis {
   const verified = cases.filter((row) => row.truthOk !== null).length;
   const passed = cases.filter((row) => row.truthOk === true).length;
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug: SLUG,
     runId,
     treeRoot: `domains/${SLUG}`,
@@ -89,6 +90,10 @@ function analysis(
       claimClauses: [],
       readinessClauses: [],
       blockingByCheck,
+      // The quiet default is the shape the old single sentence assumed of every untripped check:
+      // applicable to the whole verified battery. A test that means otherwise says so.
+      applicableByCheck:
+        applicableByCheck ?? Object.fromEntries(Object.keys(blockingByCheck).map((id) => [id, verified])),
       summary: {
         runId,
         total: cases.length,
@@ -720,7 +725,7 @@ describe("the issue register and its projection", () => {
     );
     // The check that blocked nothing is the other half of the same record, not a row to discard.
     expect(text).toContain(
-      "Declared checks that blocked no shipping artifact over 3 verified case(s): member-forces.",
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): member-forces 3.",
     );
     expect(text).not.toContain("t1");
     // Two checks share the failures, so the one-check question is not asked (4c67fc asked it of six).
@@ -742,6 +747,32 @@ describe("the issue register and its projection", () => {
     expect(empty).not.toContain("blocked no shipping artifact");
   });
 
+  it("separates a check no verified case posed from one that refused nothing over the whole battery", () => {
+    // Both read identically under one sentence, and their repairs are opposite: raise the rule, or
+    // give the battery a task that reaches it. Across the recorded corpus 74 of 670 untripped rows
+    // were not the shape that sentence implied — 54 applicable to some verified cases, 20 to none.
+    const rows = [caseRow("t1"), caseRow("t2"), caseRow("t3", { truthOk: false, pass: false })];
+    const text = renderRebuildAdvice(
+      deriveRebuildAdvice(
+        analysis(
+          rows,
+          RUN,
+          { lenient: 0, narrow: 0, unposed: 0, deflection: 1 },
+          { lenient: 3, narrow: 1, unposed: 0, deflection: 3 },
+        ),
+        judges(),
+        admission(),
+        null,
+      ),
+    );
+    expect(text).toContain(
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): lenient 3, narrow 1.",
+    );
+    expect(text).toContain(
+      "Declared checks no verified case posed, so this battery measured nothing about them: unposed.",
+    );
+  });
+
   it("names every declared check when a saturated battery tripped none of them", () => {
     // Runs a7f9ac (14/14) and 719f26 (11/11) on one adopted truss bundle: six declared checks,
     // every one firing on its controls and none on a shipping artifact. The packet showed the
@@ -754,7 +785,7 @@ describe("the issue register and its projection", () => {
     );
     expect(text).not.toContain("Verified failures by declared check");
     expect(text).toContain(
-      "Declared checks that blocked no shipping artifact over 2 verified case(s): geometry-and-clearance, mass-within-limit, strength-and-buckling.",
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 2): geometry-and-clearance 2, mass-within-limit 2, strength-and-buckling 2.",
     );
     // Zero verified cases leave the roster silent: nothing was graded, so no check went untripped.
     const ungraded = [caseRow("t1", { truthOk: null, pass: null, acceptedSubmit: false })];

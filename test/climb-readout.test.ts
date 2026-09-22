@@ -1,6 +1,11 @@
 /** The climb readout: one decision per recorded battery, and every rendering reads it. */
 import { describe, expect, it } from "bun:test";
-import type { AdmittedClimbRow, ClimbBatteriesRead, ClimbBattery } from "../src/run/climb-history.ts";
+import type {
+  AdmittedClimbRow,
+  ClimbBatteriesRead,
+  ClimbBattery,
+  ClimbEffort,
+} from "../src/run/climb-history.ts";
 import {
   CLIMB_READOUT_MAX_CHARS,
   type ClimbReadout,
@@ -34,6 +39,7 @@ type Spec = {
   target?: { comparator: "at-least" | "at-most"; verifiedPasses: number };
   failed?: string[];
   gap?: string;
+  effort?: ClimbEffort;
 };
 
 function authoring(target: NonNullable<Spec["target"]>, gap: string): ExperimentAuthoring {
@@ -80,6 +86,7 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
       passes: family.passes,
       wilson: [0, 1],
     })),
+    effort: spec.effort ?? null,
   };
   if (spec.target !== undefined || spec.gap !== undefined) {
     recorded.experimentAuthoring = authoring(
@@ -160,6 +167,7 @@ describe("one reading per battery", () => {
         n: 10,
         refused: "verifier environment unbound",
         target: { comparator: "at-most", verifiedPasses: 4 },
+        effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
       }),
       row("r3", 2, { passed: 11, n: 11, families: [{ item: "beams", attempts: 11, passes: 11 }] }),
     ];
@@ -174,6 +182,7 @@ describe("one reading per battery", () => {
       zone: null,
       setAside: null,
       families: null,
+      effort: null,
       claimRefusal: "verifier environment unbound",
       target: { comparator: "at-most", verifiedPasses: 4, result: "unadmitted" },
     });
@@ -194,6 +203,12 @@ describe("one reading per battery", () => {
     expect(allowanceStop(readout)).toContain(
       "3 consecutive rounds ended above the aim or with a refused claim",
     );
+    // The round states the allowance once. A session whose opening turn compaction cut reads the
+    // same counts back here, because the rows cannot reconstruct them: this one spans two
+    // placements and a refused claim.
+    const page = capturedJsonParse(history(readout, rows));
+    const body = capturedJsonParse(isRecord(page) && isString(page.text) ? page.text : "{}");
+    expect(isRecord(body) ? body.allowance : null).toEqual(readout.allowance);
     // A refused claim's passes are not evidence, so changing only them changes nothing sent.
     expect(text).toContain("| r3 | P1 | T1 | — | 11 | 11 | 0 | 0 | 11/11 whole-battery | too-easy |");
     expect(text).toContain("| r2 | P1 | T1 | task-probe | — | 10 | 0 | 0 | — | claim refused:");
@@ -264,6 +279,15 @@ describe("rendering", () => {
     expect(text).toContain("| r4 |");
   });
 
+  it('gives every row\'s table line what the solver spent, and a measure no case recorded as "?"', () => {
+    // Run 1aa6e6's battery: 6 of 6, no case past 1 turn of the 24 its config declares or 15
+    // minutes of the 120. The pass count alone reads the same as a battery that used every wall.
+    const effort: ClimbEffort = { cases: 6, turns: 1, minutes: 14.8, toolCalls: null };
+    const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })));
+
+    expect(text).toContain("| 1t 14.8m —c over 6 |");
+  });
+
   it("renders nothing protected: failed task ids never reach the text, and changing them changes nothing", () => {
     const a = row("r1", 0, { passed: 3, n: 10, failed: ["secret-alpha", "secret-beta"] });
     const b = row("r1", 0, { passed: 3, n: 10, failed: ["secret-gamma"] });
@@ -288,6 +312,7 @@ describe("rendering", () => {
         n: 10,
         families: [{ item: "beams", attempts: 10, passes: 2 }],
         target: { comparator: "at-most", verifiedPasses: 3 },
+        effort: { cases: 10, turns: 4, minutes: 9, toolCalls: 40 },
       }),
     ];
     const readout = readoutOf(...rows);

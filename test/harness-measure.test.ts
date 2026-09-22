@@ -230,7 +230,7 @@ describe("measureHarness", () => {
     // The evidence record derives its packet from THESE recorded bytes and nothing else:
     // bundleSnapshot identity, censored denominators, the disclosed condition, per-case trace pointers.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
-    expect(analysis.schema).toBe("iteration-analysis/v4");
+    expect(analysis.schema).toBe("iteration-analysis/v5");
     expect(analysis.identities.isolationStrength).toBe("physical");
     expect(analysis.identities.bundleSnapshot.agentHash).toMatch(/^[0-9a-f]{64}$/);
     expect(isString(analysis.identities.bundleSnapshot.taskSetHash)).toBe(true);

@@ -71,8 +71,13 @@ async function inspect<T = Record<string, JsonValue>>(
   action: "readiness" | "summary" | "task" | "tools" | "typecheck" | "inventory" | "feedback" | "coverage",
   taskId?: string,
   options: Record<string, JsonValue> = {},
+  contract?: string,
 ): Promise<T> {
-  const tool = createHarnessInspectTool({ workspace: dir, context: CONTEXT });
+  const tool = createHarnessInspectTool({
+    workspace: dir,
+    context: CONTEXT,
+    ...keyIfDefined("contract", contract),
+  });
   const result = await tool.execute("inspect-1", {
     action,
     ...keyIfDefined("taskId", taskId),
@@ -122,7 +127,11 @@ describe("harness_inspect", () => {
         families: Array<{ family: string; sampleTaskId: string }>;
       };
       suggestedTrials: Array<{ family: string; taskId: string }>;
-    }>(dir, "readiness");
+      contract?: string;
+    }>(dir, "readiness", undefined, {}, "Task count: exactly 25 tasks.");
+    // The round's ask is served back whatever the bundle's state: a session that lost its opening
+    // turn to compaction needs the count before it has anything that would pass readiness.
+    expect(blocked.contract).toBe("Task count: exactly 25 tasks.");
     expect(blocked.staticStatus).toBe("blocked");
     expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", "agent/tools.ts"]);
     expect(blocked.modules.every((module) => !module.present)).toBe(true);
@@ -144,7 +153,10 @@ describe("harness_inspect", () => {
       staticStatus: string;
       modules: Array<{ module: string; present: boolean; diagnostics: number }>;
       validationFindings: { totalFindings: number };
+      contract?: string;
     }>(dir, "readiness");
+    // An unbound contract states nothing rather than an empty one: isolated inspection has no round.
+    expect(ready.contract).toBeUndefined();
     expect(ready).toMatchObject({
       staticStatus: "static-checks-clear",
       modules: [

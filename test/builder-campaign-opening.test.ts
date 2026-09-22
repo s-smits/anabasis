@@ -56,6 +56,16 @@ describe("the opening a campaign composes", () => {
     expect(prompt).not.toContain(renderBatteryContract(25));
   });
 
+  it.concurrent("states what the round asks for before what the measured evidence advises", async () => {
+    // One composer owns the whole opening. Until it did, the contract and the advice were joined
+    // in two places, one nested in the other, and nothing bound their order: a reader that meets
+    // the advice first has to hold it against a contract it has not read yet.
+    const note = "the prior battery verified 21 of 25";
+    const prompt = await openingPrompt({ ...FRESH_BUILD, advisoryNote: note });
+    expect(prompt).toContain(note);
+    expect(prompt.indexOf("Task count: exactly 4 tasks.")).toBeLessThan(prompt.indexOf(note));
+  });
+
   it.concurrent("opens a probe round on the range it may choose in, not one size", async () => {
     // The sizing gate sends `minTasks` for a probe round; the session must be told it picks the size,
     // or the Builder authors the upper bound and the probe stops being cheap.

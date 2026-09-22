@@ -55,10 +55,20 @@ export type BatteryEvidence = {
   /** checkId → verified failed cases blocked by that check, from the battery's firing counts.
    *  Check ids are public, so these counts may reach the rebuild author. */
   blockingByCheck: Record<string, number>;
+  /** checkId -> verified cases the check applied to: the denominator its blocking count is read
+   *  against. Without it a check that refused nothing over 5 applicable cases renders exactly like
+   *  one that refused nothing over 25, and one no verified case posed renders like both, while the
+   *  three ask for different repairs. Over the recorded corpus 74 of 670 untripped rows are in the
+   *  latter two shapes. Applicability is family scope, which is public authoring identity. */
+  applicableByCheck: Record<string, number>;
 };
 
+/** The two per-check count maps, carried together because a blocking count means nothing without
+ *  the denominator beside it. */
+type CheckFiring = Pick<BatteryEvidence, "blockingByCheck" | "applicableByCheck">;
+
 export type IterationAnalysis = {
-  schema: "iteration-analysis/v4";
+  schema: "iteration-analysis/v5";
   slug: string;
   /** The one battery this round measured; the analysis files carry the same id. */
   runId: string;
@@ -187,7 +197,7 @@ function batteryEvidence(
   slug: string,
   runId: string,
   summary: RunSummary,
-  blockingByCheck: Record<string, number>,
+  firing: CheckFiring,
 ): BatteryEvidence {
   const claimPath = join(claimsDirFor(repoRoot, slug), `${runId}.json`);
   if (!existsSync(claimPath)) {
@@ -204,7 +214,7 @@ function batteryEvidence(
     claimClauses: parsed.claim.ok ? [] : clauseNames(parsed.claim.clauses),
     readinessClauses: parsed.readiness === null ? null : clauseNames(parsed.readiness.clauses),
     summary,
-    blockingByCheck,
+    ...firing,
   };
 }
 
@@ -214,21 +224,29 @@ function batteryIdentity(slugDir: string, runId: string) {
   const parsed = parseJsonAs<{
     buildInputsHash?: string;
     backendPin?: string;
-    truthCheckFiring?: { blockingByCheck?: unknown };
+    truthCheckFiring?: { blockingByCheck?: unknown; applicableByCheck?: unknown };
   }>(readFileSync(path, "utf8"));
   if (!isString(parsed.buildInputsHash) || !isString(parsed.backendPin)) {
     throw new Error(`${path}: battery evidence is missing buildInputsHash/backendPin`);
   }
-  const blockingByCheck = blockingCounts(parsed.truthCheckFiring?.blockingByCheck);
-  if (blockingByCheck === null) {
-    throw new Error(`${path}: battery evidence records no truthCheckFiring.blockingByCheck count map`);
-  }
-  return { buildInputsHash: parsed.buildInputsHash, backendPin: parsed.backendPin, blockingByCheck };
+  const counts = (field: keyof CheckFiring): Record<string, number> => {
+    const map = checkCounts(parsed.truthCheckFiring?.[field]);
+    if (map === null) {
+      throw new Error(`${path}: battery evidence records no truthCheckFiring.${field} count map`);
+    }
+    return map;
+  };
+  return {
+    buildInputsHash: parsed.buildInputsHash,
+    backendPin: parsed.backendPin,
+    firing: { blockingByCheck: counts("blockingByCheck"), applicableByCheck: counts("applicableByCheck") },
+  };
 }
 
-/** The recorded firing field as a prototype-free count map, or null when it is not one. Without a
- *  prototype, a check id such as `__proto__` stays an ordinary key. */
-export function blockingCounts(value: unknown): Record<string, number> | null {
+/** A recorded firing field as a prototype-free count map, or null when it is not one. Without a
+ *  prototype, a check id such as `__proto__` stays an ordinary key rather than reaching the
+ *  inherited setter, which would drop the count. Blocking and applicability are both read here. */
+export function checkCounts(value: unknown): Record<string, number> | null {
   if (!isRecord(value)) return null;
   const out: Record<string, number> = Object.create(null);
   for (const [checkId, count] of Object.entries(value)) {
@@ -286,7 +304,7 @@ export function deriveIterationAnalysis(
     traces: row.traces,
   }));
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug,
     runId,
     treeRoot,
@@ -296,7 +314,7 @@ export function deriveIterationAnalysis(
       buildInputsHash: battery.buildInputsHash,
       isolationStrength,
     },
-    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.blockingByCheck),
+    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.firing),
     cases,
     absent: [
       "main-judge census: revalidated by runJudgeReviews over this packet, never folded into it",

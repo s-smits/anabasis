@@ -6,7 +6,7 @@
 // Changed: a later census differs from this iteration's census digest. This is a comparison lead;
 // it does not by itself attribute the change to this candidate. Current-loop rows mark absence.
 import {
-  CURRENT_LOOP_SCHEMA,
+  CURRENT_LOOP_SCHEMAS,
   absentRow,
   iterationRunIds,
   iterationSchema,
@@ -49,7 +49,7 @@ function laterDigests(campaignDir, runIds, index) {
 
 function row(campaignDir, runIds, index) {
   const runId = runIds[index];
-  if (iterationSchema(campaignDir, runId) === CURRENT_LOOP_SCHEMA) return absentRow(runId, COMPONENT);
+  if (CURRENT_LOOP_SCHEMAS.has(iterationSchema(campaignDir, runId))) return absentRow(runId, COMPONENT);
   const maintenance = readAnalysis(campaignDir, runId, "judge-prompt-maintenance");
   const status = isRecord(maintenance) ? (maintenance.status ?? null) : null;
   const output = candidateOutput(maintenance);

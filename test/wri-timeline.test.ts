@@ -91,6 +91,7 @@ const RECORDED = [
     type: "steering-ingested",
     phase: "measure-on",
     authority: "controller",
+    owner: "controller",
     chars: 20,
   }),
   row(5, "2026-09-19T11:00:00.000Z", {
@@ -169,7 +170,7 @@ describe("run timeline", () => {
         chars: 0,
       },
     ]);
-    expect(timeline.steering).toEqual([{ authority: "controller", owner: null, count: 1, chars: 20 }]);
+    expect(timeline.steering).toEqual([{ authority: "controller", owner: "controller", count: 1, chars: 20 }]);
     expect(timeline.iterations).toEqual([
       { ordinal: 1, outcome: "measured", at: "2026-09-19T11:00:00.000Z" },
     ]);

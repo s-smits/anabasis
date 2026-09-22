@@ -197,8 +197,8 @@ export function buildTimeline({ campaign, runId }) {
     ),
     steering: tally(
       steering,
-      (row) => `${row.authority}/${row.focusOwner}`,
-      (row) => ({ authority: row.authority ?? null, owner: row.focusOwner ?? null }),
+      (row) => `${row.authority}/${row.owner}`,
+      (row) => ({ authority: row.authority ?? null, owner: row.owner ?? null }),
     ),
     iterations: rows
       .filter((row) => row.type === "iteration-settled")

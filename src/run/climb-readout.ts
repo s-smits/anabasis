@@ -1,22 +1,15 @@
 /**
  * The climb readout: one reading of the recorded batteries, rendered once.
  *
- * Before 2026-09-21 a battery reached the Builder through four readers: a selector decided the
- * round, a measurement note worded the decision, a ledger note tabled the current product's task
- * sets with its own interval, and the history tool placed every row a third way. They disagreed —
- * a battery whose changed subset scored 0 of 5 read as 20 of 25 in one paragraph and 0 of 5 in the
- * next — and the stop rule counted its streak in a fifth place. Here every row is read once, over
- * the sample that decides it, and the kickoff, the stop and `harness_inspect history` all read
- * those rows. The words are `climb-readout-frame.ts`'s; this module only counts.
+ * Every row is read once, over the sample that decides it, and the kickoff, the stop rule and
+ * `harness_inspect history` all read those rows. The words belong to `climb-readout-frame.ts`;
+ * this module only counts.
  *
  * Three recorded shapes set the pooled rate aside, each with the public count it rests on:
  *
- * - every attempt refused at submission (claude-med hw15, 2026-08-10: 25 rejected submissions read
- *   as 25 verified failures ended a run as "curriculum infeasibility" in one round). Once any case
- *   is verified, refused attempts stay in `n` as fails, since hard tasks may fail through refused
- *   submissions;
- * - the same failing core in both of the last two batteries of one task set (run w6 read five
- *   batteries of 17/25 while the same eight cases failed each time);
+ * - every attempt refused at submission. Once any case is verified, refused attempts stay in `n`
+ *   as fails, since hard tasks may fail through refused submissions;
+ * - the same failing core in both of the last two batteries of one task set;
  * - one family significantly too easy beside another significantly too hard.
  *
  * Otherwise the battery is placed on the band, and `placeOnBand` owns every comparison. The interval
@@ -111,11 +104,9 @@ export type OffAimAllowance = {
   side: "above" | "below";
   /** Distinct product identities across those rounds. */
   products: number;
-  /** How many placed rounds before the latest posed its set of public task schemas: the same fields
-   *  carrying the same value types, whatever values they published. 3fd52f9e-28's first three
-   *  batteries re-tuned their published numbers under one set of schemas, and a byte comparison read
-   *  each as a new exam. Reported, never refused on: whether a 60 m span asks more than a 6 m one is
-   *  the Builder's to say (prior 5). */
+  /** How many placed rounds before the latest posed the same public task schemas (same fields and
+   *  value types, whatever the values). Reported, never refused on: whether changed values ask
+   *  more is the Builder's to say. */
   sameSchema: number;
 };
 
@@ -234,8 +225,8 @@ function familyConflict(latest: ClimbBattery, band: [number, number]) {
 }
 
 /** Cases failing in both batteries of one recorded task set, when the shared core is at least two
- *  and at least half the smaller failing set; 0 otherwise. Run w7's failing sets were 4, 4, 5, 5
- *  and 3 with a core of three in every adjacent pair, so the core is compared, not the sets. */
+ *  and at least half the smaller failing set; 0 otherwise. The core is compared rather than the
+ *  whole sets, since a stuck core survives small changes around it. */
 function repeatedFailureCount(prior: ClimbBattery, latest: ClimbBattery): number {
   if (!isString(latest.taskSetHash) || latest.taskSetHash !== prior.taskSetHash) return 0;
   if (latest.failedTaskIds === undefined || prior.failedTaskIds === undefined) return 0;
@@ -408,8 +399,6 @@ export function allowanceStop(readout: ClimbReadout | null): string | null {
   const { rounds, placed, refused, side, products } = allowance;
   return fill(FRAME.stop, { rounds, side, placed, refused, products });
 }
-
-// --- Rendering -------------------------------------------------------------------------------
 
 const cell = (value: string) => value.replaceAll("|", String.raw`\|`).replaceAll("\n", " ");
 
@@ -610,10 +599,8 @@ export function renderProbeSizing(tasks: { min: number; max: number }, requested
 
 /**
  * `harness_inspect history`: the readout's own rows, newest first, or one recorded battery's
- * public tasks. Newest first because the page a reader stops on should be the one that decides: an
- * Opus 5 reader of an oldest-first page 1 (campaign 3fd52f9e-4, 2026-09-18) read three old
- * batteries and concluded the opposite of what the product needed. Character paging keeps any
- * public task reachable without exposing verdicts, private paths or verifier text.
+ * public tasks. Newest first, so the page a reader stops on is the one that decides. Character
+ * paging keeps any public task reachable without exposing verdicts, private paths or verifier text.
  */
 export function readReadoutHistory(
   domainDir: string,

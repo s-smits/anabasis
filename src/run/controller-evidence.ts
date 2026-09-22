@@ -114,8 +114,7 @@ export type ControllerEvidence =
       state: "unfinished";
       lockHeld: boolean;
       /** The dead-process witness. `absent` and `proved-dead` say no live controller can still
-       *  record this opening, which is how run 25's invocation `a` — an opening with no terminal at
-       *  all — closes: the reader states the witness instead of leaving the run open forever. */
+       *  record this opening, so an opening without a terminal is closed by the witness. */
       holder: LockHolderState;
       evidence: { opening: string };
     }
@@ -202,9 +201,8 @@ function writeControllerOpening(input: {
   repoRoot: string;
   project: ProjectIdentity;
   runId: string;
-  /** The kickoff used to identify the epoch. It differs from the text the author reads on a climb,
-   *  which holds its harness bytes fixed and so stays in the epoch they were built in. The
-   *  opening records the epoch, never the kickoff, so this value is used for nothing else. */
+  /** The kickoff that identifies the epoch; it may differ from the text the author reads. Used only
+   *  to select the epoch, never recorded. */
   epochKickoff: string;
   /** The reopening pass the build step binds on, when this round is one; see `epochPassOf`. */
   epochPass: string | undefined;
@@ -235,19 +233,15 @@ function writeControllerOpening(input: {
     source: SOURCE_IDENTITY,
     project: input.project,
     runId: input.runId,
-    // Derived under the held campaign lock, before this run's own evidence exists — a first
-    // run records null, a continuation records the exact terminal bytes it stands on.
+    // Read under the held campaign lock: null on a first run, otherwise the exact terminal bytes
+    // this run continues from.
     continuation: latestRecordedContinuation(campaign),
-    // Earlier controllers of this campaign that wrote an opening and never recorded a terminal —
-    // they stopped without recording why (opus-331 had exactly one, invisible to every
-    // reader that walks terminals; the fact lived in diagnostic safeguard 13 until 2026-09-01).
-    // recorded here so every later reader sees the unaccounted siblings beside the continuation.
+    // Earlier controllers that opened and never recorded a terminal, so readers that walk
+    // terminals still see them.
     abandonedRuns: abandonedSiblingRuns(campaign, input.runId),
     epoch: { key: epoch.key, supersedes: epoch.supersedes },
     modelSlots: input.slots,
-    // budget.json spans runs and epochs, so a later run moves the counter; the snapshot at open
-    // and at record is what lets one run's own charge be read (opus 2026-08-22 recorded 1 iteration
-    // against 11 campaign turns and no reader could say which run spent them).
+    // budget.json spans runs; snapshots at open and record give this run's own charge.
     budget: loadBudget(campaign),
     providerResourceBudget: input.providerBudget?.snapshot() ?? null,
     command: {
@@ -294,19 +288,9 @@ export function prepareControllerTerminal(input: {
   const path = join(evidenceDir(campaign, input.opening.runId), TERMINAL_FILE);
   if (existsSync(path)) throw new Error(`${path}: controller terminal evidence already exists`);
   const outcome = input.failure === null ? "completed" : "aborted";
-  // A provider refusal during a Builder turn (429, session limit, timeout) belongs to the
-  // environment. The pr179 run recorded only `aborted`, forcing the review to infer the owner
-  // from the transcript. The typed clause records that owner. By operator decision on
-  // 2026-08-11, `environment-blocked` belongs in the terminal while outcome remains
-  // completed/aborted. The shared classifier in controller-abort-clause.ts supplies a clause for
-  // every abort, including unclassified ones.
-  //
-  // The reason leads with that clause and nothing else. It used to lead with `aborted: `, which
-  // repeated the `outcome` field beside it and cost every reader the code: `loopTerminalCode`
-  // takes the head before the first colon, so 45 of the 60 terminals recorded up to 2026-09-18
-  // resolved to null, including all 25 environment-blocked and both budget-limited endings, and
-  // whole-run-investigation's digest printed `aborted` for each of them. Two clauses are
-  // themselves terminal codes; leading with the clause is what makes them readable.
+  // Every abort gets a typed clause naming its owner, such as `environment-blocked` for a provider
+  // refusal; `outcome` stays completed/aborted. The reason leads with the clause alone, because
+  // `loopTerminalCode` reads the head before the first colon.
   const abortClause = outcome === "aborted" ? controllerAbortClause(input.failure) : null;
   const abortReason = errorMessage(input.failure);
   return {

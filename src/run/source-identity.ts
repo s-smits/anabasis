@@ -1,24 +1,11 @@
 /**
- * A0.2: bind campaign evidence to the executed source revision. Capture it once at module load,
- * so a process whose imported source changes underneath it (live-run-01 run 1: commits
- * were made mid-run) retains its original identity instead of attributing later commits. A null
- * identity (not a git work tree, git absent) is typed absence — disclosed, never guessed.
+ * Binds campaign evidence to the executed source revision. It is captured once at module load, so
+ * a process whose source changes underneath it keeps its original identity. A null identity (not a
+ * git work tree, git absent) is typed absence, disclosed and never guessed.
  *
- * The `sourceDigest` field exists because a dirty boolean is disclosure, not binding
- * (live-run-03 review, P1): F2 census children resolve their module graph from disk at
- * spawn, so two captures are attributably the same source only when the executed bytes agree.
- * The digest covers the executable and model-visible product roots alone — a README or
- * BUILD-STATE edit does not change that content identity.
- *
- * That scoping promise held for the digest and was then broken by the comparison. The digest used
- * to hash a diff against HEAD, which cannot stand alone: bytes matching a new HEAD hash
- * the same as bytes matching the old one, so `sourceStillFrozen` had to compare `commit` too, and
- * the conjunction made every commit read as source drift. Committing a docs edit, or untracking a
- * controller-owned output, refused the F2 census as `owner: environment` with not one executed
- * byte changed (live-run-06: an index-only `campaigns/` untrack moved HEAD mid-run and was
- * caught before the census reached it). The digest now hashes the roots' full contents
- * and is the only thing compared; `commit` stays on the evidence as attribution disclosure. Content
- * only, so a mode change on a root file is not drift.
+ * `sourceDigest` hashes the full contents of the executable and model-visible product roots, since
+ * F2 census children load their modules from disk at spawn. It is the only thing compared: a docs
+ * edit, a new commit or a mode change is not drift. `commit` stays on the evidence for attribution.
  */
 import { readFileSync } from "../meta/filesystem.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";

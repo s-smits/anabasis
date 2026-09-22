@@ -26,8 +26,7 @@ export interface AdmissionPointer {
 }
 
 /** Feedback for the next build and the recorded reason when a packet supplies none. Both come
- *  from one read. Run w19 left `consumedEvidenceDigests: null` on an iteration that had read an
- *  empty packet, so the review could not tell "no packet" from "packet with nothing to route". */
+ *  from one read, so "no packet" stays distinct from "a packet with nothing to route". */
 type AdmissionRead = {
   priorEvidence: PriorEvidence | null;
   lineage: AdmissionLineage | null;
@@ -147,10 +146,9 @@ export function readAdmission(repoRoot: string, slug: string): AdmissionRead {
     file,
     "a corrupt evidence packet must not silently seed or skip a build; repair or delete it",
   );
-  // A packet created under an unsupported severity/routing rule cannot supply current feedback:
-  // its owners and severities were assigned by a rule that no longer holds, so trusting them
-  // would seed a repair the present rule would not ask for. Disclosed by name, never a throw —
-  // this is a controller-owned output, and the next run's own analysis writes a fresh packet.
+  // A packet from another routing policy cannot supply current feedback, since its owners and
+  // severities follow a different rule. Disclosed by name, never a throw: the next run's own
+  // analysis writes a fresh packet.
   if (admission.policy !== FEEDBACK_POLICY) {
     console.error(
       `[admission] ${file}: created under feedback policy "${admission.policy ?? "none"}", current is "${FEEDBACK_POLICY}" — reading it as no evidence packet; this run decides from measured history instead`,

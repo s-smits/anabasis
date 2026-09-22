@@ -3,11 +3,9 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 /**
  * The closed set of typed abort owners a controller terminal may record.
  *
- * Every abort carries one: run 25's invocation `c` recorded `abortClause: null` beside a
- * free-text reason, and the review had to infer the owner from prose. An abort without a known
- * owner gets `controller-unclassified`, and its reason string remains available alongside that
- * clause. A terminal recording an abort under no clause or under a retired one is refused
- * (operator decision 2026-09-22: no backwards compatibility).
+ * Every abort carries one, so no reader infers the owner from prose; an abort without a known owner
+ * gets `controller-unclassified` beside its reason string. A terminal recording an abort under no
+ * clause or a retired one is refused.
  */
 const CONTROLLER_ABORT_CLAUSES = [
   "environment-blocked",

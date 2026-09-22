@@ -1,21 +1,12 @@
 /**
- * Measure an adopted harness in the Build → Measure → Analyse flow (audit 2026-07-26).
- * The host verifier owns correctness. The Main Judge runs during the battery, using the session
- * passed through the evaluation options below, and records calibrated disagreement for later
- * analysis. Its advice changes no truth score, case row, denominator or claim eligibility.
- * The same measurement path serves every domain. AskManifest supplies the task settings that
- * this entrypoint previously hardcoded, and the full-run controller supplies that manifest.
- * There is no separate command grammar for describing the request at measurement time;
- * the caller passes the request and product selected by the controller.
+ * Measures an adopted harness: one battery per iteration, under the iteration's own run id.
  *
- * This module connects the existing components. Slot resolution selects the Built engine;
- * transport support and executed isolation probes establish the available isolation evidence.
- * Record the probe result before paid turns, including contractual isolation when that is all
- * the checks establish. driveBattery owns fingerprinting, evaluation and case rows.
+ * The host verifier owns correctness. The Main Judge runs during the battery and records
+ * disagreement; its advice changes no score, case row, denominator or claim eligibility. The
+ * controller supplies the request, the product and the AskManifest task settings.
  *
- * One battery per iteration, under the iteration's own run id. Until 2026-09-04 the same harness
- * ran twice (with and without adviser tools) so a paired repair contest could read a delta; the
- * repair experiment is gone and the second battery with it.
+ * Isolation evidence is recorded before any paid turn; driveBattery owns fingerprinting,
+ * evaluation and case rows.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
@@ -86,7 +77,7 @@ export interface HarnessMeasureOptions {
   createVerifier?: () => VerifierHostHandle;
   /** Test override: isolation probe result (live default: the host Seatbelt probe). */
   isolationProbe?: () => HostSolveIsolationEvidence;
-  /** Test override: the U0.7 session check (live default: the exact Pi worker, with no model turn). */
+  /** Test override: the session isolation check (live default: the exact Pi worker, with no model turn). */
   sessionProbe?: () => Promise<SessionProfileEvidence>;
   /** Census judge tri-state: undefined resolves the configured judge slot, null is explicitly
    *  disabled, a session is a test injection. */
@@ -167,15 +158,11 @@ export function resolveBuiltSlot(
     slug,
     "a verified battery needs process isolation proven by an executed read-deny check, and that transport has none — add one to it, or pin an isolated transport",
   );
-  // Report an unconfigured review slot before measurement. Run 15 measured 50 cases before
-  // the missing reviewer became apparent in its recorded `judge: "off"` condition. Explicit
-  // `disabled` is the operator's choice and needs no warning; `unconfigured` is a fallback
-  // the operator should see before paying for cases. This is a disclosure: measurement can
-  // still proceed because the host verifier decides correctness independently of the Judge.
+  // Disclose an unconfigured review slot before paying for cases; an explicit `disabled` needs no
+  // warning. Measurement still proceeds, since the verifier decides correctness without the Judge.
   if (!slots.review.enabled && slots.review.source === "unconfigured") {
     fullrunLine(
-      // default.json first: a prompt-driven slug is a prompt hash, so `<slug>.json` is a file the
-      // operator can only name after the run that needed it.
+      // default.json first: a prompt-derived slug is only known after the run.
       `${slug}: no review slot configured — this battery records judge:"off" and no Judge reviews; pin one in .harness/backends/default.json, .harness/backends/${slug}.json, or HARNESS_REVIEW_BACKEND`,
     );
   }
@@ -183,7 +170,7 @@ export function resolveBuiltSlot(
 }
 
 /** Combine the host probe and the session's activated-profile check to describe the battery's
- *  isolation (U0.7). Retain both checks in the evidence; a missing session check lowers the
+ *  isolation. Retain both checks in the evidence; a missing session check lowers the
  *  reported strength to contractual, as defined by composedIsolation. */
 export function caseIsolationFromProbe(
   probe: HostSolveIsolationEvidence,
@@ -336,12 +323,8 @@ async function measureResolvedBattery(
   } catch (error) {
     if (!(error instanceof BatteryVerificationNonResult)) throw error;
   }
-  // One sentence, two readers. This is the round's verdict on its own battery, and until now it
-  // reached stderr alone: the observation stream a live reader watches held no row for it, so a
-  // run whose claim was refused looked from the stream exactly like one whose claim was written.
-  // Run c1d2a7-i04 is the case — `runtime-model-identity-unproven` refused its claim, which held
-  // its candidate and left the next round sizing its battery from a stale landing. AGENTS.md: a
-  // clause present only in stdout is not durable evidence.
+  // The round's verdict on its battery goes to the observation stream as well as stderr, so a
+  // refused claim is visible there and not only in terminal output.
   const settled =
     claim === null
       ? {

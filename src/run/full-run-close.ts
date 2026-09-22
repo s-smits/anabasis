@@ -18,12 +18,10 @@ import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
  *
  * A Builder session writes `in-flight` first and settles the same record when it returns. A session
  * that never returns — the host killed it, its provider stopped mid-turn — leaves that snapshot as
- * the final state, and run 25 ended with three of four records still reading `in-flight` long after
- * the campaign had stopped. The controller knows the invocation closed, so it says so here.
+ * the final state. The controller knows the invocation closed, so it says so here.
  *
  * The invocation comes straight from the terminal write this run just made, so the records name
- * the exact run and closing time. Scanning controller state again could select an abandoned
- * sibling opening and leave these records open, as happened in run 25.
+ * the exact run and closing time; rescanning controller state could pick an abandoned sibling.
  */
 function closeOpenAuthoringRecords(
   repoRoot: string,
@@ -51,13 +49,12 @@ export function closeControllerRun(
     cause ?? (pending.length > 0 ? new VerifierOperationalStop("unsettled-children", pending) : null);
   try {
     // A run that died before a round opened it has a reason and nowhere to put it. Open it here so
-    // the terminal below records that reason; a failure to open leaves the run unrecorded, which is
-    // what happened to every such abort before.
+    // the terminal below records that reason.
     try {
       state.openIfUnopened?.();
     } catch {
       // The opening is best effort at this point: the run is already ending, and the cause below
-      // is the fact worth keeping. An unopenable campaign keeps the old behaviour and its stderr.
+      // is the fact worth keeping. An unopenable campaign leaves the run unrecorded, with its stderr.
     }
     if (state.opening !== null) {
       finalRecord = prepareControllerTerminal({

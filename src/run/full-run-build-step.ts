@@ -104,8 +104,7 @@ function adoptedProbeLanding(read: ClimbBatteriesRead, domainDir: string): Probe
 }
 
 /** Remeasurement keeps the declaration of which tasks changed, so their result remains separate
- * from unchanged tasks. Truss -14 i02 recorded that subset's 5/5; i03 lost it and wrote 24/25.
- * Recover only byte-matched public authoring metadata; no score or verdict is carried forward. */
+ * from unchanged tasks. Recover only byte-matched public authoring metadata; no score or verdict is carried forward. */
 function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "experimentAuthoring"> {
   const { repoRoot, manifest } = input;
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
@@ -132,11 +131,9 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
   return keyIfDefined("experimentAuthoring", declarations.values().next().value);
 }
 
-/** The refusal alone left the campaign free to open another session on the same tree.
- *  truss-run1-sol-0830 recorded this clause 21 times on commit 52e0d68c across 14 controller
- *  invocations. `unchangedCandidateSubmissions` is the durable per-commit tally counting this record,
- *  so reaching the ceiling adds the exact `authoring-stalled` literal the terminal reads
- *  beside a clause naming the commit and the count. */
+/** A refusal alone would let the campaign reopen sessions on the same tree indefinitely.
+ *  `unchangedCandidateSubmissions` is the durable per-commit tally; at the ceiling this adds the
+ *  `authoring-stalled` literal the terminal reads, beside a clause naming the commit and count. */
 function unchangedCandidateClauses(outcome: BuildOutcome, unchangedCommit: string): string[] {
   const records = outcome.buildAdmissible ? outcome.unchangedCandidateSubmissions : 0;
   if (records < POLICY.loop.unchangedCandidateStrikes) return ["candidate-unchanged"];
@@ -173,10 +170,7 @@ function settleBuildOutcome(
     return { build: "build-failed", clauses, experiment };
   }
   if (buildAdmissible) {
-    // A span only a failure closes reads backwards. Run c1d2a7 opened five build spans and closed
-    // none, because all five builds succeeded, so the stream showed a closed build step exactly
-    // when the build had failed. The `adopt` row has the same shape: until now it said only
-    // "already adopted", so a reader tallying adoptions counted the rounds that adopted nothing.
+    // Success closes the build span too, and `adopt` is recorded only on a build move.
     observer.phase({ phase: "build", state: "completed", summary: `Build step completed (${move})` });
     if (move === "build") {
       observer.phase({ phase: "adopt", state: "completed", summary: "Built harness adopted" });
@@ -343,9 +337,8 @@ export async function runBuildStep(
   return result;
 }
 
-/** A failed build step must reach the progress stream with its typed clause. w16's pre-session
- *  refusal ended the stream at "Build step started (repair)", and run47-opus-0902's at
- *  "Build step started (rebuild)": the campaign rethrows a BuildAgentTurnNonResult before any row. */
+/** A failed build step reaches the progress stream with its typed clause, even when the campaign
+ *  rethrows a BuildAgentTurnNonResult before writing any row. */
 function observeBuildFailed(observer: RunObserver, move: string, clauses: readonly string[]): void {
   const detail = clauses.length > 0 ? clauses.join("; ") : "no clause recorded";
   observer.phase({ phase: "build", state: "failed", summary: `Build step failed (${move}): ${detail}` });

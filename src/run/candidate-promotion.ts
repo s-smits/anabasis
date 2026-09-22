@@ -127,19 +127,9 @@ function candidateStateClauses(
   ) {
     clauses.push(`candidate-unmeasured: its claim stages end at "${candidate.claimStage ?? "no evidence"}"`);
   } else if (candidate.claimStage === "measured") {
-    // Run a7f9ac: a session limit cut the battery at 14 verified and 11 provider non-results, the
-    // claim was refused, and the candidate still replaced the product e6e332 had measured at 24/25.
-    // The clause does not read why the claim was refused, and deliberately so. On c1d2a7-i04 one
-    // environment clause (`runtime-model-identity-unproven`) held the only round of that run with
-    // failing cases, rolling its authored bundle back. Reading the clause names here would mean
-    // threading them into this function for a second owner of a decision the claim already made;
-    // a7f9ac is the case that says holding is right more often than not. Operator decision
-    // 2026-09-18: leave it. If it costs a second candidate, narrow what raises the clause in
-    // `src/claim/`, do not widen the hold. The climb no longer loses the battery either way
-    // (`recordedProducts`, `climb-battery-admission.ts`), and that narrowing has since been made
-    // for the shape i04 hit: an absent attestation on bytes the verifier graded states the
-    // identity unverified rather than refusing the claim (`src/claim/runtime-model-identity.ts`).
-    // What still reaches here is a contradiction in the census, which is a fact about the run.
+    // A refused claim holds the candidate whatever the reason; the claim already made that
+    // decision. A wrongly refused claim is fixed where `src/claim/` raises the clause, not by
+    // widening what may replace a product here.
     clauses.push(
       'candidate-claim-refused: its claim stages end at "measured", so its battery wrote no claim and cannot replace a tree',
     );

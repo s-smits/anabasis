@@ -20,11 +20,9 @@ import type { ProjectedReadGrant } from "../builder/candidate-isolation.ts";
  *  effort, so the default level only names what an unpinned slot would open at. */
 const BUILDER_DEFAULTS: PiSlotDefaults = { effort: "high", webSearch: true };
 
-/** The host tool policy projection retained under the existing shellWall evidence key. Run
- * truss-opus-20260907T160200000Z-bdd329 recorded git EPERM without the rule that caused it.
- * The model receives no workspace grant: CandidateAccessPolicy enforces every host-dispatched
- * filesystem call. hostAccess and readGrant explain that policy; session isolation digests bind
- * its complete allow/deny rules. */
+/** The host tool policy, recorded under the shellWall evidence key so a refused call can be traced
+ *  to its rule. CandidateAccessPolicy enforces every host-dispatched filesystem call; hostAccess
+ *  and readGrant explain it, and the session isolation digest binds its full rules. */
 export interface BuilderShellWall {
   backend: BackendKind;
   execution: "host-tools";
@@ -48,12 +46,8 @@ export function builderSessionOpener(slot: PiSlotRuntime, workspace: string): Op
 }
 
 /** Limit one complete Builder session, not each turn. An explicit option wins, then
- * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no session time cap. The former six-hour
- * default was removed 2026-09-01: runs 44-46 each spent one silent six-hour turn against it and
- * produced nothing, while the no-progress rule (`builder-turn-loop.ts`), the no-submit notice
- * (`sessionClock`) and the campaign's 40-minute review interval (`builder-campaign.ts`) provide
- * progress checks during the session.
- * The review becomes due at a completed host tool call; it cannot interrupt a silent call. */
+ * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no cap, since the no-progress rule, the no-submit
+ * notice and the review interval already check progress during the session. */
 export function builderSessionCapMs(
   explicit: number | undefined,
   env: Record<string, string>,

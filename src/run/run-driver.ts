@@ -1,17 +1,13 @@
 /**
- * Connect the evaluation runner to the campaign case record. One battery has one runId:
- * fingerprint the product, run its battery
- * through `makeVerify` (which owns battery.json and the per-case run records), then append
- * one case row per task with evidence digests, and check completeness against the task set
- * (B-1: never a count re-read from the file whose loss is being checked).
+ * Connects the evaluation runner to the campaign case record. One battery has one runId:
+ * fingerprint the product, run its battery through `makeVerify` (which owns battery.json and the
+ * per-case run records), append one case row per task with evidence digests, and check
+ * completeness against the task set, never against a count re-read from the file being checked.
  *
  * The driver restates nothing the runner owns: buildInputsHash and backendPin are read back from
- * the battery evidence, the tri-state verdict fields are copied verbatim from the runner's
- * CaseRecord vocabulary, and the isolation check result arrives from the caller (the isolation probe's owner) —
- * `isolation: null` explicitly records that isolation has not been proved.
- *
- * One battery per iteration since 2026-09-04: `batteryCondition` states the main condition the
- * battery and every case row restate, so evidence names the offered tool contract it ran under.
+ * the battery evidence, verdict fields are copied verbatim, and the isolation result comes from
+ * the caller; `isolation: null` records that isolation has not been proved. `batteryCondition`
+ * names the offered tool contract the battery and every case row ran under.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -218,10 +214,8 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   } catch (error) {
     // The runner publishes battery.json before the Judge phase and before it throws a typed
     // environment non-result, so a throw after publication leaves complete verdicts on disk
-    // that belong in the campaign record like any other battery's: live-run-08's environment
-    // non-results, and Astra 0912 i19, whose Judge turn exhausted the provider budget after
-    // 25 verdicts had been published and whose rows the record then lacked. The published
-    // record decides, not the error type; a throw before publication has nothing to append, and
+    // that belong in the campaign record like any other battery's, such as environment
+    // non-results or a Judge turn that exhausted the provider budget. The published record decides, not the error type; a throw before publication has nothing to append, and
     // the check above proved the record holds no row for this run id yet.
     if (existsSync(batteryPath(options.slugDir, options.runId))) {
       try {
@@ -242,7 +236,7 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   // An unclaimable discrimination pass skips the paid loop before any case runs
   // (verification-runner.ts, recordUnclaimableBattery): zero rows is that battery's recorded shape and
   // the claim already refuses on the discrimination findings. The bijection rule is for a
-  // battery that ran; iteration 4 of the engine-path loop aborted two variants on it.
+  // battery that ran.
   const skipped = report.score.length === 0 && !report.evidence.discrimination.claimable;
   if (!skipped) {
     assertCompleteRun(
@@ -284,7 +278,7 @@ export function loadRecordedTasks(slugDir: string): BuildTask[] {
   return /* SAFETY: the check above returned when `!Array.isArray(parsed) || parsed.length === 0`. */ parsed as BuildTask[];
 }
 
-/** The battery's run condition (U0.4): the main condition, no adviser removed, and a digest over
+/** The battery's run condition: the main condition, no adviser removed, and a digest over
  *  offered tool names (the tree's tools-spec names plus preset tools). Read from the
  *  spec the runtime registers from, so the hash and the offered roster share one source. A tree
  *  without a tools-spec, which submit refuses and only fixtures carry, has no roster to digest:

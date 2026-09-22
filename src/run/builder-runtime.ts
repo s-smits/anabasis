@@ -46,9 +46,7 @@ interface BuilderRuntime {
   /** Record what each round's session exposes; `open` is the transport alone. */
   recordSession?: Parameters<typeof runBuilderCampaign>[1]["recordSession"];
   tools: PiTool[];
-  /** Whether the Builder slot's profile carries public web search, so the start prompt states what
-   *  the session actually has: runs w28 and w30 spent four sessions with a working search tool
-   *  nobody had told the Builder about. */
+  /** Whether the Builder slot's profile carries public web search, so the start prompt can say so. */
   webSearch: boolean;
   /** The measured Built solver, for `harness_trial`'s blind rehearsal: the same runtime, turn cap
    *  and confinement a battery case solves under, so a rehearsal measures the battery's own

@@ -1,23 +1,14 @@
 /**
- * Write claim evidence from a recorded battery using `Claim.create` and `assessReadiness`.
- * This completed the build → evaluate → claim path that the operator audit on 2026-07-26
- * found missing [P1]. Each call writes one claim record for one recorded battery identity.
+ * Writes one claim record for one recorded battery, using `Claim.create` and `assessReadiness`.
  *
- * The write takes only a run identity. It reconstructs the runner-owned claim input from the
- * recorded battery, then adds `bundles` from a fresh fingerprint of the same tree and `grounding` from
- * the validated brief's declarations joined with recorded execution evidence. Process memory is
- * not a second score or evidence owner.
+ * The claim input is rebuilt from the recorded battery alone, plus `bundles` from a fresh
+ * fingerprint of the same tree and `grounding` from the validated brief joined with recorded
+ * execution. Readiness is checked at write time: the solvability witness reruns over the bundle
+ * snapshot and the run directory is verified again. Absent conformance evidence stays null and
+ * yields `conformance-unprobed`.
  *
- * Check readiness when writing the claim, using the evidence available at that point:
- * the constructive solvability witness runs again over the immutable bundle snapshot (no
- * paid turns), and recorded evidence is verified again in the exact run directory containing
- * the battery. The caller supplies conformance evidence when available; otherwise it stays
- * null and produces `conformance-unprobed`. Missing evidence cannot establish that the
- * conformance check passed.
- *
- * The claim file goes under the caller's claims directory (campaigns/<slug>/claims/), outside the
- * recorded run dir, because writing post-record into runs/<runId>/ would itself be the
- * recorded-evidence violation that the readiness verdict checks for.
+ * The claim goes under campaigns/<slug>/claims/, outside the run directory, since writing into
+ * runs/<runId>/ would itself violate the recorded evidence.
  */
 import { mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
@@ -70,7 +61,7 @@ interface WriteRunClaimOptions {
   slugDir: string;
   /** Where this function writes claim evidence, one file per runId. */
   claimsDir: string;
-  /** The recorded battery to write from. No mutable evaluation report crosses this boundary. */
+  /** The recorded battery to write from. */
   runId: string;
   /** The disclosed isolation strength the battery was verified under. */
   isolation: IsolationStrength;
@@ -78,11 +69,9 @@ interface WriteRunClaimOptions {
   conformance?: ConformanceEvidence | null;
   /** Passed into the constructive solvability probe (verifier contract, engine profile, timeout). */
   probe?: SolvabilityProbeOptions;
-  /** The probe itself, when a caller already holds one; tests hand in a double. Same interface as
-   *  the F2 adoption gate's `probe`. */
+  /** A probe the caller already holds; tests pass a double. */
   probeSolvability?: BuildDeps["probeSolvability"];
-  /** The pause before the one fresh execution an environment-owned tool non-result earns at claim
-   *  time; tests pass 0. Defaults to the shared `TOOL_RETRY_DELAY_MS`. */
+  /** Pause before the one retry an environment-owned tool non-result earns; tests pass 0. */
   toolRetryWaitMs?: number;
 }
 
@@ -90,33 +79,25 @@ export interface WrittenRunClaim {
   runId: string;
   /** True when Claim.create created a claim; false carries the complete blocking-clause list. */
   created: boolean;
-  /** Whether this run's recorded evidence passes verification, independently of the claim
-   *  decision (terminal denominators). Computed here unconditionally — readiness
-   *  checks it only on created claims, and `measured` must not be derived from claim creation. */
+  /** Whether the run's recorded evidence verifies, independently of the claim decision. */
   batteryRecorded: boolean;
   statement: ClaimStatement | null;
-  /** The recorded battery's score fact, computed whether or not the claim was created: truth-verified and
-   *  passed case counts. The candidate check's zero-verified clause reads this instead of a readiness
-   *  clause — run23 (2026-08-30) paid a full 25-case comparison battery after a 0/25 measured variant because the refused
-   *  claim carried `readiness: null`, so the readiness-clause predicate never saw the score. */
+  /** Verified and passed case counts, computed whether or not the claim was created. */
   batteryScore: BatteryScore;
   clauses: ClaimClause[];
-  /** Null exactly when the claim was not created — readiness presupposes an honest measurement. */
+  /** Null exactly when the claim was not created. */
   readiness: ReadinessVerdict | null;
   solvabilityFindings: ContractFinding[];
   evidencePath: string;
 }
 
-/** The recorded battery's truth-verified and passed counts — a measurement fact, not a claim decision. */
+/** The recorded battery's truth-verified and passed counts. */
 interface BatteryScore {
   verified: number;
   passed: number;
 }
 
-/** Claim evidence lives at `campaigns/<slug>/claims/<runId>.json`. These files stay
- *  outside the recorded run directories: a later write into runs/<runId>/ would be the
- *  recorded-evidence violation readiness checks for — so every consumer (write caller, analysis,
- *  curriculum reader) derives the location here instead of restating the join. */
+/** Claim evidence lives at `campaigns/<slug>/claims/<runId>.json`, outside the run directories. */
 export function claimsDirFor(repoRoot: string, slug: string): string {
   return join(campaignDir(repoRoot, slug), "claims");
 }
@@ -142,20 +123,10 @@ function recordedControlCorpus(slugDir: string): ControlCorpus {
 }
 
 /**
- * The claim-time witness is the same probe the census gate ran before adoption, over the same
- * bundle snapshot. When its verifier produces no verdict the fact is recorded as a finding beside the
- * claim and readiness refuses on `no-solvability-witness`; the score stays recorded and the round
- * continues. Thrown, it ended a run: truss-run13-sol-0903 (2026-09-03) verified 25/25, then the
- * Builder's 30 s engine timed out once on a host at load 150 and the controller closed as
- * `controller-unclassified` with no claim written. The census gate settles the same event as a
- * repair owner (settleNonResult); a claim write is not a round boundary, so it only records it.
- *
- * An environment-owned kind (`sandbox`, `verifierUnavailable`) earns the one fresh execution the
- * census gate and the control runner already give it. run59-opus-0904 (2026-09-04) verified
- * 25/25 on its climb, then the witness's `/usr/bin/cc` re-attestation reported a changed signature
- * once; the claim lost readiness, the climb was held below current and the run ended with 774 of
- * 1320 turns unspent. An author-owned kind (timeout, crash) is recorded at once: it is the tool
- * the evaluator chose over inputs the artifact produced, and a second run says nothing new.
+ * Runs the claim-time solvability witness, the same probe the census gate ran before adoption. A
+ * verifier non-result becomes a finding beside the claim (readiness then refuses on
+ * `no-solvability-witness`) instead of a throw, so the score stays recorded. An environment-owned
+ * kind (`sandbox`, `verifierUnavailable`) is retried once; `timeout` and `crash` are recorded at once.
  */
 async function probeOrNoVerdict(
   options: WriteRunClaimOptions,
@@ -185,9 +156,8 @@ async function probeOrNoVerdict(
   }
 }
 
-/** Check readiness using a constructive solvability witness over the immutable bundle snapshot
- *  and fresh verification of recorded evidence in the claim's run directory. Runs only for a created
- *  statement — readiness presupposes an honest measurement. */
+/** Readiness from a fresh solvability witness and a fresh verification of the run directory. Runs
+ *  only for a created statement. */
 async function readinessAtWrite(
   options: WriteRunClaimOptions,
   fingerprint: FingerprintEvidence & { taskSetHash: string },
@@ -197,15 +167,13 @@ async function readinessAtWrite(
   solvability: SolvabilityEvidence | null;
   solvabilityFindings: ContractFinding[];
 }> {
-  // The commitment key is run-scoped controller secret material; only its public keyId may
-  // enter the evidence. Written fresh per write — reuse across runs would link commitments.
+  // A fresh secret key per write, so commitments are not linkable across runs; only keyId is
+  // recorded.
   const operandCommitment = {
     key: crypto.getRandomValues(new Uint8Array(32)),
     keyId: `${options.slug}-${options.runId}-operands`,
   };
-  // The probe's children resolve source from disk; a drifted tree makes their witness
-  // unattributable, so readiness fails closed on no-solvability-witness with the drift named.
-  // Same binding as the F2 adoption gate; the comparison is owned by source-identity.
+  // The probe's children read source from disk, so a drifted source tree voids the witness.
   const sourceDriftFinding = (moment: string) =>
     controllerValidatedFinding({
       code: "SOLVABILITY_SOURCE_DRIFT",
@@ -232,9 +200,7 @@ async function readinessAtWrite(
   return { readiness, solvability: probed.evidence, solvabilityFindings: probed.findings };
 }
 
-/** The bundleSnapshot the score actually executed under, from the recorded battery only: iteration
- *  analysis binds judge and guard work to this identity, so an unrecorded read here would let a
- *  tampered run dir name the bundleSnapshot for the whole analysis stage. */
+/** The bundleSnapshot the score executed under, read only from the recorded battery. */
 export function executedBundleSnapshotFact(slugDir: string, runId: string): BundleSnapshotFact {
   const path = batteryPath(slugDir, runId);
   const bundleSnapshot =
@@ -255,9 +221,8 @@ export function executedBundleSnapshotFact(slugDir: string, runId: string): Bund
   return /* SAFETY: the check above threw unless id, agentHash, correctnessModelHash and taskSetHash are all present with the right kind. */ bundleSnapshot as BundleSnapshotFact;
 }
 
-/** Bundle identity comes from the recorded battery's executed bundleSnapshot; the fresh fingerprint must
- *  match it. A difference means the live tree changed between verification and claim writing:
- *  the claim would name bytes the score never ran under, so writing fails. */
+/** The executed bundleSnapshot, which the fresh fingerprint must match: a difference means the tree
+ *  changed after verification, and the claim would name bytes the score never ran under. */
 function bindExecutedBundleSnapshot(
   slug: string,
   runId: string,
@@ -273,14 +238,13 @@ function bindExecutedBundleSnapshot(
       `${slug}/${runId}: the tree changed between verification and claim writing — executed bundleSnapshot (agent ${bundleSnapshot.agentHash}, correctnessModel ${bundleSnapshot.correctnessModelHash}, tasks ${bundleSnapshot.taskSetHash}) does not match the current fingerprint (agent ${fingerprint.agentHash}, correctnessModel ${fingerprint.correctnessModelHash}, tasks ${fingerprint.taskSetHash})`,
     );
   }
-  if (bundleSnapshot.taskSetHash === null) {
+  const { taskSetHash } = bundleSnapshot;
+  if (taskSetHash === null) {
     throw new Error(
       `${slug}: the executed bundleSnapshot has no taskSetHash — a claim cannot pin a task set that was never recorded`,
     );
   }
-  return /* SAFETY: the check above returned when `bundleSnapshot.taskSetHash === null`. */ bundleSnapshot as BundleSnapshotFact & {
-    taskSetHash: string;
-  };
+  return { ...bundleSnapshot, taskSetHash };
 }
 
 /** Computed for every write, so a refused claim still discloses what the battery measured. */
@@ -291,17 +255,10 @@ function batteryScoreOf(score: readonly ScoredCase[]): BatteryScore {
   };
 }
 
-/** The case ids whose recorded Judge verdict contradicts the verifier's on the same case, read from
- *  the same recorded run dir the score comes from. run51-sol-0902 created three claims reading
- *  `ok: true`, 18, 17 and 17 of 25, while every one of its 23 failures was a verifier-fail/
- *  Judge-pass row: a reader holding one claim saw nothing contested, and the join existed only in
- *  the analysis files written after the claim. The claim records the disputed case identifiers;
- *  disputes change no score, claim decision or promotion, and the directional
- *  counts stay where they already are, in the recorded battery's judge aggregate.
- *
- *  A case is a dispute only on two booleans that disagree. An absent, refused or non-boolean
- *  judge evidence — `judge: "off"`, an errored turn, a designed abstention — is not a dispute and
- *  the reader never guesses one from a directory layout. */
+/** The case ids whose recorded Judge verdict contradicts the verifier's, read from the same run
+ *  directory as the score. Disputes are disclosed on the claim and change no score, decision or
+ *  promotion. Only two disagreeing booleans are a dispute; absent or non-boolean Judge evidence is
+ *  not. */
 function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[] {
   const violations = verifyRunDir(runDir);
   const disputed: string[] = [];
@@ -309,8 +266,7 @@ function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[]
     if (!isBoolean(row.truthOk)) continue;
     const recorded = recordedEvidence(runDir, join("cases", row.taskId, CASE_JUDGE_FILE), violations);
     if (!recorded.ok) continue;
-    // Unguarded parse is safe: recordedEvidence sha-checked the bytes, and EvidenceLog — the only
-    // writer — serializes JsonValue, so non-JSON cannot arrive here.
+    // The bytes are digest-checked output of the evidence log, which writes only JSON.
     const parsed: unknown = capturedJsonParse(recorded.bytes);
     if (!isRecord(parsed) || !isBoolean(parsed.verdict) || parsed.verdict === row.truthOk) continue;
     disputed.push(row.taskId);
@@ -318,10 +274,7 @@ function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[]
   return disputed;
 }
 
-/**
- * The claim's evidence block, read from the recorded battery and the adopted tree: the battery's own
- * recorded evidence, the executed bundle hashes and the declared plus executed grounding.
- */
+/** The claim's evidence block: recorded battery evidence, executed bundle hashes and grounding. */
 function recordedClaimEvidence(
   slugDir: string,
   battery: ReturnType<typeof readRecordedBatteryRecord>,
@@ -364,7 +317,6 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
   const { runId, slugDir } = options;
   assertRunIdSafe(runId);
   const battery = readRecordedBatteryRecord(join(slugDir, "runs", runId), runId);
-  // The claim reads the firing counts unconditionally; every battery the runner writes has them.
   if (!isRecord(battery.truthCheckFiring)) {
     throw new Error(`${options.slug}/${runId}: recorded battery carries no truthCheckFiring`);
   }
@@ -381,10 +333,7 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
   const bundleSnapshot = bindExecutedBundleSnapshot(options.slug, runId, battery.bundleSnapshot, fingerprint);
 
   const { recordedInput, evidence } = recordedClaimEvidence(slugDir, battery, bundleSnapshot);
-  // Read beside the score, from the same recorded bytes and before the readiness probe touches the
-  // tree. Evidence beside the claim, never inside it: the promotion decision and the round's
-  // terminal are settled after this write (the round measures, then promotes), so the claim names
-  // only what is recorded when it is created.
+  // Read from the same recorded bytes as the score, before the readiness probe runs.
   const disputed = disputedCaseIds(join(slugDir, "runs", runId), battery.cases);
   const claim = Claim.create({
     slug: options.slug,
@@ -411,7 +360,7 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
         slug: options.slug,
         runId,
         createdAt: new Date().toISOString(),
-        // The battery's run condition (U0.4), restated: the claim asserts no condition of its own.
+        // The battery's own run condition; the claim asserts none of its own.
         condition: battery.condition,
         claim: claim.ok
           ? { ok: true, statement: claim.statement }

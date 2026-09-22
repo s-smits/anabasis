@@ -361,8 +361,11 @@ export function attachIssueReadings(
   };
 }
 
-/** The recurrence key of an unowned diagnosis: its check id, else its artifact path, else the kind
- *  itself. Every other finding has no key. */
+/** The recurrence key of an unowned diagnosis, which is the subject it named and nothing else.
+ *  Every other finding has no key. It used to fall through to the kind itself, the constant
+ *  `diagnosis-uncertain` every finding reaching here shares, so any two in consecutive packets read
+ *  as one diagnosis recurring. A diagnosis the reviewer could not attribute is exactly the case
+ *  with no identity to derive, so it gets none. */
 function unownedDiagnosisIdentity(
   finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath" | "hostRule">,
 ): string | null {

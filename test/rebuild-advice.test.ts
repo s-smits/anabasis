@@ -8,6 +8,7 @@
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { writeCompleted } from "../src/meta/completed-json.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -444,6 +445,31 @@ describe("the issue register and its projection", () => {
     // Bytes that are not a packet at all are a different failure and still refuse.
     writeFileSync(latestRebuildAdvicePath(root, SLUG), "{ not json");
     expect(() => readLatestRebuildAdvice(root, SLUG)).toThrow();
+  });
+
+  it("keeps a host finding's rule across the write and read that separate two rounds", () => {
+    const root = repo();
+    const evidence = `campaigns/${SLUG}/case-record.jsonl`;
+    writeFileSync(join(root, evidence), "");
+    const host: AnalysisFinding = {
+      kind: "diagnosis-uncertain",
+      claim: "the agent submitted nothing the verifier could read",
+      evidence,
+      proposedOwner: null,
+      severity: "advisory",
+      hostRule: "unaccepted-without-verdict",
+    };
+    const round = (runId: string, previous: RebuildAdvicePacket | null) => {
+      const data = analysis([caseRow("t1")], runId);
+      return deriveRebuildAdvice(data, judges(), admitFindings(root, data, [host]), previous);
+    };
+    // Production puts a serializer and a parser between the two rounds, and the rule is the only
+    // thing keying this finding's recurrence. Deriving twice in memory proves the count while
+    // leaving the field free to be dropped in transit, with both sides of the join still green.
+    writeCompleted(latestRebuildAdvicePath(root, SLUG), round("r1", null));
+    const reread = readLatestRebuildAdvice(root, SLUG);
+    expect(reread?.findings[0]).toMatchObject({ hostRule: "unaccepted-without-verdict" });
+    expect(round("r2", reread).findings[0]).toMatchObject({ repeated: { count: 2, since: "r1" } });
   });
 
   it("renders families, kinds and counts, and never a task id or verifier text", () => {

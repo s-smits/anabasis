@@ -6,7 +6,7 @@
  * not what a Builder did with it.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { FRESH_BUILD, openingPrompt } from "./helpers/builder-campaign.ts";
+import { FRESH_BUILD, namedTool, openingPrompt } from "./helpers/builder-campaign.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { scriptedSession } from "./helpers/doubles.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
@@ -54,6 +54,40 @@ describe("the opening a campaign composes", () => {
     // The guidance quotes the counts of the battery this session was given, not a fixed 25.
     expect(prompt).toContain(renderBatteryContract(4));
     expect(prompt).not.toContain(renderBatteryContract(25));
+  });
+
+  it("serves one round contract to the opening prompt and to harness_inspect alike", async () => {
+    // One owner, two readers, and until this each side's test supplied the other side's bytes: the
+    // opening compares against the renderer, and the inspect test hands a contract string in by
+    // hand. Both stay green if the round ever serves its two readers different bytes, which is
+    // what mounting the tools on the controller's own input exists to prevent.
+    const campaignDir = scratchDir("ana-contract-readers-");
+    let delivered = "";
+    let served = "";
+    await expect(
+      runBuilderCampaign(
+        { campaignDir, ...FRESH_BUILD },
+        {
+          tools: [],
+          toolsProbes: () => ({}),
+          waitMs: async () => {},
+          open: async (tools) =>
+            scriptedSession(async ({ prompt }) => {
+              delivered = prompt;
+              const result = await namedTool(tools, "harness_inspect").execute("inspect-1", {
+                action: "readiness",
+              });
+              served = JSON.parse(result.content[0]?.text ?? "{}").contract ?? "";
+              return { status: "failed", errorMessages: ["stop after prompt proof"] };
+            }),
+        },
+      ),
+    ).rejects.toThrow(/stop after prompt proof/);
+    // Both halves of the ask, not just the count: a reader served the shorter half recovers less
+    // than the round stated, and the containment below would not notice.
+    expect(served).toContain("Task count: exactly 4 tasks.");
+    expect(served).toContain(renderBatteryContract(4));
+    expect(delivered).toContain(served);
   });
 
   it.concurrent("states what the round asks for before what the measured evidence advises", async () => {

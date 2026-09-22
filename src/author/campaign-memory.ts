@@ -32,8 +32,8 @@ export interface CampaignMemory {
   trailingBuildFailureHashes: string[];
   /** Refused control censuses this campaign has already charged to each Builder-declared engine
    *  id, read from the census gate's records. Restores the per-engine count so a
-   *  restarted invocation continues it instead of receiving a fresh allowance: run
-   *  esp32-run25-sol-0830 spread eleven no-verdict refusals over four invocations. */
+   *  restarted invocation continues it instead of receiving a fresh allowance:
+   *  run25-sol-0830 spread eleven no-verdict refusals over four invocations. */
   toolNonResultRefusals: ToolNonResultCounts;
   /** How often each workspace commit has been recorded as an unchanged candidate: a settled
    *  iteration whose child tree equals its own round entry. The round then refuses it as

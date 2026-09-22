@@ -180,7 +180,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
         // A file the copy cannot make stand alone is left out of it, not a reason to end the run.
         // The refusal this replaces told its reader to recreate the installation in the repair
         // workspace and then made that impossible: on 2026-09-20 it ended
-        // esp32-opus-20260920T033747464Z-4c67fc at round 2 over `acli/tmp/b1/Blink.ino.elf`, a test
+        // firmware run 4c67fc at round 2 over `acli/tmp/b1/Blink.ino.elf`, a test
         // sketch the Builder had compiled inside the tool's own scratch directory, whose debug
         // strings carry the path of the source it was built from. Dropping the file keeps the whole
         // property the refusal defended — nothing in the repair tree resolves into the adopted one —

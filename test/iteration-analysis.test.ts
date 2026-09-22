@@ -135,7 +135,7 @@ function repo(withJudges = true): string {
   return root;
 }
 
-/** Run esp32-new-sol 2026-08-27: the declared firmware checker missed its own 120 s wall on
+/** Run new-sol 2026-08-27: the declared firmware checker missed its own 120 s wall on
  *  three battery compiles while the other cases scored. EXTERNAL_RESULT_UNBOUND blocked the
  *  claim, but the analysis called the three cases an environment failure with no owner, so the
  *  repairable check reached no author session and the round could only rerun unchanged. Since the
@@ -186,7 +186,7 @@ describe("the routing decision", () => {
 
   it("derives the tests owner for both kinds that say the tasks are the subject", () => {
     // The producers do not stamp this. Two producers recorded different owners for the same
-    // statement, so one of the two reached nobody: esp32-w46-opus i03 recorded its only diagnosis as
+    // statement, so one of the two reached nobody: w46-opus i03 recorded its only diagnosis as
     // a `hardness` row with a null owner and routed no feedback at all.
     for (const kind of ["hardness", "curriculum-defect"] as const) {
       expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toEqual({ owner: "tests" });
@@ -238,7 +238,7 @@ describe("host findings — evidence restatements only", () => {
     expect(found[0]?.evidence).toBe(RECORD);
   });
 
-  // esp32 08c0f2 i02: six external checks ran no tool, and the packet told the Builder to rerun.
+  // Run 08c0f2 i02: six external checks ran no tool, and the packet told the Builder to rerun.
   it("leaves a non-result whose kind names no environment to its diagnosis, not a rerun", () => {
     const analysis = packet({ summary: { nonResults: 6 }, cases: stopped(6, "verifier") });
     expect(hostFindings(NO_MEASURED_TREE, analysis)).toEqual([]);

@@ -158,7 +158,7 @@ export function sessionContinuity(claudeDir?: string, budget?: number): SessionC
       if (continues && priorMessages.length >= held.cursor) {
         const missed = priorMessages.slice(held.cursor);
         // v4 boundary: an abort the CLI's own compaction survives (see aborted). The session it
-        // compacted, not pi's whole history, is what the model saw: esp32 run 08c0f2's second
+        // compacted, not pi's whole history, is what the model saw: run 08c0f2's second
         // round rewrote pi's history instead and opened at 456,350 tokens with nothing compacted.
         if (rotatePending) {
           rotatePending = false;

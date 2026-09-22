@@ -719,7 +719,7 @@ describe("battery disposition", () => {
   });
 
   it("names a battery the provider-stop rule cut short", () => {
-    // esp32-opus-331 recorded terminalReason "complete" for exactly this variant and paired it against
+    // opus-331 recorded terminalReason "complete" for exactly this variant and paired it against
     // one that had run all 25 tasks.
     const rows = [
       { runtimeNonResult: null },

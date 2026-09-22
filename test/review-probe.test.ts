@@ -100,7 +100,7 @@ describe("withReplacedField — one field of a known-correct artifact", () => {
   });
 
   it("reaches one file of a file map through a quoted key, and only a file it already carries", () => {
-    // esp32 run 08c0f2: the declared checks read `$.firmware` whole, and every key holds a dot.
+    // Run 08c0f2: the declared checks read `$.firmware` whole, and every key holds a dot.
     const artifact: JsonValue = { firmware: { "fw_logic.cpp": "old", "src/a.h": "h" } };
     expect(withReplacedField(artifact, "$.firmware['fw_logic.cpp']", "new")).toEqual({
       firmware: { "fw_logic.cpp": "new", "src/a.h": "h" },

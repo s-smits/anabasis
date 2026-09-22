@@ -125,7 +125,7 @@ const row = (code: string, detail: string, subject?: string) =>
 
 describe("groupAuthorFindings", () => {
   it("folds rows that differ only in their declared subject into one variant naming the rest", () => {
-    // esp32-opus 2026-08-22 submit 3: 30 accept rows named the same eight checks and differed by id.
+    // An Opus run on 2026-08-22, submit 3: 30 accept rows named the same eight checks and differed by id.
     const findings = [
       row("A", 'valid example "one" was rejected on checks [x, y]. Fix it', "one"),
       row("A", 'valid example "two" was rejected on checks [x, y]. Fix it', "two"),

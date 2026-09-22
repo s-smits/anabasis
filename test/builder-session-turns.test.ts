@@ -64,7 +64,7 @@ describe("the builder-session turn loop", () => {
   });
 
   it("tells a submit called during an in-flight submit to wait for that call's verdict", async () => {
-    // esp32-sol-20260908T214013792Z-23a1bc: five submit calls inside one running submit.
+    // Sol run 23a1bc: five submit calls inside one running submit.
     const texts: string[] = [];
     const { open } = scriptedOpener([
       async (submit) => {

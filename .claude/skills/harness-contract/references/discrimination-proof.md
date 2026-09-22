@@ -91,7 +91,7 @@ A checker may require, by name, only what appears on a surface the solver can re
 function signatures, file paths, constants and units belong in the brief, the operating guide or
 the public task bytes. A reference solve written by the checker's author carries an undisclosed
 name by construction, and accept controls derived from it inherit the omission, so conformance,
-controls, F2 and the census all pass while no submission can score (esp32-w47-sol: the checker
+controls, F2 and the census all pass while no submission can score (campaign w47-sol: the checker
 required a manifest field `deviceId` the brief never named; all 72 verified rows failed; whole
 batteries died the same way in eight sessions between 2026-08-15 and 08-17). Before recording the result, list
 every identifier the checker requires and find each one on a public interface.

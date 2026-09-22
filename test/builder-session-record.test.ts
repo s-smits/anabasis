@@ -59,7 +59,7 @@ describe("the Builder execution record", () => {
   });
 
   it("checkpoints liveness inside a turn from the first tool call, at most once per interval", async () => {
-    // esp32-opus 2026-08-22: two hours into one turn under a 24-hour wall, the only sign of life
+    // An Opus run on 2026-08-22: two hours into one turn under a 24-hour wall, the only sign of life
     // was file mtimes. Three tool calls inside one turn now write one in-flight checkpoint
     // (the interval keeps the next two off disk) carrying the latest tool time.
     const open = async () =>
@@ -80,7 +80,7 @@ describe("the Builder execution record", () => {
   });
 
   it("checkpoints after every hosted tool return inside one turn that never ends", async () => {
-    // esp32-opus 2026-08-23: one Claude turn open for eleven hours, twelve correctness_check
+    // An Opus run on 2026-08-23: one Claude turn open for eleven hours, twelve correctness_check
     // calls, no submit, and no execution record on disk until the turn ended.
     const checkTool = toolDouble({
       name: "correctness_check",

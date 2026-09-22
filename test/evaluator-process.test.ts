@@ -126,7 +126,7 @@ describe("generated evaluation in a confined child", () => {
   });
 
   it("allows a check more time than its longest permitted tool run", () => {
-    // Run esp32-sol-20260908T214013792Z-23a1bc: a check that ran one tool at the published
+    // Sol run 23a1bc: a check that ran one tool at the published
     // 600 s maximum exceeded its own 600 s timeout and was charged as an authoring defect.
     expect(EVALUATOR_WALL_MS).toBeGreaterThan(TOOL_TIMEOUT_CEILING_MS);
   });

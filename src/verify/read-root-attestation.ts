@@ -22,7 +22,8 @@ import {
   readlinkSync,
 } from "../meta/filesystem.ts";
 
-/** The recorded ESP32 W47 tool tree has 109,509 entries; retain finite headroom above that shape. */
+/** The largest recorded tool tree (campaign w47) has 109,509 entries; retain finite headroom above
+ *  that shape. */
 const READ_ROOT_MAX_ENTRIES = 250_000;
 /** One declared root may contribute at most sixteen GiB of logical file and link bytes. */
 export const READ_ROOT_MAX_BYTES = 16n * 1024n * 1024n * 1024n;

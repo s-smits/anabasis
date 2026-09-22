@@ -37,7 +37,7 @@
  * `over-aim` zone, whose own name says the limit is not measured — was a battery the reviewer had
  * no stated reason to inspect. The orientation now states where the battery landed, and this
  * paragraph reads against that placement rather than against perfection.
- * 2026-09-20: an esp32 bundle's `admissible()` tested `prescaler >= 1` and never tested membership
+ * 2026-09-20: a firmware bundle's `admissible()` tested `prescaler >= 1` and never tested membership
  * in the board's own `prescalerChoices`, while the file two functions above exported that catalogue
  * as the reference search's candidate list; the check applies to the submitted config, so a
  * prescaler the board does not offer had nothing to refuse it. A review found it independently and

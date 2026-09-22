@@ -44,7 +44,7 @@ describe("the tools an external check is allowed to name", () => {
   const externalSpec = (tool: string, verifier = NO_ENGINE_VERIFIER): SpecimenSpec => ({ verifier, tool });
 
   it.concurrent("names a declared tool that resolves nowhere and runs no witness against it", async () => {
-    // esp32, 2026-08-23: 25 witnesses charged to the product for a verifier that never started.
+    // 2026-08-23: 25 witnesses charged to the product for a verifier that never started.
     const fixture = specimen(externalSpec("ana-no-such-tool"));
     const result = await witness(fixture);
 

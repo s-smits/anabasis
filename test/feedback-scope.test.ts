@@ -79,7 +79,7 @@ describe("the complete repair agenda", () => {
     // Of the 416 findings in the admission records under campaigns/, 411 cite a file under
     // campaigns/ and 5 under domains/. Both trees are closed to the Builder, so the citation spent
     // about a hundred characters a row on a file the session could not open; the record keeps it.
-    const cited = "campaigns/writes-firmware-esp32-raspberry-9c0c68b1-3/analysis/esp32-i02-epoch-review.json";
+    const cited = "campaigns/design-steel-trusses-3fd52f9e-3/analysis/truss-i02-epoch-review.json";
     const text =
       advisory([
         {

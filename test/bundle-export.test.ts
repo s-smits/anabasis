@@ -152,7 +152,7 @@ describe("an exported Built Harness bundle", () => {
   });
 
   it("names a retained version after the project its record names, not its run id", () => {
-    const version = join(scratch, "esp32-run-i02");
+    const version = join(scratch, "truss-run-i02");
     writeMatchingBuildFixture(version);
     writeFileSync(join(version, "version.json"), JSON.stringify({ fingerprint: { slug: "the-project" } }));
     expect(bundleSlug(version)).toBe("the-project");

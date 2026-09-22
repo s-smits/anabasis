@@ -193,7 +193,7 @@ describe("what a refusal tells the Builder", () => {
   });
 
   // The depth-1 delta and the byte-identical echo are both blind to a session moving AWAY from
-  // its best tree on always-fresh commits: esp32-w33 wandered from 221 findings at submit 13 to
+  // its best tree on always-fresh commits: w33 wandered from 221 findings at submit 13 to
   // 638 at submit 16 with "files changed: yes" true at every step and nothing naming the loss.
   it("names the session's closest tree when a later submit comes back worse", async () => {
     const finding = (n: number) => ({ code: `f-${n}`, path: "agent/tools.ts", detail: "broken" });

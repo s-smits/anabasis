@@ -251,7 +251,7 @@ export function claudeCompacts(profile: PiProfile): boolean {
  * One slot's served condition and credential, read from the repository env chain. Only the
  * openrouter kind resolves the OpenRouter or custom endpoint: resolving it
  * for a Claude or Codex condition made a `.env` that names CUSTOM_ADDRESS without
- * CUSTOM_CONTEXT_WINDOW abort a launch that never uses that host (esp32-rehearsal-0901).
+ * CUSTOM_CONTEXT_WINDOW abort a launch that never uses that host (rehearsal-0901).
  */
 export function resolvePiSlot(
   slot: BackendSlot,

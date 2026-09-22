@@ -2,7 +2,7 @@
  * What the turn currently running has already done.
  *
  * The execution record used to receive tool counts only when a turn returned its final
- * result. A turn that never returned therefore contributed nothing: run esp32-w41-opus
+ * result. A turn that never returned therefore contributed nothing: run w41-opus
  * was killed inside its first turn and recorded `turns: 0`, `toolCalls.total: 0`, an empty `byName`
  * and a null usage for a session that had made 24 controller-hosted tool calls over 5m31s. The
  * transport had emitted every one of those calls as an event, but the recorder did not count
@@ -13,8 +13,8 @@
  * running counts. Clearing them when the turn finishes prevents the same calls from being
  * counted twice.
  *
- * It also identifies failed calls. Per-name counts alone left run esp32-w23's
- * "28 failed commandExecution" and run esp32-sol-329's 19 of 19 failures unexplained by the
+ * It also identifies failed calls. Per-name counts alone left run w23's
+ * "28 failed commandExecution" and run sol-329's 19 of 19 failures unexplained by the
  * execution record. A limited row per failure records the tool, time, request and response,
  * helping an investigation identify what failed. Both excerpts are redacted and cut, and both are null
  * when the transport carried nothing rather than an empty string that would read as "nothing was

@@ -81,9 +81,9 @@ test("task search includes public content with independent case-insensitive term
     id: "timer-01",
     family: "timer",
     assistantPreview: null,
-    publicTask: { input: { board: "esp32", request: "Create a stopwatch" }, resources: [] },
+    publicTask: { input: { span: "12m", request: "Create a stopwatch" }, resources: [] },
   };
-  expect(matchesTask(item, "CREATE ESP32 stopwatch")).toBe(true);
+  expect(matchesTask(item, "CREATE 12M stopwatch")).toBe(true);
   expect(matchesTask(item, "raspberry")).toBe(false);
   expect(matchesTask({ ...item, publicTask: { input: {}, resources: [] } }, "create")).toBe(false);
 });

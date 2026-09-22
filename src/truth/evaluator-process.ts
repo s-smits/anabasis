@@ -36,8 +36,8 @@ type Response = { missing: readonly string[] } | { result: boolean };
 type Child = Bun.Subprocess<"pipe", "pipe", "pipe">;
 /** Time limit for one complete check, including tool runs. It exceeds the tool limit because
  *  when both were `TOOL_TIMEOUT_CEILING_MS`, a check that ran one tool at the published maximum
- *  could never complete (run esp32-sol-20260908T214013792Z-23a1bc, control
- *  `esp32-station-09-additional-valid`). starter-pack/contract.md publishes both numbers together. */
+ *  could never complete (Sol run 23a1bc, control `station-09-additional-valid`). starter-pack/contract.md
+ *  publishes both numbers together. */
 export const EVALUATOR_WALL_MS = 2 * TOOL_TIMEOUT_CEILING_MS;
 
 /** The host side of one check: the tool port it may call, its wall, the lifetime that owns its

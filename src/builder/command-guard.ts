@@ -119,7 +119,7 @@ const QUOTED_HEREDOC_BODY = /(<<-?[\t ]*(['"])(\w+)\2[^\n]*\n)(?:[\s\S]*?\n)?[\t
  * Builder, the case home for the Built solver) and TMPDIR at a directory made for that command, so
  * such a write cannot reach a file the session does not own. dcg 0.14.0 refuses it only because the
  * target expands at run time; Built cases of 2026-09-13 to 2026-09-15 lost 69 turns to it. Its
- * `root-home` twin refused two writes into case-home children in esp32 run 08c0f2. Every dynamic
+ * `root-home` twin refused two writes into case-home children in run 08c0f2. Every dynamic
  * target must start with `~/` or one of the two variables, carry no `..` and no second expansion,
  * and the command must not reassign either variable.
  */
@@ -250,7 +250,7 @@ function workspaceRelativeOperand(operand: string): boolean {
 
 /** Every `cd` stays in a tree the session owns, so a relative remove after it does too: the private
  *  `$HOME` both shells set (bare `cd`, `~`, `$HOME`) or a relative child, with no `..` and no other
- *  expansion. Built cases of esp32 run 08c0f2 (2026-09-22) lost turns to `cd ~ && rm -rf build`. */
+ *  expansion. Built cases of run 08c0f2 (2026-09-22) lost turns to `cd ~ && rm -rf build`. */
 function ownDirectories(shell: string): boolean {
   // The target ends where the word does, so `cd "$HOME"/..` is read whole rather than as `"$HOME"`.
   const targets = [

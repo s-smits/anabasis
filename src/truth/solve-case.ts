@@ -450,7 +450,7 @@ function acceptedOutcome(
     );
   }
   // A blocking fail on a check whose evidence is complete decides the case; a skipped tool run
-  // could only have withheld a pass. Six esp32 08c0f2 cases failed to compile and were filed here.
+  // could only have withheld a pass. Six cases of run 08c0f2 failed to compile and were filed here.
   const failed = [...blockingFailedCheckIds(scoped.verdict)];
   if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
     // The unattributed verifier kind belongs to generated behaviour, not the environment.

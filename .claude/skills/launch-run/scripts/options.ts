@@ -5,28 +5,8 @@ import { asRecord, isBoolean, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 
 export const PRESETS = {
-  esp32:
-    "Build a harness that writes firmware for ESP32, Raspberry Pi Pico and Arduino Uno, connecting sensors, displays and lights, where the code must compile.",
   truss:
     "Design lightweight 3D steel trusses around irregular supports and forbidden volumes, choosing joint positions, connectivity and catalogue sections within strict mass limits.\nMeet strength, buckling and deflection requirements under self-weight, reversing wind and asymmetric live loads, including geometric nonlinearity and specified single-member-loss scenarios.",
-  // The presets below follow truss's shape: a best answer under a strict limit plus interacting
-  // requirements and specified loss or fault scenarios, stated together (see SKILL.md).
-  feeder:
-    "Size radial low-voltage distribution feeders at minimum cost, choosing catalogue cables, routes and protective devices for mixed residential, motor and solar loads.\nMeet derated ampacity, voltage drop, motor-start dip, solar backfeed overvoltage and fault-clearing requirements, including specified single-cable outage scenarios.",
-  pdn: "Design PCB power-distribution networks for multi-rail processors at minimum cost, choosing stack-ups, plane shapes, via arrays and catalogue decoupling capacitors.\nMeet target impedance across frequency, DC IR drop, current density and via ampacity under simultaneous load steps, including specified single-capacitor-loss scenarios.",
-  control:
-    "Design discrete-time controllers for embedded motor and thermal plants with the shortest settling time, choosing structure, gains, sample rate and fixed-point word lengths.\nMeet overshoot, actuator saturation, sensor noise, delay margin and quantisation requirements across plant-parameter variations, including specified single-sensor-fault scenarios.",
-  balancing:
-    "Schedule passive cell balancing for series lithium-ion packs in the shortest time, choosing bleed resistors and per-cell switching timelines.\nRespect resistor power and board thermal limits, cell voltage and current limits, unequal ageing and measurement error across charge, rest and discharge profiles, including specified single-sensor-fault scenarios.",
-  sorting:
-    "Write C routines that sort, deduplicate and rank 64-bit integer streams within published comparison, memory and time budgets, where the code must compile with sanitizers clean.\nHandle adversarial duplicates, nearly sorted runs, extreme values, streams larger than the memory budget and stable ordering of equal keys across chunk boundaries.",
-  sql: "Write analytical SQL over multi-table business schemas that returns exactly the requested metrics, choosing joins, time windows, deduplication and window functions.\nHandle late and corrected rows, NULL semantics, currency and time-zone conversion, slowly changing dimensions and fiscal calendars, within a published query-plan cost budget.",
-  seating:
-    "Plan seating charts for events of up to 300 guests with the lowest published dissatisfaction score, assigning tables and seats of mixed shapes and capacities.\nKeep couples and families together and feuds apart, and meet accessibility, service-zone and child-seating rules, including late RSVP changes that must move as few guests as possible.",
-  ecommerce:
-    "Decide advertising budget, price and reorder actions for online shops that maximise contribution margin, from advertising, analytics, order, return and inventory exports.\nReconcile attribution windows, currencies and time zones, refunds, stock-outs and duplicate tracking events, with every decision traced to the rows that support it.",
-  hardware:
-    "Build consumer hardware devices from catalogue parts at minimum bill-of-materials cost, choosing the microcontroller, USB-C power path, battery, display link and wiring.\nMeet power-delivery negotiation, charge and thermal limits, battery runtime, pin and bus compatibility and firmware behaviour, including specified brown-out and cable-fault scenarios.",
 };
 const PRESET_NAMES = Object.keys(PRESETS).join("|");
 export const SLOTS = ["builder", "built", "review"] as const;
@@ -108,7 +88,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${P
   --dry-run                      Plan only: no setup, secrets or launch
   --list                         Exact preset prompts
   --help                         This help
-Repeat a preset for independent replicas, for example esp32 esp32 truss --model sol,astra.
+Repeat a preset for independent replicas, for example truss truss --model sol,astra.
 One Bun command prepares and probes the batch, gates its source once, then launches it.`;
 
 export type LaunchOptions = ReturnType<typeof parseOptions>;

@@ -364,7 +364,7 @@ describe("the climb: one product, three batteries, one fixed competence", () => 
 
   /** The other ending: three batteries the product passes whole, so every placement reads the same
    *  side of the aim and the fourth round stops instead of paying for a fourth. Truss 4c67fc ended
-   *  this way on 2026-09-20 and esp32 662762 the day before, and in both campaigns the placement
+   *  this way on 2026-09-20 and run 662762 the day before, and in both campaigns the placement
    *  that ended the run existed in no difficulty-decisions file: the round guarded the record on
    *  its own move, so the one reading that changed the campaign's course was the one it dropped. */
   it("records the placement a round stopped on, though that round authors nothing", async () => {

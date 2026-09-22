@@ -36,7 +36,7 @@ describe("a gate run two callers may share", () => {
     "preview-blocks",
     "host-recovers",
   ])("submit joins an in-flight correctness_check only for the same condition: %s", async (change) => {
-    // Variant S (esp32-sol, 2026-08-23): a clear check took 240.6 s and the submit of the unchanged
+    // Variant S (a Sol run, 2026-08-23): a clear check took 240.6 s and the submit of the unchanged
     // tree paid 240.0 s for the same rows. The trial's evidence is the iteration's evidence.
     const campaignDir = scratchDir("ana-check-then-submit-");
     const workspace = join(campaignDir, "workspace");

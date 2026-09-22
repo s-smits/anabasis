@@ -151,7 +151,7 @@ function recordedControlCorpus(slugDir: string): ControlCorpus {
  * repair owner (settleNonResult); a claim write is not a round boundary, so it only records it.
  *
  * An environment-owned kind (`sandbox`, `verifierUnavailable`) earns the one fresh execution the
- * census gate and the control runner already give it. esp32-run59-opus-0904 (2026-09-04) verified
+ * census gate and the control runner already give it. run59-opus-0904 (2026-09-04) verified
  * 25/25 on its climb, then the witness's `/usr/bin/cc` re-attestation reported a changed signature
  * once; the claim lost readiness, the climb was held below current and the run ended with 774 of
  * 1320 turns unspent. An author-owned kind (timeout, crash) is recorded at once: it is the tool

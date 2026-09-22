@@ -2,7 +2,7 @@
  * Check that each truth check cites a public rule the Built Harness can read. This validation
  * runs while recording the candidate, before paid battery measurement.
  *
- * Two runs paid for the same defect from opposite sides. run23's `esp32-panel-node` family scored
+ * Two runs paid for the same defect from opposite sides. run23's `panel-node` family scored
  * 0 of 35: its panel frame rules (first frame, change-only, ordering, fast setup) and its bargraph
  * threshold, bit-order and latch rules were stated in `correctness-model/brief.json` under
  * `decisions`, which the public-resources projection withholds, while the operating guide asked

@@ -826,8 +826,8 @@ w19 session spent ~40 minutes on an inventory whose two decisive rows (the tools
 the engines-are-not-independent observation) needed no web at all. Check native search, shell research and cited public material too; `neverUsed: public_source`
 measures that named tool, not whether the Builder researched the consequential unknown.
 A refuted fact is diagnostic — it inspects the Builder and the verifier, it never rescores a case.
-The 2026-08-15 esp32 run is the reference shape: the Uno and Pico tables were correct, the ESP32
-I2C pad table was fabricated, and no existing angle would ever have asked.
+The 2026-08-15 firmware run is the reference shape: two of its three board pin tables were
+correct, the third board's I2C pad table was fabricated, and no existing angle would ever have asked.
 
 Sharpened trigger (2026-09-08): admit only when the builder view reports `public_source` in
 `neverUsed` while the domain declares factual tables, or an external tool was installed without

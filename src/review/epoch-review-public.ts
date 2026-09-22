@@ -16,11 +16,11 @@ type ReviewContract = {
   deferAdvisory?: boolean;
 };
 
-/** The public sentence for one finding, composed from typed identities alone. Run
- *  esp32-sol-20260905T065506215Z-55aaad's reviewer named a schema path, the mock headers and the
- *  exit predicates; the template sentence that replaced them told the Builder nothing, and it
- *  submitted unchanged bytes as a probe. The check id, schema path and public input path are public
- *  authoring identities; the claim itself is not and never enters this sentence. */
+/** The public sentence for one finding, composed from typed identities alone. Sol run 55aaad's reviewer
+ *  named a schema path, the mock headers and the exit predicates; the template sentence that
+ *  replaced them told the Builder nothing, and it submitted unchanged bytes as a probe. The check
+ *  id, schema path and public input path are public authoring identities; the claim itself is not
+ *  and never enters this sentence. */
 /** Hardness and an uncertain diagnosis describe what the review observed; neither demonstrates a
  *  defect, so neither may read as an order to edit the product. Astra's reviews i11 to i18
  *  (2026-09-12 to 14) recorded diagnosis-uncertain on equilibrium and provenance in eight rounds,
@@ -76,7 +76,7 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     finding.publicInputPath === undefined ? null : `public input \`${finding.publicInputPath}\``;
   const input = inputPath === null ? "" : ` (${inputPath})`;
   if (finding.unobserved === true && !deferred) {
-    // The obligation is unobserved, not the path: esp32 08c0f2 projected two different gaps as "no
+    // The obligation is unobserved, not the path: run 08c0f2 projected two different gaps as "no
     // declared check observes artifact path `firmware`", which all nine of its checks read, and
     // the round-three Builder called the finding puzzling. The readers are counted, never quoted.
     const path = finding.artifactSchemaPath;
@@ -206,7 +206,7 @@ function publicFinding(
         ];
   // The request is not repeated here. Every prompt that renders these rows states it once under
   // its own heading, and the copy per finding put it four times into one 21,571-character
-  // authoring prompt on 2026-09-19 (esp32-...-17f9de), in front of the sentence the author had
+  // authoring prompt on 2026-09-19 (run 17f9de), in front of the sentence the author had
   // to act on. One duty, one owner (rule 14).
   const context = [...obligation, ...veto, ...dispute];
   // The repair instruction rides only with a demonstrated defect — which, until the request
@@ -241,7 +241,7 @@ export function publicEpochReview(
   // An unfinished review has not weighed the complete contract. Keep its observations private;
   // neither an owner reopen nor a suspended diagnosis may come from that partial reading. One
   // reading is complete on its own: a vetoed case the reviewer settled against the check after
-  // opening the vetoed artifact. The 2026-09-15 esp32 replay settled `init-hardware-state` that
+  // opening the vetoed artifact. The 2026-09-15 replay settled `init-hardware-state` that
   // way in a review left incomplete by a vanished `.toolchain`; the settlement still crosses, as
   // advice rather than a reopen, since the tools that review could not read may own the check.
   const settled =

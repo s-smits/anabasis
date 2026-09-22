@@ -671,7 +671,7 @@ it("reads only measured public task input and refuses a drifted task set", () =>
         {
           taskId: "timer-01",
           family: "timer",
-          publicInput: { board: "esp32", request: "Create a stopwatch" },
+          publicInput: { span: "12m", request: "Create a stopwatch" },
           hidden: { secret: "hidden-answer" },
         },
       ]),
@@ -692,7 +692,7 @@ it("reads only measured public task input and refuses a drifted task set", () =>
     );
     const row = { runId: "eval", slug: "widget", traces: [tracePointer(tree, "runs/eval/battery.json")] };
     const content = recordedTaskContent(campaign, row);
-    expect(content.get("timer-01")?.input).toEqual({ board: "esp32", request: "Create a stopwatch" });
+    expect(content.get("timer-01")?.input).toEqual({ span: "12m", request: "Create a stopwatch" });
     expect(JSON.stringify([...content])).not.toContain("hidden-answer");
     writeFileSync(taskPath, JSON.stringify([{ taskId: "timer-01", publicInput: "different task" }]));
     expect(recordedTaskContent(campaign, row).size).toBe(0);

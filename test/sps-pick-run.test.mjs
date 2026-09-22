@@ -43,11 +43,11 @@ beforeEach(() => {
   head = git("rev-parse", "HEAD");
 
   note(
-    "esp32-w41-opus",
+    "truss-w41-opus",
     [
-      "# Run w41 — esp32-w41-opus",
+      "# Run w41 — truss-w41-opus",
       "",
-      `Reviewed 2026-08-20. Campaign \`esp32-w41-opus\`, runId \`run-w41\`, source`,
+      `Reviewed 2026-08-20. Campaign \`truss-w41-opus\`, runId \`run-w41\`, source`,
       `\`${parent}\` (clean), epoch \`epoch-ea77\`.`,
       "",
       "Opened 2026-08-19T23:07:13Z, terminal 2026-08-20T00:21:05Z, outcome `aborted`, terminalReason",
@@ -99,7 +99,7 @@ describe("pick-run", () => {
     const lines = result.stdout.split("\n");
     expect(lines[0]).toBe(`tree ${tree} (HEAD ${head.slice(0, 7)})`);
     expect(lines[1]).toBe(
-      `2026-08-20 esp32-w41-opus: source ${parent.slice(0, 9)} ancestor, 1 commit(s) since; outcome aborted (aborted: fullrun received SIGTERM) hits(engine wall) 2`,
+      `2026-08-20 truss-w41-opus: source ${parent.slice(0, 9)} ancestor, 1 commit(s) since; outcome aborted (aborted: fullrun received SIGTERM) hits(engine wall) 2`,
     );
     expect(lines[2]).toBe("  Sealed denominator `absent`: zero batteries, zero cases.");
     expect(lines[3]).toBe('  adjudication aborted-no-denominator {"kernelFixes":1}');
@@ -121,13 +121,13 @@ describe("pick-run", () => {
       runTypeScript("pick-run.mts", ["--tree", tree, "--notes", notes, "--json"]).stdout,
     );
     const byName = Object.fromEntries(json.runs.map((run) => [run.campaign, run]));
-    expect(byName["esp32-w41-opus"].ancestor).toBe(true);
-    expect(byName["esp32-w41-opus"].commitsSince).toBe(1);
+    expect(byName["truss-w41-opus"].ancestor).toBe(true);
+    expect(byName["truss-w41-opus"].commitsSince).toBe(1);
     expect(byName["side-run"].ancestor).toBe(false);
     expect(byName["side-run"].commitsSince).toBeNull();
     expect(byName["side-run"].onMain).toBeNull();
     expect(byName["truss-w30"].ancestor).toBeNull();
-    expect(json.runs.map((run) => run.campaign)).toEqual(["side-run", "esp32-w41-opus", "truss-w30"]);
+    expect(json.runs.map((run) => run.campaign)).toEqual(["side-run", "truss-w41-opus", "truss-w30"]);
   });
 
   it("reads the identity line in each shape the hand-written syntheses used", () => {

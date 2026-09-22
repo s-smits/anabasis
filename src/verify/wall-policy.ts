@@ -238,7 +238,7 @@ export function darwinToolchainInstallRoots(home: string | undefined = Bun.env.H
 /** The Darwin platform roots the verifier wall opens: present system roots plus the toolchain
  * install roots under `home`. A verifier host reads this once at construction and hands the list
  * to every plan, so a root appearing on the shared machine mid-census no longer moves the policy
- * hash: esp32-opus 2026-08-22 discarded three exit-0 verdicts that way. */
+ * hash: an Opus run on 2026-08-22 discarded three exit-0 verdicts that way. */
 export function darwinPlatformReadRoots(home: string | undefined = Bun.env.HOME): string[] {
   return [
     ...DARWIN_SYSTEM_READ_ROOTS.filter((root) => existsSync(root)),

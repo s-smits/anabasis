@@ -9,7 +9,7 @@ import { isObject, isString } from "../meta/json-shape.ts";
 export const SANITIZER_VERSION = "judge-sanitizer/v3";
 
 // One request budget preserves ordinary source files. The old 4,000-character leaf cap
-// cut an ESP32 sketch the Judge needed to read, while 20,000 short leaves could send
+// cut a firmware sketch the Judge needed to read, while 20,000 short leaves could send
 // megabytes. Keys and values share this limit; exhausted containers collapse once.
 const MAX_TEXT_LENGTH = 64_000;
 const MAX_DEPTH = 64;

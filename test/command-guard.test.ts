@@ -101,7 +101,7 @@ describe("the Builder's destructive-command guard", () => {
     expect(workspaceAllows("rm -rf *", rm)).toBe(false);
     expect(workspaceAllows("rm -rf", rm)).toBe(false);
     expect(workspaceAllows("cd / && rm -rf usr", rm)).toBe(false);
-    // Esp32 run 08c0f2: a cd into the private home or a relative child keeps the remove inside.
+    // Run 08c0f2: a cd into the private home or a relative child keeps the remove inside.
     const home = ["$", "HOME"].join("");
     expect(workspaceAllows("cd ~ && rm -rf build && ls", rm)).toBe(true);
     expect(workspaceAllows(`cd ${home} && rm -rf work && mkdir -p work/fw && cd work/fw`, rm)).toBe(true);
@@ -322,7 +322,7 @@ EOF`,
     expect(acceptedSpelling("core.git:reset-hard", BUILT_SHELL_RULES)).toBeNull();
     // The trash line names a destination each shell can write and the guard admits: a literal
     // relative directory for the Builder, the case home for the Built shell, whose /tmp other
-    // solves share (esp32 08c0f2: two cases met in /tmp/oldbuild1). The place line names each
+    // solves share (run 08c0f2: two cases met in /tmp/oldbuild1). The place line names each
     // shell's own folder. The write line names targets each shell keeps: the Built shell's TMPDIR
     // is fresh for each command, so it names only $HOME and ~. The Built list carries no git line and no
     // installed-tool line: its shell has neither a repository nor a .toolchain directory, and its

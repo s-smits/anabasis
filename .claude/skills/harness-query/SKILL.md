@@ -103,8 +103,8 @@ one task carrying both accept and reject controls, or two when those controls be
 tasks. Each anchor costs an extra solve. These controls exercise the recorded task; they do not
 calibrate the new query's expected answer.
 
-Shaping can satisfy the input schema; it does not establish correctness or answerability. Measured on 2026-08-14: the
-ESP32 plane-radar query above was written into the `objective` of a desktop-parts task and passed
+Shaping can satisfy the input schema; it does not establish correctness or answerability. Measured on 2026-08-14: a
+firmware plane-radar query was written into the `objective` of a desktop-parts task and passed
 2/2, but the artifact it produced was a desktop build — cpu, board, ram, gpu, psu — because the
 template's catalog, requirements and rules are what the agent actually solves against. The
 injected text moved almost nothing. Read a templated pass as "the harness completed its own kind

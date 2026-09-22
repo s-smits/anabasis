@@ -210,7 +210,7 @@ describe("Judge verdict schema", () => {
   });
 
   it("delivers a complete ordinary source file to the Judge instead of a per-string preview", async () => {
-    // ESP32 i04: the Judge abstained because sanitization cut firmware.ino at 4,000
+    // A round i04: the Judge abstained because sanitization cut firmware.ino at 4,000
     // characters, even though the complete subject was small enough for the request.
     const source = "// firmware source\n".repeat(260) + "void loop() { complete(); }";
     let received: unknown;
@@ -523,7 +523,7 @@ describe("the judge battery review", () => {
   });
 
   it("samples a verdict that contradicts the verifier once more and records the second verdict beside the first", async () => {
-    // esp32-12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15.
+    // Task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15.
     const calls: string[] = [];
     const verdicts = new Map<string, Array<boolean | null>>([
       ["c1", [false, false]],

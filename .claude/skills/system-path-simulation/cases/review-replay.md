@@ -16,7 +16,7 @@ Census every recorded disagreement first; the shape of the disagreements chooses
 On 2026-09-15, 10,358 recorded cases held 70 verifier-pass/Judge-fail rows, and the largest
 single shape was the Judge predicting a compile failure it could not run, repeated across one
 run's iterations. The two truss cases first chosen as genuine vetoes were the Judge's own
-arithmetic; the replay refuted that in six minutes and the position moved to the esp32 run.
+arithmetic; the replay refuted that in six minutes and the position moved to the firmware run.
 
 ```sh
 bun .claude/skills/system-path-simulation/scripts/judge-replay.mts \

@@ -163,7 +163,7 @@ describe("a command over the draft files", () => {
   });
 
   it.concurrent("shows the draft in a folder named after the answer root, as the checker lays it out", async () => {
-    // Esp32 run 08c0f2: with the draft at the top of the folder, `firmware/firmware.ino` compiled as
+    // Run 08c0f2: with the draft at the top of the folder, `firmware/firmware.ino` compiled as
     // `firmware` in the shell and failed at the checker, which found it one folder deeper.
     const { state, wired } = port(
       { "firmware.ino": "flat\n", "firmware/firmware.ino": "nested\n" },
@@ -376,7 +376,7 @@ describe("the command profile", () => {
     expect(commandIsolationPolicy(session, EXAMPLE_DIRS).scratchRoots).toContain(EXAMPLE_TEMP);
   });
 
-  // esp32-run49-sol-0902 counted 284 compiler temporary-file and 40 temporary-directory permission
+  // run49-sol-0902 counted 284 compiler temporary-file and 40 temporary-directory permission
   // failures: TMPDIR pointed at the session home, which every later command inherits. A tree per
   // command is writable to any depth, is neither the home nor the work tree, and is gone when the
   // command ends, so a build's scratch is not returned as a draft file.

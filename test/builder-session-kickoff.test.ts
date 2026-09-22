@@ -117,7 +117,7 @@ describe("the Builder session kickoff", () => {
 
   /**
    * Read-back. Curation writes MEMORY.md after every refused pass, but from commit a55b8e44 until
-   * this interface nothing delivered those bytes back: runs esp32-sol-329, esp32-w22, esp32-w28 and
+   * this interface nothing delivered those bytes back: runs sol-329, w22, w28 and
    * truss-w30 each opened on notes the campaign had paid to write and never showed. The block is
    * unconditional on the previous pass's outcome, and it arrives once.
    */

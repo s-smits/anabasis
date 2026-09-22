@@ -243,13 +243,12 @@ export function conditionAlreadyReviewed(
  *  a domain whose schema has one root offers the reviewer one bare word to name any place in the
  *  artifact. Across every recorded epoch review, 5,406 findings named a bare root and 3,196 named a
  *  path below one; in all nine campaigns where an unnamed-check harness defect fell back to a path,
- *  the bare roots collapsed to a single constant. Run
- *  esp32-opus-20260919T042430000Z-17f9de is what that costs: 2,448 findings on the one root
- *  `files`, so a floating-point rule, a header contract and a pin binding shared one identity, and
- *  i03's new I2C finding arrived carrying two earlier recurrences it had nothing to do with and was
- *  demoted by them. The same collapse forces the opposite error at one recurrence, which is the
- *  23a1bc failure of resetting a working harness. A word that names the whole artifact identifies
- *  no defect in it.
+ *  the bare roots collapsed to a single constant. Run 17f9de is what that costs: 2,448 findings on
+ *  the one root `files`, so a floating-point rule, a header contract and a pin binding shared one
+ *  identity, and i03's new I2C finding arrived carrying two earlier recurrences it had nothing to do
+ *  with and was demoted by them. The same collapse forces the opposite error at one recurrence,
+ *  which is the 23a1bc failure of resetting a working harness. A word that names the whole artifact
+ *  identifies no defect in it.
  *
  *  The path used to be part of every identity, and run truss-opus-20260907T160200000Z-bdd329 showed
  *  why that is too narrow: two consecutive reviews named check `change-budget`, the first at
@@ -312,13 +311,13 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  as advice with its recorded owner. The current continuation workflow determines the repair
  *  scope; this function decides only the admitted severity.
  *
- *  Escalate once per defect identity. Run esp32-opus-20260908T214013792Z-23a1bc named
- *  `target-compiles` in three consecutive reviews. Both later findings were forced blocking,
- *  each causing a full rebuild of a 25/25 harness. The defect persisted while the public
- *  projection supplied only its check name. Repeating that intervention had not resolved it.
- *  After two prior occurrences, retain the finding as advice instead of forcing another
- *  blocking repair. It keeps its owner and remains an issue for the next experiment to
- *  consider. This limits repeated host escalation without declaring the defect resolved.
+ *  Escalate once per defect identity. Opus run 23a1bc named `target-compiles` in three consecutive
+ *  reviews. Both later findings were forced blocking, each causing a full rebuild of a 25/25
+ *  harness. The defect persisted while the public projection supplied only its check name.
+ *  Repeating that intervention had not resolved it. After two prior occurrences, retain the
+ *  finding as advice instead of forcing another blocking repair. It keeps its owner and remains
+ *  an issue for the next experiment to consider. This limits repeated host escalation without
+ *  declaring the defect resolved.
  *
  *  A probe-backed defect is exempt from the first-occurrence agent-tier floor. That floor exists
  *  because a reviewer reading source can only suspect, and a suspicion once discarded a harness

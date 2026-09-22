@@ -152,13 +152,13 @@ describe("who owns a failed tool run", () => {
 
 describe("the wording that routes a dead provider out of the score", () => {
   it.each([
-    // esp32-opus-controls-20260905T1440Z: two Builder turns returned this 403 and were retried as
+    // opus-controls-20260905T1440Z: two Builder turns returned this 403 and were retried as
     // ordinary failures; in the Built slot the same refusal would have scored 25 unaccepted cases.
     "api_error status 403: Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead, or ask your admin to enable access",
     // The claude run filed three provider-limit cases as unaccepted because this exact public
     // wording matched no clause. Regression on the wording, not a paraphrase of it.
     "You are out of extra usage credit for this billing period.",
-    // esp32-run57-sol-0903 battery i02: during the OpenAI incident every Codex call returned 404
+    // run57-sol-0903 battery i02: during the OpenAI incident every Codex call returned 404
     // with an empty body, pi-ai reported the bare status text, and all 25 cases recorded as
     // solver-kind non-results instead of the provider-kind ones the battery stop rule counts.
     "Not Found",
@@ -166,7 +166,7 @@ describe("the wording that routes a dead provider out of the score", () => {
     // Run truss-w38-sol, case service-panel-low: the Pi worker's own transport error arrived after
     // two tool calls, so the case stayed an unaccepted attempt and fed a claim refusal.
     "WebSocket error",
-    // esp32-base-sol i02, case uno-reed-counter-wrap: the close code missed the anchor, the case
+    // base-sol i02, case uno-reed-counter-wrap: the close code missed the anchor, the case
     // recorded pass:false, and its empty runtime identity voided the whole 24-case battery.
     "WebSocket closed 1006 Connection ended",
     "api_error status 429: too many requests; retry later",
@@ -176,7 +176,7 @@ describe("the wording that routes a dead provider out of the score", () => {
   });
 
   it("matches the codex thread-creation session-data fatal", () => {
-    // Campaigns esp32 -4 and -5 each aborted at open on this, with abortClause null: the error was
+    // Campaigns -4 and -5 each aborted at open on this, with abortClause null: the error was
     // thrown rather than settled as a failed turn, and its wording matched no clause.
     const message =
       "error creating thread: Fatal error: Session data under /private/var/tmp/ana-codex-home/run-LxIpoh/sessions looks corrupt or unreadable. Clearing the sessions directory may help (this will remove saved threads). (underlying error: failed to load AGENTS.md instructions for environment `local`: Operation not permitted (os error 1))";

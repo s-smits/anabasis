@@ -193,7 +193,7 @@ describe("builder execution tool tallies", () => {
   });
 
   it("records the running turn's calls when the host kills the session before the turn returns", () => {
-    // Run esp32-w41-opus: a SIGTERM inside the first turn recorded turns 0, toolCalls.total 0 and an
+    // Run w41-opus: a SIGTERM inside the first turn recorded turns 0, toolCalls.total 0 and an
     // empty byName for a session that had made 24 controller-hosted calls over 5m31s. The events
     // were all observed; only the fold waited for a turn that never came back.
     const recorder = new BuilderExecutionRecorder(Date.now());
@@ -249,7 +249,7 @@ describe("builder execution failed-call identity", () => {
     ({ ...failure(toolCallId), resultPreview }) as const;
 
   it("names each failed call, its request and what came back", () => {
-    // Runs esp32-w23 K4 and esp32-sol-329 recorded "28 failed commandExecution" and 19 of 19
+    // Runs w23 K4 and sol-329 recorded "28 failed commandExecution" and 19 of 19
     // failures with no per-call identity, so the record could not say what the session was fighting.
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.turnToolEvent({
@@ -302,7 +302,7 @@ describe("builder execution failed-call identity", () => {
 
 describe("builder execution turn event sink", () => {
   it("carries both tool edges from the persistent session's sink into the record", () => {
-    // The campaign's own sink is the path run esp32-w41-opus ran on: it forwarded the start edge
+    // The campaign's own sink is the path run w41-opus ran on: it forwarded the start edge
     // for the first-call timestamp only, so a checkpoint mid-turn had nothing to record.
     const recorder = new BuilderExecutionRecorder(Date.now());
     let checkpoints = 0;
@@ -328,7 +328,7 @@ describe("builder execution turn event sink", () => {
 
   // The positive case and its two hostile neighbours. A turn the provider settled itself carries
   // its own account; an aborted turn and a failed turn carry whatever the transport had in flight,
-  // which for the Claude SDK is a sum of frames whose usage it documents as not final. esp32 run
+  // which for the Claude SDK is a sum of frames whose usage it documents as not final. Run
   // 17f9de read four such epochs as 36.5M input tokens and no cost.
   it("separates the turns whose usage the provider settled from the turns that were estimated", () => {
     const usage = { inputTokens: 100, outputTokens: 20, totalTokens: 120, costUsd: 0.5 };

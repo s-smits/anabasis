@@ -54,7 +54,7 @@ const LISTED_PROGRAMS = 20;
 /** The worker side of the draft exchange, with the answer root the draft fills. */
 export interface BuiltFilePort {
   /** A command sees the draft in a folder of this name, so a shell path is the answer's own path:
-   *  esp32 run 08c0f2 compiled `firmware/firmware.ino` at the top of the shell and passed, while
+   *  run 08c0f2 compiled `firmware/firmware.ino` at the top of the shell and passed, while
    *  the checker found it at `firmware/firmware/firmware.ino`. */
   readonly root: string;
   files(): Promise<Record<string, string>>;

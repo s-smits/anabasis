@@ -213,7 +213,7 @@ describe("the diagnosis advicePacket follows the recorded issue", () => {
   });
 
   test("a non-result that accepted a submission shows it, and an oversized file map shows its keys", async () => {
-    // esp32 08c0f2 i02: six accepted file maps, nested one directory too deep, were filed as
+    // Run 08c0f2 i02: six accepted file maps, nested one directory too deep, were filed as
     // `verifier` non-results; the reader was told none reached the verifier and abstained.
     const { root, analysis, log } = publicFixture();
     const [failed, passed] = analysis.cases;
@@ -678,7 +678,7 @@ describe("the diagnosis advicePacket follows the recorded issue", () => {
 
 describe("what the diagnosis reader is offered", () => {
   test("does not offer a provider non-result for harness diagnosis", () => {
-    // run60's real advicePacket (campaigns/writes-firmware-esp32-raspberry-9c0c68b1-11) carried this as
+    // run60's real advicePacket (campaign 9c0c68b1-11) carried this as
     // its largest failure share, 6 of 8, which would otherwise place it first in the prompt.
     const provider = issue({
       id: "1".repeat(64),

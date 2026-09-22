@@ -4,7 +4,7 @@
  * Engineer's packet, was declared here until 2026-09-04.)
  *
  * It used to rebuild only top-level keys. `sanitizeForEvaluator` normalizes text but does not
- * check whether each key is declared. Hostile review probes on esp32-w29 and esp32-w47-sol
+ * check whether each key is declared. Hostile review probes on w29 and w47-sol
  * planted an undeclared field inside a declared object
  * (`domain.toolContract.tools[0].<planted>`) and it reached the Judge prompt 2/2 and the packet
  * 1/1. The isolation contract excludes verifier output, private source, repair advice,

@@ -5,7 +5,7 @@
  * On 2026-09-15 this replay refuted its own first prediction in six minutes: both recorded truss
  * disputes chosen as genuine vetoes turned out to be the recorded Judge's arithmetic, and the
  * prompt sentence that came out of it is the recompute rule in judge-prompt-policy.ts. The second
- * position (esp32 run 23a1bc-i04) produced the split verdict that bounds what one sample proves.
+ * position (run 23a1bc-i04) produced the split verdict that bounds what one sample proves.
  *
  *   bun .claude/skills/system-path-simulation/scripts/judge-replay.mts \
  *     --repo /abs/checkout-with-campaigns --slug <slug> --run <runId> \

@@ -65,7 +65,7 @@ describe("finding recurrence across archives", () => {
       16: "N/A",
       3: "pass",
     });
-    archive(root, "other-lane", "esp32-sol-20260908T100000000Z-dddddd", "rev2", { 5: "fail" });
+    archive(root, "other-lane", "truss-sol-20260908T100000000Z-dddddd", "rev2", { 5: "fail" });
     archive(root, "unordered", "truss-opus-run7", "rev0", { 5: "fail" });
 
     expect(laneKey("truss-opus-20260907T210000000Z-6bf0e9")).toBe("truss-opus");

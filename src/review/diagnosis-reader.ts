@@ -249,7 +249,7 @@ function publicDiagnosisContext(
   if (trace.path !== `runs/${runId}/cases/${taskId}/trace.json`) return absent;
   const read = recordedReader(join(trace.baseDir, "runs", runId), checkedRuns);
   const domain = read(JUDGE_PUBLIC_CONTEXT_FILE);
-  // The accepted submission, never a reference. A non-result can hold one: esp32 08c0f2 i02 told its
+  // The accepted submission, never a reference. A non-result can hold one: run 08c0f2 i02 told its
   // reader that six accepted file maps never reached the verifier, and it abstained on all 3 issues.
   const accepted = row.acceptedSubmit ? read(`cases/${taskId}/artifact.json`) : undefined;
   const task = read(`cases/${taskId}/public-task.json`);
@@ -686,7 +686,7 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
   if (issues.length === 0) return { ...evidence, error: "no-standing-issue" };
   if (!input.review.enabled) return { ...evidence, error: "review-slot-off" };
   const packet = diagnosisPacket(analysis, repoRoot, issues);
-  // 31: the public-context correction after esp32-opus-20260905T065506215Z-55aaad-i03
+  // 31: the public-context correction after Opus run 55aaad-i03
   // exposed whole-issue omission in its boundary replay. Observe the final roster, not a budget flag.
   if (packet.offered.length < issues.length) {
     safeguardTriggered(

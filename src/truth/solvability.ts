@@ -280,7 +280,7 @@ function bundleSnapshotDriftFinding(
   }
 }
 
-/** Stage 2: resolve tools as measurement does. Missing tools refuse before witnesses: esp32 on
+/** Stage 2: resolve tools as measurement does. Missing tools refuse before witnesses: a run on
  *  2026-08-23 charged 25 product failures to a verifier which had never started. An external check
  *  whose executable digest matches candidate-authored source is refused too (a different digest or
  *  installation directory still does not establish independence). */

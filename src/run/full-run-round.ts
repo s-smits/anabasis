@@ -174,7 +174,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   input.onOpening?.(kickoff, epochPassOf(decision));
   // Every round that read a placement records it, whatever it decided to do about it: the record
   // is the rebuild's workspace-reset key, the review's row for what each round did, and, for the
-  // placement that ends a campaign, the only durable trace that it was read at all. esp32 662762
+  // placement that ends a campaign, the only durable trace that it was read at all. Run 662762
   // stopped on a third placement that exists in no difficulty-decisions file. The write is
   // content-addressed, so a round that records without authoring adds one file and no duplicate.
   const placement =

@@ -501,7 +501,7 @@ gates; a completed Built Harness task requires live evidence.
 
     At authoring validation, at least one shared `publicInput` path declared by each family's
     applicable truth checks must have two distinct values. The comparison is per declared path, so
-    a check declaring a coarse one is satisfied by any change anywhere inside it: 18 esp32 tasks
+    a check declaring a coarse one is satisfied by any change anywhere inside it: 18 firmware tasks
     passed it while every one of them published the same display, the one peripheral the request
     named. Declared variation proves coverage, not semantic difficulty or actual verifier
     dependence.

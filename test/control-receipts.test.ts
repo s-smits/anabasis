@@ -595,7 +595,7 @@ describe("control receipts", () => {
   it.each(["generated", "protocol"] as const)(
     "lets a host-measured non-result outrank a child %s error",
     async (kind) => {
-      // Run esp32-sol-20260908T214013792Z-23a1bc: the tool wall expired, the evaluate threw, and
+      // Sol run 23a1bc: the tool wall expired, the evaluate threw, and
       // the throw was recorded as an author exception while the host's timeout row went unread.
       const verifier = fakeToolHost(() => "timeout");
       const throwingEvaluate: typeof externalEvaluate = async (request, runtime) => {

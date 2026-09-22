@@ -216,7 +216,7 @@ describe("weekly run shortlist", () => {
   });
 
   it("binds a main synthesis only by the run's exact source revision", () => {
-    const candidate = run("esp32/r1");
+    const candidate = run("truss/r1");
     expect(bindSynthesis(candidate, [])).toEqual({ ok: false, reason: "synthesis-missing" });
     expect(bindSynthesis(candidate, [{ identity: { sourceCommit: "b".repeat(40) } }])).toEqual({
       ok: false,
@@ -234,7 +234,7 @@ describe("weekly run shortlist", () => {
   });
 
   it("requires all nine outcome views, the WRI digest and a recorded denominator", () => {
-    const candidate = run("esp32/r1");
+    const candidate = run("truss/r1");
     const labels = [
       "digest",
       "builder",
@@ -292,7 +292,7 @@ describe("weekly run shortlist", () => {
   it("binds descriptive archive folders by run and full source, refusing another schema or a conflicting source", () => {
     const repo = mkdtempSync(join(tmpdir(), "weekly-archive-"));
     archiveRoots.push(repo);
-    const dir = join(repo, "notes", "runs", "esp32-readable-name");
+    const dir = join(repo, "notes", "runs", "truss-readable-name");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "main_synthesis.md"), "A completed review.\n");
     const candidate = run("generated-campaign/r1");

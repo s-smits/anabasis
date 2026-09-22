@@ -72,7 +72,7 @@ import {
 } from "./verifier-lifetime.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 
-/** Five minutes. esp32-sol-stable-20260905T1000Z lost its battery when a cold Arduino compile
+/** Five minutes. sol-stable-20260905T1000Z lost its battery when a cold Arduino compile
  *  that had passed the census took 60,457 ms on a loaded host. This limit allows longer compiles
  *  while bounding a tool that does not finish. */
 export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;

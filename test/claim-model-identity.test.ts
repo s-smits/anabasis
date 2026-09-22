@@ -82,7 +82,7 @@ describe("an absent attestation discloses; a contradicted one refuses", () => {
   });
 
   it("discloses unverified for a route that reports no served model, and refuses a wrong one", () => {
-    // Runs esp32-astra-20260908T214013792Z-23a1bc i01 and i02: every Codex case recorded
+    // Astra run 23a1bc, i01 and i02: every Codex case recorded
     // `provider.model: null` because pi-ai's codex route never reports a served model, and both
     // 25-case claims were refused on that alone.
     const rows = claudeIdentities();

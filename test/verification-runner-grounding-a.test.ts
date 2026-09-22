@@ -238,7 +238,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }, 60_000);
 
   it.concurrent("retries one control once for an environment-owned tool failure, then settles it as its own non-result receipt", async () => {
-    // truss-run16-sol-0903 and esp32-sol-20260908T214013792Z-23a1bc: one control the host could not
+    // truss-run16-sol-0903 and Sol run 23a1bc: one control the host could not
     // run to a verdict used to stop the corpus. Each such control now gets its own non-result
     // receipt; the remaining controls run, and the coverage result decides whether solving starts.
     const slugDir = externalSlug(VERIFIER_EVALUATOR_SOURCE);
@@ -490,7 +490,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }, 60_000);
 
   it.concurrent("a case that fails a check with complete evidence grades as a truth fail even when a tool run was skipped", async () => {
-    // Esp32 run 08c0f2: six answers failed to compile, so the downstream tool checks had no build
+    // Run 08c0f2: six answers failed to compile, so the downstream tool checks had no build
     // to run on and the cases were filed as verifier non-results. A skipped run can only withhold
     // a pass, so the failing authored check decides t3.
     const { scored, t3: failed } = await runSelectiveSkip("run-c3-silent-skip-failed", new Set(["t3"]));

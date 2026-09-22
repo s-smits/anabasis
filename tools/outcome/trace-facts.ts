@@ -36,7 +36,7 @@ export interface ToolStat {
    *  for a tool the solve called with two or more distinct digests. A parameterless tool digests
    *  every call to the digest of `{}`, so without that condition every call after the first read as
    *  repeated work: `materialize_files`, `preview_artifact` and `submit` each did, and
-   *  `solve-thrash` fired on two esp32 batteries that passed 6 of 6. The cost is a tool called
+   *  `solve-thrash` fired on two batteries that passed 6 of 6. The cost is a tool called
    *  repeatedly with one genuine argument set, whose repeats this now reports as 0. */
   repeats: number;
 }

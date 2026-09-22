@@ -6,7 +6,7 @@
  * Rust and similar installs run without extra flags.
  *
  * The redirect used to depend on the network policy, on the reasoning that only an installer writes
- * to HOME. An offline session writes there too: on run esp32-opus-n2b2 the Builder's first
+ * to HOME. An offline session writes there too: on run opus-n2b2 the Builder's first
  * `arduino-cli version` answered `open ~/Library/Arduino15/inventory.yaml: operation not
  * permitted`, because the wall denies the host home that HOME still pointed at. The tool then reads
  * as broken rather than as denied access, which is the failure hostToolchainEnv already names.

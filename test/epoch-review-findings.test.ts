@@ -144,7 +144,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(EPOCH_REVIEW_PROMPT).not.toContain("A disputed fail is the reverse");
     // The host refuses a task-naming claim outright and record_finding's own description says so.
     expect(EPOCH_REVIEW_PROMPT).not.toContain("Never name an individual task in a claim");
-    // An esp32 admissibility check tested `prescaler >= 1` and never membership in the board's
+    // A firmware admissibility check tested `prescaler >= 1` and never membership in the board's
     // published prescalerChoices, though the same file exported that catalogue as the reference
     // search's candidate list. The probe paragraph names the replacement that settles the class.
     expect(EPOCH_REVIEW_PROMPT).toContain("A closed value set the public input publishes");
@@ -552,7 +552,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       for (const word of ["mock", "header", "returns", "predicate"]) expect(projected).not.toContain(word);
     });
 
-    // ESP32 run 0dba8e: three reviews named the compile check for a sketch no check ran, and the
+    // Run 0dba8e: three reviews named the compile check for a sketch no check ran, and the
     // Builder repaired the compile check each time.
     test("an unobserved obligation names its path, asks for a check and refuses a nearest check id", async () => {
       const state = reviewState();
@@ -578,7 +578,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
         "Epoch review (evaluator): no declared check observes the obligation the review traced at artifact path `pins`; add a check that observes what the delivered artifact does there.",
       );
-      // esp32 08c0f2: every one of nine checks read `$.firmware`, and two different gaps both
+      // Run 08c0f2: every one of nine checks read `$.firmware`, and two different gaps both
       // reached the Builder as "no declared check observes artifact path `firmware`".
       const reads = (id: string, artifactPaths: string[]) => ({ id, execution: { artifactPaths } });
       const brief = double<Brief>({
@@ -619,7 +619,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       };
       const vetoed = [
         row,
-        { ...row, taskId: "t2", family: "esp32", artifact: at("t2") },
+        { ...row, taskId: "t2", family: "roof", artifact: at("t2") },
         { ...row, taskId: "t3", checkIds: ["other-check"], artifact: at("t3") },
         { ...row, taskId: "t4", artifact: null },
       ];
@@ -630,7 +630,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       };
       const projected = publicEpochReview(reviewed, { brief: null, vetoed }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge failed 2 verified pass(es) in esp32, uno citing this obligation, and the review settled them against the check",
+        "The Judge failed 2 verified pass(es) in roof, uno citing this obligation, and the review settled them against the check",
       );
       for (const word of ["PRIVATE", "private prose", "t1", "exit code is 0"]) {
         expect(projected).not.toContain(word);
@@ -674,11 +674,11 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
           brief: null,
           disputed: [
             row,
-            { ...row, taskId: "t2", family: "esp32", artifact: "runs/r/cases/t2/artifact.json" },
+            { ...row, taskId: "t2", family: "roof", artifact: "runs/r/cases/t2/artifact.json" },
           ],
         }).findings[0]?.claim ?? "";
       expect(projected).toContain(
-        "The Judge passed 2 verified fail(s) in esp32, uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
+        "The Judge passed 2 verified fail(s) in roof, uno holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.",
       );
       expect(projected).not.toContain("The Judge failed");
       for (const word of ["PRIVATE", "private prose", "t1"]) expect(projected).not.toContain(word);
@@ -725,7 +725,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         {
           ...row,
           taskId: "t2",
-          family: "esp32",
+          family: "roof",
           artifact: "campaigns/s/versions/r/runs/r/cases/t2/artifact.json",
         },
       ];
@@ -800,7 +800,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
 
     test("an undeclared check id, an unknown schema root and a bare input path are refused", async () => {
       const state = reviewState();
-      const tool = recordFindingTool([], ["esp32-04"], evidence, state, { identities });
+      const tool = recordFindingTool([], ["roof-04"], evidence, state, { identities });
       const base = { ...defect, claim: "a check is not enforced" };
       expect(await call(tool, { ...base, checkId: "uart-parity" })).toContain(
         "not a declared truthChecks id",
@@ -812,7 +812,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         "without empty segments",
       );
       expect(await call(tool, { ...base, publicInputPath: "board.pins" })).toContain("must start with $.");
-      expect(await call(tool, { ...base, publicInputPath: "$.tasks.esp32-04" })).toContain(
+      expect(await call(tool, { ...base, publicInputPath: "$.tasks.roof-04" })).toContain(
         "may not name an individual task",
       );
       expect(state.findings).toHaveLength(0);

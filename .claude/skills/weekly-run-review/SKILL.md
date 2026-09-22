@@ -21,9 +21,8 @@ finalists. Evidence collection is read-only. The final publication owns only one
 - Never expose verifier issue/remedy text, counterexamples, reference artefacts, raw traces, task IDs,
   per-task failure locations or model reasoning.
 
-For a finalist whose admitted prompt is about ESP32, read
-[references/esp32-and-trajectory.md](references/esp32-and-trajectory.md). It defines the pinned run
-reference, the independent consumer-hardware comparison and the week-over-week trajectory contract.
+[references/trajectory.md](references/trajectory.md) defines the week-over-week trajectory
+contract.
 
 ## 1. Run the selector
 
@@ -94,12 +93,12 @@ at lower concurrency and slower pacing. Treat any remaining transport failure as
 Each leaf is read-only and independent. It must state a rival explanation and falsifier, keep exact
 denominators, and return `unobservable` rather than guess.
 
-The Scheduled task's primary synthesis runs as `gpt-5.6-sol` at xhigh. It owns the independent ESP32
-reference-gap and week-over-week synthesis after the Luna reports return. When this Skill is invoked
-under another condition, use one bounded read-only Sol xhigh session for that synthesis. Do not ask a
-Luna session to confirm its own WRI conclusion. If missing finalist syntheses block Luna, the Sol primary
-still publishes the deterministic reference state and trajectory, with semantic mechanisms marked
-`unobservable`; it does not fill the missing WRI review.
+The Scheduled task's primary synthesis runs as `gpt-5.6-sol` at xhigh. It owns the week-over-week
+synthesis after the Luna reports return. When this Skill is invoked under another condition, use one
+bounded read-only Sol xhigh session for that synthesis. Do not ask a Luna session to confirm its own
+WRI conclusion. If missing finalist syntheses block Luna, the Sol primary still publishes the
+deterministic trajectory, with semantic mechanisms marked `unobservable`; it does not fill the
+missing WRI review.
 
 ## 4. Decide what “best” means
 
@@ -148,10 +147,8 @@ denominators, safe evidence paths, Luna result counts, the learning handoff, and
 <!-- builder-tool-handoff:end -->
 ```
 
-Always include the delimited `weekly-system-trajectory` block defined by the ESP32/trajectory
-reference. Include its `esp32-reference-gap` block only when at least one finalist's admitted prompt
-has the ESP32 trigger. A malformed prior trajectory is an explicit history gap and is never repaired
-by guessing.
+Always include the delimited `weekly-system-trajectory` block defined by the trajectory reference.
+A malformed prior trajectory is an explicit history gap and is never repaired by guessing.
 
 Update only the block delimited by `weekly-best-run:start` and `weekly-best-run:end` in `AGENTS.md`.
 It has exactly two visible lines:

@@ -104,7 +104,7 @@ function repairUnits(findings: readonly ContractFinding[], repair: "actionable" 
  * about itself: how the finding codes moved since the previous submit (run 68 was told "same
  * issues: no" while one class fell 50 to 15 and another arrived at 100), whether the files moved,
  * whether this exact tree was refused before (run 35 ended byte-identical to its first submission
- * after 141 attempts), and whether an earlier tree had fewer findings (esp32-w33 wandered from 221
+ * after 141 attempts), and whether an earlier tree had fewer findings (w33 wandered from 221
  * to 638). All are facts about the Builder's own output or a bound set before model work began.
  */
 export function renderRefusal(
@@ -217,7 +217,7 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           reason: "terminal-refusal",
         });
       }
-      // esp32-sol-20260908T214013792Z-23a1bc called submit five times inside one in-flight submit.
+      // Sol run 23a1bc called submit five times inside one in-flight submit.
       if (inFlight) {
         return text(
           "Submit is already running; its verdict returns from that first call. Do not call submit again until it returns.",

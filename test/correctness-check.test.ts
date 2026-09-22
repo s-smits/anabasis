@@ -448,7 +448,7 @@ describe("correctness_check", () => {
   });
 
   it("runs the gate once per distinct candidate: unchanged bytes return the remembered trial", async () => {
-    // esp32-opus 2026-08-23: twelve full validation sequences in one turn, esp32-sol 130 on one defect. A
+    // An Opus run on 2026-08-23: twelve full validation sequences in one turn, a Sol run 130 on one defect. A
     // repeated check of the same tree must cost nothing and say so. These rows are product-owned;
     // the test below owns a gate that answered with an environment refusal, which is not remembered.
     const dir = workspace("memo");

@@ -116,7 +116,7 @@ const COMMAND_TEMP_SIBLING_DENY_PATTERNS = VERIFIER_TEMP_SIBLING_DENY_PATTERNS.f
  * became a candidate draft file.
  *
  * `TMPDIR` points at a third writable root, created for this one command and removed with it. The
- * session home carried it until esp32-run49-sol-0902 counted 284 compiler temporary-file and 40
+ * session home carried it until run49-sol-0902 counted 284 compiler temporary-file and 40
  * temporary-directory permission failures in Built Harness traces: a toolchain's scratch belongs to
  * the command that made it, and a private tree per command keeps a build's leftovers out of both
  * the draft and the home an install has to survive in.
@@ -266,7 +266,7 @@ function commandReadAllows(
   ].filter((path) => readDenies.some((root) => covers(root, path)));
   // The adopted bundle's tool tree is a symlink into the candidate workspace under `campaigns/`,
   // which the run-data pattern denies by name. Measured 2026-09-02 across the week's recorded runs:
-  // `arduino-cli: command not found` in every esp32 case while the Builder's install sat there.
+  // `arduino-cli: command not found` in every case while the Builder's install sat there.
   // It is allowed by path after the pattern denies, so the rest of that workspace stays closed.
   const own = toolTree === null ? [] : canonicalForms(toolTree);
   return [...new Set([...covered, ...own])].sort();

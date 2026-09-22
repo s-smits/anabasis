@@ -3,7 +3,7 @@
  * - scrubSecretEnv drops the tested credential names and values matching its secret patterns,
  *   keeps ordinary variables, and leaves its input unchanged;
  * - the Builder bash cell points HOME and the XDG roots inside the admitted tool tree whether or
- *   not the session may reach the network — on run esp32-opus-n2b2 an offline session's first
+ *   not the session may reach the network — on run opus-n2b2 an offline session's first
  *   `arduino-cli version` tried to read the protected host home and failed before reporting its version.
  */
 import { afterAll, describe, expect, it } from "bun:test";

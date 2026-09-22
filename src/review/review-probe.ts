@@ -63,7 +63,7 @@ import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
  *  second census. */
 export const PROBE_BUDGET = 8;
 /** A replacement value is one field, not a redesigned artifact. In a file map one field is one
- *  file: esp32 run 08c0f2's accept controls carry files of up to 3,000 characters of JSON. */
+ *  file: run 08c0f2's accept controls carry files of up to 3,000 characters of JSON. */
 const VALUE_MAX_CHARS = 4_000;
 /** What one probe executed and what the candidate's own checks said about it. Private review
  *  evidence: `blockingCheckIds` is verifier detail. */
@@ -181,7 +181,7 @@ async function openCandidate(root: string, lifetimeRoot: string): Promise<ProbeC
 
 /** The steps of a probe path: the declared grammar of `jsonPathTokens` plus a quoted key, read as
  *  the plain step it names. A file map's keys hold dots, so `$.firmware['fw_logic.cpp']` is the
- *  only way to name one file; esp32 run 08c0f2's reviewer tried five spellings and none resolved. */
+ *  only way to name one file; run 08c0f2's reviewer tried five spellings and none resolved. */
 function probeSteps(path: string): string[] | null {
   const tokens = path.match(/^\$|\.[A-Za-z_][A-Za-z0-9_-]*|\[(?:0|[1-9]\d*)\]|\[(?:'[^']+'|"[^"]+")\]/g);
   if (tokens?.[0] !== "$" || tokens.join("") !== path) return null;

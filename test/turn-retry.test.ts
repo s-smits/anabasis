@@ -5,7 +5,7 @@
  * on a growing ladder (run53-sol-0903 and run55-sol-0903 on an unrefreshable access token,
  * truss-run12-sol-0903 on the per-turn settle cap during a host outage: each ended the whole run on
  * its first failed turn). A refusal that no wait clears spends no wait at all
- * (esp32-opus-20260905T065506215Z sat through 17 minutes of ladder on a disabled organisation). And
+ * (opus-20260905T065506215Z sat through 17 minutes of ladder on a disabled organisation). And
  * a limit that names when it clears waits for that instant, because the ladder cannot reach it:
  * campaign 3fd52f9e-28 ended twice on 2026-09-17, at 07:33 against "resets 12pm (Europe/Amsterdam)"
  * and at 12:36 against "resets 6:30pm", each time abandoning a live campaign hours early.

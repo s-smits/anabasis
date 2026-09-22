@@ -256,8 +256,8 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
   ].join("\n");
   try {
     // The predecessor's own carry markers named its predecessor; this epoch names
-    // only the file it inherits from. Kept, they stacked one line per epoch (esp32-opus
-    // 20260913T172457511Z-1093c9 opened its fourth epoch on three of them).
+    // only the file it inherits from. Kept, they stacked one line per epoch (run 1093c9
+    // opened its fourth epoch on three of them).
     const body = authoredBody(prior, MEMORY_FILE, STARTER_MEMORY).replace(CARRY_MARKER_PATTERN, "");
     if (body === "" || existsSync(join(next, MEMORY_FILE))) return;
     mkdirSync(next, { recursive: true });

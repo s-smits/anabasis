@@ -4,7 +4,7 @@
  * well-formed row is, and `published-rules.ts` owns what citing one means.
  *
  * A rule had nowhere to go before this field. `decisions` is the coverage map and reaches no
- * reader, so run23's `esp32-panel-node` family stated its frame, ordering, threshold, bit-order
+ * reader, so run23's `panel-node` family stated its frame, ordering, threshold, bit-order
  * and latch rules there and scored 0 of 35 while the guide asked for "change-only frames" that
  * nothing defined; the truss run enforced a member join the brief stated nowhere. The split here
  * makes public correctness rules explicit and requires private decisions to declare that

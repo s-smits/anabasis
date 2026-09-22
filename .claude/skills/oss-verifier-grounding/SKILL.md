@@ -101,7 +101,7 @@ Do not replace an authoritative simulator or solver with a regex and call it gro
 real tool first: the authoring cell has network access and its HOME is `<workspace>/.toolchain/home`
 with `.local/bin` and `.cargo/bin` on PATH (`src/builder/bash-install-env.ts`), so `pip`, `uv`,
 `cargo` and `bun install` land where the candidate can use them. A refused install or host path is
-an environment non-result to report, not permission to write a stand-in: esp32-w34's Builder met a
+an environment non-result to report, not permission to write a stand-in: campaign w34's Builder met a
 refused `xcode-select` read, wrote a regex compile simulator over 7 iterations, and that simulator
 then failed every case in two batteries. Do not turn a non-result into `ok: false`, expose raw hidden explanations, claim mocks as live use, or leave solver options unpinned.
 

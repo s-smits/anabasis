@@ -119,7 +119,7 @@ export type BatteryRecord = {
   /** Terminal state projected into Claim.create. Recorded here so the write does not restate it. */
   terminalReason: string;
   /** What actually happened to this battery, as a closed value rather than free text or an
-   *  inference from row count. esp32-opus-331 recorded "complete" for a variant the provider-stop
+   *  inference from row count. opus-331 recorded "complete" for a variant the provider-stop
    *  rule had cut short at 7 of 25 and paired it against a variant that ran all 25. */
   disposition: BatteryDisposition;
   /** Built-agent capability disclosure used by the claim. */
@@ -243,7 +243,7 @@ export function batteryDisposition(
  * battery ran its whole task set: a provider-stopped variant says how much it did not run, and a
  * completed battery names the three shapes that once lived only in diagnostic safeguard lines no
  * evidence reader opened (retired 2026-09-02): every case a typed non-result (opus326 recorded five
- * such batteries as "complete"), no case row at all (esp32-opus-331 recorded two, and every later
+ * such batteries as "complete"), no case row at all (opus-331 recorded two, and every later
  * reader answered from an empty set), and no case that started a single tool call (opus326 again;
  * the Built solver likely never launched).
  */

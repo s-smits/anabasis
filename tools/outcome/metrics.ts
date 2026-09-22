@@ -117,7 +117,7 @@ export interface OutcomeMetrics {
     byName: Record<string, ToolStat>;
     /** How many traced solves called each name at least once, against how many solves recorded any
      *  tool call at all. A call count alone cannot separate one solve that leaned on a tool from
-     *  twenty that never reached it: an esp32 battery called `screen_truss_geometry` 3 times beside
+     *  twenty that never reached it: one battery called `screen_truss_geometry` 3 times beside
      *  179 shell calls, and the aggregate says only "3". */
     solvesUsing: Record<string, number>;
     tracedSolves: number;

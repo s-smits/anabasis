@@ -115,7 +115,7 @@ export function builtCapabilities(profile: PiProfile | null): string[] {
 let workerDir: string | null = null;
 /** The one worker-bundle directory of this process. The solve wall denies reads under the
  *  repository and the operator home, so a TMPDIR inside either hid the bundle from the confined
- *  worker ("Module not found .../worker.mjs", esp32-sol-20260904T131741647Z-3b2559 and its Opus
+ *  worker ("Module not found .../worker.mjs", run 3b2559 and its Opus
  *  twin, both dead 0.2 s after opening); the read allow-roots reopen exactly this directory. */
 function workerBundleDir(): string {
   workerDir ??= mkdtempSync(

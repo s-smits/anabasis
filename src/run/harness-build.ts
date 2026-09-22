@@ -263,7 +263,7 @@ export async function buildHarness(
   }
 }
 
-/** A repair review follows a clear check; truss run cc4709 and ESP32 runs -44 and -47 read its
+/** A repair review follows a clear check; truss run cc4709 and runs -44 and -47 read its
  *  findings as a condition and returned to authoring instead of submitting (2026-09-16). */
 const REVIEW_HEADER = {
   repair: "Epoch review of the candidate your clear correctness_check just previewed.",

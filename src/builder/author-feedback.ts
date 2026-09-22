@@ -44,8 +44,8 @@ interface FindingDelta {
 }
 
 /** One distinct repair within a group. `alsoFor` lists the subjects of later rows that read the same
- *  apart from their subject, in arrival order: esp32-opus 2026-08-22 submit 3 carried 80 control rows
- *  that differed only by example id. */
+ *  apart from their subject, in arrival order: submit 3 of an Opus run on 2026-08-22 carried 80 control
+ *  rows that differed only by example id. */
 interface Variant {
   detail: string;
   count: number;
@@ -77,7 +77,7 @@ function variantText({ detail, alsoFor }: Variant): string {
 }
 
 /**
- * Fold on (code, path), so one defect reads as one group even when its detail varies: esp32-w33
+ * Fold on (code, path), so one defect reads as one group even when its detail varies: w33
  * showed 632 groups for 638 findings under a (code, path, detail) key. Each distinct repair keeps its
  * count in first-seen order. The paged detail frames each variant with its count and character length
  * so the rendering stays reconstructible; a single variant pages bare.

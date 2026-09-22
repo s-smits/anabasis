@@ -14,9 +14,9 @@ from plausible wrong ones.
 A truth check computes values from the artifact. Recognising a source shape is not a truth check:
 a regex over submitted source, or a hand-written parser standing in for a compiler, decides on
 spelling rather than behaviour and rejects correct work that uses a named constant, a two-level
-call or a formatted buffer (esp32-w34 matched `Wire.beginTransmission(0x27)` literally and failed
+call or a formatted buffer (campaign w34 matched `Wire.beginTransmission(0x27)` literally and failed
 a `constexpr` address; one hand parser read every C cast as a missing semicolon, 14 of 14 wrong;
-esp32-run23-opus-0830 defined `build_and_run()` and never called it). Where the checker can
+run23-opus-0830 defined `build_and_run()` and never called it). Where the checker can
 execute or simulate the submission, decide from the values and outputs it produces and call the
 execution path you defined. Parsing is the last route and must compare computed values.
 

@@ -110,8 +110,8 @@ interface WorkshopProcess {
 }
 
 /** The process facts of a command the wall launched, recorded beside the reason: `null` says the
- *  wall refused before launch, an exit code says the command ran and chose it. esp32-sol
- *  2026-08-22 rounds 07-14 needed this distinction from the evidence alone; output stays in the
+ *  wall refused before launch, an exit code says the command ran and chose it. Rounds 07-14 of a
+ *  Sol run on 2026-08-22 needed this distinction from the evidence alone; output stays in the
  *  tool result. The ported row type in verifier-workshop-evidence.ts points here. */
 export interface WorkshopProcessFacts {
   exitCode: number | null;

@@ -24,13 +24,13 @@
  *      simulation only prepares advisory evidence and never launches.
  *
  *   bun .claude/skills/system-path-simulation/scripts/stage-run.mts \
- *     --source c5efe614f --dir /abs/ana-run-esp32-x --modules-from /abs/worktree-with-node_modules \
- *     --condition sol --project esp32-sol-x --run condition-01 --prompt-file /abs/one-liner.txt \
+ *     --source c5efe614f --dir /abs/ana-run-truss-x --modules-from /abs/worktree-with-node_modules \
+ *     --condition sol --project truss-sol-x --run condition-01 --prompt-file /abs/one-liner.txt \
  *     --expected-tasks 25 --provider-turn-budget 120 [--task-set-digest <64-hex>|none] \
  *     [--max-iterations 1] [--session-cap-ms 10800000] \
- *     [--seed-campaign /abs/run-root --slug esp32-sol]
+ *     [--seed-campaign /abs/run-root --slug truss-sol]
  *
- *   bun .claude/skills/system-path-simulation/scripts/stage-run.mts --opening --dir /abs/ana-run-esp32-x
+ *   bun .claude/skills/system-path-simulation/scripts/stage-run.mts --opening --dir /abs/ana-run-truss-x
  *
  * `--opening` reads only `controller/<run>/opening.json` named in `condition.json` and compares the
  * source, project, run, request, command and slot identities the product actually writes. A

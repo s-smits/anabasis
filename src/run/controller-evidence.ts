@@ -239,7 +239,7 @@ function writeControllerOpening(input: {
     // run records null, a continuation records the exact terminal bytes it stands on.
     continuation: latestRecordedContinuation(campaign),
     // Earlier controllers of this campaign that wrote an opening and never recorded a terminal —
-    // they stopped without recording why (esp32-opus-331 had exactly one, invisible to every
+    // they stopped without recording why (opus-331 had exactly one, invisible to every
     // reader that walks terminals; the fact lived in diagnostic safeguard 13 until 2026-09-01).
     // recorded here so every later reader sees the unaccounted siblings beside the continuation.
     abandonedRuns: abandonedSiblingRuns(campaign, input.runId),

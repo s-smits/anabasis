@@ -99,7 +99,7 @@ type JudgeSubjectEvidenceCore = JudgeAttempt & {
   verifierBlind: true;
   sanitizer: { version: string; modified: boolean; actions: string[] };
   /** A second fresh sample, taken only when the first verdict contradicts the verifier's. A
-   *  contradiction reaches the reviewer only when both samples agree; esp32-12-low-side-lamp
+   *  contradiction reaches the reviewer only when both samples agree; task 12-low-side-lamp
    *  split 2 fail / 1 pass over three replays on 2026-09-15, so one sample decided whether the
    *  reviewer had a case to settle. */
   confirmation?: JudgeAttempt;

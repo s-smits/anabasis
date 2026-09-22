@@ -136,7 +136,7 @@ describe("Builder memory", () => {
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
-    // esp32-opus-20260913T172457511Z-1093c9 opened its fourth epoch on three stacked markers.
+    // Run 1093c9 opened its fourth epoch on three stacked markers.
     const root = mkdtempSync(join(tmpdir(), "ana-epochs-chain-"));
     const first = join(root, "epoch-aaaa", WORKSPACE_DIR);
     initWorkspace(first);

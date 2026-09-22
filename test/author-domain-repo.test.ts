@@ -248,7 +248,7 @@ describe("the domain workspace repository", () => {
 
   /**
    * This used to throw, and the throw reached the controller as an abort with no owner. It cost
-   * esp32-opus-20260920T033747464Z-4c67fc its round 2 on 2026-09-20, over `acli/tmp/b1/
+   * the firmware run 4c67fc its round 2 on 2026-09-20, over `acli/tmp/b1/
    * Blink.ino.elf` — a sketch the Builder had compiled inside the tool's scratch directory, whose
    * debug strings name the tree it was built in. The file is now dropped: the repair tree still
    * resolves nothing into the adopted one, and what is missing is a tool the Builder reinstalls.

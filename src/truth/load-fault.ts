@@ -13,9 +13,9 @@ import {
  * "generated-correctness-model-load": truss run dffb11 spent two previews on an evaluator import of
  * ../core/, and an unmatched message still hid the cause.
  *
- * A diagnostic alone cannot distinguish a host denial from a source defect. Run esp32-w34's first
+ * A diagnostic alone cannot distinguish a host denial from a source defect. Run w34's first
  * iteration recorded 36 findings, every one of them `xcode-select: error ... Operation not
- * permitted`; run 52 lost seven iterations and esp32-w29 four to an unresolvable `@ana/*` specifier
+ * permitted`; run 52 lost seven iterations and w29 four to an unresolvable `@ana/*` specifier
  * in a symlinked workspace, repairing code that was never broken. A known signature therefore
  * leads the detail with the classification and its sentence.
  */

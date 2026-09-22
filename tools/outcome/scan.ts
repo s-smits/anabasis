@@ -229,7 +229,7 @@ function toolFindings(m: OutcomeMetrics): ScanFinding[] {
     });
   }
   // Between never called and carrying the solve there is a tool the solver reached in a handful of
-  // cases and left alone in the rest, while the shell did the work: one esp32 battery called
+  // cases and left alone in the rest, while the shell did the work: one battery called
   // `screen_truss_geometry` 3 times against 179 shell calls, and nothing said so, because the
   // never-called rule fires only at zero. The bar is a fifth of the traced solves, so a tool bound
   // to one family of a five-family battery sits on the boundary rather than over it. The three

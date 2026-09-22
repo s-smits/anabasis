@@ -3,7 +3,7 @@
  *
  * The census gate settles a tool run that timed out or crashed as a repairable `correctness-model`
  * finding and writes the host's own record beside the iteration (census-gate.ts `settleNonResult`).
- * Run esp32-run25-sol-0830 showed what that leaves open: eleven recorded no-result records in one
+ * Campaign run25-sol-0830 showed what that leaves open: eleven recorded no-result records in one
  * campaign — crashes at exits 42 to 82, a pre-start sandbox refusal and a 60 s simulator timeout —
  * each refused a submit on a distinct tree, and nothing counted them. The no-op strike counter
  * could not: every tree was different, so the Builder kept rewriting the evaluator for 22 refused

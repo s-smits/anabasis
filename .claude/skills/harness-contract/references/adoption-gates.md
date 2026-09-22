@@ -40,7 +40,7 @@ family coverage at their owning validators; the current Builder is one persisten
 **F2.** Reference-solve every authored task through the pinned verifier host, not only
 `tasks[0]`. Build the reference artifact from the public task bytes, the brief and the operating
 guide alone: a solve written beside the checker shares its private vocabulary, and F2 then proves
-answer-key self-consistency rather than public-input solvability (esp32-w47-sol: the 23 accept
+answer-key self-consistency rather than public-input solvability (campaign w47-sol: the 23 accept
 controls used a `deviceId` field the brief never named, so census, F2 and conformance passed while
 72 of 72 verified rows failed). Check at least one accept control against the same public-only
 rule; a green census whose accepts all use a field absent from the brief is a blocking

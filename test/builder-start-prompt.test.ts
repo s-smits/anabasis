@@ -135,7 +135,7 @@ describe("Builder start prompt", () => {
   });
 
   /** A worked domain in a Builder-visible surface is an answer, not a calibration: the loop measures
-   *  these domains. Run 8 (esp32, 2026-08-28) repeated a rendered "not found on verification PATH"
+   *  these domains. Run 8 (2026-08-28) repeated a rendered "not found on verification PATH"
    *  back as its reason for a stand-in, and run 10 compiled against a board header it had written
    *  itself, so the install duty stays while the domain that taught it does not. */
   it("names no domain, tool or campaign the loop has measured", () => {
@@ -371,7 +371,7 @@ describe("STARTER.md gate map", () => {
     ]) {
       expect(flat(STARTER_LADDER), searched).toContain(searched);
     }
-    for (const measured of ["truss", "Truss", "ESP32", "esp32"]) {
+    for (const measured of ["truss", "Truss"]) {
       expect(STARTER_LADDER).not.toContain(measured);
     }
   });

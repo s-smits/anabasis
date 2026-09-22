@@ -119,7 +119,7 @@ function externalChecksForControl(
  *  and did not complete is still owed on every example.
  *
  *  It used to be one finding per (control, check) pair, which states the same defect once per
- *  example: run esp32-w26 received 153 rows for six distinct missing check/tool pairs, repeated
+ *  example: run w26 received 153 rows for six distinct missing check/tool pairs, repeated
  *  in iterations 01 to 06. A row per pair states the total count and names up to eight examples,
  *  with the remaining count when necessary. The Builder can then address six requirements
  *  without reading 153 repetitions. */
@@ -178,7 +178,7 @@ export function unexecutedGroundingFindings(input: {
         continue;
       }
       // The check did call the tool and the host could not run it: that is the environment's
-      // row, not a missing call. Run esp32 2026-09 read eight sandbox refusals as its own defect.
+      // row, not a missing call. A 2026-09 run read eight sandbox refusals as its own defect.
       // Only a control the runner settled as that refusal counts; a timeout, crash or throw on the
       // retry is the author's. A timeout or crash is still a call: truss run a23ca2 was told to
       // call a tool whose six calls had timed out, and added calls instead of fixing the run.

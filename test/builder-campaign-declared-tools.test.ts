@@ -321,8 +321,8 @@ describe("a declared external tool", () => {
   // This test injects the shared exception through probeControls; it does not run an F2 solve.
   //
   // The tool is the author's own choice, so the round continues and the author is told what to
-  // repair; esp32-w37-opus and truss-w37-sol were both discarded whole on the opposite reading.
-  // The earlier campaign had spent two authoring iterations in esp32-w37-opus before stopping
+  // repair; w37-opus and truss-w37-sol were both discarded whole on the opposite reading.
+  // The earlier campaign had spent two authoring iterations in w37-opus before stopping
   // on a tool the Builder had named. This regression uses a process killed by a signal, whose
   // host outcome is classified as an author-repairable crash, and checks the returned guidance.
   it.concurrent("continues the round when a tool the brief named reached no completed run", async () => {

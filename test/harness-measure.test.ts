@@ -111,7 +111,7 @@ describe("measureHarness", () => {
     expect(complete.advice.runId).toBe("m4-ledger");
     // A review slot that is off is an operator condition, not absent work.
     expect(complete.absent).toEqual([]);
-    // esp32 -29 lost both reader turns to the transport and the controller terminal listed no
+    // Campaign -29 lost both reader turns to the transport and the controller terminal listed no
     // absent step; a reader turn that failed after it opened is named there.
     for (const status of ["failed", "incomplete"] as const) {
       const failed = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, {
@@ -284,7 +284,7 @@ describe("measureHarness", () => {
     expect(() => deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e")).toThrow(
       /disagree on isolation strength/,
     );
-    // Also check the empty set seen in esp32-opus-331: a pre-spend-skipped battery records ZERO case
+    // Also check the empty set seen in opus-331: a pre-spend-skipped battery records ZERO case
     // rows, and the disagreement sentence over an empty set misdescribed the condition as
     // "disagree on isolation strength ()". Zero rows is its own precondition failure.
     writeFileSync(

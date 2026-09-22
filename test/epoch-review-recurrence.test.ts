@@ -241,7 +241,7 @@ describe("a condition is reviewed once", () => {
   });
 
   test("a bare schema root is not a defect identity, and a path inside the artifact is", async () => {
-    // Run esp32-opus-20260919T042430000Z-17f9de. That domain's artifactSchema has one root,
+    // Run 17f9de. That domain's artifactSchema has one root,
     // `files`, so every finding naming no check named that one word: 2,448 of them across the
     // campaign. A floating-point rule, a header contract and a new pin binding therefore shared an
     // identity, and i03's pin finding arrived carrying two recurrences it had nothing to do with.
@@ -345,7 +345,7 @@ describe("a condition is reviewed once", () => {
 
   test("what a probe executed reaches the author, whatever severity the finding is held at", async () => {
     // The two-occurrence ceiling exists because forcing blocking a third time had not repaired
-    // anything: run esp32-opus-20260908T214013792Z-23a1bc named `target-compiles` in three reviews
+    // anything: Opus run 23a1bc named `target-compiles` in three reviews
     // and "the defect persisted while the public projection supplied only its check name". The
     // review had run the candidate's own checks over its own changed field; the author read a
     // check id. The live review of campaign 3fd52f9e-4's i09 battery on 2026-09-18 is the same
@@ -639,7 +639,7 @@ describe("a condition is reviewed once", () => {
   });
 
   test("a check named in two earlier conditions receives advisory severity on its next finding", async () => {
-    // Run esp32-opus-20260908T214013792Z-23a1bc: check `target-compiles` was named in reviews
+    // Opus run 23a1bc: check `target-compiles` was named in reviews
     // i02, i03 and i04. The host forced i03 and i04 blocking, each ordered a full rebuild that
     // discarded a 25/25 harness, and the one-line projection never led the author to the gap.
     // The first recurrence can still become blocking. After two earlier conditions named the

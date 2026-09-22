@@ -72,13 +72,13 @@ export const TRUSS_CRASH: VerifierExecutionEvidence = {
   outcome: "crash",
 };
 
-/** esp32-w37-opus: a pre-spawn refusal — no exit status, no stderr, and no recorded reason. The
+/** w37-opus: a pre-spawn refusal — no exit status, no stderr, and no recorded reason. The
  *  wall is the environment's, so this kind never reaches the author. */
 export const OPUS_SANDBOX: VerifierExecutionEvidence = {
   ...TRUSS_CRASH,
   toolId: "fwcheck",
   checkId: "fw-light-actuation",
-  subjectId: "reject-fw-esp32-wifi-lamp-fw-sensor-read",
+  subjectId: "reject-fw-wifi-lamp-fw-sensor-read",
   command: "/opt/zerobrew/prefix/Cellar/node@24/24.13.0/bin/node",
   args: ["checker.js"],
   sandbox: "workdir+env-allowlist",

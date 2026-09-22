@@ -229,7 +229,7 @@ async function evaluateControl(
 }
 
 /** The host's own row first, whether the evaluate returned or threw: run
- *  esp32-sol-20260908T214013792Z-23a1bc lost a harness with 61 of 62 controls settled when one
+ *  Sol run 23a1bc lost a harness with 61 of 62 controls settled when one
  *  `arduino-compile` run hit its time limit and evaluation threw. The failure was attributed
  *  to the author while the host's timeout row went unread. One
  *  exception: a throw the generated check owns, such as its own fire-and-forget run. The host
@@ -436,7 +436,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
     const observed = admitObservation(run, control, observation);
     if (observed?.side.outcome !== "fail") continue;
     // Issue text is protected detail and stays on the evidence message. The author reads the
-    // example ids grouped by the declared checks that blocked them: esp32-opus 2026-08-22 read 30
+    // example ids grouped by the declared checks that blocked them: an Opus run on 2026-08-22 read 30
     // rows of "was rejected" while every one named the same eight checks.
     issues.push(`"${control.id}": ${blockingIssueSummary(observed.result)}`);
     const blockedBy = [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits);

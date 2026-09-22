@@ -452,7 +452,7 @@ export function deriveRebuildAdvice(
     // same producer: c1d2a7's round three printed the whole Judge sentence twice, once as the
     // review line and once as an advisory finding, and the second copy also spent one of the four
     // rendered finding slots. The Judge exit has one owner here, the judge block; the admission
-    // record keeps the row either way. A controller defect is not the author's to repair: esp32
+    // record keeps the row either way. A controller defect is not the author's to repair: run
     // 08c0f2's third round was asked to inspect the public contract for the controller's mismatch.
     findings: admission.admitted
       .filter(
@@ -524,7 +524,7 @@ export function environmentOwned(issue: AdviceIssue): boolean {
 
 function issueLine(issue: AdviceIssue): string {
   const kind = issue.detail ?? "unknown";
-  // esp32 08c0f2 i02: six `verifier` cases sat under "an environment non-result alone calls for an
+  // run 08c0f2 i02: six `verifier` cases sat under "an environment non-result alone calls for an
   // unchanged rerun" as though that sentence covered them.
   const nonResult = environmentOwned(issue)
     ? `environment non-results of kind ${kind}`

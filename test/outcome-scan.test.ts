@@ -257,7 +257,7 @@ describe("the anomaly scan", () => {
   });
 
   it("says which declared tools the solver reached in only a few of its solves", () => {
-    // One esp32 battery called `screen_truss_geometry` 3 times against 179 shell calls. The
+    // One battery called `screen_truss_geometry` 3 times against 179 shell calls. The
     // never-called rule fires only at zero, so nothing reported a tool the solver had all but
     // abandoned while it occupied prompt space in every case.
     const scan = scanOutcome(

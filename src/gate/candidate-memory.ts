@@ -12,7 +12,7 @@
  *
  * Run 52 paid for census and F2 seventeen times in one provider turn on bytes it had already
  * checked; run 35 made 141 submissions; campaign 199f6a55 struck the same commit twice for one
- * worker crash it did not cause; esp32-run25-sol-0830 refused 22 submits over eleven no-verdict
+ * worker crash it did not cause; run25-sol-0830 refused 22 submits over eleven no-verdict
  * records on eleven different trees, so no candidate identity ever repeated while one tool kept
  * failing. The tool no-verdict count keeps its own owner (tool-non-result.ts) because its count
  * outlives a session.
@@ -64,7 +64,7 @@ export function findingsRepeatRun(
   return priorBlockedFindingsHashes.length - differs;
 }
 
-/** The steering between the second identical diagnosis and the ceiling. Run esp32-sol 2026-08-22
+/** The steering between the second identical diagnosis and the ceiling. A Sol run on 2026-08-22
  *  recorded one findings hash five rounds in a row on five different trees and nothing told the
  *  author the diagnosis had not moved. Projected where it is rendered. */
 export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {

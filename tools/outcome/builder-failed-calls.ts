@@ -1,8 +1,8 @@
 /**
  * Which Builder tool calls failed, grouped by recorded session.
  *
- * The tool census reported failures as per-name counts. Run esp32-w23 recorded "28 failed
- * commandExecution" and run esp32-sol-329 recorded 19 failures out of 19 calls, and a reader of the
+ * The tool census reported failures as per-name counts. Run w23 recorded "28 failed
+ * commandExecution" and run sol-329 recorded 19 failures out of 19 calls, and a reader of the
  * census could say neither which calls those were nor that a turn had been cut mid-flight.
  * The execution record carries both — a bounded row per failure, already redacted and cut by the
  * writer, and the turn that was still running. This reader carries those records into the outcome

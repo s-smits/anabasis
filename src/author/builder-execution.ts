@@ -149,7 +149,7 @@ export interface BuilderExecutionEvidence {
     /** How many of those turns never reached their own provider terminal, so their share of the
      *  totals is the transport's in-flight estimate: a streamed Claude frame's `usage` is not final,
      *  each frame repeats the whole cached input and none carries a cost, so a total with estimated
-     *  turns in it bounds nothing (esp32 run 17f9de: four such epochs as 36.5M input, 3,317 output,
+     *  turns in it bounds nothing (run 17f9de: four such epochs as 36.5M input, 3,317 output,
      *  no cost). */
     estimatedTurns: number;
   };
@@ -489,7 +489,7 @@ export class BuilderExecutionRecorder {
 
   /** The session's closest tree so far: the earlier refusal at the same stage with the fewest
    *  finding codes. Derived on demand from the recorded rows rather than copied into the record
-   *  duplicate what the submit list already proves). Run esp32-w33 wandered from 221 findings at
+   *  duplicate what the submit list already proves). Run w33 wandered from 221 findings at
    *  submit 13 to 638 at submit 16 while every depth-1 comparison truthfully said the tree had
    *  changed; nothing named the regression, so the Builder could not know it had been closer. */
   fewestFindingsRefusal(

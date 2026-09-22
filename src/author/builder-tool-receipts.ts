@@ -166,7 +166,7 @@ export function withCustomToolReceipts(
           if (hasText(advice)) throw new Error(`${errorMessage(error)}\n${advice}`, { cause: error });
           throw error;
         }
-        // Finished before the review, as a throw is: esp32 run 08c0f2 booked 50.6 review minutes as
+        // Finished before the review, as a throw is: run 08c0f2 booked 50.6 review minutes as
         // Builder tool time, one 11.3-minute `write` being review alone. The receipt is in `details`.
         recorder.customToolFinished(sequence, "returned", result);
         events?.ended(turn, name, false);

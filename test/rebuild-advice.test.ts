@@ -332,7 +332,7 @@ describe("how an issue ages across batteries", () => {
   });
 
   it("keeps a dispute only while the issue is disputed", () => {
-    // campaign -27 (esp32-opus-20260905T065506215Z-55aaad): a confirmed-fixed issue carried its
+    // campaign -27 (run 55aaad): a confirmed-fixed issue carried its
     // dispute string through five batteries.
     const disputed = priorIssue({ dispute: "the evaluator pins a stale header" });
     const seenAgain = advanceIssues([disputed], [beamsFail], "r2", ran("beams"), "complete");
@@ -520,7 +520,7 @@ describe("the issue register and its projection", () => {
   });
 
   it("keeps a controller defect out of the author's packet", () => {
-    // esp32 08c0f2's third round was told to inspect the public contract for the controller's own
+    // Run 08c0f2's third round was told to inspect the public contract for the controller's own
     // mismatch, which no authoring change can repair.
     const defect: AnalysisFinding = {
       kind: "controller-defect",
@@ -940,7 +940,7 @@ describe("what the author reads", () => {
     expect(rendered).toContain("environment non-result alone calls for an unchanged rerun");
     expect(rendered).toContain("environment non-results of kind provider");
     expect(rendered).not.toContain("an active or regressed issue is what the rebuild must move");
-    // esp32 08c0f2 i02: a `verifier` kind is not an environment failure and must not read as one.
+    // Run 08c0f2 i02: a `verifier` kind is not an environment failure and must not read as one.
     const verifier = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "verifier" })]));
     expect(verifier).toContain(
       "runtime non-results of kind verifier, a kind that does not establish an environment failure",

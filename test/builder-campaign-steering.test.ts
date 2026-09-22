@@ -237,7 +237,7 @@ describe("the controller's word to a running session", () => {
   }, 30_000);
 
   it("tells the author from the second identical diagnosis how often it has repeated, before the ceiling ends the session", async () => {
-    // esp32-sol 2026-08-22 recorded one findings hash five rounds in a row on five different trees
+    // A Sol run on 2026-08-22 recorded one findings hash five rounds in a row on five different trees
     // and read nothing about the repeat: the no-op strike keys on candidate identity, which
     // changed every round, and the ceiling variant speaks only at the end.
     const ceiling = POLICY.loop.stalledFindingsRepeats;

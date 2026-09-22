@@ -34,7 +34,7 @@ export function loadFrozenManifest(path = FROZEN_MANIFEST_PATH): FrozenManifest 
   // The digest covers the parsed policy, not the file bytes. Thresholds are part of the frozen
   // condition, so a recorded battery whose digest differs is excluded from climb evidence
   // (climb-battery-admission). A byte digest let a comment edit on thresholds.frozen.yaml
-  // (#329, line 42) exclude every earlier battery of the esp32-sol campaign on 2026-08-23 although
+  // (#329, line 42) exclude every earlier battery of the Sol campaign on 2026-08-23 although
   // no threshold moved. Comments, whitespace and key order now leave the identity alone.
   return { digest: `sha256:${sha256(canonicalJson(raw))}`, raw };
 }

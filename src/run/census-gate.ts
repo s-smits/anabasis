@@ -367,7 +367,7 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
  * A tool run that started and then failed is the Builder's defect, not the environment's.
  *
  * Run truss-w37-sol declared `node checker.js contract` and the host ran it in a cell where
- * `checker.js` was never materialised: exit 1, MODULE_NOT_FOUND, no verdict. Run esp32-w37-opus met
+ * `checker.js` was never materialised: exit 1, MODULE_NOT_FOUND, no verdict. Run w37-opus met
  * a pre-spawn refusal. Both settled as `environment` and both ended their campaign with no
  * candidate and no battery — in the opus case discarding two earlier iterations that had produced
  * ordinary repairable findings.
@@ -426,7 +426,7 @@ function settleNonResult(
       severity: "blocking",
       // The tool is in the claim on purpose and the outcome kind is not: the claim is part of the
       // stall identity. A different tool is a moved diagnosis; the same tool failing as crash one
-      // round and timeout the next is not (esp32-opus 2026-08-22 alternated two kinds for eleven
+      // round and timeout the next is not (an Opus run on 2026-08-22 alternated two kinds for eleven
       // rounds), and naming the kind here would have let that loop run past the stall ceiling. The
       // Finding code below groups the failure kind; it is not the stall identity.
       claim: `${censusName(error)}: runs of tool "${error.evidence.toolId}" reached no completed run`,

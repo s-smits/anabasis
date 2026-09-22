@@ -277,7 +277,7 @@ describe("the census across a campaign's epochs", () => {
           {
             code: "EXTERNAL_RESULT_UNBOUND",
             path: "grader/controls.json",
-            detail: `engine returned ok:false on control "reject-esp32-build-arity" (record ${record})`,
+            detail: `engine returned ok:false on control "reject-build-arity" (record ${record})`,
           },
         ],
       },

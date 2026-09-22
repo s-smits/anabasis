@@ -1,6 +1,6 @@
 /**
  * The declared-key allowlist on the review surface that hands a controller-built object to a
- * model. A hostile review probe on esp32-w29 planted an undeclared field inside a declared object
+ * model. A hostile review probe on w29 planted an undeclared field inside a declared object
  * and it reached the Judge prompt 2/2, because the surface rebuilt only its top-level keys and the
  * sanitizer normalizes bytes rather than removing them.
  *

@@ -53,7 +53,7 @@ bun install --frozen-lockfile
 bun run login -- claude
 
 bun run fullrun -- \
-  --prompt "Build a harness that writes ESP32 firmware for sensor and peripheral tasks." \
+  --prompt "Design lightweight steel roof trusses to Eurocode 3 within strict mass limits." \
   --provider-turn-budget 1320 \
   --builder-backend claude \
   --built-backend claude \
@@ -111,7 +111,7 @@ bun run check -- task-id ./output/cases/task-id/artifact.json
 - **Check** runs the Correctness Model, prints the public verdict (`truthOk`, `pass`, a non-result kind, failed check ids, the digest of every tool that ran) and exits 0 on a pass. The artifact must pass the submission schema a solve's submit does. The full verdict, with the issue text and the reason for a non-result such as a missing tool, goes to the printed `evidencePath`: `<out-dir>/<taskId>-verdict.json`, by default in `checks-local/`. It is a local evaluation, not a capability claim.
 - **Models and credentials.** Pin the model so the printed `builtModel` is the condition you meant. Claude takes `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`. Codex reads `CODEX_BUILT_MODEL`, `CODEX_BUILT_REASONING_EFFORT` and its login under `CODEX_HOME`; OpenRouter reads `OPENROUTER_MODEL`, `OPENROUTER_BUILT_REASONING_EFFORT` and `OPENROUTER_API_KEY`. Credentials never enter the export.
 - **Host.** Bun 1.4.2 and the wall a run uses: Seatbelt on macOS, `bubblewrap` on Linux. Without the wall a case is a typed non-result, never an unconfined run.
-- **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and is copied in full: an ESP32 export is about 11 GB. The export's README header names the tools its checks run. A link in it to a host file, or to nothing, is left out and named at the top of the export's README; such a tool resolves from the host `PATH`.
+- **Tools.** `.toolchain/` holds the tools the Builder installed, built for the operating system and architecture that installed them, and is copied in full: an export whose checks run a cross-compiler has reached about 11 GB. The export's README header names the tools its checks run. A link in it to a host file, or to nothing, is left out and named at the top of the export's README; such a tool resolves from the host `PATH`.
 - **Code.** The export runs this checkout's solve and verifier code over the adopted bundle: a fresh solve, not a replay of the measured run.
 
 The [export](src/run/bundle-export.ts) copies this section into `my-harness/README.md`.

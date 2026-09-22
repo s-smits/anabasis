@@ -47,6 +47,8 @@ afterEach(() => {
 });
 
 const source = { commit: "a".repeat(40), sourceDigest: "b".repeat(64), dirty: false };
+// A custom one-liner beside the truss preset gives a batch two distinct presets and projects.
+const CUSTOM = ["custom", "--prompt", "Design steel roof trusses to Eurocode 3."];
 const manager = serviceManager();
 /** What each manager prints for a loaded, running service owned by `dir`. */
 const liveState = (dir, label) =>
@@ -91,7 +93,7 @@ function batchFixture({
   failLaunch = false,
   failWorker = false,
   refuseAllowance = false,
-  args = ["esp32", "truss"],
+  args = [...CUSTOM, "truss"],
 } = {}) {
   const options = parseOptions(args);
   const plans = planRuns(options, temp(), "fixture");
@@ -166,7 +168,7 @@ function batchFixture({
 
 describe("one-command run launcher", () => {
   it("starts a separate operator timer before the controller launch without forwarding a retired wall", async () => {
-    const fixture = batchFixture({ args: ["esp32", "--kill-after-ms", "180000"] });
+    const fixture = batchFixture({ args: ["truss", "--kill-after-ms", "180000"] });
     const [result] = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result.running).toBe(true);
     const timer = fixture.calls.find((args) => args.includes("--deadline"));
@@ -273,7 +275,7 @@ describe("one-command run launcher", () => {
 
   it("keeps every preset to one or two non-empty lines and plans each by name", () => {
     const names = Object.keys(PRESETS);
-    expect(names.length).toBeGreaterThanOrEqual(10);
+    expect(names).toEqual(["truss"]);
     for (const name of names) {
       expect(
         PRESETS[name].split("\n").every((line) => line.trim()),
@@ -286,10 +288,10 @@ describe("one-command run launcher", () => {
   });
 
   it("uses the exact presets and lets the product parse their full launch arguments", () => {
-    const options = parseOptions(["esp32", "truss"]);
+    const options = parseOptions([...CUSTOM, "truss"]);
     const plans = planRuns(options, "/tmp/launch", "unique");
     expect(options).toMatchObject({ source: "origin/main", condition: "opus", tasks: "25", budget: "1320" });
-    expect(plans.map((plan) => plan.prompt)).toEqual([PRESETS.esp32, PRESETS.truss]);
+    expect(plans.map((plan) => plan.prompt)).toEqual([CUSTOM[2], PRESETS.truss]);
     expect(new Set(plans.map((plan) => plan.dir)).size).toBe(2);
     for (const plan of plans) {
       const parsed = parseFullRunArgs(fullrunArgs(plan, options, source));
@@ -343,30 +345,30 @@ describe("one-command run launcher", () => {
     ]);
     expect(fullrunArgs(plan, bounded, source).join(" ")).toContain("--stop-after-ms 14400000");
     for (const args of [
-      ["esp32", "--budget", "0"],
-      ["esp32", "--budget", "5", "--budget", "7"],
-      ["esp32", "--stop-after-ms", "4h"],
-      ["esp32", "truss", "--run", "same"],
+      ["truss", "--budget", "0"],
+      ["truss", "--budget", "5", "--budget", "7"],
+      ["truss", "--stop-after-ms", "4h"],
+      [...CUSTOM, "truss", "--run", "same"],
       ["truss", "truss", "--run", "same"],
       ["unknown"],
-      ["esp32", "--prompt", "replacement"],
+      ["truss", "--prompt", "replacement"],
       ["custom", "--prompt", "three\nprompt\nlines"],
       ["custom", "--prompt", "\nblank"],
       ["custom", "--prompt", "text\0"],
       ["custom", "--prompt", "text\r"],
-      ["esp32", "--env-file", "relative"],
-      ["esp32", "truss", "--project", "old-project"],
-      ["esp32", "--project", "../old"],
-      ["esp32", "--model", "sol,opus", "--project", "old-project"],
-      ["esp32", "--verifier-registry", "/tmp/retired-registry.json"],
-      ["esp32", "--claim", "unsupported"],
-      ["esp32", "--run", "../old"],
-      ["esp32", "--condition", "sol,sol"],
-      ["esp32", "--condition", "sol,unknown"],
-      ["esp32", "--model", "astra", "--condition", "sol"],
-      ["esp32", "--model", "astra", "--model", "sol"],
-      ["esp32", "--model", "unknown"],
-      ["esp32", "--condition", "sol,opus", "--run", "one-id"],
+      ["truss", "--env-file", "relative"],
+      ["truss", "truss", "--project", "old-project"],
+      ["truss", "--project", "../old"],
+      ["truss", "--model", "sol,opus", "--project", "old-project"],
+      ["truss", "--verifier-registry", "/tmp/retired-registry.json"],
+      ["truss", "--claim", "unsupported"],
+      ["truss", "--run", "../old"],
+      ["truss", "--condition", "sol,sol"],
+      ["truss", "--condition", "sol,unknown"],
+      ["truss", "--model", "astra", "--condition", "sol"],
+      ["truss", "--model", "astra", "--model", "sol"],
+      ["truss", "--model", "unknown"],
+      ["truss", "--condition", "sol,opus", "--run", "one-id"],
     ]) {
       expect(() => parseOptions(args)).toThrow();
     }
@@ -393,10 +395,10 @@ describe("one-command run launcher", () => {
       join(root, ".env"),
       'CLAUDE_CODE_OAUTH_TOKEN="fixture-current"\nCLAUDE_CODE_OAUTH_TOKEN3=fixture-other\nANTHROPIC_API_KEY=fixture-api\nCUSTOM_ADDRESS=https://invalid.test\n',
     );
-    const credentials = readCredentials(parseOptions(["esp32"]), root, {
+    const credentials = readCredentials(parseOptions(["truss"]), root, {
       CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale",
     });
-    const [plan] = planRuns(parseOptions(["esp32"]), root, "credential");
+    const [plan] = planRuns(parseOptions(["truss"]), root, "credential");
     mkdirSync(plan.dir);
     const environment = prepareEnvironment(plan, credentials, "/usr/bin:/bin:/usr/bin:relative");
     dirs.push(environment.TMPDIR);
@@ -411,10 +413,10 @@ describe("one-command run launcher", () => {
     expect(() => prepareEnvironment(plan, credentials)).toThrow();
     // A numbered token alone is not the one the run reads.
     writeFileSync(join(root, ".env"), "CLAUDE_CODE_OAUTH_TOKEN3=fixture-other\n");
-    expect(() => readCredentials(parseOptions(["esp32"]), root, {})).toThrow("no API-key or shell fallback");
+    expect(() => readCredentials(parseOptions(["truss"]), root, {})).toThrow("no API-key or shell fallback");
     writeFileSync(join(root, ".env"), "ANTHROPIC_API_KEY=fixture-api\n");
     expect(() =>
-      readCredentials(parseOptions(["esp32"]), root, { CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale" }),
+      readCredentials(parseOptions(["truss"]), root, { CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale" }),
     ).toThrow("no API-key or shell fallback");
   });
 
@@ -441,7 +443,7 @@ describe("one-command run launcher", () => {
     const fixture = batchFixture();
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result).toHaveLength(2);
-    expect(result.map((row) => row.project)).toEqual(["esp32-project", "truss-project"]);
+    expect(result.map((row) => row.project)).toEqual(["custom-project", "truss-project"]);
     expect(result.every((row) => !row.error)).toBe(true);
     const gates = fixture.calls.filter((args) => args.at(-1) === "gate");
     const launches = fixture.calls.filter((args) => args[0].endsWith(manager.launcher));
@@ -483,12 +485,12 @@ describe("one-command run launcher", () => {
       ["--wall-deadline-ms", "10"],
       ["--termination-grace-ms", "10"],
     ]) {
-      expect(() => parseOptions(["esp32", "--condition", "sol,opus", ...flags])).toThrow("Unknown option");
+      expect(() => parseOptions(["truss", "--condition", "sol,opus", ...flags])).toThrow("Unknown option");
     }
   });
 
   it("launches Sol, Astra and Opus on one source gate with separate credential snapshots", async () => {
-    const fixture = batchFixture({ args: ["esp32", "--model", "sol,astra,opus"] });
+    const fixture = batchFixture({ args: ["truss", "--model", "sol,astra,opus"] });
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result.map((row) => row.condition)).toEqual(["sol", "astra", "opus"]);
     expect(result.every((row) => row.running && row.source === source.commit)).toBe(true);
@@ -519,17 +521,17 @@ describe("one-command run launcher", () => {
     }
   });
 
-  it("launches two firmware replicas and one truss per Codex model with six distinct identities", async () => {
+  it("launches two truss replicas and one custom prompt per Codex model with six distinct identities", async () => {
     const fixture = batchFixture({
-      args: ["esp32", "esp32", "truss", "--condition", "sol,astra", "--stop-after-ms", "14400000"],
+      args: ["truss", "truss", ...CUSTOM, "--condition", "sol,astra", "--stop-after-ms", "14400000"],
     });
     expect(fixture.plans.map((plan) => plan.runId)).toEqual([
-      "esp32-sol-r1-fixture",
-      "esp32-astra-r1-fixture",
-      "esp32-sol-r2-fixture",
-      "esp32-astra-r2-fixture",
-      "truss-sol-fixture",
-      "truss-astra-fixture",
+      "truss-sol-r1-fixture",
+      "truss-astra-r1-fixture",
+      "truss-sol-r2-fixture",
+      "truss-astra-r2-fixture",
+      "custom-sol-fixture",
+      "custom-astra-fixture",
     ]);
     const result = await launchBatch(fixture.plans, fixture.options, fixture.context, fixture.command);
     expect(result).toHaveLength(6);
@@ -548,7 +550,7 @@ describe("one-command run launcher", () => {
   });
 
   it("loads the temporary worker through the real sandbox while keeping checkout files closed", async () => {
-    const [plan] = planRuns(parseOptions(["esp32"]), temp(), "wall");
+    const [plan] = planRuns(parseOptions(["truss"]), temp(), "wall");
     mkdirSync(plan.dir);
     const environment = prepareEnvironment(plan, {
       kind: "claude",
@@ -615,10 +617,10 @@ describe("one-command run launcher", () => {
   });
 
   it("reports a terminal written just after the opening as a failed startup", async () => {
-    const options = parseOptions(["esp32"]);
+    const options = parseOptions(["truss"]);
     const [plan] = planRuns(options, temp(), "early-abort");
     Object.assign(plan, { source, budget: "1320", ...requestIdentity(fullrunArgs(plan, options, source)) });
-    const controller = join(plan.dir, "campaigns", "esp32-project", "controller", plan.runId);
+    const controller = join(plan.dir, "campaigns", "truss-project", "controller", plan.runId);
     mkdirSync(controller, { recursive: true });
     writeFileSync(join(controller, "opening.json"), JSON.stringify(openingFor(plan)));
     await expect(
@@ -633,7 +635,7 @@ describe("one-command run launcher", () => {
   });
 
   it("refuses a changed source, prompt, budget or slot and reports absent openings as uncertain", async () => {
-    const options = parseOptions(["esp32"]);
+    const options = parseOptions(["truss"]);
     const [plan] = planRuns(options, temp(), "opening");
     Object.assign(plan, { source, budget: "1320", ...requestIdentity(fullrunArgs(plan, options, source)) });
     const valid = openingFor(plan);

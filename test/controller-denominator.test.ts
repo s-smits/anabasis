@@ -4,7 +4,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { controllerDenominator } from "../src/run/controller-denominator.ts";
 
-const RUN = "esp32-sol-stable-20260905T1000Z";
+const RUN = "truss-sol-stable-20260905T1000Z";
 
 it("records zero cases for a battery refused before any case ran, and invalid only for an unparsable record", () => {
   const dir = mkdtempSync(join(tmpdir(), "controller-denominator-"));

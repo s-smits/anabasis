@@ -119,7 +119,7 @@ describe("a census that ends in a verifier non-result", () => {
   });
 
   it("codes each no-completed-run family separately, so a reader can group failures by mechanism", async () => {
-    // esp32-run25-sol-0830 recorded eleven of these under one code: crashes at exits 42 to 82, a
+    // run25-sol-0830 recorded eleven of these under one code: crashes at exits 42 to 82, a
     // pre-start refusal and a 60 s timeout. The repairs differ, so the label a reader groups by
     // has to differ too. Only the author-owned kinds reach a finding at all; the wall's own kinds
     // settle on the environment below.
@@ -175,7 +175,7 @@ describe("a census that ends in a verifier non-result", () => {
   });
 
   it("retries a sandbox non-result once, then attributes it to the environment", async () => {
-    // esp32-w37-opus: a pre-spawn wall refusal. The author cannot install the OS mechanism, so
+    // w37-opus: a pre-spawn wall refusal. The author cannot install the OS mechanism, so
     // this kind takes the same route as an unreadable tool — one retry, then the environment.
     const iterationDir = join(ROOT, "candidate-sandbox-repeat");
     mkdirSync(join(iterationDir, "workspace"), { recursive: true });

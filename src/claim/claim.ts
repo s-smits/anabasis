@@ -431,7 +431,7 @@ function declaredGroundingClauses(
     // authoring checks, not execution evidence. With no attributed rejects, the check has
     // not demonstrated that it can reject an invalid artifact. External checks need the same
     // evidence, under their existing clause id so older claims retain their vocabulary.
-    // Launching an adapter proves only execution: esp32 runs 20 and 21 recorded complete
+    // Launching an adapter proves only execution: runs 20 and 21 recorded complete
     // engine-adapter executions, but no control had ever made the adapter reject an artifact.
     if (recordedCount(attributedCheckIds, checkId) === 0) {
       clauses.push(

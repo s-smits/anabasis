@@ -147,7 +147,7 @@ export type AnalysisFinding = {
   checkId?: string;
   artifactSchemaPath?: string;
   publicInputPath?: string;
-  /** No declared check observes the obligation. ESP32 run 0dba8e's reviews named the nearest check
+  /** No declared check observes the obligation. Run 0dba8e's reviews named the nearest check
    *  for an unchecked sketch three times, and the Builder repaired that check each time. */
   unobserved?: true;
   /** What the reviewer's cited probes executed, composed only from public authoring identities
@@ -157,10 +157,10 @@ export type AnalysisFinding = {
    *  detail — and these three identities are the same class the finding's own `checkId` and
    *  `artifactSchemaPath` already cross by.
    *
-   *  Run esp32-opus-20260908T214013792Z-23a1bc is why this exists: `target-compiles` was named in
-   *  three consecutive reviews, two of them forced blocking, each ordering a full rebuild of a
-   *  25/25 harness, and "the defect persisted while the public projection supplied only its check
-   *  name". A probe is the review's strongest evidence and it stopped at the boundary. */
+   *  Opus run 23a1bc is why this exists: `target-compiles` was named in three consecutive reviews, two
+   *  of them forced blocking, each ordering a full rebuild of a 25/25 harness, and "the defect
+   *  persisted while the public projection supplied only its check name". A probe is the review's
+   *  strongest evidence and it stopped at the boundary. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
 };
 
@@ -238,7 +238,7 @@ export function blockingCounts(value: unknown): Record<string, number> | null {
 
 /** The one isolation strength every case row disclosed. An empty set and a conflicting set both
  *  fail size===1, but they are different facts: zero rows means no case ran (a pre-spend-skipped
- *  battery), not that anything disagreed — esp32-opus-331 aborted on the disagreement sentence
+ *  battery), not that anything disagreed — opus-331 aborted on the disagreement sentence
  *  over an empty set ("disagree on isolation strength ()"). Callers stand the analyse phase down
  *  before reaching here on a zero-row battery; the first throw keeps that precondition loud and
  *  accurate for any future caller. */
@@ -330,7 +330,7 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       severity: "advisory",
     });
   }
-  // Only a kind that may establish an environment failure earns "rerun unchanged": esp32 08c0f2 i02
+  // Only a kind that may establish an environment failure earns "rerun unchanged": run 08c0f2 i02
   // told its Builder that six `verifier` non-results, external checks that ran no tool, were one.
   const nonResults = analysis.cases.filter(
     (row) =>

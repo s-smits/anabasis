@@ -20,16 +20,16 @@
  * controller's own completed-turn count instead of on marker prose.
  *
  * Three later gaps, each closed with one clause: the claude run's spend-limit wording ("out of
- * extra usage") filed three provider-limit cases as unaccepted; esp32-base-sol i02's close-coded
- * "WebSocket closed 1006" missed the `$` anchor (a numeric suffix is now admitted); the esp32
- * -4/-5 codex thread-creation fatal ("Session data … looks corrupt or unreadable") recorded two
+ * extra usage") filed three provider-limit cases as unaccepted; base-sol i02's close-coded
+ * "WebSocket closed 1006" missed the `$` anchor (a numeric suffix is now admitted); the
+ * campaigns -4/-5 codex thread-creation fatal ("Session data … looks corrupt or unreadable") recorded two
  * bare aborts with no owner — anchored to the thread-open wording, so a solver's own prose about
  * corrupt session data stays a genuine failed attempt.
  *
  * A fourth gap, 2026-09-03: during the OpenAI incident "Elevated errors across ChatGPT and Codex"
  * every Codex responses call returned 404 with an empty body. pi-ai words an empty-body error as
  * the bare HTTP status text, so the Built slot's errors read `["Not Found", "turn 1 failed"]`;
- * 404 was not in the status list and the bare text matched nothing, so esp32-run57-sol-0903's
+ * 404 was not in the status list and the bare text matched nothing, so run57-sol-0903's
  * battery i02 recorded 25 solver-kind non-results one by one instead of stopping after five
  * provider-kind ones and re-measuring once. The status list now carries 404, and the bare status
  * text is admitted only as a whole message (`^not found$`), so a solver's own "file not found"

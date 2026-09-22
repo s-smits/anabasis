@@ -66,7 +66,7 @@ function failureClass(message) {
 // `src/truth/verdict-binding.ts` (`blockingTruthFailure`) reads
 // `issue.severity === "error" && issue.blocking !== false`, so an OMITTED `blocking` blocks.
 // The field is optional in `CorrectnessModelIssue`. Historical Builder-authored evaluators could
-// omit it: all 111 recorded issue rows of esp32-w47-sol do, so the old `blocking === true`
+// omit it: all 111 recorded issue rows of campaign w47-sol do, so the old `blocking === true`
 // test counted zero shipping rejections there and called five live checks inert.
 function blockingCheckIssue(issue) {
   return issue?.severity === "error" && issue.blocking !== false && isString(issue.checkId);

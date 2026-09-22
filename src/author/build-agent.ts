@@ -27,7 +27,7 @@ export async function runModelAttempt<T>(
     return await operation();
   } catch (error) {
     if (error instanceof BuildAgentTurnNonResult) throw error;
-    // esp32 -4/-5: the codex thread-open fatal was thrown rather than settled as a failed turn,
+    // campaigns -4/-5: the codex thread-open fatal was thrown rather than settled as a failed turn,
     // so it skipped every classifier and recorded a bare abort. Same rule as openBuildSession: a
     // recognised transport failure becomes the typed non-result; code and configuration errors
     // still throw unchanged.

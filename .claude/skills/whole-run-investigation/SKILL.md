@@ -361,11 +361,10 @@ and the archive validator refuses an archive written under an older shape.
 
 ## Reference-comparison sessions
 
-For an ESP32 run, explicitly launch the applicable reference-comparison lanes against `~/Developer/esp32-rebuild`; record a concrete blocker if unavailable, and keep comparisons observational when task or verifier bytes differ.
-
-Use a reference where its domain, executable interface and coverage clarify the result. Resolve
-its actual clean revision; the historical default `~/Developer/esp32-rebuild` is not proof
-that it exists. Use `--reference <absolute dir>` for a verified alternative location of the
+Use a reference where its domain, executable interface and coverage clarify the result; record a
+concrete blocker if it is unavailable, and keep comparisons observational when task or verifier
+bytes differ. Resolve its actual clean revision; a default path is not proof that it exists.
+Use `--reference <absolute dir>` for a verified alternative location of the
 intended reference. Do not substitute another product. Reference results remain diagnostic and
 protected: no rescoring or model coaching. These reviewers and blind angles 19/20 do not exchange
 reports before returning.
@@ -506,7 +505,7 @@ calls rather than a turn share: `de8b40-i02` recorded one or two turns of 24 aga
 calls per case. `turn-bound` still names the case that actually reached the turn wall.
 
 The reading that changes a decision is usually the negative one: across the recorded truss and
-ESP32 campaigns no bundle ever moved a wall and the median case spent 5 to 9 per cent of its solve
+firmware campaigns no bundle ever moved a wall and the median case spent 5 to 9 per cent of its solve
 minutes, so nothing about those outcomes is explained by room. When a case does reach a wall, the
 lane names it: a case that passed at a wall is fine, and a case that reached one without passing
 holds a verdict on a truncated solve.

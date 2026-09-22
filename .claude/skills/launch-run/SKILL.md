@@ -15,15 +15,15 @@ Use the TypeScript launcher from current main with the selected source's pinned 
 the launched source before spending by running that tree's own `probe.ts`, which imports that
 tree's product modules. A source whose modules moved therefore still probes: main's probe could
 not open 03b8cb266, whose pi layer had replaced `src/backends/claude-backend.ts`, and the
-esp32-opus-20260922T022701000Z-08c0f2 launch had to borrow the source tree's launcher. The
-launcher itself (options, credential capture, gate, startup checks) stays main's; never select an
-older runtime or silently drop the timed stop. Bun executes the launcher directly; no build
-step or generated driver is needed. A launch request authorises the command.
+launch of run 08c0f2 had to borrow the source tree's launcher. The launcher itself (options,
+credential capture, gate, startup checks) stays main's; never select an older runtime or
+silently drop the timed stop. Bun executes the launcher directly; no build step or generated
+driver is needed. A launch request authorises the command.
 
 ```sh
-bun .claude/skills/launch-run/scripts/launch.ts esp32 --model astra --source <resolved-full-sha>
-bun .claude/skills/launch-run/scripts/launch.ts esp32 truss --model sol,opus --source <resolved-full-sha>
-bun .claude/skills/launch-run/scripts/launch.ts esp32 esp32 truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
+bun .claude/skills/launch-run/scripts/launch.ts truss --model astra --source <resolved-full-sha>
+bun .claude/skills/launch-run/scripts/launch.ts truss --model sol,opus --source <resolved-full-sha>
+bun .claude/skills/launch-run/scripts/launch.ts truss truss --model sol,astra --source <resolved-full-sha> --stop-after-ms 14400000
 bun .claude/skills/launch-run/scripts/launch.ts custom --prompt "<the user's exact one-line prompt>" --source <resolved-full-sha>
 ```
 
@@ -33,7 +33,7 @@ or prompt. The controller then continues from the recorded campaign evidence on 
 the launcher refuses an opening that created a fresh project instead. There is no steering text:
 the Builder chooses the next experiment from evidence.
 
-Use one or two lines through `custom --prompt`, or the current presets in `scripts/options.ts` (`--list` prints them).
+Use one or two lines through `custom --prompt`, or the `truss` preset in `scripts/options.ts` (`--list` prints it).
 Public files enter through `fullrun --context`; do not create `asks/`, verifier manifests or a second domain brief.
 Put the requested pair in one invocation. It prepares each worktree once, runs one TypeScript
 probe per run, gates the shared source once with `bun run gate`, then starts the runs in quick succession.
@@ -52,14 +52,15 @@ into a fresh isolated run worktree. Keep the source checkout and existing runs u
 Model and budget defaults are Opus 5 medium/medium/medium, 25 tasks and 1,320 provider
 turns per run. Sol uses high/high/medium; Astra uses medium/low/low; Fable 5.1 uses medium/medium/medium.
 Each preset occurrence runs once per condition. Repeat a preset only for explicitly authorised
-replicas; their run ids gain separate `r1`, `r2` markers. The six-run example above means two
-ESP32 runs per model and one truss run per model. A preset authorises its exact prompt; never enrich it.
+replicas; their run ids gain separate `r1`, `r2` markers. The four-run example above means two
+truss runs per model. A preset authorises its exact prompt; never enrich it.
 
-Beside `esp32`, the presets follow `truss`'s shape: a best answer under a strict limit, several
-interacting requirements and specified loss or fault scenarios in one request. Stacking them is
-what made truss tasks hard: on the 2026-09-15 pack series one added interaction per task still
-passed 22 of 23 verified cases (Sol high), and all of them stacked inside the same mass limit
-passed 7 of 20 (Sol high) and 2 of 23 (Opus 5). `--list` prints each prompt.
+`truss` is the one preset: a best answer under a strict limit, several interacting requirements
+and specified loss or fault scenarios in one request. Stacking them is what made truss tasks
+hard: on the 2026-09-15 pack series one added interaction per task still passed 22 of 23
+verified cases (Sol high), and all of them stacked inside the same mass limit passed 7 of 20
+(Sol high) and 2 of 23 (Opus 5). A custom prompt of that shape stacks the same way. `--list`
+prints the preset.
 
 The probe reads source identity and parses the request using the selected product revision,
 then initializes the real confined worker without a model turn, and runs one minimal Builder-slot
@@ -107,7 +108,7 @@ its loaded worktree plist, sends SIGTERM, gives closure 30 seconds, then uses la
 and verifies service absence. Fresh project allocation remains with the controller.
 
 ```sh
-bun .claude/skills/launch-run/scripts/launch.ts esp32 --model sol --source <full-sha> --kill-after-ms 180000
+bun .claude/skills/launch-run/scripts/launch.ts truss --model sol --source <full-sha> --kill-after-ms 180000
 ```
 
 The three-minute value is the signal time; termination can take another 35 seconds. For a

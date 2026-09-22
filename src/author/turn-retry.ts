@@ -44,7 +44,7 @@ export const PROVIDER_RESET_MARGIN_MS = 60_000;
 const REASON_MAX_CHARS = 300;
 
 /** A refusal no wait clears: the provider says the organisation, account or workspace itself is
- *  disabled, which only its administrator changes. esp32-opus-20260905T065506215Z waited out all
+ *  disabled, which only its administrator changes. opus-20260905T065506215Z waited out all
  *  three backoffs (17 minutes) on the same HTTP 403 "Your organization has disabled Claude
  *  subscription access" before ending on the clause it would have ended on at once. The
  *  transient set stays decided on the turn's outcome; this names the one permanent shape. */

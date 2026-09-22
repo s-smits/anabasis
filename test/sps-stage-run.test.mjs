@@ -292,7 +292,7 @@ describe("stage-run", () => {
     expect(run(...base(dir, "--condition", "luna")).stderr).toContain(
       "--condition must be one of sol, opus, fable",
     );
-    expect(run(...base(dir, "--project", "Esp32 Sol")).stderr).toContain("lowercase slug");
+    expect(run(...base(dir, "--project", "Truss Sol")).stderr).toContain("lowercase slug");
     expect(run(...base(dir, "--max-iterations", "one")).stderr).toContain("canonical positive integer");
     const missingProviderBudget = base(dir);
     missingProviderBudget.splice(missingProviderBudget.indexOf("--provider-turn-budget"), 2);

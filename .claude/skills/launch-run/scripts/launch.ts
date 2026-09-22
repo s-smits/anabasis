@@ -223,7 +223,7 @@ export async function inspectTarget(
   }
   // The launched tree's own probe: it imports that tree's modules, so it matches their layout by
   // construction. Main's probe could not open 03b8cb266, whose pi layer had replaced
-  // src/backends/claude-backend.ts (esp32-opus-20260922T022701000Z-08c0f2).
+  // src/backends/claude-backend.ts (run 08c0f2).
   const probe = join(plan.dir, ".claude/skills/launch-run/scripts/probe.ts");
   const result = await command([WORKTREE, "run", plan.dir, "bun", "--no-env-file", probe, ...args], {
     cwd: plan.dir,

@@ -8,7 +8,7 @@
  *
  * Both halves came from recorded failures. The adapter-name join was the P0 insufficiency: a run
  * row naming the same adapter under a different check grounded nothing. Run-level coverage let one
- * case's tool run vouch for every case using the check. And the two measured esp32 runs recorded
+ * case's tool run vouch for every case using the check. And the two measured firmware runs recorded
  * complete engine executions for an adapter no control had ever made reject an artifact — which is
  * why executing and discriminating are separate clauses.
  */
@@ -60,7 +60,7 @@ describe("every declared check must have rejected something", () => {
   });
 
   it("blocks a fully executed external check that no reject ever made fail, under its own clause", () => {
-    // Running proves execution alone: both measured esp32 runs shipped an engine session in exactly
+    // Running proves execution alone: both measured firmware runs shipped an engine session in exactly
     // this state. The clause id is separate from the intrinsic one so claims recorded before this
     // rule keep their exact vocabulary.
     const executed = qiskitExecution(["t1"]);

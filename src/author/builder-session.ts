@@ -122,7 +122,7 @@ export interface BuilderSessionDeps {
   /** Persist an in-flight snapshot after every controller-hosted tool return and each turn.
    *  onExecution runs in a finally a re-raised SIGTERM never reaches — run A's 66-minute session
    *  left zero execution evidence because the record lived only in memory until settle. A turn
-   *  is no boundary on Claude: esp32-opus (2026-08-23) held one turn open for eleven hours and
+   *  is no boundary on Claude: an Opus run (2026-08-23) held one turn open for eleven hours and
    *  twelve correctness_check calls with no submit, so a per-turn checkpoint wrote nothing. The
    *  production caller binds both callbacks to one writer, so the settled record replaces the
    *  last checkpoint in place. */
@@ -218,7 +218,7 @@ function workspaceSentence(input: BuilderSessionInput, previous: PreviousRound |
 function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null): string {
   // Read-back of the Builder's own notes, once per fresh session. The Builder writes MEMORY.md and
   // SCRATCHPAD.md itself; between commit a55b8e44 and this interface nothing read them back, so runs
-  // esp32-sol-329, esp32-w22, esp32-w28 and truss-w30 each opened on notes that were written and
+  // sol-329, w22, w28 and truss-w30 each opened on notes that were written and
   // never delivered. Unconditional on the previous outcome, and empty until a pass has written
   // something. builder-memory.ts owns the bound and the stale-notes header. A continued conversation
   // already holds what the notes would repeat, so it reads none.

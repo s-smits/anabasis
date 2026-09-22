@@ -285,6 +285,10 @@ describe("host findings — evidence restatements only", () => {
     expect(census?.claim).toContain("2 of 4 attempt(s) produced no accepted submission");
     expect(census?.claim).not.toContain("submission admission");
     expect(census?.severity).toBe("advisory");
+    // It names the rule that produced it, which is what lets the packet count the same finding
+    // across rounds: a host finding names no check and no artifact path, so without the rule two
+    // consecutive packets cannot see that one finding recurred.
+    expect(census?.hostRule).toBe("unaccepted-without-verdict");
     // A disclosure, never a routed repair: which owner broke stays the model's question.
     expect(census?.proposedOwner).toBeNull();
     expect(authorSessionOwner(required(census, "the census finding"))).toEqual({

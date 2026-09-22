@@ -27,6 +27,7 @@ import type { FeedbackOwner } from "./campaign-types.ts";
 import { ownerTarget } from "./feedback-routing.ts";
 import {
   findingSeverity,
+  namedSubject,
   type AdmittedEvidence,
   type AnalysisFinding,
   type IterationAnalysis,
@@ -34,7 +35,7 @@ import {
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v3";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v4";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -110,9 +111,12 @@ type AdviceFinding = {
   kind: AnalysisFinding["kind"];
   claim: string;
   severity: "blocking" | "advisory";
-  /** Public identities retained only to key repeated unowned diagnosis findings. */
+  /** Public identities retained only to key repeated unowned diagnosis findings. `hostRule` is
+   *  carried because `recurrence` reads the previous packet's own findings: dropped here, a host
+   *  finding's run of consecutive packets restarts at one every round. */
   checkId?: string;
   artifactSchemaPath?: string;
+  hostRule?: string;
   /** Set from the second consecutive packet carrying the same unowned diagnosis. */
   repeated?: { count: number; since: string };
 };
@@ -356,11 +360,9 @@ export function attachIssueReadings(
 /** The recurrence key of an unowned diagnosis: its check id, else its artifact path, else the kind
  *  itself. Every other finding has no key. */
 function unownedDiagnosisIdentity(
-  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath">,
+  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath" | "hostRule">,
 ): string | null {
-  return finding.kind === "diagnosis-uncertain"
-    ? (finding.checkId ?? finding.artifactSchemaPath ?? finding.kind)
-    : null;
+  return finding.kind === "diagnosis-uncertain" ? namedSubject(finding) : null;
 }
 
 /** How many consecutive packets have carried this unowned diagnosis, read off the previous
@@ -416,6 +418,7 @@ export function deriveRebuildAdvice(
           severity: findingSeverity(finding),
           ...keyIfDefined("checkId", finding.checkId),
           ...keyIfDefined("artifactSchemaPath", finding.artifactSchemaPath),
+          ...keyIfDefined("hostRule", finding.hostRule),
           ...keyIfDefined("repeated", identity === null ? undefined : recurrence(previous, identity)),
         };
       }),

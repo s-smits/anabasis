@@ -119,6 +119,12 @@ export type AnalysisFinding = {
   checkId?: string;
   artifactSchemaPath?: string;
   publicInputPath?: string;
+  /** The fixed host rule that produced this finding, for the findings a rule produced rather than
+   *  a model observed. It names the subject the way `checkId` does, and it is what makes recurrence
+   *  supportable for a host finding that names no check: the same rule fired again, which is an
+   *  observation, where two free-text observations resembling one another is an inference. A
+   *  model-produced finding never carries one. */
+  hostRule?: string;
   /** No declared check observes the obligation, so no existing check should be repaired for it. */
   unobserved?: true;
   /** What the cited probes executed, in public authoring identities only: the accept control,
@@ -141,6 +147,40 @@ export interface AdmittedEvidence {
 type AdmissionFindingRoute =
   | { findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner }
   | { findingDigest: string; kind: AnalysisFindingKind; owner: null; reason: NoRouteReason };
+
+/** The subject one finding named, in the public authoring identities it carries: its declared
+ *  check, else the host rule that produced it, else a path naming a place *below* a declared root.
+ *  Null when it names none of them, because two findings that name nothing cannot be told apart,
+ *  and a key that cannot tell them apart is worse than none — it merges unrelated defects into one
+ *  recurrence.
+ *
+ *  This is a naming, not a defect identity, and the difference is the whole of what it may be used
+ *  for. Two reviews naming one check is evidence that they concern one defect; it is not proof,
+ *  because two defects can name the same check. `recurringDefects` and the advice packet both draw
+ *  that inference, and both own it — this function establishes only that the same subject was
+ *  named twice, under the conditions its callers bind it to.
+ *
+ *  A bare root is not a naming. The reviewer's `schemaPath` rule requires only that the first
+ *  segment be a declared `artifactSchema` root, so a domain whose schema has one root offers one
+ *  bare word for any place in its artifact. Across the recorded epoch reviews 5,406 findings named
+ *  a bare root against 3,196 naming a path below one, and in all nine campaigns where an
+ *  unnamed-check harness defect fell back to a path the bare roots collapsed to a single constant.
+ *  Run 17f9de put 2,448 findings on the one root `files`, so a floating-point rule, a header
+ *  contract and a pin binding shared one identity: i03's new peripheral finding arrived carrying
+ *  two recurrences it had nothing to do with and was demoted by them, and the same collapse at
+ *  one recurrence is the 23a1bc failure of resetting a working harness.
+ *
+ *  The check is preferred over the path because one defect's artifact location may differ between
+ *  reviews of it. Run bdd329 named check `change-budget` at path `members` and then at no path,
+ *  and escalation read one check named twice as two defects. */
+export function namedSubject(finding: {
+  checkId?: string | null;
+  artifactSchemaPath?: string | null;
+  hostRule?: string | null;
+}): string | null {
+  const path = finding.artifactSchemaPath ?? null;
+  return finding.checkId ?? finding.hostRule ?? (path?.includes(".") === true ? path : null);
+}
 
 function batteryEvidence(
   repoRoot: string,
@@ -279,6 +319,7 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       evidence: record,
       proposedOwner: null,
       severity: "advisory",
+      hostRule: "unaccepted-without-verdict",
     });
   }
   // Only environment-owned non-result kinds earn "rerun unchanged".

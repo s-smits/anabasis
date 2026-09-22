@@ -534,8 +534,8 @@ describe("the issue register and its projection", () => {
     expect(advice.findings).toEqual([]);
   });
 
-  it("annotates an unowned diagnosis with its consecutive recurrence, keyed by check, path or kind", () => {
-    const uncertain = (checkId?: string, artifactSchemaPath?: string): AnalysisFinding => {
+  it("annotates an unowned diagnosis with its consecutive recurrence, keyed by what it named", () => {
+    const uncertain = (checkId?: string, artifactSchemaPath?: string, hostRule?: string): AnalysisFinding => {
       const finding: AnalysisFinding = {
         kind: "diagnosis-uncertain",
         claim: "the reviewer could not attribute the equilibrium result",
@@ -544,6 +544,7 @@ describe("the issue register and its projection", () => {
         severity: "advisory",
         ...keyIfDefined("checkId", checkId),
         ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
+        ...keyIfDefined("hostRule", hostRule),
       };
       return finding;
     };
@@ -566,14 +567,51 @@ describe("the issue register and its projection", () => {
     expect(changed.findings[0]).toMatchObject({ checkId: "deflection" });
     expect(changed.findings[0]).not.toHaveProperty("repeated");
 
-    // A host finding carries neither identity and is keyed by its kind; a round without it ends
-    // the run of consecutive packets, so its return counts from one.
-    const hostFirst = round("h1", [uncertain()], null);
-    const hostSecond = round("h2", [uncertain()], hostFirst);
+    // A host finding names no check, and the rule that produced it is what supports its
+    // recurrence: the same rule fired twice, which the host observed. A round without it ends the
+    // run of consecutive packets, so its return counts from one.
+    const host = () => uncertain(undefined, undefined, "unaccepted-without-verdict");
+    const hostFirst = round("h1", [host()], null);
+    const hostSecond = round("h2", [host()], hostFirst);
     expect(hostSecond.findings[0]).toMatchObject({ repeated: { count: 2, since: "h1" } });
     const gap = round("h3", [], hostSecond);
     expect(gap.findings).toEqual([]);
-    expect(round("h4", [uncertain()], gap).findings[0]).not.toHaveProperty("repeated");
+    expect(round("h4", [host()], gap).findings[0]).not.toHaveProperty("repeated");
+  });
+
+  it("reads no recurrence from evidence that cannot establish one", () => {
+    // Two reviewer observations that named nothing used to key on the kind itself, the one constant
+    // every finding here shares, so any two of them in consecutive packets rendered as one
+    // diagnosis recurring. The author was told "recurring: 3 consecutive packets" about three
+    // unrelated observations. Naming nothing now keys nothing, and the sentence is absent rather
+    // than wrong; the claims themselves still reach the author every round.
+    const unattributed = (claim: string, artifactSchemaPath?: string): AnalysisFinding => ({
+      kind: "diagnosis-uncertain",
+      claim,
+      evidence: "campaigns/bridge-truss/analysis/review.json",
+      proposedOwner: null,
+      severity: "advisory",
+      ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
+    });
+    const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
+      deriveRebuildAdvice(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
+
+    const first = round("r1", [unattributed("the deflection result is unexplained")], null);
+    const second = round("r2", [unattributed("the mass budget result is unexplained")], first);
+    expect(second.findings[0]).not.toHaveProperty("repeated");
+    expect(renderRebuildAdvice(second)).toContain("the mass budget result is unexplained");
+    expect(renderRebuildAdvice(second)).not.toContain("recurring");
+
+    // A bare declared root is the same case: one word for the whole artifact tells two defects
+    // apart no better than naming nothing. A path below a root does name a place, and recurs.
+    const bare = round("b2", [unattributed("a", "files")], round("b1", [unattributed("b", "files")], null));
+    expect(bare.findings[0]).not.toHaveProperty("repeated");
+    const below = round(
+      "d2",
+      [unattributed("a", "files.main")],
+      round("d1", [unattributed("b", "files.main")], null),
+    );
+    expect(below.findings[0]).toMatchObject({ repeated: { count: 2, since: "d1" } });
   });
 
   it("keeps public aggregate claims while private diagnosis prose cannot change the author handover", () => {

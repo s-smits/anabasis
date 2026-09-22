@@ -1,4 +1,4 @@
-<img width="1800" height="400" alt="anabasis-logo" src="https://github.com/user-attachments/assets/cdf8c1ad-630c-494d-957c-97e5f5c7d78d" />
+<img width="1800" height="400" alt="Anabasis" src="docs/assets/anabasis-logo.png" />
 
 **I managed to automate myself.**
 

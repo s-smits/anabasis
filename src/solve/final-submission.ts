@@ -54,7 +54,7 @@ interface SubmissionCheckpoint {
 
 const SUBMISSION_AUTHORITY_SCHEMA = "submit-authority/v3";
 
-export interface SubmissionAuthority {
+interface SubmissionAuthority {
   attempts(): number;
   readonly maxAttempts: number;
   acceptArtifact(bytes: string): FinalSubmission;

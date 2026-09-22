@@ -28,7 +28,7 @@ export interface Witness {
 
 /** Answers that state "this does not apply" instead of deciding something. "na" and "nil" are
  *  omitted because they are real values in some domains. */
-export const ABSENCE = new Set(["", "-", "n/a", "none", "null", "not applicable"]);
+const ABSENCE = new Set(["", "-", "n/a", "none", "null", "not applicable"]);
 
 export interface Observation {
   kind: "transcribes" | "absence-sentinel";

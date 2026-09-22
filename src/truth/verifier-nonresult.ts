@@ -20,7 +20,7 @@ export const ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS: ReadonlySet<string> = new 
 /** Pause before the one retry allowed for an environment-owned kind. A short delay gives a
  *  temporary filesystem or sandbox problem time to clear; retrying immediately may reproduce
  *  the same failure before the host has recovered. */
-export const TOOL_RETRY_DELAY_MS = 3000;
+const TOOL_RETRY_DELAY_MS = 3000;
 
 export function environmentOwnedToolNonResult(kind: string): boolean {
   return ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS.has(kind);

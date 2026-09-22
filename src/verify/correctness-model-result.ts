@@ -9,10 +9,10 @@ export type CorrectnessModelIssue = {
   message: string;
 };
 
-/** `crash` and `protocol` are created by the verifier host (C3): an engine that died non-zero, and
- *  a response that broke the one-JSON wire contract. Both mean no truth verdict exists. The array is
- *  the single spelling; the type derives from it, so it cannot drift from what `hostCreatedNonResult`
- *  reads at runtime. */
+/** Every kind means no truth verdict exists. The verifier host creates `crash` (an engine that died
+ *  non-zero) and `protocol` (a response that broke the one-JSON wire contract). The type derives
+ *  from this array so it cannot drift from what `hostCreatedNonResult` reads at runtime. */
+
 export const VERIFIER_EXECUTION_NON_RESULT_KINDS = [
   "provider",
   "transport",

@@ -21,9 +21,8 @@ import {
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 
-/** What the controller read the submitted bytes as: the identity of the two contract roots at the
- *  submitted commit. The record compares submissions on it, because a commit is not a byte identity
- *  (`src/author/builder-execution.ts`). A controller stop inspected no tree and carries none. */
+/** The identity of the two contract roots at the submitted commit, since a commit is not a byte
+ *  identity. A controller stop inspected no tree and carries none. */
 interface SubmittedTree {
   treeId?: string;
 }
@@ -81,8 +80,7 @@ function atSubmitBound(outcome: Refused, attempts: number, maxTurns: number | un
 }
 
 /**
- * The first page of grouped repair findings. A probe that runs once per task can report the same
- * code, path and detail for each task; each group keeps its count, and the shared feedback store
+ * The first page of grouped repair findings. Each group keeps its count, and the feedback store
  * holds the remaining pages, so the page limit hides no public repair text.
  */
 function repairUnits(findings: readonly ContractFinding[], repair: "actionable" | "final"): string[] {
@@ -100,12 +98,9 @@ function repairUnits(findings: readonly ContractFinding[], repair: "actionable" 
 }
 
 /**
- * The refusal the model reads. Beyond the findings it states what a repeating Builder cannot see
- * about itself: how the finding codes moved since the previous submit (run 68 was told "same
- * issues: no" while one class fell 50 to 15 and another arrived at 100), whether the files moved,
- * whether this exact tree was refused before (run 35 ended byte-identical to its first submission
- * after 141 attempts), and whether an earlier tree had fewer findings (w33 wandered from 221
- * to 638). All are facts about the Builder's own output or a bound set before model work began.
+ * The refusal the model reads. Beyond the findings it states how the finding codes moved since the
+ * previous submit, whether the files moved, whether this exact tree was refused before and whether
+ * an earlier tree had fewer findings.
  */
 export function renderRefusal(
   outcome: Refused,
@@ -168,8 +163,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
   });
   if (outcome.ok) {
     state.accepted = outcome;
-    // Adoption uses the accepted snapshot, so nothing later in this turn can change the accepted
-    // product. `terminate` ends the round at this turn's boundary, before another model request.
+    // Adoption uses the accepted snapshot; `terminate` ends the round before another model request.
     return {
       ...text(
         `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
@@ -217,7 +211,7 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           reason: "terminal-refusal",
         });
       }
-      // Sol run 23a1bc called submit five times inside one in-flight submit.
+      // A model may call submit again while the first call is still running.
       if (inFlight) {
         return text(
           "Submit is already running; its verdict returns from that first call. Do not call submit again until it returns.",

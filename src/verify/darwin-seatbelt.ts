@@ -3,7 +3,6 @@ import { dirname, isAbsolute, join } from "../meta/path.ts";
 import type { RuntimePlatform } from "../meta/runtime-values.ts";
 import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
-
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { darwinRuntimeReadPaths } from "./darwin-runtime-closure.ts";
 import type { VerifierConfinementRequest } from "./verifier-port.ts";
@@ -45,8 +44,7 @@ export interface DarwinSeatbeltRuntime {
   platform?: RuntimePlatform;
   sandboxExecPath?: string;
   systemProfilePath?: string;
-  /** A surrounding sandbox is not verifier-specific proof. Nested Seatbelt application also
-   *  fails on macOS, so this condition must refuse rather than silently run unwrapped. */
+  /** A surrounding sandbox is not verifier-specific isolation and Seatbelt cannot nest, so support refuses. */
   outerSandboxed?: boolean;
 }
 
@@ -98,17 +96,13 @@ interface PreparedVerifierReads {
   readRoots: string[];
 }
 
-/** Shared network and process restrictions for both mechanisms. The verifier decides whether an
- *  answer is correct, so it stays offline: network access could fetch or disclose protected data.
- *  External-tool evidence also depends on the host recording the tool requests it executes. */
+/** The verifier's posture on both mechanisms: offline, since network access could fetch or
+ *  disclose protected data and would escape the host's record of tool requests. */
 export const VERIFIER_POSTURE: IsolationPosture = { network: false };
 
-/** The last attested support per wrapper and profile pair. The support is resolved for every
- *  confined child, so one census of 50 controls hashed the wrapper and the profile closure 50 times.
- *  It is reused while the wrapper and the entry profile still resolve to the same files, every
- *  hashed file keeps identical complete metadata (device, inode, mode, size, mtime, ctime: the
- *  rule `readFileDigest` applies to single files) and every import directive still resolves to the
- *  file it was read from, so a swapped directory link under an unchanged file is attested again. */
+/** The last attested support per wrapper and profile pair, resolved for every confined child. It is
+ *  reused while the wrapper and entry profile resolve to the same files, every hashed file keeps
+ *  identical complete metadata, and every import still resolves to the file it was read from. */
 const SUPPORT_BY_RUNTIME = new Map<string, RememberedSupport>();
 
 function sandboxProfileClosure(entryPath: string): ProfileClosure {
@@ -181,9 +175,8 @@ function attestedSupport(sandboxExecPath: string, systemProfilePath: string): Da
   return support;
 }
 
-/** Check support without a model call. Reasons omit paths to keep the operator's filesystem
- *  layout out of CLI diagnostics. Hash the wrapper and every imported profile because
- *  `(import "system.sb")` alone is not a stable policy identity across OS updates. */
+/** Checks support without a model call; reasons omit paths to keep host layout out of diagnostics.
+ *  The wrapper and every imported profile are hashed, since `system.sb` changes across OS updates. */
 export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): DarwinSeatbeltSupport {
   const sandboxExecPath = runtime.sandboxExecPath ?? DARWIN_SANDBOX_EXEC;
   const systemProfilePath = runtime.systemProfilePath ?? DARWIN_SYSTEM_PROFILE;
@@ -213,10 +206,7 @@ export function darwinSeatbeltSupport(runtime: DarwinSeatbeltRuntime = {}): Darw
   }
 }
 
-// Both OS implementations use these path checks and the shared read snapshots below. They
-// resolve directories, refuse overly broad roots and retain the selected executable path.
-// Sharing preparation keeps Linux and Darwin subject to the same input restrictions;
-// the error messages therefore name the sandbox rather than a particular OS mechanism.
+// Shared by both OS mechanisms, so the messages name the sandbox rather than one mechanism.
 function canonicalExistingDirectory(path: string): string {
   if (!isAbsolute(path)) throw new Error("sandbox readable roots must be absolute");
   if (!existsSync(path) || !lstatSync(path).isDirectory()) {
@@ -235,19 +225,16 @@ function existingFilePath(path: string): string | null {
 }
 
 /**
- * The concrete OS policy differs by platform, but both verifier isolations need the same immutable
- * inputs: the selected command name, a private workdir, declared read roots, and exact delegated files.
- * Keep their snapshot construction in one place so either mechanism cannot accidentally admit a
- * lexical path the other re-attests, or turn an unavailable attested file into a platform-specific
- * outcome. `runtimeReadPaths` is Darwin's Mach-O closure hook; Bubblewrap supplies no extras.
+ * The immutable inputs both verifier isolations need: the selected command, a private workdir,
+ * declared read roots and exact delegated files, snapshotted in one place so the mechanisms admit
+ * the same paths. `runtimeReadPaths` is Darwin's Mach-O closure hook.
  */
 export function prepareVerifierReads(
   input: VerifierConfinementRequest,
   unresolvedCommand: string,
   runtimeReadPaths: (command: string) => readonly string[] = () => [],
 ): PreparedVerifierReads | { unsupported: string } {
-  // Exact-read snapshots bind lexical links and target bytes. Execution must retain the
-  // selected name: equivalent hardlink bytes can dispatch to different tools (cc/git).
+  // Keep the selected name: identical hardlink bytes can dispatch to different tools (cc/git).
   const command = existingFilePath(input.resolvedCommand);
   if (command === null) return { unsupported: unresolvedCommand };
   const workdir = canonicalExistingDirectory(input.workdir);
@@ -269,17 +256,13 @@ export function prepareVerifierReads(
   };
 }
 
-/** Re-attest every external byte the policy and verifier execution depend on. Preparation owns
- * the first snapshot; the host calls this after the policy-application canary immediately before
- * spawn and again after the process closes. Persistent drift can therefore never write a verdict
- * under stale evidence identity. */
+/** Re-attests every external byte the policy and execution depend on. The host calls this just
+ *  before spawn and again after the process closes, so no verdict is written under stale identity. */
 export function verifyDarwinSeatbeltPlan(
   plan: DarwinSeatbeltPlan,
   runtime: DarwinSeatbeltRuntime = {},
 ): ExactReadDrift | null {
-  // `sandbox-exec` and the imported system profile sit on the read-only system volume, which is
-  // exactly where the failed syscall of 2026-09-03 refused a battery as drift: a support failure
-  // there is unavailable, not changed.
+  // A support failure on the read-only system volume is `unavailable`, not a changed byte.
   return (
     mechanismDrift(
       darwinSeatbeltSupport(runtime),
@@ -301,8 +284,8 @@ export function prepareDarwinSeatbelt(
   if (!support.ok || support.baselineDigest === null || support.mechanismDigest === null) {
     return { unsupported: support.reason ?? "Darwin Seatbelt is unavailable" };
   }
-  // The system profile owns /System and /usr/lib; every other runtime image and loader link is
-  // derived from the pinned command. Synthetic non-Darwin tests keep the structural path only.
+  // The system profile covers /System and /usr/lib; other runtime images come from the pinned
+  // command's closure. Non-Darwin tests keep the command alone.
   const prepared = prepareVerifierReads(
     input,
     "the verifier command cannot be resolved for Seatbelt",
@@ -310,7 +293,7 @@ export function prepareDarwinSeatbelt(
   );
   if ("unsupported" in prepared) return prepared;
   const { command, workdir, reads, exactReadSnapshots, readRoots } = prepared;
-  // The closure preserves metadata-only ancestor and symlink traversal without a package-prefix grant.
+  // Metadata-only grants let ancestors and symlinks be traversed without a package-prefix grant.
   const metadataAncestors = [workdir, ...reads, ...readRoots]
     .flatMap(ancestorDirectories)
     .filter((path) => path !== "/")
@@ -347,16 +330,14 @@ export function prepareDarwinSeatbelt(
     shared: {
       ...VERIFIER_POSTURE,
       metadata: { literals: metadataPaths },
-      // The private workdir, the attested command and its delegated files, and the read roots the
-      // engine declared. Nothing else: this wall decides correctness and must stay reproducible.
+      // Only the workdir, attested files and declared roots, so the wall stays reproducible.
       reads: { literals: reads, subpaths: [workdir, ...platformRoots, ...readRoots] },
       writes: { subpaths: [workdir], literals: ["/dev/null"] },
     },
     seatbelt: {
       finalRules: [
-        // Clang and Apple's python3 shim use the confstr temp root rather than TMPDIR. The grant
-        // opens what a command creates there; the concurrent verifier workdirs beside it are then
-        // closed by name, and the engine's own workdir is re-opened last.
+        // Clang and Apple's python3 shim use the confstr temp root rather than TMPDIR. Open it, close
+        // concurrent verifier workdirs by name, then re-open this engine's own workdir.
         ...userTempChildTreeRules(userTempRoots),
         ...verifierTempSiblingDenyRules(),
         ...sbRule("allow file-read* file-read-metadata file-write*", "subpath", [workdir]),
@@ -379,9 +360,9 @@ export function prepareDarwinSeatbelt(
   };
 }
 
-/** Policy-application probe reused by preflight and immediately before live spawn. It proves
- * Seatbelt accepted this profile, not that the configured verifier itself is healthy. The target
- * is host-chosen and inert; the engine cannot supply the probe's result. */
+/** Proves Seatbelt accepts this profile by running the host-chosen inert `/usr/bin/true` under it;
+ *  says nothing about the verifier's own health. */
+
 export async function applyDarwinSeatbeltPlan(
   plan: DarwinSeatbeltPlan,
   timeoutMs = 5_000,

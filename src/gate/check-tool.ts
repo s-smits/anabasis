@@ -1,12 +1,8 @@
 /**
- * `correctness_check` previews submit without adoption. The controller runs the validation
- * pipeline (validation-pipeline.ts) on the snapshot submit would adopt for these bytes and records
- * the host evidence of each trial under `trials/<conditionKey>/`; this file only shapes what the
- * Builder reads.
- *
- * It accepts nothing and returns no correctness verdict: `submit` remains the sole acceptance path
- * and the verifier the sole correctness owner. Rows keep producer order within stage order, the
- * order a refusal keeps, so the same tree produces the same text twice.
+ * `correctness_check` previews submit without adoption: the validation pipeline runs on the snapshot
+ * submit would adopt, and this file shapes what the Builder reads. It accepts nothing and returns no
+ * correctness verdict. Rows keep producer order within stage order, so the same tree produces the
+ * same text twice.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
@@ -42,13 +38,11 @@ interface CorrectnessCheckBinding {
   expectedTasks: number | undefined;
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
-  /** The same store submit records its refusal into, so `harness_inspect feedback` pages the
-   *  check's rows exactly as it pages a refusal's. Absent only in isolated tests. */
+  /** The store submit records refusals into, so `harness_inspect feedback` pages the check's rows too. */
   feedback?: BuilderAuthorFeedback;
 }
 
-/** What this tool did not do. Kept beside every result, because a clear validation sequence is the
- *  easiest evidence in the run to mistake for a passing verifier. */
+/** What this tool did not do, beside every result so a clear sequence is not read as a verifier pass. */
 const TRUTH = {
   verdict: "not-run",
   note: "Preview only. Submit runs the same validation sequence on the same snapshot and is the only acceptance path. A clear result does not establish practitioner identity, semantic completeness, adoption, measurement success or claim issuance.",
@@ -66,8 +60,7 @@ const BLOCKED =
 const INCOMPLETE_NAVIGATION =
   "This call produced no complete result, so it replaced nothing: only this page of groups is readable here, and harness_inspect feedback still pages the previous check or submit.";
 
-/** Sentence one names what the call returns; sentence two names what submit would have done with
- *  the same tree; the last names what this never does. Nothing about how to repair. */
+/** What the call returns, what submit would do with the same tree and what this never does. */
 const DESCRIPTION =
   "Run the pre-adoption validation sequence on the current workspace bytes and read every blocking row a submit would refuse with, the advisory rows the gates recorded without refusing, a receipt for each stage (passed, refused, blocked or not run), and a coverage summary (controls, tasks, check groundings, what the census spent running each check, and F2 cases). " +
   "The stages are the ones submit follows, on the same immutable snapshot submit would adopt: static bundle with installed-tool resolution, candidate validation, generated-tool conformance, then the adoption gates — control census with family isolation and task count, and beside it the F2 solvability census with its representation readers. Every stage that can run reports all of its rows; a bundle refusal stops conformance and the gates, a blocked stage or a generated-runtime non-result stops the stages after it, and a conformance refusal skips F2 but not the census. " +
@@ -75,9 +68,7 @@ const DESCRIPTION =
   "It freezes a copy of the workspace when it starts and runs for minutes, so you may keep editing files and running commands in the same message while it runs; the result describes the frozen copy. " +
   "It accepts nothing, charges nothing and returns no correctness verdict. A clear result covers the authored checks and controls, not omitted public obligations; submit remains the only acceptance path.";
 
-/** The rows the Builder reads. A complete result is recorded into the shared feedback store first,
- *  so the overview's page is not the only way to read them; a blocked or spent call leaves the
- *  stored rows, and the codes they carry, as they were. */
+/** The rows the Builder reads. Only a complete result replaces the stored feedback rows. */
 function stageRows(
   binding: CorrectnessCheckBinding,
   stage: AuthorCheckStage,
@@ -96,8 +87,7 @@ function stageRows(
       : FEEDBACK_NAVIGATION;
   const navigation =
     result === "incomplete" ? INCOMPLETE_NAVIGATION : rows.length === 0 ? overview.navigation : paged;
-  // The three counts a submit refusal carries, so a preview of a changed tree says whether the
-  // edit helped; a remembered result carries its repeat note instead.
+  // The counts a submit refusal carries, so a preview of a changed tree says whether the edit helped.
   const sinceLast =
     delta === null
       ? {}
@@ -120,10 +110,8 @@ function readSealed(path: string): JsonObject | null {
 const asNumber = (value: unknown) => (isNumber(value) ? value : 0);
 
 /**
- * What the census spent running each check, by check id. A row is the candidate's own evaluator
- * running, summed over the whole corpus, so it names no control, task or failure location. Truss
- * epoch 4764 declared seven checks that each re-ran a nonlinear solver over the same design: its
- * gate calls took 397 s and 441 s, and nothing else told the author what its checks cost.
+ * What the census spent running each check, by check id, summed over the whole corpus so it names
+ * no control, task or failure location.
  */
 function censusCost(census: JsonObject | null) {
   const rows = Array.isArray(census?.checkCost) ? census.checkCost : [];
@@ -193,18 +181,11 @@ function measuredAs({
 }
 
 /**
- * The rows the gates recorded without refusing, read the way a refusal's rows are read.
- *
- * They arrived as a count. An advisory names something only the author can weigh — an accept
- * corpus that re-states the reference, a representation reading the census will not block on —
- * and a number said one existed with nowhere to read it: the feedback store holds the last
- * refusal, and a candidate that clears the gates ends the session on the spot.
- *
- * It crosses through the same two functions a refusal's rows cross through, so rule 7 decides
- * this boundary exactly as it decides that one. A controller-validated finding keeps its detail,
- * an unmarked one arrives as `generated-execution-unclassified`, and a row carrying no findings
- * at all arrives as the name of the gate that wrote it and nothing more.
+ * The rows the gates recorded without refusing, projected through the same functions as a
+ * refusal's rows: a controller-validated finding keeps its detail, an unmarked one arrives as
+ * `generated-execution-unclassified`, and a row with no findings arrives as its gate's name.
  */
+
 function advisoryOf(feedback: readonly CampaignFeedback[]) {
   const rows = feedback.filter((row) => row.severity !== "blocking");
   const findings = gateFeedbackFindings(rows).map(projectFindingForAuthor);

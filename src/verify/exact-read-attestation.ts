@@ -12,12 +12,12 @@ import {
 } from "./read-root-attestation.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
-/** A verifier input which cannot be re-attested is an environment refusal, not a domain failure. */
+/** Why an exact read could not be attested; never a domain failure. */
 type ExactReadRefusalKind = "changed" | "limit" | "unavailable";
 
-/** Keep a hostile or unexpectedly large runtime closure from becoming an unbounded path list. */
+/** Bounds a hostile or unexpectedly large runtime closure. */
 export const EXACT_READ_MAX_PATHS = 16_384;
-/** POSIX symlink targets are normally only a few KiB; this is a finite refusal boundary. */
+/** Symlink targets are normally a few KiB; this bounds a hostile one. */
 const EXACT_READ_MAX_SYMLINK_BYTES = 1024 * 1024;
 
 export interface ExactReadSnapshot {
@@ -30,12 +30,10 @@ export interface ExactReadSnapshot {
   linkDigest: string | null;
 }
 
-/** Why a re-attestation did not confirm the snapshot. `changed` is a real difference between
- *  an attested byte and its snapshot, the wall's own refusal. `unavailable` is a re-read the host
- *  could not complete (a failed syscall, an exhausted time budget, an oversized list): it says
- *  nothing about the bytes, so it belongs to the environment and may be retried. A caller that
- *  folds both into one boolean turns a stalled disk into "identity changed", which is what voided
- *  a whole battery on a loaded host. */
+/** Why a re-attestation did not confirm the snapshot. `changed` is a real byte difference, the
+ *  wall's own refusal. `unavailable` is a re-read the host could not complete (failed syscall,
+ *  exhausted budget): it says nothing about the bytes, belongs to the environment and may be
+ *  retried. Keep the two apart, or a stalled disk reads as a changed identity. */
 export type ExactReadDrift = { kind: "changed" | "unavailable"; detail: string };
 
 /** A wall mechanism as its plan attested it: the executable, its bytes and the read baseline. */
@@ -165,17 +163,9 @@ function addReadPath(reads: Set<string>, path: string): void {
 /**
  * Whether a path leads to a regular file: readable, runnable, and safe to snapshot.
  *
- * `stat` rather than `lstat`, so the answer is about what the path leads to. A packaged binary and
- * an imported Seatbelt profile are routinely installed as links — every Homebrew executable in
- * `/opt/homebrew/bin` links into `../Cellar` — and `lstat` answers `false` for all of them. That
- * mattered in `command-guard.ts`, which spelled these four lines with `lstat` until 2026-09-20:
- * on a host whose guard was a link, no guard resolved, nothing was asked about a destructive
- * command, and the allow was silent, because a guard that cannot answer is deliberately not a
- * refusal. A link to a directory is still rejected either way.
- *
- * `linux-bwrap.ts` keeps its own copy with `lstat` and is right to. There the question is what the
- * path *is*, because a tmpfs laid over a link lands on the link's target and leaves the named path
- * readable. Four lines of the same shape are two functions, not one; its comment says so too.
+ * `stat` rather than `lstat`, because packaged binaries and profiles are routinely installed as
+ * links (Homebrew's `bin` links into `../Cellar`). `linux-bwrap.ts` keeps an `lstat` copy on
+ * purpose: it asks what the path is, not what it leads to.
  */
 export function isRegularFile(path: string): boolean {
   try {
@@ -225,8 +215,8 @@ function snapshot(path: string, budget: ReadRootBudget): ExactReadSnapshot {
     throw refusal(error, path);
   }
   const kind = lexical.isSymbolicLink() ? "symlink" : "file";
-  // A file is attested by its bytes; a directory only through the link that reaches it. A plain
-  // directory has no bytes of its own, so it is as unsupported as a socket.
+  // A file is attested by its bytes, a directory only through the link that reaches it; a plain
+  // directory has no bytes and is unsupported.
   const targetPath = target.isFile() ? realpathSync.native(path) : null;
   const linkBytes = kind === "symlink" ? symlinkBytes(path, budget) : null;
   let digest: string;
@@ -331,10 +321,10 @@ export function attestedInputDrift(drift: ExactReadDrift | null): ExactReadDrift
 }
 
 /**
- * One split for both OS walls. A support failure is a re-read the host could not complete, the
- * environment's, not a difference between bytes; only a mechanism whose path or digest actually
- * moved is the wall's own refusal. `mechanism` names what was attested, as the reason reads it.
+ * One split for both OS walls: a support failure is `unavailable`, and only a mechanism whose path
+ * or digest moved is `changed`. `mechanism` names what was attested, for the reason text.
  */
+
 export function mechanismDrift(
   support: ReattestedMechanism,
   attested: AttestedMechanism,

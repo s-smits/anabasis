@@ -1,11 +1,8 @@
 /**
  * The exact non-system Mach-O images an executable needs before it can run under a deny-default
- * Seatbelt profile. The generated-tool worker and the verifier host both need this derivation;
- * sharing it keeps both callers from separately granting package-wide reads or missing a
- * loader symlink. The shared exact-read code expands these regular file paths once
- * when it snapshots the consumer's policy.
+ * Seatbelt profile, shared by the generated-tool worker and the verifier host so neither grants
+ * package-wide reads.
  */
-
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { realpathSync } from "../meta/filesystem.ts";
 import { hostTool } from "../meta/host-tool.ts";
@@ -16,9 +13,8 @@ import { snapshotReadRootPath } from "./read-root-attestation.ts";
 const MAX_RUNTIME_IMAGES = 256;
 
 /**
- * Cache load commands per file. A profile asks for the same interpreter dependencies on
- * every sandboxed command, and `otool` is a process each time; the key carries size and
- * modification time, so a rebuilt or replaced image at the same path is inspected again.
+ * Load commands per image, since `otool` is a process each time. The key carries the file's
+ * metadata, so a rebuilt or replaced image at the same path is inspected again.
  */
 const loadCommandsByImage = new Map<
   string,
@@ -33,8 +29,8 @@ function canonicalFile(path: string, source: string): string {
 }
 
 function inspectMachO(image: string) {
-  // Load commands are reused under the complete-metadata rule the read-root attestation applies:
-  // an unprivileged writer can restore size and mtime, not ctime, and a replacement has a new inode.
+  // Keyed by complete metadata: an unprivileged writer can restore size and mtime, not ctime, and a
+  // replacement has a new inode.
   const key = capturedJsonStringify(snapshotReadRootPath(image));
   const remembered = loadCommandsByImage.get(key);
   if (remembered !== undefined) return remembered;
@@ -44,8 +40,7 @@ function inspectMachO(image: string) {
 }
 
 function readMachOLoadCommands(image: string) {
-  // Resolved past the xcrun shim: the same binary without the per-invocation developer-directory
-  // lookup, which was four fifths of what an `otool` call cost.
+  // Resolved past the xcrun shim, which otherwise dominates the cost of each call.
   const otool = hostTool("otool");
   const inspected = Bun.spawnSync({
     cmd: [otool, "-l", image],
@@ -123,10 +118,10 @@ function resolveDependency(
 }
 
 /**
- * Returns every non-system dynamic image needed to start `executable`. System libraries stay owned
- * by the imported, hashed system.sb files. The policy snapshot expands symbolic links once,
- * so this resolver only returns the regular files from which that expansion starts.
+ * Every non-system dynamic image needed to start `executable`, as regular files. System libraries
+ * belong to the imported, hashed system.sb files; the policy snapshot expands symbolic links.
  */
+
 export function darwinRuntimeReadPaths(executablePath: string): string[] {
   const executable = canonicalFile(executablePath, "Darwin sandbox runtime");
   const runtimePaths = new Set<string>([executablePath]);

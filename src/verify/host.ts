@@ -1,20 +1,17 @@
 /**
- * @ana/verifier-host starts every tool process used by the verifier. Installed tools
- * (compilers, simulators, solvers, any field tool) run only through this host; correctness-model
- * modules receive a port and never touch child_process.
+ * The verifier host starts every tool process the verifier uses; correctness-model modules receive
+ * a port and never touch child_process.
  *
- * Every check in an evaluation gets one fresh private directory. It holds the check's permitted
- * inputs and the files its tools produce, with no additional Builder-authored source:
- * `files` and `stdin` must be string leaves or JSON of that check's declared artifact and public
- * task projections, so a check cannot compile against an undeclared sibling or author-supplied header.
- * The tool is an inventory entry the host resolved and hashed when the candidate snapshot was made, or a
- * file an earlier run of the same check produced (`cell:<path>`, a compiled program).
+ * Each check gets one fresh private cell holding only its permitted inputs and its tools' outputs:
+ * `files` and `stdin` must be leaves or JSON of the check's declared artifact and public task
+ * projections, so a check cannot compile against undeclared or author-supplied source. The tool is
+ * an inventory entry hashed at snapshot time, or a file an earlier run in the same cell produced
+ * (`cell:<path>`).
  *
- * A run that exits and completes cleanup is `executed`, whatever the exit code: a compiler
- * that rejects the artifact has answered, and the evaluator reads that answer. Missing tool, wall
- * refusal, changed tool bytes, timeout and spawn failure are typed non-results: no answer exists,
- * and the row says which kind. The evaluator's own returned result never turns a non-result into an
- * answer, because the runner reads these rows directly (tool-runs.ts).
+ * A run that exits and completes cleanup is `executed`, whatever its exit code: a rejecting compiler
+ * has answered. Missing tool, wall refusal, changed tool bytes, timeout and spawn failure are typed
+ * non-results, and the runner reads these rows directly, so the evaluator cannot turn one into an
+ * answer.
  */
 import {
   lstatSync,
@@ -72,47 +69,40 @@ import {
 } from "./verifier-lifetime.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 
-/** Five minutes. sol-stable-20260905T1000Z lost its battery when a cold Arduino compile
- *  that had passed the census took 60,457 ms on a loaded host. This limit allows longer compiles
- *  while bounding a tool that does not finish. */
+/** Five minutes: allows a slow cold compile on a loaded host while bounding a hung tool. */
 export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
-/** No single tool run may exceed this wall, whatever the evaluator asks for. It equals the default
- *  (2026-09-14): of 184,953 recorded verifier tool runs, 99 percent finished within 16 s and 7 ran past
- *  300 s, while a 30-minute census has little room for a longer run. */
+/** No tool run may exceed this wall, whatever the evaluator asks; a longer run would crowd the census. */
 export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
 const STDOUT_MAX_BYTES = 1024 * 1024;
 const STDERR_MAX_BYTES = 256 * 1024;
 const STDERR_TAIL_CHARS = 2000;
-/** Bytes kept for the tail independently of the capture cap (four bytes per UTF-8 character). */
+/** Tail bytes kept independently of the capture cap (up to four bytes per UTF-8 character). */
 const STDERR_TAIL_BYTES = STDERR_TAIL_CHARS * 4;
 
 const CELL_TOOL_PREFIX = "cell:";
 
 export interface VerifierHostOptions {
-  /** Protected controller/outDir owner. Required before production starts a subprocess. */
+  /** Owner of process receipts; required before any subprocess starts. */
   lifetime?: VerifierLifetime;
-  /** toolId → resolved executable, from `resolveToolInventory` on the candidate snapshot. A run
-   *  naming an id outside this map throws. Defaults to empty. */
+  /** toolId → resolved executable from the candidate snapshot; a run naming any other id throws. */
   inventory?: ToolInventory;
-  /** The candidate's `.toolchain` tree, opened read-only inside the wall so installed tools can
-   *  find their own runtime files. Null or absent opens nothing beyond the platform roots. */
+  /** The candidate's `.toolchain` tree, readable inside the wall so installed tools find their runtime files. */
   toolTree?: string | null;
   /** Base directory for cells; defaults to the OS tmpdir. */
   baseDir?: string;
-  /** Parent env the toolchain defaults are read from; overridable for tests. Defaults to Bun.env. */
+  /** Parent env the toolchain defaults are read from; defaults to Bun.env. */
   parentEnv?: OptionalEnvValues;
-  /** Testable host capability input. Production omits it and uses the current OS isolation. */
+  /** Test override for the OS isolation runtime. */
   osSandbox?: OsIsolationRuntime;
-  /** Default true: every run needs the platform wall and fails closed without it. Tests that
-   *  exercise the cell alone may set false; production never does. */
+  /** Default true: every run needs the platform wall and fails closed without it. Only tests set false. */
   requireOsSandbox?: boolean;
   /** The candidate's tool-run wall (`gate.tool_run_seconds` in agent/config.yaml). */
   toolRunMs?: number;
 }
 
-/** `ran` is unset before the cell's first run, null after a real one, and the request a reused
- *  first run answered, which the cell's next run replays so the tool's outputs exist. */
+/** `ran` is unset before the cell's first run and null after a real one. After a reused answer it
+ *  holds that request, which the cell's next run replays so the tool's output files exist. */
 interface ToolCell extends ToolInputGrant {
   path: string;
   ran?: ToolRunRequest | null;
@@ -146,11 +136,10 @@ type EvidenceBase = Omit<
 >;
 type EvidenceRun = Omit<VerifierExecutionEvidence, "outcome" | "nonResultReason">;
 
-/** The executable one run resolved to, and where it came from: an inventory entry the candidate
- *  recorded, or a file an earlier run of the same scope produced. */
+/** The executable one run resolved to: an inventory entry, or a file an earlier run produced in the cell. */
 type ResolvedTool = { entry: ToolEntry; source: ToolEntry["source"] | "cell" };
 
-/** One run's validated cell inputs, after the artifact-leaf rule accepted them. */
+/** One run's validated cell inputs. */
 type RunInputs = {
   args: string[];
   files: Record<string, string>;
@@ -179,8 +168,7 @@ type ToolRunWall = {
   readonly plan: VerifierOsIsolationPlan | null;
 };
 
-/** What moved in an inventory tool since its snapshot, or null. A script's interpreter is part of the
- *  measured condition too: the same script under another python3 is another tool. */
+/** What moved in an inventory tool since its snapshot, or null. A script's interpreter counts too. */
 function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: string | null): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
   if (
@@ -192,17 +180,14 @@ function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: stri
   return `resolves a different ${entry.interpreter ?? "interpreter"}`;
 }
 
-/** The tool timeout: the evaluator's request, at least one millisecond and at most the
- *  candidate's tool-run wall, which is also the default. Keeping the calculation separate lets
- *  tests check the cap without waiting for it. */
+/** The evaluator's requested timeout, clamped to [1 ms, the candidate's tool-run wall]; the wall is the default. */
 export function resolveToolTimeoutMs(
   requested: number | undefined,
   ceilingMs = TOOL_TIMEOUT_CEILING_MS,
 ): number {
   return Math.min(Math.max(1, requested ?? ceilingMs), ceilingMs);
 }
-/** The last bytes of a stream, whatever the capture cap kept. A compiler that writes past the
- *  cap puts its closing summary at the end, so the tail follows the stream, not the capture. */
+/** Keeps the last bytes of a stream past the capture cap, where a compiler writes its summary. */
 function rollTail(tail: Uint8Array[], chunk: Uint8Array): void {
   tail.push(
     chunk.byteLength <= STDERR_TAIL_BYTES ? chunk : chunk.subarray(chunk.byteLength - STDERR_TAIL_BYTES),
@@ -234,9 +219,8 @@ function unspawned(base: EvidenceBase): EvidenceRun {
   };
 }
 
-/** A real change to an attested byte is the wall's refusal (`sandbox`). A re-read the host could
- *  not complete says nothing about the bytes: it is the environment's (`verifierUnavailable`) and
- *  earns the one fresh execution the census gives that kind, instead of voiding the battery as drift. */
+/** A changed attested byte is a wall refusal (`sandbox`); a re-read that could not complete says
+ *  nothing about the bytes and is the environment's (`verifierUnavailable`), which earns a retry. */
 function wallDriftOutcome(
   toolId: string,
   drift: ExactReadDrift,
@@ -305,8 +289,7 @@ function captureToolOutput(child: Bun.Subprocess<"ignore" | Uint8Array<ArrayBuff
       kept += Math.min(chunk.byteLength, room);
     }
   };
-  // Capture an exact prefix while continuing to drain. A settlement cutoff records incomplete
-  // output rather than claiming these observed counts are the tool's complete byte totals.
+  // Keep an exact prefix while draining the rest; a settlement cutoff marks the output incomplete.
   return {
     bytes,
     stdoutChunks,
@@ -367,8 +350,7 @@ function settledToolResult(
   if (!observed.outputComplete || observed.exit === null) {
     return nonResult(run, "sandbox", `tool "${toolId}" exit or output settlement could not be proved`);
   }
-  // A cell program's rejecting assert is a completed answer. An installed tool ending by signal
-  // remains a crash; a sent signal never stands in for an observed signalCode.
+  // A cell program aborting on an assert has answered; an installed tool ending by signal is a crash.
   const wrappedSignal = base.sandbox === LINUX_BWRAP_ID ? bwrapWrappedSignal(run.exitCode) : null;
   if ((run.exitCode === null || wrappedSignal !== null) && run.toolSource !== "cell") {
     return nonResult(
@@ -389,10 +371,9 @@ function settledToolResult(
   };
 }
 
-/** Tool outputs are untrusted paths too. Refuse linked parents, then replace the final entry
- *  rather than truncating it: a symlink or hardlink left by an earlier tool must not redirect a
- *  controller write. Exclusive creation also refuses a concurrently replaced final entry.
- *  Per-scope serial execution owns tool races; this is not a general same-UID filesystem wall. */
+/** Earlier tool outputs are untrusted paths: refuse linked parents and replace the final entry
+ *  with an exclusive create, so a symlink or hardlink cannot redirect a controller write. Serial
+ *  per-scope execution handles tool races; this is not a general same-UID filesystem wall. */
 function writeCellInput(cell: string, rel: string, content: string): void {
   if (!lstatSync(cell).isDirectory()) authoringDefect("the evaluate cell is no longer a directory");
   let parent = cell;
@@ -412,9 +393,7 @@ function writeCellInput(cell: string, rel: string, content: string): void {
   writeFileSync(target, content, { flag: "wx" });
 }
 
-/** Rows are appended as tool runs finish, and under census lanes that order follows lane timing.
- *  Readers get them by phase, subject and attempt, with each subject's runs in their own order, so
- *  the persisted evidence bytes are the same for one lane or four. */
+/** Orders rows by phase, subject and attempt so persisted evidence does not depend on lane timing. */
 function bySubject(
   left: { phase: string; subjectId: string; attempt: number },
   right: { phase: string; subjectId: string; attempt: number },
@@ -491,8 +470,7 @@ class VerifierHost implements VerifierHostHandle {
     return {
       port: {
         run: async (request) => {
-          // One mutable cell serves compile-then-run chains. Queue before materialisation so
-          // a parallel call cannot replace the bytes another call's evidence names.
+          // Serialise runs per scope so a parallel call cannot replace bytes another run's evidence names.
           const snapshot = capturedStructuredClone(request);
           const pending = scope.tail.then(() => this.run(scope, snapshot));
           scope.tail = pending.then(
@@ -674,8 +652,7 @@ class VerifierHost implements VerifierHostHandle {
       }
     }
     for (const [rel, content] of Object.entries(files)) writeCellInput(cell.path, rel, content);
-    // Re-hash the executable immediately before spawning: the inventory digest was taken at snapshot
-    // time, and a tool whose bytes moved since is no longer the measured condition.
+    // Re-hash just before spawning: a tool whose bytes moved since the snapshot is not the measured condition.
     let liveDigest: string | null;
     try {
       liveDigest = sha256OfFile(entry.path);
@@ -695,11 +672,9 @@ class VerifierHost implements VerifierHostHandle {
         `tool "${request.toolId}" ${moved} since the candidate snapshot; refusing to run an unverified tool`,
       );
     }
-    // One host serves one census or solvability pass, whose checks often ask a tool the same question:
-    // design-lightweight-steel-trusses-3fd52f9e-16 ran one truss-nlfea analysis for four checks of
-    // every control and met its census wall. A cell's first run is answered from an earlier executed
-    // identical run; a cell program's path names its own cell, so it never matches, and a non-result
-    // answers nothing, so the next identical request runs afresh.
+    // Checks in one pass often ask a tool the same question, so a cell's first run reuses an earlier
+    // executed identical run. A cell program's path names its own cell and never matches; a
+    // non-result answers nothing, so the next identical request runs afresh.
     const question = hashJsonBytes({
       command: entry.path,
       liveDigest,
@@ -708,8 +683,8 @@ class VerifierHost implements VerifierHostHandle {
       stdinDigest: base.stdinDigest,
       timeoutMs,
     });
-    // No await unless an earlier run exists: a yield here would let the scope close before the child is tracked.
-    // A scope closed while it waits stops waiting at once; the earlier run still settles for its own scope.
+    // Await only when an earlier run exists: a yield could let the scope close before the child is tracked.
+    // Closing the scope ends the wait; the earlier run still settles for its own scope.
     const pending = replay === undefined ? this.answers.get(question) : undefined;
     const earlier =
       pending &&
@@ -823,7 +798,6 @@ class VerifierHost implements VerifierHostHandle {
   /** Applies the wall and starts one installed or cell tool in its cell. */
   private async spawn(launch: ToolLaunch): Promise<ToolRunResult> {
     const { scope, cell, toolId, command, args, stdin, timeoutMs } = launch;
-    // The wall's own evidence is folded into `base` before the child starts.
     let base = launch.base;
     const env = engineCellEnv({
       toolchainEnv: this.toolchainAccess.environment,
@@ -867,7 +841,8 @@ class VerifierHost implements VerifierHostHandle {
       spawnArgs = prepared.args;
       plan = prepared;
     }
-    // A shared earlier run, a replay or the wall's apply can each outlive the scope: a closed scope starts nothing.
+    // A replay, a shared earlier run or the wall's apply can outlive the scope; a closed scope starts nothing.
+
     if (scope.closed) {
       return nonResult(
         unspawned(base),

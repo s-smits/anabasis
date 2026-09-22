@@ -3,7 +3,7 @@
 # longer solve makes every measured round slower.
 solver:
   solve_minutes: 120 # whole solve time of one task
-  max_turns: 24 # model turns per task
+  max_turns: 24 # prompts per task; each runs until the model stops calling tools
   shell_timeout_seconds: 300 # one shell command, when it passes no timeout
   shell_timeout_max_seconds: 900 # the longest timeout a command may pass
 gate:

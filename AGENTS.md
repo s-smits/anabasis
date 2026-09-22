@@ -865,6 +865,12 @@ counts the rules agents keep breaking.
 | Stack checkpoint with publication | Union of affected owning checks | One multi-ref push from the clean top runs the gate |
 | Composition without publication, or a paid run without current exact-tree proof | Owning focused checks | One manual `bun run gate` immediately before the boundary |
 
+"Normal push runs the gate" holds only where the hooks are installed. A clone gets them once with
+`bun run hooks:install` (`git config core.hooksPath .githooks`), which its worktrees share; without
+it a push publishes ungated and says nothing (2026-09-22, PR #1). Check
+`git config core.hooksPath` before relying on a push as the gate, and otherwise run
+`bun run gate` yourself before the push.
+
 Keep the positive and nearest hostile case in the smallest owning test file; add only the missing
 case. Batch small fixes under one owner. Normal pre-push owns typecheck and lint; run either
 separately only when it is the changed boundary. Neither substitutes for behavioural proof.
@@ -895,7 +901,10 @@ a watch is under 30 minutes, check every 290 s instead of holding a monitor open
 
 **Simplify.** Use ponytail while authoring, and run `bun run lint -- --strict` and `bun run simplify` (the
 deterministic census, `tools/oxlint/simplify-census.ts`) during the work, not only at the end;
-then `/simplify` on the finished diff. A mis-targeted finding from either is a reason to tune that
+then `/simplify` on the finished diff. A rewrite that removes a type assertion or merges two
+statements meets rules the old spelling passed (`no-known-value-widening`, `curly`,
+`prefer-optional-chain`), so the author of the rewrite runs `bun run lint -- --strict` before
+handing it back. A mis-targeted finding from either is a reason to tune that
 rule's source more precisely, as rule 8 says, never to switch it off. Prefer removing
 unneeded work, existing code, stdlib or native features, installed dependencies, then minimum new
 code. Preserve trust validation, data-loss handling, security, accessibility and requested
@@ -949,6 +958,22 @@ imposing a lower cap or batching unless asked. Launch parallel subagents directl
 session in one message, one bounded task each — no coordinator, no further delegation. Each prompt
 names authority, exact paths and revision, observed facts, the question and the required output.
 State read-only unless the operator requested changes.
+
+Lanes that edit one worktree at the same time share its files, its scratch directory and its test
+runs. Give each lane a disjoint path set and its own scratch subdirectory,
+never a shared helper name: in the readability pass of 2026-09-22 one lane's `rep.ts` overwrote
+another's and about 30 files' edits silently failed to land. A lane's tests read the whole tree,
+so while other lanes edit, `SOLVABILITY_SOURCE_DRIFT` (`src/run/claim-write.ts`), parse errors in
+half-edited files and host-wall timeouts are expected; the lane re-runs a failing file alone
+before reporting it, and the coordinator runs the full suite once after every lane has finished.
+
+A comment-only pass is still a source change with three hazards. `unusedExports`
+(`tools/loc/source-policy.ts`) counts a name spelled in any other file, comments included, so
+deleting a comment can orphan an export; drop the `export` the gate then names. Any string,
+template or regex literal that moves changes a prompt digest, so compare every literal per file
+against the base before committing. A rewritten comment keeps only claims checked against the code
+in that turn; a shortened sentence that still asserts a refusal nothing performs is a new false
+statement.
 
 Transport is owned by `.claude/skills/codex-luna-swarm/SKILL.md`; read it for the current route,
 which changes when a provider's allowance does. Session reports are research, not evidence: check

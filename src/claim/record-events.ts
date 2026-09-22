@@ -27,7 +27,7 @@ export type NonResultKind = (typeof NON_RESULT_KINDS)[number];
  * then exits unsuccessfully, whether by signal or non-zero exit, is classified as `crash`.
  * `solver` is eligible because its producers are the shared blocker matcher for provider,
  * transport and credential failures, plus controller observations that no work completed:
- * every turn aborted or encountered provider degradation (live-run-08).
+ * every turn aborted or encountered provider degradation.
  * Excluded kinds need different handling. `verifier-throw` indicates an evaluator defect and
  * is handled by suspect-correctness-model; `verifier` has no attributed cause. A `crash` or
  * `protocol` error alone cannot establish environment ownership and may expose a checker
@@ -47,9 +47,8 @@ export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new
 /**
  * The opening of the terminal reason a `provider-stopped` battery records, written by
  * `batteryTerminalReason` and read back by the claim gate's denominator clauses. The disposition
- * itself belongs to `BATTERY_DISPOSITIONS` in src/truth/battery-record.ts. Keeping the prefix
- * here lets writer and reader share it without a reverse runtime dependency. The claim reads
- * the recorded stop reason rather than inferring an outage from the non-result ratio.
+ * itself belongs to `BATTERY_DISPOSITIONS` in src/truth/battery-record.ts. The claim reads the
+ * recorded stop reason rather than inferring an outage from the non-result ratio.
  */
 export const PROVIDER_STOPPED_REASON_PREFIX = "provider-stopped:";
 export function isNonResultKind(value: JsonValue | undefined): value is NonResultKind {

@@ -1,8 +1,6 @@
 /**
- * The one owner of "scored" and "passed" over battery case rows. Every producer (eval runner
- * score and denominator counts, evidence events) and reader imports these predicates. Previously,
- * four identical copies defined the counts separately (fixwave review, 2026-07-11). If one copy
- * changed alone, a correct aggregate could appear inconsistent, or an incorrect one could pass.
+ * The one owner of "scored" and "passed" over battery case rows. Every producer and reader
+ * imports these predicates, so no two counts can drift apart.
  */
 import { type CaseOutcomeFields, classifyCaseOutcome } from "./case-record.ts";
 import type { RuntimeIdentityCaseEvidence, RuntimeModelIdentity } from "./runtime-model-identity.ts";
@@ -13,14 +11,9 @@ import { ENVIRONMENT_OWNED_NONRESULT_KINDS, type NonResultKind } from "./record-
 type ScorableCase = CaseOutcomeFields;
 
 /**
- * The battery's estimation evidence (plan-pack W4, "per condition, report"): conforming scored
- * tasks, successes, failures, the raw success rate, and its Wilson interval at the registered
- * reporting confidence — plus every excluded (censored) outcome by non-result kind, so the
- * denominator's composition is stated, never inferred. "Conforming" is enforced upstream by
- * construction (W3 blocks nonconforming tasks at authoring), so scored = conforming scored.
- * Rates over zero scored tasks are null — an absent measurement is absent, never a 0.
- * Built beside `scoredCases`/`passedCount` so the estimate and the score share one denominator
- * predicate and cannot drift apart.
+ * The battery's estimation evidence: scored tasks, successes, failures, the raw success rate and
+ * its Wilson interval at the reporting confidence, plus every censored outcome by non-result kind,
+ * so the denominator's composition is stated. Rates over zero scored tasks are null, never 0.
  */
 export type EstimationEvidence = {
   method: "wilson";
@@ -51,8 +44,6 @@ export function scoredCases<T extends ScorableCase>(cases: readonly T[]): T[] {
  * kind, no battery-time product finding invalidated discrimination, and no case failed at the
  * verifier boundary. Returns those kinds for the evidence message, or null when any ownership
  * premise is absent. A kind label alone never proves its owner.
- * Lives beside `scoredCases` so run-verdict ownership and denominator membership cannot drift
- * apart: the same non-result predicate that empties the denominator decides who owns the run.
  */
 export function environmentBlockedBattery(
   cases: readonly (ScorableCase & { taskId: string; runtimeNonResultKind: NonResultKind | null })[],
@@ -83,10 +74,7 @@ export function estimationEvidence(
 ): EstimationEvidence {
   const scored = scoredCases(cases);
   const successes = passedCount(cases);
-  // Null prototype: the kind label on a case row can originate from a Correctness Model evaluator's
-  // relayed result (the type union is erased at runtime), so "__proto__"/"constructor" must
-  // tally as own properties — on a plain object the count silently vanishes into the
-  // prototype, a censored case dropped from a recorded evidence (missing-never-zero).
+  // Null prototype: a kind relayed from an evaluator may be "__proto__" and must still count.
   const excluded: Record<string, number> = Object.create(null);
   for (const c of cases) {
     if (c.runtimeNonResult === null) continue;
@@ -107,10 +95,8 @@ export function estimationEvidence(
   };
 }
 
-/** The per-scored-case runtime-identity census Claim.create audits and the terminal evidence
- *  duplicates. Built here beside `scoredCases` so the census filters cases by the same
- *  non-result predicate the score derives from: the census caseIds and the scored caseIds
- *  always align, and no second walker can drift them apart. */
+/** The per-scored-case runtime-identity census Claim.create audits. It filters by the same
+ *  predicate as the score, so its case ids always match the scored ones. */
 export function runtimeIdentityCensus(cases: readonly RuntimeIdentityCase[]): RuntimeIdentityCaseEvidence[] {
   return scoredCases(cases).map((c) => ({
     caseId: c.taskId,

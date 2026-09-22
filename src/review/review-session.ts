@@ -4,11 +4,10 @@
  * on the shared host session, each with its own tools and framing; their output is advice or a
  * Judge verdict, and neither changes a pass, an acceptance, a claim or a promotion.
  *
- * The slot was called `judge` until 2026-08-19. Main Judge census names — evidence, pin fields and
- * verdict schema — keep `judge` because they describe that caller and appear in older run records.
- * Every transport records a verdict through the one schema tool (judge-drivers.ts).
+ * Main Judge census names (evidence, pin fields, verdict schema) say `judge` because they describe
+ * that caller. Every transport records a verdict through the one schema tool (judge-drivers.ts).
  *
- * Two historical judgeDeAnchoring settings correspond to construction here:
+ * Two judgeDeAnchoring settings hold by construction here:
  *   - fallbackConfigured: false — the slot resolves one model and configures no fallback; runtime
  *     identity evidence separately establishes which model served the request.
  *   - commitAllTasksInPhaseZero: true — every subject opens a fresh session, keeping verdicts from
@@ -29,9 +28,8 @@ import { type JudgeSession, sessionJudge } from "../truth/judge.ts";
 
 type EnabledReview = Extract<ReviewChoice, { enabled: true }>;
 
-/** A substantive review turn has completed successfully in roughly 24 minutes in live runs. Keep
- * enough room for that valid path while converting a silent broker into a typed turn timeout
- * before the session's generic one-hour ceiling. The Judge census uses it; a reader has its own. */
+/** The Judge census turn wall: room for a long valid turn, while a silent broker still becomes a
+ *  typed timeout before the session's one-hour ceiling. A reader has its own deadline. */
 export const REVIEW_TURN_TIMEOUT_MS = 30 * 60_000;
 
 /** "high" is the documented judge convention when the slot pins no effort. The review slot reads

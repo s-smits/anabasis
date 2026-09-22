@@ -1,8 +1,7 @@
 /**
- * Three sensors for the Main Judge after its control census went (operator decision 2026-09-14).
- * Each appends one safeguard line and changes nothing: the Judge stays advice and the verifier
- * decides. They watch the shapes that census used to catch or that its removal could invite, so
- * the weekly review can see whether "advice only" holds up in live runs.
+ * Three sensors for the Main Judge, which runs without a control census. Each appends one
+ * safeguard line and changes nothing: the Judge stays advice and the verifier decides. They record
+ * the shapes a control census would catch, so a reviewer can see whether "advice only" holds.
  */
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import type { BatteryCensus, JudgeReviewsResult } from "./judge-reviews.ts";
@@ -17,15 +16,14 @@ export type JudgeReviewFacts = Pick<JudgeReviewsResult, "runId" | "exit" | "prov
 /** The packet fields the rebuild sensor reads. */
 export type JudgeAdviceFacts = Pick<RebuildAdvicePacket, "runId" | "judge">;
 
-/** The disagreement floor that blocked before 2026-09-14: at least three verifier-fail/Judge-pass
- *  cases and at least a fifth of the verified battery. Kept only to count how often it occurs. */
+/** The former blocking floor for Judge disagreement: at least three verifier-fail/Judge-pass cases
+ *  and at least a fifth of the verified battery. It blocks nothing; the sensor counts how often. */
 export function atFormerBlockThreshold(exit: JudgeReviewsResult["exit"]): boolean {
   return exit.kind === "advisory" && exit.verifierFailJudgePass >= Math.max(3, Math.ceil(exit.verified / 5));
 }
 
 /** A complete review in which the Judge passed every case the verifier failed and disputed none it
- *  passed: the Judge said "pass" to everything it saw, which is what a control census used to
- *  catch as a blind spot. */
+ *  passed: the Judge said "pass" to everything it saw, the blind spot a control census catches. */
 export function judgePassedEveryReviewedCase(judges: JudgeReviewFacts, verifiedFails: number): boolean {
   const { exit } = judges;
   return (
@@ -62,12 +60,9 @@ export function safeguardJudgeReview(
 }
 
 /** Called once per settled rebuild. The rebuild read a packet carrying Judge disagreement and its
- *  accepted bytes were classified "evaluation": the agent, public tasks and submission schema stayed
- *  fixed while the checker, its controls or the hidden expectations moved (experiment-freeze.ts
- *  decides that; correctnessModelHash alone does not, since it excludes tasks.json and
- *  controls.json). The shape is "the Judge grumbled, the Builder changed the evaluation". Advice
- *  may well be right; the line exists so the weekly review can read how often the evaluation side
- *  moves right after the Judge, not the agent or the tasks. */
+ *  accepted bytes were classified "evaluation" by experiment-freeze.ts: the checker, controls or
+ *  hidden expectations moved while the agent and public tasks stayed fixed. The line records how
+ *  often the evaluation side moves right after Judge disagreement. */
 export function safeguardJudgeAdviceThenEvaluatorRepair(
   move: string,
   advice: JudgeAdviceFacts | null,

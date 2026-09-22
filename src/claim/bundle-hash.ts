@@ -25,10 +25,8 @@ interface BundleHash {
 const REFUSED_DIRS = new Set(["node_modules", ".git"]);
 
 /**
- * A bundle entry that is neither a regular file nor a directory. Rejection, not omission
- * (handover 2026-07-11): silently skipping a symlink left it in the tree unhashed and unscanned,
- * so the content address vouched for a bundle whose runtime behaviour it did not cover — a
- * traversal through the link can escape the recorded tree.
+ * A bundle entry that is neither a regular file nor a directory. It is rejected rather than
+ * skipped, because an unhashed link would let runtime reads escape what the content address covers.
  */
 export class IrregularBundleEntryError extends Error {
   constructor(readonly entries: string[]) {

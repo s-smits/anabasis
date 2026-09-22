@@ -1,11 +1,7 @@
 /**
- * Estimation vocabulary (plan-pack W4, "Estimation and calibration"): raw success rates with
- * Wilson score intervals at the registered reporting confidence. Decisions use raw counts and
- * intervals only — nothing here smooths or fills an absent measurement.
- *
- * One interval, one confidence, one owner. Until 2026-09-18 a second implementation lived in
- * battery-difficulty.ts at a rounded z of 1.96 and answered [0, 1] rather than nothing at n = 0,
- * so one battery read two ways depending on which reader reached it first.
+ * Estimation vocabulary: raw success rates with Wilson score intervals at the registered
+ * reporting confidence. Decisions use raw counts and intervals only; nothing here smooths or fills
+ * an absent measurement. This is the only interval implementation, so every reader agrees.
  */
 
 /** The registered reporting confidence, declared beside the band as `climb.confidence`. */

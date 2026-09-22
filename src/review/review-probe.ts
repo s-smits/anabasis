@@ -1,34 +1,15 @@
 /**
- * The epoch reviewer's one executing tool. Every other authority it has reads bytes: it opens
- * source, quotes it and reasons about it. Run truss-opus-20260916T151117729Z-064960 shows what
- * that costs. Its single harness-defect conceded inside its own claim that "no current artifact
- * can distinguish the two readings and nothing is presently mis-decided", and the host admitted
- * it as advisory; its two decisive observations were filed as `hardness` and
- * `diagnosis-uncertain`, neither of which routes to an owner. A reader that cannot execute
- * cannot demonstrate, so `demonstrated()` could only ever mean forty characters of prose.
+ * `probe_check`, the epoch reviewer's one executing tool. A probe changes one existing field of an
+ * accept control and runs the candidate's declared checks over the original and the changed
+ * artifact through `runControls`, the path the control census uses. It reports which checks moved
+ * their verdict.
  *
- * A probe changes one field of a known-correct accept control and runs the candidate's own
- * declared checks over the original and the changed artifact, through `runControls` — the same
- * path the control census uses, so a probe cannot decide anything the census would decide
- * differently. The answer is a fact about the evaluation rather than a reading of it: which
- * declared checks moved their verdict when that one field changed.
+ * That fact is narrow. No check moving does not mean no check reads the field (`mass <= maxMass`
+ * accepts both 8 and 9 against 10), and a timeout or thrown check returns a non-result receipt that
+ * would otherwise look like "no check moved"; only a conclusive pair counts as evidence.
  *
- * It is a narrow fact and the host says so, because the wider reading is false. No check moving
- * does not mean no check reads the field: `mass <= maxMass` observes `mass` and accepts both 8
- * and 9 against a limit of 10. An `unobserved` finding still needs the reviewer to show that the
- * changed artifact breaks a public obligation and was accepted anyway; the probe supplies the
- * verdicts, not that judgement. Nor is a returned pair a settled one — a timeout or a thrown
- * check comes back as an ordinary non-result receipt with no blocking checks, which would
- * otherwise read exactly like "no check moved".
- *
- * Its authority ends there. A probe writes no candidate byte, reaches no hidden expectation the
- * checks do not already receive, and changes no pass, acceptance, claim or promotion. It runs at
- * most PROBE_BUDGET times in a review, over accept controls the candidate itself published, and
- * the changed path must already exist in the artifact: inventing a field would report "no check
- * reads it" about something the artifact never carried.
- *
- * Probe rows are review evidence like the reviewer's prose, and stay private under the same rule.
- * Only `epoch-review-public.ts` crosses to authoring, and it projects no probe.
+ * A probe writes no candidate byte and changes no pass, acceptance, claim or promotion. Probe rows
+ * are private review evidence; `epoch-review-public.ts` projects none of them.
  */
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -57,16 +38,13 @@ import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolTex
 import { errorMessage } from "../meta/runtime-values.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
 
-/** Each probe loads the generated check program in a confined child and may launch the declared
- *  external tools, so it costs what one census control costs. Eight is enough to settle the
- *  artifact roots one review can argue about and small enough that a review cannot turn into a
- *  second census. */
+/** Probes per review. Each costs about one census control, so the budget stops a review from
+ *  becoming a second census. */
 export const PROBE_BUDGET = 8;
-/** A replacement value is one field, not a redesigned artifact. In a file map one field is one
- *  file: run 08c0f2's accept controls carry files of up to 3,000 characters of JSON. */
+/** A replacement is one field; in a file map that field can be a whole file. */
 const VALUE_MAX_CHARS = 4_000;
-/** What one probe executed and what the candidate's own checks said about it. Private review
- *  evidence: `blockingCheckIds` is verifier detail. */
+/** One probe and what the candidate's checks decided. Private: `blockingCheckIds` is verifier
+ *  detail. */
 export type ReviewProbeRow = {
   /** 1-based, and what a finding cites in `probeIds`. */
   id: number;
@@ -77,8 +55,7 @@ export type ReviewProbeRow = {
   value: string;
   baseline: ProbeSide | null;
   mutated: ProbeSide | null;
-  /** Declared checks whose verdict the one changed field moved. Empty is the decisive negative:
-   *  no declared check applicable to this task reads that field. */
+  /** Declared checks whose verdict the changed field moved. */
   movedCheckIds: string[];
   /** Why nothing executed; null when the pair ran. */
   refused: string | null;
@@ -100,9 +77,8 @@ type ProbeCandidate = {
 /** The tool and the lifetime it opened: the caller settles the lifetime once its turn is over. */
 type ReviewProbeHandle = { tool: ReaderTool; close: (failed: boolean) => Promise<void> };
 
-/** Per probe, not per review. `probeTool` reuses one verifier, whose evidence log accumulates and
- *  is keyed by phase, subject id and attempt alone, and every `runControls` call starts at attempt
- *  1. Under one shared id `hostNonResult` settles this probe from an earlier probe's timeout row. */
+/** Control ids unique per probe: the shared verifier's evidence log is keyed by subject id and
+ *  attempt, so a reused id would read an earlier probe's rows. */
 const baselineId = (probe: number) => `review-probe-${probe}-baseline`;
 const mutatedId = (probe: number) => `review-probe-${probe}-mutated`;
 
@@ -110,11 +86,8 @@ export function emptyProbeState(): ProbeState {
   return { rows: [], refused: 0 };
 }
 
-/** Both sides answered, so the comparison carries information. `runControls` does not throw when
- *  an evaluation fails to decide: a timeout, a thrown check, an unknown task or a pending cleanup
- *  settles as an ordinary `non-result` receipt with no blocking checks, and a pair like that is
- *  indistinguishable from "no check moved" by the ids alone. The original must also pass, because
- *  a changed artifact says nothing against a control the checks already refuse. */
+/** The original passed and the changed artifact reached a verdict. An undecided evaluation
+ *  returns a non-result receipt, which would otherwise look like "no check moved". */
 function conclusive(row: ReviewProbeRow): boolean {
   return (
     row.refused === null &&
@@ -123,25 +96,15 @@ function conclusive(row: ReviewProbeRow): boolean {
   );
 }
 
-/** The probe rows a finding cites that are executed evidence. A finding citing an id that never
- *  ran, a probe the host refused, or a pair that reached no verdict is not probe-backed: the
- *  reviewer would be crediting its own request rather than a result.
- *
- *  The rows rather than their numbers, because the recorder needs both: the numbers for the
- *  reviewer's own evidence prose, and the control, path and moved checks for the public projection
- *  the finding otherwise reaches with its check name alone. */
+/** The cited probe rows that are conclusive executed evidence, in id order. */
 export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined): ReviewProbeRow[] {
   if (!Array.isArray(cited)) return [];
   const numbers = new Set(cited.filter(isNumber));
   return state.rows.filter((row) => conclusive(row) && numbers.has(row.id)).sort((a, b) => a.id - b.id);
 }
 
-/** A review that executed probes and then records a harness-defect without saying whether it rests
- *  on them loses the one route to a first-occurrence blocking finding, and its evidence record
- *  cannot link the finding to the rows that support it. The 2026-09-16 replay of run
- *  truss-opus-20260916T151117729Z-064960 ran eight probes, narrated what they returned inside a
- *  claim and left `probeIds` unset, so both were lost. Asking costs one argument, and `probeIds: []`
- *  is the answer when the reading came from source alone. */
+/** After conclusive probes ran, a harness-defect must state `probeIds`, with `[]` for a
+ *  source-only reading, so the record links each finding to the probes it rests on. */
 export function probeCitationRefusal(
   kind: string,
   state: ProbeState,
@@ -153,8 +116,8 @@ export function probeCitationRefusal(
   return `this review executed probe${ran.length === 1 ? "" : "s"} ${ran.join(", ")}; a harness-defect must say what it rests on. Retry with probeIds naming the probes whose result supports it, or probeIds: [] when you read this from source alone`;
 }
 
-/** Load the candidate's own contract the way measurement loads it: the validated brief, the
- *  generated check program in its confined child, the published corpus and the recorded battery. */
+/** Load the candidate as measurement does: validated brief, check program in its confined child,
+ *  control corpus and recorded tasks. */
 async function openCandidate(root: string, lifetimeRoot: string): Promise<ProbeCandidate> {
   const lifetime = createVerifierLifetime({ root: lifetimeRoot });
   const briefUnknown: unknown = parseJsonAs(readFileSync(join(root, BRIEF_FILE), "utf8"));
@@ -179,9 +142,8 @@ async function openCandidate(root: string, lifetimeRoot: string): Promise<ProbeC
   return { brief, evaluate, corpus, tasks: loadRecordedTasks(root), verifier, lifetime };
 }
 
-/** The steps of a probe path: the declared grammar of `jsonPathTokens` plus a quoted key, read as
- *  the plain step it names. A file map's keys hold dots, so `$.firmware['fw_logic.cpp']` is the
- *  only way to name one file; run 08c0f2's reviewer tried five spellings and none resolved. */
+/** The steps of a probe path: the `jsonPathTokens` grammar plus a quoted key such as
+ *  `$.firmware['main.cpp']`, for keys that hold dots. */
 function probeSteps(path: string): string[] | null {
   const tokens = path.match(/^\$|\.[A-Za-z_][A-Za-z0-9_-]*|\[(?:0|[1-9]\d*)\]|\[(?:'[^']+'|"[^"]+")\]/g);
   if (tokens?.[0] !== "$" || tokens.join("") !== path) return null;
@@ -196,15 +158,9 @@ function stepInto(value: JsonValue | undefined, token: string): JsonValue | unde
 }
 
 /**
- * A copy of `artifact` with one already-present field replaced, rebuilt along the path and sharing
- * everything else. Null when the path does not resolve: a probe that adds a field would answer
- * "no declared check reads it" about a field the artifact never carried, which is true and useless.
- *
- * The path is the rooted spelling the candidate's own checks declare — `$.layout.members[0].area`,
- * read through `probeSteps`. It used to be a second language, bare and dotted with array
- * positions as integer segments, so a reviewer that copied a path out of the declarations it was
- * reading was told the field did not exist. One grammar, plus the quoted key a declaration never
- * needs, and the refusal is true when it fires.
+ * A copy of `artifact` with one existing field replaced, sharing everything off the path. The path
+ * uses the rooted spelling the declared checks use (`$.layout.members[0].area`). Null when it does
+ * not resolve, because a probe that adds a field says nothing about the artifact.
  */
 export function withReplacedField(artifact: JsonValue, path: string, value: JsonValue): JsonValue | null {
   const tokens = probeSteps(path);
@@ -212,8 +168,8 @@ export function withReplacedField(artifact: JsonValue, path: string, value: Json
   return replacedAt(artifact, tokens, value) ?? null;
 }
 
-/** `value` with the field at `tokens` replaced, or `undefined` when a step is missing. A step that
- *  resolved proves its kind: `[i]` only into an array, `.name` only into a plain object. */
+/** `value` with the field at `tokens` replaced, or `undefined` when a step is missing. A resolved
+ *  `[i]` step is an array and a resolved `.name` step a plain object. */
 function replacedAt(value: JsonValue, tokens: readonly string[], leaf: JsonValue): JsonValue | undefined {
   const [token, ...rest] = tokens;
   if (token === undefined) return leaf;
@@ -229,8 +185,7 @@ const sideOf = (receipt: ControlReceipt | undefined): ProbeSide | null =>
     ? null
     : { outcome: receipt.observedOutcome, blockingCheckIds: [...receipt.observedBlockingCheckIds].sort() };
 
-/** Checks that decided one artifact and not the other. Symmetric, because a mutation that makes a
- *  refusing check stop refusing is the same kind of evidence as one that makes it start. */
+/** Checks that blocked exactly one of the two artifacts, in either direction. */
 function movedChecks(baseline: ProbeSide | null, mutated: ProbeSide | null): string[] {
   if (baseline === null || mutated === null) return [];
   const before = new Set(baseline.blockingCheckIds);
@@ -243,10 +198,8 @@ function movedChecks(baseline: ProbeSide | null, mutated: ProbeSide | null): str
   ].sort();
 }
 
-/** Run the pair through the census path. The synthetic corpus declares both artifacts as accepts
- *  because an accept is evaluated against every applicable check, which is the whole question;
- *  `runControls` will also report that the changed artifact failed an accept, and that finding is
- *  about a corpus this candidate never published, so it is read from the receipts and dropped. */
+/** Run the pair through the census path. Both are declared accepts so every applicable check
+ *  runs; only the receipts are read, not the corpus findings. */
 async function runPair(
   candidate: ProbeCandidate,
   probe: number,
@@ -312,9 +265,7 @@ function argumentRefusal(parsed: ReturnType<typeof probeArgs>, state: ProbeState
   return null;
 }
 
-/** What the reviewer is told `probe_check` is for, as data. The wording is the whole of the
- *  reviewer's instruction for the one tool that executes, so it lives where it can be read
- *  without the lifetime machinery around it. */
+/** The name, description and schema the reviewer sees for `probe_check`. */
 const PROBE_CHECK_CONTRACT = {
   name: "probe_check",
   label: "Probe a declared check",
@@ -344,15 +295,10 @@ const PROBE_CHECK_CONTRACT = {
 } satisfies Omit<ReaderTool, "execute">;
 
 /**
- * The reviewer's probe tool, with the lifetime it opens on first use. The candidate is loaded
- * once and reused: loading the generated check program is the expensive half, and a review that
- * probes twice should pay for it once. `close` settles the verifier lifetime after the turn,
- * whether the review completed, failed or never probed at all; `failed` says a primary failure is
- * already propagating, the only case in which an unresolved cleanup does not throw.
+ * The reviewer's probe tool. The candidate is loaded on first use and reused. `close` settles the
+ * verifier lifetime after the turn; `failed` says a primary failure is already propagating.
  *
- * Probes run one at a time. A reader may issue overlapping tool calls, and each probe's id names
- * its synthetic control subjects and the rows a finding cites, while the budget counts recorded
- * rows: two probes started together would share an id and could both pass the last budget slot.
+ * Probes run one at a time, because a probe's id and the budget both come from the recorded rows.
  */
 export function probeTool(root: string, lifetimeRoot: string, state: ProbeState): ReviewProbeHandle {
   let opened: Promise<ProbeCandidate> | null = null;

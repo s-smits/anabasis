@@ -1,12 +1,7 @@
 /**
- * Census-to-rows projection over the battery's per-case judge evidence, split from
- * judge-reviews.ts at its size ceiling. The projection names every complete judge/verifier
- * contradiction on the analysis artifact without applying a materiality threshold. These rows are
- * the immutable operator dispute source; they are not findings. They enter no admission path and
- * reach no model prompt, because a named held-out case in an authoring prompt is the per-task
- * localisation the no-hints boundary protects. hwctrl-live-01 motivated the projection: the
- * battery had four judge/verifier disagreements below its threshold. Finding those four cases
- * otherwise meant opening every judge evidence by hand. The count of these rows is what the
+ * Rows for every complete judge/verifier contradiction in a battery, with no materiality
+ * threshold. They are the operator's dispute source, not findings: they enter no admission path
+ * and reach no authoring prompt, which must never name a held-out case. Their count is what the
  * Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
@@ -51,8 +46,7 @@ export interface ContestedSubject {
   failedCheckIds: string[];
 }
 
-/** Reads one repo-root-relative evidence. Lives here rather than in judge-reviews.ts because the
- *  import already points this way; judge-reviews.ts imports it back for its own subject reads. */
+/** Reads one repo-root-relative evidence file. */
 export function readJson(repoRoot: string, rel: string): JsonValue {
   return readJsonFile(join(repoRoot, rel));
 }

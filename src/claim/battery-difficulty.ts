@@ -8,13 +8,10 @@
  *   that says "18 of 25 or more found no limit" follows the band instead of repeating it.
  * - `measureDifficulty` tallies the verified cases per item into the recorded battery.
  *
- * Sample size has a single owner, the interval. A thin sample widens it until neither outer zone
- * can be reached, which is what a confidence interval is for; before 2026-09-18 a second
- * case-count floor discarded the placement whenever a Builder changed fewer than four tasks, and
- * the round then reached the author with no measurement note at all. A sample that was never
- * measured, or whose counts are malformed, has no placement: `placeOnBand` returns the same null
- * `wilsonInterval` does, and the selector turns that one null into its one "no difficulty
- * evidence" answer.
+ * Sample size has a single owner, the interval: a thin sample widens it until neither outer zone
+ * can be reached. A sample never measured, or with malformed counts, has no placement:
+ * `placeOnBand` returns the null `wilsonInterval` does, which the selector reads as "no difficulty
+ * evidence".
  */
 import { wilsonInterval } from "./estimation.ts";
 
@@ -51,7 +48,7 @@ export type BandPlacement = {
   toAim: number;
 };
 
-/** A first battery's aim, about 3 of 25 verified passes (operator decision 2026-09-14). */
+/** A first battery's aim, about 3 of 25 verified passes. */
 const FIRST_BATTERY_RATE = 0.12;
 
 /** Scale a rate to n, rounded first so 0.2 × 15 = 3.0000000000000004 reads as 3. */
@@ -76,10 +73,8 @@ export function placeOnBand(
   const interval = wilsonInterval(passes, n);
   if (interval === null) return null;
   const aim = aimCounts(n, band);
-  // A battery so small that no whole pass count lands inside the band has no aim to be measured
-  // against. aimCounts(1, [0.2, 0.5]) is [1, 0], an empty range that read 0 of 1 as under-aim by
-  // one and 1 of 1 as over-aim by one: every count of a one-case battery was off the aim in both
-  // directions and none could be on it. Campaign 3fd52f9e-28's last round measured one case.
+  // A battery so small that no whole pass count lands inside the band has no aim: for example
+  // aimCounts(1, [0.2, 0.5]) is the empty range [1, 0].
   if (aim[1] < aim[0]) return null;
   const toAim = passes < aim[0] ? aim[0] - passes : passes > aim[1] ? aim[1] - passes : 0;
   const zone = bandZone(interval, band, toAim);

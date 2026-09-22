@@ -1,28 +1,18 @@
 /**
- * The case record stores one JSONL row per scheduled case across runs (§4 rank-1). Rows give
- * triage and the issue register structured summaries, with paths and content digests pointing
- * to the detailed trace files. They do not repeat the traces or determine who may read them;
- * the consuming reader and its access restrictions control that. The Meta-Harness comparison
- * motivated retaining raw evidence: scores alone reached 34.6, scores plus summaries 34.9,
- * and filesystem access to raw traces 50.0. Summaries did not recover the missing information.
+ * The case record stores one JSONL row per scheduled case across runs. A row is a structured
+ * summary that points to its raw trace files by path and sha256; it does not repeat the traces.
  *
- * B-1 protects against incomplete records. Concurrent JSONL appends beyond PIPE_BUF can
- * interleave. If a tolerant reader skips the malformed line, both counts derived from that
- * file lose the same row: `n === verified` still holds and the loss goes undetected. Therefore:
+ * A lost row would go unnoticed, because every count derived from the file would lose it alike.
+ * Three rules prevent that:
  *
- *  1. Allow one writer. An in-process registry and an on-disk `<path>.lock` opened with
- *     O_EXCL refuse a second CaseRecord for the same file; an instance queue serialises appends.
- *  2. Parse strictly. `readCaseRecord` throws on malformed JSON or an invalid row shape,
- *     reporting the damaged row so the reader cannot silently omit it.
- *  3. Count expected cases from the task set. `assertCompleteRun` compares rows with the task
- *     ids used to build the battery, independently of the record file being checked.
+ *  1. One writer. An in-process registry and an O_EXCL `<path>.lock` refuse a second writer for
+ *     the same file, and a queue serialises appends.
+ *  2. Strict parsing. `readCaseRecord` throws on a malformed or misshapen row instead of skipping it.
+ *  3. Completeness against the task set. `assertCompleteRun` compares rows with the task ids the
+ *     battery was built from, not with the file itself.
  *
- * Trace pointers store the sha256 computed during the run (SLSA resolvedDependencies[].digest).
- * `verifyTracePointers` calculates it again when reading. A missing or changed trace is
- * reported as such, preventing a later file from being accepted as the original evidence.
- *
- * Every row must include the isolation field (§7.1). `isolation: null` means isolation remains
- * unproven; an absent probe cannot establish even the contractual isolation classification.
+ * `verifyTracePointers` recomputes each trace digest on read and reports a missing or changed
+ * trace. Every row carries an `isolation` field; null means isolation is unproven.
  */
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -59,21 +49,13 @@ export type CaseOutcomeFields = {
 };
 
 /**
- * The five fields that say what a case is, and nothing about which case it was.
- *
- * Exactly one of three shapes holds. **Verified**: `acceptedSubmit` true, `truthOk` and `pass`
- * booleans, `runtimeNonResult` null. **Unaccepted**: `acceptedSubmit` false, `truthOk` null and
- * `pass` false — a real attempt with no accepted submission left no captured bytes, so no truth
- * verdict exists, and it counts as a difficulty failure. **Non-result**: `truthOk` and `pass`
- * null, `runtimeNonResult` a string and `runtimeNonResultKind` its machine classification, which
- * is null exactly when `runtimeNonResult` is. Interrupted is not failed: writing `false` for both
- * booleans in the last shape would make every consumer that forgot to also read
- * `runtimeNonResult` count an environment failure as a product failure.
- *
- * Four spellings carried this contract — `CaseRecordRow` below, `CaseRecord` in
- * `src/truth/battery-record.ts`, `CaseEvidence` in the iteration analysis, and the projection the
- * outcome query wrote out. A fourth spelling is a fourth chance to get the nulls wrong, which is
- * the whole of what the paragraph above is defending.
+ * The five fields that say what a case's outcome is. Exactly one of three shapes holds:
+ *  - verified: `acceptedSubmit` true, `truthOk` and `pass` booleans, no non-result;
+ *  - unaccepted: `acceptedSubmit` false, `truthOk` null, `pass` false (no bytes reached the
+ *    verifier, yet the attempt counts as a difficulty failure);
+ *  - non-result: `truthOk` and `pass` null, with `runtimeNonResult` and its machine kind
+ *    `runtimeNonResultKind` both set. Null booleans keep an environment failure from being counted
+ *    as a product failure.
  */
 export type CaseVerdict = CaseOutcomeFields & {
   truthOk: boolean | null;
@@ -91,16 +73,12 @@ export type TracePointer = {
 export type CaseIsolationEvidence = {
   strength: IsolationStrength;
   probe?: IsolationProbeEvidence;
-  /** The verified session construction's activated-profile handshake (U0.7) — physical strength
-   *  requires this check beside the mechanism probe; its absence is visible in the evidence. */
+  /** The session's activated-profile handshake; physical strength needs it beside the probe. */
   session?: SessionProfileEvidence;
 };
 
-/** The recorded run condition (U0.4): its `variant` value, the adviser tools removed before
- *  solving, and a sha256 of the offered tool names (tools-spec names minus removed advisers).
- *  The hash is null for trees from before tools-spec persistence. The evaluation runner writes
- *  this condition to battery.json and repeats it unchanged on every case row, so readers can
- *  establish which capabilities differed between compared conditions. */
+/** The recorded run condition, repeated on every case row: its variant, the adviser tools removed
+ *  before solving, and a sha256 of the offered tool names (null when no tools-spec was recorded). */
 export type RunCondition = {
   variant: string;
   advisorsRemoved: string[];
@@ -109,7 +87,7 @@ export type RunCondition = {
 
 export type CaseRecordRow = CaseVerdict & {
   schema: typeof CASE_RECORD_SCHEMA;
-  /** SLSA pairing: a runId with no builder identity is indistinguishable from one a model typed. */
+  /** Paired with `builderId`, so a runId cannot be mistaken for one a model typed. */
   runId: string;
   builderId: string;
   slug: string;
@@ -120,11 +98,7 @@ export type CaseRecordRow = CaseVerdict & {
   isolation: CaseIsolationEvidence | null;
   /** Null explicitly records that the battery supplied no run condition. */
   condition: RunCondition | null;
-  /** Controller instants around the solver call, restated from the recorded battery case so
-   *  cross-run duration reads need no per-run battery.json open. The run driver writes both on
-   *  every row; they stay optional because the case record is append-only and `bun run outcome`
-   *  reads a campaign's whole history, rows from before 2026-08-23 included. Telemetry only —
-   *  never consulted by scoring or classification. */
+  /** Controller instants around the solver call. Telemetry only; scoring never reads them. */
   solverStartedAt?: string;
   solverEndedAt?: string;
   traces: TracePointer[];
@@ -144,10 +118,8 @@ type PointerVerdict =
   | { path: string; state: "missing" }
   | { path: string; state: "drifted"; nowSha256: string };
 
-/** One count over classified outcomes, so the verified/unaccepted/non-result arithmetic cannot
- *  drift between the run summary, the controller terminal and the outcome views. Exported for the
- *  last of those three: the campaign scorecard restated all five fields, which is the drift the
- *  sentence above was written to prevent. */
+/** Counts over classified outcomes; the one place the verified, unaccepted and non-result
+ *  arithmetic is done. */
 export interface OutcomeTally {
   verified: number;
   passed: number;
@@ -156,15 +128,14 @@ export interface OutcomeTally {
   nonResults: number;
 }
 
-/** Classify a row admitted by the producer or strict reader. Unaccepted attempts are stored
- *  with pass=false, but are not verified because no accepted artifact reached the correctness model. */
+/** Classify a validated row. An unaccepted attempt is stored with pass=false but is not verified. */
 export function classifyCaseOutcome(row: CaseOutcomeFields): CaseOutcome {
   if (row.runtimeNonResult !== null) return "non-result";
   if (!row.acceptedSubmit) return "unaccepted";
   return row.pass === true ? "pass" : "fail";
 }
 
-/** The verdict alone, for a reader that publishes it beside identity or evidence of its own. */
+/** The verdict fields alone. */
 export function caseVerdict(row: CaseVerdict): CaseVerdict {
   const { acceptedSubmit, truthOk, pass, runtimeNonResult, runtimeNonResultKind } = row;
   return { acceptedSubmit, truthOk, pass, runtimeNonResult, runtimeNonResultKind };
@@ -184,8 +155,7 @@ function conditionDefect(c: JsonValue): string | null {
   return null;
 }
 
-/** The three allowed verdict shapes: a typed non-result with no verdict, a verified row
- *  with both booleans, or an unaccepted row stored with pass=false and no truth verdict. */
+/** Why a value is none of the three verdict shapes of {@link CaseVerdict}, or null. */
 export function caseVerdictDefect(value: unknown): string | null {
   if (!isRecord(value)) return "verdict is not an object";
   const { acceptedSubmit, truthOk, pass, runtimeNonResult, runtimeNonResultKind } = value;
@@ -213,14 +183,7 @@ export function caseVerdictDefect(value: unknown): string | null {
   return null;
 }
 
-/**
- * Validate the row and require exactly one of these outcome shapes:
- *  verified    — acceptedSubmit true, truthOk/pass booleans, no non-result;
- *  unaccepted  — acceptedSubmit false, truthOk null, pass false (a real attempt with no
- *                accepted bytes has no truth verdict and is stored with pass=false);
- *  non-result  — truthOk/pass null, with both a reason string and a recognised kind
- *                (either one without the other is refused, as in the run-events producer).
- */
+/** Why a value is not a valid case row, or null. */
 export function caseRowDefect(value: JsonValue): string | null {
   if (!isRecord(value)) return "row is not an object";
   if (value.schema !== CASE_RECORD_SCHEMA) return `schema is not ${CASE_RECORD_SCHEMA}`;
@@ -252,9 +215,7 @@ export function caseRowDefect(value: JsonValue): string | null {
   return caseVerdictDefect(value);
 }
 
-/** Use the row validator as a type guard. `caseRowDefect` supplies a reason for the reader's
- *  error message; this wrapper narrows the value after successful validation. Both use the
- *  same implementation so a type assertion cannot admit a row the validator would refuse. */
+/** `caseRowDefect` as a type guard. */
 function isCaseRecordRow(value: JsonValue): value is CaseRecordRow {
   return caseRowDefect(value) === null;
 }
@@ -310,9 +271,8 @@ export class CaseRecord {
   }
 
   /**
-   * Open the sole writer for a record file. The registry refuses a second writer in this
-   * process; an O_EXCL lock file prevents another process from opening one. Validate existing
-   * rows before opening, so a damaged record must be repaired before more rows are appended.
+   * Open the sole writer for a record file, refusing a second one in this or another process.
+   * Existing rows are validated first, so a damaged record is repaired before anything is appended.
    */
   static open(path: string): CaseRecord {
     const key = resolve(path);
@@ -381,9 +341,8 @@ export class CaseRecord {
 }
 
 /**
- * B-1 completeness rule: a run needs exactly one row for each task used to build its battery,
- * with no extra task ids. Compare against the original task set, independently of the record
- * file being checked. Report every missing, duplicate and unexpected task id in the error.
+ * Require exactly one row per task the battery was built from and no other task ids. The error
+ * lists every missing, duplicated and foreign id.
  */
 export function assertCompleteRun(
   rows: readonly StoredCaseRow[],
@@ -410,13 +369,13 @@ export function assertCompleteRun(
   }
 }
 
-/** Builds a digest-bound pointer at write time — the digest is computed from the bytes, here. */
+/** A pointer carrying the digest of the file's current bytes. */
 export function tracePointer(baseDir: string, relPath: string): TracePointer {
   return { path: relPath, sha256: sha256OfFile(join(baseDir, relPath)) };
 }
 
-/** A pointer is a canonical relative path under its evidence root, including after symlinks.
- * This also guards root discovery's existence probe before any trace bytes are read. */
+/** The absolute path of a canonical relative pointer that stays under its evidence root after
+ *  resolving symlinks, or null. */
 export function tracePointerPath(baseDir: string, path: string): string | null {
   if (
     isAbsolute(path) ||
@@ -434,9 +393,7 @@ export function tracePointerPath(baseDir: string, path: string): string | null {
   }
 }
 
-/** Recalculate each pointer's digest and report intact, changed or missing evidence. Callers
- *  can then refuse to rely on traces that no longer match the run. Accepts any object carrying
- *  trace pointers, including a full row or an individual case's evidence record. */
+/** Recompute each pointer's digest and report it intact, drifted or missing. */
 export function verifyTracePointers(row: { traces: TracePointer[] }, baseDir: string): PointerVerdict[] {
   return row.traces.map((pointer) => {
     const abs = tracePointerPath(baseDir, pointer.path);
@@ -460,12 +417,7 @@ export function outcomeTally(outcomes: readonly CaseOutcome[]): OutcomeTally {
   };
 }
 
-/** The same count, family by family. Two readers kept a copy each — the outcome metrics and the
- *  rebuild advice packet — and the advice copy spelled `passed` as `truthOk === true` inside its
- *  own verified branch. That is the same set today, because a case row carries
- *  `pass: acceptedSubmit && truthOk`, but it is the kind of restatement that stops being the same
- *  set the day one of the two is corrected. Each caller projects the fields it already published:
- *  the advice packet's row is a condition identity, and neither reader gains `failed` here. */
+/** {@link outcomeTally} per family, with each family's total. */
 export function familyTally(
   rows: Iterable<CaseOutcomeFields & { family: string }>,
 ): Map<string, OutcomeTally & { total: number }> {

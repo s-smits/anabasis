@@ -109,7 +109,8 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     // count (safeguards 25 and 24, recorded).
     expect(battery.truthCheckFiring).toMatchObject({
       verifierVerifiedCount: 3,
-      applicableByCheck: { "parts-assigned": 3, "expected-binding": 3 },
+      // Every declared check, the external one included: all three cases posed `ghost-ref`.
+      applicableByCheck: { "parts-assigned": 3, "expected-binding": 3, "ghost-ref": 3 },
       executedByCheck: { "ghost-ref": 3 },
       blockingByCheck: { "parts-assigned": 0, "expected-binding": 0, "ghost-ref": 0 },
     });

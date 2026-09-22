@@ -292,9 +292,15 @@ function truthCheckFiring(ctx: BatteryContext, gradedCases: readonly GradedCase[
   const authored = ctx.brief.truthChecks
     .filter((check) => check.execution.evidence.kind === "authored")
     .map((check) => check.id);
+  const declared = ctx.brief.truthChecks.map((check) => check.id);
   const fired = checkCounter(authored);
-  const applicable = checkCounter(authored);
-  const blocking = checkCounter(ctx.brief.truthChecks.map((check) => check.id));
+  // Applicability is a census of what the battery posed, so it covers every declared check, as
+  // blocking does. Seeded from the authored checks alone, an external check the battery ran on
+  // every verified case had a blocking row and no applicable row, and a reader with no way to
+  // tell that absence from a zero records it as a check no task posed. `firedByCheck` stays
+  // authored, where a check receipt is what firing means.
+  const applicable = checkCounter(declared);
+  const blocking = checkCounter(declared);
   const executed = checkCounter(ctx.externalChecks.map((check) => check.checkId));
   const verified = new Set<string>();
   for (const { record, verdict } of gradedCases) {

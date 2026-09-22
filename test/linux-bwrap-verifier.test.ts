@@ -75,6 +75,12 @@ describe("Linux verifier bubblewrap plan", () => {
     expect(plan.bwrapFlags.indexOf("LANG")).toBeLessThan(plan.bwrapFlags.indexOf("PATH"));
     expect(plan.bwrapFlags).toContain(plan.workdir);
     expect<unknown>(plan.bwrapFlags).toContain(plan.readRoots[0]);
+    // A private /tmp, laid before the binds: a workdir under the host's /tmp would otherwise be
+    // covered by it.
+    const privateTmp = plan.bwrapFlags.indexOf("/tmp");
+    expect(plan.bwrapFlags[privateTmp - 1]).toBe("--tmpfs");
+    expect(privateTmp).toBeLessThan(plan.bwrapFlags.indexOf("--bind"));
+    expect(privateTmp).toBeLessThan(plan.bwrapFlags.indexOf(plan.readRoots[0] ?? ""));
     expect(plan.policyHash).toMatch(/^[0-9a-f]{64}$/);
     expect(verifyLinuxBwrapPlan(plan, runtime)).toBeNull();
 

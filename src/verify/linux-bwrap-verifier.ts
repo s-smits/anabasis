@@ -68,10 +68,15 @@ export function prepareLinuxBwrap(
     network: VERIFIER_POSTURE.network ? "allow" : "deny",
     process: "private-pid-namespace",
     reads: { exact: exactReadSnapshots, roots: readRoots, privateWorkdir: true },
-    writes: { privateWorkdir: true, devNull: true },
+    writes: { privateWorkdir: true, privateTmp: true, devNull: true },
   });
   const bwrapFlags = [
     ...bwrapBaselineArgs(VERIFIER_POSTURE),
+    // A private /tmp, as the Builder and Built shells have, for tools that spell it: Frame3DD's
+    // `temp_dir()` returns "/tmp" on Unix and a truss check exited 12 here. Before the binds, so
+    // a workdir or read root under the host's /tmp stays visible on top of it.
+    "--tmpfs",
+    "/tmp",
     ...bwrapReadBinds(reads.filter((path) => !underAny(path, baselineRoots))),
     ...bwrapReadBinds(readRoots.filter((path) => !underAny(path, baselineRoots))),
     ...bwrapWriteBinds([workdir]),

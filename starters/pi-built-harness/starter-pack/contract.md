@@ -110,7 +110,9 @@ through an installed domain tool wherever the field has one.
 A check calls `runtime.tools.run({toolId, args, files, stdin, timeoutMs})` and never spawns a
 process itself. The host supplies the check id, refuses undeclared tool ids, requires a
 completed run of every required tool, and owns sandbox, timeout and cleanup: each run gets a
-private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`.
+private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`. TMPDIR is
+the run's working directory. `/tmp` is private on Linux and closed on macOS, even though your shell
+can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR.
 - Args carry flags and names; files and stdin carry operands. Omit `stdin` when the command has
   none. A nonzero exit is a completed result for your code to interpret.
 - For external evidence, file contents and stdin must be string leaves or JSON of this check's

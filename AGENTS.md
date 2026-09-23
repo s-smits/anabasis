@@ -970,9 +970,21 @@ whether that is a prompt, a skill or the lint rule's own message, rather than in
 **Shell commands and the guard.** Before sending a Bash command, scan every `$` in it: a `$VAR`,
 `$(…)` or `${…}` alongside `git`, after a `>`, or inside a heredoc triggers the `dcg` guard,
 including inside a loop. A blocked call never runs and costs the turn, so change the spelling
-rather than asking for an allowlist entry, and test a new spelling with `dcg test '<command>'`. The
-shape to remember: redirect to a literal path, or to the shell's own `$HOME/…` or `$TMPDIR/…`,
-which dcg 0.14.0 admits as a private scratch redirect. Prefer `git worktree remove --force`,
+rather than asking for an allowlist entry, and test a new spelling with `dcg test '<command>'`.
+
+Two different guards get called "the guard" in conversation here, and they admit different things,
+which is how this paragraph came to recommend a redirect that does not work. Your own Bash calls
+go through the `dcg` binary directly. The Builder's go through `src/builder/command-guard.ts`,
+which runs that same binary and then adds an exception of its own: `privateScratchRedirect` admits
+a target matching `SCRATCH_TARGET`, which is `~/…`, `$HOME/…` or `$TMPDIR/…` in either the bare or
+the braced spelling. dcg alone admits neither of the last two. Probed against 0.14.4 on
+2026-09-23, `> $HOME/f`, `> $TMPDIR/f` and `> "$TMPDIR/f"` are all refused by
+`core.filesystem:redirect-truncate-dynamic-path`, and quoting makes no difference. The rule's own
+reason is the honest one: the shell expands the target at runtime, so dcg cannot prove where the
+file it is about to open with `O_TRUNC` points. What passes is a literal path, an unquoted `~/…`,
+or an append — `>> $TMPDIR/f` is admitted where `> $TMPDIR/f` is refused, because appending
+truncates nothing. So the shape to remember is a literal `/tmp/<subdir>/…` or the scratchpad's own
+absolute path, and `~/…` when it must be the home tree. Prefer `git worktree remove --force`,
 `git diff -- <path> | git apply -R`, `git branch park <tip>` followed by `git rebase --onto`, a
 literal `git -C /abs/dir` one call per tree, `git push --force-with-lease`, and the Write tool
 followed by `bun <f>` or `--body-file <f>` in place of a heredoc holding shell text.

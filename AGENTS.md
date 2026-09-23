@@ -1238,8 +1238,16 @@ usually a sentence missing its evidence.
 
 Explain a rule with a small example rather than an adjective — "one owner instead of five" says
 more than "cleaner". Where a rule exists because something went wrong, the incident is the
-explanation: name it, date it, and let it do the arguing. Make routine minor changes directly, and
-raise only the decisions the operator actually has to make.
+explanation: name it, date it, and let it do the arguing. That holds for this file, for a PR body
+and for a session report, which are read once against a history that is settled. It does not hold
+for a source comment. A comment is read over and over against a tree that keeps moving, so one
+naming a run id, a campaign, a battery's pass count or a token total is asserting something about a
+system that gets rebuilt underneath it — and it goes quietly false while still reading as
+authoritative, which costs the next reader a wrong belief rather than merely some time. In a
+comment, keep the mechanism the incident demonstrated and drop the incident: "run c66e0d's manual
+kill discarded 21 accepted artifacts" becomes "a manual kill discards every accepted artifact the
+round has not yet verified", which is the same fact and stays true. Make routine minor changes
+directly, and raise only the decisions the operator actually has to make.
 
 Several operator terms cover more than one system, so resolve them aloud in a clause rather than
 silently picking one. "Queries" may mean harness-query probes, review lanes or subagent sessions;

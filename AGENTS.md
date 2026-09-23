@@ -955,10 +955,24 @@ branches, or installed dependencies and the lock, disagree on a version, take th
 (operator decision 2026-09-03) and prove it with one frozen install.
 
 **Commands.** Use `bun run test -- <paths...>`, never a bare `bun test`. The wrapper runs one
-`bun test --parallel` process with **two workers fewer than the machine's cores, minimum two**
-(`ANA_TEST_WORKERS` overrides that), slowest-first ordering learned from its first run, and a
-disposable temporary root under the host temp directory; after an idle wall it re-runs
-never-reported files once, without workers. `bun run gate` runs nine steps — runtime, **format**,
+`bun test --parallel` process with slowest-first ordering learned from its first run and a
+disposable temporary root under the host temp directory. Its worker count is **two fewer than the
+cores, less half of whatever load the host is already carrying, and never below two**
+(`workerCount`, `tools/runtime/test-suite.ts`; `ANA_TEST_WORKERS` overrides it outright). The load
+term is there because the cores a machine has are not the cores this suite gets, and a runner
+already carrying four jobs of its own should not be asked for three times itself.
+
+The part worth knowing before you believe a red run is what happens next. `attribute` reads the
+first process's result and decides whether the branch failed or the machine did, across nine
+reasons. Two of them say the machine did: every failure ended by a clock rather than an assertion
+(`clock-only`), or the one-minute load passed twice the core count while they ran
+(`crowded-host`). Either way up to eight failed files run again alone, in one fresh process, and
+**that second verdict is the suite's**. The same happens for files the idle wall cut off before
+they finished. What never gets a second chance is a failure the first process actually printed, an
+error Bun raised outside any test — nothing in the failed list speaks for it, so rerunning cannot
+unsay it — a file that reported nothing at all, or more than eight failures, which is more than a
+busy host explains. So a red run on a loaded laptop is not yet a verdict on your branch; read which
+of those sentences the wrapper printed. `bun run gate` runs nine steps — runtime, **format**,
 **ui-deps**, typecheck, lint, **source-policy, complexity, ui** and tests — so the two policy
 gates, the UI gate and the formatter can each fail a push that the contract used to leave unnamed.
 `ui-deps` prepares `packages/ui`'s own modules before typecheck and lint read them, because

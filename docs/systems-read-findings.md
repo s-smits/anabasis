@@ -121,9 +121,18 @@ through a less inspectable path.
   the code's own comment concedes the rule "detects some such cases and proves no provenance".
 - **Hostile test:** declare an external check with a long flag or a JSON operand and confirm it is
   refused while an authored program well under 256 bytes passes.
-- **Smaller honest form:** keep the finding, drop the refusal — record the argument bytes on the
-  coverage row and let the claim state what the instrument actually decided, since independence was
-  never provable from argument shape.
+- **Correction to the reader's evidence:** the finding was underpriced, and the section heading above
+  — the refusal stops the ordinary thing and not the bad one — does not hold here. `programArgumentChecks`
+  opens with `if (!externalCheckIds.has(row.checkId)) continue;`, so an authored check may pass a
+  program of any length: the code says so in as many words, "Authored checks may pass program text:
+  they claim no independence". What the rule catches is the one shape that makes an independence
+  claim false — an `external` check whose deciding bytes travel in argv, so the host attests the
+  interpreter and the candidate supplies the logic. And the way out it names is not a less
+  inspectable path: `programArgumentRemedy` tells the author to redeclare the check as `"authored"`,
+  which is the accurate label and costs only the independence the check could not support anyway.
+- **Smaller honest form:** none. The 256 bytes are still arbitrary and still prove no provenance,
+  which the comment concedes, but a gate scoped to exactly the claim it protects, offering the
+  honest reclassification as its remedy, is a gate paying rent. Keep it.
 - *This does not make sense.*
 
 ### 3.2 `exportTarget` refuses the ordinary rebuild
@@ -277,20 +286,22 @@ The only finding in the set that changes a decision in the wrong direction today
 | `phase: "battery-census"` | `src/truth/judge-census.ts:22` | One-member union, constructed once at `:92`, asserted verbatim at three test sites across two files; nothing branches on it. Residue of a member that left when the control census stopped reaching the Judge. **[verified]** |
 | `Partial` over a complete table | `src/backends/effort-envs.ts` | `satisfies Partial<Record<BackendKind, …>>` over a table holding all three kinds, a return type of `string \| undefined` the indexing cannot produce, and a live ternary at `resolve-side.ts:101` branching on the impossible arm. **[relayed]** |
 | The 23/14 rule split | `tools/oxlint/ana/index.ts` | 37 rules in one flat object, split by a blank line, with about twenty lines of prose explaining the boundary and concluding "read it as the order things arrived in and nothing more". Every rule registers at `error` regardless; the boundary's live consumer is whitespace. **[relayed]** |
-| `ANA_WORKSHOP_VM` | `src/builder/vm-workshop-cell.ts` | 428 lines, a live importer at `src/run/builder-runtime.ts:91`, a dedicated test — and the variable appears nowhere but that file, its test, and `test/env-baseline.ts`, which strips it. No sanctioned launcher sets it, so in a paid detached run the third isolation layer cannot be selected. **[verified]** |
+| ~~`ANA_WORKSHOP_VM`~~ | `src/builder/vm-workshop-cell.ts` | **[refuted]** The entry claimed the variable appears nowhere but that file, its test and `test/env-baseline.ts`, and therefore that no launcher can select the cell. `tools/vm/provision-workshop-cell.sh` sets it: line 15 documents it and line 217 is the provisioner's closing instruction, `export ANA_WORKSHOP_VM=$NAME`. So the cell is opt-in infrastructure with a sanctioned way in, not a fossil — an operator provisions the VM, exports what the script prints, and the third layer is selected. The line count was wrong too: 398 total, 382 nonblank, not 428. This is the class AGENTS.md calls the most expensive kind to get wrong, and the register got it wrong in exactly the way it warns about — a search that missed one directory, reported as an absence. |
 | `maxConcurrency` on the Judge contract | `src/truth/judge-contract.ts:90` | Optional; `judge-census.ts:75` falls back to `JUDGE_MAX_CONCURRENCY` (5). The only assignment anywhere in `src`, `tools` or `test` is `test/judge.test.ts:578`. One reader, one test writer, no production writer. **[relayed]** |
 | `authority: "unknown"` | observer rows | Four of five members are written across six emit sites; this one has no producer. **[relayed]** |
-| `allowInTypeGuards` | `tools/oxlint/ana/rules/no-runtime-typeof.ts` | Schema entry, default, one read, no setter anywhere. Marked *I do not understand this* — the plugin is copied from upstream and parity may be the whole reason; upstream was not checked. **[relayed]** |
+| `allowInTypeGuards` | `tools/oxlint/anti-slop/rules/no-runtime-typeof.ts` | Schema entry, default, one read at `:163`, no setter anywhere. The register first filed this under `tools/oxlint/ana/`, which is the repository's own plugin and would have made it dead weight. It is in `anti-slop`, the plugin copied from dmmulroy/anti-slop, so upstream parity is the likely whole reason and the option is a deliberate carry rather than a fossil. Upstream still unchecked. **[relayed, path corrected]** |
 
 ### 5.6 `copiedFileLimits`: one number buying two unrelated exemptions
 
 - **Owner:** `tools/loc/source-policy.json`, read by `tools/loc/source-policy.ts`.
 - **Decision changed:** both the 800-line file ceiling and the 115-line per-function check, for the
   whole listed file, from a single number.
-- **Evidence:** six entries. `src/truth/probes.ts` is listed at 436 and measures 436 nonblank lines
-  — zero headroom against a ceiling it is nominally exempt from — because what the entry actually
-  pays for is one long function, `makeProbeControls`. Only two of the six numbers exceed 800, which
-  is the tell that the rest are not file-ceiling exemptions at all. **[verified]**
+- **Evidence:** six entries. `src/truth/probes.ts` is listed at 436 and measures 432 nonblank lines
+  — four lines of headroom against a ceiling it is nominally exempt from, which restoring a handful
+  of comments would spend — because what the entry actually pays for is one long function,
+  `makeProbeControls`. Only two of the six numbers exceed 800, which is the tell that the rest are
+  not file-ceiling exemptions at all. **[verified; the count was first written as 436, matching the
+  budget rather than the file]**
 - **Correction to the reader's evidence:** the supporting argument that "the fine instrument already
   exists one directory over, and `tools/loc/complexity-baseline.json` is `{}`" is wrong.
   `complexity-baseline.json` freezes *cyclomatic complexity* exceptions under
@@ -440,8 +451,11 @@ an operator's attention in their own right.
    not find the reporter. If it exists, §4.1 drops from a silent pass to a legibility point.
 5. Does anything already refuse a Builder tool description that contradicts the host binding? If so,
    §6.2 softens from a contract defect to a redundant paragraph.
-6. Is there any launch path that sets `ANA_WORKSHOP_VM`? If so, the micro-VM cell moves out of the
-   fossil table.
+6. ~~Is there any launch path that sets `ANA_WORKSHOP_VM`?~~ **Answered: yes.**
+   `tools/vm/provision-workshop-cell.sh:217` prints `export ANA_WORKSHOP_VM=$NAME` as its closing
+   instruction. The cell has left the fossil table. Worth noting how the question was phrased, since
+   it is the reason the error survived to be written down: the register filed the entry as
+   **[verified]** and then asked, underneath, whether the thing it had just asserted was true.
 7. Has `scoringClosureHash` ever returned null for a bundle that was actually adopted? If the
    recorded corpus holds no null, §3.3 is cosmetic.
 8. Is the test that would prove rule 4 implemented anywhere — change only protected verifier detail,

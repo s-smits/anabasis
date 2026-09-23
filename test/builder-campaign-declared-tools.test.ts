@@ -216,15 +216,15 @@ describe("a declared external tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: true });
   });
 
-  // The first missing-tool refusal keeps the session open for repair (run 36's lesson, above).
-  // Repeated unchanged submissions then reach the no-op limit; this test does not infer why
-  // the Builder kept the declaration or whether a model understood the refusal.
-  //
-  // Which clause it ends on moved with the tool verdict. An unresolved tool id is now a bundle
-  // finding, so validation refuses the tree before any later verifier settlement. The repeat is a
-  // counted no-op strike and the session ends as authoring-stalled at the declared ceiling —
-  // This checks the clause actually returned by the campaign. The later verifier-required
-  // ceiling is tested separately with recorded tool non-results.
+  // The first missing-tool refusal keeps the session open for repair, which is run 36's lesson
+  // above. What this case adds is where an unrepaired session ends up, and the answer is not the
+  // one the tool verdict might suggest: an unresolved tool id is a bundle finding, so validation
+  // refuses the tree before the verifier settlement is ever reached. The tree never changes
+  // between submits, so each repeat is a counted no-op strike and the session ends as
+  // authoring-stalled rather than verifier-required. That other ending needs recorded tool
+  // non-results to reach, and builder-campaign-tool-ceiling.test.ts writes them. Nothing here
+  // infers why the Builder kept the declaration or whether a model would have understood the
+  // refusal; the scripted session resubmits unchanged because that is what it was told to do.
   it.concurrent("ends a kept tool declaration on the no-op ceiling instead of burning every turn", async () => {
     const campaignDir = scratchDir("ana-primary-verifier-required-settle-");
     const workspace = join(campaignDir, "workspace");
@@ -316,15 +316,16 @@ describe("a declared external tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
   });
 
-  // The control census and F2 reference solve use the same typed verifier exception. Earlier F2
-  // failures used a separate class that escaped without recorded evidence or a named owner.
-  // This test injects the shared exception through probeControls; it does not run an F2 solve.
-  //
-  // The tool is the author's own choice, so the round continues and the author is told what to
-  // repair; w37-opus and truss-w37-sol were both discarded whole on the opposite reading.
-  // The earlier campaign had spent two authoring iterations in w37-opus before stopping
-  // on a tool the Builder had named. This regression uses a process killed by a signal, whose
-  // host outcome is classified as an author-repairable crash, and checks the returned guidance.
+  // Who owns a tool that will not run is the whole question, because the two answers cost very
+  // different amounts. Reading it as the environment's discards the campaign whole, which is what
+  // happened to w37-opus and truss-w37-sol; w37-opus had already spent two authoring iterations
+  // before it stopped on a tool its own Builder had named. But the Builder chose that tool, so a
+  // crash in it is ordinary authoring work: the round continues and the author is told what to
+  // repair. The case proves that by running a real installed tool that kills itself with a signal,
+  // so the `crash` classification comes from the host's own row rather than from a string this
+  // test picked. What it injects is the control census path — `VerifierExecutionNonResult` through
+  // probeControls, the same typed exception the solvability witness throws — so no F2 solve runs
+  // here.
   it.concurrent("continues the round when a tool the brief named reached no completed run", async () => {
     const campaignDir = scratchDir("ana-primary-census-candidate-");
     const workspace = join(campaignDir, "workspace");

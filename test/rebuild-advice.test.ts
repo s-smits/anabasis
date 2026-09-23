@@ -1,9 +1,27 @@
 /**
- * Tests for the rebuild advice packet, which gives the Builder recorded issue summaries.
- * These checks cover three parts: the issues observed in one battery, their status across
- * later batteries and the fields the model-visible text may contain. Tests that derive a
- * packet through measurement and analysis live in test/harness-measure.test.ts and
- * test/analyse-step.test.ts.
+ * The rebuild advice packet is the one channel by which what a battery recorded reaches the Builder
+ * that writes the next one, and it has two jobs that pull against each other. It has to carry
+ * enough for the Builder to act — which families failed, which checks, how often, and whether an
+ * issue it has seen before came back — while carrying nothing that would hand it the answers. So
+ * the cases here fall into two groups, and both matter equally.
+ *
+ * The first group is what the packet knows. One battery's observations are counted against the
+ * right denominators, with a verified failure, an unaccepted attempt and a non-result kept apart;
+ * an issue then ages across later batteries through active, tentatively-fixed, confirmed-fixed,
+ * regressed, retired and disputed. The retired case is the one to read closely, because a family
+ * that left the task set makes its issue retired rather than fixed, and absence counts towards a
+ * fix only when the family actually ran.
+ *
+ * The second group is what the packet must not say. A finding bound to a single case is dropped
+ * rather than aggregated, the render carries families, kinds and counts but never a task id or
+ * verifier text, and a diagnosis publishes its review metadata while its prose stays private.
+ * Those are the leakage assertions, and a loosened one fails in the worst way available: the packet
+ * still renders, the Builder still reads it, and the battery it authors next is measuring a
+ * question it was quietly handed the answer to.
+ *
+ * Deriving a packet end to end from recorded measurement evidence is a different question and lives
+ * in test/harness-measure.test.ts and test/iteration-analysis.test.ts. Here the inputs are built
+ * directly, so that each rule can be put under a case of its own.
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";

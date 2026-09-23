@@ -14,12 +14,16 @@ import type { OwnerLayer } from "../meta/owner.ts";
  * The brief contract, authored by the Builder and checked by `validateBrief` during candidate
  * validation. The same requirements apply to every backend.
  *
- *  - decisions and gates are non-empty: a brief that decides nothing builds nothing;
- *  - truth checks are typed and declared, so the verifier emits no undeclared check id;
- *  - each join names the decoy classes that would fool a presence-only check, and the control
- *    corpus covers them (see controls.ts), since covering check labels does not prove a join;
- *  - design-rule constants cite an authority outside the build, so a reviewer can check the
- *    value independently.
+ * Each requirement retains the failure that motivated it:
+ *  - decisions and gates non-empty, because a brief that decides nothing builds nothing;
+ *  - truth checks typed with decidable text, after hw24, where the verifier emitted checkIds the
+ *    brief had never declared;
+ *  - joins carrying decoy obligations, because hw21 to hw24 showed that covering the check labels
+ *    does not prove the join is correct. Each declared join must name the decoy classes that would
+ *    fool a presence-only check, and the control corpus must cover them (see controls.ts);
+ *  - design-rule constants citing an external authority, after hw22, where the join was sound but
+ *    the rule itself was wrong and the advisor reinforced it. A constant needs a source outside the
+ *    build so that a reviewer can check the value against something the build did not produce.
  */
 import type { TruthCheck } from "../../vendor/correctness-model-bundle/truth-checks.ts";
 import { isRecord, isString, typeName, type JsonValue } from "../meta/json-shape.ts";
@@ -58,8 +62,12 @@ type BriefJoin = {
 };
 
 /**
- * One top-level field of the canonical submitted artifact. The brief owns the artifact shape;
- * controls, the correctness model and generated tools all use this declared representation.
+ * One top-level field of the canonical submitted artifact. The brief owns the artifact shape, and
+ * the controls, the correctness model and the generated tools all use that declared representation,
+ * because in falsifier-claude-007 nothing owned it: the fresh-accepts author emitted accept controls
+ * as {crew, bindings} while the verifier and the tools used {declaredCrew, shiftPlan, ...}. The
+ * verifier rejected all 10 known-good controls, every binding referencing a shift missing from an
+ * absent shiftPlan, while the agent's own self-consistent artifacts passed 8 of 8.
  */
 export type ArtifactField = {
   name: string;
@@ -94,7 +102,9 @@ export type DesignRuleConstant = {
   citation: string;
 };
 
-/** A declared set of permitted values with an external citation, alongside DesignRuleConstant. */
+/** A declared set of permitted values with an external citation, alongside DesignRuleConstant. In
+ *  live-c3-comparison-003 the kickoff named value sets the contract could not represent at all, so
+ *  no check could express which values were legal for each mode. */
 export type DesignRuleSet = {
   name: string;
   values: Array<string | number>;
@@ -312,8 +322,10 @@ export function recordView(value: unknown): Record<string, JsonValue> | null {
   return isRecord(value) ? value : null;
 }
 
-/** A shape finding that names what is wrong before what was expected, since the author reads a
- *  bounded detail and the tail may be cut. */
+/** A shape finding that names what is wrong before what was expected, because the author reads a
+ *  bounded detail and the tail is what gets cut: run 077e56 read "got object" four times for a
+ *  constant row missing its `citation`, and three truss runs lost `numericBoundaries` inside
+ *  `execution` at exactly the point the detail ended. */
 export function fieldFinding(
   path: string,
   expected: string,

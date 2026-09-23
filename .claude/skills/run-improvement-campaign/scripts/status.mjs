@@ -7,10 +7,14 @@
  * `difficulty-decisions/`, `safeguards/<run>/SAFEGUARDS_LOG.txt`, `notes/predictions/<run>.jsonl`,
  * `versions/<version>/` for the frozen bundle and the cases its battery has open) and samples
  * process/session activity.
- * Counts are diagnostic: the legacy classifier below treats two null verdict fields as a
- * non-result without requiring a typed cause. Use the validated outcome reader for denominator
- * claims. Live battery counts are labelled partial. On 2026-09-02 five
- * conditions at once and every "which run is where" question was answered by hand-grepping logs.
+ * The counts are diagnostic rather than a denominator. `caseKind` below calls a row a non-result
+ * whenever both verdict fields are null, without requiring the typed cause the validated outcome
+ * reader requires, so read a capability rate from that reader and not from here. A battery whose
+ * run has no terminal and a live controller lock is printed with ", partial" beside its row count,
+ * because the remaining cases have not been written yet. What this view is for is the question a
+ * fleet of campaigns raises and no single file answers — which run opened on which commit, which
+ * one a live controller still holds, and which one has a battery open — and answering it by
+ * grepping logs is what it replaces.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";

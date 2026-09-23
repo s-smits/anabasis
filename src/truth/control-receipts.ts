@@ -1,8 +1,12 @@
 /**
- * Saved results for each control: shaped from what the control runner observed, checked against
- * the declared corpus, and summed into the totals a claim compares against. Hidden values,
- * evaluator issues and other private execution details stay out; tool runs stay in the host's own
- * evidence rows under the control's subjectId.
+ * Saved results for each control. The control runner records what happened; this module shapes
+ * those results, checks them against the declared corpus, and calculates the summary totals a claim
+ * compares against. Hidden values, correctness-model issues, commands and other private execution
+ * details stay out, because a receipt is read by the author's side of the boundary.
+ *
+ * Which tool ran for a control is deliberately not copied here either. The host's own evidence rows
+ * already carry that under the control's subjectId, and `grounding-coverage.ts` reads them there, so
+ * a copy would be a second version of the same fact that could disagree with the first.
  */
 import { isNonResultKind, type NonResultKind } from "../claim/record-events.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
@@ -64,8 +68,11 @@ type ReceiptSettlement = {
   totals: ReceiptTotals;
 };
 
-/** The result of checking saved receipts; `totals` is null unless every row is valid, unique and
- *  declared. */
+/** The result of checking a saved JSON value before its rows are matched to the declared controls
+ *  and summed into the totals `Claim.create` compares against the saved summary. Extra fields,
+ *  hidden values and verifier detail are rejected rather than ignored, and `totals` stays null
+ *  unless every row is valid, unique and declared, so a partially readable receipt set produces no
+ *  number at all. */
 type ReceiptSetCheck = {
   findings: DiscriminationClaimabilityFinding[];
   totals: ReceiptTotals | null;
@@ -76,7 +83,8 @@ function expectedCheckIdOf(control: DeclaredControl): string | null {
   return "expectedCheckId" in control ? control.expectedCheckId : null;
 }
 
-/** `subject` names the control the message quotes, so feedback can fold one repair across controls. */
+/** `subject` names the control the message quotes, which is what lets author feedback fold one
+ *  repair across every control that shares it instead of listing them one by one. */
 export function controlReceiptInvalidFinding(
   message: string,
   subject?: string,
@@ -84,8 +92,12 @@ export function controlReceiptInvalidFinding(
   return { code: "DISCRIMINATION_CONTROL_RECEIPT_INVALID", message, ...keyIfDefined("subject", subject) };
 }
 
-/** The attribution rule: an accept passes with no blocking check; a reject is attributed when its
- *  expected check is among the checks that blocked it. Other checks may fail too. */
+/** The one attribution rule: an accept passes with no blocking check, and a reject is attributed
+ *  when its expected check is among the checks that blocked it. Other checks may fail on that reject
+ *  as well — what proves nothing is a reject that fails somewhere else but not on its named check.
+ *  Until 2026-09-14 the blocking set had to be exactly the expected check, and 61 recorded truss
+ *  epochs spent most of their refusal rows on that cascade rule, with the adopted evaluators growing
+ *  checks that pass on a broken declaration just to satisfy it. */
 export function sideMatchesExpected(
   side: ControlReceiptSide,
   expectedOutcome: "pass" | "fail",

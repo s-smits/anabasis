@@ -1,13 +1,19 @@
 /**
  * Bounded content hashing and mutation checks for verifier input files.
  *
- * Input identity is host evidence, so hashing has a finite cost: shared budgets bound files, bytes
- * and time. Each file is read in chunks, with path and descriptor metadata checked before and after,
- * which detects replacement, truncation, mode and timestamp changes. This reader refuses symbolic
- * links; the exact-read caller resolves them.
+ * Input identity is host evidence, which means the hashing has to have a finite cost however large
+ * the declared root turns out to be: shared budgets bound the number of files, the logical bytes and
+ * the elapsed time, and a root that exceeds one of them is refused rather than allowed to run long.
+ * Each file is read in chunks, with metadata checked before and after the read on both the path and
+ * the open descriptor, and those two comparisons are what detect an observed replacement, a
+ * truncation, or a change of mode or timestamp. Symbolic links are refused by this file reader; the
+ * exact-read caller records and resolves them separately, because a link's identity is its target's
+ * and this reader only ever has the name.
  *
- * This is not an OS snapshot: a same-UID writer can replace a path and restore bytes and metadata
- * between observations (pathname ABA). A visible transition is refused; that race is not excluded.
+ * What this is not is an OS snapshot. A same-UID writer can still replace a path and restore both
+ * bytes and metadata between two observations — the pathname ABA case — and the host records a
+ * typed refusal whenever a transition is visible to it. Excluding that race would need a filesystem
+ * snapshot or a separate writer boundary, so this module does not claim to.
  */
 import {
   closeSync,
@@ -19,7 +25,8 @@ import {
   readlinkSync,
 } from "../meta/filesystem.ts";
 
-/** About twice the largest tool tree seen in practice. */
+/** Above the largest tool tree recorded, which was campaign w47's at 109,509 entries, with finite
+ *  headroom over that shape rather than a number chosen to be large. */
 const READ_ROOT_MAX_ENTRIES = 250_000;
 /** One declared root may contribute at most sixteen GiB of logical file and link bytes. */
 export const READ_ROOT_MAX_BYTES = 16n * 1024n * 1024n * 1024n;
@@ -33,7 +40,9 @@ const READ_ROOT_READ_CHUNK_BYTES = 1024 * 1024;
 
 type ReadRootKind = "directory" | "file" | "symlink";
 
-/** Private metadata, deliberately not part of the condition digest. */
+/** Private metadata. It is deliberately kept out of the condition digest: an inode number or an
+ *  mtime is a fact about this host at this moment, so including it would make two runs of identical
+ *  bytes report different conditions. */
 export interface ReadRootMetadata {
   path: string;
   kind: ReadRootKind;
@@ -58,7 +67,9 @@ export interface ReadRootBudget {
   /** Entries and logical bytes charged by the one content-hashing attestation. */
   entries: number;
   contentBytes: bigint;
-  /** Metadata-only revalidation is bounded separately and never resets the content counters. */
+  /** Metadata-only revalidation is separately bounded work, counted in its own pair of fields so it
+   *  can never silently reset the aggregate counters belonging to the content walk that produced the
+   *  digest. */
   metadataEntries: number;
   metadataBytes: bigint;
   startedAt: number;
@@ -77,8 +88,11 @@ interface RootWalkBudget {
 }
 
 /**
- * Refuses a non-UTF-8 name or symlink target, which JSON identity could only hold ambiguously.
- * Callers pass buffers, because the string API has already decoded lossily.
+ * POSIX permits directory names and symlink targets that are not valid UTF-8. The JSON condition
+ * identity cannot represent them without an ambiguous replacement character, so the host refuses
+ * such a root instead of recording a name that is not the name on disk. Taking a buffer matters
+ * here: by the time the default string API has returned, the lossy decode has already happened and
+ * the decision can no longer be made.
  */
 function utf8PathBytes(value: string | Uint8Array, description: string): string {
   if (!(value instanceof Uint8Array)) return value;
@@ -202,7 +216,9 @@ const READ_ROOT_OPEN_FLAGS = (() => {
   return O_RDONLY | O_NONBLOCK | O_NOFOLLOW;
 })();
 
-/** One read buffer for every file digest; the walk is synchronous, so reads never overlap. */
+/** One read buffer shared by every file digest. The walk is synchronous, so no two reads overlap
+ *  and a shared buffer is safe; allocating a zeroed 1 MiB buffer per file instead made a root of
+ *  20,000 one-byte files cost two seconds in memset alone. */
 const READ_CHUNK = new Uint8Array(READ_ROOT_READ_CHUNK_BYTES);
 
 function readFileDigest(
@@ -214,8 +230,10 @@ function readFileDigest(
   if (expected.kind !== "file") throw new Error(`read root expected a regular file: ${path}`);
   const size = BigInt(expected.size);
   reserveBytes(budget, size, path);
-  // O_NONBLOCK keeps a FIFO swapped in after lstat from blocking; O_NOFOLLOW refuses a symlink swap.
-  // The descriptor fstat below catches a regular-file swap and a path swapped back before the recheck.
+  // O_NONBLOCK prevents a path replaced with a FIFO between lstat and open from blocking the host
+  // on a writer that never arrives, and O_NOFOLLOW refuses a replacement with a symlink. Neither
+  // covers a replacement with another regular file, nor a race that swaps the path back before the
+  // second path check, which is why the descriptor fstat below is still required.
   const handle = openSync(path, READ_ROOT_OPEN_FLAGS);
   const bytes = READ_CHUNK;
   const hasher = new Bun.CryptoHasher("sha256");
@@ -258,11 +276,13 @@ function descriptorMetadata(path: string, handle: number): ReadRootMetadata {
 }
 
 /**
- * Hashes one host file with a bounded reader that checks the open descriptor, for command binaries
- * and attested files. The recorded size is charged before open, so an oversized or sparse file is
- * refused without allocation.
+ * Hash one host file with a bounded reader that checks the open descriptor. Callers use this for
+ * command binaries and declared attested files, and nothing in this module reads a whole file into
+ * memory: every digest goes through the chunked reader above, so a file's size cannot decide how
+ * much the host allocates. The recorded size is charged against the budget before the open, which is
+ * what turns an oversized or sparse file into a typed unavailable or non-result rather than an
+ * allocation.
  */
-
 export function attestReadRootFile(
   path: string,
   budget: ReadRootBudget = createReadRootBudget(),

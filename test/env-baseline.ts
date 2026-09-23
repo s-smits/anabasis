@@ -1,6 +1,6 @@
 /**
  * The one ambient process-environment baseline for `bun test`. `bunfig.toml` disables dotenv
- * loading; this boundary neutralises the three exported-variable classes that can still change a
+ * loading; this boundary neutralises the four exported-variable classes that can still change a
  * verdict here:
  *
  *   1. sandbox toggles — CODEX_SANDBOX / HARNESS_INNER_UNSANDBOXED flip isolation detection,
@@ -36,8 +36,8 @@ const CREDENTIAL_ENVIRONMENT =
 const removed: string[] = [];
 for (const name of Object.keys(Bun.env)) {
   // SAFETY: the control list is a literal of the names that alter isolation, test composition or
-  // captured child output, and
-  // the credential pattern is the same one the generated-worker boundary enforces downstream.
+  // captured child output, and the credential pattern is the same one the generated-worker
+  // boundary enforces downstream.
   if (CONTROL_ENVIRONMENT.some((control) => control === name) || CREDENTIAL_ENVIRONMENT.test(name)) {
     delete Bun.env[name];
     removed.push(name);

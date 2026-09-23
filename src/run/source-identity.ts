@@ -1,11 +1,25 @@
 /**
- * Binds campaign evidence to the executed source revision. It is captured once at module load, so
- * a process whose source changes underneath it keeps its original identity. A null identity (not a
- * git work tree, git absent) is typed absence, disclosed and never guessed.
+ * A0.2: bind campaign evidence to the executed source revision. It is captured once at module
+ * load, so a process whose imported source changes underneath it — live-run-01 run 1, where
+ * commits were made mid-run — keeps its original identity instead of attributing later commits to
+ * itself. A null identity (not a git work tree, git absent) is typed absence: disclosed, never
+ * guessed.
  *
- * `sourceDigest` hashes the full contents of the executable and model-visible product roots, since
- * F2 census children load their modules from disk at spawn. It is the only thing compared: a docs
- * edit, a new commit or a mode change is not drift. `commit` stays on the evidence for attribution.
+ * The `sourceDigest` field exists because a dirty boolean is disclosure rather than binding
+ * (live-run-03 review, P1). F2 census children resolve their module graph from disk at spawn, so
+ * two captures are attributably the same source only when the executed bytes agree. The digest
+ * covers the executable and model-visible product roots alone, which is why a README or
+ * BUILD-STATE edit does not change that content identity.
+ *
+ * That scoping promise held for the digest and was then broken by the comparison. The digest used
+ * to hash a diff against HEAD, which cannot stand alone: bytes matching a new HEAD hash the same
+ * as bytes matching the old one, so `sourceStillFrozen` had to compare `commit` as well, and the
+ * conjunction made every commit read as source drift. Committing a docs edit, or untracking a
+ * controller-owned output, refused the F2 census as `owner: environment` without one executed byte
+ * having changed — live-run-06 caught an index-only `campaigns/` untrack that moved HEAD mid-run
+ * before the census reached it. The digest now hashes the roots' full contents and is the only
+ * thing compared, so a new commit is not drift and neither is a mode change on a root file.
+ * `commit` stays on the evidence as attribution disclosure.
  */
 import { readFileSync } from "../meta/filesystem.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";

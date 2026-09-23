@@ -138,13 +138,20 @@ export class WorkerClient {
   >();
   private readonly readyTimer: ReturnType<typeof setTimeout>;
   private readonly readyState = Promise.withResolvers<WorkerReady>();
-  /** Whether the child reported isolation installed: before it, a startup failure is the host's;
-   *  after it, the candidate's code is loading. */
+  /** Whether the child reported its isolation installed. Before that frame, startup belongs to the
+   *  host and a ready timeout is the host's own wait; afterwards the worker is loading the
+   *  candidate's code, which no environment reader may claim. `readyTimeoutCause` reads the field
+   *  to make exactly that distinction. */
   private walls: "installed" | "pending" = "pending";
   private expectedClose = false;
   private failed: GeneratedToolWorkerNonResult | null = null;
   private checkpointValue: BuiltStarterCheckpoint | null = null;
-  /** The worker holds a checkpoint only once its `ready` frame was admitted. */
+  /** The handshake is what the checkpoint records: the worker holds one only once its `ready` frame
+   *  was admitted, so the stored checkpoint is the phase. Five readers here ask for the phase rather
+   *  than for the field, because what each of them decides — who owns an exit, whether a second
+   *  ready is a protocol defect, whether the ready promise still needs rejecting, how an ending is
+   *  classified and whether a close may proceed — turns on the handshake and not on a checkpoint's
+   *  contents. */
   private get handshake(): "done" | "pending" {
     return this.checkpointValue === null ? "pending" : "done";
   }
@@ -165,7 +172,11 @@ export class WorkerClient {
     private readonly readyTimeoutMs = TIMEOUT_MS,
   ) {
     this.policy = generatedWorkerPolicy(bundle, support);
-    // The real child's ready handshake probes the boundary; this rejects runtime drift before spawn.
+    // The real child is what proves the boundary: it installs the execution wall, runs the isolation
+    // probes and only then loads generated code, and its `ready` frame carries the probe this
+    // client checks. What that leaves unproved is the runtime the child is about to be spawned
+    // from, so this snapshot check rejects a changed runtime closure before the spawn rather than
+    // discovering it afterwards.
     assertGeneratedWorkerPolicyUnchanged(this.policy);
     this.networkCanary = Bun.listen({
       hostname: "127.0.0.1",
@@ -327,7 +338,9 @@ export class WorkerClient {
       this.fail(this.nonResult(message.kind, `reported ${message.error}`));
       return;
     }
-    // One `wall_ready`, from this worker, before its `ready`: it decides who owns a later failure.
+    // One `wall_ready`, from this worker, before its `ready`: the phase it declares decides who
+    // owns a later failure, so it is admitted on the same terms as the ready handshake and a
+    // repeat or a foreign instance id is a protocol defect rather than a free phase change.
     if (message.type === "wall_ready") {
       const admitted = message.workerInstanceId === start.workerInstanceId && this.walls === "pending";
       if (admitted) this.walls = "installed";
@@ -350,9 +363,14 @@ export class WorkerClient {
       this.fail(error);
       return;
     }
-    // A verdict past the refusal always has a request.
+    // Only the lookup above can make `expected` non-null, and `admitResult` refuses a null one as
+    // an unknown request id, so a verdict that got past the refusal has a request behind it.
     if (request === undefined) return;
-    // Recorded even for a failed call: the draft state belongs to the worker, not the call.
+    // Recorded before the branch below, because this state belongs to the worker rather than to the
+    // call that failed: a refused tool call still leaves a draft the next call continues from, and
+    // the checkpoint is what a long turn's liveness is read through. Dropping it on a failed call
+    // would make the worker look stalled. `admitResult` has already checked this frame's checkpoint
+    // against the accepted one, so what is stored here cannot have drifted or regressed.
     this.checkpointValue = verdict.retained.checkpoint;
     this.taskAccessValue = verdict.retained.taskAccess ?? this.taskAccessValue;
     if (verdict.act === "fail-call") {
@@ -422,7 +440,10 @@ export class WorkerClient {
     }
   }
 
-  /** A reply whose type the protocol does not pair with this request. */
+  /** A reply that arrived where the protocol pairs this request with exactly one type. `admitResult`
+   *  already refuses a crossed result, so this is the narrowing behind that refusal rather than a
+   *  second check; it names what actually crossed, so a protocol change reads as itself instead of
+   *  as one shared phrase. */
   private crossed(type: string): Error {
     return new Error(`unreachable crossed result: ${type}`);
   }
@@ -440,7 +461,9 @@ export class WorkerClient {
     return capturedStructuredClone(response.files);
   }
 
-  /** Replace the draft's file map; the child refuses an invalid batch whole. */
+  /** Replace the draft's file map with what a command left behind. The child validates the batch
+   *  against the draft's own key and content rules and refuses it whole, so a rejected apply leaves
+   *  the draft exactly as it was rather than half-written from a command that half-succeeded. */
   async applyFiles(files: Record<string, string>): Promise<void> {
     const response = await this.request({ type: "apply_files", files });
     if (response.type !== "apply_files_result") throw this.crossed(response.type);
@@ -537,7 +560,9 @@ export class WorkerClient {
   private async settleClose(): Promise<Termination> {
     try {
       this.expectedClose = true;
-      // Draining may outlast the close handshake; it must neither extend it nor reject unhandled.
+      // This aggregate already carries its own rejection into `this.failed`, so nothing is lost by
+      // ignoring it here. It may finish draining after the child exits, and it must not extend the
+      // bounded close handshake or surface a late unhandled rejection once the run has settled.
       void this.exited.catch(() => {});
       this.networkCanary.stop(true);
       const refusal = closeRefusal(this.handshake, this.activeRequests);

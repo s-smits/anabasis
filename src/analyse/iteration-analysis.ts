@@ -1,13 +1,18 @@
 /**
- * The analysis packet: one IterationAnalysis derived from recorded evidence (the executed bundle
- * snapshot, case outcomes, claim clauses, disclosed isolation and run condition). Code owns
- * derivation, shape and admission; models supply diagnosis.
+ * The analysis packet: one IterationAnalysis derived from recorded evidence alone — the executed
+ * bundle snapshot, the case record's outcome counts, the claim file's verdict clauses, the
+ * disclosed isolation and the run condition. Code owns derivation, shape and admission, and models
+ * supply only diagnosis; the Main Judge's review is revalidated over this packet rather than folded
+ * into it.
  *
- * Only findings about Builder-authored files may reopen an author session. Environment
- * non-results rerun without changing the harness, hardness goes to the climb, and a Judge
- * disagreement is advice only.
+ * Owner routing is deliberately not "every failure goes to an author session". Only findings about
+ * Builder-authored files may reopen one, because reopening is what costs a round: an environment
+ * non-result is rerun with the harness unchanged, genuine hardness belongs to the climb, and a
+ * Judge disagreement is advice that never seeds an actionable finding.
  *
- * Admission accepts only findings whose cited evidence exists on disk.
+ * Admission then checks that citations exist. A finding whose cited evidence is not on disk is
+ * refused whatever produced it, so nothing reaches the next round on the strength of a pointer
+ * nobody can follow.
  */
 import { selectedProductDir } from "../run/product-versions.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
@@ -37,7 +42,9 @@ import type { NoRouteReason } from "./finding-owner.ts";
 export type CaseEvidence = CaseVerdict & {
   taskId: string;
   family: string;
-  /** Digest-bound trace pointers copied verbatim from the case row, so readers can verify them. */
+  /** Digest-bound trace pointers copied verbatim from the case row. An earlier schema carried bare
+   *  paths, which dropped the sha256 at this boundary and left the trace-reading review unable to
+   *  verify what it had fed the model; the pointer now crosses whole. */
   traces: TracePointer[];
 };
 
@@ -52,8 +59,9 @@ export type BatteryEvidence = {
   readinessClauses: string[] | null;
   /** The censored denominator — non-results never fabricate capability. */
   summary: RunSummary;
-  /** checkId → verified failed cases blocked by that check, from the battery's firing counts.
-   *  Check ids are public, so these counts may reach the rebuild author. */
+  /** checkId → verified failed cases whose verdict blocks on that declared check, copied from the
+   *  battery's recorded firing counts. Check ids are public authoring identities, so the counts may
+   *  reach the rebuild author; no task id travels with them. */
   blockingByCheck: Record<string, number>;
 };
 
@@ -83,9 +91,16 @@ interface ClaimFileSlice {
 }
 
 /**
- * Version of the severity and routing rules that wrote a feedback packet. Bump it whenever a
- * finding's severity or route changes: a reader treats a packet under another version as stating
- * nothing, rather than relabelling old findings under the current rules.
+ * Version of the severity and routing rules that wrote a feedback packet. A saved packet's
+ * severities are only readable by a rule that would have assigned them the same way, so this is
+ * bumped whenever a finding's severity or its route changes; `readAdmission` then reads a packet
+ * under any other version as stating nothing, instead of seeding the next build with a verdict the
+ * current rule would not have given. Evidence names the rule that produced it, and a reader never
+ * relabels old bytes under a new one.
+ *
+ * The motivating case was run 3, whose packet marked the all-pass census blocking. That finding is
+ * advisory now, and without this binding the stale row still outranked the climb at promotion,
+ * which is exactly the misroute the severity change had been made to end.
  */
 export const FEEDBACK_POLICY = "severity-route/9-complete-repair-agenda";
 
@@ -108,22 +123,35 @@ export type AnalysisFinding = {
   evidence: string;
   /** Author session proposal — consulted only for harness-defect findings. */
   proposedOwner: FeedbackOwner | null;
-  /** Severity when routed to an author session; absent means blocking. */
+  /** Feedback severity when routed to an author session. Absent means blocking, because a
+   *  diagnosed defect demands reopening; advisory is for disclosures whose next move belongs to a
+   *  more calibrated owner, and an advisory restatement is outranked at promotion. */
   severity?: "advisory";
-  /** Per-case identity. A finding carrying one never reaches an author session, which protects
-   *  per-task failure locations. */
+  /** Per-case identity. A finding that carries one never reaches an author session, because the
+   *  no-hints rule protects the failure location of an individual task; a finding without a subject
+   *  routes per-finding as usual. */
   subject?: { taskId: string; family: string };
-  /** Public authoring identities the epoch reviewer may attach: a declared check id, a dotted
-   *  path under an artifactSchema root, a `$.` public input path. They are the only finding
-   *  detail in the public projection; the claim never is. */
+  /** Public authoring identities the epoch reviewer may attach: a declared check id, a dotted path
+   *  under a declared artifactSchema root, a `$.`-prefixed public input path. These are the only
+   *  finding detail that crosses into the public projection, and the claim never does. */
   checkId?: string;
   artifactSchemaPath?: string;
   publicInputPath?: string;
-  /** No declared check observes the obligation, so no existing check should be repaired for it. */
+  /** No declared check observes the obligation at all, so no existing check should be repaired for
+   *  it. Run 0dba8e's reviews named the nearest check for an unchecked sketch three times, and the
+   *  Builder dutifully repaired that check each time. */
   unobserved?: true;
-  /** What the cited probes executed, in public authoring identities only: the accept control,
-   *  the path, and the declared checks that moved. The replacement value and blocking checks
-   *  stay private. */
+  /** What the reviewer's cited probes executed, composed only from public authoring identities: an
+   *  accept control the Builder wrote, a dotted path under a declared artifactSchema root, and the
+   *  declared checks that the one changed field moved. The probe row itself stays private — its
+   *  replacement value is a generated counterexample and its blocking check ids are verifier detail
+   *  — and these three identities are the same class the finding's own `checkId` and
+   *  `artifactSchemaPath` already cross by.
+   *
+   *  Opus run 23a1bc is why this field exists: `target-compiles` was named in three consecutive
+   *  reviews, two of them forced blocking, each ordering a full rebuild of a 25-of-25 harness, and
+   *  the defect persisted while the public projection supplied only its check name. A probe is the
+   *  review's strongest evidence, and it was stopping at the boundary. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
 };
 
@@ -186,8 +214,9 @@ function batteryIdentity(slugDir: string, runId: string) {
   return { buildInputsHash: parsed.buildInputsHash, backendPin: parsed.backendPin, blockingByCheck };
 }
 
-/** The recorded firing field as a prototype-free count map, or null when it is not one. Without a
- *  prototype, a check id such as `__proto__` stays an ordinary key. */
+/** The recorded firing field as a count map, or null when it is not one. It is prototype-free like
+ *  the verifier inventory, because on a plain object a check id spelled `__proto__` would reach the
+ *  inherited setter instead of becoming a key, and the count would silently vanish. */
 export function blockingCounts(value: unknown): Record<string, number> | null {
   if (!isRecord(value)) return null;
   const out: Record<string, number> = Object.create(null);
@@ -198,8 +227,12 @@ export function blockingCounts(value: unknown): Record<string, number> | null {
   return out;
 }
 
-/** The one isolation strength every case row disclosed. No rows and disagreeing rows are
- *  different failures and throw with different messages. */
+/** The one isolation strength every case row disclosed. An empty set and a conflicting set both
+ *  fail `size === 1`, but they are different facts and so get different messages: zero rows means
+ *  no case ran, as on a battery skipped before spend, rather than that anything disagreed — run
+ *  opus-331 aborted on the disagreement sentence over an empty set, printing "disagree on isolation
+ *  strength ()". Callers stand the analyse phase down before reaching here on a zero-row battery,
+ *  and the first throw keeps that precondition loud and accurate for any future caller. */
 function disclosedIsolationStrength(
   slug: string,
   runId: string,
@@ -221,8 +254,10 @@ function disclosedIsolationStrength(
   ][0] as string;
 }
 
-/** Derive the packet from recorded evidence only, refusing missing battery, record or claim data
- *  so the next iteration never acts on the wrong version. */
+/** Derive the packet from recorded evidence only, and refuse missing battery, record or claim data
+ *  rather than deriving a partial packet from what is there. The next iteration must respond to the
+ *  measured product's evidence, and an incomplete or mismatched record could direct its changes at
+ *  the wrong version of the harness. */
 export function deriveIterationAnalysis(
   repoRoot: string,
   slug: string,
@@ -265,14 +300,19 @@ export function deriveIterationAnalysis(
   };
 }
 
-/** Findings the host can state from recorded counts alone. Why cases failed or went unaccepted is
- *  a question for diagnosis, so no finding here proposes an owner from outcomes. */
+/** Findings the host can state without model diagnosis, from recorded counts alone. An
+ *  all-verified-fail battery yields no deterministic finding here, because whether that is a
+ *  harness defect or genuine hardness is the model's question and the rebuild advice packet carries
+ *  the counts either way. An unaccepted case establishes only that no accepted submission exists,
+ *  so it is recorded as `diagnosis-uncertain` and never proposes an owner. */
 export function hostFindings(repoRoot: string, analysis: IterationAnalysis): AnalysisFinding[] {
   const findings: AnalysisFinding[] = [];
   const record = join("campaigns", analysis.slug, CASE_RECORD_FILE);
   const unaccepted = analysis.cases.filter((row) => classifyCaseOutcome(row) === "unaccepted");
   if (unaccepted.length > 0) {
-    // Totals only: no task ids and no inferred cause.
+    // Safe totals only: no task ids and no inferred cause. The claude-med run's 25 unaccepted cases
+    // were read as verified failures, and an Opus rerun later exposed the unsupported cause that
+    // reading had been admitted under.
     findings.push({
       kind: "diagnosis-uncertain",
       claim: `${unaccepted.length} of ${analysis.cases.length} attempt(s) produced no accepted submission and have no truth verdict; the counts alone do not establish why submission was absent`,
@@ -281,12 +321,15 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       severity: "advisory",
     });
   }
-  // Only environment-owned non-result kinds earn "rerun unchanged".
+  // Only a kind that can establish an environment failure earns "rerun unchanged": run 08c0f2 i02
+  // told its Builder that six `verifier` non-results — external checks that ran no tool at all —
+  // were one of those, and they were the harness's own.
   const nonResults = analysis.cases.filter(
     (row) =>
       row.runtimeNonResultKind !== null && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
   ).length;
-  // Non-results the Builder's own check caused are routed to their owner, not read as environment.
+  // Settled beside the environment restatement, so a non-result the Builder's own check caused is
+  // routed to that owner instead of being read as an environment fact (checker-unbound.ts).
   const checkerOutage = checkerUnboundFinding(repoRoot, analysis);
   if (nonResults > 0) {
     findings.push({
@@ -301,18 +344,28 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
     });
   }
   if (checkerOutage !== null) findings.push(checkerOutage);
+  // An all-pass battery used to add an advisory harness-defect here with owner "tests". It said
+  // what the measurement note already says, but with a distance, a streak and a scope, under a kind
+  // naming a defect the harness does not have and an owner the evidence had not chosen: the truss
+  // c1d2a7 packet carried "6 or more found no limit", "no battery of this product has found a
+  // limit", "the last 3 batteries all found no limit", "no family held" and that row — five
+  // statements of one fact, beside none of what to do instead. The climb readout owns the sentence
+  // "this battery found no limit".
   return findings;
 }
 
-/** A harness or curriculum defect is blocking unless its producer said advisory; every other kind
- *  is advisory. */
+/** Which findings demand a reopen by default: a diagnosed defect is blocking unless its producer
+ *  explicitly said advisory, while hardness and every disclosure, the Judge's included, stay
+ *  advisory because their next move belongs to someone better calibrated than the finding. */
 export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["severity"] {
   const defect = finding.kind === "harness-defect" || finding.kind === "curriculum-defect";
   return defect ? (finding.severity ?? "blocking") : "advisory";
 }
 
-/** Admit findings whose cited evidence exists on disk, and turn those routed to an author session
- *  into campaign feedback. Every admitted finding gets a route row, with a reason when unrouted. */
+/** Controller admission: the shape is typed, the citations must exist on disk, and only findings
+ *  that route to an author session become campaign feedback. Everything else stays disclosed in the
+ *  recorded packet with its typed no-route reason rather than disappearing at the partition, and an
+ *  aggregate no-route row may still enter rebuild advice from there. */
 export function admitFindings(
   repoRoot: string,
   analysis: IterationAnalysis,
@@ -346,7 +399,8 @@ export function admitFindings(
     severity: findingSeverity(finding),
     claim: finding.claim,
     evidence: `${finding.evidence} (analysis ${digest.slice(0, 12)})`,
-    // Controller-marked, because the author boundary refuses unmarked findings.
+    // This array is what the author input renders into the reopened prompt, so it is
+    // controller-marked for the author isolation to admit it; an unmarked packet is refused there.
     findings: controllerValidatedFindings([
       { code: finding.kind, path: finding.evidence, detail: finding.claim },
     ]),

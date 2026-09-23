@@ -1,5 +1,16 @@
-/** Host tool subjects receive the applicable public-input union. Each named check receives only
- * its own declared artifact and public inputs. These cases exercise both boundaries. */
+/**
+ * Two boundaries meet here. A host tool subject receives the union of the public inputs that every
+ * applicable check declared, which is nothing at all when no check applies to the task, and a
+ * legacy brief is refused rather than silently granting the whole task; `taskId` and `family` stay
+ * readable because no declaration covers them. Each named check, meanwhile, receives only its own
+ * artifact, public and hidden operands, so an external check can hand the host its own hidden
+ * operand and nothing another check owns.
+ *
+ * The wall is what makes the controls mean anything. An operand no check declared is hidden, so a
+ * correctness model that reads it fails its own accept. And a numeric rule that publishes the wrong
+ * comparator passes its own controls for as long as every sample stops either side of it, which is
+ * why one task is put on the boundary.
+ */
 import { describe, expect, it } from "bun:test";
 
 import type { JsonValue } from "../src/meta/json-shape.ts";

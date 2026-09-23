@@ -1,19 +1,26 @@
 /**
- * The backend kinds each model slot may select, and their descriptors. A selection name may differ
- * from the runtime `BackendId` a turn reports. Dispatch is exhaustive over `BackendKind`, so adding
- * a kind here makes typechecking name every caller that must handle it.
+ * Backend kinds and their configuration. This registry defines which backends each model slot --
+ * Builder, Built Harness and review -- may select. `BackendId`, the runtime backend a turn reports,
+ * lives with the turn contract in backend-types.ts instead, because a configured backend name may
+ * differ from the runtime name it ends up reporting.
+ *
+ * To add a backend, add its kind and its descriptor here. Dispatch is exhaustive over
+ * `BackendKind`, through exhaustive switches or `Record<BackendKind, ...>`, so typechecking names
+ * every caller that still has to handle the new kind rather than leaving one to fall through.
  */
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import type { BackendId } from "./backend-types.ts";
 
-/** The selectable engines, in display order. */
+/** The selectable engines, in canonical display order. A new kind is appended here first, and the
+ *  descriptor table below then refuses to compile until it has an entry. */
 export const BACKEND_KINDS = ["codex", "openrouter", "claude"] as const;
 
 /** A user/operator backend selection. */
 export type BackendKind = (typeof BACKEND_KINDS)[number];
 
-/** The three independently configured model slots. `review` serves three callers
- *  (review/review-session.ts). */
+/** The three independently configured model slots. Each resolves its own model, so no slot ever
+ *  serves on another's pin. `review` is one slot for several callers, which review-session.ts
+ *  holds together: the Main Judge, the diagnosis reader and the Epoch Reviewer share one pin. */
 export type BackendSlot = "builder" | "built" | "review";
 
 /** Everything a side needs to know about an engine that is not the act of running a turn. */
@@ -40,8 +47,10 @@ interface BackendKindDescriptor {
   usesAccountAuth: boolean;
   /** For an account-auth engine whose login is delivered as an env token, that env var. */
   accountTokenEnv?: string;
-  /** Whether this repository has a runnable transport for this kind; resolution refuses a kind
-   *  without one rather than substituting another backend. */
+  /** True when this repository includes a runnable transport for this kind. A selectable kind
+   *  without one is refused during resolution rather than served by something else: selecting Codex
+   *  must never quietly start Claude, because the run would then measure a condition nobody
+   *  chose. */
   transportVendored: boolean;
 }
 
@@ -50,14 +59,17 @@ export function isBackendKind(value: JsonValue): value is BackendKind {
   return isString(value) && BACKEND_KINDS.some((known) => known === value);
 }
 
-/** `satisfies` forces an entry per kind and keeps each entry's literal types. */
+/** The descriptor for every kind. `satisfies` rather than a type annotation, because it still
+ *  forces an entry when a kind is added while keeping each entry's literal types instead of
+ *  widening them to the declared field types. */
 const BACKEND_DESCRIPTORS = {
   codex: {
     kind: "codex",
     label: "Codex OAuth",
     shortLabel: "Codex",
     runtimeId: "codex",
-    // OAuth names the credential, not the served model; the pi catalogue checks the pin.
+    // OAuth names the credential mechanism, not the served model, so the built-side pin still has
+    // to name the requested provider model; the pi catalogue gate checks that at preflight.
     usesFixedModelLabel: false,
     modelEnv: "CODEX_MODEL",
     modelEnvBySlot: {

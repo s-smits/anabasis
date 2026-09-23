@@ -1,8 +1,15 @@
 /**
  * The tool inventory: which installed executables a candidate snapshot's checks may run. It is
- * derived, never declared. Each adapterId resolves against the candidate workspace's `.toolchain`
- * tree first and the host search path second, and its executable is hashed with its source. A
- * missing id is a `verifier-required` fact the Builder can act on by installing the tool.
+ * derived, never declared. A brief names its tools by adapterId; this resolves each id against the
+ * candidate workspace's `.toolchain` tree first and the host search path second, hashes the
+ * executable and records where it came from. A missing id is therefore a `verifier-required` fact
+ * the Builder can act on by installing the tool, and never a refusal of the check's logic.
+ *
+ * This replaced `correctness-model/engines.json` and its admission chain on 2026-09-03. Of the 306
+ * engine declarations written in the first three days of that September, every one named an
+ * interpreter over a Builder-written script, and the firmware ones shipped their own `Arduino.h`.
+ * A declared registry attested the interpreter rather than the check, which let the author supply
+ * the world its own artifact was judged in.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { openSync, readSync, closeSync, statSync } from "../meta/filesystem.ts";
@@ -55,7 +62,9 @@ function shebangCommand(path: string): string | null {
     .split(/\s+/)
     .filter((word) => word !== "");
   // `env` forwards to the first word that is neither one of its flags (`-S`, `-i`, `--`) nor a
-  // `NAME=value` assignment.
+  // `NAME=value` assignment. The 2026-09-05 replay over 43 recorded tool shapes met none of these,
+  // but a synthetic `#!/usr/bin/env -S PYTHONUNBUFFERED=1 python3` read the assignment as the
+  // interpreter, which is the shape this skips.
   return basename(words[0] ?? "") === "env"
     ? (words.find(
         (word, index) => index > 0 && !word.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word),
@@ -72,9 +81,12 @@ export function toolProvenance(path: string): Pick<ToolEntry, "kind" | "interpre
   return { kind: "script", interpreter: command === "" ? null : basename(command) };
 }
 
-/** The digest of the interpreter a script tool runs under, found the way the verifier cell finds it:
- *  an absolute shebang names its file, and `env` searches the cell's own path. A script's own digest
- *  does not move when its interpreter changes. Undefined when the interpreter cannot be found. */
+/** The bytes of the interpreter a script tool will run under, found the way the verifier cell finds
+ *  it: an absolute shebang names its file, and `env` searches the cell's own path. A script's own
+ *  digest does not move when its interpreter changes underneath it — eaf98f graded 148 census rows
+ *  on 2026-09-14 with a script whose tool digest never moved while its `python3` went from 3.9 to
+ *  3.14, and the tool digest alone called both of those one environment. Undefined when the
+ *  interpreter cannot be found, which the run itself then reports. */
 export function interpreterDigest(path: string, toolTree: string | null): string | undefined {
   const command = shebangCommand(path);
   if (command === null || command === "") return undefined;
@@ -123,9 +135,9 @@ export function resolveToolInventory(input: ResolveToolInventoryInput): Resolved
   const envDirs = (Bun.env.PATH ?? "").split(":").filter((dir) => dir !== "" && isAbsolute(dir));
   const searchDirs = [
     ...treeDirs.map((dir) => ({ dir, source: "workspace-toolchain" as const })),
-    // `toolchainPathDirs()` stays inside the `??`: a caller's own directories name a tree this
-    // process must not read.
-
+    // `toolchainPathDirs()` stays inside the `??` rather than being merged in: a caller that
+    // supplies its own directories is measuring a tree this process must not read, so adding the
+    // host's own would put this host's tools into that measurement.
     ...(input.pathDirs ?? [...new Set([...toolchainPathDirs(), ...envDirs])]).map((dir) => ({
       dir,
       source: "host" as const,

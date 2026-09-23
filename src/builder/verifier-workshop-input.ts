@@ -12,7 +12,9 @@ import { runtimeProcess } from "../meta/process.ts";
 export type VerifierWorkshopRequest =
   | { url: string }
   | { path: string; destination: string }
-  // `| undefined` lets a caller pass unsupplied offset and limit under `exactOptionalPropertyTypes`.
+  // `exactOptionalPropertyTypes` is on, so the explicit `| undefined` is what lets a caller pass a
+  // read request whose offset and limit were not supplied. Without it this union needs a second,
+  // narrower `{ path: string }` member saying the same thing.
   | { path: string; offset?: number | undefined; limit?: number | undefined }
   | { path: string; contentBytes: number; contentSha256: string }
   | { command: string; cwd: string; stdinBytes: number | null; stdinSha256: string | null };
@@ -68,16 +70,28 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
   const directDarwinToolchain =
     runtimeProcess.platform === "darwin" && existsSync(join(commandLineTools, "SDKs", "MacOSX.sdk"));
   return {
-    // Darwin's CommandLineTools come first: the /usr/bin shim uses xcrun's per-user cache, which
-    // lies outside the workshop. The rest is `toolchainPathDirs`, the same search path the Built
-    // Harness shell uses, so the cell sees every compiler the host carries.
+    // Darwin's compiler and SDK are resolved directly, because the /usr/bin shim goes through
+    // xcrun's ambient per-user cache, which sits outside the workshop's authority; the
+    // CommandLineTools directory therefore stays ahead of everything else.
+    //
+    // The rest is `toolchainPathDirs`, the same search path the Built Harness shell uses and the
+    // same install roots the read grant covers. A hardcoded literal here is what made a removed
+    // runtime-fact probe lie: it resolved `pio`, `arduino-cli` and `node` off the harness PATH and
+    // reported all three available while this cell answered `command not found` for them, because
+    // /opt/zerobrew/bin was on one list and not the other. What a Builder cannot find, it replaces:
+    // one whose PATH is short concludes the host carries no compiler and writes a substitute, and
+    // run w39-sol shipped a parser as its compiler.
     PATH: (directDarwinToolchain
       ? [`${commandLineTools}/usr/bin`, ...toolchainPathDirs()]
       : toolchainPathDirs()
     ).join(":"),
     ...keysIf(directDarwinToolchain, () => ({ SDKROOT: join(commandLineTools, "SDKs", "MacOSX.sdk") })),
-    // The variables a toolchain uses to find its installation, which moving HOME would hide. The
-    // roots stay read-only; toolchain writes go to the cell's own cache below.
+    // The names a toolchain uses to find its own installation, which moving HOME into the cell
+    // otherwise hides. The Built Harness shell has carried these since the wall was written and the
+    // Builder cell did not, which left `cargo --version` answering "rustup could not choose a
+    // version" with `~/.rustup` readable on disk the whole time (measured 2026-08-19 by the install
+    // probe). The roots stay read-only; anything a toolchain writes goes to the cell's own cache
+    // below.
     ...hostToolchainEnv(),
     LANG: "C",
     LC_ALL: "C",
@@ -91,7 +105,8 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
     // Cargo reads its toolchain through RUSTUP_HOME above and writes its registry cache here, so
     // the host installation stays untouched while a crate build still has somewhere to work.
     CARGO_HOME: join(cache, "cargo"),
-    // Node aborts at startup when an inherited OPENSSL_CONF points at an unreadable file.
+    // Node aborts at startup when an inherited OPENSSL_CONF points at a file it cannot read; run
+    // w11 lost 5 workshop actions to it. This is the same neutral pin the other runtimes get.
     OPENSSL_CONF: "/dev/null",
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
@@ -101,7 +116,9 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
 
 export function verifierWorkshopCommand(value: string, max: number): string {
   if (value.trim() === "") refuse("run command must not be empty");
-  // Newlines are allowed: both cells hand the text to one shell.
+  // Newlines stay. Both cells hand the text to one shell as a single `-c` argument, locally and in
+  // the guest alike, so a multi-line command is one command; truss run 406cca spent a refused call
+  // and a script file working around the one-line rule that used to be here.
   if (value.includes("\0")) refuse("run command must be text with no NUL bytes");
   if (value.length > max) refuse(`run command exceeds ${max} bytes`);
   return value;

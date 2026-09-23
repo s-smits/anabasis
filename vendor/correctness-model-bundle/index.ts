@@ -1,8 +1,9 @@
 /**
- * The `@ana/correctness-model-bundle` API for generated correctness models (`evaluator.ts`).
- * Solve-side validation refuses this protected package (`bundle-validation.ts`,
- * `CORRECTNESS_MODEL_PACKAGE`). Correctness-model loading makes it available to checks.
- * Add exports when generated code needs them.
+ * What a generated `evaluator.ts` imports when it imports `@ana/correctness-model-bundle`. The two
+ * sides of the bundle see this package differently on purpose: solve-side validation refuses it by
+ * name (`CORRECTNESS_MODEL_PACKAGE` in `bundle-validation.ts`), so an agent cannot import the
+ * vocabulary its own answers are judged in, while correctness-model loading makes it available to
+ * the checks. A name is exported from here once a generated consumer imports it and not before.
  *
  * The runtime half of this contract lives beside the barrel rather than under `src/`. The Builder
  * runs its own `bun test` under a wall that opens this directory whole and closes `src/truth`,

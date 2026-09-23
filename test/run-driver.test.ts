@@ -1,9 +1,9 @@
 /**
- * Tests for the battery driver: one case row per task, digest-checked evidence pointers,
- * completeness against the task set and separate verified, unaccepted and non-result counts.
- * The shared matching fixture (test/helpers/matching-fixture.ts) uses a scripted solver.
- * This avoids provider calls while exercising the real fingerprint, bundle snapshot,
- * verification and recording paths.
+ * The battery driver writes one case row per task, with digest-checked evidence pointers,
+ * completeness against the task set and separate verified, unaccepted and non-result counts. The
+ * shared fixture in test/helpers/matching-fixture.ts supplies a scripted solver, so none of that
+ * costs a provider call while the real fingerprint, bundle snapshot, verification and recording
+ * paths still run.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";

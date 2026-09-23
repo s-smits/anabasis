@@ -8,7 +8,9 @@ import type { ToolsSpec } from "../truth/tools-spec.ts";
 import { typecheckGeneratedModule } from "../truth/generated-module-typecheck.ts";
 import { probeConformanceWithEvidence } from "../truth/probes.ts";
 
-/** The probes to run; each is explicitly `| undefined` so a caller can pass a subset directly. */
+/** Both probes are explicitly `| undefined` rather than optional-only, so a caller that wants one
+ *  of them executed can hand over exactly that — `{ load: probes.load }` — instead of assembling
+ *  the object through a conditional spread at every call site. */
 export interface AgentToolsProbes {
   load?: (() => Promise<ContractFinding[]>) | undefined;
   conformance?:

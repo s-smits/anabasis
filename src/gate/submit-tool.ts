@@ -21,8 +21,11 @@ import {
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 
-/** The identity of the two contract roots at the submitted commit, since a commit is not a byte
- *  identity. A controller stop inspected no tree and carries none. */
+/** What the controller read the submitted bytes as: the identity of the two contract roots at the
+ *  submitted commit. The execution record compares submissions on this rather than on the commit,
+ *  because a commit is not a byte identity — `submittedBytes` in `src/author/builder-execution.ts`
+ *  falls back to the commit only where no tree identity was supplied. A controller stop inspected
+ *  no tree and carries none. */
 interface SubmittedTree {
   treeId?: string;
 }
@@ -80,8 +83,10 @@ function atSubmitBound(outcome: Refused, attempts: number, maxTurns: number | un
 }
 
 /**
- * The first page of grouped repair findings. Each group keeps its count, and the feedback store
- * holds the remaining pages, so the page limit hides no public repair text.
+ * The first page of grouped repair findings. A probe that runs once per task reports the same code
+ * and path for every task it touches, so those rows fold into one group that carries its count
+ * instead of filling the page; the shared feedback store holds the remaining pages, so the page
+ * limit hides no public repair text from the Builder.
  */
 function repairUnits(findings: readonly ContractFinding[], repair: "actionable" | "final"): string[] {
   const page = authorFindingOverview(findings);
@@ -98,9 +103,13 @@ function repairUnits(findings: readonly ContractFinding[], repair: "actionable" 
 }
 
 /**
- * The refusal the model reads. Beyond the findings it states how the finding codes moved since the
- * previous submit, whether the files moved, whether this exact tree was refused before and whether
- * an earlier tree had fewer findings.
+ * The refusal the model reads. Beyond the findings it states what a repeating Builder cannot see
+ * about itself: how the finding codes moved since the previous submit (run 68 was told "same
+ * issues: no" while one class fell from 50 to 15 and another arrived at 100), whether the files
+ * moved at all, whether this exact tree was already refused once (run 35 ended byte-identical to
+ * its first submission after 141 attempts) and whether an earlier tree carried fewer findings (w33
+ * wandered from 221 to 638). Each is a fact about the Builder's own output, or about a set bound
+ * before model work began.
  */
 export function renderRefusal(
   outcome: Refused,
@@ -163,7 +172,9 @@ async function settleSubmit(binding: SubmitToolBinding) {
   });
   if (outcome.ok) {
     state.accepted = outcome;
-    // Adoption uses the accepted snapshot; `terminate` ends the round before another model request.
+    // Adoption uses the accepted snapshot, so nothing written later in this turn can change the
+    // accepted product; `terminate` ends the round at this turn's boundary, before another model
+    // request could try.
     return {
       ...text(
         `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
@@ -211,7 +222,9 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           reason: "terminal-refusal",
         });
       }
-      // A model may call submit again while the first call is still running.
+      // A model does call submit again while the first call is still running: Sol run 23a1bc made
+      // five such calls inside one in-flight submit. Each would otherwise have captured the
+      // workspace again and recorded its own attempt against bytes already under judgement.
       if (inFlight) {
         return text(
           "Submit is already running; its verdict returns from that first call. Do not call submit again until it returns.",

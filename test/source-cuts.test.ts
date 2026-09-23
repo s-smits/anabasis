@@ -1,11 +1,19 @@
-// Tests for removed source paths use token scans and direct calls to detect reintroduction.
-// They cover two groups:
-// - Builder toolkit removals: harness-verb tools, subagents, edit argument coercion, broker
-//   origin disclosure, artifact verdicts and the old environment switch that bypassed
-//   the sandbox;
-// - later consolidations: the run journal, synthetic records and the seven-session
-//   authoring workflow. OpenRouter returned through a separate implementation; the tests
-//   also check which callers use that host transport.
+/**
+ * A cut only stays cut if something notices when it comes back. Deleting a module leaves no trace
+ * in the suite, so a later author who needs the shape it held can reintroduce it, wire it up and
+ * still pass everything else. Each case below names one removed thing and asserts its absence: the
+ * harness-verb tools, the subagent and web-search tools, the flat edit-argument shim, the broker
+ * origin variable, the `HARNESS_INNER_UNSANDBOXED` sandbox bypass, the three per-kind backends, the
+ * run journal, the synthetic run events, the record projections, and the ten modules and seven
+ * producer calls of the multi-session authoring workflow.
+ *
+ * Absence is read two ways, because the two ways a cut comes back are different. `existsSync`
+ * catches a module restored as a file, and `scanTokens` over the owning source catches the call or
+ * the literal restored without one, which is what happens when a producer is re-added inline and
+ * the deleted path stays deleted. The Builder-toolkit cases also call the real `createBuilderTools`
+ * rather than scanning it, because the roster is what a model actually sees and no token scan can
+ * say what the function returned.
+ */
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { describe, expect, it } from "bun:test";
 import type { PathRecord } from "../src/builder/candidate-isolation-runtime.ts";
@@ -20,9 +28,12 @@ const source = (path: string) => scanTokens(readFileSync(path, "utf8"));
 
 const toolsSource = () => readFileSync("src/builder/tools.ts", "utf8");
 
-// The cuts below are contract facts (roster, options shape, refusal before any file access), so a
-// hand-built policy value is enough: no tool here ever reaches the OS child. Isolation behaviour itself
-// is proven in candidate-isolation.test.ts against a real fixture repo and executed sandbox children.
+// What the cases below read are contract facts — the roster, the options shape, and a refusal that
+// lands before any file is touched — so a hand-built policy value is enough and no tool here ever
+// reaches an OS child. The `append` deliberately throws: if a case ever did reach the isolation,
+// the throw says so rather than letting a silent write pass for a contract check. Isolation
+// behaviour itself belongs elsewhere, to candidate-isolation-policy.test.ts against a fixture repo
+// and to the darwin and linux files, which spawn real sandboxed children.
 function stubIsolation(): BuilderIsolation {
   const policy: CandidateAccessPolicy = {
     schema: CANDIDATE_ISOLATION_SCHEMA,

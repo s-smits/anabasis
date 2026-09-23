@@ -1,7 +1,8 @@
 /**
  * The battery's Judge phase reviews only eligible artifacts: accepted submissions with a boolean
  * verifier verdict. The Judge advises and the host verifier decides: nothing in this phase changes
- * pass, acceptance or whether a claim can be created, and no disagreement buys further calls.
+ * pass, acceptance or whether a claim can be created, and no disagreement buys further calls — the
+ * control census that once did was removed by operator decision on 2026-09-14.
  */
 import type { RunCondition } from "../claim/case-record.ts";
 import { existsSync } from "../meta/filesystem.ts";
@@ -23,8 +24,10 @@ import { JUDGE_PUBLIC_CONTEXT_FILE, JUDGE_PUBLIC_CONTEXT_SCHEMA } from "./declar
 
 /** The Judge's public context card for this run, and the one builder of the domain card every
  *  review model receives: the brief's public projection, the Builder-declared tools and the
- *  declared runtime facts. The card carries all
- *  declared public rules; each subject binds only the applicable task projection. Missing
+ *  declared runtime facts. Two paths used to build this card separately, and run w8 measured the
+ *  drift: 4 of 4 prompts on the second path carried a null publicRequest, toolContract and
+ *  runtimeFacts, while 77 of 77 same-iteration Judge prompts carried them populated. The card
+ *  carries all declared public rules; each subject binds only the applicable task projection. Missing
  *  tools-spec bytes state a null contract; a spec that fails validation throws, because a card
  *  built from an invalid contract would misdescribe the condition to every reviewer. */
 export function judgeDomainForRun(

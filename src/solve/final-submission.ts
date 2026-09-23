@@ -63,7 +63,9 @@ interface SubmissionAuthority {
   checkpoint(): SubmissionCheckpoint;
 }
 
-/** The starter's narrow view of the authority. `maxAttempts` is stated on the submit tool. */
+/** The narrow contract the starter is handed; the controller keeps the authority itself and reads
+ *  the settled fact from it. `maxAttempts` is a public runtime fact, stated on the submit tool, so
+ *  the agent is not left to discover its budget by exhausting it. */
 export interface SubmissionPort {
   readonly maxAttempts: number;
   acceptArtifact(bytes: string): FinalSubmission;
@@ -91,8 +93,10 @@ function validateConfig(config: SubmissionAuthorityConfig): SubmissionAuthorityC
   };
 }
 
-/** An accepted checkpoint must carry exactly its terminal: bytes whose digest matches, a payload
- *  that fits the kind, and an artifact that satisfies the public schema. */
+/** An accepted checkpoint must carry exactly the terminal it recorded: captured bytes whose digest
+ *  matches, a payload that fits the kind, and an artifact that still satisfies the public schema.
+ *  Any one of those failing means the checkpoint does not describe the submission it claims, so
+ *  restoration is refused rather than continued from. */
 function assertAcceptedRestore(
   restored: SubmissionCheckpoint["state"],
   cfg: ReturnType<typeof validateConfig>,
@@ -145,7 +149,8 @@ function assertAcceptedRestore(
 
 /** Validate a checkpoint against the freshly constructed authority before adopting its state. */
 function assertRestorable(restore: SubmissionCheckpoint, cfg: ReturnType<typeof validateConfig>): void {
-  // Widened to string: a falsified checkpoint may not match the literal its type promises.
+  // Read as a plain string, not as the literal the interface promises: this guard exists because
+  // a checkpoint can be falsified, and a type that says otherwise narrows the read away.
   const schema: string = restore.schema;
   if (schema !== SUBMISSION_AUTHORITY_SCHEMA) {
     throw new Error(
@@ -248,7 +253,10 @@ export function createSubmissionAuthority(
 
   const exhausted = (): FinalSubmission | null => {
     if (state.accepted || state.attempts < cfg.maxAttempts) return null;
-    // Name the last substantive rejection once inside the exhaustion remedy, so it stays visible.
+    // Keep the last substantive rejection visible. In run 44 the later submit calls replaced
+    // draft-unmaterialized with the bare budget state in 24 final records, so the record said the
+    // agent ran out of attempts and never said what it had been getting wrong. The budget
+    // explanation is added once, carrying that earlier code; later calls keep both.
     if (state.rejection?.code !== "attempts-exhausted") {
       const prior = state.rejection;
       state.rejection = {

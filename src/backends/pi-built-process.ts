@@ -57,17 +57,25 @@ interface WorkerState {
   failure: SolverNonResult | null;
   failureNotified(): void;
   timer: ReturnType<typeof setTimeout> | null;
-  /** Silence wall of the active turn: armed by its permit, restarted by each message, cleared at its end. */
+  /** The silence wall of the active turn: armed with each permit, restarted by every message of
+   *  that turn and cleared at its end. It runs independently of the whole-solve timer, because a
+   *  worker can be silent without being out of time and out of time without being silent. */
   turnTimer: ReturnType<typeof setTimeout> | null;
-  /** A worker the whole-solve wall stops after a tool call is an unaccepted attempt, not a non-result. */
+  /** A worker the whole-solve wall stopped after it had called a tool was still answering, since
+   *  the silence wall had not fired, so its case is an unaccepted attempt with its traced calls.
+   *  One that never reached the tool loop stays a non-result. */
   calledTool: boolean;
-  /** In-process tool calls; settlement aborts them and waits, so nothing writes after the worker closes. */
+  /** Tool calls run in this process rather than in the worker's group, so a stop aborts them and
+   *  settlement waits for them: the wall's submit and the generated worker's close therefore follow
+   *  the last call that could still write. */
   dispatches: Set<Promise<void>>;
   toolAbort: AbortController;
   turnWallMs: number;
   readyWallMs: number;
   solveWallMs: number | null;
-  /** Tells the confined-pid witness how the spawned pid relates to the worker's reported pid. */
+  /** The OS isolation mechanism, which is what tells the confined-pid witness how the spawned pid
+   *  relates to the pid the worker reports for itself: identical under Seatbelt, which exec-replaces
+   *  the process, and a private pid namespace beneath the wrapper under bubblewrap. */
   mechanismId: string;
   turnReservations: Map<number, ProviderTurnReservation>;
   nextPermitTurn: number;
@@ -80,7 +88,8 @@ interface WorkerResources {
   releaseResources(reason: Error): void;
 }
 
-/** Everything a worker's line is read against; fixed for the worker's whole life. */
+/** Everything a worker's line is read against. It is fixed for the worker's whole life, so the
+ *  reader takes it once and each line then supplies only itself. */
 type WorkerBinding = {
   readonly child: PiChild;
   readonly write: (message: PiWire.PiBuiltParentMessage, end?: boolean) => void;
@@ -115,7 +124,8 @@ type PiBuiltWorkerOpening = {
   readonly conditionDigest: string;
   readonly tools: ReadonlyMap<string, AgentTool>;
   readonly onMessage: (message: Forwarded) => void;
-  // Absent and `undefined` mean the same, so callers need not use `keyIfDefined`.
+  // Absent and `undefined` mean the same thing for a call record, so both spellings are accepted
+  // rather than making every caller reach for `keyIfDefined`.
   readonly reserveTurn?: ((turn: number) => ProviderTurnReservation) | undefined;
   readonly signal?: AbortSignal | undefined;
 };
@@ -134,7 +144,11 @@ export class PiBuiltWorkerNonResult extends Error {
 
 /** The longest a permitted turn may stay silent: one model call plus one shell command at its
  *  ceiling. Every worker message restarts it, so it catches a stalled provider or worker, not a
- *  solver still working. */
+ *  solver still working. Before this bound existed a provider stall on turn one held the case for
+ *  the full hour -- three 3,600 s non-results in astra-20260908T214013792Z. It was a wall on the
+ *  whole turn until 2026-09-14, when truss run 406cca's resilient-bridge-h was cut after 18 traced
+ *  tool calls inside one native turn and recorded as a runtime non-result, which is a solver
+ *  working being called an environment failure. */
 export const builtTurnWallMs = (shellMaxSeconds: number): number => TURN_TIMEOUT_MS + shellMaxSeconds * 1000;
 
 function dispatchTool(
@@ -193,7 +207,9 @@ function modelSelectionMatches(
 
 function killWorkerProcesses(child: PiChild, state: WorkerState, signal: RuntimeSignal): void {
   killProcessGroup(child, signal);
-  // Under bubblewrap the witnessed worker runs in its own group below the wrapper's.
+  // Bubblewrap's --new-session puts its witnessed direct worker below the detached wrapper group,
+  // so the wrapper's group alone would leave it running. That ready pid is controller-admitted, so
+  // this is a second exact group identity rather than a search for processes that look related.
   if (state.pid !== null && state.pid !== child.pid) killProcessGroupId(state.pid, signal);
 }
 
@@ -270,7 +286,9 @@ function variantTimer(child: PiChild, state: WorkerState, milliseconds: number, 
   state.timer = setTimeout(() => stopWorker(child, state, "runtime", message), milliseconds);
 }
 
-/** Any message of the active turn shows the worker is still answering. */
+/** Any message of the active turn shows the worker is still answering, so the silence wall starts
+ *  over. Both halves of the guard matter: without an active turn there is no wall to restart, and
+ *  without a live timer the turn has already ended. */
 function restartTurnSilence(child: PiChild, state: WorkerState): void {
   if (state.activeTurn !== null && state.turnTimer !== null) armTurnTimer(child, state, state.activeTurn);
 }

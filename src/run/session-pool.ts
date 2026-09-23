@@ -35,8 +35,11 @@ export const BUILT_SOLVE_MAX_CONCURRENCY = 3;
  * under. So a worker records the failure rather than raising it, stops taking new inputs, and the
  * error is rethrown once every worker has finished.
  *
- * The raised error is chosen by input order, not completion order, so it is the one a serial run
- * would have reached and a rerun reports the same case.
+ * The error is chosen by input order rather than by the order in which failures completed. Two
+ * cases failing in one round is ordinary — a provider outage takes every live case at once — and
+ * the two orders disagree whenever the later input fails first. Recording the index makes the
+ * raised error the one a serial run would have reached, so a rerun of the same battery reports the
+ * same case rather than whichever child happened to exit first.
  */
 /** A worker's rejection with the input index it came from. */
 interface WorkerFailure {
@@ -50,9 +53,13 @@ interface EarliestFailure {
   failure: WorkerFailure | null;
 }
 
-/** The Built case width that ran. The harness declares it in `agent/config.yaml`, since it knows
- *  how heavy one case is. `ANA_BUILT_CONCURRENCY` wins where set, because the width also spends
- *  the provider's session limit, which is the operator's to bound. */
+/** The Built case width that ran. The harness declares it in `agent/config.yaml`, because the
+ *  harness is what knows how heavy one of its cases is and what the host has to run it on; the
+ *  width was a bare constant until 2026-09-16 and a run-only setting until 2026-09-18.
+ *
+ *  `ANA_BUILT_CONCURRENCY` still wins where it is set, because the width also spends the
+ *  provider's session limit, which is the operator's to bound and not the harness's to see. The
+ *  battery record states the width that actually ran. */
 export function builtSolveConcurrency(
   declared: number = BUILT_SOLVE_MAX_CONCURRENCY,
   env: Record<string, string | undefined> = Bun.env,

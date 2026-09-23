@@ -1,11 +1,27 @@
 /**
  * `harness_inspect`: the static, read-only view of the candidate the Builder currently holds.
  *
- * It shows two views that would otherwise need a submission: the public task the solver receives,
- * and the tool names the generated module must register. It composes the existing owners
- * (`loadValidatedBundle`, `commitPublicTask`, `expectedBuiltToolNames`, `typecheckGeneratedModule`)
- * and executes no generated code; trial, correctness_check and submit own execution. Hidden
- * expectations appear only as counts, and history is read only through the controller-bound reader.
+ * The Builder needs to check more than the files it wrote, and two of the things it most needs to
+ * see are derived rather than written. The public task projection is computed per case at solve
+ * time, so there is no agent-side copy of it to read beforehand; the roster of tool names the
+ * generated module must register is composed from the tool specification, the selected presets and
+ * the public-resource requirement. Both were previously visible only by spending a submission, and
+ * this tool shows them without spending one.
+ *
+ * It composes the owners that already answer those questions — `loadValidatedBundle` for from-disk
+ * contract validity, `commitPublicTask` for the projection and its digest, `expectedBuiltToolNames`
+ * for the roster, `typecheckGeneratedModule` for the two modules — and reimplements none of them.
+ * It deliberately does not run the conformance probe, because that executes generated code, and
+ * repeating that execution here would bypass the limits and the reuse the preview cache provides.
+ * Inspect reports static contract checks and compilation diagnostics; trial, `correctness_check`
+ * and submit own execution. Inspecting commits nothing, adopts nothing, runs no admission gate and
+ * consumes no submission attempt.
+ *
+ * Every candidate view derives from the Builder's own files, so nothing hidden is at risk here by
+ * construction: hidden expectations appear as counts because `commitPublicTask` selects public
+ * fields rather than deleting hidden ones, findings render through the shared feedback grouping
+ * that applies the same author projection submit uses, and the history action reads
+ * controller-verified public history through its bound reader rather than a path the model names.
  */
 import { capturedJsonStringify, capturedJsonParse } from "../meta/json-runtime.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -90,7 +106,9 @@ const GENERATED_MODULES = [
 export interface HarnessInspectBinding {
   /** The Builder's own workspace. The controller binds it; the model cannot name a path. */
   workspace: string;
-  /** The context submit validates under, so inspect and submit read one contract. */
+  /** The exact context the submission check will validate under, so inspect and submit read one
+   *  contract. A weaker inspection would be worse than none: it could report readiness for a
+   *  candidate submit then refuses. */
   context: CandidateCheckContext;
   /** Same-session submit feedback. Optional only for isolated inspection tests. */
   feedback?: BuilderAuthorFeedback;
@@ -104,13 +122,18 @@ export interface HarnessInspectBinding {
 }
 
 type Bundle = ReturnType<typeof loadValidatedBundle>;
+/** The model's validated arguments. Four of the views read a family, an offset and a limit out of
+ *  the same object, so it travels whole rather than as three positional undefineds each. */
 type InspectParams = Static<typeof Params>;
 
-/** The tool names agent/tools.ts must register, derived as the conformance probe derives them. */
+/** The tool names agent/tools.ts must register, from the same derivation the conformance probe
+ *  compares against at submit time, so a roster that satisfies this one satisfies that one. */
 function toolsView(bundle: Bundle) {
   const spec = bundle.toolsSpec;
   if (spec === null) {
-    // All findings: their paths are validator-relative ("tools[0]"), so no file filter applies.
+    // The whole finding list is returned, because a validator finding carries a validator-relative
+    // path such as "$" or "tools[0]" rather than a file path, so any filter here would be a guess
+    // that silently returned nothing.
     return {
       toolsSpecValid: false,
       note: "agent/tools-spec.json has not validated yet, so the registered contract cannot be derived",
@@ -176,8 +199,11 @@ function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectPara
 }
 
 /**
- * Whether the two generated modules compile, by the same `typecheckGeneratedModule` submit runs.
- * Executes nothing; the diagnostics are the ones submit already shows the author.
+ * Whether the two generated modules compile. The summary view can only say they exist, so a Builder
+ * once learned that `correctness-model/evaluator.ts` did not compile by spending a submission to
+ * find out. This runs the same `typecheckGeneratedModule` that submit runs, over the model's own
+ * file, and executes nothing. The diagnostics are already controller-validated and already cross to
+ * the author at submit time, so showing them here moves the moment rather than the boundary.
  */
 function typecheckView(workspace: string, query: AuthorFeedbackQuery) {
   const modules = GENERATED_MODULES.map(({ bundle, rel }) => {
@@ -197,8 +223,10 @@ function typecheckView(workspace: string, query: AuthorFeedbackQuery) {
   };
 }
 
-/** The tools the brief's checks require, resolved as submit resolves them: workspace `.toolchain`
- *  first, then the host PATH. */
+/** The installed tools the brief's external-verifier checks name, resolved exactly as the host will
+ *  resolve them at submit: the workspace `.toolchain` first, then the host PATH. The Builder can
+ *  therefore see before submitting whether a check runs an installed tool or nothing at all, and
+ *  from which path it would run. */
 function installedToolsView(workspace: string) {
   const path = join(workspace, BRIEF_FILE);
   if (!existsSync(path)) return null;
@@ -278,7 +306,9 @@ function summaryView(bundle: Bundle, workspace: string, query: AuthorFeedbackQue
     tasks: {
       count: tasks.length,
       families: countBy(tasks, (task) => task.family),
-      // Counts only, so an unexercised check is visible without revealing expectation values.
+      // How many rows each declared check id carries, so a check the brief declares and no task
+      // exercises becomes visible. Counts and ids only: the expectation values stay in
+      // correctness-model/, where the author cannot read them back out of this view.
       hiddenChecksByCheckId: countBy(
         tasks.flatMap((task) => task.hidden),
         (check) => check.checkId,
@@ -300,7 +330,9 @@ function rowLimit(limit: number | undefined): number {
   return Math.min(LIST_WINDOW_ROWS, Math.max(1, Math.trunc(limit)));
 }
 
-/** Battery-wide map of families, task ids and public-input paths; values stay in the task view. */
+/** The battery-wide map the one-task inspection cannot show: every family, task id and public-input
+ *  path a generated reader or adviser may depend on. Values stay in the task action, so inventory
+ *  reports public names and paths and nothing else. */
 function inventoryView(bundle: Bundle, { family, offset, limit }: InspectParams) {
   const tasks: readonly BuildTask[] = bundle.battery?.tasks ?? [];
   if (tasks.length === 0) {
@@ -399,7 +431,9 @@ function coverageView(bundle: Bundle, { family, offset, limit }: InspectParams) 
   };
 }
 
-/** One static pass combining summary, inventory, roster and typecheck; narrower actions page detail. */
+/** One static pass at the cost of one call. It combines the summary, inventory, roster and compile
+ *  questions a Builder repeats, while the narrower actions remain for paging through exact tasks,
+ *  paths and findings that would not fit here. */
 function readinessView(
   bundle: Bundle,
   workspace: string,
@@ -458,7 +492,9 @@ function readinessView(
   };
 }
 
-/** The readiness view's next step. Model-visible: a changed byte is a changed prompt condition. */
+/** The one line a readiness view ends on: what to do next, given what the static checks said and
+ *  whether a rehearsal is possible at all. These strings are model-visible, so a changed byte here
+ *  is a changed prompt condition and not a wording preference. */
 function readinessNextAction(
   staticChecksClear: boolean,
   rehearsalReady: boolean,
@@ -479,7 +515,9 @@ function readinessNextAction(
   return "Use coverage to reconcile public rules, declared check inputs and one-fact controls. Read each suggested task's exact public projection when its values matter, then run harness_trial on contrasting families. Static checks do not establish runtime behaviour or correctness.";
 }
 
-/** The view for the actions that share the bundle-backed result shape. */
+/** The view each remaining action reads. The actions handled before this point return results of
+ *  their own; the ones left share one shape, so they share one reader rather than each spelling out
+ *  the same bundle-backed envelope. */
 function actionView(
   bundle: Bundle,
   binding: HarnessInspectBinding,
@@ -521,7 +559,10 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
       "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. Start with readiness to combine required files, paged families, sample trials, tool roster, module typechecks and installed tools, and to see what the gate would refuse before a preview spends the attempt. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit findings. Use history to page measured experiments, then runId and optional taskId for older recorded public tasks: read what earlier batteries of this product asked and where they landed before settling what this one demands.",
     parameters: Params,
     run: async (params) => {
-      // Finding selectors on an action that ignores them are refused rather than silently dropped.
+      // Recent Sol and Fable runs followed an overview's "same action" hint into readiness and
+      // inventory, which silently ignored `group`. A selector an action cannot honour is refused
+      // here, before the validation and tsc work is repeated to produce a result that answers a
+      // different question from the one asked.
       if (
         (params.group !== undefined || params.field !== undefined) &&
         !["summary", "typecheck", "feedback"].includes(params.action)
@@ -547,7 +588,9 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
       };
       if (params.action === "feedback") return feedbackResult(feedback, query);
       if (params.action === "history") {
-        // The digest and page kind record which history rows the author read.
+        // The digest and the page kind make two reads of history distinguishable in the execution
+        // record. Before they were recorded, every history receipt was the same `completed`, so
+        // which rows an author had read before it wrote a proposal could not be recovered at all.
         const text =
           binding.readHistory?.(params.runId, params.taskId, params.offset, params.limit) ??
           capturedJsonStringify({
@@ -567,7 +610,8 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
         };
       }
       if (params.action === "typecheck") {
-        // Compilation does not depend on the bundle's JSON, so it is not loaded.
+        // The bundle is not read for this action: the two modules compile or they do not, whatever
+        // the JSON beside them says, so loading and validating it would be work with no bearing.
         const view = typecheckView(binding.workspace, query);
         return {
           text: capturedJsonStringify({ action: params.action, ...view }),

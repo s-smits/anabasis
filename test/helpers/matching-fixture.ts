@@ -415,8 +415,9 @@ Declare every part before binding a slot to it.
  *
  * Padding never changes obligation coverage: every padded reject trips `parts-assigned`, which the
  * base corpus already covers, so a candidate deliberately missing `expected-binding` still misses
- * it after padding. Padded accepts preserve the bound task’s valid assignment; padded rejects carry the hidden row their check consumes, so
- * each is genuinely rejected rather than counted as a reject nobody executed.
+ * it after padding. A padded accept preserves the bound task's valid assignment and a padded
+ * reject carries the hidden row its own check consumes, so each one is genuinely rejected rather
+ * than counted as a reject nobody executed.
  */
 export function padToCalibrationFloor<T extends { id: string }>(kind: "accept" | "reject", base: T[]): T[] {
   const floor =

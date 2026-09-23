@@ -1,14 +1,25 @@
 /**
- * Tests for reading the recorded Main Judge census. No model call happens on this path:
- * `runJudgeReviews` is synchronous and reads the JudgeEvidence the eval runner recorded at MEASURE
- * time. Census fixtures use the production summarizeJudge over hand-written observations, so every
- * aggregate a test relies on is derived by the production aggregator instead of hand-computed
- * into a record validateJudgeEvidence would refuse.
+ * Reading the recorded Main Judge census, which is a pure read and nothing more. `runJudgeReviews`
+ * is synchronous and consumes the `JudgeEvidence` the eval runner wrote at MEASURE time, so no
+ * model is called anywhere below and nothing this file exercises could change a score even if it
+ * wanted to.
  *
- * Proven here: every complete disagreement is named without a materiality threshold; an
- * incomplete, absent or self-contradictory review makes the projection provisional; the Judge
- * exit is advisory at any disagreement count and never routes an owner, including over a
- * historical validated control census; and the projection writes no byte.
+ * The fixtures deserve a word, because they are where this kind of test usually goes wrong. Every
+ * aggregate a case reads is produced by running the production `summarizeJudge` over hand-written
+ * observations, rather than by writing the totals into the record directly. Hand-computed totals
+ * would be a second implementation of the aggregator sitting inside its own test, agreeing with it
+ * by construction and drifting from it silently — and `validateJudgeEvidence` would refuse such a
+ * record anyway, so the fixture would be proving something the production path never sees.
+ *
+ * What the cases establish is mostly restraint. Every complete disagreement is named, in both
+ * directions, with no materiality threshold deciding which are worth mentioning, because the Judge
+ * is advice and a filtered disagreement is advice that quietly edited itself. A review that is
+ * incomplete, absent or self-contradictory makes the projection provisional instead of dropping it
+ * or trusting it. The Judge exit stays advisory at any disagreement count and routes no owner —
+ * including over a historical validated control census, which is the case that would most plausibly
+ * have been treated as authority. And the projection writes no byte: no case row, no evidence file,
+ * no claim, no analysis. That last one is the safety property the rest depends on, since a reader
+ * that can write is a reader that can decide.
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {

@@ -2,11 +2,23 @@
  * The one owner of where a candidate bundle's files sit inside a workspace, snapshot or product
  * tree: `correctness-model/…` for the evaluation half, `agent/…` for the solve half.
  *
- * Three bundle names live with the module that owns their meaning: `BUILT_AGENTS_FILE`
- * (`src/solve/built-starter.ts`), `REFERENCE_SOLVE_ENTRY` (`src/truth/evaluator-process-bundle.ts`)
- * and `HARNESS_CONFIG_FILE` (`src/truth/harness-config.ts`).
+ * These six names were spelled inline at 68 sites in 23 modules, two or three to a file, which is
+ * below `no-repeated-string-literal`'s four-per-file floor at every one of them — so that rule saw
+ * a clean tree while the layout was typed out sixty-eight times. `tree-identity`, which reports a
+ * name spelled in more than one file as `identity-without-owner`, is the scan that reads across
+ * files instead, and this module is the repair it asks for. Thirty-three modules import these names
+ * today. The two directory prefixes joined them on 2026-09-22, when the same scan found
+ * `correctness-model/` spelled as a candidate prefix in two modules.
  *
- * Tests spell the literals, so a rename here is still caught by a fixture.
+ * Three bundle names are deliberately absent, because a module already owns each with its meaning
+ * attached: `BUILT_AGENTS_FILE` in `src/solve/built-starter.ts`, `REFERENCE_SOLVE_ENTRY` in
+ * `src/truth/evaluator-process-bundle.ts` and `HARNESS_CONFIG_FILE` in
+ * `src/truth/harness-config.ts`. Moving them here would trade one owner for another rather than
+ * removing a second spelling.
+ *
+ * Tests keep spelling the literals, and no file under `test/` imports this module. A fixture that
+ * built its tree from the same constant as the code under test would follow a rename and pass
+ * either way, so the layout would stop being checked by anything at the moment it changed.
  */
 
 /** The evaluation half's directory, as a candidate path prefix. */

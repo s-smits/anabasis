@@ -58,7 +58,9 @@ export function fileArtifactRoot(schema: PublicArtifactSchema): string {
   return root;
 }
 
-/** `fileArtifactRoot`'s rule as a message, or null when the schema satisfies it. */
+/** The same rule in report form: candidate validation surfaces the message as a finding and the
+ *  worker starter as a typed non-result, so neither has to crash at its own boundary to say the
+ *  schema has no file root. */
 export function fileArtifactRootIssue(schema: PublicArtifactSchema): string | null {
   try {
     fileArtifactRoot(schema);
@@ -108,8 +110,9 @@ async function unsupported(member: string): Promise<Result<never, FileError>> {
   return err(new FileError("not_supported", `the draft file root has no ${member}`));
 }
 
-/** Pi's read, write and edit tools reach only the members with bodies below; the rest refuse as
- *  typed results, so a member Pi adds to `ExecutionEnv` fails the compile here. */
+/** Pi's read, write and edit tools reach only the members with bodies below. The rest refuse as
+ *  typed results rather than being left out, so a member Pi adds to `ExecutionEnv` fails the
+ *  compile here instead of reaching a tool as `undefined` at solve time. */
 class DraftExecutionEnv implements ExecutionEnv {
   readonly cwd = ROOT;
   readonly artifactRoot: string;
@@ -284,8 +287,10 @@ function bind(tool: AgentHarnessTool<ExecutionToolContext>, env: DraftExecutionE
   };
 }
 
-/** Pi's own tools, bound to one DraftStore-backed ExecutionEnv. The shell needs a real directory and
- *  process, so it is a controller tool instead (`built-bash.ts`). */
+/** Pi's own tools, bound to one DraftStore-backed ExecutionEnv. The shell is absent here on
+ *  purpose: it needs a real directory and a real process, which this confined worker cannot host,
+ *  so it is a controller tool instead (`built-bash.ts`) and exchanges the file map over the
+ *  protocol. */
 export function createDraftFileTools(draft: DraftStore, schema: PublicArtifactSchema): AgentTool[] {
   const env = new DraftExecutionEnv(draft, schema);
   return [

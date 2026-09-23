@@ -1,4 +1,14 @@
-/** One Builder conversation per run: a round keeps its session for the next, which configures it. */
+/**
+ * One Builder conversation spans the run. A round that settles leaves its session open and the next
+ * round configures it rather than opening a new one, which is how the Builder's context survives
+ * the measuring and reviewing that happen between rounds.
+ *
+ * Everything else here is about giving that session up cleanly, because a session held after its
+ * round is a conversation the next round would inherit without meaning to. A round that ended
+ * without an ending is disposed so the next one opens fresh; the waiting session is disposed when
+ * the run closes; a round still in flight at close is disposed when it ends, whatever its ending;
+ * and a dispose that throws does not take the close down with it.
+ */
 import { describe, expect, it } from "bun:test";
 import { BuilderConversation, type OpenSession } from "../src/author/builder-conversation.ts";
 import type { HostSession, PiTool } from "../src/backends/pi-session.ts";

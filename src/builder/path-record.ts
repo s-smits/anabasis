@@ -1,3 +1,14 @@
+/**
+ * The append-only record of every path decision an isolated Builder capability made. The guard
+ * decides and the operating-system child enforces, and this stream is where both halves meet: a
+ * row carries the requested and resolved path, the policy and profile digests in force, and an
+ * `enforcement` naming the layer that settled it. Keeping only the guard's ruling would show a
+ * path Seatbelt refused after the guard had allowed it as an ordinary allow, which is the one
+ * disagreement the isolation evidence exists to surface.
+ *
+ * The rows outlive the session that wrote them: `tools/outcome/builder-tools.ts` folds the stream
+ * back into a per-run reading, so a row must stay parseable and ordered long afterwards.
+ */
 import type { JsonValue } from "../meta/json-shape.ts";
 import { appendFileSync, existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -22,6 +33,12 @@ export type PathRecordRow = {
   resolved: string | null;
   decision: "allow" | "deny";
   reason: string;
+  /** Which layer settled the access: `guard-denied` for a path `guardPath` refused before any
+   *  child ran, `os-refused` for one the guard allowed and the sandbox then visibly refused, and
+   *  `os-allowed` for a command the sandbox let through. The middle value is a disagreement
+   *  between the two layers, and `candidate-isolation-runtime.ts` turns it into a refusal that
+   *  stops the build; only Darwin can produce it, because Bubblewrap shows a denied path as an
+   *  absent one and the vm workshop cell therefore records every run it made as `os-allowed`. */
   enforcement: "guard-denied" | "os-refused" | "os-allowed";
   bytes: number | null;
 };
@@ -67,7 +84,11 @@ function pathRecordRow(value: JsonValue): PathRecordRow | null {
   return /* SAFETY: `row` is `value` itself, so the field checks above are the evidence for narrowing the parsed line once. */ row as PathRecordRow;
 }
 
-/** Parse the append-only JSONL stream and refuse malformed or non-increasing evidence. */
+/** Parse the append-only JSONL stream and refuse malformed or non-increasing evidence. A row that
+ *  fails its field checks, or whose sequence number does not advance, says the file was rewritten
+ *  or written by two hands at once, and a fold over it would report a reading of something that is
+ *  no longer the record. Refusing with the line number keeps the damage locatable; dropping the bad
+ *  line would leave a shorter stream that still looks whole. */
 export function readPathRecordRows(path: string): PathRecordRow[] {
   let prior = 0;
   return readFileSync(path, "utf8")
@@ -88,6 +109,10 @@ export function readPathRecordRows(path: string): PathRecordRow[] {
     });
 }
 
+/** Opens the stream for one session of a composition that may have had several. The sequence
+ *  resumes from the file's last row, so numbers stay unique across the whole record, while
+ *  `count()` reports this session's own appends: a session that opened the record and was refused
+ *  its first capability has appended nothing, and that is what the isolation tests assert on. */
 export function openPathRecord(epochDir: string, sessionId: string): PathRecord {
   const path = join(epochDir, PATH_RECORD_FILE);
   const existing = existsSync(path) ? readPathRecordRows(path) : [];

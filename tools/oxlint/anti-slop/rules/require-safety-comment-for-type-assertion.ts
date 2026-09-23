@@ -94,7 +94,29 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion, pattern: 
 }
 
 /**
- * Require every non-const type assertion to state the invariant TypeScript cannot express.
+ * Every type assertion but `as const` has to carry a marked sentence saying what the author
+ * checked that the compiler could not — the word `SAFETY`, a colon, and the reason.
+ *
+ * An assertion is the one construct where the type system stops arguing and takes the author's
+ * word, so the word is the whole of the evidence and it is normally not written down. A reader
+ * meeting `value as Row` a year later can see what was claimed and has no way to find out why it
+ * was true, which means they cannot tell a checked invariant from a guess that has held so far.
+ *
+ * `as const` is exempt because it narrows rather than asserts: it adds what the literal already
+ * says instead of overriding what the checker worked out, so there is no unproved claim to
+ * justify.
+ *
+ * Where the sentence may sit is deliberately generous, because refusing a correctly justified
+ * assertion on a placement technicality would teach authors to write the marker twice rather than
+ * to write it well. `hasSafetyComment` walks outward from the assertion to the statement that
+ * contains it and on to an `export` in front of that statement, and `justifiedAcrossParentheses`
+ * additionally accepts a comment separated from the assertion by nothing but whitespace and
+ * opening parentheses. That last one is narrow on purpose: nothing else may stand between them,
+ * so no neighbouring expression can borrow the sentence.
+ *
+ * The marker is configurable and the pattern requires a colon and something after it, so a bare
+ * `SAFETY` with nothing behind it does not count as a justification. `.oxlintrc.json` configures
+ * no markers, which leaves the default, `SAFETY`.
  *
  * There is no fix: the comment's content is the entire requirement. A generated one would satisfy
  * the rule and prove nothing, which is worse than the missing comment.

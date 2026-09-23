@@ -23,7 +23,8 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 // Coverage counts host-returned text, not proof of model consumption.
 const READ_CHARS_TOTAL = 4_000_000;
-// Larger pages are refused by some providers as oversized tool results.
+// Native Claude replaced 60,000-character pages with oversized-result errors, so the page has to
+// be small enough that the transport delivers it at all.
 const READ_CHARS_PER_CALL = 16_000;
 const INVENTORY_MAX_FILES = 400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
@@ -61,12 +62,15 @@ export interface SourceReadState {
 
 const isDigest = (value: unknown): value is string => isString(value) && /^[0-9a-f]{64}$/.test(value);
 
-/** The files a review may read: core contract files first, so the cap cannot crowd them out, then
- *  the rest of the tree. A cap that refuses any path marks the inventory truncated. */
+/** The files a review may read: the core contract first, then the rest of the tree. The order is
+ *  the rule -- a cap must never crowd the core contract out of a review, nor silently reduce the
+ *  denominator the review reports against -- and a cap that refuses any path marks the whole
+ *  inventory truncated so the review states the limit instead of reading past it. */
 export function reviewInventory(root: string): ReviewInventory {
   const files = new Set<string>();
   const missing: string[] = [];
-  /** False once the cap refuses a path. */
+  /** False once the cap refuses a path. Both walks below stop on that return value rather than
+   *  read a flag afterwards, so there is one place the cap can be observed. */
   const add = (path: string): boolean => {
     if (files.has(path)) return true;
     if (files.size >= INVENTORY_MAX_FILES) return false;
@@ -109,7 +113,8 @@ export function reviewInventory(root: string): ReviewInventory {
     }
     return true;
   };
-  // A cap the core files already met skips the walk.
+  // `||` short-circuits, so a cap the core contract already met skips the walk entirely, which is
+  // what the old flag did by returning at the top of it.
   const truncated = coreTruncated || !walk(root);
   return { files: [...files], truncated, missing };
 }
@@ -146,8 +151,10 @@ function boundCommand(
   return row.command;
 }
 
-/** The alias-keyed entry points the recorded receipts grant. Every declared tool needs an agreeing
- *  executed receipt, and every executed receipt needs a declared tool, or the evidence is refused. */
+/** The alias-keyed entry points the recorded receipts grant. The binding is required in both
+ *  directions: a declared tool without an executed receipt agreeing with its provenance grants
+ *  nothing, and an executed receipt the tool summary does not declare refuses the whole evidence,
+ *  because a review may read only what a receipt binds. */
 function verifierSources(tools: Record<string, JsonValue>, evidence: readonly VerifierExecutionEvidence[]) {
   const sources: Record<string, ToolEntry> = {};
   for (const [id, value] of Object.entries(tools).sort(([a], [b]) => compareCodeUnits(a, b))) {
@@ -261,9 +268,15 @@ export function readSourceTool(
     return reply(`refused: ${why}`);
   };
   /**
-   * One entry's next page, or why it gave none. `unreadable` marks an entry that yields no bytes
-   * at all, which the automatic scan skips; a changed entry is not unreadable and restarts from
-   * its first page on the next call.
+   * One entry's next page, or why it gave none. `unreadable` separates an entry that yields no
+   * bytes at all -- outside the tree, not a regular file, a recorded verifier tool whose bytes or
+   * path moved, source that is not UTF-8 -- from one whose pages were merely invalidated by a
+   * change and which the next call reads again from the start.
+   *
+   * The automatic scan walks past an unreadable entry and delivers the next one. It used to pick
+   * the first incomplete entry blind, so one undeliverable entry refused every parameterless call
+   * for the rest of the review: the reviewer spent its whole turn budget on that refusal and read
+   * nothing at all.
    */
   const page = (
     path: string,

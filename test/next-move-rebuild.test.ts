@@ -1,4 +1,16 @@
-/** Host boundaries reopen adopted-product authoring; the Builder selects its scope. */
+/**
+ * The host decides that authoring reopens; the Builder decides what to change. These cases hold
+ * that line at three boundaries. The off-aim allowance stops a campaign once it is spent, in the
+ * sentence the frame owns, and one round below the allowance it leaves the round to the Builder,
+ * counting a claim-refused round inside the run but never a refusal on its own. Blocking feedback
+ * reopens the route, and only blocking environment feedback stops instead. The saturation move
+ * opens model-owned authoring while the allowance runs, and ends the campaign once the whole
+ * allowance has read one side.
+ *
+ * The on-disk cases are here because a reopen has to survive the tree moving underneath it: the
+ * pass is kept across a checkout relocation, retained product versions stay distinguishable, and
+ * the author is handed the original request with no curriculum pinned to it.
+ */
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";

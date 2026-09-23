@@ -147,8 +147,11 @@ async function runAnalysePhase(
 
 /** Whether an admitted packet has blocking feedback. The routing step has already decided
  *  which findings to admit. Host findings such as checkerUnboundFinding can require a repair;
- *  the Judge never does. Every admitted row's severity is read, so blocking host feedback also
- *  controls publication of a held candidate's packet; advisory rows alone do not. */
+ *  the Judge never does. This check used to read only Judge findings, which left a host-reported
+ *  unbound verdict recorded but unused: the next decision read older admission, found no blocker
+ *  and continued climbing. Every admitted row's severity is inspected now, so blocking host
+ *  feedback also controls publication of a held candidate's packet. Advisory rows alone do not
+ *  enable publication. */
 export function blocksReplacement(feedback: ReadonlyArray<Pick<CampaignFeedback, "severity">>): boolean {
   return feedback.some((row) => row.severity === "blocking");
 }
@@ -337,8 +340,8 @@ export async function settleCandidateEvaluation(input: PostBuildInput): Promise<
   input.providerBudget?.throwIfDenied();
   input.verifierLifetime?.assertUsable();
   const shipping = shippingBundleFor(input, measure);
-  // A null claim states an environment-blocked battery; its recorded
-  // evidence and typed case rows carry the reason, so the absence is only named here.
+  // A null claim states an environment-blocked battery (live-run-08: a dead provider); its
+  // recorded evidence and typed case rows carry the reason, so the absence is only named here.
   if (measure.claim === null) {
     absentSteps.push(
       `battery "${runId}": environment-blocked — typed non-results recorded; no claim was written`,
@@ -346,7 +349,9 @@ export async function settleCandidateEvaluation(input: PostBuildInput): Promise<
   }
   const claimStage = recordMeasurement(measureDir, { runId, ...measure.verdicts });
   // Analysis runs for every measured battery, including one that passed nothing: the battery that
-  // most needs its census and admission read is the one that failed everywhere.
+  // most needs its census and admission read is the one that failed everywhere. On 2026-08-10 the
+  // claude-med run's 25 recorded admission refusals were never diagnosed, because a zero-pass skip
+  // stood here.
   const analysed = await runAnalysePhase(input, measure);
   const promotion = settleCheckAndPointer(input, analysed, measure, shipping);
   return {

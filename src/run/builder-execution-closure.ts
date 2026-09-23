@@ -1,11 +1,15 @@
 /**
  * Controller closure for Builder execution records.
  *
- * The author writes each record, but only the controller knows when its invocation closed, so it
- * closes records left `in-flight` and names writes that landed after the terminal.
+ * Two facts the author side cannot see, both measured on run 25: three of four execution records
+ * stayed at `in-flight` after the campaign had ended, and two records were written eighteen and
+ * twenty-eight minutes after their own invocation had recorded its terminal. The author writes the
+ * record, but only the controller knows when the invocation around it closed, so the closure lives
+ * here rather than in the session that opened the record.
  *
- * It changes no submit row, aggregate or outcome a session settled itself: closing rewrites one
- * field of an open record, and the post-terminal witness only names the invocation already closed.
+ * It changes no submit row, no aggregate and no outcome a session settled itself. Closing rewrites
+ * one field of a record its session left open, and the post-terminal witness only names the
+ * invocation that had already closed before a later write landed.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -65,9 +69,11 @@ function executionFiles(epochDir: string): string[] {
  *
  * "Open" is an opening with no terminal beside it: exactly the state every legitimate Builder write
  * happens in, because the controller driving the session has not closed yet. Only an opening newer
- * than the latest terminal blocks this lookup; an older orphan counts as past, so it cannot disable
- * closure forever. An opening with an unreadable timestamp still blocks because its order is
- * unknown. A campaign with no controller directory is never post-terminal.
+ * than the latest terminal blocks this lookup. An older orphan is read as a past invocation
+ * instead: run 25 left one behind, and treating it as open forever disabled closure for that whole
+ * campaign. An opening whose timestamp will not parse still blocks, because nothing can establish
+ * where it falls in the order. A campaign with no controller directory has no invocation to be
+ * after, so it is never post-terminal.
  */
 export function latestClosedInvocation(campaignRoot: string): BuilderExecutionInvocation | null {
   const controllerDir = join(campaignRoot, "controller");

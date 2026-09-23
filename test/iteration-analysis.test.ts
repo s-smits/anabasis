@@ -1,9 +1,11 @@
 /**
- * Tests for finding ownership and admission. Harness defects route to the named Builder-owned
- * part, task difficulty findings route to tests, and a blocking Judge exit routes to the evaluator.
- * Other finding kinds remain recorded without authoring feedback. The integration cases in
- * test/harness-measure.test.ts derive analysis from recorded measurement evidence; this file
- * checks routing, host findings and whether cited evidence exists before feedback is admitted.
+ * A finding is worth admitting only when something owns it, so ownership is the subject here.
+ * A harness defect routes to the named Builder-owned part, a task difficulty finding routes to
+ * tests, and a blocking Judge exit routes to the evaluator, while every other finding kind stays
+ * recorded without reaching authoring at all. Alongside the routing, this file checks the host
+ * findings and whether the evidence a finding cites actually exists before the feedback is
+ * admitted. The integration cases in test/harness-measure.test.ts derive the same analysis from
+ * recorded measurement evidence instead.
  */
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";

@@ -1,7 +1,12 @@
-// Tests for host-owned solve isolation use OS refusals and successful control reads. The probe
-// executes the sandbox on the current host; checking only its configuration would not show that
-// it works. A successful control matters because a sandbox that refuses every operation also
-// prevents legitimate work, as run 4 found in its repair-attribution and Judge paths.
+// Host-owned solve isolation, proved by running it rather than by reading it. Every case here
+// executes the sandbox on the host the suite is running on, because a profile that is checked only
+// as configuration is a profile nobody has seen refuse anything, and the whole point of the wall
+// is what the kernel does with it.
+//
+// Each refusal is paired with a control read that has to succeed, and that half is the one worth
+// explaining: a sandbox that refuses every operation would pass a suite testing refusals alone
+// while making the product unusable. Run 4 is the reason it is not hypothetical — it walled off
+// its own repair-attribution and Judge paths.
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { homedir, tmpdir } from "../src/meta/os.ts";

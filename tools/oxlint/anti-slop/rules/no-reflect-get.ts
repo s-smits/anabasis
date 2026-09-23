@@ -28,16 +28,25 @@ function forwardsGetTrap(node: ESTree.CallExpression): boolean {
 }
 
 /**
- * Ban Reflect.get, which bypasses ordinary property access and useful type evidence.
+ * A call to the global `Reflect.get`.
  *
- * There is no fix: the repair is typed access, or a parse of the dynamic input into a domain
- * type, and which one applies is the question the reflection dodged.
+ * `row.verified` is a read the compiler takes part in: it knows whether the property is declared
+ * and what it holds, and it objects when the answer is neither. `Reflect.get(row, key)` is the
+ * same read with the property arriving as a value, so nothing is checked on the way in and what
+ * comes back carries whatever type the reflection is declared to return rather than the one the
+ * property has. It is reached for where the property is not known statically, which is the case
+ * in which that check was worth the most.
  *
  * A Proxy `get` trap forwarding its own three parameters is admitted. It must pass the receiver
  * so that getters see the proxy as `this`, and ordinary property access has no way to pass one.
  * Until 2026-09-22 the one such trap, in `src/solve/task-access-trace.ts`, carried a ledger row
  * that said so. The first form of this admission took any three-argument call, which let
- * `Reflect.get(source, "value", source)` anywhere through.
+ * `Reflect.get(source, "value", source)` anywhere through, so `forwardsGetTrap` below now requires
+ * the call to sit in a plain `get` property of an object literal and to hand on that function's
+ * own three parameters, in order.
+ *
+ * There is no fix: the repair is typed access, or a parse of the dynamic input into a domain
+ * type, and which one applies is the question the reflection dodged.
  */
 export const noReflectGetRule = defineRule({
   meta: {

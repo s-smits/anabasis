@@ -1,10 +1,24 @@
 /**
- * Builder toolkit tests — seven capabilities exercised through the isolation policy. The
- * shell check spawns a real sandbox-exec child on Darwin, and the path record
- * retains the allowed and denied accesses. Policy and OS enforcement are tested in
- * candidate-isolation.test.ts; this file checks that the tools use those mechanisms
- * and that refusals return typed errors without protected measurement content.
- * These cases cover the listed accesses rather than every possible filesystem path.
+ * The seven capabilities the Builder actually holds — read, write, edit, bash, grep, find and ls —
+ * driven through a real isolation rather than a stub. The question here is not whether the wall
+ * works, which is settled elsewhere, but whether each tool goes through it: a tool that reads the
+ * filesystem directly would pass every functional assertion about what it returned and quietly have
+ * no wall in front of it at all. So the cases run against a fixture repo with a derived policy, and
+ * the path record is read back afterwards to show which accesses were allowed and which denied.
+ *
+ * Two things follow from that and are worth knowing before reading a pass. The capability block is
+ * `describe.if(osIsolationSupport().ok)`, so on a host with neither Darwin Seatbelt nor Linux
+ * Bubblewrap available it does not run and reports nothing — a green suite on such a host has not
+ * exercised these tools. And the policy itself, along with the OS enforcement behind it, belongs to
+ * `candidate-isolation-policy.test.ts` and `candidate-isolation-guard.test.ts` for the decisions and
+ * to `candidate-isolation-darwin.test.ts` and `candidate-isolation-linux.test.ts` for the executed
+ * children.
+ *
+ * The refusals carry their own obligation. A typed error is not enough on its own, because the text
+ * that explains the refusal is written for a model that must not learn what it just failed to
+ * reach, so the assertions check both that the error is typed and that no protected measurement
+ * content rode out with it. What the cases cover is the listed accesses, not every path the
+ * filesystem could offer.
  */
 import {
   chmodSync,
@@ -141,7 +155,8 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(windowed).toContain("line two");
     expect(windowed).not.toContain("line one");
     expect(windowed).not.toContain("line three");
-    // A one-line file read past its end said "(1 lines total)".
+    // The grammar is the regression: reading past the end of a one-line file used to report
+    // "(1 lines total)", so the assertion below is spelled singular and a returning plural fails.
     await run("write", { path: workspacePath("slug", "gen", "one.txt"), content: "only" });
     const past = await rejectionOf(run("read", { path: workspacePath("slug", "gen", "one.txt"), offset: 5 }));
     expect(String(past)).toContain("(1 line total)");

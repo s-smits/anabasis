@@ -1,5 +1,9 @@
-/** Validates the Builder's brief before candidate execution: field types, declared check inputs,
- *  join ownership, artifact roots and rule citations. */
+/**
+ * Validate the Builder's brief before any candidate code executes. This module checks field types,
+ * declared check inputs, join ownership, artifact roots and rule citations, and it is the last place
+ * a malformed brief can be refused cheaply: everything after it spends a worker or a paid turn on
+ * the assumption that the contract it declares is the contract it has.
+ */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
   type Brief,
@@ -22,8 +26,12 @@ import {
 } from "../meta/json-shape.ts";
 import { numericBoundaryFieldFindings, numericBoundaryFindings } from "./numeric-boundary.ts";
 
-/** What the shape pass proves: the named fields exist with the right container kind, and nothing
- *  about their elements, which the element walks below then check. */
+/**
+ * Exactly what the shape pass proves: the named fields are present with the right container kind,
+ * and nothing at all about their elements. Naming that intermediate state lets the six element walks
+ * below read the parsed JSON values directly instead of asserting each container back down from the
+ * contract type.
+ */
 type BriefRecord = JsonObject & {
   slug: string;
   domain: string;
@@ -145,7 +153,9 @@ function briefFieldFindings(value: JsonObject): ContractFinding[] {
   if (findings.length > 0) return findings;
   // SAFETY: the loops above found every BriefRecord field present with the right container kind.
   const brief = value as BriefRecord;
-  // Decisions are the coverage map, so each row must be a readable non-empty note.
+  // The static type promises string[], but nothing checked the entries, so a brief whose decision
+  // rows were objects or blank strings still validated. Decisions are the coverage map, which means
+  // each row has to be a note a reader can actually read.
   brief.decisions.forEach((entry, i) => {
     if (!isString(entry) || entry.trim() === "") {
       findings.push(fieldFinding(`decisions[${i}]`, "a non-empty string", entry));
@@ -173,7 +183,9 @@ function artifactSchemaFieldFindings(brief: BriefRecord): ContractFinding[] {
         fieldFinding(`artifactSchema[${i}].allowedValues`, "an array (optional)", field.allowedValues),
       );
     } else if (field.taskConditioned !== undefined && field.taskConditioned !== true) {
-      // Literal true only: a truthy string or 1 would move a boundary the author did not declare.
+      // The literal true alone, as `fileMap` is declared: the family census reads this mark as a
+      // boundary, and a truthy string or a 1 would silently move a root the author never meant to
+      // declare material.
       findings.push(
         fieldFinding(
           `artifactSchema[${i}].taskConditioned`,
@@ -198,8 +210,9 @@ function artifactSchemaFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-/** Shape of each truth check: identity, assertion, execution block and declared ids. Deciding
- *  fields outside `execution` are refused by name. */
+/** Shape of each truth check: identity, assertion, execution block and declared ids, with the
+ *  superseded deciding fields refused by name rather than ignored, so a brief still carrying one is
+ *  told what replaced it instead of validating with a field nothing reads. */
 function truthCheckFieldFindings(brief: BriefRecord): ContractFinding[] {
   const findings: ContractFinding[] = [];
   brief.truthChecks.forEach((check, i) => {
@@ -304,8 +317,10 @@ function designRuleFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-/** Truth-check findings, and the artifact roots the checks declare they read ("$" is the whole
- *  artifact). Only valid paths count as read. */
+/** The truth-check pass, and the artifact roots those checks declared they read, where "$" includes
+ *  the whole artifact. A declaration makes a value available to a check; it does not prove the check
+ *  uses it. Only paths that input validation accepted are added here, so the unread-root check below
+ *  reads exactly the same selections this pass approved. */
 function truthCheckFindings(brief: Brief) {
   const findings: ContractFinding[] = [];
   const checkIds = new Set<string>();
@@ -356,8 +371,8 @@ function truthCheckFindings(brief: Brief) {
   return { findings, readRoots };
 }
 
-/** Each join has exactly one owning check and distinct decoy classes, so its discrimination
- *  evidence is about the join rather than label completeness. */
+/** Each join is owned by exactly one check and carries distinct decoy classes, which is what makes
+ *  its discrimination evidence about the join rather than about label completeness. */
 function joinFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const joinOwners = new Map<string, string[]>();
@@ -433,8 +448,11 @@ function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): C
       );
     }
     fieldNames.add(field.name);
-    // A root no check reads measures nothing. "$" covers every root; with no checks at all,
-    // brief-no-truth-checks already reports the failure.
+    // A root no check reads measures nothing. In run 80 the schema declared firmware source roots
+    // and the reference solve filled them, while every check read only the derived summary, so
+    // replacing or omitting every source file was accepted 25 of 25. Refuse such a root before F2
+    // executes. A check selecting the whole artifact ("$") covers every root, and where no checks
+    // exist at all, brief-no-truth-checks already reports that failure without a duplicate here.
     if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
       findings.push(
         finding(

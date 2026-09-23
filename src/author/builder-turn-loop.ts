@@ -20,8 +20,13 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 
 const LIVENESS_CHECKPOINT_MS = 60_000;
 
-/** Turn timeout when none was supplied, overriding the session's one-hour default. Each turn gets
- *  up to twenty-four hours, and the review schedule never cancels a turn. */
+/** Timeout for a Builder turn when no session timeout was supplied. Without it an absent
+ *  `turnTimeoutMs` would fall to the session's one-hour default cap (`DEFAULT_TURN_CAP_MS` in
+ *  pi-session.ts) and end a long authoring turn as a typed non-result. Each turn gets up to
+ *  twenty-four hours instead (operator decision 2026-09-14, after four recorded turns were cut
+ *  mid-work at the earlier six-hour cap), and the next turn opens a fresh window. The campaign's
+ *  review schedule in builder-campaign.ts never cancels a turn, so this is the only clock over
+ *  one. */
 export const BUILDER_TURN_SETTLE_MS = 86_400_000;
 
 export interface BuilderTurnState {
@@ -71,7 +76,9 @@ export function turnEventRecorder(
   let lastLivenessMs = 0;
   return (event) => {
     if (event.type === "tool_started" || event.type === "tool_ended") {
-      // Both edges reach the recorder, so a checkpoint keeps a tally a killed turn cannot settle.
+      // Both edges reach the recorder: the start counts the call and the end says whether it
+      // failed and what it returned. A checkpoint taken from either edge therefore records a
+      // running tally, which is the only account a killed turn will ever have.
       recorder.turnToolEvent(event);
       if (Date.now() - lastLivenessMs >= LIVENESS_CHECKPOINT_MS) {
         lastLivenessMs = Date.now();
@@ -82,8 +89,9 @@ export function turnEventRecorder(
     } else if (event.type === "message_text") {
       recorder.message(event.text);
     } else if ((event.type === "turn_ended" || event.type === "turn_failed") && event.usage !== undefined) {
-      // Interrupted and failed turns settle before the provider's account arrives, so their usage
-      // is the transport's estimate.
+      // A turn the caller interrupted and a turn that failed both settle before the provider's own
+      // account of them arrives, so their usage is whatever the transport had in flight -- an
+      // estimate, marked as one here, because a total holding estimates bounds nothing.
       recorder.reportedUsage(
         event.usage,
         event.type === "turn_ended" && event.stopReason !== "aborted" ? "final" : "estimated",
@@ -106,7 +114,8 @@ function observeTurnTools(
   });
 }
 
-/** One provider attempt. Review cadence is campaign-scoped, so retries cannot reset it. */
+/** One provider attempt. The review cadence is campaign-scoped and keyed to tool boundaries, so
+ *  neither a retry nor the outer turn can reset it or turn a timer expiry into an abort. */
 async function runBuilderAttempt(input: BuilderTurnInput): Promise<AgentTurnResult> {
   let usage: TurnUsage | undefined;
   return runModelAttempt(
@@ -163,8 +172,11 @@ export async function runBuilderTurn(input: BuilderTurnInput): Promise<{ prompt:
   }
 }
 
-/** `STALLED_TURNS` consecutive turns without a successful tool call end the round as
- *  `no-progress`. An unknown tally leaves the count alone, and a settled round stays settled. */
+/** Codex's no-progress rule: a turn in which no tool call succeeded made no progress, and
+ *  `STALLED_TURNS` of them in a row end the round as `no-progress`. The backend's tally counts the
+ *  CLI's own tools as well as the hosted ones; a backend that reports none leaves the count alone,
+ *  because an unknown tally is not the same as zero calls. A round that settled in this turn is
+ *  left as it settled. The run may retry the build, and the conversation continues either way. */
 function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCalls"]): void {
   if (calls === undefined) return;
   state.idleTurns = calls.total > calls.failed ? 0 : state.idleTurns + 1;
@@ -174,12 +186,23 @@ function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCall
 }
 
 /** The prompt for the next turn: the continuation for the session's progress, last turn's tool
- *  failures, and whether the owned files are still as the session found them. The last is stated
- *  as a fact only; nothing counts it and nothing ends on it. */
+ *  failures, and whether the owned files are still as the session found them.
+ *
+ *  The third part replaces the author-first interrupt removed on 2026-09-14. That monitor counted
+ *  sixteen tool calls over unchanged owned paths and then cut the turn with a finding; it never
+ *  fired in 414 recorded sessions, and a session installing frame3dd or a compiler under
+ *  .toolchain would have been cut mid-install for doing exactly the right thing. The fact behind it
+ *  is still worth stating: a Builder that has read and probed for a whole turn without touching
+ *  agent/ or correctness-model/ may not have noticed, and the transcript it would have to re-read
+ *  to notice is long. So the turn boundary states the fact once, in one line, and leaves the
+ *  decision with the model -- keep installing, or start writing. Nothing counts it and nothing ends
+ *  on it. */
 function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): string {
   const { state, authoring } = input;
-  // "Unchanged" compares against the session's opening, not this turn's, over the paths this
-  // round owns.
+  // "Unchanged" is byte identity against the session's opening, not against this turn's start: a
+  // turn that validates files written in an earlier turn is not a turn without authoring.
+  // `authoringIdentity` hashes the owned paths, so the note names what the controller opened for
+  // this round rather than the workspace at large.
   const owned = authoringIdentity(authoring) === authoring.openingIdentity ? "unchanged" : "changed";
   const goal = {
     kickoff: input.kickoff,

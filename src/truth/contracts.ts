@@ -76,7 +76,8 @@ export interface BuiltControllerInterface {
 
 /** The controller-aggregated evaluation result. Generated source exports named boolean checks.
  *  The request is an EvaluationRequest — one shape for every evaluate, always carrying the public
- *  task, so no check is task-blind.
+ *  task, which is the falsifier-claude-007 task-blind-verifier fix and was completed by task-bound
+ *  controls.
  *  `runtime` is the host-owned capability boundary: external-verifier groundings call
  *  `runtime.tools.run({ toolId, checkId, args, files, stdin })` — the host runs the installed tool
  *  inside a cell holding only the runner-bound artifact and public task (correctnessModel code never
@@ -201,10 +202,15 @@ export async function loadBuiltStarterFactory(slugDir: string): Promise<BuiltSta
 }
 
 /**
- * Load probe for a generated correctness model before adoption, so a broken import is a finding
- * the Builder can repair in the same session rather than a runtime failure during measurement.
- * Typechecking runs first; only a type-correct module is loaded, in a fresh confined process. The
- * bundle cache is keyed by content bytes, so an edited evaluator or helper never reuses a bundle.
+ * Load probe for a generated correctness model before adoption. In falsifier-claude-002 an incorrect
+ * import in the evaluator passed the text checks and the fingerprinting, and then stopped the run
+ * when evaluation tried to import it, so a product defect appeared as a runtime failure. Probing
+ * during validation turns the same defect into a finding the Builder can repair in the same session.
+ *
+ * Typechecking runs first, since it covers the syntax errors and the incorrect API use that type
+ * erasure hides — the -004 failure — and only a type-correct module is then loaded, in a fresh
+ * confined process. The bundle cache uses the content bytes as its key, so an edited evaluator or
+ * helper cannot accidentally reuse a bundle from an earlier attempt.
  */
 export async function probeGeneratedCorrectnessModelModule(
   slugDir: string,
@@ -248,7 +254,9 @@ export async function probeGeneratedCorrectnessModelModule(
   } catch (error) {
     if (evaluatorEnvironmentStop(error)) throw error;
     const message = errorMessage(error);
-    // The load message is public authoring detail; the classification alone does not locate the fault.
+    // The load message is public authoring detail, and the classification alone does not locate
+    // the fault: truss run dffb11 spent two previews on an evaluator import of ../core/ while being
+    // told only the classification.
     return [
       loadFailureFinding(
         {
@@ -269,7 +277,9 @@ export async function probeGeneratedCorrectnessModelModule(
  * its wall, because this closure is the only place a single check's own cost is observable: the
  * caller receives one aggregate verdict and the author sees neither. A check id is a public
  * authoring identity and the duration is the candidate's own evaluator running, so an aggregate
- * over a whole corpus may cross to its author.
+ * over a whole corpus may cross to its author. Truss epoch 4764 declared seven checks that each
+ * re-ran a nonlinear solver over the same design, which made one gate call cost 441 s and left the
+ * whole authoring session with three development cycles.
  */
 export async function loadCorrectnessModel(
   slugDir: string,

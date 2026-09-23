@@ -15,11 +15,12 @@ import { inlineFunctionArgument } from "../shared/statements.ts";
  * job that the closure was doing by side effect, and the array method goes back to answering
  * a question rather than building state while it walks.
  *
- * The rule reads the four positions that take a predicate — `filter`, `find`, `some`, `every` —
- * and reports a callback whose body mutates. `shared/predicate-effect.ts` owns which calls those
- * are and why there are six of them, because `ana/prefer-some-over-filter-length` needs the same
- * answer from the other side: it may turn a `.filter().length` into `.some()` only where the
- * short-circuit cannot be noticed.
+ * The rule reads the six positions that take a predicate — `filter`, `find`, `findLast`,
+ * `findIndex`, `some` and `every` — and reports a callback whose body mutates.
+ * `shared/predicate-effect.ts` owns which calls count as a mutation, and why there are six of
+ * those as well, because `ana/prefer-some-over-filter-length` needs the same answer from the other
+ * side: it may turn a `.filter().length` into `.some()` only where the short-circuit cannot be
+ * noticed.
  *
  * `forEach`, `map` and `reduce` are outside it on purpose. `forEach` exists to have an effect,
  * a `map` that also records what it saw is a different finding with a different answer, and
@@ -30,7 +31,7 @@ import { inlineFunctionArgument } from "../shared/statements.ts";
  * the author has to make, and it is not readable off the predicate.
  */
 
-/** The four array methods whose argument is a predicate: a question, asked once per element. */
+/** The six array methods whose argument is a predicate: a question, asked once per element. */
 const PREDICATE_METHODS = new Set(["filter", "find", "findLast", "findIndex", "some", "every"]);
 
 export const noSideEffectInPredicateRule = defineRule({

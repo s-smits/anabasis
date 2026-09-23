@@ -314,10 +314,11 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
 }
 `,
   ],
-  // Two files naming the same closed vocabulary. Standing on 2026-09-20 as `src/critic/policy.ts`
-  // against `src/run/terminal.ts`, seven of the nine terminal codes matched, and they match because
-  // the set has one meaning: a code added to one file and not the other is the defect, not the
-  // agreement. Nothing in the run does anything, so nothing in it can move to an owner.
+  // Two files naming the same closed vocabulary. They agree because the set has one meaning, so a
+  // code added to one file and not the other is the defect and the agreement is the correct state,
+  // which is why the copy scan has to stay quiet here. The six codes below are six of the nine in
+  // `LOOP_TERMINAL_CODES`, and neither file does anything with them — one is an array and the
+  // other a Set — so there is no body a shared owner could hold even if one were wanted.
   [
     "src/vocab-a.ts",
     `export const OPENING_CODES = [
@@ -746,18 +747,6 @@ export const pairs = [splitPairs(".").size, 2];
   });
 
   /**
-   * Two copies inside one file. The earlier run scan skipped that pair until 2026-09-20 — it read
-   * the corpus as a set of file pairs and a file is not a pair with itself — so the shape went
-   * unreported exactly where a reader is most likely to have written it twice. Dropping the skip
-   * over this tree found three, of which two were real and are now one function each: the two
-   * `context.report` blocks in `ana/no-hand-rolled-error-render`, and the resolution-id validation
-   * written once for a block of rows and once for a single row in the prediction ledger script.
-   *
-   * The second half is the guard: four statements repeated three times match themselves four lines
-   * down, and a scan without a non-overlap test reports two ranges over one block, which is the one
-   * thing growing the match was meant to stop.
-   */
-  /**
    * A file saying on its first line that it is vendored is kept as its upstream wrote it, as a
    * vendor directory is: `truncateHead` and `truncateTail` in the pi-mono truncate utility share
    * their opening, and the matching upstream test is copied beside them. A first line that only
@@ -776,6 +765,18 @@ export const pairs = [splitPairs(".").size, 2];
     ]);
   });
 
+  /**
+   * Two copies inside one file. The earlier run scan skipped that pair until 2026-09-20 — it read
+   * the corpus as a set of file pairs and a file is not a pair with itself — so the shape went
+   * unreported exactly where a reader is most likely to have written it twice. Dropping the skip
+   * over this tree found three, of which two were real and are now one function each: the two
+   * `context.report` blocks in `ana/no-hand-rolled-error-render`, and the resolution-id validation
+   * written once for a block of rows and once for a single row in the prediction ledger script.
+   *
+   * The second half is the guard: four statements repeated three times match themselves four lines
+   * down, and a scan without a non-overlap test reports two ranges over one block, which is the one
+   * thing growing the match was meant to stop.
+   */
   it("reads two copies of a run in one file, and not a run matching a shift of itself", () => {
     const read = (path: string, text: string): string[] =>
       treeFindingsOver(new Map([[path, text]]), new Map([[path, text]]))

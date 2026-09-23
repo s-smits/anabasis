@@ -55,9 +55,13 @@ export function publicTaskVerdict(
 }
 
 /**
- * Bounded operator detail for an accept rejection: check ids and the first blocking messages,
- * kept in evidence for investigation. Accepts use their task's hidden data, so these messages may
- * contain protected detail; author feedback receives only the permitted public projection.
+ * Bounded operator detail for an accept rejection: check ids and the first blocking messages. In
+ * hw1-v2-claude-004 three repair attempts went out without the issue text that said the verifier was
+ * expecting an invented break-record schema, so each one repaired something else; keeping the
+ * diagnostic in evidence is what lets that investigation start from what the verifier said.
+ *
+ * An accept uses its own task's hidden data, so these messages may carry protected detail, and that
+ * is why they stay in evidence: author feedback receives only the permitted public projection.
  */
 export function blockingIssueSummary(result: CorrectnessModelResult, cap = 3): string {
   const blocking = result.issues;

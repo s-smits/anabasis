@@ -1,7 +1,12 @@
 import type { BackendKind, BackendSlot } from "./backend-kinds.ts";
 
-/** Per-slot `<KIND>_<SLOT>_REASONING_EFFORT` variables, which win over the slot default. A kind
- *  absent here has no effort variable; each transport still validates the resolved effort. */
+/** Per-slot reasoning-effort environment variables for the transports that expose effort. This
+ *  table defines the `<KIND>_<SLOT>_REASONING_EFFORT` names the resolver reads, and an explicit
+ *  environment value takes precedence over the slot default. It lives beside slot-defaults.ts
+ *  because it describes configuration precedence rather than backend identity. A kind absent here
+ *  has no effort variable at all; each transport still validates the resolved effort against the
+ *  values it supports before a session starts, so a name here is not a promise that any level
+ *  works. */
 const REASONING_EFFORT_ENV_BY_SLOT = {
   codex: {
     builder: "CODEX_BUILDER_REASONING_EFFORT",

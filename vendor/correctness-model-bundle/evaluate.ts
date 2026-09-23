@@ -1,4 +1,8 @@
-/** One deciding program per check, shared by host verification and labelled local tests. */
+/** One deciding program per check, and the same one whether the host is verifying a submission or
+ *  the author is running a labelled local test. Sharing it is what keeps a check's meaning single:
+ *  a check is the Boolean function the evaluator exports, the host runs every applicable one and
+ *  builds the aggregate verdict out of their results, and there is no second predicate anywhere
+ *  that could disagree with them. */
 import { capturedStructuredClone } from "../../src/meta/json-runtime.ts";
 import { canonicalJson } from "../../src/meta/stable-json.ts";
 import { sha256 } from "../../src/meta/digest.ts";
@@ -17,7 +21,12 @@ export type CheckProgramEvaluation = (
   onlyCheckId?: string,
 ) => Promise<CorrectnessModelResult>;
 
-/** Each fresh child receives only its declared inputs and its own check's hidden value. */
+/** Each fresh child receives only its declared inputs and its own check's hidden value, which is
+ *  what makes the declared paths a contract rather than documentation: a check able to read a path
+ *  it never declared, or another check's expectation, would be deciding on evidence no coverage row
+ *  records it as using. A check that declares `hidden: "required"` and finds no expectation of its
+ *  own throws here rather than running, because a check quietly deciding without its operand is
+ *  indistinguishable from a check that was never applicable, and only one of those is a defect. */
 export function checkEvaluationRequest(
   check: BriefTruthCheck,
   request: EvaluationRequest,
@@ -40,8 +49,12 @@ export function checkEvaluationRequest(
   });
 }
 
-/** Every applicable check runs, even after false, unless a reject control names the one it must
- *  fail. The host alone constructs aggregate issues. */
+/** Every applicable check runs, and the loop does not stop at the first false, so one artifact
+ *  yields one receipt per check rather than a verdict plus whatever came before it. `onlyCheckId`
+ *  narrows that to a single check, which is how a reject control proves it fails on the check it
+ *  names and not merely somewhere. What each failure contributes is its check id and the fixed
+ *  sentence "Declared check failed.", because the detail of why a check failed is the answer, and
+ *  the host composes the aggregate result from these receipts alone. */
 export function evaluateCheckProgram(brief: Brief, runCheck: CheckRunner): CheckProgramEvaluation {
   return async (request, runtime, onlyCheckId) => {
     const checks = applicableTruthChecks(brief, request.publicTask).filter(

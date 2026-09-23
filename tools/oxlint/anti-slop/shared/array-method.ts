@@ -1,7 +1,13 @@
 import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
 import { isString } from "#src/meta/json-shape.ts";
 
-/** Unwrap syntax-only wrappers when inspecting array methods and accumulator references. */
+/**
+ * Past the wrappers that change what the compiler thinks but not which value or method the
+ * expression names: parentheses, an optional chain, `as`, `<T>`, `!` and `satisfies`.
+ *
+ * A rule asking "is this `.filter` running on an array" has to see through all six, because an
+ * author writes them for the type checker and they leave the runtime expression alone.
+ */
 export function unwrapArrayExpression(wrapped: ESTree.Node): ESTree.Node {
   let node = wrapped;
   while (
@@ -30,7 +36,15 @@ export function resolveArrayBinding(sourceCode: SourceCode, wrapped: ESTree.Node
   return null;
 }
 
-/** Read static method names, including computed string literals, without evaluating expressions. */
+/**
+ * The method a member expression names, with the object it is called on, or null where the name
+ * is not written down.
+ *
+ * `rows["filter"]` names the same method as `rows.filter`, so a computed string literal is read
+ * too. A computed key that is anything else — a variable, a call, a template — names a method
+ * only at runtime, and a lint rule that guessed at it would report on whatever the guess happened
+ * to be, so it returns null instead.
+ */
 export function arrayMethodTarget(
   wrapped: ESTree.Node,
 ): { readonly name: string; readonly object: ESTree.Node } | null {
@@ -59,7 +73,23 @@ function isArrayAnnotation(type: ESTree.TSType): boolean {
   );
 }
 
-/** Recognize local array evidence; unknown receivers and iterator pipelines are deliberately excluded. */
+/**
+ * Whether this expression is certainly an array, decided from the file alone.
+ *
+ * Two rules ask before they report, `no-array-filter-map` and `no-reduce-accumulator-copy`, and
+ * both are about the cost of materialising an array that did not need to exist — so a receiver
+ * whose kind cannot be established has to come out false. A lazy iterator pipeline is the case
+ * that matters: `.values().filter(...).map(...)` reads like the shape `no-array-filter-map`
+ * catches and does one pass with no intermediate array, so answering "not known to be an array"
+ * is what keeps that rule off it.
+ *
+ * What counts as certain is an array literal, a call of one of the eight array-producing methods
+ * on something already certain, or a binding the file can settle: annotated as an array, a tuple,
+ * a `readonly` of either, or `Array`/`ReadonlyArray`, or else a `const` whose initialiser is
+ * itself certain. A binding written to after its declaration stops the walk, because what it
+ * holds at the call is no longer this file's to say, and `visited` stops a circular definition
+ * from recurring forever.
+ */
 export function isKnownArrayExpression(
   sourceCode: SourceCode,
   wrapped: ESTree.Node,

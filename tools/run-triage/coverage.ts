@@ -70,10 +70,12 @@ export function readV8Coverage(dir: string, repoRoot: string): FnCount[] {
   return aggregateCoverage(scripts, repoRoot);
 }
 
-/** Named function spans in one source file, from the token scanner — the same
- *  brace-bodied frames the 80-line ceiling measures. Method shorthand has no `function` or `=>`
- *  token and is not framed; the repository's source is declarations and arrow consts, and a
- *  missed method reads as "unknown", never as a false execution claim. */
+/** Named function spans in one source file, from the token scanner, which means exactly the
+ *  brace-bodied frames the source gate's function ceiling measures — one scanner, so a function
+ *  the gate sizes is a function this can report execution for. Method shorthand carries neither a
+ *  `function` nor a `=>` token and so is never framed, which the repository's own source mostly
+ *  avoids by writing declarations and arrow consts; where it does not, the missed method reads as
+ *  "unknown" rather than as a claim that it ran. */
 export function functionSpans(sourceText: string): FnSpan[] {
   return scanTokens(sourceText).spans;
 }

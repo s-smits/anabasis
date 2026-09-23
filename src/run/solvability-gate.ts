@@ -1,14 +1,31 @@
 /**
- * F2: runs every authored task's reference solve through the pinned verifier host before adoption,
- * using the same probe the claim writer reruns later.
+ * F2 checks every task's solvability before adoption (production connection audit, BUILD-STATE
+ * 2026-07-26). In fullrun-live-01 the verifier session solved only battery.tasks[0] while the
+ * census checked controls, so a candidate whose reference passed task 1 alone could be adopted
+ * with the rest of the battery unproven. This gate runs every authored task's reference solve
+ * through the pinned verifier host — the same `makeProbeSolvability` the claim writer runs again
+ * later — before adoption.
  *
- * Task ids, per-task check results and tool text are protected: they stay in
- * <iterationDir>/solvability.json. The Builder sees only aggregates over its own declared
- * structures: counts, which declared checks reject and how often, and the input-insensitivity
- * observation. Environment non-results are not product failures.
+ * The recorded evidence and findings carry task ids, per-task check results and tool text, all of
+ * which are protected. They stay host-side at <iterationDir>/solvability.json and never enter the
+ * returned feedback. What the author sees is the aggregate count, the failing-check concentration
+ * and the input-insensitivity observation (representation-census.ts), all of which describe
+ * Builder-authored structures. Check ids come from the brief's own declared truthChecks, which the
+ * Builder already knows, so the projection may name which checks reject and how often at aggregate
+ * level while the per-task join — which task failed which check — the task ids and the tool output
+ * stay behind.
  *
- * The representation census reuses the passed witnesses without another execution;
- * representation-census.ts decides which of its findings block.
+ * Run 12 is why the count alone was not enough: two iterations repaired blind against "25 of 25
+ * rejected". Run 14 iteration 1 repeated the class, with all 75 check failures sitting inside 3
+ * declared checks and only the bare count crossing. Environment non-results belong to the
+ * environment and are not counted as product failures.
+ *
+ * The representation census reuses these same witnesses without a second execution, looking for
+ * copied public inputs and repeated absence spellings. Those are two bounded checks, not a general
+ * proof that the tasks require domain skill, and their findings describe authored structures
+ * without quoting protected verifier evidence. BLOCKING_CODES in that module decides which of them
+ * refuse adoption, from its own recorded calibration; this gate only routes them at the severity
+ * they declare.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
@@ -86,11 +103,13 @@ export function makeSolvabilityCensusGate(
   probe: BuildDeps["probeSolvability"] = makeProbeSolvability(options),
 ): SolvabilityCensusGate {
   return async (harness, iterationDir, slugDir, stopped = () => false, stages) => {
-    // The frozen-source check belongs to the claim writer, not here.
+    // A run executes from its own launch worktree, so there is nothing to compare against here;
+    // the claim writer owns the frozen-source check.
     const probed = await probe({
       slugDir,
       fingerprint: harness.fingerprint,
-      // A fresh secret per census; only keyId enters the evidence.
+      // Run-scoped controller secret, created fresh for each census; only the keyId enters the
+      // evidence, so the recorded file names the commitment without carrying the key itself.
       operandCommitment: {
         key: crypto.getRandomValues(new Uint8Array(32)),
         keyId: `${harness.fingerprint.taskSetHash ?? "unbound"}-adoption-operands`,
@@ -98,9 +117,12 @@ export function makeSolvabilityCensusGate(
       stopped,
       ...keyIfDefined("stages", stages),
     });
-    // A cut census writes no solvability.json, which readiness would read as a completed F2.
+    // A cut census records no witnesses at all, because readiness reads this file as the F2 census
+    // that ran: a partial one written here would claim a census the run never finished.
     if (stopped()) return [];
     const { evidence, findings: probedFindings } = probed;
+    // The compiled public artifact schema goes to the census so its absence rule can tell a
+    // declared closed state ("none" among a field's allowedValues) from an invented sentinel.
     const passed = witnessesOf(evidence, slugDir, "passed");
     const representation = censusRepresentation(passed, harness.publicArtifactSchema);
     const independence = acceptControlIndependence(slugDir, passed);
@@ -122,7 +144,8 @@ export function makeSolvabilityCensusGate(
     const toolRefusals = TOOL_REFUSALS.flatMap(([code, owner, claim]) =>
       toolFeedback(probedFindings, code, owner, claim),
     );
-    // A tool refusal skipped F2 on purpose, so no census failure is reported beside it.
+    // A declared tool refusal skips F2 deliberately, so it is not a second census execution
+    // failure and nothing else is reported beside it.
     if (evidence === null && toolRefusals.length > 0) return toolRefusals;
     const insensitivity = inputInsensitivity(witnessesOf(evidence, slugDir, "failed"));
     return [
@@ -135,8 +158,18 @@ export function makeSolvabilityCensusGate(
   };
 }
 
-/** Representation findings grouped into one blocking and one advisory row, so an advisory finding
- *  never inherits a blocking row's effect. */
+/**
+ * The Builder authors the artifactSchema and the public structures the census compares, so these
+ * findings may describe those observations without quoting protected verifier evidence. They are
+ * grouped by severity so that an advisory finding cannot inherit a blocking row's effect; the
+ * census defines which codes block and this function only applies that classification.
+ *
+ * A blocking finding refuses adoption and returns to the Builder for repair through the submit
+ * path, while advisory findings stay recorded without causing a refusal. Neither is the measured
+ * admission packet that later controller decisions read — that has its own evidence and projection
+ * rules. Both kinds keep the severity they declared, because this grouping makes no new decision
+ * about the candidate.
+ */
 function representationFeedback(findings: ContractFinding[]): CampaignFeedback[] {
   const severities = [
     { severity: "blocking", rows: findings.filter((f) => BLOCKING_CODES.has(f.code)) },
@@ -158,9 +191,22 @@ function representationFeedback(findings: ContractFinding[]): CampaignFeedback[]
 }
 
 /**
- * Routes the family-binding findings to their own `tests`-owned row. They are already aggregates
- * of Builder-authored identities with no task ids. The repair may change the tasks or the
- * correctness check that failed to tell the deliverables apart.
+ * The family-binding census arrives on the probe's ordinary findings channel, and this routes it
+ * to a packet of its own because its owner and its remedy differ from the per-case census beside
+ * it. What crosses is already the aggregate the census composed — family, denominator, the marked
+ * root names and the remedy — all Builder-authored public identities, with no donor or target task
+ * id among them.
+ *
+ * The owner is `tests`, because the Builder can either author tasks that require different
+ * deliverables or repair a correctness check that failed to tell two deliverables apart; the
+ * declared repair scope therefore covers the correctness model as well as the tasks. This is
+ * pre-adoption evidence, so the session that produced it is the normal consumer.
+ *
+ * A `tests` row that later reaches admitted feedback is still a product issue. The default loop
+ * reopens authoring from the adopted product and lets the Builder choose the change, and accepted
+ * bytes decide whether it changed only tasks, corrected evaluation or changed the build. An
+ * earlier agent-only repair routing could not express that scope, because it held task changes on
+ * a separate clause, which is why the recorded owner keeps the full repair scope here.
  */
 function familyBindingFeedback(findings: readonly ContractFinding[]): CampaignFeedback[] {
   const rows = findings.filter((found) => FAMILY_BINDING_CODES.has(found.code));
@@ -177,8 +223,14 @@ function familyBindingFeedback(findings: readonly ContractFinding[]): CampaignFe
 }
 
 /**
- * One blocking row per refused tool shape, naming only the adapterId the brief declared, so the
- * cause is visible rather than hidden inside a failure count.
+ * One blocking row per refused tool shape, naming Builder-authored identities only — the adapterId
+ * the brief declared — so it crosses as its own row. A tool that resolves nowhere makes every
+ * witness needing it fail, and the census row above then says only "8 of 8 failed under the
+ * installed tools": loop-3 (2026-08-23) spent 26 checks on one refused root nobody could read. A
+ * check grounded only by a script the author wrote into `.toolchain` measures agreement with that
+ * script, which is what ten truss 25-of-25 batteries measured on 4 September 2026. The brief owner
+ * can revise the declared evidence and the tool choice; tool identity on its own does not prove
+ * independent semantics.
  */
 function toolFeedback(
   findings: readonly ContractFinding[],
@@ -203,9 +255,12 @@ function toolFeedback(
 }
 
 /**
- * The F2 witnesses of one status paired with their public input. The representation census reads
- * passed cases; the input-insensitivity check reads failed ones. An unreadable task file yields no
- * witnesses; other gates report it.
+ * The F2 witnesses paired with the public input the agent would have been given, filtered to one
+ * status because the two censuses read different subsets. The representation census reads passed
+ * cases only, since a failed reference solve's artifact is not the known-good shape, while the
+ * input-insensitivity check reads failed cases, where the artifact is what helps explain the
+ * failure. A missing or unreadable task file yields no witnesses: the census declines rather than
+ * guessing, and the gates that own task-file structure are the ones that report it.
  */
 function witnessesOf(
   evidence: Pick<SolvabilityEvidence, "cases"> | null,
@@ -222,6 +277,9 @@ function witnessesOf(
   const witnesses: Witness[] = [];
   for (const row of evidence.cases) {
     if (row.status !== status || row.artifact === null) continue;
+    // `JsonValue` excludes undefined, so one lookup answers both "is this task recorded" and "what
+    // did it show", where a `has` followed by a `get` asked the map twice and still returned a
+    // type that admitted the missing case.
     const publicInput = publicInputs.get(row.taskId);
     if (publicInput === undefined) continue;
     witnesses.push({ taskId: row.taskId, artifact: row.artifact, publicInput });
@@ -229,7 +287,10 @@ function witnessesOf(
   return witnesses;
 }
 
-/** Which declared truth-checks reject the reference solve and how often, without task ids. */
+/** Aggregate failing-check concentration: which of the brief's own declared truth-checks reject
+ *  the reference solve, and how often. The check names are Builder-authored, so aggregate counts
+ *  can identify the affected checks while the per-task results stay protected. The Builder
+ *  receives no task identities and no tool output from this projection. */
 function checkConcentration(cases: readonly SolvabilityCaseEvidence[]): ContractFinding[] {
   const counts = new Map<string, number>();
   for (const row of cases) {
@@ -249,8 +310,12 @@ function checkConcentration(cases: readonly SolvabilityCaseEvidence[]): Contract
   ];
 }
 
-/** Representation-defect details, deduplicated and without task ids. They come from the submission
- *  path before verification and describe the public authoring interface, so they may cross. */
+/** Every representation-defect detail comes off the submission path before verification and is
+ *  classified generated-toolset-contract, because it describes the public authoring interface —
+ *  writer schema, DraftStore, submit — which may be reported to the Builder. Run w12 showed why a
+ *  count was not enough: iteration 47 cleared its defect in one pass with the detail, and
+ *  iterations 48 to 55 without it took eight. Details are deduplicated and carry no task
+ *  identities; the per-task join stays protected. */
 function representationDefectFeedback(
   cases: readonly SolvabilityCaseEvidence[],
   representationDefects: number,
@@ -330,7 +395,8 @@ function censusFeedback(
     feedback.push(representationDefectFeedback(cases, representationDefects));
   }
   if (failed > 0) {
-    // Named so a slow search is not repaired as a wrong one.
+    // How many of the failed solves the per-task wall stopped, stated separately so a slow search
+    // is not repaired as a wrong one.
     const timedOut = cases.filter((row) => row.status === "failed" && referenceSolveTimedOut(row)).length;
     const wall =
       timedOut === 0

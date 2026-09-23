@@ -1,9 +1,17 @@
 /**
  * What a recorded run may say about itself.
  *
- * Types only: the contract between the producers that record a battery and `claim.ts`, the one
- * writer that turns a battery into a claim. Readers share these shapes so their projections match
- * the claim's input. A clause name is never reused for a different meaning.
+ * Every type here describes evidence a producer wrote down, and nothing in this module executes:
+ * it is the contract between the producers that record a battery and `claim.ts`, the one writer
+ * that turns a battery into a claim.
+ *
+ * Several modules read this vocabulary without ever writing a claim — the verification runner, the
+ * build dependency reader, the battery record, the battery facts reader and the battery run
+ * evidence projection — so defining the shapes here keeps their projections and the claim's input
+ * in agreement, with no runtime dependency in either direction. `claim.ts` is the only consumer
+ * that also decides anything. Clause names are a shared vocabulary, which is why a name is never
+ * recycled for a different meaning: an older record stays recognisable only as long as the words
+ * in it still mean what they meant when it was written.
  */
 import type { GroundingEvidence, TruthGrounding } from "../truth/grounding.ts";
 import type { ToolCheckCoverage } from "../truth/grounding-coverage.ts";
@@ -37,18 +45,28 @@ interface DiscriminationEvidence {
   claimable: boolean;
   findings: DiscriminationClaimabilityFinding[];
   /**
-   * Reject controls that failed only this check, counted by checkId after execution. This shows
-   * the check rejected the designed invalid artifact; it does not prove that a named primitive
-   * caused the verdict.
+   * Reject controls that failed only this check, counted by checkId after execution. For an
+   * in-process primitive this establishes that the check rejected the designed invalid artifact,
+   * and no separate host tool call attests it because the primitive and the correctness model
+   * share a process; an import or a source pattern alone could not establish the behaviour at all.
+   * The converse does not follow: successful discrimination does not prove that the named
+   * primitive caused the verdict, since generated code can report the checkId without ever calling
+   * it.
    */
   attributedCheckIds: Record<string, number>;
 }
 
 /**
- * Per-check execution counts from a battery. A truth check "fires" when the verifier executes
- * it and returns pass or fail rather than skipping it as inapplicable. The counts detect a
- * declared check that never ran despite applicable verified cases, which a static declaration
- * check such as `tasks-check-unexercised` cannot.
+ * Per-check execution counts from a battery. A truth check "fires" when the verifier executes its
+ * assertion and returns pass or fail, rather than skipping it as inapplicable.
+ *
+ * In hw1 the answer-key comparison read `hidden` as an object and skipped the expected values on
+ * all 16 cases. The run still created a ready claim, although the declared check
+ * `assignment-set-matches-hidden-expectation` had run on none of the verified cases and only
+ * artifact shape had actually been checked. These counts are what detects a declared check that
+ * never runs despite having applicable verified cases, which no static reading of the declarations
+ * can do: a declaration establishes intent, and only the battery can record which checks assessed
+ * an artifact.
  */
 export type TruthCheckFiringEvidence = {
   /**
@@ -59,27 +77,39 @@ export type TruthCheckFiringEvidence = {
    */
   firedByCheck: Record<string, number>;
   /**
-   * checkId → number of verified cases in which an installed tool ran to completion for
-   * this external-verifier check, from the host's own run rows; 0 when no tool ran for it. A
-   * count below the verified total reflects applicability, since a verified case whose applicable
-   * external check ran no tool is a verifier non-result instead.
+   * checkId → number of verified cases in which an installed tool ran to completion for this
+   * external-verifier check, from the host's own run rows. It carries every declared external
+   * check, 0 when no tool ever ran for one. A count below the verified total is applicability and
+   * not a skipped check: a per-board build check applies to the tasks that name that board (run
+   * 27: 8, 8 and 9 over 25 verified cases), and a verified case with an applicable external check
+   * that ran no tool is a verifier non-result before it can be verified at all. Runs 51, 55 and 57
+   * declared only external checks, so `firedByCheck` read `{}` beside 25 verified cases and a
+   * reader had to go inspect the execution evidence itself (safeguard 25, triggered three times
+   * over 2026-09-04 and 05); this field records those counts instead.
    */
   executedByCheck: Record<string, number>;
   /**
-   * checkId → number of verified failed cases that failed this check; 0 when it blocked nothing.
-   * One check carrying every failure asks whether the public contract states its rule before the
-   * failures are read as solver capability.
+   * checkId → number of verified failed cases that failed this check. Every declared check
+   * appears, 0 when it blocked nothing. One check carrying every failure of a battery — run51 with
+   * 7 of 25 on `io-behaviour`, the truss of 2026-09-04 with 20 of 25 on
+   * `response-report-accurate` — is the reading that prompts a review: establish that the public
+   * contract states the rule before attributing those failures to solver capability.
    */
   blockingByCheck: Record<string, number>;
   /**
    * checkId → number of verified cases the check applied to, for the same authored checks as
-   * `firedByCheck`. The never-fired clause reads a check against this denominator, so a check
-   * whose applicable cases were all non-results is not blamed.
+   * `firedByCheck`. The never-fired clause reads a check against this denominator rather than
+   * against the whole verified count: in truss-opus-20260905T221340355Z-aa0ebb-i05 every one of
+   * the six tasks the two diagnosis checks applied to was a provider non-result, and the clause
+   * blamed the harness for checks that had no case to fire on.
    */
   applicableByCheck: Record<string, number>;
   /**
-   * Verified cases used for these counts: an accepted artifact reached the verifier and received
-   * a truth verdict. `runStatus.verified` is broader and also counts unaccepted attempts. The
+   * Verified cases used for these counts: an accepted artifact reached the verifier and received a
+   * truth verdict. `runStatus.verified` is broader despite the shared name, because it also counts
+   * unaccepted attempts — a clarification or a refusal among them — which never reach the verifier
+   * at all. An all-unaccepted battery may still create a stored claim, with readiness deciding
+   * whether it is usable. Check execution cannot be assessed without a verified artifact, so the
    * never-fired clause runs only when this count is above zero.
    */
   verifierVerifiedCount: number;
@@ -125,9 +155,10 @@ export interface ClaimEvidence {
   /** The fingerprinted slug's content addresses. Null blocks: an unfingerprinted slug was never recorded. */
   bundles: BundleHashesEvidence | null;
   /**
-   * Declared truth-check groundings (from the validated brief) plus the adapterIds whose
-   * external invocations executed this run. Null blocks: external grounding with unnamed evidence
-   * sources is unfounded.
+   * Declared truth-check groundings (from the validated brief) plus the adapterIds whose external
+   * invocations executed this run. Null blocks, because external grounding whose evidence sources
+   * are unnamed is unfounded: it asserts that something outside the candidate decided, without
+   * saying what (scientific-verifier handover, done-gates 1-2).
    */
   grounding: GroundingEvidence | null;
 }
@@ -141,8 +172,10 @@ export interface ScoredCase {
    *  verifier could have executed. */
   truthVerified: boolean;
   /**
-   * The truth checks this case's hidden expectations exercise, so every applicable external check
-   * can be required to have execution evidence for this case.
+   * The truth checks this case's hidden expectations exercise (handover 2026-07-11): the per-case
+   * external-grounding check has to know which checks apply to each case, because the requirement
+   * it enforces is that every applicable external check carries execution evidence for that
+   * specific case, not that the battery ran the tool somewhere.
    */
   checkIds: string[];
 }
@@ -152,9 +185,11 @@ export interface ClaimCreationInput {
   runId: string;
   evidence: ClaimEvidence;
   /**
-   * Per-case verdicts from which n and passed are counted, so impossible counts cannot be
-   * supplied. Case ids allow duplicate detection, and the list length must equal
-   * `runStatus.verified`.
+   * Per-case verdicts from which `n` and `passed` are counted here rather than accepted from the
+   * caller, since caller-supplied counts could be negative, non-finite or hold a `passed` greater
+   * than `n`, and counting the cases makes those combinations unreachable. Case ids allow
+   * duplicate detection, and claim creation also compares the list length with the record's own
+   * scored-case count, `runStatus.verified`.
    */
   score: ScoredCase[];
 }
@@ -235,8 +270,8 @@ export interface ClaimStatement {
     digest: string;
   }>;
   /**
-   * Exception groundings with their original justifications, so every exception is visible on
-   * the claim.
+   * Exception groundings with their original justifications, so that every exception is visible on
+   * the claim rather than assumed by default (scientific-verifier handover, gap 2).
    */
   groundingExceptions: Array<{ checkId: string; justification: string }>;
 }

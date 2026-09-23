@@ -1,12 +1,29 @@
 /**
- * Destructive-command checks for host-dispatched shell tools, used by the Builder and the Built
- * Harness shells.
+ * Shared destructive-command checks for host-dispatched shell tools, asked by both the Builder's
+ * shell and the Built Harness's.
  *
- * `dcg` (destructive_command_guard) judges the command's shape (recursive removes, hard resets,
- * discarding checkouts, truncating redirects), not its paths, so it complements the file wall
- * rather than duplicating it. Isolated sessions do not inherit the operator's hooks, so the
- * controller calls the installed guards itself. A command guard raises the cost of an obvious
- * destructive spelling; it does not remove the capability.
+ * The file wall confines writes to the session workspace and the OS scratch trees. This guard
+ * answers a different question before a command runs: whether the command's own shape is obviously
+ * destructive. `dcg` (destructive_command_guard) is the tool for that class, and it reads the
+ * command rather than the path — recursive removes, hard resets, discarding checkouts, truncating
+ * redirects — which is what keeps it from becoming a second wall with a second list that drifts
+ * against the first.
+ *
+ * The controller asks the guard itself because an isolated session inherits none of the operator's
+ * hooks: Codex runs against a separate `CODEX_HOME` with an empty `config.toml` and Claude sets
+ * `settingSources: []`, which is what keeps operator settings out of the measured condition, and
+ * which also removes any guard installed through personal hooks. Calling it from here restores the
+ * check without importing the rest of someone's configuration into the run. Installing a Codex
+ * hook instead was tried and did not work: codex-cli 0.147.0 reached through app-server never
+ * invoked a `hooks.json` placed in the temporary `CODEX_HOME`, and two trials on 2026-08-20, one
+ * with a `Bash` matcher and one catch-all, logged zero calls although the file named the guard's
+ * absolute path.
+ *
+ * The same segment showed what a guard of this shape can and cannot do. Asked to remove a
+ * toolchain it had installed, the session had two recursive-delete spellings refused and then
+ * removed both trees through a spelling the policy allowed. A command guard raises the cost of the
+ * obvious destructive spelling; it does not remove the capability, and it must not be written
+ * about as though it did.
  */
 import { readFileSync, statSync } from "../meta/filesystem.ts";
 import { isRegularFile } from "../verify/exact-read-attestation.ts";
@@ -18,10 +35,13 @@ import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { DCG_RULES, acceptedSpelling } from "../solve/dcg-rules.ts";
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 
-/** The guard binaries; each one installed on the host runs. */
+/** The guard binaries, in the order `dcg install` lays them down. `dcg-guard` is the companion
+ *  check placed beside `dcg`, and a host may have either, both or neither, so each one present is
+ *  asked rather than the first one found. */
 const GUARD_COMMANDS = ["dcg", "dcg-guard"] as const;
 
-/** Bounds a broken guard binary so it cannot hang a turn. */
+/** A guard is a safety net rather than a measurement, so a broken binary may cost a few seconds
+ *  but must never hang a turn behind it. */
 const GUARD_TIMEOUT_MS = 5_000;
 const textEncoder = new TextEncoder();
 
@@ -38,10 +58,21 @@ interface BuilderCommandGuardProbe {
 }
 
 /**
- * dcg writes its refusal for an operator at a terminal. A session has no user and cannot run
- * `dcg allow-once`, so the refusal keeps only the reason and rule lines, quotes the accepted
- * spelling from the caller's shell rules, and closes with this line. A guard writing another
- * layout keeps its text, bounded.
+ * dcg writes its refusal for an operator sitting at a terminal: a `Tip:` line quoting the command
+ * back, a multi-paragraph `Explanation:`, and two closing sentences handing the decision to "the
+ * user" with a `dcg allow-once` code. A session has no user and cannot run dcg, so the eleven
+ * refusals recorded across three Opus sessions on 2026-09-02 and 2026-09-03 each spent about 500
+ * tokens on text whose only actionable lines were the reason and the rule. The refusal therefore
+ * keeps those two lines and replaces the hand-over with the one fact a session can act on. Both
+ * guards the installer lays down write this layout, since `dcg-guard` forwards dcg's own answer,
+ * and the empty-reason default below is spelled to pass the same filter; a guard writing some
+ * other layout keeps its own text, bounded, so the session still reads a reason rather than the
+ * closing line alone.
+ *
+ * "Change the spelling" on its own left the session hunting for the accepted spelling in its
+ * prompt, so the refusal also quotes the shell rule that states it, taken from the same list the
+ * caller's own prompt shows (`rules`): the Builder's list names `scratch/.trash/` and the Built
+ * Harness's a literal `/tmp/<name>`.
  */
 export const BUILDER_REFUSAL_CLOSE =
   "No user is present to approve it and there is no allow-once: change the spelling.";
@@ -51,23 +82,40 @@ const UNKNOWN_LAYOUT_LINES = 8;
 const UNKNOWN_LAYOUT_CHARS = 1000;
 
 /**
- * Refusals admitted because the wall already bounds them. A recursive remove whose every operand
- * is a plain relative path without `..` (or such a path under the shell's own `~`/`$HOME`), in a
- * command whose every `cd` stays in its own tree, stays inside the session's tree. A discarding
- * checkout or restore loses only the session's own edits. Removing the root or home itself,
- * `reset --hard`, `clean` and `find -delete` stay refused.
+ * Refusals the session may override, because the wall already bounds what they could destroy
+ * (operator decision 2026-09-14, "give more freedom").
+ *
+ * Of the 127 guard refusals recorded across 414 Builder execution records, most were
+ * `rm -rf <relative tree>` and `git checkout -- <file>` inside the session's own workspace. That
+ * is the cost of judging the shape rather than the path: the guard refused deletes the wall
+ * confines to the workspace anyway, and each refusal spent a turn. So a recursive remove whose
+ * every operand is a plain relative path with no `..` segment and not the tree's own root, in a
+ * command whose every `cd` stays in its own tree, is admitted, as is such a path under the
+ * shell's own `~` or `$HOME` in a
+ * command that leaves HOME alone. A discarding checkout or restore is admitted because it can lose
+ * only the session's own uncommitted edits. Removing the root or the home itself, `reset --hard`,
+ * `clean` and `find -delete` keep their refusal, because none of those is bounded by the wall.
  */
 const WORKSPACE_ALLOWED_GIT = /^core\.git:(checkout-discard|restore-worktree)$/;
 const RM_RF = /^core\.filesystem:rm-rf-(?:general|root-home)$/;
 const HOME_CHILD = /^(["']?)(?:~|\$HOME|\$\{HOME\})\//;
-/** A quoted heredoc body is text the command writes, not shell it runs, so it is dropped; its
- *  opening line stays. An unquoted body expands `$(...)`, so it is still read. */
+/** A quoted heredoc body is text the command writes rather than shell it runs, so it is dropped
+ *  while its opening line stays. Reading it cost a turn in rehearsal 805bcc, where a wrapper's
+ *  `CDPATH= cd --` line inside a heredoc refused the relative remove beside it. An unquoted body
+ *  is a different matter, because it expands `$(...)`, so that one is still read. */
 const QUOTED_HEREDOC_BODY = /(<<-?[\t ]*(['"])(\w+)\2[^\n]*\n)(?:[\s\S]*?\n)?[\t ]*\3[\t ]*(?=\n|$)/g;
 
 /**
- * A redirect into the shell's own `$HOME` or `$TMPDIR` is admitted: both shells point them at
- * private trees inside their wall. Every dynamic target must start with `~/` or one of the two
- * variables, carry no `..` and no second expansion, and the command must not reassign either.
+ * A redirect into the shell's own `$HOME` or `$TMPDIR` is admitted (operator decision 2026-09-16,
+ * "make more lenient"). Both shells already point those at private trees inside their own wall —
+ * `.toolchain/home` for the Builder, the case home for the Built solver, and a TMPDIR made for
+ * that command — so such a write cannot reach a file the session does not own. dcg 0.14.0 refuses
+ * it only because the target expands at run time, and Built cases between 2026-09-13 and
+ * 2026-09-15 lost 69 turns to that, with its `root-home` twin refusing two more writes into case-
+ * home children in run 08c0f2. The admission is kept narrow: every dynamic target must start with
+ * `~/` or one of the two variables, carry no `..` and no second expansion, and the command must
+ * not reassign either variable, since a command that sets HOME first is no longer talking about
+ * the tree the wall bounded.
  */
 const DYNAMIC_REDIRECT = /^core\.filesystem:redirect-truncate-(?:dynamic-path|root-home)$/;
 const REDIRECT_TARGET = /(?:^|[^<>&])(?:\d?>>?|&>>?)\|?[\t ]*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g;
@@ -120,8 +168,11 @@ function runGuard(
   }
 }
 /**
- * Where a guard binary sits on this host: `PATH` first, then the installer's default
- * `~/.local/bin`, so a controller launched with a minimal `PATH` still finds it.
+ * Where a guard binary sits on this host. `PATH` comes first, because that is what the operator's
+ * own shell resolves and what an upgrade moves. The installer's default target, `~/.local/bin`, is
+ * checked after it, so a controller started from a launch agent with a minimal `PATH` still finds
+ * an installed guard: that is the same inherited-`PATH` gap that once had a Builder told
+ * `arduino-cli` was absent when it was installed.
  */
 function resolveGuards(command: string, env: OptionalEnvValues): string[] {
   const fromPath = (env.PATH ?? "")
@@ -142,8 +193,10 @@ function resolveGuards(command: string, env: OptionalEnvValues): string[] {
   ];
 }
 
-/** The identity of the file a guard path runs (through any link), so a republished binary is not
- *  still held as unresponsive. */
+/** The identity of the file a guard path actually runs, read through any link exactly as
+ *  `isRegularFile` reads it above. Fingerprinting the link instead would survive a rebuild of what
+ *  it points at, so a guard that timed out once would stay marked unresponsive for the rest of the
+ *  controller run with no way back, even after the binary underneath it was replaced. */
 function builderCommandGuardFileIdentity(path: string): BuilderCommandGuardFileIdentity | null {
   try {
     const stat = statSync(path, { bigint: true });
@@ -170,8 +223,13 @@ function sameBuilderCommandGuardFile(
 }
 
 /**
- * The guards installed on this host, most general first. An empty list lets the run proceed
- * unguarded: the guard protects the operator's machine and is not a measured condition.
+ * The guards installed on this host, most general first.
+ *
+ * An empty list means no guard is installed and the run proceeds anyway, because the guard
+ * protects the operator's own machine and is not a condition of what the run measures; refusing to
+ * start would trade a real measurement for a safety net that is missing either way. It returns the
+ * list rather than a boolean so a caller can name the guard that answered, and the full-run launch
+ * records that selected identity separately from this decision.
  */
 export function builderCommandGuards(env: OptionalEnvValues = Bun.env): string[] {
   return GUARD_COMMANDS.flatMap((command) => resolveGuards(command, env));
@@ -184,8 +242,10 @@ function workspaceRelativeOperand(operand: string): boolean {
   return !bare.split("/").includes("..");
 }
 
-/** Whether every `cd` stays in a tree the session owns (its private `$HOME` or a relative child,
- *  with no `..` and no other expansion), so a relative remove after it does too. */
+/** Whether every `cd` stays in a tree the session owns — the private `$HOME` both shells set,
+ *  reached as a bare `cd`, `~` or `$HOME`, or a relative child, with no `..` and no other
+ *  expansion — because that is what makes a relative remove after it stay inside the tree too.
+ *  Without this, Built cases of run 08c0f2 (2026-09-22) lost turns to `cd ~ && rm -rf build`. */
 function ownDirectories(shell: string): boolean {
   // The target ends where the word does, so `cd "$HOME"/..` is read whole rather than as `"$HOME"`.
   const targets = [
@@ -209,6 +269,8 @@ function scratchRedirectResidual(command: string): string | null {
   const shell = command.replace(QUOTED_HEREDOC_BODY, "$1");
   if (SCRATCH_REASSIGNED.test(shell)) return null;
   const dynamic: string[] = [];
+  // The rewriter records each dynamic target rather than judging it, so what makes a target
+  // foreign is stated once, at the decision below, instead of being spread through the rewrite.
   const residual = shell.replace(REDIRECT_TARGET, (match: string, target: string) => {
     if (!/^~|[$`]/.test(target)) return match;
     dynamic.push(target);
@@ -266,8 +328,14 @@ export function builderRefusal(reason: string, rules: readonly string[] = DCG_RU
 }
 
 /**
- * The guard's answer: a deny with the reason to show, an allow (`refusal: null`), or `null` for
- * stdout outside the hook protocol, which counts as no answer. Empty stdout is the protocol's allow.
+ * The guard's answer: a deny carrying the reason to show, an allow (`refusal: null`), or `null`
+ * for stdout that states no decision at all.
+ *
+ * The last two are different facts and were one until 2026-09-06, when a guard writing something
+ * that was not its own protocol read as an allow. That let a broken guard pass commands through
+ * while safeguard 32, whose whole job is to count guards that answered nothing, stayed silent.
+ * Silence on stdout is a separate case and stays an allow, because it is the hook protocol's own
+ * way of saying so.
  */
 function guardDecision(
   stdout: string,
@@ -328,11 +396,12 @@ export function inspectBuilderCommandGuard(
     UNRESPONSIVE_GUARDS.delete(guard);
     return { answered: false, refusal: null };
   }
-  // It answered, so any earlier timeout no longer applies.
+  // A later probe may be looking at new bytes published at the same path, so a process-local
+  // timeout cache must not suppress that replacement for the rest of the controller run.
   UNRESPONSIVE_GUARDS.delete(guard);
   const decision = guardDecision(run.stdout.toString(), command, rules);
   if (decision === null) return { answered: false, refusal: null };
-  // A crashed guard has allowed nothing, whatever its stdout held.
+  // A guard that crashed away from its own protocol has allowed nothing, whatever its stdout held.
   if (decision.refusal === null && !run.success) return { answered: false, refusal: null };
   // Each residual replaces at least one more segment or redirect target, so this ends.
   if (decision.residual !== undefined) {
@@ -359,10 +428,13 @@ function builderCommandVersion(guard: string, env: OptionalEnvValues = Bun.env):
 }
 
 /**
- * Asks every installed guard about one command and returns the first refusal, or `null`.
+ * The shared in-process check: ask every installed guard about one command and return the first
+ * refusal, or `null` when all of them allow it.
  *
- * A guard that cannot answer is not a refusal: failing closed would turn a broken safety net into
- * a Builder that cannot run commands, reported as the Builder's failure rather than the host's.
+ * A guard that cannot answer — missing, crashed, timed out, or writing something that is not its
+ * own JSON — is not a refusal. Failing closed here would turn a broken safety net into a Builder
+ * that cannot run a command at all, which is a worse outcome than the accident the guard exists to
+ * catch, and the run would then report it as the Builder's failure rather than the host's.
  */
 export function refuseDestructiveCommand(
   command: string,
@@ -379,7 +451,9 @@ export function refuseDestructiveCommand(
     if (probe.answered) answered += 1;
     if (probe.refusal !== null) return probe.refusal;
   }
-  // Installed guards that all stopped answering let the command through; this is its only trace.
+  // Safeguard 32: the launch check records the guard state once, at the start. A guard that stops
+  // answering partway through a run then lets every later command through, for the reason the
+  // paragraph above gives, and this line is the only trace that it happened.
   if (guards.length > 0 && answered === 0) {
     safeguardTriggered(
       "32-command-guard-unanswered",
@@ -412,8 +486,10 @@ function describeGuard(path: string, env: OptionalEnvValues, timeoutMs?: number)
 }
 
 /**
- * Names the guard a Builder session will run under, or why none will. Nothing is installed here;
- * a host without a guard runs unguarded.
+ * Names the guard a Builder session will run under, or says why none will. Nothing here installs
+ * one: the README names the install command, and a host without a guard runs unguarded, because
+ * the guard is a safety net for the operator's machine rather than a condition of what the run
+ * measures.
  */
 export function ensureBuilderCommandGuard(
   env: OptionalEnvValues = Bun.env,

@@ -41,13 +41,18 @@ function underAny(path: string, roots: readonly string[]): boolean {
   return roots.some((root) => posixContainsPath(path, root));
 }
 
-/** The policy hash records exact file snapshots and the granted read roots, not the private
- *  workdir path. Execution rechecks the mechanism, exact files and workdir path, but does not hash
- *  every file beneath the granted directory roots. */
+/** The policy hash records exact file snapshots and the granted read roots, and deliberately not
+ *  the private workdir path, which differs per request and would make no two plans comparable.
+ *  Execution rechecks the mechanism, the exact files and the workdir path; what it does not do is
+ *  hash every file beneath the granted directory roots, so the hash binds what was granted rather
+ *  than everything reachable through it. */
 export function prepareLinuxBwrap(
   input: VerifierConfinementRequest & {
     runtime?: LinuxBwrapRuntime;
-    /** The host's environment allowlist, re-applied after --clearenv rather than inherited. */
+    /** The host has already constructed this allowlist. It is re-applied after --clearenv, and
+     *  never inherited from Bubblewrap's own parent process, because an inherited variable would
+     *  let the environment the host was started in select a tool the recorded plan does not
+     *  name. */
     environment?: OptionalEnvValues;
   },
 ): LinuxBwrapPlan | { unsupported: string } {
@@ -71,8 +76,10 @@ export function prepareLinuxBwrap(
   });
   const bwrapFlags = [
     ...bwrapBaselineArgs(VERIFIER_POSTURE),
-    // A private /tmp for tools that hard-code it. Before the binds, so a workdir or read root
-    // under the host's /tmp stays visible on top of it.
+    // A private /tmp for tools that spell the path themselves rather than reading TMPDIR:
+    // Frame3DD's `temp_dir()` returns "/tmp" on Unix and a truss check exited 12 here. It comes
+    // before the binds so that a workdir or read root under the host's own /tmp stays visible on
+    // top of it.
     "--tmpfs",
     "/tmp",
     ...bwrapReadBinds(reads.filter((path) => !underAny(path, baselineRoots))),
@@ -102,10 +109,10 @@ export function prepareLinuxBwrap(
   };
 }
 
-/** Bubblewrap resolves each bind source at spawn time, so a workdir whose ancestor became a
- *  symbolic link after preparation would bind another location read-write. The prepared workdir is
- *  canonical, so any resolution change refuses. */
-
+/** Bubblewrap resolves each bind source through the live directory tree at spawn time, not through
+ *  the path the plan recorded, so a workdir whose ancestor became a symbolic link between
+ *  preparation and spawn would bind some other location read-write. The prepared workdir is already
+ *  canonical, which means any resolution change at all is drift and refuses. */
 function workdirResolutionDrift(workdir: string): string | null {
   try {
     if (realpathSync.native(workdir) === workdir) return null;

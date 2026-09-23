@@ -1,16 +1,24 @@
-// The cyclomatic ceiling for authored functions: complexity stays below 22. Oxlint's ESLint
-// `complexity` rule does the counting; this file owns the baseline that freezes today's offenders
-// so the gate refuses growth and new offenders without blocking every push at once.
+// The cyclomatic ceiling for authored functions: every function stays below 22, which is the
+// `max: 21` this file passes to oxlint's ESLint `complexity` rule. Oxlint does the counting, so
+// what this file owns is the baseline, and the baseline is why the ceiling could be introduced at
+// all. Freezing today's offenders at the counts they already measure lets the gate refuse a new
+// offender and refuse growth in an old one from the first push, instead of blocking every push
+// until the whole tree has been simplified.
 //
-// The baseline only shrinks. `--write-baseline` lowers a recorded count to what is measured and
-// drops entries that no longer exceed the ceiling; it never adds a function or raises a count. A
-// new exception is a hand edit of `complexity-baseline.json`, visible in the diff it lands in.
+// The baseline only ever shrinks. `--write-baseline` lowers a recorded count to what is now
+// measured and drops an entry whose function no longer exceeds the ceiling, and it never adds a
+// function or raises a count, so the exemption set cannot widen by running the tool. A genuinely
+// new exception therefore has to be a hand edit of `complexity-baseline.json`, which is visible in
+// the diff it lands in and can be argued about there. An entry that has stopped exempting anything
+// is a finding of its own rather than harmless debt, for the same reason a stale copied-file
+// ceiling is one: it is a standing exemption from a rule the file already satisfies.
 //
-// The report is one line per problem file, naming its functions as `name:line count` — the same
-// three facts the measurement produces — then two sentences on what to do. A wide diff prints one
-// line per file rather than a block per function, and the list is capped. File or directory
-// arguments narrow the measurement, so `bun tools/loc/complexity-policy.ts src/a.ts` re-measures
-// one file after an edit without scanning the tree.
+// The report gives one line per problem file, naming its functions as `name:line count` — the
+// three facts the measurement produces and nothing else — then two sentences on what to do. A wide
+// diff is therefore one line per file rather than a block per function, and even that list is
+// capped at 25 files. File or directory arguments narrow the measurement, so
+// `bun tools/loc/complexity-policy.ts src/a.ts` re-measures one file after an edit without
+// scanning the tree, which is what makes changing one function at a time affordable.
 
 import oxlintrc from "../../.oxlintrc.json" with { type: "json" };
 import { mkdtempSync, rmSync, writeFileSync } from "../../src/meta/filesystem.ts";

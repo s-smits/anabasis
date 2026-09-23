@@ -1,12 +1,20 @@
 /**
- * Launch-time removal of this product's own leaked mkdtemp scratch from the OS temp root. A SIGKILL
- * skips exit-handler cleanup, and a crowded temp root stalls every fresh child that enumerates it.
+ * Launch-time removal of this product's own leaked mkdtemp scratch from the OS temp root. Measured
+ * on 2026-08-30 and 31, the per-user root held 171,290 entries, about 150,000 of them product
+ * scratch directories from gates and campaigns whose exit-handler cleanup a SIGKILL had skipped, and
+ * every fresh child process then stalled enumerating that root.
  *
- * The launch path never deletes an unbounded tree itself. Each eligible top-level directory is
- * renamed into one private quarantine in the same temp root, and one detached `rm -rf` reclaims
- * the quarantine off the critical path. Only real directories with this product's prefixes, older
- * than STALE_AGE_MS and not a process-lifetime bundle, move. The scan checks its deadline between
- * entries and guards each metadata read and rename.
+ * The launch path must not recursively delete an unbounded stale tree, so it moves each eligible
+ * top-level directory into one fresh, private quarantine directory in the same temp root instead. A
+ * same-filesystem rename removes the expensive top-level entry without walking its contents, and the
+ * disk is reclaimed by one detached `rm -rf` over the quarantine, outside the controller's critical
+ * path and outside its exit.
+ *
+ * Only real directories carrying this product's prefixes and older than STALE_AGE_MS move, and the
+ * two process-lifetime bundles a running controller keeps for its whole life are skipped by name
+ * (PROCESS_LIFETIME_PREFIXES), because a campaign may outlive any age window. The scan checks its
+ * deadline between entries, and each metadata read and rename is guarded on its own, so one
+ * unreadable entry costs that entry and not the launch.
  */
 import { lstatSync, mkdtempSync, opendirSync, renameSync, rmdirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
@@ -17,9 +25,11 @@ export const STALE_AGE_MS = 48 * 60 * 60 * 1000;
 export const TEMP_SCRATCH_QUARANTINE_PREFIX = ".ana-stale-quarantine-";
 const CLEAN_DEADLINE_MS = 20_000;
 
-/** Worker bundles a controller keeps for its whole life (pi-built.ts,
- *  generated-tool-worker-process.ts). Their mtime never moves and a controller may outlive
- *  STALE_AGE_MS, so age does not prove them abandoned. */
+/** Scratch created once per controller process and removed at its exit: the Pi Built worker bundle
+ *  (pi-built.ts) and each generated-tool worker bundle (generated-tool-worker-process.ts). Their
+ *  root mtime never moves once the bundle is written, while the controller that owns them may run
+ *  well past STALE_AGE_MS, since a campaign has no time cap. Another launch therefore cannot read
+ *  their age as abandonment. A SIGKILL may still leave them behind, for separate cleanup. */
 const PROCESS_LIFETIME_PREFIXES = ["ana-pi-built-", "ana-generated-tools-"] as const;
 
 interface TempScratchCleanReport {
@@ -38,7 +48,9 @@ interface TempScratchCleanOptions {
   readonly reclaim?: boolean;
 }
 
-/** Start one unreferenced `rm -rf` over the quarantine; on failure the quarantine stays. */
+/** Start one detached `rm -rf` over the quarantine. The child is unreferenced, so a controller exit
+ *  does not wait for a reclamation that may take minutes; if it fails to start, the quarantine stays
+ *  on disk for a later launch or for separate cleanup. */
 function startQuarantineReclaimer(quarantine: string): number | null {
   try {
     const child = Bun.spawn(["rm", "-rf", "--", quarantine], { stdio: ["ignore", "ignore", "ignore"] });

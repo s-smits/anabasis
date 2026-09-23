@@ -93,13 +93,17 @@ export interface JudgeSession {
 
 type JudgeSubjectEvidenceCore = JudgeAttempt & {
   subjectId: string;
+  /** One member, because a battery case is the only thing the Judge reviews. Runs before
+   *  2026-09-14 also recorded control-census subjects, and `judge.ts` now asserts this value on
+   *  every battery observation rather than letting a second kind appear unnoticed. */
   subjectKind: "battery-case";
   judgePin: string;
   verifierBlind: true;
   sanitizer: { version: string; modified: boolean; actions: string[] };
-  /** A second fresh sample, taken only when the first verdict contradicts the verifier's. A
-   *  contradiction reaches the reviewer only when both samples agree, since one sample is not
-   *  stable enough to decide it. */
+  /** A second fresh sample, taken only when the first verdict contradicts the verifier's, so a
+   *  contradiction reaches the reviewer only when both samples agree. One sample does not settle
+   *  it: task 12-low-side-lamp split 2 fail / 1 pass over three replays on 2026-09-15, which means
+   *  a single draw decided whether the reviewer had a case to settle at all. */
   confirmation?: JudgeAttempt;
 };
 

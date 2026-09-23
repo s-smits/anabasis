@@ -65,7 +65,9 @@ export interface AnalyseStepResult {
   advice: RebuildAdvicePacket;
   /** Reader turns that did not complete, one line each, for the controller terminal's absent
    *  steps. A skipped or locally refused reading (slot off, no standing issue, already reviewed)
-   *  is not absent work; a provider or protocol failure inside the turn is. */
+   *  is not absent work; a provider or protocol failure inside the turn is. Campaign -29 lost both
+   *  readers to the transport and the terminal listed nothing, so the round read as one where the
+   *  review simply had nothing to say. */
   absent: string[];
 }
 

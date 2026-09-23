@@ -1,9 +1,12 @@
 /**
  * The first submit of a Built solve that still has a quarter or more of its time answers with the
- * time left instead of sending, once. The system prompt states the wall at the start of a long turn;
- * this states it where the decision to stop is made. The reply names only the clock and the
- * published requirements, so it carries nothing the verifier knows. The second call sends, and so
- * does the call the wall makes, since by then less than the share remains.
+ * time left instead of sending, once. Cycle 7 of the veryhard truss sweep (claude-opus-5, a
+ * 120-minute wall, 2026-09-21) failed 14 of 25 cases, and all 14 submitted by their own call a
+ * median 35 minutes in, the longest after 62. The system prompt states the wall once, at the start
+ * of a long turn; this states it where the decision to stop is actually made. The reply names only
+ * the clock and the published requirements, so it carries nothing the verifier knows (AGENTS.md
+ * rule 4). The second call sends, and so does the call the wall makes, since by then less than the
+ * share remains.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 

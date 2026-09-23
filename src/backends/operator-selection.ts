@@ -3,30 +3,44 @@
  *
  * Two files say who serves a run's three slots: `.harness/backends/<slug>.json` and
  * `.harness/backends/default.json`. They combine per slot: the slug file supplies every slot it
- * names, and the default fills the rest.
+ * names, and the default fills the rest. Run 15 showed why whole-file precedence was wrong.
+ * `--built-backend claude` on a fresh project wrote `{built}` alone, that one key shadowed the
+ * default entirely, the review slot resolved `unconfigured`, and 50 measured cases recorded
+ * `judge: "off"` with no control census at all. Run 16, on the same code and with no flag, read the
+ * default and ran 86 control subjects per condition. `bb28.json`, which names the builder only, and
+ * the partial project pin naming builder and built were silently review-less the same way.
  *
  * A slot nobody named is not a slot somebody turned off. Only `{"review": {"disabled": true}}` says
  * off, which is why the write side (`project-backends.ts`) states it instead of deleting the key.
  *
- * This module checks file structure only. Values stay `unknown`; the resolvers (`resolve.ts`,
- * `resolve-side.ts`) validate them, so one refusal can name both the file and the slot.
+ * This module checks the file structure and combines selections, and nothing more. Every field
+ * stays `unknown` and no value is validated here, because which values are legal and which slot may
+ * carry which key belongs to the resolvers (`resolve.ts`, `resolve-side.ts`), where one refusal can
+ * name both the file and the slot it offends in.
  */
 import { join } from "../meta/path.ts";
 import type { BackendSlot } from "./backend-kinds.ts";
 import { readOptionalConfigFile } from "./config-file.ts";
 import { isRecord } from "../meta/json-shape.ts";
 
-/** Where operator selection files live, relative to the repo root; the writer uses it too. */
+/** Where operator selection files live, relative to the repo root. One owner for the path: the
+ *  writer in `project-backends.ts` builds its target from this same constant, so the reader and the
+ *  writer cannot disagree about where a selection is kept. */
 export const OPERATOR_BACKENDS_DIR = ".harness/backends";
 
 /**
- * The standing selection for every slot no slug file names. An automatic project's id is derived,
- * so an operator cannot name `<slug>.json` in advance.
+ * The slug-agnostic file. An automatic project's initial id is `<stem>-<digest[0:8]>`
+ * (`src/run/launch-project.ts`), so an operator cannot name `<slug>.json` before the run exists --
+ * which is how run 4 measured with both judges disabled while the intended selection sat in
+ * `short-request.json`, named for the user's request rather than for its derived slug. This file is
+ * the standing selection for every slot no slug file names.
  */
 const OPERATOR_BACKENDS_DEFAULT = "default.json";
 
-/** What a file may say about one slot; the slot's resolver validates each value. `disabled` and
- *  `inherit` are review-only. */
+/** What a file may say about one slot. The values stay untyped on purpose: this is the declared
+ *  shape, and each field's meaning is completed by the slot's resolver. `disabled` and `inherit`
+ *  are review-only, because a slot that serves a measured run has no off state, and `resolveSide`
+ *  refuses either key elsewhere rather than ignoring it. */
 interface OperatorSideConfig {
   kind?: unknown;
   model?: unknown;
@@ -52,7 +66,8 @@ export interface OperatorPin {
 /** The layered selection: which files were read, and who won each slot. */
 export class OperatorSelection {
   private constructor(
-    /** Repo-relative, highest precedence first; empty when the operator pinned nothing. */
+    /** Repo-relative, highest precedence first. Empty when the operator pinned nothing, so a slot
+     *  reading `source: "default"` beside an empty list is the silent fallback stated out loud. */
     readonly files: readonly string[],
     private readonly pins: ReadonlyMap<BackendSlot, { side: OperatorSideConfig; path: string }>,
   ) {}
@@ -91,9 +106,15 @@ function parseOperatorSide(value: unknown, source: string, slot: BackendSlot): O
   return value;
 }
 
-/** Only ENOENT is absence. Unreadable files, unknown shapes and unknown roots refuse, so a provider
- *  default never replaces the operator's intended condition. Read as JSON5 so an operator may
- *  comment a slot; malformed bytes still refuse. */
+/** Only ENOENT is absence. An unreadable file or an unknown shape refuses rather than reading as
+ *  absent, because a provider default would otherwise replace the operator's intended condition
+ *  without saying so, and an unknown root refuses as a typo.
+ *
+ *  Read as JSON5, which is a strict superset of JSON: every backends file that parsed before still
+ *  parses to the same value, and an operator may now write a comment beside a slot. These files
+ *  encode which three-slot condition a run is, and two rows can differ only in their three `kind`
+ *  fields, so the file alone could not say which condition it meant. Malformed bytes still refuse;
+ *  JSON5 adds spellings, not tolerance. */
 function readOperatorConfig(path: string, source: string): OperatorConfig | null {
   const raw = readOptionalConfigFile(path, `operator backends file ${source}`);
   if (raw === null) return null;

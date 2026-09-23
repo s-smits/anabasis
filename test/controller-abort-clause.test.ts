@@ -136,8 +136,10 @@ describe("a recorded abort names its terminal code", () => {
   }
 
   it("leaves an owner that names no terminal code unresolved", () => {
-    // The other three clauses are owners without a terminal code. They stay null, which the
-    // exit status already reads as "did not settle the question", and they still name their owner.
+    // Five abort clauses exist and only two are also loop terminal codes, so `signal-terminated`,
+    // `host-storage-exhausted` and `controller-unclassified` are owners with no code to resolve
+    // to. They stay null, which the exit status already reads as "did not settle the question",
+    // while still naming their owner — which is the half worth keeping.
     const reason = reasonFor(new Error("provider exploded"));
     expect(reason.startsWith("controller-unclassified: ")).toBe(true);
     expect(loopTerminalCode(reason)).toBeNull();

@@ -1,6 +1,12 @@
 /**
- * Decides whether a recorded battery enters this tree's difficulty history, and names the
- * exclusion when it does not. climb-history.ts reads the admitted batteries.
+ * Decides whether a recorded run belongs to this tree's difficulty history, and reads its evidence
+ * when it does.
+ *
+ * climb-history.ts interprets the admitted batteries for the difficulty selector. This module
+ * decides whether each battery may enter that history at all, and answers with the named exclusion
+ * row the author will read when it cannot. Every refusal is settled here, at the bytes that caused
+ * it, so that the reader downstream states the population law and nothing else; splitting the
+ * decision across both would give one battery two chances to be excluded for two different reasons.
  */
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { Check as validateSchema } from "typebox/value";
@@ -17,12 +23,24 @@ import { parseExperimentSubmission } from "../author/experiment-proposal.ts";
 import { ExperimentAuthoringSchema, type ExperimentAuthoring } from "./experiment-freeze.ts";
 import { SHIPPING_VARIANT } from "./run-driver.ts";
 
-/** Claim clauses that describe environment gaps, not the tasks, so a claim refused only for them
- *  still gives the climb a rate. `runtime-model-identity-contradicted` is absent on purpose: it
- *  says another model was measured, which is not comparable. */
+/** The two claim clauses the climb does not read. Both count something the environment failed to
+ *  do, and neither says anything about the tasks. `src/claim/claim.ts` raises
+ *  `runtime-model-identity-unproven` when a supported transport did not record complete per-case
+ *  model identity, and `non-result-ratio-excessive` when at least two non-results account for more
+ *  than a quarter of the attempted cases. A claim refused only for these still gives the climb a
+ *  rate, because the tasks did the same work either way.
+ *
+ *  `runtime-model-identity-contradicted` is deliberately absent, and the distinction is the whole
+ *  point of having two names. It is raised when the census did record an identity and that identity
+ *  names another served model, transport or provider, which is a statement about the run rather
+ *  than a gap in it. Admitting it would put another model's pass rate into this product's climb,
+ *  against the contract's "comparison requires matching measured model". Until 2026-09-20 one
+ *  clause carried both readings and this set admitted them together. */
 const ENVIRONMENT_CLAUSES = new Set(["runtime-model-identity-unproven", "non-result-ratio-excessive"]);
 
-/** Partial recorded battery shape. Admission checks experiment authoring; readers check the rest. */
+/** Partial recorded battery shape. Admission validates the experiment authoring before returning
+ *  the evidence, because a malformed proposal digest is a refusal rather than a field to skip; the
+ *  history reader checks the remaining fields it consumes, at the point it consumes them. */
 export interface BatteryEvidence {
   runId?: unknown;
   backendPin?: unknown;
@@ -44,22 +62,35 @@ export interface BatteryEvidence {
   experimentAuthoring?: ExperimentAuthoring;
 }
 
-/** The run's threshold identity. "unstated" (no manifest named) checks nothing; "unavailable"
- *  (named but unreadable) refuses every battery in admitBattery. */
+/** The run's threshold identity for battery comparability, in three states rather than two. The
+ *  earlier reader collapsed the last two into null, which meant an unreadable manifest silently
+ *  disabled the threshold-identity check and evidence recorded under a different frozen manifest
+ *  was admitted as comparable. Kept apart, "unstated" — the caller named no manifest — still states
+ *  nothing about thresholds and checks nothing, while "unavailable" — named but unreadable — fails
+ *  closed in `admitBattery` and refuses every battery until the manifest is legible again. */
 export type ThresholdIdentity =
   | { kind: "unstated" }
   | { kind: "digest"; digest: string }
   | { kind: "unavailable" };
 
-/** The claim's refusal and its recorded `createdAt`, which orders batteries in the history. A
- *  missing or unreadable claim, or a created one without `createdAt`, is refused: ordering never
- *  falls back to filesystem times. */
+/** The claim's refusal and its recorded write time, which is what orders batteries in the history.
+ *  The claim already decides whether a battery's score supports a truth claim, so the difficulty
+ *  reader uses that decision rather than deriving it a second time from battery bytes. A missing or
+ *  unreadable claim is treated as refused and cannot supply a rate.
+ *
+ *  A created claim without `createdAt` is refused as well, because ordering has to come from
+ *  recorded evidence rather than filesystem metadata. In run 9 the file for the version without
+ *  advisers was 71 minutes older than the other, and that timing alone made the selector climb. */
 type ClaimFacts = { refusal: string; createdAt: string | null } | { refusal: null; createdAt: string };
 
 /**
- * Why a run directory is excluded. `claimRefused` marks a same-condition battery whose claim was
- * refused (an unsuccessful attempt under this condition), as opposed to an identity or
- * comparability refusal, which says nothing about this condition.
+ * Why a run directory is excluded. The row is built where the reason is decided, so that no reader
+ * downstream re-derives one or has to name the run a second time.
+ *
+ * `claimRefused` separates two exclusions that would otherwise read alike. A same-condition battery
+ * that ran and created no claim records an unsuccessful attempt under this condition, and that is
+ * worth knowing; an identity or comparability refusal says nothing about this condition at all,
+ * because another pin's history is another product's history.
  */
 export type ExcludedBattery = {
   runId: string;
@@ -67,13 +98,15 @@ export type ExcludedBattery = {
   claimRefused: boolean;
 };
 
-/** One run directory's verdict: admitted, excluded, or both for a claim-refused battery that a
- *  recorded clock can still place. */
+/** One run directory's verdict: an admitted battery, an exclusion, or — for a claim-refused battery
+ *  that a recorded clock can still place — both at once. */
 export type BatteryAdmission =
   | {
       ok: true;
-      /** Null for admitted evidence; the claim's refusal when the battery keeps its place in
-       *  history but carries no rate. */
+      /** Null for admitted evidence. It carries the claim's own refusal when this battery measured
+       *  under this condition and a recorded clock can place it, but its numbers may not carry a
+       *  rate: the row keeps its place in history and climb-history.ts decides whether it still
+       *  states a level. A refused claim removes the rate, not the fact that the battery ran. */
       excluded: ExcludedBattery | null;
       evidence: BatteryEvidence;
       /** The recorded difficulty in its current shape. */
@@ -97,9 +130,13 @@ export function currentThresholdDigest(manifestPath?: string): ThresholdIdentity
   }
 }
 
-/** The harness identity a battery measured: agent, scoring program and recorded verifier bytes,
- *  excluding the task set a task probe may rewrite. Null when the evidence lacks an identity; a
- *  null matches nothing. */
+/** The harness identity a battery measured: agent, scoring program and recorded verifier bytes.
+ *  The task set, its controls, reference solves and tests are excluded on purpose, because a task
+ *  probe rewrites them together while keeping this product fixed, so a probe that changed this
+ *  identity would make every earlier battery of the same product incomparable. Null when the
+ *  evidence lacks the required identity, as every battery recorded before `scoringHash` does, and
+ *  a null is dropped rather than matched: `priorPublicFingerprints` skips such a row, so it
+ *  contributes no repeat-refusal print instead of collapsing several products into one. */
 function harnessIdentity(evidence: BatteryEvidence): string | null {
   const { agentHash, scoringHash } = evidence.bundleSnapshot ?? {};
   return isString(agentHash) && isString(scoringHash)
@@ -130,14 +167,20 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
         claim?: { ok?: boolean; clauses?: Array<{ clause?: string }> };
       };
     const createdAt = isString(evidence.createdAt) ? evidence.createdAt : null;
-    // Another schema may give ok/clauses different meanings.
+    // The writer has always used run-claim/v1. Another schema may give `ok` and `clauses`
+    // different meanings, so the file name it was found under cannot establish that this reader
+    // understands the record; the declared schema has to say so. This check follows the
+    // evidence-reader audit of 2026-08-03.
     if (evidence.schema !== "run-claim/v1") {
       return {
         refusal: `claim evidence declares ${capturedJsonStringify(evidence.schema ?? null)} instead of run-claim/v1`,
         createdAt: null,
       };
     }
-    // The claim must name its own battery; a copied or renamed claim file does not.
+    // The runId inside the claim is checked as well as the one in its filename, because copying or
+    // renaming a claim file used to be enough to make it apply to another battery. Clause names
+    // now reach controller decisions, including stopping a run, so the claim has to identify the
+    // battery it actually describes.
     if (evidence.runId !== runId) {
       return {
         refusal: `claim evidence names run ${capturedJsonStringify(evidence.runId ?? null)} instead of ${runId} — a claim speaks for its own battery, not for the file name it was found under`,
@@ -148,14 +191,26 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
       const names = (evidence.claim?.clauses ?? []).flatMap((row) =>
         row.clause === undefined ? [] : [row.clause],
       );
-      // Environment clauses alone do not void the rate: `admitBattery` owns comparison identity
-      // through the backend pin, and `placeOnBand` decides whether the cases that ran can place.
+      // Environment clauses alone do not void the rate, because comparison identity already has an
+      // owner here: `admitBattery` checks the battery's own recorded `backendPin` against the run
+      // pin. Both environment clauses belong to the environment owner rather than the task author,
+      // so reading either a second time voided a battery's rate for a gap the tasks did not cause.
+      // On 18 September the identity clause deleted truss run c1d2a7's i04 — the first battery in
+      // four rounds to produce failing cases, 3 of 5 — from the difficulty population, and the next
+      // climb repeated "6/6, significantly too easy" off the round before it. The ratio clause did
+      // the same to campaign 3fd52f9e-28 three rounds running, on batteries that scored 14/14,
+      // 11/11 and 1/1 truth-verified passes: seven consecutive decisions re-read one 24/25 from
+      // five days earlier while 26 verified passes sat unread. The claim keeps its clause; the
+      // climb simply stops being its second reader. The shorter sample is then read honestly,
+      // because `placeOnBand` owns whether the cases that did run are enough to place at all, and
+      // refuses a placement rather than misplacing one.
       if (createdAt !== null && names.length > 0 && names.every((name) => ENVIRONMENT_CLAUSES.has(name))) {
         return { refusal: null, createdAt };
       }
       return {
         refusal: names.length === 0 ? "claim refused" : `claim refused: ${names.join(", ")}`,
-        // A refused claim's clock still places it among the admitted batteries.
+        // A refused claim is recorded evidence too, so its clock still places the refusal among the
+        // admitted batteries and a later reader can tell what the most recent evidence said.
         createdAt,
       };
     }
@@ -171,7 +226,11 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
   }
 }
 
-/** The recorded difficulty, normalised once: item tallies and the changed subset's two counts. */
+/** The recorded difficulty, resolved once at the parse boundary so every reader downstream receives
+ *  the same rows: the item tallies and the changed subset's two counts. Older batteries carry
+ *  `levels`, `ladder`, `findings` and a stored rate and interval beside them, but every reader now
+ *  derives those from the counts, so they are dropped here rather than carried through as fields a
+ *  reader might be tempted to trust over its own arithmetic. */
 function measuredDifficulty(stored: BatteryEvidence["measured"]): MeasuredDifficulty {
   const subset = stored?.changedSubset;
   const counts =
@@ -184,8 +243,10 @@ function measuredDifficulty(stored: BatteryEvidence["measured"]): MeasuredDiffic
   };
 }
 
-/** Applies the claim verdict to a battery that passed every identity gate. A refused claim drops
- *  the rate but keeps the history row, unless no recorded clock can place it. */
+/** What the claim verdict does to a battery that has already passed every identity gate. An
+ *  admitted claim carries the rate. A refused claim removes the rate and keeps the history row, so
+ *  the battery's level stays readable — unless no recorded clock can place the refusal, and a row
+ *  that no chronology admits cannot sit in the difficulty history at all. */
 function claimAdmission(
   claim: ClaimFacts,
   row: {
@@ -208,18 +269,33 @@ function claimAdmission(
 }
 
 /**
- * Admits one run directory to the climb history, or names why not. Each gate refuses on its own:
+ * Admits one run directory to the climb history, or names why it is not this tree's history. Each
+ * gate is its own refusal, and each one exists because reading past it once changed a decision:
  *
- *  - the run directory passes the run-record ownership check; `batterySha256` is the recorded
- *    battery.json hash;
- *  - the evidence's runId equals its directory name;
- *  - a non-null `runPin` must match the recorded backend pin (null reads across pins);
- *  - the recorded threshold manifest digest must be present and match `thresholdDigest`;
- *  - only the shipping variant counts;
- *  - the claim in `claimsDir` must be created, or refused only for `ENVIRONMENT_CLAUSES`; a
- *    refused claim a recorded clock can place keeps its row without a rate.
+ *  - the run directory must pass the run-record ownership check, and `batterySha256` is the
+ *    manifest's recorded battery.json hash from `recordedEvidence`, so an unrecorded, tampered,
+ *    foreign or torn run dir is not evidence. The old reader bound `bundleSnapshot.taskSetHash`
+ *    here, which is a hash of different bytes and could never match the recorded digest;
+ *  - the recorded evidence's own runId must equal its directory name, since a recorded run dir
+ *    copied under another name is not this tree's history;
+ *  - a non-null `runPin` gates comparison identity, and passing null reads history across model
+ *    pins deliberately. A different backend pin measures a different condition: run 6 climbed to L1
+ *    on a codex-era 25/25 while its own pinned backend scored 0/25 at the base difficulty;
+ *  - `thresholdDigest` checks threshold identity the same way, because thresholds stay fixed across
+ *    a climb, so evidence recorded under a different frozen manifest measured a different
+ *    condition. Evidence that states no digest is excluded too, since the measuring runner writes
+ *    one on every battery (operator decision 2026-09-22);
+ *  - only the main battery counts (`SHIPPING_VARIANT`), and evidence without a variant field states
+ *    no condition at all;
+ *  - `claimsDir` is the claim check. A battery whose claim was refused, or never created, carries
+ *    the claim's own clauses as its `excludedReason` so that no rate reads from it: run 8 recorded
+ *    a 0/25 of provider outages, the claim refused it, and the old reader read those zeros as a
+ *    too-hard base difficulty. A refusal that no recorded clock can place is refused outright. The
+ *    one exception is a refusal carrying nothing but an environment clause, which the run pin check
+ *    above already owns; `ENVIRONMENT_CLAUSES` says which clauses and why.
  *
- * `null` means the directory holds no battery, which is not an exclusion.
+ * `null` means the directory holds no battery at all, which is not an exclusion and should not be
+ * reported as one.
  */
 export function admitBattery(
   runDir: string,
@@ -242,7 +318,9 @@ export function admitBattery(
   if (!recorded.ok) return refuse(recorded.refusal);
   let evidence: BatteryEvidence;
   try {
-    // Parse the attested bytes; a second read could see a file rewritten after the check.
+    // Parse the reader's own attested bytes rather than reading the file again. A second
+    // `readFileSync` here could consume a file rewritten after the ownership check passed, which
+    // is the gap the evidence-reader audit of 2026-08-03 closed.
     evidence =
       /* SAFETY: admission validates experimentAuthoring below; the remaining fields are checked by their readers before use. */ capturedJsonParse(
         recorded.bytes,

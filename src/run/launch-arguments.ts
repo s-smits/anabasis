@@ -29,7 +29,9 @@ export interface FullRunArgs {
    *  When absent, there is no round cap; typed terminal reasons still record each stop. */
   maxIterations?: number;
   /** Operator interruption once the loop has run this long: no new round opens after it, and the
-   *  round in flight still records its battery, so no accepted artifact is discarded. */
+   *  round in flight still records its battery, so nothing is killed. Run c66e0d, 2026-09-07, is
+   *  the cost of the alternative: a manual kill at the four-hour mark discarded 21 accepted
+   *  artifacts minutes from verification. */
   stopAfterMs?: number;
   /** Builder session turns per iteration; absent, a round has no turn cap. A staged rehearsal sets a
    *  small value so the session settles at the ceiling instead of running to a submit. */

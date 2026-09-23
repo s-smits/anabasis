@@ -121,9 +121,25 @@ function isOwnedOpenRecord(node: ESTree.TSType, filename: string): boolean {
 }
 
 /**
- * Disallow object-dictionary contracts whose direct value type is an unsafe escape hatch.
+ * A dictionary type whose values are an escape hatch: `Record<string, unknown>`,
+ * `{ [key: string]: any }`, a mapped type over a broad key with an `object` or `{}` value, or an
+ * alias or union that resolves to one of those.
  *
- * The representation owner's open view is the one exception (`isOwnedOpenRecord`).
+ * The key being open is not the problem — a table of things keyed by name is a normal thing to
+ * want. The problem is that the value type then says nothing either, so the contract describes a
+ * bag rather than a table, and every reader has to decide for itself what it expects to find. A
+ * value type is the one part of a dictionary that can still be named, and this rule is what keeps
+ * it named.
+ *
+ * Four exemptions, each because the broad type is the honest one there. A type parameter's
+ * constraint may be an open dictionary, since a constraint is a bound on what callers may supply
+ * rather than a promise about what this code holds. A plain reference to a visible alias, used
+ * outside any alias declaration, is left to the declaration that owns it, so the finding lands
+ * once at the alias rather than at all of its uses. A type nested inside another type that is
+ * already reported is skipped, so one dictionary is one finding rather than one per layer. And
+ * the representation owner declares the one open view this repository shares, under
+ * `isOwnedOpenRecord` below, which admits nothing but that exact exported alias in that exact
+ * file.
  *
  * There is no fix: the repair is the value type, and the escape hatch is there because it was not
  * yet decided.

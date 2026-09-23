@@ -1,8 +1,10 @@
 /**
- * The `@ana/agent-bundle` runtime contract for generated solve-side bundles. Candidate validation
- * admits only bare allowlisted packages (`bundle-validation.ts` `DEFAULT_ALLOW`), so this shim is what that
- * allowlist name resolves to: a re-export of the controller-owned tool/submit vocabulary from
- * `src/`. Exports are added when a generated consumer exists, never speculatively.
+ * What `@ana/agent-bundle` means when generated solve-side code imports it. A candidate may import
+ * only the bare package names on `DEFAULT_ALLOW` in `src/claim/bundle-validation.ts`, so the
+ * allowlist and this barrel are two halves of one decision: the list says the name is admissible
+ * and this file says what the name resolves to, which is a re-export of the tool and submit
+ * vocabulary that `src/` owns. A name is exported from here once a generated consumer imports it
+ * and not before, because an export nothing imports is still a promise the controller has to keep.
  */
 export type {
   DomainHarness,

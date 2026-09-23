@@ -1,6 +1,9 @@
-// The source gate keeps only decisions that change acceptance: copied-file ceilings, the 600/80
-// limits for authored code, and refused names and calls that would restore removed systems.
-// Git owns provenance and history; no second status or ownership ledger is maintained here.
+// The source gate carries only the checks that change whether a push is accepted, which is five
+// things. It measures every authored file and its longest function against the two ceilings below,
+// refuses a literal or a call that would restore a system this repository decided to remove,
+// reports an `export` that no other file names, and retires a copied-file ceiling once the file has
+// come inside the authored limits and the entry exempts nothing. Git owns provenance and history,
+// so nothing here records who wrote a file or what state it is in.
 
 import { readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -233,7 +236,7 @@ export function sourceTextFindings(
  * The copied-file ceilings that no longer change a decision, read through `read` so the caller
  * chooses the tree. A ceiling is stale when its file is gone, and equally when the file has come
  * inside both authored limits: the entry is then a standing exemption from rules the file already
- * satisfies, because a copied limit also turns the 80-line function check off for that file. An
+ * satisfies, because a copied limit also turns the function check off for that file entirely. An
  * obsolete exception is debt, so the gate refuses it rather than carrying it (AGENTS.md rule 8).
  *
  * On 2026-09-19 the map held 93 entries and 10 of them bound anything. The 83 others were written

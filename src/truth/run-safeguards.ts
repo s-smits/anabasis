@@ -1,9 +1,10 @@
 /** Runtime safeguards: log lines only, never a case kind, terminal, route or score. */
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 
-/** Safeguard 40: a refused submit whose findings repeat one code across most of the battery is
- * one defect reported once per task, and the recorded findings keep only the count. The floor is
- * a 25-task battery refused on one cause. */
+/** Safeguard 40, added 2026-09-07: a refused submit whose findings repeat one code across most of
+ * the battery is one defect reported once per task, which is the shape run51 and run52 both had,
+ * and the recorded findings keep only the count of it. The floor is a 25-task battery refused on
+ * one cause, so a smaller battery repeating a code does not trip it. */
 const REPEATED_CODE_FLOOR = 20;
 export function safeguardRepeatedRefusalCode(
   outcome: { stage: string; findings: ReadonlyArray<{ code: string }> },

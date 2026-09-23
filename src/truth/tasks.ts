@@ -3,8 +3,10 @@
  * the public fields reaches an agent.
  *
  * Every finding names a path, an id, a count or a key shape, so it survives author projection like
- * the brief and controls diagnostics beside it, rather than reaching the Builder as the
- * detail-free `generated-execution-unclassified` label.
+ * the brief and controls diagnostics beside it. Run 36 attempt 2 shows what the unmarked default
+ * costs: all eight findings reached the Builder as one `generated-execution-unclassified` label,
+ * and the battery kept a self-invented task shape through 16 submits because nothing it was told
+ * named the shape it had invented.
  *
  * The field gate runs alone — the rules below it read fields it is the only proof of. After it,
  * one pass binds each task to the checks applicable to it, and each rule reads those rows. None of

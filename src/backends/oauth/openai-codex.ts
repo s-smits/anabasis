@@ -1,8 +1,15 @@
 /**
- * OpenAI Codex (ChatGPT OAuth) flow, ported from PrimeIntellect-ai/prime-agent: PKCE against
- * `auth.openai.com`, a local callback server on port 1455 and a manual paste fallback (both in
- * callback-flow.ts). The `id_token` is captured so the credential is stored in the exact shape the
- * Codex CLI writes.
+ * OpenAI Codex (ChatGPT OAuth) flow.
+ *
+ * Ported from the PrimeIntellect-ai/prime-agent implementation of the same flow rather than written
+ * fresh, because the authorisation endpoint accepts exactly one shape and a reimplementation would
+ * have had to discover it: PKCE against `auth.openai.com`, one local callback server on the fixed
+ * port 1455, and a manual paste fallback for a host with no browser to redirect. The state bytes
+ * come from Web Crypto and every JSON response is checked before a field is read, since both the
+ * redirect and the token response are external input. Capturing the `id_token` is what lets the
+ * credential be stored in the exact shape the official Codex CLI writes, so a login taken here and
+ * a login taken with that CLI are interchangeable afterwards. The callback server and the race
+ * between it and the paste live in callback-flow.ts.
  */
 import { capturedJsonParse } from "../../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "../../meta/json-shape.ts";

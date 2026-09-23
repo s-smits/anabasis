@@ -1,7 +1,10 @@
 /**
- * Evidence-bound campaign scorecard. This is a read-only diagnostic projection: it never writes
- * controller state and never gates truth, adoption, promotion, or claims. Axes without evidence
- * evidence are omitted and named under unavailable instead of being rendered as plausible zeroes.
+ * Evidence-bound campaign scorecard, and a read-only one: it writes no controller state and gates
+ * no truth, adoption, promotion or claim, which is what the document's own `authority:
+ * "diagnostic-only"` says out loud to whoever reads it next. An axis with no evidence behind it is
+ * left out of the document altogether and its name goes into `unavailable`, because a rendered
+ * zero and a measured zero look identical once the number has been lifted out of the document, and
+ * the reader who lifts it has no way to tell which one it was.
  */
 import { join } from "../../src/meta/path.ts";
 import { ITERATION_FILE } from "../../src/builder/campaign-iterations.ts";

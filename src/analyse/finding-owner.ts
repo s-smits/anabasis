@@ -11,8 +11,14 @@ export type NoRouteReason =
 
 type FindingOwnerResult = { owner: FeedbackOwner } | { owner: null; reason: NoRouteReason };
 
-/** Derive the only author-session owner admitted for a finding. Task-set findings route to the
- * task author; a harness defect routes only to a declared Builder-owned surface. */
+/** Derive the only author-session owner admitted for a finding, and say why when there is none:
+ *  every branch that returns no owner returns a reason, so a finding that reaches no author session
+ *  is lineage with a cause rather than a row that quietly disappeared. Task-set findings route to
+ *  the task author. A harness defect routes only to a declared Builder-owned surface, which is why
+ *  it is checked against `routableOwner` rather than trusted: the finding's producer proposes an
+ *  owner and the closed set decides. Per-case detail never crosses to authoring at all, a Judge
+ *  disagreement is advice that selects no owner, and a controller defect is not the Builder's to
+ *  repair. */
 export function authorSessionOwner(finding: AnalysisFinding): FindingOwnerResult {
   if (finding.subject !== undefined) return { owner: null, reason: "per-case-detail" };
   switch (finding.kind) {

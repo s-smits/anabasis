@@ -6,14 +6,21 @@ import type { EvaluationRequest } from "../../src/truth/correctness-model-contra
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 
-/** Read required tools from either the authored or external evidence declaration. */
+/** An external check names its tools inside its evidence declaration, because the tool is the
+ *  instrument deciding it; an authored check names them at the execution level, where they are
+ *  ordinary dependencies. Callers that only need to know what has to be installed and hashed ask
+ *  here rather than branching on the kind themselves. */
 export function requiredToolsOf(execution: CheckExecution): readonly string[] {
   return execution.evidence.kind === "external"
     ? execution.evidence.requiredToolIds
     : (execution.requiredToolIds ?? []);
 }
 
-/** Family scope is the only applicability authority. Missing hidden data cannot skip a check. */
+/** Declared family scope decides applicability, and nothing else does. In particular the hidden
+ *  operand is not consulted here: a check that declares `hidden: "required"` and has no expectation
+ *  for the task is still applicable, and `checkEvaluationRequest` throws when it comes to run it.
+ *  The two outcomes have to stay distinguishable, because a check quietly dropped for want of its
+ *  operand looks exactly like a check that was never meant to apply, and only one is a defect. */
 export function applicableTruthChecks(brief: Brief, task: { family: string }): BriefTruthCheck[] {
   if (brief.correctnessContract !== CHECK_PROGRAM_CONTRACT) {
     throw new Error("unsupported-correctness-contract");
@@ -64,7 +71,10 @@ export function projectJsonPaths(value: JsonValue, paths: readonly string[]): Js
   return projectPaths(value, parsed);
 }
 
-/** The same public operands feed the check process and its private tool cell. */
+/** One projection per check, and the check process and its private tool cell both eat it. That is
+ *  what keeps the declared paths a wall rather than a note: `evaluate.ts` builds the tool-input
+ *  leaves from this same value, so bytes a check may hand an installed tool are bytes it was
+ *  already allowed to read, and a wider tool operand cannot be reached around the projection. */
 export function checkPublicInputs(
   check: BriefTruthCheck,
   request: Pick<EvaluationRequest, "artifact" | "publicTask">,
@@ -85,7 +95,10 @@ export function checkPublicInputs(
   };
 }
 
-/** Task-wide public union for host tool subjects; each program receives its own narrower projection. */
+/** The union of every applicable check's declared public-input paths, which is what the host opens
+ *  a verifier subject with, since the subject spans all of that task's checks. It is deliberately
+ *  wider than any one check's view: each check still receives its own narrower projection from
+ *  `checkPublicInputs`, so the union bounds the subject without loosening a single check. */
 export function evaluationPublicTask<P>(
   brief: Brief,
   task: { family: string },

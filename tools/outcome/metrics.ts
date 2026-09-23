@@ -235,10 +235,11 @@ function declaredToolNames(bundleDir: string | null): string[] | null {
     ...spec.tools.map((tool) => (isString(tool.name) ? tool.name : "<unnamed>")),
     ...presetToolNames(presets),
     ...BUILT_STANDARD_TOOL_NAMES,
-    // The controller registers this reserved reader only when the brief carries public resources;
-    // it is never in tools-spec.json. The same predicate the runtime keys registration on decides
-    // this row (the agent dir sits beside correctness-model/ in the recorded slug), so a domain without public
-    // resources counts a hallucinated call to the reader as undeclared instead of declared.
+    // The controller registers this reserved reader only when the brief carries public resources,
+    // so it is never in tools-spec.json and the declared roster would miss it. This row asks the
+    // same question the runtime keys registration on -- does the bundle's sibling
+    // correctness-model/ publish any public resources -- which is why a domain that publishes none
+    // counts a hallucinated call to the reader as undeclared rather than as a declared tool.
     ...(readPublicResources(dirname(bundleDir)).length > 0 ? [PUBLIC_RESOURCES_TOOL] : []),
   ];
 }

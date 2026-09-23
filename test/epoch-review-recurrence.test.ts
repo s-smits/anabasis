@@ -305,8 +305,13 @@ describe("a condition is reviewed once", () => {
 
   test("an agent-side harness defect advises on its first reading and blocks on its second", async () => {
     // Run truss-opus-20260907T160200000Z-bdd329 round 4: a first blocking tools-spec finding
-    // sent a 25/25 harness back to the starter seed under the old loop. These checks retain
-    // the distinction between agent and evaluation owners when assigning review severity.
+    // sent a 25/25 harness back to the starter seed under the old loop. That is what the floor
+    // is for, and it is the owner's tier that decides who gets it, so the two tiers are pinned
+    // first — every reading below turns on them.
+    //
+    // Read the severity assertions with the writer in mind: `recordFinding` only writes a
+    // `severity` field when it demotes, so `"advisory"` is a demotion and `undefined` is the
+    // requested blocking standing unchanged.
     expect(ownerTier("tools-spec")).toBe("agent");
     expect(ownerTier("correctness-model")).toBe("rebuild");
     const state = reviewState();
@@ -321,8 +326,9 @@ describe("a condition is reviewed once", () => {
     };
     await call(first, { ...named, owner: "tools-spec", checkId: "shortcut-check" });
     expect(state.findings[0]?.severity).toBe("advisory");
-    // The same supported finding for an evaluation owner keeps its blocking severity. This
-    // checks owner-based severity here; the run loop decides the subsequent authoring move.
+    // The identical finding on an evaluation owner is admitted blocking on its first reading,
+    // because the floor is the agent tier's alone. All that settles is the severity; what the
+    // author does next is the run loop's decision, not this one's.
     const evaluatorSide = reviewState();
     await call(recordFindingTool([], [], "e", evaluatorSide, { identities, recurring: new Map() }), {
       ...named,
@@ -330,7 +336,8 @@ describe("a condition is reviewed once", () => {
       checkId: "budget-check",
     });
     expect(evaluatorSide.findings[0]?.severity).toBeUndefined();
-    // A finding on the same check in a later condition now qualifies for blocking severity.
+    // One earlier condition having named the same check is what lifts the agent-tier floor, so
+    // the second reading of `shortcut-check` is admitted blocking after all.
     const second = reviewState();
     await call(
       recordFindingTool([], [], "e", second, { identities, recurring: new Map([["shortcut-check", 1]]) }),

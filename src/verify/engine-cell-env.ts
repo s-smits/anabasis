@@ -1,14 +1,19 @@
-/** The environment an engine cell starts with: the one owner of the fresh HOME and TMPDIR rule. */
+/**
+ * The environment an engine cell starts with. Split out of host.ts so that the fresh HOME and TMPDIR
+ * rule has one owner rather than being restated wherever a cell is built.
+ */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { commandSearchPath } from "./solve-command-isolation.ts";
 
-/** The toolchain environment plus the candidate's search path, with TMPDIR and HOME inside the
- *  request workdir so no verdict depends on state an earlier evaluation left. The parent environment
- *  contributes nothing, so an inherited variable such as PATH cannot select an unrecorded tool or
- *  interpreter. */
-
+/** The toolchain environment plus the candidate's search path. TMPDIR selects a private tool
+ *  scratch space, and HOME is a child of the request workdir, writable under both OS policies and
+ *  removed once process cleanup is confirmed; tools can therefore start without making a later
+ *  verdict depend on mutable state an earlier evaluation left behind. The parent environment
+ *  contributes nothing at all, because the recorded toolchain must not be replaced by an unrecorded
+ *  installation selected through an inherited variable — and PATH is precisely the variable that
+ *  selects a script tool's interpreter. */
 export function engineCellEnv(input: {
   toolchainEnv: OptionalEnvValues;
   toolTree: string | null;

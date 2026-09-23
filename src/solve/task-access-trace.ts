@@ -35,7 +35,9 @@ function materializeTaskData(
   seen = new Set<object>(),
 ): JsonValue {
   if (value === null || isString(value) || isBoolean(value)) return value;
-  // A non-finite number becomes null, as JSON.stringify would write it, rather than failing the call.
+  // A non-finite number becomes null, as JSON.stringify writes it in the tool's own text. Refusing
+  // it instead voided every call of a truss tool whose damaged state was the mechanism the task
+  // was about (9 of 25 tasks, 2026-09-17).
   if (isNumber(value)) return Number.isFinite(value) ? value : null;
   if (!isObject(value)) throw new Error("generated tool result must be plain finite JSON");
   const target = targets.get(value) ?? value;
@@ -85,7 +87,8 @@ export function tracePublicTask(
     if (!isObject(value)) return value;
     const cached = proxies.get(value);
     if (cached !== undefined) return cached;
-    // The receiver is forwarded so an inherited getter runs with the proxy as `this`.
+    // A `get` trap must forward the receiver, so `target[property]` is not an equivalent: it would
+    // run an inherited getter with the wrong `this` and lose the identity the trace is recording.
     const proxy = new Proxy(value, {
       get(target, property, receiver) {
         // Reflect.get returns `any`; the trace forwards the value and reads nothing from it.

@@ -1,10 +1,21 @@
 /**
- * Tests for the candidate promotion policy after the paired comparison was removed
- * (2026-09-04). One battery decides a round, so promotion no longer reads a paired comparison or a
- * Progress Guard verdict: a candidate promotes when its battery wrote a claim, at or above current's stage,
- * on a fresh evaluation identity, with verified cases behind it and a fresh fingerprint that
- * matches the shipping bundle its battery recorded. Everything else is a hold, and a hold leaves
- * current byte-identical while still writing its evidence row.
+ * What lets a measured candidate replace the selected product. The paired comparison went on
+ * 2026-09-04 and one battery decides a round now, so nothing here reads a second battery or a
+ * Progress Guard verdict; neither survives in `src/` at all.
+ *
+ * What replaced them is a set of floors the candidate meets on its own. Its claim has to reach
+ * `measured` and then pass it, because stopping exactly at `measured` means the battery ran and
+ * the claim was refused. Its battery has to have verified at least one case, since a battery of
+ * non-results is an operational result and no capability result. Its tasks and correctness model
+ * have to be readable and fingerprintable, or there is nothing to bind the decision to. And the
+ * measured package has to differ from current's, or the round re-measured what is already
+ * installed. That they are floors is the point: none is a contest with current, so a candidate
+ * held at `claim-created` by a readiness clause still replaces a `ready` product. Promotion never
+ * compares the two claim stages, which is why `current.claimStage` reaches the evidence row and
+ * is read by nothing.
+ *
+ * Everything else is a hold, and a hold is not a no-op: current stays byte-identical while the
+ * evidence row is still written, so the reason the candidate did not ship survives the round.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, basename } from "../src/meta/path.ts";

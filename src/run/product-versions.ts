@@ -98,10 +98,15 @@ export function readProductVersion(repoRoot: string, slug: string, id: string): 
     directDestination(join(dir, part), campaignDir(repoRoot, slug));
   }
   verifyTree(dir, manifest.fingerprint, "retained product version");
-  // The linked tool tree sits outside the fingerprint and may be reclaimed by the operator. A tree
-  // that resolves elsewhere is a changed reference and refused; one that resolves nowhere is
-  // disclosed as null, since readers already fall back to the host PATH and verifyTree above
-  // proves the product's own bytes.
+  // A retained version links its tool tree into an epoch workspace, and those bytes sit outside
+  // the fingerprint by design: about 250 MB per epoch, five epochs in one recorded campaign here.
+  // An operator reclaiming that space leaves the link unresolvable, and the equality below then
+  // refused every retained version of the campaign — 105 of the 109 retained on this machine —
+  // which stops a continuation before its opening exists, so no terminal records why. The
+  // product's own bytes are untouched and verifyTree above proves it. A tree that resolves
+  // somewhere else is still a changed reference and still refused; a tree that resolves nowhere is
+  // disclosed as null, and every reader of it already resolves tools on the host PATH and reports
+  // the ones it cannot find.
   const toolTree = bundleSnapshotToolTree(dir);
   if (toolTree !== null && toolTree !== manifest.toolTree) {
     throw new Error(`${dir}: product tool-tree reference changed`);

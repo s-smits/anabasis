@@ -8,8 +8,10 @@ import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { BUILDER_EXECUTION_EVIDENCE_FILE, type BuilderExecutionEvidence } from "./builder-execution.ts";
 import { proseSidecarExists, writeBuilderProse } from "./builder-prose.ts";
 
-/** One file per authoring session: the first session owns the bare name, each later session takes
- *  the next free numbered name, so no session overwrites another's record. */
+/** One file per authoring session: the first session owns the bare name and each later session
+ *  takes the next free numbered name. A single epoch-level path could not hold a multi-session
+ *  epoch -- run 12x's repair session overwrote the opening build's record and left 3 of its 4
+ *  sessions unobservable. */
 function claimEvidencePath(epochDir: string): string {
   let path = join(epochDir, BUILDER_EXECUTION_EVIDENCE_FILE);
   for (let session = 2; existsSync(path) || proseSidecarExists(path); session += 1) {
@@ -22,7 +24,9 @@ function jsonEvidence(evidence: BuilderExecutionEvidence): JsonValue {
   return capturedJsonParse(capturedJsonStringify(evidence));
 }
 
-/** Writes the record and its prose sidecar, `builder-prose(-NN).jsonl`, with the same number. */
+/** Write the JSON record and the prose from one evidence object. The prose rows go to a separate
+ *  `builder-prose(-NN).jsonl`, carrying the same session number as the execution record, so the
+ *  two halves of one session can be found from either side. */
 function writeRecordAndProse(path: string, evidence: BuilderExecutionEvidence, captureId: string): void {
   const { prose, ...record } = evidence;
   if (prose === undefined) {
@@ -76,8 +80,10 @@ export function writeBuilderExecutionEvidence(epochDir: string, evidence: Builde
   writeRecordAndProse(path, withClosure(evidence, epochDir, path), crypto.randomUUID());
 }
 
-/** A writer that claims its file on the first write and overwrites it on each later one, so a
- *  session's checkpoints and final result share one record. */
+/** Choose a numbered file on the first write and update that same file on every later write from
+ *  this session, so a session's checkpoints and its final result share one record instead of
+ *  leaving a trail of partial ones. Another session gets the next unused name from
+ *  `claimEvidencePath`, which preserves one execution file per session. */
 export function builderExecutionEvidenceWriter(
   epochDir: string,
 ): (evidence: BuilderExecutionEvidence) => void {

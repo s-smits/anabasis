@@ -1,7 +1,8 @@
 /**
- * Tests for the writer-side absence check (src/truth/solvability-submission.ts,
- * absenceSpellingAdmitted): where the reference answer writes null, a writer schema that also
- * accepts the empty string gives one meaning two spellings.
+ * Where the reference answer writes null, a writer schema that also accepts the empty string gives
+ * one meaning two spellings, and nothing stops the agent picking the spelling the check will not
+ * admit. That is the defect `absenceSpellingAdmitted` refuses on the writer side, in
+ * src/truth/solvability-submission.ts, and this file is where the refusal is pinned.
  *
  * Run w6 is the case. Its writer declared `Type.Union([Type.String(), Type.Null()])` for a finding's
  * table id, the reference answer wrote null on the rows no table owns, and the agent wrote "" on

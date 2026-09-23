@@ -4,8 +4,9 @@
  * bundle and varies one fact of it, so `specimen` takes the whole description and every other
  * builder here is a short call to it.
  *
- * The five `solvability-*.test.ts` files share this module. It carries what more than one of them
- * needs; a fixture one file uses stays in that file.
+ * Five of the six `solvability-*.test.ts` files share this module, the exception being
+ * `solvability-gate.test.ts`, which reads refusals rather than building bundles. What lives here
+ * is what more than one of them needs; a fixture a single file uses stays in that file.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";

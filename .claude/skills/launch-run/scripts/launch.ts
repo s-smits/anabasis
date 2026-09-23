@@ -301,7 +301,11 @@ export function findOpening(plan: RunPlan, root = join(plan.dir, "campaigns")): 
   return matches[0] ?? null;
 }
 
-/** Whether the service manager still reports this plan's launcher as running. */
+/** Whether the service manager still reports this plan's launcher as running. The query runs with
+ *  `check: false`, so a service the manager no longer knows about exits non-zero here and reads as
+ *  not-running rather than throwing: both callers want that answer as a boolean, because what they
+ *  do with a false is raise the error that names the launcher log, and a raw command failure would
+ *  lose that path. */
 async function launcherRunning(
   plan: OpeningPlan,
   command: Command,

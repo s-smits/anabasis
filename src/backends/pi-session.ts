@@ -84,7 +84,9 @@ export interface HostSession extends AgentSession {
   configure(tools: readonly PiTool[], systemPrompt: string): void;
 }
 
-/** The system-prompt section holding a host session's framing; a later round replaces it by name. */
+/** The named system-prompt section a host session's framing lives in. Pi replays the prompt from
+ *  the transcript's system messages, so naming the section is what lets a later round replace this
+ *  framing rather than append a second one beside the first. */
 const FRAMING_SECTION = "framing";
 
 interface HostSessionInput {
@@ -99,7 +101,9 @@ interface HostSessionInput {
 
 /**
  * A short, whitespace-collapsed preview of a tool result's text, for trace logging only. An
- * overlong preview keeps both ends, because a failing command reports its error last.
+ * overlong preview keeps both ends with a marker between them, because a failing command reports
+ * its error last -- "exit code 1" after pages of build output -- and a head-only slice would show
+ * exactly the part before the error and nothing of the error itself.
  */
 function previewText(text: string, limit: number): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
@@ -126,9 +130,12 @@ export function piSessionPolicy(profile: PiProfile) {
 
 /**
  * End a prompt after the turn in which any tool result carried `terminate`: the controller already
- * holds the answer. The turn's other calls still return, and no further provider request follows
- * (pi alone ends only a batch whose every call terminates). On the Claude CLI one query spans the
- * whole prompt and would wait for tool results nothing delivers, so ending also aborts that query.
+ * holds the answer, whether that is an accepted or finally refused Builder submit, a Built submit
+ * or a Judge verdict. The turn's other calls still return, and no further provider request follows.
+ * Pi on its own ends only a batch whose every call terminates, so a submit that shared an assistant
+ * message with another call used to pay for one more request. On the Claude CLI one query spans the
+ * whole prompt and still waits for this turn's tool results, which nothing would deliver, so ending
+ * aborts that query too; before, it waited until the process went.
  */
 function endOnTerminate(agent: Agent, transport: PiProfile["transport"]): FinishTurn {
   let terminated = false;
@@ -217,11 +224,15 @@ export class PiPromptRecord {
   readonly failedByName: Record<string, number> = {};
   /** The last assistant message this prompt ended; a retried attempt is replaced by its retry. */
   last: AssistantMessage | undefined;
-  /** The last assistant message that names a served model or response id, so a stopped turn
-   *  attests what answered before it. */
+  /** The last assistant message the provider actually answered: it named the served model, or at
+   *  least gave the response its id. The Codex route never names a model, which is why
+   *  `UNATTESTING_PROVIDER` in runtime-model-identity.ts accepts the id alone from it. An ending
+   *  nothing answered names neither, so keeping this separate from `last` is what lets a stopped
+   *  turn attest what answered before it. */
   served: AssistantMessage | undefined;
   private compactionEstimate = 0;
-  /** The bridge reports each builtin call twice; the trace records it once. */
+  /** The bridge observes a builtin call twice -- once on the streamed block and once on the
+   *  assembled message -- and one search must enter the trace once, so the ids seen are kept. */
   private readonly builtins = new Set<string>();
 
   constructor(
@@ -260,8 +271,10 @@ export class PiPromptRecord {
     this.compactions.push({ tokensBefore, compacted: true });
   };
 
-  /** A CLI-owned builtin never reaches pi's tool events. The host sees the call but not its result,
-   *  so it is recorded as a started-and-ended call without error. */
+  /** A CLI-owned builtin answers inside the CLI's own loop, so it never reaches pi's tool events
+   *  and would otherwise leave the trace claiming no such tool was used. The host sees the call but
+   *  not its result, so the pair is recorded as one started-and-ended call without an error, which
+   *  is everything the host can honestly say about it. */
   readonly builtinTool = (call: { name: string; id: string; input: unknown }): void => {
     if (this.builtins.has(call.id)) return;
     this.builtins.add(call.id);
@@ -434,7 +447,8 @@ export async function openHostSession(input: HostSessionInput): Promise<HostSess
     },
     async dispose() {
       session.dispose();
-      // Release the codex transport's WebSocket and idle timer so they do not hold the process open.
+      // The codex transport keeps its WebSocket, and a five-minute idle timer, after the last
+      // request; with the session over, both would hold the controller process open until then.
       cleanupSessionResources(sessionId);
       if (served.configDir !== null) await rm(served.configDir, { recursive: true, force: true });
     },

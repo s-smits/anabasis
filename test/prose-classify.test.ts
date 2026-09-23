@@ -17,7 +17,10 @@ const classEntries: Array<[string, string[]]> = Object.entries(CLASSES);
 const anchorClass = new Map<string, number>();
 type Submit = { kind: string; turn: number; atMs: number; outcome: string; stage?: string | null };
 type Row = { turn: number; atMs: number; kind: "message" | "reasoning"; text: string };
-/** The execution-record fields a test may override; the session outcome decides whether its rows count as evidence. */
+/**
+ * The execution-record fields a test may override; the session outcome decides whether its rows
+ * count as evidence.
+ */
 type Execution = { outcome: string };
 
 const ROWS: Row[] = [

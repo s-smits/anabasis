@@ -47,8 +47,10 @@ const CORRECTNESS_MODEL_PACKAGE = "@ana/correctness-model-bundle";
 const CODE_EXT = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
 
 /**
- * Detect likely answer keys by filename. A name proves nothing about content, but it is a cheap
- * check for a common mistake; the public projection and sandbox restrict the actual data.
+ * Detect possible answer keys by filename. A name cannot prove what a file contains, and the
+ * public projection and the sandbox are what restrict the data actually available to the agent.
+ * Every leaked answer key observed so far had a recognisable filename, so this inexpensive check
+ * catches the known mistakes without pretending to be the wall.
  */
 const KEY_MATERIAL_RE =
   /(answer[-_]?keys?|answers?\.(json|ts|js|mjs|sql|csv)$|hidden[-_]?(expectations?|answers?)|expected[-_]?(outputs?|answers?)|reference[-_]?(solver|solution))/i;
@@ -58,9 +60,12 @@ export function parseGeneratedSource(source: string, filePath: string): ts.Sourc
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true);
 }
 
-/** Collect module specifiers from the syntax tree, so words inside string literals are never
- *  read as imports: import/export declarations, `import =` external references, dynamic import()
- *  and require() calls. `loads` keeps each literal operand node. */
+/** Collect module specifiers from the syntax tree. The regular-expression check this replaced
+ *  matched the words from, import and require inside unrelated string and array literals:
+ *  `["from", "fromJoint"]` produced the false specifier ", " and refused a valid bundle
+ *  (campaigns/bridge-truss 02, 2026-07-26). The syntax-tree walk reads actual dependencies —
+ *  import and export declarations, `import =` external references, dynamic import() and require()
+ *  calls — and `loads` keeps each literal operand node. */
 export function specifiersIn(sourceFile: ts.SourceFile) {
   const loads: ts.StringLiteralLike[] = [];
   const opaque: string[] = [];
@@ -167,7 +172,10 @@ export function validateAgentBundle(agentDir: string, opts?: { allow?: string[] 
     files = hashBundle(agentDir).files;
   } catch (error) {
     if (!(error instanceof IrregularBundleEntryError)) throw error;
-    // A skipped symlink would be unhashed and unscanned, leaving part of the import graph unseen.
+    // A symlink the walker skipped would be unhashed and unscanned, so validation would approve a
+    // bundle whose runtime import graph it never saw (handover 2026-07-11). Refusing the whole
+    // bundle is the only answer available here, because the entry that was skipped is exactly the
+    // one whose content nothing below can read.
     return {
       ok: false,
       findings: error.entries.map((path) => ({

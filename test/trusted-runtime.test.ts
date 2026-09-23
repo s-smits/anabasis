@@ -1,7 +1,15 @@
 /**
- * Captured controller functions under global mutation. Process-group
- * checks and wrapper launch must use functions captured before generated code runs, so later
- * changes to structuredClone, spawn, kill and execPath cannot replace those functions.
+ * Generated code runs inside this process and can reassign a global, so the process-group checks
+ * and the wrapper launch hold the functions they captured before any generated code ran. A later
+ * change to `structuredClone`, `spawn`, `kill` or `execPath` then reaches the global and not the
+ * controller, which is what the first case proves by poisoning all four and asking the controller
+ * to work anyway.
+ *
+ * The second half is the capture those launches read back. Four files had spelled that capture out
+ * themselves, each with its own buffer ceiling and its own idea of what a failed command's ending
+ * says, so the cases below hold what one owner has to get right instead: a capture far above the
+ * default any of the four copies believed in, and four endings told apart rather than collapsed
+ * into one line that names no reason.
  */
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";

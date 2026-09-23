@@ -21,25 +21,27 @@
  * The host the suite shares. The cores a machine has are not the cores this suite gets, and a
  * failure it did not cause is not a verdict on the branch. Two answers, in this order. The worker
  * count subtracts half the one-minute load average, so a runner already carrying four jobs of its
- * own is not asked for three times itself, while a laptop that merely looks busy keeps its workers. And when the first process fails, the run is attributed
- * before it is believed: if a clock ended every failure, or the host passed twice its cores in
- * load while they ran, the failed files run again alone and that verdict is the suite's. On
- * 2026-09-17 the 8-core M1 runner at load 28.9 returned 14 failures, five naming the per-test
- * wall; the same files passed alone, 11 of 11, 16 of 16 and 44 of 44. A failure on a quiet host,
- * and more failed files than a busy host explains, both stand as they were printed.
+ * own is not asked for three times itself, while a laptop that merely looks busy keeps its
+ * workers. And when the first process fails, the run is attributed before it is believed: if a
+ * clock ended every failure, or the host passed twice its cores in load while they ran, the failed
+ * files run again alone and that verdict is the suite's. On 2026-09-17 the 8-core M1 runner at
+ * load 28.9 returned 14 failures, five naming the per-test wall; the same files passed alone, 11
+ * of 11, 16 of 16 and 44 of 44. A failure on a quiet host, and more failed files than a busy host
+ * explains, both stand as they were printed.
  *
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
  * file; no test is running, so the per-test wall never fires, and an unattended run holds the
- * queue until someone notices. Every chunk of output resets a clock; 180 s of silence (three per-test
- * walls) ends the whole process group and lists what it was running. The wedge sits in the
- * worker's own tail: in the Linux VM on 2026-09-13 it fired twice with 199 of 200 files reported
- * and one worker spinning at 70% CPU over a defunct child, no syscalls, on a 143 ms file. So the
- * wall then runs the files never reported again, once, in one fresh process without workers, and
- * that run's verdict is the suite's for the files it reports -- a file silent there as well was
- * tested by neither process, so its silence is a failure and not a pass. The wall fails the suite
- * outright when more than a few files are missing, which is an early wedge rather than a tail. A failure printed before the wall is kept:
- * the rerun covers the files the first process never finished, never the verdict of one it did.
+ * queue until someone notices. Every chunk of output resets a clock; 180 s of silence (three
+ * per-test walls) ends the whole process group and lists what it was running. The wedge sits in
+ * the worker's own tail: in the Linux VM on 2026-09-13 it fired twice with 199 of 200 files
+ * reported and one worker spinning at 70% CPU over a defunct child, no syscalls, on a 143 ms file.
+ * So the wall then runs the files never reported again, once, in one fresh process without
+ * workers, and that run's verdict is the suite's for the files it reports -- a file silent there
+ * as well was tested by neither process, so its silence is a failure and not a pass. The wall
+ * fails the suite outright when more than a few files are missing, which is an early wedge rather
+ * than a tail. A failure printed before the wall is kept: the rerun covers the files the first
+ * process never finished, never the verdict of one it did.
  * The suite is the wall's owner, so `bun run test` and the gate share one behaviour.
  * `ANA_TEST_IDLE_SECONDS` shortens the wall for its test, and `wallSeconds` widens it in
  * proportion to load the suite did not create.

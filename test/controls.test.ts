@@ -1,4 +1,25 @@
-// Controls tests: control arrays are shape-gated.
+/**
+ * Controls are what calibrate the checks, so validation has to refuse a corpus that would let a
+ * check pass without ever having been shown a case it ought to fail on. The file widens in three
+ * steps.
+ *
+ * The shape gate comes first, because nothing downstream can reason about a control it cannot
+ * read: an array that is really an object, an entry missing its `taskId`, a duplicate id, a reject
+ * naming no `expectedCheckId`. Then coverage, which since 2026-09-15 is one reject per check and
+ * one per family, a single reject being allowed to serve both — the rule it replaced demanded one
+ * per check-by-family cell and asked a 6-check, 5-family truss for 30 rejects. The two cases that
+ * matter are the ones short in only one dimension, and each is refused exactly once, named by the
+ * dimension that is actually missing rather than once per cell it touches.
+ *
+ * The last group is about external checks, where a reject has to fail on the check it names and
+ * not merely somewhere. A decoy that names a different check than the one it targets is a
+ * mismatch; a boundary reject may not also claim a join decoy, because one artifact cannot be the
+ * witness for two obligations at once. Ownership is keyed on the whole check-path-constant
+ * triple, and the case for that is the one where two checks declare the same `$.limit` and
+ * `public-limit`: naming either check is still unambiguous, so the reject is admitted, and only a
+ * triple no check declares is refused — with every declared triple listed back, so the author can
+ * see what to match.
+ */
 import { describe, expect, it } from "bun:test";
 import type { Brief, ValidationResult } from "../src/truth/brief.ts";
 import {

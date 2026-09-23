@@ -1,6 +1,7 @@
 /**
- * Tests for full-run-round.ts's ending decisions: when a round ends the campaign, how the
- * per-round counters advance, which ending cites evidence, and which hold the loop may continue.
+ * A round either ends the campaign or it does not, and src/run/full-run-round.ts owns that call:
+ * which ending cites evidence, which hold still lets the loop continue, and how the per-round
+ * counters advance into the next one.
  *
  * Every stop reason lives in one function, so the continuation table is read row by row under a
  * loop state where no guard fires: a row that continues is the table's own verdict rather than a

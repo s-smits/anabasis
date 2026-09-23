@@ -1,7 +1,12 @@
 /**
  * Measurement doubles for a no-provider battery: the executed isolation probe, the Built session
- * check and a verifier host that runs no tool. Extracted from the measurement warranty so the
- * whole-loop warranty and the simulation runner drive `measureHarness` with the same doubles.
+ * check and a verifier host that runs no tool. They were lifted out of the measurement warranty so
+ * that the whole-loop warranty and the simulation runner would drive `measureHarness` against the
+ * same doubles rather than each inventing its own, and six files read them now — `harness-measure`
+ * with its `-inputs`, `-claim` and `-judge` siblings, plus `climb-loop` and
+ * `full-run-scripted-loop`. That is worth knowing
+ * before changing one: a double loosened to suit one caller quietly changes what the other five
+ * are measuring.
  */
 import type { SessionProfileEvidence } from "../../src/backends/session-isolation.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";

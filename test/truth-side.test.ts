@@ -1,6 +1,8 @@
-// Refusal tests for the truth-side §5 cuts. Each dropped record row's `refusal` resolves here;
-// the standing guards are check 4 (refused vocabulary) and check 5 (dropped-producer census) over
-// the same tree, so restoring a removed producer fails both checks: by name and by census.
+// The truth-side §5 cuts removed a second deciding authority, a set of producers and a repair
+// lifecycle, and a removal only stays removed while something fails when it comes back. Each
+// dropped record row's `refusal` resolves here, and the two standing guards are check 4, the
+// refused vocabulary, and check 5, the dropped-producer census, over the same tree — so restoring a
+// removed producer fails both of them, once by name and once by census.
 import { readFileSync, readdirSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";

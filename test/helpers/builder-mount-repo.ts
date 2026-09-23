@@ -2,9 +2,10 @@
  * The minimal repository a Builder mount can open: the three authoring barrels, the `src/` trees
  * their read closures are derived from, a campaign epoch directory and a package.json.
  *
- * Two files need it — the transport suite, which reads the grants the isolation derives from these
- * barrels, and the tool-mount suite, which runs the mounted tools. Neither owns isolation
- * behaviour: that lives in builder-tools and candidate-isolation.
+ * `builder-tool-mount.test.ts` is the only caller left, and what it wants is a tree real enough
+ * for the mounted tools to run against. It does not own isolation behaviour — that belongs to
+ * `builder-tools.test.ts` and the `candidate-isolation-*` files, which drive the real walls — so
+ * nothing here should grow into a second place where a grant is decided.
  */
 import { mkdirSync, realpathSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";

@@ -1,23 +1,38 @@
 /**
- * Instructions sent to the Builder between turns. Every turn boundary restates the objective and
- * the round's standing facts, so a long session never depends on a compacted transcript. Only a
- * submit the gate accepts completes the goal.
+ * Instructions sent to the Builder between turns. The continuation wording and the tool-failure
+ * notes live here, apart from the session loop, so their timing and their tests can be maintained
+ * without touching the loop that sends them.
+ *
+ * The continuation works the way Codex's goal continuation does (codex-rs/ext/goal,
+ * templates/goals/continuation.md): every turn boundary restates the objective and the goal's
+ * standing facts, so a long session never has to find its task or its spend in a transcript
+ * compaction may have cut. Completion is the one thing it does not borrow. Codex lets the model
+ * declare its goal complete; here only a submit the gate accepts does.
  */
 
-/** Completed turns with no submit before the continuation asks for authoring. Fixed, because a
- *  round has no turn ceiling unless the operator sets one. */
+/** Completed turns with no submit before the continuation asks for authoring. A fixed count rather
+ *  than a share of a ceiling, because a round has no turn ceiling at all unless the operator sets
+ *  one; recorded sessions used zero to seven turns before submitting (review of 338970480,
+ *  2026-09-14), so eight asks the question after the ordinary range and not inside it. */
 const NO_SUBMIT_REMINDER_TURNS = 8;
 
 /** Time since the round opened with no submit before the Builder is asked to author, whichever of
- *  this and the turn count comes first, since a single turn can run for hours. It equals the bash
- *  install allowance, so it cannot fire inside one install, and `sessionClock` reuses it. */
+ *  this and the turn count comes first. A turn is not a unit of time: a Claude session runs as one
+ *  assistant turn, and one recorded truss Builder turn ran 6 h 27 m, so eight turns can be half an
+ *  hour or most of a day, and a session that spent a night reading crosses no turn count at all.
+ *  Two hours is exactly the Builder's own bash allowance (`BASH_TIMEOUT_MAX_MS`), so the nudge
+ *  cannot fire inside one permitted toolchain install. The same bound drives the one notice sent
+ *  inside a running turn, through `sessionClock` in builder-tool-receipts.ts. */
 export const NO_SUBMIT_REMINDER_MS = 7_200_000;
 
-/** Consecutive turns without one successful tool call that end the round as `no-progress`. */
+/** Consecutive turns without one successful tool call that end the round as `no-progress`. Codex
+ *  blocks a goal after three automatic turns without a tool call, or three whose commands all
+ *  failed (codex-rs/ext/goal/src/accounting.rs); one count covers both cases here. */
 export const STALLED_TURNS = 3;
 
-/** The ask once a round has run long without a submit, shared by the continuation and
- *  `sessionClock`. */
+/** The ask once a round has run long without a submit. The continuation states it at a turn
+ *  boundary and `sessionClock` inside a running turn, and both read this one constant so the two
+ *  cannot drift into asking for different things. */
 export const MOVE_TO_AUTHORING =
   "Preserve useful environment work, but move to authoring now: a refused submit returns actionable contract feedback, an unsubmitted candidate returns none.";
 
@@ -53,8 +68,10 @@ function goalFacts(goal: GoalState): string {
   return `This round so far: turn ${goal.activeTurn}${minutes}, ${submits}.${cap}`;
 }
 
-/** The one action the round's state asks for: author, or after a submit repair and resubmit. It
- *  names no file, because the permitted files are the opening's to state. */
+/** The one action the round's state asks for. A previous submit changes it from "author a
+ *  candidate" to "repair and resubmit". No specific file is named, because a repair that keeps
+ *  tasks fixed must not edit correctness-model/tasks.json and a build may: which files are
+ *  permitted is the opening's to state, not this line's. */
 function nextAction(goal: GoalState): string {
   const stop = " Do not replace the candidate with an explanation of why you stopped.";
   if (goal.attempts > 0) {
@@ -79,15 +96,21 @@ export function continuePrompt(goal: GoalState): string {
   ].join("\n\n");
 }
 
-/** Public runtime fact for the next turn: the owned files are still as the session found them. */
+/** Public runtime fact for the next turn: the owned files are still as the session found them.
+ *  The sixteen-call interrupt that once enforced this ended on 2026-09-14 -- it never fired in 414
+ *  recorded sessions, and it would have cut a session installing its toolchain -- so the fact
+ *  stays as one line the model weighs against its own plan, with nothing counting it. */
 export function unchangedAuthoringNote(owned: "unchanged" | "changed", paths: readonly string[]): string {
   return owned === "unchanged"
     ? `Note: nothing under ${paths.join(" or ")} has changed since this round opened; keep the environment work, and put the candidate in those files.`
     : "";
 }
 
-/** Public runtime fact for the next turn: which of the session's own tool calls just failed.
- *  One bounded line with the three most frequent names. */
+/** Public runtime fact for the next turn: which of the session's own tool calls just failed. The
+ *  backend already returned each error in its own tool result, so this adds no information the
+ *  session never had; what it saves is re-deriving the tally from a long transcript, which run 66's
+ *  session did not do -- it repeated an identical prompt for 32 turns with nothing naming the
+ *  failures. Only the top three names, so it stays one line. */
 export function toolFailureNote(
   calls: { total: number; failed: number; failedByName: Record<string, number> } | undefined,
 ): string {

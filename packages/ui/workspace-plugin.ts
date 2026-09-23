@@ -6,11 +6,13 @@ export const REPO_ROOT = resolve(Bun.env.ANA_UI_REPO_ROOT ?? resolve(import.meta
 const VIRTUAL_ID = "virtual:ana-workspace";
 
 /**
- * The bundled evidence snapshot. `bun run build` produces a static page that carries the evidence
- * it was built from, so it can be archived and opened without a server.
- * The page starts with this snapshot, then requests live `/api/workspace` data. A failed refresh
- * leaves the existing evidence visible with an error. The plugin serves development through `bunfig.toml` and builds through
- * `build.ts`, so both read the virtual module from the same reader.
+ * The evidence the page ships with. `bun run build` bakes one workspace read into the bundle as a
+ * virtual module, so `dist/` can be archived and opened later with no server behind it and still
+ * show the run it was built from. Once it is open the page polls `/api/workspace` for live data,
+ * and a refresh that fails sets the error alone: `setWorkspace` in `src/live.ts` runs on success
+ * only, which is why a dead server leaves the baked evidence on screen instead of an empty panel.
+ * Development through `bunfig.toml` and the static build through `build.ts` both load the module
+ * from this one plugin, so neither can end up reading the workspace a different way.
  */
 const workspaceEvidence: BunPlugin = {
   name: "ana-workspace-evidence",

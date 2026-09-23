@@ -5,11 +5,15 @@ import { isNode, type KeyedNode as AnyNode, nodeFields } from "../../anti-slop/s
 import { containsUnknownType } from "../shared/unknown-type.ts";
 
 /**
- * `anti-slop/no-unknown-parameters` reports every `unknown` parameter and exempts one name,
- * `cause`. That is right for most code and wrong for the layer this repository cannot avoid: the
- * functions whose whole job is to check the type of arbitrary input. Typing their input
- * would make them assert the thing they exist to prove, so seventeen files sat in a config
- * exemption list, and a new unproven parameter added to any of them was reported by nobody.
+ * An `unknown` parameter the function never proves anything about.
+ *
+ * Upstream anti-slop ships `no-unknown-parameters`, which reports every `unknown` parameter and
+ * exempts one name, `cause`. That is right for most code and wrong for the layer this repository
+ * cannot avoid: the functions whose whole job is to check the type of arbitrary input. Typing
+ * their input would make them assert the thing they exist to prove, so seventeen files sat in a
+ * config exemption list, and a new unproven parameter added to any of them was reported by
+ * nobody. `THIRD_PARTY_NOTICES.md` records that upstream rule as one of the three left out of the
+ * copy, and this is what replaces it.
  *
  * This rule keeps the report and moves the exemption from the file to the evidence. An `unknown`
  * parameter is admitted when the function proves it: a type predicate, a narrowing guard, a value
@@ -190,7 +194,6 @@ function typePredicateName(node: AnyNode): string | null {
   return identifierName(annotation["parameterName"]);
 }
 
-/** Disallow an `unknown` parameter the function never proves. */
 export const unprovenUnknownParameterRule = defineRule({
   meta: {
     type: "problem",

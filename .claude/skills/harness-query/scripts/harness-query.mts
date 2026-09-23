@@ -64,8 +64,6 @@ interface Controls {
   reject: ControlRow[];
 }
 
-// ---------- arguments ----------
-
 interface Options {
   repoRoot: string;
   harnessDir: string;
@@ -83,8 +81,6 @@ interface Options {
   /** Which reviewer sees the shipped artifacts, if any; judge/judge-option.mts owns the choice. */
   judge: JudgeFlags;
 }
-
-// ---------- measure and report ----------
 
 /** One recorded case as this script counts it. A case is a non-result when either typed channel
  *  says so: the solver's `nonResult` object or the verifier-side `runtimeNonResult` string (for
@@ -171,8 +167,6 @@ function modelDir(dir: string): "correctness-model" | "grader" {
 function modelFile(dir: string, file: string): string {
   return join(dir, modelDir(dir), basename(file));
 }
-
-// ---------- selection ----------
 
 function maybeJson(text: string): JsonValue {
   const trimmed = text.trim();
@@ -392,8 +386,6 @@ function unresolvedDeclaredTools(dir: string): string[] {
   if (ids.size === 0) return [];
   return resolveToolInventory({ toolIds: [...ids], toolTree: bundleSnapshotToolTree(dir) }).missing;
 }
-
-// ---------- probe bundle ----------
 
 /** One digest over the measured agent/ and model bytes, so a later reader can say what ran. */
 function bundleDigest(dir: string): string {

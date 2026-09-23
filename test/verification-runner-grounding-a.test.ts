@@ -1,5 +1,15 @@
-// External-verifier grounding (C3), first half. Split from verification-runner.test.ts so
-// each file finishes within about half a minute under four concurrent tests.
+// External-verifier grounding (C3), first half: what becomes of a case when the instrument that
+// decides it is an installed tool rather than authored code. A tool run during the battery writes
+// its execution evidence onto both the battery and the report, and everything after that is about
+// the ways such a run can fail without the case quietly turning into a pass. An authored
+// non-Boolean result is rejected as a generated verifier exception before a fabricated aggregate
+// can escape; an environment-owned tool failure is retried once and then settled as its own
+// non-result receipt, while an author-repairable one is settled at once with no second attempt;
+// and a host non-result outranks a correctness model that swallowed it and returned a verdict
+// anyway.
+//
+// Split from verification-runner.test.ts so that each file finishes within about half a minute
+// under four concurrent tests.
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";

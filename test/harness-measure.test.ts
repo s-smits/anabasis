@@ -22,9 +22,10 @@ import { cleanupScratch } from "./helpers/scratch.ts";
  * Fingerprinting, evaluation, case records and claims use their production paths; solvers, provider
  * sessions and selected host checks use doubles where each case states.
  *
- * Each case scaffolds its own adopted-product fixture through `helpers/measure-repo.ts`. These
- * results exercise the measurement code; they establish nothing about a model's ability to solve
- * domain tasks. `harness-measure-judge.test.ts` owns the census Judge that rides the same round.
+ * Each case scaffolds its own adopted-product fixture through `helpers/measure-repo.ts`. What a
+ * green run here proves is that the measurement code did what it was asked; it says nothing about
+ * a model's ability to solve domain tasks, because every solver in this file is scripted. The
+ * Judge pass that rides the same round belongs to `harness-measure-judge.test.ts`.
  */
 
 afterAll(cleanupScratch);

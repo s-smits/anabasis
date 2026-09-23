@@ -1,14 +1,27 @@
 /**
- * Tests for the representation census, using live-run-06 as the recorded example. Its retained
- * traces show F2 passed 25/25, every submit was accepted and accept-controls passed 3/3. The
- * battery still measured 0/25 — because the reference answer writes `accessionCode: "n/a"` for
- * records without a local code and the agent wrote "" instead, 95 times across 25 of 25 cases.
+ * A harness can pass every gate it has and still measure nothing, and live-run-06 is the recorded
+ * case of it. Its retained traces show F2 passing 25 of 25, every submit accepted and the accept
+ * controls passing 3 of 3, which is as clean a run-up to a battery as the gates can produce. The
+ * battery then measured 0 of 25. The whole difference was a spelling: the reference answer writes
+ * `accessionCode: "n/a"` for a record with no local code and the agent wrote `""` instead, 95 times
+ * across all 25 cases. Nothing was wrong with the agent's reasoning and nothing was wrong with the
+ * checks; the two sides simply never agreed on how to write "absent", and no gate was looking.
  *
- * These tests cover three requirements:
- *   1. detect that inconsistent representation of absence;
- *   2. allow derived roots and legitimate domain values that resemble absence markers;
- *   3. keep both findings blocking. Run 67 passed its batteries despite copied answer roots,
- *      so a perfect pass rate alone does not justify accepting those roots.
+ * So the census looks for that disagreement before a battery is paid for, and it looks for a second
+ * shape beside it — an artifact root that just copies its public input, which is a root the checks
+ * cannot fail on and therefore a capability nobody measured. Both findings block, because a run
+ * that passes its batteries with copied answer roots has proved only that it can copy.
+ *
+ * The harder half of the file is the quiet cases, and they are the ones to read before trusting a
+ * pass. A root derived from public input rather than copied stays quiet, as does a copy whose
+ * source differs between tasks, a single task copying the whole collection when its sibling does
+ * not, nested ordered pairs that were each reversed, and a real domain value that merely resembles
+ * an absence marker. Reordered rows still block, because reordering is not a different answer.
+ *
+ * One limitation is recorded rather than fixed: a copy wrapped in a new object is not detected,
+ * because the enclosing structure differs and these comparisons work on structure. The authoring
+ * instructions forbid that representation, but forbidding is not detecting, and the case below says
+ * so plainly rather than leaving a later reader to assume the ground is held.
  */
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";

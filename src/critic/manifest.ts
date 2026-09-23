@@ -13,8 +13,8 @@ interface FrozenManifest {
 }
 
 /** A bound parses an untrusted manifest value: the typed value, or null when malformed. It refuses
- *  what would disable a stop or fail selector construction, such as an infinite round count, a
- *  negative rate or an inverted band. */
+ *  what would disable a stop or fail selector construction — an infinite round count, a negative
+ *  rate, an inverted band (Sol review at the run-15 boundary). */
 type Bound<T> = (v: JsonValue | undefined) => T | null;
 
 interface FieldSpec<T> {
@@ -26,15 +26,22 @@ interface FieldSpec<T> {
 
 export function loadFrozenManifest(path = FROZEN_MANIFEST_PATH): FrozenManifest {
   const bytes = readFileSync(path);
-  // A manifest that is not a mapping becomes an empty policy, so readers use their defaults.
+  // `Bun.YAML.parse` returns `unknown`, so the manifest is narrowed here rather than assigned
+  // through the `any` the previous reader took on trust. A manifest that is not a mapping — a
+  // sequence, a bare scalar or an empty file — becomes an empty policy, and `frozenRow` returns
+  // an empty row for a missing file, so threshold readers fall back to their declared defaults.
   const raw = asRecord(Bun.YAML.parse(bytes.toString("utf8"))) ?? {};
-  // The digest covers the parsed policy, so comments, whitespace and key order leave the
-  // identity, and with it climb evidence admission, unchanged.
+  // The digest covers the parsed policy, not the file bytes. Thresholds are part of the frozen
+  // condition, so a recorded battery whose digest differs is excluded from climb evidence
+  // (`climb-battery-admission.ts`). A byte digest let a comment edit on thresholds.frozen.yaml
+  // (#329, line 42) exclude every earlier battery of the Sol campaign on 2026-08-23 although no
+  // threshold moved. Comments, whitespace and key order now leave the identity alone.
   return { digest: `sha256:${sha256(canonicalJson(raw))}`, raw };
 }
 
-/** Reads one policy row, returning {} for a missing file or absent row so callers use their
- *  declared defaults and a manifest never blocks a run. */
+/** Read one policy row, returning {} for a missing file or absent row so callers use their
+ *  declared defaults. This follows the decision to keep difficulty-policy reads from blocking a
+ *  run; threshold readers share the same fallback behaviour here. */
 export function frozenRow(key: string, path?: string): Record<string, JsonValue> {
   try {
     const row = loadFrozenManifest(path).raw[key];
@@ -55,8 +62,9 @@ export const band01: Bound<[number, number]> = (v) => {
   return isNumber(lo) && isNumber(hi) && lo >= 0 && hi <= 1 && lo < hi ? [lo, hi] : null;
 };
 
-/** Declares a frozen row's schema once; the returned reader applies yaml overrides field-wise under
- *  each field's bound. A missing or malformed field takes the declared fallback. */
+/** Declare a frozen row's schema once; the returned reader applies yaml overrides field-wise under
+ *  each field's bound. A missing or malformed field takes the declared fallback, so a manifest
+ *  cannot block a run (operator direction, 2026-07-26). */
 export function policyRow<R extends Record<string, JsonValue>>(
   key: string,
   schema: { [K in keyof R]: FieldSpec<R[K]> },

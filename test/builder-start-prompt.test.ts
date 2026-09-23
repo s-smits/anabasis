@@ -197,7 +197,6 @@ describe("Builder start prompt", () => {
     );
   });
 
-  // Runs w28 and w30 made zero searches beside a working WebSearch tool.
   /** Run pr179-2ea118a-truss reached the settlement clause eleven minutes in, was refused,
    *  resubmitted the same tree four seconds later and settled with no battery. A Builder told that
    *  "verifier-required" is an available answer reaches for it, so the clause is controller-owned
@@ -209,6 +208,11 @@ describe("Builder start prompt", () => {
     }
   });
 
+  /** A capability the transport carries is still one the Builder has to be told about: runs w28 and
+   *  w30 made zero searches beside a working WebSearch tool. So the sentence is announced where the
+   *  transport has it and withheld where it does not, and both halves are asserted, because a
+   *  prompt that promises search on a transport without it sends the Builder after a tool that
+   *  will not answer. */
   it("announces public web search only when the transport carries it", () => {
     expect(builderSystemPrompt(true)).toContain("You can search the web.");
     expect(builderSystemPrompt(false)).not.toContain("You can search the web.");

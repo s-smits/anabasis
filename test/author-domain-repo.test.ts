@@ -1,7 +1,24 @@
 /**
- * The domain workspace repository starts with `git init` over the starter files.
- * Iterations become commits; exported bundle bytes are checked against the session fingerprint.
- * Git keeps Builder history. The fingerprint identifies the bytes used in measurement.
+ * The Builder's workspace is a git repository created over the Pi starter pack, and every
+ * authoring pass ends as a commit in it, so git is the Builder's memory of what it has already
+ * tried. Two things have to hold for that memory to be worth anything. A commit must carry the
+ * candidate contract and nothing else, because a `.gitignore` or a root helper the pass happened
+ * to leave beside a real bundle change would otherwise enter the candidate diff; and a repair
+ * workspace seeded from an adopted bundle must own its own copy of everything it can write,
+ * because a repair writing back through a link would be editing the adopted tree the loop treats
+ * as immutable.
+ *
+ * The seeding half is where the recorded failures are. `initWorkspace` copies the adopted
+ * `.toolchain` and rewrites the links inside it, so a tool installed into the repair copy lands in
+ * the repair copy while the adopted bytes stay as they were; a link pointing outside the tree,
+ * such as the runtime itself, keeps its absolute target, because it names a host installation
+ * rather than something the repair owns. Run 8729bb aborted its whole rebuild on one file, numpy's
+ * `f2py`, because uv writes a console launcher whose interpreter path sits inside a single-quoted
+ * `sh` header, and rewriting that is not the same operation as rewriting a link. Run 4c67fc lost
+ * its round 2 on 2026-09-20 the other way round, to a compiled sketch whose debug strings named
+ * the tree it was built in: the copy threw, and the throw reached the controller as an abort with
+ * no owner. Both are now the copy's business rather than the round's, which is why several cases
+ * here assert a safeguard line and a seeded workspace instead of a refusal.
  */
 
 import {

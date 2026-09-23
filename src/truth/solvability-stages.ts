@@ -3,8 +3,11 @@
  * stage names a key over exactly the bytes and constants it read; a later census reuses a result
  * only when that key matches, and records the reuse with the snapshot that produced it. Only
  * settled, product-owned outcomes are remembered: a host non-result, a cleanup-pending stop or a
- * cut by the wall never is, so the same bytes pay for a fresh execution after recovery. An edit
- * to the evaluator alone therefore does not re-run the reference solves.
+ * cut by the wall never is, so the same bytes pay for a fresh execution after recovery.
+ *
+ * Keying each stage over what it actually read is what makes an edit affordable. Truss run dffb11
+ * changed only correctness-model/evaluator.ts between two checks and re-ran all 25 reference solves,
+ * about seventeen minutes, though no byte the reference solve reads had moved.
  */
 import type { ContractFinding } from "./brief.ts";
 import type { ReferenceSolveOutcome } from "./reference-solve.ts";

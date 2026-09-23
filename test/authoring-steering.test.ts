@@ -1,9 +1,25 @@
 /**
- * Tests for the w45 steering and evidence fixes: the opening prompt states the turn budget;
- * the continuation carries session state (no-submit urgency, post-refusal repair urgency) without
- * ever naming a file that a task-fixed repair may not touch; the controller-event transcript
- * buffers until an identity exists, appends per turn and finalises its pointer with a SHA-256.
- * A transcript without an output directory stays inactive.
+ * What the controller tells a Builder round about its own progress, and what it writes down about
+ * the round afterwards. The two halves look unrelated and are the same problem twice: a session
+ * cannot see its own position, so the controller has to state it, and a reader after the fact
+ * cannot see the session at all, so the controller has to record it.
+ *
+ * The steering half is bounded by what the Builder may act on. The opening states the round's turn
+ * limit and the continuation restates the unchanged request beside the round's facts — which turn,
+ * how long, how many submits, how the last one ended — because pi compacts the conversation and the
+ * opening turn is the oldest part of it, so a long-running session can genuinely no longer know
+ * what it was asked for. Urgency is stated the same way: after eight turns or two hours without a
+ * submit it asks for authoring, and after a refusal it asks for a batched repair instead. The
+ * elapsed-time clause is not redundant with the turn count, because a Claude session runs the whole
+ * round as one assistant turn and would otherwise never reach turn eight. Throughout, the text is
+ * scope-neutral — it never names a file that a task-fixed round is not allowed to edit, which is
+ * why the opening is asserted not to contain `tasks.json`.
+ *
+ * The transcript half is about a record that has to survive the thing it records. Events arrive
+ * before the session identity does, so the transcript buffers rather than dropping what came first,
+ * and it settles a pointer carrying the file's SHA-256 so a later reader can tell the recorded
+ * bytes from bytes that were edited afterwards. Given no output directory it stays inert instead of
+ * failing, because a missing transcript must not be able to end a round that was otherwise working.
  */
 import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";

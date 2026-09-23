@@ -1,7 +1,8 @@
 /**
- * User context: the controller admits an explicit corpus, fingerprints it, lists a compact
- * manifest in the kickoff, and gives the Builder bounded list/read/search access. Context is user
- * input, not verifier truth.
+ * The context mechanism: the controller admits an explicit corpus, fingerprints it, lists a compact
+ * manifest in the kickoff, and gives the Builder bounded list, read and search access. Context is
+ * user input — not a generated ask, and not verifier truth — which is why it is admitted once and
+ * read through a controller-owned snapshot rather than consulted live.
  */
 import {
   closeSync,
@@ -32,7 +33,8 @@ import { characterLimit, jsonListPage, LIST_WINDOW_ROWS, windowNote } from "./re
 const MAX_FILES = 5_000;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
-// Enough of a file to decide what it is in one bounded read.
+// opencode's FIRST_CHUNK: enough of a file to decide what it is, small enough that deciding costs
+// one page-sized read rather than the file.
 const FIRST_CHUNK_BYTES = 256 * 1024;
 const MANIFEST_FILES = 40;
 const MAX_SEARCH_MATCHES = 40;
@@ -45,15 +47,19 @@ interface UserContextFile {
   /** Code points, so an exact character page states the same total the file has. */
   characters: number;
   sha256: string;
-  /** The controller-owned snapshot copy every read and search opens, so a source changed after
-   *  admission is never returned under the admitted sha256. */
+  /** Admission copies each source file into a controller-owned staging directory and hashes, counts
+   *  and validates that copy; every later read and search opens the snapshot, so a source file
+   *  changed, replaced or symlink-swapped after admission cannot be returned under the admitted
+   *  sha256. The snapshot is a file rather than held text because the corpus may be 200 MB and a run
+   *  holds this record from launch to terminal. */
   path: string;
 }
 
 export interface PreparedUserContext {
   digest: string;
   files: UserContextFile[];
-  /** The staging root holding the snapshots, or null when nothing was staged. */
+  /** The staging root holding the snapshots, or null when the corpus admitted no file and nothing
+   *  was staged. The context owns this root: `dispose()` removes it. */
   readonly root: string | null;
   /** Removes the staging root. Idempotent. */
   dispose(): void;
@@ -67,8 +73,11 @@ export const EMPTY_USER_CONTEXT: PreparedUserContext = {
 };
 
 /**
- * Magic-number prefixes (type, bytes, offset) for the content sniff on the first chunk, so a known
- * binary is named in the refusal.
+ * opencode's content sniff, applied to the first chunk: magic-number prefixes as type, bytes and
+ * offset. It answers three questions a zero-byte scan alone gets wrong — a PDF or PNG is named in
+ * the refusal rather than reported as unspecified binary, UTF-16 and other non-UTF-8 encodings are
+ * refused instead of decoding into replacement characters, and a file that is mostly control bytes
+ * is refused even when none of them is zero.
  */
 const MAGIC: ReadonlyArray<readonly [string, readonly number[], number]> = [
   ["image/png", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0],
@@ -80,7 +89,7 @@ const MAGIC: ReadonlyArray<readonly [string, readonly number[], number]> = [
   ["image/webp", [0x57, 0x45, 0x42, 0x50], 8],
 ];
 
-/** The share of control bytes above which a file is data rather than text. */
+/** The share of control bytes above which a file is data rather than prose. opencode's figure. */
 const CONTROL_BYTE_SHARE = 0.3;
 
 function hidden(name: string): boolean {
@@ -126,7 +135,11 @@ function detectContentType(bytes: Uint8Array): string {
   return controls / bytes.length <= CONTROL_BYTE_SHARE ? "text/plain" : "application/octet-stream";
 }
 
-/** Reads at most `length` bytes from the start of a file, without loading the rest. */
+/**
+ * opencode's read shape: stat, then a bounded descriptor read into a fixed buffer, rather than
+ * loading a file to find out what it holds. A PDF is refused after this one read instead of after
+ * 25 MiB.
+ */
 function firstChunk(path: string, length: number): Uint8Array {
   const handle = openSync(path, "r");
   try {
@@ -137,12 +150,16 @@ function firstChunk(path: string, length: number): Uint8Array {
   }
 }
 
-/** Scans one snapshot; the head check, text pass and hash all read the same copied bytes. */
+/**
+ * Scans one copied snapshot: the head check, the text pass and the hash all read the snapshot, so
+ * they describe the same bytes as every later window does.
+ */
 function scanSnapshot(root: string, physical: string, snapshot: string): Omit<UserContextFile, "id"> {
   const head = firstChunk(snapshot, Math.min(statSync(snapshot).size, FIRST_CHUNK_BYTES));
   const detected = detectContentType(head);
   if (detected !== "text/plain") throw new Error(`context admits text files only (${detected}): ${physical}`);
-  // The full pass catches a zero byte or bad sequence past the head, and counts the totals.
+  // The head names a known binary; this pass answers for a file that hides a zero byte or a bad
+  // sequence past it, and returns the totals every later window states, without holding any text.
   const facts = scanTextFile(snapshot);
   if (!facts.text) throw new Error(`context admits text files only (application/octet-stream): ${physical}`);
   return {
@@ -158,7 +175,8 @@ function scanSnapshot(root: string, physical: string, snapshot: string): Omit<Us
 /** Admit explicit paths plus the repository's shared `context/` directory when present. Explicit
  *  relative paths resolve from repoRoot. Missing explicit paths refuse instead of disappearing. */
 export function prepareUserContext(repoRoot: string, explicitPaths: string[] = []): PreparedUserContext {
-  // Created on the first copy, so an empty context leaves nothing behind.
+  // The staging root is created when the first file is copied, not on entry, so an empty context
+  // leaves no temporary state behind.
   let staging: string | null = null;
   let disposed = false;
   const dispose = () => {
@@ -183,7 +201,8 @@ export function prepareUserContext(repoRoot: string, explicitPaths: string[] = [
         const physical = realpathSync(file);
         if (seen.has(physical)) continue;
         seen.add(physical);
-        // Refuse an oversized file before copying it.
+        // Size decides before any content is loaded, so an oversized path is refused from its
+        // directory entry rather than held in memory purely to be rejected.
         const { size } = Bun.file(physical);
         if (size > MAX_FILE_BYTES) {
           throw new Error(`context file exceeds ${MAX_FILE_BYTES} bytes: ${physical}`);
@@ -194,7 +213,9 @@ export function prepareUserContext(repoRoot: string, explicitPaths: string[] = [
         staging ??= mkdtempSync(join(tmpdir(), "ana-user-context-"));
         const snapshot = join(staging, `${admitted.length + 1}`);
         copyFileSync(physical, snapshot);
-        // Re-check the caps on the copy, in case the source grew during it.
+        // The caps bind the snapshot's actual bytes, not the directory entry read before the copy:
+        // a source that grew or was replaced mid-copy is caught here, after the copy and before any
+        // scan admits it.
         const actual = statSync(snapshot).size;
         if (actual > MAX_FILE_BYTES) {
           throw new Error(`context snapshot exceeds ${MAX_FILE_BYTES} bytes: ${physical}`);
@@ -218,7 +239,8 @@ export function prepareUserContext(repoRoot: string, explicitPaths: string[] = [
   }
 }
 
-/** The compact kickoff card; contents stay behind the context tool. */
+/** The compact prompt card: what the corpus holds, not what it says. Contents stay on demand behind
+ *  the context tool, so the kickoff costs a manifest rather than a corpus. */
 export function contextManifest(context: PreparedUserContext): string {
   if (context.files.length === 0) {
     return `User context: no files supplied (digest ${context.digest}).`;
@@ -286,7 +308,8 @@ export function createUserContextTool(context: PreparedUserContext): AgentTool<t
         if (!hasText(params.id)) throw new Error("context.read requires id");
         const file = byId.get(params.id);
         if (file === undefined) throw new Error(`unknown context id: ${params.id}`);
-        // The window note leads the text, since `details` never reaches the model.
+        // The note leads the body: `details` never reaches the model, so a window stated only there
+        // would leave a partial read looking exactly like a whole one.
         const lineWindow =
           params.characterOffset === undefined
             ? readFileWindow(file.path, file.lines, params.offset, params.limit)
@@ -317,7 +340,8 @@ export function createUserContextTool(context: PreparedUserContext): AgentTool<t
       }
       const query = params.query?.trim();
       if (!hasText(query)) throw new Error("context.search requires a non-empty query");
-      // Collect every match before paging, so the total is exact; files stream line by line.
+      // Collect the whole match set, then window it: stopping at one page would make 400 matches
+      // look like 40. Each file still streams one line at a time rather than being held in memory.
       const needle = query.toLocaleLowerCase();
       const matches: Array<{ id: string; label: string; line: number; text: string }> = [];
       for (const file of context.files) {

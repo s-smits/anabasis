@@ -4,7 +4,8 @@ import type { CompactionMode } from "./backend-types.ts";
 /** Native source names for the small evidence emitted after an exact model pin is accepted. */
 export const MODEL_CATALOGUE_SOURCES = {
   pi: "pi-provider-catalogue",
-  /** A live provider slug the Pi catalogue does not list, so no catalogue confirmation is claimed. */
+  /** A live provider slug the Pi catalogue does not list. Kept separate from `pi` so the evidence
+   *  never reports catalogue confirmation for a model the catalogue never confirmed. */
   piUnlisted: "pi-provider-slug-unlisted",
   faux: "faux-provider",
 } as const;
@@ -18,9 +19,12 @@ export type ModelSelectionEvidence = {
   resolvedModel: string;
   effort: string;
   source: CatalogueSource;
-  /** Upstream hosts a routed provider was pinned to (OpenRouter's `provider.only`); absent when it
-   *  routes freely. Mutable, because a readonly array is not assignable to `JsonValue`. */
+  /** Upstream hosts a routed provider was pinned to (OpenRouter's `provider.only`). Absent when
+   *  the provider routes freely, which is a different serving condition from a pinned one rather
+   *  than a missing detail. Not `readonly`: this row is recorded into the case record as JSON, and
+   *  a readonly array is not assignable to `JsonValue`. */
   providerPin?: string[];
-  /** Claude only: who compacted the slot's context, a serving condition. */
+  /** Claude only: who compacted the slot's context. It is a serving condition like the model
+   *  itself, so it is recorded beside it rather than left to the run configuration. */
   compaction?: CompactionMode;
 };

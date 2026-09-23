@@ -547,7 +547,8 @@ it("reads a retained task's expectations and controls as scoring, and certifies 
   const { base, candidate } = pair();
   const derived = () => experimentOperation(snapshotOf(candidate), base);
   writeFileSync(join(candidate, "agent/BUILT_AGENTS.md"), "A changed solving method.");
-  // Unknown is neither unchanged nor changed: without the bound baseline representation no comparison is certified.
+  // Unknown is neither unchanged nor changed: without the bound baseline representation no
+  // comparison is certified.
   rmSync(join(base, "conformance.json"));
   expect(derived()).toMatchObject({
     operation: "new-baseline",

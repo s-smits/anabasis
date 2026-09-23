@@ -3,9 +3,12 @@
  * into NN-slug/iteration.json, and downstream readers glob that layout across both experiment
  * kinds, so the two controllers must not re-implement the rule.
  *
- * Diagnosis provenance is the same for both: any later iteration, or a first one resuming carried
- * campaign memory, names in-campaign-carry; otherwise the declared diagnosis input, then the
- * admitted-packet digest.
+ * Diagnosis provenance follows the build rule, adopted for both on 2026-08-25: any later
+ * iteration, or a first one resuming carried campaign memory, names in-campaign-carry; otherwise
+ * the declared diagnosis input, and only then the admitted-packet digest. The climb used to record
+ * null for a later pass whose owner went unrouted and to ignore carried memory on a first pass, so
+ * a resumed climb and an equivalent resumed build recorded different provenance for the same
+ * situation, and a reader could not compare them.
  */
 import type {
   AdmissionLineage,

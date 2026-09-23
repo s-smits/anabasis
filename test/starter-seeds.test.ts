@@ -1,15 +1,21 @@
 /**
- * Two complementary checks of the starter's seed suite, against the documented
- * worked harness rather than a stub:
+ * The starter's seed suite, checked against the documented worked harness rather than a stub,
+ * because a seed that only passes on a placeholder has not been shown to survive the thing it is
+ * seeding. The placeholder starter is where the seeds skip, and `test/starter-pack.test.ts` pins
+ * that side.
  *
- * 1. the seeds pass on a fully authored harness (they skip on the placeholder starter, which
- *    test/starter-pack.test.ts pins), and every repository file the run opens is inside
- *    deriveBundleContract, the read set the Builder's bash sandbox allows;
- * 2. the session that authors the harness can see the two test files, edit them like any other
- *    candidate file, and run them through createBuilderTools under the real `author` isolation,
- *    which is the only file surface an openrouter Builder has. The cases run in sequence against
- *    one workspace on purpose: they follow an authoring pass, and a later case reads what an
- *    earlier one wrote.
+ * Two things have to hold and they are easy to confuse. The first is that the seeds pass on a
+ * fully authored harness while every repository file the run opens stays inside
+ * `deriveBundleContract`, which is the read set the Builder's bash sandbox allows — a seed that
+ * passes by reading outside that set would pass here and fail in a real session. The second is
+ * that the authoring session can reach the two test files at all: see them, edit them like any
+ * other candidate file, and run them through `createBuilderTools` under the real `author`
+ * isolation rather than a permissive stub. That roster is the Builder's whole file surface,
+ * whichever backend it is running on, since `src/run/builder-runtime.ts` mounts it with no
+ * per-backend branch.
+ *
+ * The cases run in sequence against one workspace on purpose, which is worth knowing before
+ * reordering them: they follow an authoring pass, so a later case reads what an earlier one wrote.
  */
 import {
   cpSync,

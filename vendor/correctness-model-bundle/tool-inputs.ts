@@ -1,4 +1,11 @@
-/** Operand binding shared by labelled local evaluation and the independently enforcing host. */
+/** Which bytes a check may hand to an installed tool. An `external` check declares that tool as the
+ *  instrument that decides it, so the bytes it feeds the tool have to come from the artifact or the
+ *  public input it was given: a check free to construct its own operand is running the author's
+ *  algorithm through an installed interpreter, which is authored computation wearing an external
+ *  check's name. So an external request's files and stdin must each be a string that appears at some
+ *  path of the declared inputs, and an `authored` check, which never claimed otherwise, may build
+ *  what it likes. The same binding runs in the author's local evaluation and again in the host, and
+ *  the host's run is the one that counts. */
 import { canonicalJson } from "../../src/meta/stable-json.ts";
 import { capturedJsonStringify } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString } from "../../src/meta/json-shape.ts";

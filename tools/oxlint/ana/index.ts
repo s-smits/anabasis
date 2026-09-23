@@ -39,31 +39,40 @@ import { preferFlatmapOverMapFilterRule } from "./rules/prefer-flatmap-over-map-
 import { preferLookupOverEqualityChainRule } from "./rules/prefer-lookup-over-equality-chain.ts";
 import { declarationsBeforeTheFirstFunctionRule } from "./rules/declarations-before-the-first-function.ts";
 
-/** Rules this repository owns. The anti-slop plugin beside it is copied from dmmulroy/anti-slop at
- *  a pinned commit, as its README asks, so a rule that needs to answer an Anabasis question lives
- *  here instead.
+/** The thirty-seven rules this repository owns. The anti-slop plugin beside it is copied from
+ *  dmmulroy/anti-slop at a pinned commit, as its README asks, so a rule that has to answer an
+ *  Anabasis question lives here instead.
  *
- *  The second group are the simplify catchers. They exist because `/simplify` is a reading pass:
- *  it finds real removals and finds them once, in whichever files a reviewer happened to open.
- *  Nineteen of the shapes it kept finding — measured over 628 commits and 20 recorded passes —
- *  are decidable from the syntax alone, and a twentieth came off the backlog that measurement
- *  left; a catcher finds every site of one in a second.
- *  Ten of them are here. The other ten are in the first group, because each one's sites have
- *  all been taken: a catcher reporting nothing cannot break a strict lint, costs nothing to enforce
- *  and keeps the shape from arriving. The evidence for promotion is a clean `bun run lint -- --strict`, not
- *  an emptied census group; twice a group emptied and a site was still standing in a vendored
- *  copy the census does not read. Taste is for code this repository authors, so `.oxlintrc.json`
- *  turns the promoted catchers off over `anti-slop` and `pi-claude-bridge` — the same two trees
- *  `simplify-census.ts` leaves unread, for the same reason: a taste edit to a file we re-copy
- *  from upstream pays a merge cost at the next copy and buys nothing.
+ *  The second group below are the simplify catchers. They exist because `/simplify` is a reading
+ *  pass: it finds real removals, and it finds them once, in whichever files a reviewer happened
+ *  to open. Nineteen of the shapes it kept finding — measured over 628 commits and 20 recorded
+ *  passes — are decidable from the syntax alone, and a twentieth came off the backlog that
+ *  measurement left, so a catcher now finds every site of one in a second.
  *
- *  All thirty are in `.oxlintrc.json` as of 2026-09-20, so every one runs in `bun run lint`
- *  and fails it under `--strict` or `ANA_LINT_STRICT=1`, and `tools/oxlint/simplify.json` holds no rules at all. The two groups below
- *  are the order they were promoted in and nothing more. Each was promoted by passing the
- *  admission test — at every site it reports, does a spelling exist that satisfies every other
- *  rule — and a catcher that could not pass it was retuned until it could, or taken out; none
- *  was baselined per file. What `bun run simplify` still reads is the whole-tree scans, which
- *  relate two files and which no per-file rule can express. */
+ *  A catcher moves up into the first group once every site it reports has been taken, because a
+ *  rule that finds nothing cannot break a strict lint, costs nothing to enforce, and keeps the
+ *  shape from arriving again. The evidence for that move is a clean `bun run lint -- --strict`
+ *  rather than an emptied census group: twice a group emptied while a site was still standing in
+ *  a vendored copy `simplify-census.ts` does not read. Both groups have taken rules since the
+ *  twenty catchers were split evenly between them, so read the split as the order things arrived
+ *  in and nothing more — twenty-three in the first group now, fourteen in the second.
+ *
+ *  Every one of the thirty-seven is registered at `error` in `.oxlintrc.json`, so all of them run
+ *  in `bun run lint` and fail it under `--strict` or `ANA_LINT_STRICT=1`, and
+ *  `tools/oxlint/simplify.json` declares no rules of its own at all. Each was promoted by passing
+ *  the admission test — at every site it reports, does a spelling exist that satisfies every
+ *  other rule — and a catcher that could not pass it was retuned until it could, or taken out;
+ *  none was baselined per file.
+ *
+ *  Taste is for code this repository authors, and the config draws that line one tree at a time:
+ *  twenty-three of these are off over `vendor/pi-claude-bridge/**`, where a taste edit would pay
+ *  a merge cost at the next copy from upstream and buy nothing. `tools/oxlint/anti-slop/**` is
+ *  the other copied tree and `simplify-census.ts` leaves both unread, but the config exempts it
+ *  from one rule only, `ana/no-inline-slop-answer`, so every catcher here does report on the
+ *  vendored anti-slop source.
+ *
+ *  What `bun run simplify` still reads is the whole-tree scans, which relate two files and which
+ *  no per-file rule can express. */
 const anaPlugin = eslintCompatPlugin({
   meta: { name: "ana" },
   rules: {

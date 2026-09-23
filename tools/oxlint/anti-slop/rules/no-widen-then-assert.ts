@@ -174,7 +174,26 @@ function recreatesErasedType(
 }
 
 /**
- * Detect immutable local bindings that erase a known type and are later asserted back to it.
+ * A `const` that widens a value the source already described, and a later assertion on that same
+ * binding that puts the description back: `const raw: unknown = { id };` then `raw as Row`.
+ *
+ * Both halves compile and each one alone looks defensible, which is why the pair survives review.
+ * Read together they are a round trip through nothing: the type was known at the declaration, the
+ * annotation erased it, and the assertion re-states it from memory rather than from evidence. If
+ * the value changed in between, the assertion is a guess; if it did not, the widening bought
+ * nothing and cost the compiler its knowledge of every use in between.
+ *
+ * The flow has to be one flow before any of that is readable, so three conditions bound it. The
+ * assertion must come after the declaration in the source, since an assertion above it is about
+ * some earlier value. It must sit in the same function, because a value crossing a call boundary
+ * is no longer this binding's flow. And the binding must be a `const` that is never written
+ * again, so what it holds at the assertion is what the declaration put there.
+ *
+ * `recreatesErasedType` is what separates a narrowing from a change of subject. Asserting one
+ * broad type to another narrows nothing and is not reported. `any` and `unknown` erase
+ * everything, so any precise type narrows them back. The object-shaped widenings erase only a
+ * shape, so the assertion has to name something that is certainly an object — `object` asserted
+ * to `string` is a different defect, and not this rule's.
  *
  * There is no fix: the repair is to drop the widening, but which of the two annotations states
  * the true type is not readable from the flow alone.

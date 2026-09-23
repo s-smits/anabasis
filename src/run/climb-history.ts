@@ -1,7 +1,13 @@
 /**
- * The climb-evidence reader: one row per admitted battery in claim-clock order, the sample each is
- * read over, and the public identities the gate compares them on. climb-battery-admission.ts
- * decides admission; climb-readout.ts reads the rows.
+ * The climb-evidence reader: which recorded batteries may decide the next round, the sample each
+ * one is read over, and the exact public identities the gate compares them on.
+ *
+ * `climb-battery-admission.ts` opens each recorded run directory and answers with either an
+ * admitted battery or a named exclusion, and this module never re-derives one of those decisions.
+ * What it adds is one row per battery in claim-clock order. `climb-readout.ts` is the single
+ * reading of those rows: the difficulty decision, the allowance, the targets and every sentence a
+ * Builder gets to read about them come from there, so a fact absent from a row here is a fact no
+ * Builder can act on.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -25,9 +31,13 @@ import {
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { productHistoryDirs } from "./product-versions.ts";
 
+/** Named where the refusals are decided and re-exported here, because this module is the face
+ *  every reader of climb evidence goes through. */
 export type { ExcludedBattery };
 
-/** The `climb` row of thresholds.frozen.yaml; a missing or invalid field takes its default. */
+/** The `climb` row of `thresholds.frozen.yaml`, read at run time. Each missing or invalid field
+ *  takes its declared default (operator direction 2026-07-26), so a malformed row degrades to
+ *  policy rather than blocking a run that has already been paid for. */
 export interface ClimbThresholds {
   band: [number, number];
 }
@@ -39,24 +49,34 @@ export const climbThresholds: (manifestPath?: string) => ClimbThresholds = polic
 /** One battery's difficulty facts; chronological order is the caller's contract. */
 export interface ClimbBattery {
   runId: string;
-  /** sha256 of the recorded battery bytes these numbers came from. */
+  /** sha256 of the recorded battery bytes these numbers came from: the binding between a decision
+   *  and the evidence it was made on. */
   batterySha256: string;
-  /** Difficulty denominator: scored rows, runtime non-results excluded. */
+  /** The difficulty denominator: scored rows, with runtime non-results already excluded upstream. */
   n: number;
   passed: number;
-  /** Of `n`, the attempts with no accepted submission; they count as fails once any case is
-   *  verified. A battery with no accepted submission carries no difficulty evidence. */
+  /** Of `n`, the attempts that produced no accepted submission, which truth therefore never
+   *  verified. They stay in `n` as fails once any case is verified, since a hard task may well
+   *  fail through a refused submission; a battery refused whole carries no difficulty evidence at
+   *  all, which is the claude-med hw15 reading. */
   unaccepted: number;
   measured: MeasuredDifficulty;
-  /** The task-set identity shared across runs of one task set; null when unrecorded. */
+  /** The recorded bundle's task-set identity: what "one task set" means across runs. It is not
+   *  `batterySha256`, which digests each run's own battery.json and so carries the run id, leaving
+   *  two measurements of one task set no digest in common. Null when the record states none. */
   taskSetHash?: string | null;
-  /** The verified cases that failed, by task id; absent (unknown) when any failing row has no id.
-   *  Controller-only, never rendered. */
+  /** The verified cases that failed, by task id. Absent when any failing row recorded no id, which
+   *  reads as "unknown" and never as "nothing failed". Controller-only: it feeds the repeated-core
+   *  comparison and is never rendered to an author. */
   failedTaskIds?: readonly string[];
 }
 
-/** One family's difficulty counts. `attempts` is the difficulty denominator, which counts refused
- *  attempts as failures, so it is not the verified count. */
+/** One family's difficulty counts, as the readout hands them to the author. `attempts` is the
+ *  difficulty denominator `measuredExperiment` built, which censors runtime non-results and keeps
+ *  admission-refused attempts as failures, so it is not the verified count — and calling it
+ *  `verified` told the one reader who chooses the next battery that every refused submission had
+ *  reached the verifier. `passes` and `attempts` are the pair `wilsonInterval` and `placeOnBand`
+ *  speak, and this row speaks it throughout. */
 export type ClimbFamilySummary = {
   family: string;
   attempts: number;
@@ -76,40 +96,56 @@ interface ClimbAuthoringRow {
   experimentAuthoring?: ExperimentAuthoring;
 }
 
-/** One battery and everything recorded with it. */
+/** One battery and everything recorded with it, held as one object rather than as index-aligned
+ *  arrays, so no reader can pair a battery with another battery's condition. */
 export interface AdmittedClimbRow {
   createdAt: string;
   /** Recorded condition labels, not proof of a served model or cross-condition comparability. */
   condition: { backendPin: string | null; thresholdManifestDigest: string; variant: string };
   battery: ClimbBattery;
   harnessId: string | null;
-  /** The claim's refusal, or null. A refused battery stays in history and enters no rate. */
+  /** The claim's own refusal, or null when the claim stands. A refused battery stays in the
+   *  history view and enters no rate, because what it measured is still the last thing that
+   *  happened even though it supports no number. */
   excludedReason: string | null;
   authoring: ClimbAuthoringRow;
 }
 
-/** One population, read three ways. Every battery is in `admitted` or `excluded`; `history` is the
- *  chronological view of those a recorded claim clock can place, claim-refused ones included. Rates
- *  read `admitted`. */
+/** One population, read three ways. Every battery directory is in `admitted` or in `excluded`,
+ *  never both and never neither; `history` is the chronological view of the ones a recorded claim
+ *  clock can place, which includes a claim-refused battery carrying its own refusal. A rate reads
+ *  `admitted`, and the public history view reads `history`. */
 export interface ClimbBatteriesRead {
   history: AdmittedClimbRow[];
   admitted: AdmittedClimbRow[];
-  /** Ordered by run id. */
+  /** Ordered by run id, so the list does not depend on which product directory held each run. */
   excluded: ExcludedBattery[];
 }
 
-/** How many runs the exclusion summary names per shared reason before counting the rest. */
+/** How many runs the exclusion summary names under the reason they share before counting the rest.
+ *  Campaign 3fd52f9e-28 read one anonymous reason three rounds running while three separate
+ *  batteries measured nothing, so each run is named and the denominator says how many there were.
+ *  One reason per group, because a whole recorded history refused for one cause is one fact: a
+ *  foreign backend pin does exactly that, and reading
+ *  planar-truss-synthesis-lay-199f6a55-14 at another pin excluded all sixteen of its batteries,
+ *  which the per-run form wrote as the same sentence sixteen times — 2,265 characters of steering.
+ *  The evidence rows keep every run id; this bound governs the prose beside them. */
 const NAMED_RUNS_PER_REASON = 4;
 
-/** The sample a battery is read over: the recorded changed subset, even at zero attempts, otherwise
- *  the whole battery. Every reader of a battery's rate goes through this function. */
+/** The sample a battery is read over: the host-identified changed subset when one was recorded,
+ *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
+ *  to dilute a changed subset's result. It is one function so that the decision, the table and the
+ *  allowance all read a battery the same way: before 2026-09-21 the measurement note computed its
+ *  own interval over `passed/n`, and a battery whose changed subset scored 0 of 5 reached one
+ *  prompt as both 20 of 25 and 0 of 5. */
 export function decidingSample({ measured: { changedSubset }, passed, n }: ClimbBattery) {
   return changedSubset === undefined
     ? { population: "whole-battery" as const, passes: passed, n }
     : { population: "changed-subset" as const, passes: changedSubset.passes, n: changedSubset.attempts };
 }
 
-/** Counts one battery's unaccepted rows through `classifyCaseOutcome`. */
+/** Counts one battery's refused rows through the one outcome owner, `classifyCaseOutcome`, rather
+ *  than re-deciding here what "no accepted submission" means. */
 export function countUnaccepted(
   rows: Array<{ pass?: unknown; acceptedSubmit?: unknown; runtimeNonResult?: unknown }>,
 ): number {
@@ -126,7 +162,9 @@ export function countUnaccepted(
 function familySummary(measured: MeasuredDifficulty): ClimbFamilySummary[] {
   return measured.items
     .flatMap((item) => {
-      // A blank family name or a sample with no interval is left out.
+      // The interval owns the question "is this a readable sample": a blank name, a zero
+      // denominator or a malformed count has none, and a row without an interval carries no
+      // reading worth showing.
       const interval = item.item.trim() === "" ? null : wilsonInterval(item.passes, item.attempts);
       return interval === null
         ? []
@@ -186,12 +224,18 @@ function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): Ad
 }
 
 /**
- * Reads the adopted tree's measured history through `admitBattery`. A claim-refused battery keeps
- * a history row carrying its refusal and enters no rate.
+ * Reads the adopted tree's measured history. `admitBattery` owns the recorded-byte, run, model,
+ * threshold, variant and claim checks and names the run behind every exclusion, so the loop here
+ * is the population law itself: a directory holding a battery is admitted or excluded, and an
+ * admitted battery whose claim was refused is both — it keeps a history row carrying its own
+ * refusal and enters no rate. Run 8 recorded a 0 of 25 made entirely of provider outages that an
+ * older reader took for a too-hard base; its refusal now stands in the history where the next
+ * reader can see that it was the latest thing measured, rather than the experiment before it.
  *
- * Chronology is the claims' recorded `createdAt` (tiebreak runId), never file mtime. Scored rows
- * (boolean `pass`) are the denominator. A null runPin serves only the public history view, which
- * reads across model pins.
+ * Chronology is the claims' recorded `createdAt`, with runId as the tiebreak, and never file
+ * mtime. Scored rows — those with a boolean `pass` — are the denominator, and `pass: null` counts
+ * neither way. A null runPin serves the public history view alone, which keeps batteries at other
+ * model pins readable with their labels.
  */
 export function readClimbBatteries(
   domainDir: string,
@@ -222,7 +266,8 @@ export function readClimbBatteries(
 export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
   if (excluded.length === 0) return null;
   const byReason = new Map<string, string[]>();
-  // `excluded` arrives sorted by run, so the grouping is deterministic.
+  // `excluded` arrives sorted by run, so both the groups and the runs inside them are
+  // deterministic, and two reads of one campaign print the same sentence.
   for (const row of excluded) byReason.set(row.reason, [...(byReason.get(row.reason) ?? []), row.runId]);
   const groups = [...byReason].map(([reason, runs]) => {
     const rest = runs.length - NAMED_RUNS_PER_REASON;
@@ -231,8 +276,10 @@ export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: 
   return `${excluded.length} of ${excluded.length + admitted} recorded batteries excluded from difficulty evidence: ${groups.join("; ")}`;
 }
 
-/** A recorded battery's public tasks, read through the evidence log and refused whole when any case
- *  cannot be vouched for. */
+/** A recorded battery's public tasks, read through the evidence log and refused whole whenever any
+ *  one case cannot be vouched for, since a partial projection would be a different exam wearing
+ *  the same run id. The history view's task pages, the gate's repeat prints and the readout's
+ *  schema prints all read it. */
 export function publicTaskProjection(
   domainDir: string,
   runId: string,
@@ -272,7 +319,9 @@ export function publicTaskProjection(
 }
 
 /** One battery's public measurement identity: the sorted multiset of its tasks' publicInput bytes.
- *  Hidden rows are left out because recorded batteries keep only the public task on disk. */
+ *  Hidden rows are deliberately absent, because a recorded battery keeps only
+ *  `cases/<taskId>/public-task.json` on disk, so the public bytes are the identity every earlier
+ *  battery can still be compared on. */
 export function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unknown }>): string {
   return sha256(
     tasks
@@ -282,9 +331,11 @@ export function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unk
   );
 }
 
-/** A value with its data dropped: field names, value types, and an array as the set of its
- *  elements' schemas, ignoring length and order. A new mix of the same task kinds therefore reads
- *  as the same question. */
+/** A value with its data dropped: field names, value types, and an array reduced to the set of its
+ *  elements' schemas, so that neither its length nor its order counts. Over a battery's public
+ *  inputs that makes a new mix of the same task kinds the same question, which is what campaign
+ *  3fd52f9e-28 was doing: it went from 25 tasks of two kinds to 21 and then 17 of the same two,
+ *  and only its fourth battery, 8 tasks of one kind, read as new. */
 function valueSchema(value: unknown): JsonValue {
   if (Array.isArray(value)) {
     return [...new Set(value.map((element) => canonicalJson(valueSchema(element))))].sort();
@@ -295,8 +346,9 @@ function valueSchema(value: unknown): JsonValue {
   return jsonKind(value) ?? "unknown";
 }
 
-/** A battery's set of public task schemas; null, matching nothing, when its public tasks cannot be
- *  vouched for. */
+/** A battery's set of public task schemas, which is the climb readout's same-question count. Null
+ *  when its public tasks cannot be vouched for, so an unreadable battery matches nothing rather
+ *  than matching everything. */
 export function publicSchemaPrint(
   domainDir: string,
   row: Pick<AdmittedClimbRow, "battery" | "authoring">,
@@ -308,14 +360,22 @@ export function publicSchemaPrint(
   );
 }
 
-/** One product's reading of one exam, the identity the repeat refusal compares. The product is
- *  `harnessBundleIdentity`, so the same exam under another evaluator is a new condition. */
+/** One product's reading of one exam: the identity the fixed-product repeat refusal compares. The
+ *  product is `harnessBundleIdentity` — agent, correctness model and recorded verifier bytes —
+ *  which is both what a recorded battery names and what the adopted tree resolves to at admission.
+ *  An exam saturated under one evaluator is not thereby answered under another, so there is no
+ *  product-free print: the "answered" sentinel that refused every product a third reading of one
+ *  exam went on 2026-09-21. */
 export function productConditionFingerprint(harnessId: string, publicFingerprint: string): string {
   return sha256(`product\n${harnessId}\n${publicFingerprint}`);
 }
 
-/** The product-condition prints of every admitted battery, the repeat refusal's comparison set. A
- *  row whose projection cannot be verified, or has a task without `publicInput`, yields no print. */
+/** The product-condition prints of the admitted history, which is the repeat refusal's comparison
+ *  set. Every admitted battery counts rather than a trailing window, because whether a product has
+ *  already measured an exam does not depend on what its bytes did afterwards. An excluded battery
+ *  — another pin, another condition, an environment failure — is not in the set, and a row whose
+ *  projection cannot be digest-verified, or that states a task without `publicInput`, yields no
+ *  print rather than a partial one that would collapse distinct batteries onto one sentinel. */
 export function priorPublicFingerprints(
   domainDir: string,
   admitted: ReadonlyArray<Pick<AdmittedClimbRow, "battery" | "authoring" | "harnessId">>,

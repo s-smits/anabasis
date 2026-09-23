@@ -1,7 +1,9 @@
 /**
- * The Builder toolkit: seven file and shell tools under one candidate access policy. This file
- * owns tool behaviour (schemas, truncation, diffs, edit normalisation); candidate-isolation.ts
- * owns the policy and candidate-isolation-runtime.ts its execution.
+ * The Builder toolkit: seven file and shell capabilities using one candidate access policy.
+ * This file defines tool behaviour — schemas, truncation, diffs and edit normalisation — while
+ * policy has one owner (candidate-isolation.ts) and execution one (candidate-isolation-runtime.ts):
+ * guardPath decides, the OS-isolated child enforces, and the path record captures both, so a
+ * disagreement between guard and operating system is observable rather than resolved inside a tool.
  */
 import type { JsonObject, JsonValue } from "../meta/json-shape.ts";
 import { isAbsolute, join, relative, resolve as resolvePath } from "../meta/path.ts";
@@ -41,8 +43,10 @@ type ToolResultDetails =
   | { path: string };
 type TextResult = { content: Array<{ type: "text"; text: string }>; details?: ToolResultDetails };
 
-/** The isolation a toolkit runs under: the policy, the path record, the candidate's working
- *  directory, and the run a guard safeguard is recorded against. */
+/** The isolation a toolkit is composed against: one policy value, one record writer, the candidate's
+ *  working directory — the composer holds the binding, so the toolkit never re-derives it from rule
+ *  positions — and the run whose campaign directory records a safeguard when this shell's guard
+ *  gives no answer. */
 export interface BuilderIsolation {
   policy: CandidateAccessPolicy;
   record: PathRecord;
@@ -79,8 +83,10 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
   const abs = (requested: string) => (isAbsolute(requested) ? requested : resolvePath(workDir, requested));
   const rel = (path: string) => relative(workDir, path);
   const pathCard = " Relative and omitted paths start at the workspace root.";
-  /** A read in the workspace cwd (a denied cwd kills children such as rg that call getcwd).
-   *  Traversals treat OS refusals below an allowed root as outcomes; a single target does not. */
+  /** Single-target reads leave osRefusalIsOutcome unset, since a refused guard-allowed target is an
+   *  isolation defect; traversal sets it, since a profile refusing files the guard never vouched for
+   *  inside an allowed root is isolation bounding recursion. Children run with cwd inside the read
+   *  enumeration: a deny-read cwd kills a child that calls getcwd at startup, as rg does. */
   const isolatedRead = (
     capability: string,
     command: string,
@@ -97,8 +103,9 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       paths: [target],
       ...keysIf(traversal, () => ({ osRefusalIsOutcome: true })),
     });
-  /** Throws on a real traversal error: empty output with a stderr that is not an OS refusal.
-   *  Refusals inside an allowed root are the isolation working. */
+  /** Traversal children (rg, ls) exit non-zero when the profile refuses files inside an allowed root
+   *  — "Operation not permitted" under Seatbelt, "Permission denied" under a read-only bind — and
+   *  that is the isolation working. A real tool error is empty output with a non-refusal stderr. */
   const throwIfTraversalError = (
     name: string,
     outcome: { status: number | null; stdout: string; stderr: string },
@@ -112,8 +119,10 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       throw new Error(outcome.stderr.trim() || `${name} exited ${outcome.status}`);
     }
   };
-  /** Re-decides every returned path: denied rows are recorded and dropped, or, for content that
-   *  the OS should already have hidden, throw as a guard/OS disagreement. */
+  /** Post-hoc output guard for search capabilities: every returned path is re-decided, an allowed
+   *  row passes and a denied row is dropped with its own record row. Content rows from a denied path
+   *  cannot occur, since the OS profile already bounded the child, so a grep hit on a denied path is
+   *  a derivation disagreement and throws rather than being quietly dropped. */
   const guardReturnedPaths = (
     capability: string,
     rows: string[],
@@ -213,8 +222,9 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         },
       ) {
         const target = abs(params.path ?? ".");
-        // `--with-filename --null` keeps a NUL-terminated path on every row, including single-file
-        // targets and context rows, so the guard always reads a real path.
+        // `--with-filename --null` keeps the path on every row, NUL-separated: rg drops it for a
+        // single-file target and a context row reads `12-text`, so the guard read `12` as a path
+        // (29 sessions, 09-09 to 09-13).
         const args = [
           "--line-number",
           "--color=never",
@@ -227,10 +237,10 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         if (params.literal === true) args.push("--fixed-strings");
         if ((params.context ?? 0) > 0) args.push("--context", String(params.context));
         if (params.glob !== undefined && params.glob !== "") args.push("--glob", params.glob);
-        // `--regexp` binds the pattern as a value, so a pattern starting with `-` is not a flag.
+        // `--regexp` binds the pattern as a value: a positional `-o …` was read as a flag (run 1aa6e6).
         args.push("--regexp", params.pattern, target);
         let outcome = await isolatedRead("grep", "rg", args, target, true);
-        // A pattern rg cannot parse is searched as literal text, and the result says so.
+        // A pattern rg cannot parse is searched as literal text, and says so (run fa03b7: `exit(12`).
         const asText = params.literal !== true && outcome.stderr.includes("regex parse error");
         if (asText) outcome = await isolatedRead("grep", "rg", ["--fixed-strings", ...args], target, true);
         throwIfTraversalError("grep", outcome);
@@ -309,7 +319,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       ),
       async execute(_id, params: { command: string; cwd?: string; timeout?: number }, signal) {
         const cwd = params.cwd === undefined || params.cwd === "" ? workDir : abs(params.cwd);
-        // Destructive command shapes stop here; the OS policy enforces file access.
+        // The Builder's shell on every backend: destructive forms stop here, the OS policy enforces files.
         const refusal = refuseDestructiveCommand(params.command, Bun.env, isolation.safeguardContext);
         if (refusal !== null) throw new Error(refusal);
         const timeoutMs = bashTimeoutMs(params.timeout);
@@ -329,8 +339,8 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         const whole = `${outcome.stdout}${outcome.stderr}` || "(no output)";
         const tail = truncateTail(whole);
         const spilled = tail.truncated ? await spillWholeOutput(isolation, whole) : null;
-        // A call that outran the solver's per-command budget says so, whatever its exit; the
-        // wall itself stays BASH_TIMEOUT_MAX_MS.
+        // A call that outran the solver's own per-command budget says so, whatever its exit was;
+        // the wall itself stays BASH_TIMEOUT_MAX_MS, since searching a domain is not solving a task.
         const budget = workspaceSolverBudgetNotice(workDir, Date.now() - startedMs);
         const body = `${tail.content}${spilled === null ? "" : `\n\n[Output truncated: showing the tail of ${formatSize(tail.totalBytes)}. The whole output is at ${spilled}; read it with offset and limit.]`}${budget === null ? "" : `\n\n${budget}`}`;
         if (outcome.timedOut) throw new Error(`${body}\n\n${bashKilledNotice(timeoutMs)}`);

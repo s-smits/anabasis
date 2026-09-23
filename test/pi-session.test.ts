@@ -1,4 +1,18 @@
-/** The host session every slot runs on, driven through pi's faux provider with no network. */
+/**
+ * The host session every slot runs on, driven through pi's faux provider so that none of it reaches
+ * the network. What the session owes its caller is an honest account of the turn: text, reasoning
+ * and tool calls forwarded as shared turn events with the calls counted, a throwing tool recorded
+ * as a failed call carrying the error in its preview, and a turn that fails, that completes on a
+ * retry the session made itself, or that aborts at its cap or on the caller's signal, saying which.
+ *
+ * The rest is identity and continuity. A turn attests the model that answered even when the caller
+ * stopped it, and the Codex route falls back to its response id when nothing named a model.
+ * `configure` runs the next prompt on new tools and framing inside the same conversation, and adds
+ * no system message when neither changed. Compaction then has to put that framing back, which is
+ * why the current framing and tools are replayed ahead of the summary both on a threshold
+ * compaction and on the overflow that retries the turn: the opening turn is the oldest part of the
+ * conversation and so the first part a compaction drops.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   type AssistantMessage,

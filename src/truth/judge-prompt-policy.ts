@@ -12,11 +12,38 @@ const JUDGE_PROMPT_TARGETS = ["census"] as const;
 type JudgePromptTarget = (typeof JUDGE_PROMPT_TARGETS)[number];
 
 /**
- * The census prompt. Beyond the core instruction it states that an abstention names absent rules
- * only; a failure rests on shown rules, not an unseen convention; a declared value is compared
- * against its whole shown definition, signs included; a recomputation states both values and the
- * published tolerance, and fails only beyond the Judge's own rounding; and a run the Judge cannot
- * perform is not decided by predicting its outcome.
+ * The census prompt. Its first version was run 53's maintainer candidate, adopted verbatim. Every
+ * clause added since came on operator instruction, and each one has a measured failure behind it.
+ *
+ * The abstention clause names absent rules and nothing else, because on 2026-08-06 run 68 abstained
+ * on 20 of 20 accept controls: "the task is not stated" matched every taskless control it was shown.
+ *
+ * A failure may not rest on a convention the Judge was never shown, because run 69's hold on
+ * 2026-08-19 was built on agent tool text rather than on a rule in the shown material.
+ *
+ * A declared value is compared against its whole shown definition rather than its magnitude alone.
+ * On 2026-09-02 truss-run6-opus-0902 passed peaks of -33.63 kN against a "largest absolute" rule
+ * after recomputing only the magnitude. The two verifier capabilities the KDD 2026 verifier taxonomy
+ * finds text-only judges miss most are recomputing a derived figure and checking signs (Dücker et
+ * al., Verifying Agents in Rubric-Graded Environments, Table 1), so the clause asks for both.
+ *
+ * A recomputation failure states both values and the tolerance, and survives only a gap beyond the
+ * Judge's own rounding. The 2026-09-15 replay of truss-opus-0aad0d-i03 forbidden-volumes-02 is why:
+ * the recorded fail rested on a 12 g gap in 1134 kg that came from rounded member lengths, and the
+ * same input recomputed at full precision passed.
+ *
+ * A recomputation supplies neither its own tolerance nor its own intermediates. On 2026-09-19 both
+ * samples of run de8b40 bridge-01 failed a verifier-passed case on "gap 0.149 kg > 0.05 kg
+ * tolerance", where the bound task publishes a `reportToleranceRelative` of 0.01 — 2.88 kg on a
+ * 288 kg design — and the member lengths the confirmation summed differ from the submitted design's
+ * in the second decimal, 31.941088 m against 31.910804 m. The 2026-09-15 rounding clause did not
+ * reach that case, because the sample states the gap is "well beyond my rounding" and it was: the
+ * error lay in the lengths it derived from joint coordinates, not in the arithmetic over them.
+ *
+ * A run the Judge cannot perform is not decided by predicting it. In the 2026-09-15 census of 10,358
+ * recorded verdicts the largest verifier-pass/Judge-fail shape was one predicted compile failure
+ * repeated across five run52 iterations, each of them passed by the verifier's real compile, and the
+ * largest verifier-fail/Judge-pass shape was a pass on "all scenarios" the Judge never ran.
  */
 export const ACTIVE_JUDGE_PROMPTS = {
   census: [

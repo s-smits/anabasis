@@ -3,7 +3,10 @@ import { BUILDER_TOOLS } from "../builder/builder-tool-interface.ts";
 import { asRecord, isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 
-/** The controller's tool list, the same on every backend; any other name is a provider-side tool. */
+/** The controller's tool list, the same on every backend. Any other reported tool name is a
+ *  provider-side tool such as web search. It derives from `BUILDER_TOOLS`, the same catalogue the
+ *  session's entry gate records as `catalogued`, so these counts stay in agreement with the tools a
+ *  session actually had rather than with a second list of them. */
 export const CUSTOM_TOOL_NAMES: ReadonlySet<string> = new Set<string>(BUILDER_TOOLS);
 
 export interface BuilderCustomToolCall {
@@ -28,13 +31,17 @@ export interface BuilderCustomToolCall {
     callCount?: number;
     toolNames?: string[];
   };
-  /** Milliseconds from session start; null on recorded calls whose start was never seen. */
+  /** Milliseconds from session start. The recorder states it on every call, so a live row always
+   *  has one; null remains for the outcome reader, which reads recorded sessions from a removed
+   *  transport fallback that saw an end without its start. */
   startedAtMs: number | null;
   durationMs: number | null;
   /** Dispatch mechanics only. A returned tool result may itself report blocked or non-result. */
   dispatchOutcome: "returned" | "threw" | "in-flight";
-  /** Controller-authored, detail-free meaning of the returned result, read from its receipt only.
-   *  Absent when the call threw, is in flight or returned no receipt. */
+  /** Controller-authored, detail-free meaning of the returned result. Absent on a call that threw
+   *  or is still in flight, and on a result that carries no receipt, because the only source is the
+   *  receipt: it is never inferred from the model-visible prose beside it, which the model wrote
+   *  and could say anything. */
   semantic?: BuilderCustomToolSemantic;
 }
 
@@ -61,7 +68,9 @@ export interface BuilderCustomToolSemantic {
   findings?: number;
   /** Turns the rehearsed solve took. */
   turns?: number;
-  /** The rehearsal's aggregate verdict. */
+  /** The rehearsal's aggregate verdict -- the one bit rule 4 lets a rehearsal return -- so a later
+   *  census can read whether the Builder measured its own battery before submitting, and what it
+   *  saw when it did. */
   truthVerdict?: string;
   repeated?: boolean;
   submitted?: boolean;
@@ -137,7 +146,9 @@ function feedbackTarget(args: Record<string, JsonValue> | undefined): CustomTarg
   return target;
 }
 
-/** A call's action and public target, without copying values that may hold user context or code. */
+/** The deliberately narrow projection used by both direct host dispatch and the transport-event
+ *  path. It names the intent without copying argument values, which may carry user context or
+ *  checker source. */
 export function customCallIntent(tool: string, args: Record<string, JsonValue> | undefined) {
   const actionArg = args?.action;
   // Own-property lookup only: a declared name, never one the prototype supplies.
@@ -155,13 +166,17 @@ export function customCallIntent(tool: string, args: Record<string, JsonValue> |
   return { action, target };
 }
 
-/** The declared outcome a value spells, or null when it spells none of them. */
+/** The declared outcome a value spells, or null when it spells none of them. Two readers ask: this
+ *  file, to build a semantic from a live tool result, and the outcome reader in
+ *  tools/outcome/builder-execution-current.ts, to check a recorded row against the same
+ *  vocabulary. */
 export function declaredSemanticOutcome(value: unknown): BuilderCustomToolSemantic["outcome"] | null {
   if (!isString(value)) return null;
   return SEMANTIC_OUTCOMES.find((known) => known === value) ?? null;
 }
 
-/** Copies only the declared receipt fields; the result's text is never parsed. */
+/** Copy only the declared controller receipt fields. The tool text beside them may contain user
+ *  context, source code, verifier output or repair prose, and is deliberately never parsed here. */
 export function semanticFromResult(result: unknown): BuilderCustomToolSemantic | undefined {
   const receipt = asRecord(asRecord(asRecord(result)?.details)?.receipt);
   if (receipt === null) return undefined;

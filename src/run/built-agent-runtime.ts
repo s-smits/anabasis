@@ -14,8 +14,11 @@ interface BuiltBatteryRuntime {
   solver(): Solver;
 }
 
-/** Observation phase used by the main battery. The value is an established identifier that
- *  observation readers match on, not a description. */
+/** Observation phase used by the main battery. The name reads oddly because it predates
+ *  single-battery measurement, when it distinguished the measured condition from the one run with
+ *  advisers. It is now the identifier every observation reader matches on, so the string is part of
+ *  the recorded shape rather than a description of it, and renaming it would change what those
+ *  readers see without changing what was measured. */
 const SHIPPING_PHASE = "measure-on";
 
 /** What a battery runtime is opened with beyond its runtime and observer: the turn wall, a

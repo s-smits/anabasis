@@ -7,8 +7,11 @@
  * turns — each one a function that may call the hosted tools the driver generated, exactly as a
  * real backend does in-process — and records what the session was opened and prompted with.
  *
- * The four `builder-session-*.test.ts` files share this module. It carries what more than one of
- * them needs; a tool double or a finding batch one file uses stays in that file.
+ * Four of the eight `builder-session-*.test.ts` files import this module — kickoff, record,
+ * refusal and turns — so a change here does not reach the other four. Three of those never open a
+ * session at all, but `builder-session-stall.test.ts` does, against an opener it scripts itself,
+ * which is the one to check by hand. The module carries what more than one importer needs; a tool
+ * double or a finding batch a single file uses stays in that file.
  */
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import type { AgentTurnEvent, AgentTurnResult } from "../../src/backends/backend-types.ts";

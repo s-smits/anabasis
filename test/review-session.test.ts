@@ -1,5 +1,16 @@
-/** The review slot: its pin, the Judge census session it hands the runner, and the credential and
- *  effort each review session opens with. Nothing here reaches a provider. */
+/**
+ * The review slot decides who reviews and on what terms, and every case here reads that without
+ * reaching a provider. `reviewSlotPin` names no evaluator when the slot is disabled, however it
+ * came to be disabled, and names the enabled slot's condition with OpenRouter's provider routing.
+ * `judgeSessionFor` returns no census session for a disabled slot and, for an enabled one, carries
+ * the pin and the census prompt digest without resolving a credential at all.
+ *
+ * Opening a session is where a credential finally matters, and a missing one is the environment's
+ * refusal rather than a review that failed. An unpinned slot opens at the Judge's high effort with
+ * no web search, and a session presents the one shared account token. The reader's continuations
+ * are bounded rather than open-ended: they share one deadline across settled turns and dispose on
+ * expiry, and they charge the same provider budget while preserving its interruption.
+ */
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";

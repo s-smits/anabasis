@@ -1,7 +1,12 @@
 /**
- * Whether the files a continuation's EXPERIMENT.json says it changed actually moved. Intent changes
- * no score: this only refuses a declaration the candidate bytes contradict, and the author resolves
- * it in the same session by naming what moved.
+ * Whether the files a continuation says it changed actually moved.
+ *
+ * i02 of the 2026-09-20 truss campaign declared a repair to the reference solve. Its
+ * `correctness-model/reference/index.ts` was hash `e93970a8` in i01, i02 and i03 alike and still
+ * read `const found = DESIGNS[task.taskId]`: the claimed repair never happened, and nothing
+ * noticed, because EXPERIMENT.json's prose was never read against the snapshot. Intent still
+ * changes no score — this only refuses a declaration the accepted bytes contradict, and the author
+ * resolves it in the same session by naming what moved.
  */
 
 import { BATTERY_FILES, type FingerprintEvidence } from "../claim/fingerprint.ts";

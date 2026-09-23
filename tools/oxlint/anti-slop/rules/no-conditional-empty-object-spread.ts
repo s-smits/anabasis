@@ -17,7 +17,21 @@ function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
 }
 
 /**
- * Ban conditional empty-object spreads without changing their omission semantics.
+ * `{...(present ? { key: value } : {})}` — a spread inside an object literal whose argument is a
+ * conditional with an empty object in one arm.
+ *
+ * It is the shortest way to make a key sometimes exist, which is why it is written, and that is
+ * the problem: the key's presence is now a fact about a ternary in the middle of a literal rather
+ * than a statement anyone made. A reader working out what the object can hold has to evaluate the
+ * condition to find out whether the field is even in the type, and a schema written from the
+ * literal is wrong in one of the two cases. Building the object and adding the key under a named
+ * condition costs two more lines and says which fields are optional.
+ *
+ * Only the spread argument is read, and only where the spread sits directly in an object literal,
+ * so the same ternary as a value, an argument or an initialiser is left alone — there it produces
+ * a value rather than deciding whether a key exists. Either arm may be the empty one, since
+ * `{...(absent ? {} : { key })}` is the same construction written the other way round, and
+ * parentheses around the conditional are unwrapped first.
  *
  * There is no fix: whether the field should be absent or present and null is the contract, and
  * the spread is where that decision was avoided.

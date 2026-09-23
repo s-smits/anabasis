@@ -263,16 +263,19 @@ export async function buildHarness(
   }
 }
 
-/** A repair review follows a clear check, so its header says so and findings are not read as a
- *  reason to return to authoring. */
+/** A repair review follows a clear check, and the header has to say so: truss run cc4709 and runs
+ *  -44 and -47 read its findings as a condition on the check and returned to authoring instead of
+ *  submitting (2026-09-16). */
 const REVIEW_HEADER = {
   repair: "Epoch review of the candidate your clear correctness_check just previewed.",
   backstop: "Epoch review of the live workspace.",
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
- *  crosses only with a probe behind it; unprobed advice changed nothing the Builder did, and the
- *  post-battery review weighs the product again. */
+ *  crosses only with a probe behind it. Five runs from 2026-09-19 to 22 showed 33 advisory rows in
+ *  tool results, repeats of one another and promised "for the next round", which no reader carried
+ *  and none of which changed what the Builder did. The post-battery review weighs the product
+ *  again. */
 export function authoringReviewText(
   trigger: keyof typeof REVIEW_HEADER,
   status: string,
@@ -295,9 +298,14 @@ export function authoringReviewText(
   ].join("\n");
 }
 
-/** Carry an authoring review's disputes onto the issue register the next build reads, as the
- *  measured path does in its publish step. The register is re-read rather than reused, since a
- *  measured battery may have published in between. */
+/** Carry an authoring review's disputes onto the issue register the next build reads. The measured
+ *  path does this inside its own publish step; this one used to write the review file and stop, so
+ *  a dispute the reviewer was invited to make reached nothing that reads it, and the next build
+ *  was still told to rebuild the agent around an issue that a review of the tree had called an
+ *  evaluation defect. Campaign -10 disputed two of the three issues its
+ *  `rebuild-advice-latest.json` still carries as `"dispute": null`. The register is re-read here
+ *  rather than reused from the turn above, because a measured battery may have published between
+ *  the two moments. */
 export function recordAuthoringDisputes(
   repoRoot: string,
   slug: string,

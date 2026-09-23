@@ -1,10 +1,26 @@
 /**
- * The controls contract, authored by the Builder and checked statically before adoption:
- *  - accepts show correct examples pass; rejects show the checks catch a deliberate error;
- *  - each reject names the check its mutation must fail (`expectedCheckId`), and a reject that
- *    targets a join names both the join and its owning check;
- *  - each control inherits its task's hidden operands; overrides change only the named rows.
- * The shared host census (`runControls`) then executes the controls.
+ * The controls contract, authored by the Builder and checked before adoption. Each requirement here
+ * keeps the failure that produced it.
+ *
+ * A corpus needs both sides. Accepts establish that correct examples pass, and rejects establish
+ * that the checks detect a deliberately introduced error, which matters because an accept-only
+ * corpus is satisfied by a check that never fails at all.
+ *
+ * Every reject names the check its mutation must fail, in `expectedCheckId`. Under hw24 any
+ * blocking failure counted as discrimination, so a reject labelled for a join could fail an
+ * unrelated schema or empty-input check and still satisfy that join's requirement. The census now
+ * runs the named check alone on the reject, so a failure elsewhere cannot stand in for the intended
+ * one. A reject that targets a join names both the join and its owning check, because hw23 missed
+ * aliases and hw24 accepted four incorrect artifacts where the labels were covered and the joins
+ * were not.
+ *
+ * Each control inherits the required hidden operands of its task, and an explicit override changes
+ * only the rows it names. Live outcomes then prove those examples; they never establish an arbitrary
+ * dependence on hidden data.
+ *
+ * This module decides coverage and structure alone. The shared host census (`runControls`) executes
+ * the controls and adoption reads those results, so nothing here ranks one candidate corpus against
+ * another.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -24,7 +40,11 @@ import { asRecord, isRecord, isString, type JsonValue } from "../meta/json-shape
 
 export type AcceptControl = {
   id: string;
-  /** The battery task this artifact answers; controls evaluate on the same path as measured cases. */
+  /** The battery task this artifact answers. Every control is a coherent (taskId, artifact) pair and
+   *  evaluates through the same single path as a measured case, because a taskless artifact is not
+   *  established as good or bad relative to any actual problem: in runs 76 and 77 a taskless census
+   *  made every task-relative check a no-op, and the judge self-disabled on abstentions it scored
+   *  100 percent correct. */
   taskId: string;
   /** A known-good artifact the verifier must pass. */
   artifact: JsonValue;
@@ -46,8 +66,11 @@ export type RejectControl = {
     publicInputPath: string;
     constantName: string;
   };
-  /** The truth check this mutation must fail. The census runs it alone on the reject, so an
-   *  unrelated failure cannot satisfy it. */
+  /**
+   * The brief truth-check id this mutation must fail, applicable to the reject's task. The host
+   * census (`runControls`) runs this check alone on the reject, so an unrelated schema or
+   * empty-input failure cannot satisfy it — which is the hw24 shallow-coverage failure.
+   */
   expectedCheckId: string;
   /** Optional hidden operand overrides, merged by check id into the bound task's rows. */
   hidden?: HiddenExpectation[];
@@ -61,12 +84,14 @@ export type ControlCorpus = {
 /** A recorded battery task as the corpus validator sees it: the public view plus hidden rows. */
 type ControlTask = PublicTask<unknown> & { hidden?: HiddenExpectation[] };
 
-/** The key of one check-by-family cell. */
+/** The key of one check-by-family cell. What fills a cell is a declared control; whether the cell
+ *  actually holds is the shared census's verdict, and no static path here decides it. */
 function ruleCell(checkId: string, family: string): string {
   return capturedJsonStringify([checkId, family]);
 }
 
-/** Whether the value carries the two control arrays; `validateControls` checks the rows. */
+/** Whether the value carries the two control arrays. This is the shallow admission check alone:
+ *  `validateControls` decides whether the rows inside them are usable, and a caller runs both. */
 export function isControlCorpus(value: JsonValue): value is ControlCorpus {
   const corpus = asRecord(value);
   return corpus !== null && Array.isArray(corpus.accept) && Array.isArray(corpus.reject);
@@ -74,7 +99,9 @@ export function isControlCorpus(value: JsonValue): value is ControlCorpus {
 
 const optionalString = (value: unknown) => value === undefined || isString(value);
 
-/** Row shapes: every control binds one task, and every reject names the check it must fail. */
+/** The one row-shape parse for a corpus. Every control is bound to one recorded task (operator
+ *  verdict 2026-08-07) and every reject names the check its changed fact must fail, so the coverage
+ *  pass and the census below can both assume those two facts instead of re-deriving them. */
 function corpusRowFindings(corpus: ControlCorpus): ContractFinding[] {
   const findings: ContractFinding[] = [];
   corpus.accept.forEach((control, i) => {
@@ -238,8 +265,14 @@ function hiddenFieldFindings(value: JsonValue, path: string): ContractFinding[] 
   return findings;
 }
 
-/** An accept must carry exactly the declared top-level fields, as a real submission does. Rejects
- *  are exempt, since a missing or malformed field can be their deliberate mutation. */
+/**
+ * An accept must carry exactly the declared top-level fields, as a real submission does. Otherwise a
+ * representation error keeps it from exercising the correctness checks it was written for: in
+ * falsifier-claude-007 the accept author invented {crew, bindings} and all ten accepts were
+ * rejected. This helper does not apply the same check to rejects, where a missing or malformed field
+ * can be the deliberate mutation; other validators check reject structure, and the host census
+ * requires each reject to fail on its own expectedCheckId.
+ */
 function acceptSchemaFindings(schema: ArtifactField[], artifact: JsonValue, path: string): ContractFinding[] {
   const declared = schema.map((f) => f.name);
   if (!isRecord(artifact)) {
@@ -258,8 +291,9 @@ function acceptSchemaFindings(schema: ArtifactField[], artifact: JsonValue, path
   ];
 }
 
-/** Shape gate for a list of accept rows. F2 also runs a reference artifact through it as a
- *  one-row list, so the schema rule has one owner. */
+/** Shape gate for a list of accept rows, guarding the same crash class as `briefFieldFindings`. F2
+ *  runs a reference artifact through it as a one-row list, so the schema rule has one owner rather
+ *  than one copy per caller. */
 export function validateAcceptControls(value: JsonValue, schema?: ArtifactField[]): ValidationResult {
   if (!Array.isArray(value)) {
     return validated([fieldFinding("$", "a JSON array of accept controls", value)]);
@@ -292,19 +326,28 @@ export function validateAcceptControls(value: JsonValue, schema?: ArtifactField[
       ],
     };
   }
+  // Whether these accepts actually pass is the shared host control census's to establish.
   return { ok: true, findings: [] };
 }
 
-/** These findings come from static analysis, not generated code, so they are marked controller-
- *  validated and keep their public detail in author feedback. */
+/** This module analyses declared artifacts without executing generated code, so its findings can
+ *  keep their public detail in author feedback. In water-network live-m8m10-003 five repair sessions
+ *  received the detail-free `generated-execution-unclassified` label instead of the specific
+ *  controls finding, their obligation lists were empty as well, and all five returned empty patches.
+ *  The controller classification stays explicit here for that reason. */
 const validated = (findings: ContractFinding[]): ValidationResult => ({
   ok: findings.length === 0,
   findings: controllerValidatedFindings(findings),
 });
 
-/** Static coverage over the check-by-family matrix derived from the brief and tasks. Every
- *  applicable cell needs one accept; each applicable check and each family needs one reject naming
- *  it, external checks included. The live census proves the outcomes. */
+/** Public validity is the rule-by-family matrix, derived from the truth checks and the recorded
+ *  task families; controls declare evidence and never declare applicability. Every applicable cell
+ *  needs one accept, and each applicable check and each family needs one reject naming it (operator
+ *  decision 2026-09-15, replacing one reject per cell, which asked a six-check, five-family truss
+ *  for thirty rejects). A check no task exercises has a cell on neither side, since both sides are
+ *  walked from the recorded tasks. These are declared candidates only: the live census proves their
+ *  outcomes. An external check needs the same reject as an authored one, because a recorded tool run
+ *  establishes that the tool executed, not that it can reject anything. */
 function publicRuleFindings(
   brief: Brief,
   corpus: ControlCorpus,

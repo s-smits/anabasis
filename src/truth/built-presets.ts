@@ -9,7 +9,9 @@ const PRESET_TOOL_NAMES = {
   "public-data": [DATA_READER_TOOL],
   files: ["read", "write", "edit", "materialize_files", "bash"],
   // The same shell without the draft-file answer: a structured answer keeps its artifact-writer,
-  // and the solver still computes, searches and tests in a real directory.
+  // and the solver still computes, searches and tests in a real directory. The `files` preset needs
+  // a file-shaped root, which is why 62 truss epochs declined it and left their solver with no
+  // shell at all; this preset is what they should have taken (operator decision 2026-09-14).
   shell: ["bash"],
 } satisfies Record<BuiltPresetId, readonly string[]>;
 

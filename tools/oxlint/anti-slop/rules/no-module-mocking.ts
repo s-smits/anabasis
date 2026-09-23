@@ -49,7 +49,22 @@ function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): bool
 }
 
 /**
- * Ban test framework module mocking in favor of real dependency interfaces.
+ * `vi.mock`, `vi.doMock`, `jest.mock` and `unstable_mockModule`: replacing a module at the
+ * loader rather than substituting a dependency the code under test accepts.
+ *
+ * A mocked module is a test that passes against a description of the dependency instead of the
+ * dependency. The description is written once and then drifts, so the module can change its
+ * signature, its errors or its side effects and the suite keeps reporting green — and it keeps
+ * reporting green about a call that no longer exists. It also decides the test can only run one
+ * way, because the substitution happens above the code rather than inside it, which is why a
+ * mocked suite so often cannot be asked the second question.
+ *
+ * `isTestFrameworkObject` is what keeps this from being a ban on the word `mock`. The receiver
+ * has to be `vi` or `jest` resolving to a global, or an import of `vi` from `vitest` or `jest`
+ * from `@jest/globals`; anything else called `mock` on any other object is someone else's method.
+ * A binding of either name with no definition in scope is treated as the framework's, since an
+ * ambient global is how both are normally reached. Computed access is read alongside plain
+ * access, because `vi["doMock"]` names the same method.
  *
  * There is no fix: the repair is a real interface the test can substitute at, which is usually a
  * change to the code under test rather than to the test.

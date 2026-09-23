@@ -68,9 +68,10 @@ describe("source policy", () => {
     expect(checks("one\ntwo", 2)).not.toContain("file-size");
   });
 
-  // A copied-file ceiling also turns the 80-line function check off for its file, so an entry left
-  // behind after the file came inside both limits is a silent exemption, not a dormant number. The
-  // map held 93 entries on 2026-09-19 and 10 of them bound anything.
+  // A copied-file ceiling also turns the function check off for its file, so an entry left behind
+  // after the file came inside both limits is a silent exemption rather than a dormant number.
+  // That is why the map is swept: it held 93 entries on 2026-09-19 and 10 of them bound anything,
+  // and it is down to 6 today.
   it("refuses a copied-file ceiling once its file is gone or inside both authored limits", () => {
     const stillOver = Array.from({ length: NEW_FILE_CEILING + 1 }, () => "const x = 1;").join("\n");
     const kept = "src/builder/tools.ts";
@@ -88,9 +89,11 @@ describe("source policy", () => {
     expect(shrunk[0]?.detail).toContain("exempts nothing");
     expect(probe(stillOver)).toEqual([]);
 
-    // Eight of the ten kept entries are under the file ceiling and exist only to exempt one long
-    // function. The reading is against the authored limits, not against the entry's own number,
-    // so such a file stays load-bearing.
+    // Four of the six entries left declare a ceiling below the 800-line file limit, so the only
+    // thing they can be exempting is a long function. That is what makes the next case the
+    // interesting one: the staleness reading is taken against the authored limits rather than
+    // against the entry's own number, so a file whose function is over the ceiling still has a
+    // load-bearing entry even though its size sits well inside 800.
     const longFunction = [
       "function tooLong() {",
       ...Array.from({ length: NEW_FUNCTION_CEILING }, () => "  void 0;"),

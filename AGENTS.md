@@ -1131,7 +1131,7 @@ lanes are editing, `SOLVABILITY_SOURCE_DRIFT` (`src/run/claim-write.ts`), parse 
 half-edited files and host-wall timeouts are all expected. The lane re-runs a failing file alone
 before reporting it, and the coordinator runs the full suite once after every lane has finished.
 
-A comment-only pass is still a source change, and it carries five hazards. `unusedExports`
+A comment-only pass is still a source change, and it carries six hazards. `unusedExports`
 (`tools/loc/source-policy.ts`) takes the exports of `AUTHORED_ROOTS` — `src`, `tools` and
 `packages/ui/src` — and looks for a reader anywhere under the eight `READER_ROOTS`, which are
 deliberately wider than the compiler's import graph and take in `test`, `scripts` and `.claude`.
@@ -1168,6 +1168,19 @@ compare the text, not the count, because a directive whose rule name was rewritt
 alone. On 2026-09-23 that scan over 355 changed files found 8 carrying directives and all 8
 unchanged, which took one command and is the only reason the comparator's verdict means what it
 says.
+
+The sixth is a gate that looks as though it covers you and does not. `biome format` owns every line
+break under `src`, `tools`, `vendor`, `test`, `starters` and `packages` at a `lineWidth` of 110,
+which makes it natural to assume a comment pass cannot leave an overlong line behind. It does not
+rewrap a comment at all: clean `main` carries comment lines of 210 characters while `biome format .`
+reports "No fixes applied" over 1,044 files. A comment is therefore the one line in this tree whose
+width nothing measures, and on 2026-09-23 this pass added four past the limit before anyone looked,
+all four inline `/* SAFETY: … */` justifications sharing a line with the assertion they justify, the
+longest 233 characters. So measure the added lines yourself. Wrapping one is safe, because
+`require-safety-comment-for-type-assertion` accepts a justification separated from its assertion by
+whitespace and opening parentheses alone, and a newline is whitespace; expect `biome format` to
+rejoin a call the long comment had been holding apart, which is the base formatting returning rather
+than a change of your own.
 
 Transport is owned by `.claude/skills/codex-luna-swarm/SKILL.md`; read it for the current route,
 which changes whenever a provider's allowance does. Session reports are research rather than

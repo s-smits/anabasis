@@ -431,7 +431,14 @@ live evidence.
    stands. The Judge sees the original request, the bound public task, the submitted artifact, the
    public schema and design rules, the projected tool contract and the declared runtime facts. It
    never sees the Built prompt, the solve trace, verifier output or a reference artifact, and two
-   artifacts are never compared inside one prompt. Keep the three `judgeDeAnchoring` rows unbound.
+   artifacts are never compared inside one prompt. `judgeDeAnchoring` in `thresholds.frozen.yaml`
+   has five rows and they divide two ways, which is worth knowing before you go looking for the
+   code behind them. Two already hold by construction, and by the two sentences above:
+   `commitAllTasksInPhaseZero` is the fresh session per subject, and `fallbackConfigured: false` is
+   the slot resolving one model with no fallback. The other three —
+   `commitBeforeSeeingCandidate`, `predictionsMustBeFalsifiable` and `predictionsMustBeDisposed` —
+   describe a rank-2 paired-comparison protocol that is not implemented, so nothing establishes
+   them and nothing should start to. Keep those three unbound.
 
    A Judge fail must cite at least one verbatim rule from the public validity rules, the artifact
    schema or the public input; an uncited fail is a protocol non-result. A cited fail of a verifier

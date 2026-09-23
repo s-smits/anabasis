@@ -355,7 +355,20 @@ live evidence.
    or below 800 nonblank lines and functions at or below 115 (`tools/loc/source-policy.ts`, raised
    from 600 and 80 on 2026-09-20, when `biome format` took ownership of the line breaks). That walk
    covers `src`, `tools` and `vendor` and stops there, so a file under `test` or `packages` is held
-   to no length at all and a long one there is a judgement rather than a gate finding. And
+   to no length at all and a long one there is a judgement rather than a gate finding.
+
+   Six files inside that walk carry a number of their own in the `copiedFileLimits` of
+   `tools/loc/source-policy.json`, and an entry there does two things at once that are easy to read
+   as one. It replaces the 800-line ceiling with that file's own figure, and it switches the
+   per-function check off for that file entirely. Only two of the six numbers are above 800, which
+   is the tell: the rest are not exemptions from the file ceiling at all. `src/truth/probes.ts` is
+   held at 436 while sitting at 432, nowhere near the ceiling it is nominally exempt from, because
+   what the entry actually buys is room for `makeProbeControls` at 150 lines against a limit of
+   115. So the figure tells you nothing until you know which of the two checks it was bought for,
+   and meanwhile it is a tighter budget than the rest of the tree gets — four lines of headroom
+   there, which restoring a handful of comments is enough to spend. Nor is the entry permanent:
+   `staleCopyLimits` fails the gate when a listed file starts passing the ordinary ceilings by
+   itself, so the day that function drops under 116 the entry has to come out with it. And
    `tools/loc/complexity-policy.ts` keeps every function's cyclomatic complexity below 22, with the
    existing exceptions frozen in `complexity-baseline.json` — a baseline that only ever shrinks
    (`--write-baseline`). `bun run lint` runs Oxlint over `src tools vendor starters test

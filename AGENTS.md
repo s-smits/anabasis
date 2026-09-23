@@ -968,12 +968,16 @@ Surrounding files go directly to main: `README.md`, `AGENTS.md`, `docs/**` and `
 Those are exactly the paths the pre-push hook excludes when it decides a push is
 documentation-only, after which it runs `git diff --check` alone. **Skill and helper scripts are
 not in that set.** A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
-delivery, and the lint is the only composed step that reaches one. `ROOTS` in
-`tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint does read
-these scripts; `bun run test` discovers a flat tree under `test/` and never reaches them, and
-`bun run gate` runs that same suite. So the behaviour of a skill script is checked by nothing
-unless you check it: run `bun test` from the script's own directory and read the count. A document
-describing source that is not on main stays with that source. Everything under `src/`, `tools/` and `vendor/` is source, whatever the file
+delivery, and how much of the composed gate reaches one depends on the script. `ROOTS` in
+`tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint reads every
+one of them. The suite reaches a script only through a test that imports it: `bun run test`
+discovers a flat tree under `test/` and never walks `.claude/`, but 47 of those discovered files
+import a skill module by relative path, which pulls 52 of the 105 scripts across nine skills into
+the run, and a few more transitively through those. So a script a test imports is gated like any
+other source, and the remaining half is held by the lint alone — its behaviour is checked by
+nothing until you check it, with `bun test` from the script's own directory. Before assuming
+either, grep `test/` for the file you are editing. A document describing source that is not on main
+stays with that source. Everything under `src/`, `tools/` and `vendor/` is source, whatever the file
 type.
 
 Production code and its tests follow the latest intended PR stack published on GitHub: fetch and

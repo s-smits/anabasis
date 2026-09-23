@@ -1062,6 +1062,17 @@ expect much loss here — and then answers it, which is what makes the rest land
 arrives as a sequence of ordinary facts, each one following from the last. And the consequence is
 stated concretely: it buys the number back with a gate call, or it guesses.
 
+Write in full paragraphs. A paragraph states one thing and follows it through to the end, which
+means three or four sentences that build on each other rather than one sentence standing alone
+under a bold heading. The default a model reaches for — a clipped fragment, a dash, another
+fragment, then a bullet list of three noun phrases — reads as though the thought was interrupted
+before it arrived, and it leaves the reader to reconstruct the connection between the pieces. Say
+the connection instead: because, so, which means, and that is why. Resist the urge to break a
+paragraph into bullets the moment it holds more than one fact, because a list is for things that
+genuinely sit side by side, and most of what gets listed here is a sequence with a cause running
+through it. Fragments and headings are not wrong in themselves; they are wrong when they replace
+the sentence that would have explained why one thing led to the next.
+
 Numbers belong in the prose, at the point where they earn something. "It was used twice in eight
 recorded sessions"; "5,406 findings named a bare root against 3,196 naming a path below one"; "37
 pass, 1 fail". A count sitting in its own section at the bottom has to be joined back to the claim

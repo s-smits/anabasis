@@ -253,3 +253,23 @@ describe("bubblewrap refusal classification", () => {
     expect(reason).toContain("Can't mount proc");
   });
 });
+
+describe("the runtime prefix a baseline bind set exposes", () => {
+  it("holds the captured executable's prefix when generated code reassigns process.execPath", () => {
+    const honest = bwrapBaselineArgs({ network: false });
+    const descriptor = Object.getOwnPropertyDescriptor(runtimeProcess, "execPath");
+    Object.defineProperty(runtimeProcess, "execPath", {
+      ...descriptor,
+      value: join(tmpdir(), "ana-absent-runtime", "bin", "bun"),
+    });
+    try {
+      // The controller launches `trustedExecPath`, captured before any generated module ran. Read
+      // from the live global instead, the bind set loses the runtime's own prefix and bubblewrap
+      // refuses the launch with "execvp <the real bun>: No such file or directory" — the
+      // substitution test/trusted-runtime.test.ts exists to refuse.
+      expect(bwrapBaselineArgs({ network: false })).toEqual(honest);
+    } finally {
+      if (descriptor) Object.defineProperty(runtimeProcess, "execPath", descriptor);
+    }
+  });
+});

@@ -76,11 +76,6 @@ interface RootWalkBudget {
   startedAt: number;
 }
 
-/** Digests already computed in this process, reused while the file's complete metadata (device,
- *  inode, mode, size, mtime, ctime) is identical; runtime closures are re-attested around every
- *  confined execution. */
-const DIGEST_BY_METADATA = new Map<string, { metadata: ReadRootMetadata; digest: string }>();
-
 /**
  * Refuses a non-UTF-8 name or symlink target, which JSON identity could only hold ambiguously.
  * Callers pass buffers, because the string API has already decoded lossily.
@@ -219,8 +214,6 @@ function readFileDigest(
   if (expected.kind !== "file") throw new Error(`read root expected a regular file: ${path}`);
   const size = BigInt(expected.size);
   reserveBytes(budget, size, path);
-  const known = DIGEST_BY_METADATA.get(path);
-  if (known !== undefined && sameReadRootMetadata(known.metadata, expected)) return known.digest;
   // O_NONBLOCK keeps a FIFO swapped in after lstat from blocking; O_NOFOLLOW refuses a symlink swap.
   // The descriptor fstat below catches a regular-file swap and a path swapped back before the recheck.
   const handle = openSync(path, READ_ROOT_OPEN_FLAGS);
@@ -250,9 +243,7 @@ function readFileDigest(
     if (!sameReadRootMetadata(expected, closed)) {
       throw new Error(`read root file descriptor changed after reading: ${path}`);
     }
-    const digest = hasher.digest("hex");
-    DIGEST_BY_METADATA.set(path, { metadata: expected, digest });
-    return digest;
+    return hasher.digest("hex");
   } finally {
     closeSync(handle);
   }

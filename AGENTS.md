@@ -363,18 +363,38 @@ live evidence.
    on, `SHAPE-RULESET.md` says what is not yet, and `FIXER-DECISIONS.md` says why 15 of the 54
    carry a fixer and 39 only report — including the nine whose fixer is mechanically available and
    refused on purpose. Those counts move whenever a rule lands, so read them off the registered
-   rules in each plugin's `index.ts` rather than from here. Both plugins are optional in a particular sense: every lint runs them, but
-   their findings and the not-slop ledger fail it only under `bun run lint -- --strict` or with
+   rules in each plugin's `index.ts` rather than from here. Both plugins are optional in a
+   particular sense: every lint runs them, but their findings and the not-slop ledger fail it only
+   under `bun run lint -- --strict` or with
    `ANA_LINT_STRICT=1` in the environment, and the `.env` is not loaded because `bunfig.toml` sets
    `env = false`. A plain run therefore holds a contributor to oxlint's own rules and counts the
    rest. A clone becomes strict by default once it runs `git config ana.lintStrict true`: the key
    lives in its `.git/config`, is shared by its worktrees and is never pushed.
 
-   A new file receives no grandfathered exception. Keep each remaining exception scoped to one rule
-   and one named path, and let an obsolete suppression fail the lint — the strict lint, for a
-   plugin rule's — rather than persist as debt. **Never turn a rule off**: no new `"off"` entry in
-   `.oxlintrc.json`, not for the tree, not for a glob such as `test/**`, and not for one named
-   file. Tuning the deterministic linter is endorsed, `bun run lint` and `bun run simplify` alike,
+   A new file receives no grandfathered exception. **Never turn a rule off to clear a finding**: no
+   new `"off"` entry in `.oxlintrc.json`, and no widening of an existing one to take in the file
+   you are editing. What is already there is not that, which is worth saying because eight override
+   blocks disabling up to thirty rules apiece read at first glance like exactly what the rule
+   forbids. `tools/oxlint/BASELINE.md` owns them, and it reads each entry as that rule's debt on
+   the day it was registered: the files that already broke it, with the rule holding every other
+   file in the repository from that moment, including every new one. Registering a rule with a
+   35-file exemption therefore beats leaving it unregistered until the overhaul finishes, because
+   an unregistered rule holds nothing at all while the pattern keeps arriving in new files. Three
+   entries are not debt and will never shrink, because there the rule is wrong about this
+   repository rather than the other way round, and BASELINE.md gives each one its evidence:
+   `typescript/await-thenable` is off under `test/**` because Bun declares `expect(...).rejects`
+   without a Thenable type, so all 215 reports were `await expect(...)` and none was a defect. Nor
+   is an override block always an exemption — `**/src/backends/oauth/**` turns nothing off and adds
+   two errors, which is where this file's own rule about `capturedJsonParse` is enforced. The one
+   place the contract has drifted from the config is the shrinking: BASELINE.md describes a list of
+   files losing a line as each one is cleared, and all eight scopes are now globs over a tree or a
+   file type, so an exemption cannot shrink a file at a time. It ends whole, once the last file
+   under the glob passes. An inline suppression is the opposite case and never becomes debt at all,
+   because `bun run lint` passes `--report-unused-disable-directives`: a disable comment that no
+   longer names a finding fails the run, and a not-slop ledger row that no longer names one fails
+   it the same way, under the strict lint for a plugin rule's.
+
+   Tuning the deterministic linter is endorsed, `bun run lint` and `bun run simplify` alike,
    but in one direction only: change the rule's source so it targets the slop more precisely, so
    that the legitimate shape it mis-targeted passes and every slop case it caught still fails, with
    a fixture for each side. A finding the rule cannot tell apart that way is fixed in code, or

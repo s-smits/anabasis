@@ -61,9 +61,9 @@ describe("measureHarness", () => {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    // The round's verdict on its own battery reached stderr alone. c1d2a7-i04's refusal held its
-    // candidate and left the next round sizing from a stale landing, and no row in the stream a
-    // live reader watches said so.
+    // The round's verdict on its own battery must reach the stream, not stderr alone: a refusal
+    // that holds its candidate leaves the next round sizing from a stale landing, and a live reader
+    // watching the stream would see no row saying so.
     expect(
       stream.filter((row) => row.phase === "claim").map((row) => [row.state, row.summary, row.evidence]),
     ).toEqual([
@@ -90,8 +90,8 @@ describe("measureHarness", () => {
     };
     const ledger = latestRebuildAdvicePath(repo, "bridge-truss");
     expect(existsSync(ledger)).toBe(false);
-    // A provider interruption inside the epoch review turn once ended the step before any ledger
-    // was written, and the next rebuild opened with no advice from a battery that had measured.
+    // A provider interruption inside the epoch review turn would otherwise end the step before any
+    // ledger is written, leaving the next rebuild to open with no advice from a battery that measured.
     await expect(
       analyseStep(repo, "bridge-truss", "m4-ledger", measured, {
         resolvedSlots,
@@ -112,8 +112,8 @@ describe("measureHarness", () => {
     expect(complete.advice.runId).toBe("m4-ledger");
     // A review slot that is off is an operator condition, not absent work.
     expect(complete.absent).toEqual([]);
-    // Campaign -29 lost both reader turns to the transport and the controller terminal listed no
-    // absent step; a reader turn that failed after it opened is named there.
+    // Reader turns lost to the transport leave the controller terminal listing no absent step; a
+    // reader turn that failed after it opened is named there.
     for (const status of ["failed", "incomplete"] as const) {
       const failed = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, {
         resolvedSlots,
@@ -285,9 +285,9 @@ describe("measureHarness", () => {
     expect(() => deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e")).toThrow(
       /disagree on isolation strength/,
     );
-    // Also check the empty set seen in opus-331: a pre-spend-skipped battery records ZERO case
-    // rows, and the disagreement sentence over an empty set misdescribed the condition as
-    // "disagree on isolation strength ()". Zero rows is its own precondition failure.
+    // Also check the empty set: a pre-spend-skipped battery records ZERO case rows, and the
+    // disagreement sentence over an empty set would misdescribe the condition as "disagree on
+    // isolation strength ()". Zero rows is its own precondition failure.
     writeFileSync(
       recordPath,
       `${entries
@@ -363,9 +363,9 @@ describe("measureHarness", () => {
       isolationProbe: () => probeEvidence(true),
       sessionProbe: async () => builtSession(),
     });
-    // The battery drove and no claim was created: the null claim IS the statement of the absence
-    // (run 8 booked this shape as 50 product fails) — the reason lives in the recorded battery
-    // and the typed case rows below, never in a second channel on the result.
+    // The battery drove and no claim was created: the null claim IS the statement of the absence,
+    // and read as anything else this shape books as product failures. The reason lives in the
+    // recorded battery and the typed case rows below, never in a second channel on the result.
     expect(result.claim).toBeNull();
     expect(result.verdicts).toEqual({ measured: false, claimCreated: false, ready: false });
     // The campaign record still carries every case as a typed solver non-result — visible to
@@ -387,7 +387,7 @@ describe("measureHarness", () => {
       kind: "provider",
       message: "no outer turn completed a provider result",
     });
-    // Every recorded case row carries its own controller timestamps (w35/w36 recorded 0 of 125 with one).
+    // Every recorded case row carries its own controller timestamps.
     for (const row of blockedBattery.cases) {
       expect(row.solver.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
       expect(Date.parse(row.solver.endedAt)).toBeGreaterThanOrEqual(Date.parse(row.solver.startedAt));

@@ -11,7 +11,7 @@
  * The three `FamilySpec` switches are the hostile cases, and each one names a different way the
  * census can look like it worked when it did not. Leaving the answer root unmarked stops the census
  * running at all, because `familyBinding` returns an empty list the moment there are no
- * task-conditioned roots (`src/truth/family-binding.ts:220`) — so an unmarked fixture would report
+ * task-conditioned roots (`src/truth/family-binding.ts`) — so an unmarked fixture would report
  * no separation failures and read as a pass. Throwing on a mismatch instead of returning false is
  * the difference between a check that rejected the transplant and one that never settled. And
  * dropping tb's required hidden operand must refuse, rather than quietly making the check
@@ -29,7 +29,8 @@ import {
 } from "./solvability-specimen.ts";
 
 interface FamilySpec {
-  /** The two family-one answers. Repeating one recreates W20: distinct tasks, one deliverable. */
+  /** The two family-one answers. Repeating one gives distinct tasks a single deliverable, which is
+   *  the shape the census exists to catch. */
   answers: [string, string];
   /** Mark the answer root task-conditioned. Unmarked, the census does not run at all. */
   material?: boolean;

@@ -24,25 +24,25 @@ export interface CampaignMemory {
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
   /** The unbroken trailing run of gates-blocked findings hashes, oldest first. The stall detector
-   *  counts repeats over it: run w11 recorded one findingsHash 14 iterations in a row while tree
-   *  churn moved every fingerprint, and the loop spent $296 on a diagnosis it had already made. Any
-   *  other outcome resets the run. */
+   *  counts repeats over it, which is how a loop that keeps churning the tree without moving the
+   *  findings is stopped: every fingerprint differs while the findingsHash does not, so the
+   *  fingerprint cannot detect it. Any other outcome resets the run. */
   trailingBlockedFindingsHashes: string[];
   /** A separate pre-fingerprint refusal streak, since that bound is the authoring one rather than
    *  the gate's. A gate settlement resets it. */
   trailingBuildFailureHashes: string[];
   /** Refused control censuses this campaign has already charged to each Builder-declared engine
    *  id, read from the census gate's own records. Restoring the per-engine count is what makes a
-   *  restarted invocation continue it instead of receiving a fresh allowance: run25-sol-0830 spread
-   *  eleven no-verdict refusals over four invocations. */
+   *  restarted invocation continue it instead of receiving a fresh allowance, since a campaign can
+   *  spread its refusals over several invocations and exhaust none of them. */
   toolNonResultRefusals: ToolNonResultCounts;
   /** How often each workspace commit has been recorded as an unchanged candidate: a settled
    *  iteration whose child tree equals its own round entry. The round then refuses it as
    *  `candidate-unchanged` without measuring it, so the strike costs one whole authoring session
    *  and leaves no trace inside the next one. Keyed by commit and never reset, because the evidence
-   *  is per tree: truss-run1-sol-0830 recorded the clause 21 times on commit `52e0d68c` across 14
-   *  controller invocations, and a per-session or trailing-run counter saw one sighting every time.
-   *  A commit the Builder actually moves takes its own key. */
+   *  is per tree: one commit can collect the clause twenty times over as many controller
+   *  invocations, where a per-session or trailing-run counter sees one sighting each time. A commit
+   *  the Builder actually moves takes its own key. */
   unchangedCandidateCommits: Record<string, number>;
   carried: CampaignFeedback[];
 }

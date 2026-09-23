@@ -6,8 +6,8 @@
  * is not a filing error — mixing two Builder conditions into one epoch means the evidence recorded
  * under it no longer describes a single condition, and nothing downstream can separate them again.
  *
- * So the successor cases all assert the same second thing, which is easy to miss on a first read:
- * the predecessor is left byte-identical. A successor that pointed at its predecessor and also
+ * So the successor cases all assert a second thing as well: the predecessor is left
+ * byte-identical. A successor that pointed at its predecessor and also
  * edited it would look correct from the new epoch and would have rewritten the record the old one's
  * results were measured against. Two consecutive reopens get a case for exactly that reason, since
  * one reopen can pass by accident where two cannot.
@@ -94,7 +94,7 @@ describe("campaign epoch selection (R0)", () => {
   });
 
   it("resolves an epoch recorded with the retired domain and engines fields to its own directory", () => {
-    // Every campaign written before 2026-09-15 hashed `domain` and `engines: null` into its key.
+    // A campaign written under the older key shape hashed `domain` and `engines: null` into it.
     // Lookup compares the binding fields, so the old key and directory stay in force and no
     // second epoch opens for the same prompt, Builder and pass.
     const root = scratch("retired-fields");

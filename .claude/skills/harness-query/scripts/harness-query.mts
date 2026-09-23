@@ -3,9 +3,9 @@
  *
  * Every Built Harness bundle keeps the starter-pack layout (`starters/pi-built-harness`):
  * agent/ + <model>/tasks.json + <model>/controls.json, recorded with an optional conformance.json,
- * where <model> is `correctness-model/` (current) or `grader/` (bundles recorded before
- * 2026-08-20). `modelDir` names it once for every read and write below.
- * That shared layout is why one wrapper works for every bundle: the pipeline is
+ * where <model> is `correctness-model/` (current) or `grader/` (older bundles). `modelDir` names it
+ * once for every read and write below. That shared layout is why one wrapper works for every
+ * bundle: the pipeline is
  *
  *   select tasks -> derive probe bundle -> measure -> report
  *
@@ -358,9 +358,9 @@ function selectTasks(recordedTasks: Task[], controls: Controls, options: Options
  *  candidate's `.toolchain` and then the host PATH; when neither holds it, every applicable check
  *  throws and each control comes back `non-result (verifier-throw)`. The battery then refuses at
  *  the control census with `DISCRIMINATION_NOT_PROVEN`, which reads as a bundle defect and is in
- *  fact a missing program: every committed bundle here links `.toolchain` into a campaign
- *  workspace that no longer exists, so a bundle needing `platformio` measures nothing on this
- *  machine while one needing only `clang++` measures normally.
+ *  fact a missing program: a committed bundle's `.toolchain` is a link into a campaign workspace
+ *  that may no longer exist, so a bundle needing `platformio` measures nothing on a host without it
+ *  while one needing only `clang++` measures normally.
  *
  *  Naming it before the copy keeps the refusal free: no probe bundle, no solve, no paid turn. */
 function unresolvedDeclaredTools(dir: string): string[] {

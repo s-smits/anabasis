@@ -16,9 +16,9 @@ import type { BriefTruthCheck } from "../truth/brief.ts";
 /**
  * What either wall mechanism is asked to confine: one resolved command and its arguments, the
  * directory it runs in, the exact files it may read and the roots those reads may come from.
- * Darwin, Bubblewrap, the read preparation the two share and the dispatch that selects between
- * them each declared these five fields for themselves until 2026-09-20, and a field added to one of
- * four copies is a field the other three silently drop. One declaration removes that failure.
+ * Darwin, Bubblewrap, the read preparation the two share and the dispatch that selects between them
+ * all read this one declaration rather than each spelling the five fields for themselves, because a
+ * field added to one of four copies is a field the other three silently drop.
  */
 export interface VerifierConfinementRequest {
   workdir: string;
@@ -38,9 +38,8 @@ export interface ToolEntry {
   /** Where the id resolved: the candidate workspace's `.toolchain` tree, or the host PATH. */
   source: "workspace-toolchain" | "host";
   /** What the executable bytes actually are: a compiled binary, or a text script behind a shebang.
-   *  Every truss battery of 2026-09-04 was graded by a 179-line Python file the Builder had written
-   *  into `.toolchain/bin`, and `source` alone called that the same kind of thing as a downloaded
-   *  cross compiler. */
+   *  A Builder can write its own script into `.toolchain/bin` and grade a whole battery with it,
+   *  and `source` alone would call that the same kind of thing as a downloaded cross compiler. */
   kind: "binary" | "script";
   /** The shebang command's basename for a script (`python3`, `sh`); null for a binary. */
   interpreter: string | null;

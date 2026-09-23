@@ -103,9 +103,10 @@ export function readVerifiedTrace(row: { traces: TracePointer[] }, baseDir: stri
  * adopted tree `domains/<slug>/` (a sibling of the campaign dir), or `candidates/<run>/` and
  * `contest/<run>/` under it, or a retained tree under `promotions/` or `versions/`. The case
  * record itself sits at the campaign root. Readers search these conventional locations and still
- * verify the digest, so a matching filename alone is insufficient. Run 8 measured the adopted
- * tree, and a reader searching only the campaign root reported all 100 intact traces as missing.
- * Each candidate root must be a direct directory before it is used.
+ * verify the digest, so a matching filename alone is insufficient. All of those locations have to
+ * be searched: a battery measured against the adopted tree leaves a reader that searches only the
+ * campaign root reporting every intact trace as missing. Each candidate root must be a direct
+ * directory before it is used.
  */
 function directDirectory(path: string, parent: string): boolean {
   try {

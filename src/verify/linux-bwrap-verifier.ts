@@ -77,9 +77,9 @@ export function prepareLinuxBwrap(
   const bwrapFlags = [
     ...bwrapBaselineArgs(VERIFIER_POSTURE),
     // A private /tmp for tools that spell the path themselves rather than reading TMPDIR:
-    // Frame3DD's `temp_dir()` returns "/tmp" on Unix and a truss check exited 12 here. It comes
-    // before the binds so that a workdir or read root under the host's own /tmp stays visible on
-    // top of it.
+    // Frame3DD's `temp_dir()` returns "/tmp" on Unix, so a check that calls it fails outright
+    // without one. It comes before the binds so that a workdir or read root under the host's own
+    // /tmp stays visible on top of it.
     "--tmpfs",
     "/tmp",
     ...bwrapReadBinds(reads.filter((path) => !underAny(path, baselineRoots))),

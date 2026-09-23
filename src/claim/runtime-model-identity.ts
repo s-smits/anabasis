@@ -48,7 +48,7 @@ interface IdentityObservation {
    *  because the difficulty population admits absence and must refuse contradiction
    *  (`src/run/climb-battery-admission.ts`): a battery some other model solved carries no
    *  information about this product's tasks, while one whose provider recorded nothing carries
-   *  its scores unchanged. Before 2026-09-20 both were one boolean and one clause name. */
+   *  its scores unchanged. One boolean and one clause name cannot carry both readings. */
   contradictions: string[];
   /** The transport reports no served model by construction; the pin stays configuration. */
   unattested: string | null;
@@ -129,11 +129,10 @@ function inspectPiIdentity(
       identity.provider.resultId === null ||
       identity.provider.resultId.trim() === "",
     contradictions: piContradictions(identity, pin, caseId),
-    // Substituting the pinned model for the Codex route's absent attestation was removed, and
-    // both Astra claims of 2026-09-08 were then refused on that absence alone. The absence is a
-    // fact about the route rather than about the run, so the identity stays unverified without
-    // refusing the claim. Any other provider's null model, and any different reported model,
-    // still refuses.
+    // The pinned model is never substituted for the Codex route's absent attestation, because that
+    // would manufacture the very evidence the census exists to check. The absence is a fact about
+    // the route rather than about the run, so the identity stays unverified without refusing the
+    // claim. Any other provider's null model, and any different reported model, still refuses.
     unattested:
       identity.provider.model === null && identity.provider.id === UNATTESTING_PROVIDER
         ? `case "${caseId}": provider "${identity.provider.id}" reported no served model, so the pinned model is configuration rather than attestation`
@@ -164,10 +163,10 @@ function inspectCase(
   // or internally inconsistent census. An identity naming another served model says something else
   // entirely: that a different condition was measured. The two clauses route to different owners,
   // one of them an environment clause, so a contradiction recorded beside a broken count must not
-  // leave through the count's exit. It sat under the count checks until 2026-09-20, where a census
-  // whose turn totals disagreed took its crossed identities with it, and the reading a wrong-model
-  // run needs is exactly the one a damaged row is likeliest to carry. Nothing here reads a count,
-  // so the order costs one map over rows a refusal would discard.
+  // leave through the count's exit. Under the count checks, a census whose turn totals disagreed
+  // would take its crossed identities down with it, and a damaged row is exactly the row likeliest
+  // to carry the reading a wrong-model run needs. Nothing here reads a count, so the order costs
+  // one map over rows a refusal would discard.
   const observations = row.identities.map((identity) => inspectIdentity(identity, pin, row.caseId));
   for (const observation of observations) contradicted.push(...observation.contradictions);
   if (!Number.isInteger(row.turns) || row.turns <= 0) {
@@ -182,18 +181,18 @@ function inspectCase(
   }
   if (row.completedTurns === 0) {
     // Named as a scored case on purpose: this clause lists cases inside the verified denominator
-    // whose provider identity is unproven. Run 81's clause read as a non-result list, and six
-    // independent readers filed these ids against that run's typed non-results.
+    // whose provider identity is unproven. Phrased any other way it reads as a list of typed
+    // non-results, and a reader files these ids against the run's environment failures instead.
     //
     // Absence of an attestation is not a contradiction in one. When the case's bytes reached the
     // verifier and got a verdict, nothing here says the wrong model ran; the census simply holds
-    // no row, because a turn the whole-solve wall cuts closes no provider result. c1d2a7's
-    // canopy-03 is that case exactly: 58 tool calls, an accepted submit, a verifier pass, and an
-    // ended turn at the two-hour wall. It refused its battery's whole claim, which held the only
-    // round of that run with failing cases. `unattested` is the bucket for it — the statement
-    // leaves `modelIdentity` unverified and nothing refuses — and it is the same line
-    // `src/truth/runtime-blocker.ts` draws on this count, where zero completed turns is an
-    // environment blocker only with no tool calls and no accepted submit.
+    // no row, because a turn the whole-solve wall cuts closes no provider result. That is an
+    // ordinary shape: dozens of tool calls, an accepted submit, a verifier pass, and an ended turn
+    // at the wall, which refuses the battery's whole claim if it is treated as invalid.
+    // `unattested` is the bucket for it — the statement leaves `modelIdentity` unverified and
+    // nothing refuses — and it is the same line `src/truth/runtime-blocker.ts` draws on this
+    // count, where zero completed turns is an environment blocker only with no tool calls and no
+    // accepted submit.
     //
     // An unverified case keeps the refusal, because no bytes were graded and there is nothing the
     // missing attestation would have been the identity of.

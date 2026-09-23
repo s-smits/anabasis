@@ -125,7 +125,7 @@ function required<T>(value: T | undefined | null): T {
 const NO_SUBMIT = () => undefined;
 
 describe("turn-budget steering", () => {
-  // The sixteen-call author-first interrupt ended on 2026-09-14; the unchanged fact stays as one line.
+  // Nothing interrupts a round for reading too long; the unchanged files are stated as one fact.
   it("names unchanged owned files as a fact, and says nothing once they moved", () => {
     expect(unchangedAuthoringNote("unchanged", ["agent", "correctness-model"])).toContain(
       "nothing under agent or correctness-model has changed since this round opened",

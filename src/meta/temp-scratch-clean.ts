@@ -1,8 +1,8 @@
 /**
- * Launch-time removal of this product's own leaked mkdtemp scratch from the OS temp root. Measured
- * on 2026-08-30 and 31, the per-user root held 171,290 entries, about 150,000 of them product
- * scratch directories from gates and campaigns whose exit-handler cleanup a SIGKILL had skipped, and
- * every fresh child process then stalled enumerating that root.
+ * Launch-time removal of this product's own leaked mkdtemp scratch from the OS temp root. A SIGKILL
+ * skips the exit-handler cleanup, so gates and campaigns leave their scratch directories behind:
+ * the per-user root has held 171,290 entries, about 150,000 of them this product's, and every fresh
+ * child process then stalls enumerating that root.
  *
  * The launch path must not recursively delete an unbounded stale tree, so it moves each eligible
  * top-level directory into one fresh, private quarantine directory in the same temp root instead. A

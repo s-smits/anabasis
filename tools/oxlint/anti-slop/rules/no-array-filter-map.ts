@@ -19,12 +19,12 @@ import { arrayMethodTarget, isKnownArrayExpression, unwrapArrayExpression } from
  * well enough to ask the question and not well enough to answer it.
  *
  * The message used to lead with the iterator pipeline and mention `flatMap` last, and the tree
- * says that is the wrong order for a rule that fires on an array. Measured 2026-09-20: 211
- * `flatMap` sites against 24 chains ending in `.toArray()`, sixteen of which open on `.values()`
- * or `.entries()` — a Map or a Set, which never had an array to collapse. So `flatMap` is what
- * this repository writes when the source is already an array, which is the only case this rule
- * reports, and the pipeline is what it writes when the source is not. Both stay in the message;
- * the order now matches the site the reader is standing on.
+ * says that is the wrong order for a rule that fires on an array. `flatMap` sites far outnumber
+ * chains ending in `.toArray()`, and most of those chains open on `.values()` or `.entries()` —
+ * a Map or a Set, which never had an array to collapse. So `flatMap` is what this repository
+ * writes when the source is already an array, which is the only case this rule reports, and the
+ * pipeline is what it writes when the source is not. Both stay in the message; the order now
+ * matches the site the reader is standing on.
  */
 export const noArrayFilterMapRule = defineRule({
   meta: {

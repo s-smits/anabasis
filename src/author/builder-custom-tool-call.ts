@@ -32,8 +32,8 @@ export interface BuilderCustomToolCall {
     toolNames?: string[];
   };
   /** Milliseconds from session start. The recorder states it on every call, so a live row always
-   *  has one; null remains for the outcome reader, which reads recorded sessions from a removed
-   *  transport fallback that saw an end without its start. */
+   *  has one; null remains for the outcome reader, which reads recorded sessions where a call's end
+   *  arrived without its start. */
   startedAtMs: number | null;
   durationMs: number | null;
   /** Dispatch mechanics only. A returned tool result may itself report blocked or non-result. */

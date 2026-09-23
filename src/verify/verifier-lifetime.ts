@@ -37,11 +37,11 @@ export interface VerifierLifetime {
   /** Observe recorded groups and clean exact retained cells. Never signal a persisted PID. */
   recover(): string[];
 }
-/** Why the lifetime refused, each reason with its own sentence. One sentence covered every reason
- *  for as long as the class existed, and it was the sentence written for the first: the 2026-09-18
- *  stop investigation read "restore the host" against 1714 receipts that had every one settled,
- *  because the throw was a `begin` after `close`. `solvability.ts` carries this message into an
- *  environment-owned finding, so a wrong sentence routes as evidence rather than staying in a log. */
+/** Why the lifetime refused, each reason with its own sentence. One sentence for every reason is
+ *  the first reason's sentence: an investigation then reads "restore the host" against receipts
+ *  that were all settled, because the throw was a `begin` after `close`. `solvability.ts` carries
+ *  this message into an environment-owned finding, so a wrong sentence routes as evidence rather
+ *  than staying in a log. */
 type VerifierStopReason =
   | "unsettled-children"
   | "closed"

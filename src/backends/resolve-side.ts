@@ -1,12 +1,12 @@
 /**
- * Resolve the Builder and Built Harness slots. This was split out of resolve.ts after live-run-02
- * failed preflight: `resolveSide` hardcoded an unconfigured default of codex while the support
- * table did not then list a Codex authoring session, so every fresh project failed before it built
- * anything. The defaults now come from project-backend-policy.ts, which also records slot support,
- * which means adding a transport no longer changes a default by itself.
+ * Resolve the Builder and Built Harness slots. The defaults come from project-backend-policy.ts,
+ * which also records which transports each slot supports, so the two cannot drift apart: a default
+ * hardcoded here beside a support table that does not list it fails every fresh project at
+ * preflight, before it has built anything, and adding a transport cannot change a default by
+ * itself.
  *
- * Selection precedence is unchanged: the operator file's kind, then the environment pin, then the
- * declared default. Unknown kinds and unavailable transports are refused together with the
+ * Selection precedence: the operator file's kind, then the environment pin, then the declared
+ * default. Unknown kinds and unavailable transports are refused together with the
  * configuration source that named them. Models resolve through the descriptor registry and its
  * named environment variables; operator files may not set them.
  */

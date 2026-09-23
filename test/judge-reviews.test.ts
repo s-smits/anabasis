@@ -78,7 +78,7 @@ interface CaseSpec {
 interface BatterySpec {
   cases: CaseSpec[];
   /** How battery.json presents its review. Default: the current producer's record. `control-census`
-   *  is a record from before 2026-09-14, when a control census stood behind the review. */
+   *  is a historical record, from when a control census stood behind the review. */
   census?: "none" | "off" | "tampered" | "control-census";
 }
 
@@ -144,7 +144,7 @@ function judgeEvidenceFor(spec: BatterySpec): JudgeEvidence {
   // rather than read it, so this tampering is the thing under test, not the count.
   if (spec.census === "tampered") return { ...evidence, disagreements: evidence.disagreements + 5 };
   if (spec.census !== "control-census") return evidence;
-  // A pre-2026-09-14 record with three answered controls behind it.
+  // A historical record with three answered controls behind it.
   return {
     ...evidence,
     censusSize: { ...evidence.censusSize, controls: 3, total: evidence.censusSize.total + 3 },
@@ -485,8 +485,9 @@ describe("coverage and historical records", () => {
     expect(result.coverage).toEqual({ reviewable: 2, reviewed: 1 });
     expect(result.contested.map((row) => row.taskId)).toEqual(["t1"]);
     expect(result.exit.kind).toBe("advisory");
-    // c1d2a7 round two reported "0 citing shown rules" for a fail that cited one and was not
-    // repeated on the re-sample. The clause counts vetoes, so it says veto and says what one is.
+    // Phrased as "0 citing shown rules", the clause reads as a count of fails that cited nothing,
+    // and a fail that did cite a rule and was not repeated on the re-sample lands in it. The clause
+    // counts vetoes, so it says veto and says what one is.
     expect(result.exit.reason).toContain(
       "0 were vetoes, a cited fail of a verifier pass that a second sample repeated",
     );
@@ -563,21 +564,20 @@ describe("Judge prompt policy", () => {
     expect(census).toContain("Do not list every requirement in the rationale.");
     expect(census).not.toContain("List each stated requirement and check it separately.");
     expect(census).toContain("If a required part is missing, wrong, contradicted, or unsupported");
-    // 2026-08-19: a failure may not rest on a convention the Judge was never shown (run 69).
+    // A failure may not rest on a convention the Judge was never shown.
     expect(census).toContain("a requirement you cannot see cannot ground a failure");
-    // 2026-09-02: a recomputed magnitude is not a check of the shown definition. Both
-    // truss-run6-opus-0902 disputes passed a negative peak against a "largest absolute" rule.
+    // A recomputed magnitude is not a check of the shown definition: comparing magnitudes alone
+    // passes a negative peak against a "largest absolute" rule.
     expect(census).toContain("recompute it from the shown inputs");
     expect(census).toContain("matches in magnitude but differs in sign or definition does not meet it");
-    // 2026-09-15: a recomputation failure shows its inputs, both values and the tolerance; a run the
-    // Judge cannot perform (compile, execute, solve, simulate) is not decided by predicting it.
+    // A recomputation failure shows its inputs, both values and the tolerance; a run the Judge
+    // cannot perform (compile, execute, solve, simulate) is not decided by predicting it.
     expect(census).toContain(
       "states the shown inputs it used, the recomputed value, the declared value and the tolerance quoted from the shown material",
     );
-    // 2026-09-19: the Judge supplies neither the tolerance nor the intermediates. Run de8b40's
-    // bridge-01 failed a verifier-passed case twice on a 0.05 kg tolerance the bound task does not
-    // publish (it publishes `reportToleranceRelative` 0.01, 2.88 kg here), over a gap produced by
-    // member lengths it derived from joint coordinates and got wrong in the second decimal.
+    // The Judge supplies neither the tolerance nor the intermediates. Left to supply them it fails
+    // a verifier-passed case on a tolerance the bound task never published, over a gap produced by
+    // quantities it derived itself and got wrong in the second decimal.
     expect(census).toContain(
       "your construction of that quantity is your own work and not evidence against the output",
     );

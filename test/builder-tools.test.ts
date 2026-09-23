@@ -6,7 +6,7 @@
  * no wall in front of it at all. So the cases run against a fixture repo with a derived policy, and
  * the path record is read back afterwards to show which accesses were allowed and which denied.
  *
- * Two things follow from that and are worth knowing before reading a pass. The capability block is
+ * Two things bound what a pass here means. The capability block is
  * `describe.if(osIsolationSupport().ok)`, so on a host with neither Darwin Seatbelt nor Linux
  * Bubblewrap available it does not run and reports nothing — a green suite on such a host has not
  * exercised these tools. And the policy itself, along with the OS enforcement behind it, belongs to
@@ -287,8 +287,8 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
   });
 
   it("grep: a single-file target and context rows keep their path instead of tripping the guard", async () => {
-    // rg drops the file name for a single-file target and separates context rows with `-`;
-    // the guard read `2` as a path and refused every such search in 29 sessions (2026-09-09 to 09-13).
+    // rg drops the file name for a single-file target and separates context rows with `-`, so a
+    // guard reading the leading field as a path sees `2` and refuses every such search.
     const poem = workspacePath("slug", "poem.txt");
     const rows = await run("grep", { pattern: "line two", path: poem, context: 1 });
     expect(rows).toContain(`${poem}:2:line two`);

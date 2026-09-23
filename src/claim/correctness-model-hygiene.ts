@@ -31,12 +31,10 @@ interface SharedDecidingComputation {
 }
 
 /** How many computations two modules must share before the agent counts as carrying the deciding
- *  one. Measured: across the 386 recorded bundles under `campaigns/`, 351 share none and 35 share
- *  five or more, so the band from one to four is empty and two sits inside it. The name comparison
- *  this replaced split that corpus identically, so no recorded verdict moves. The identity below
- *  was narrowed on 2026-09-20 to stop collapsing distinct named operations; a narrower identity
- *  can only drop collisions, and a genuine copy keeps the globals and members that now separate
- *  them. */
+ *  one. Real bundles divide sharply: the great majority share nothing at all, and a copying one
+ *  shares five or more, so the band from one to four is empty in practice and any floor inside it
+ *  splits the same bundles the same way. A narrower identity below can only drop collisions, and a
+ *  genuine copy keeps the globals and members that separate them. */
 const SHARED_COMPUTATION_FLOOR = 2;
 
 function unwrapParentheses(node: ts.Expression): ts.Expression {
@@ -222,9 +220,9 @@ function isMemberName(node: ts.Identifier, parent: ts.Node | null): boolean {
 }
 
 /** One identifier's part of the identity: an ordinal when the module declares the name, and the
- *  name itself otherwise. Until 2026-09-20 every identifier became an ordinal, which made
- *  `Math.min` and `Math.max` one computation, so two agent-side computations differing only in the
- *  named operation they called reached the floor above and refused a valid bundle. */
+ *  name itself otherwise. Making every identifier an ordinal would collapse `Math.min` and
+ *  `Math.max` into one computation, so two agent-side computations differing only in the named
+ *  operation they call would reach the floor above and refuse a valid bundle. */
 function identifierPart(
   node: ts.Identifier,
   parent: ts.Node | null,
@@ -290,11 +288,11 @@ function computationsOf(dir: string, file: BundleFile): Map<string, string> {
 
 /**
  * Agent modules carrying the verifier's own computation. `bundle-validation` closes the import
- * route, but a copy leaves no import to find, and two runs on 2026-09-18 shipped exactly that.
- * Comparing structure rather than name closes the cheapest way out of this refusal, which is a
- * rename of the copied exports. A partly rewritten computation is still not detected, and scoring
- * a candidate the solver already wrote against published limits is legitimate support, which is
- * why the floor is several computations rather than one.
+ * route, but a copy leaves no import to find, and bundles do ship exactly that. Comparing
+ * structure rather than name closes the cheapest way out of this refusal, which is a rename of the
+ * copied exports. A partly rewritten computation is still not detected, and scoring a candidate
+ * the solver already wrote against published limits is legitimate support, which is why the floor
+ * is several computations rather than one.
  */
 export function agentCarriesDecidingComputation(
   agentDir: string,

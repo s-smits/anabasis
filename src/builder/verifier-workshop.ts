@@ -114,10 +114,10 @@ interface WorkshopProcess {
 }
 
 /** The process facts of a command the wall launched, recorded beside the reason: a `null` process
- *  says the wall refused before launch, an exit code says the command ran and chose it. Rounds
- *  07-14 of a Sol run on 2026-08-22 had to draw that distinction from the recorded evidence alone,
- *  which is why it is a field and not a sentence in the tool result; the output itself stays in
- *  that result. The evidence row type in verifier-workshop-evidence.ts imports this one. */
+ *  says the wall refused before launch, an exit code says the command ran and chose it. A later
+ *  reader has only the recorded evidence to draw that distinction from, which is why it is a field
+ *  and not a sentence in the tool result; the output itself stays in that result. The evidence row
+ *  type in verifier-workshop-evidence.ts imports this one. */
 export interface WorkshopProcessFacts {
   exitCode: number | null;
   signal: string | null;

@@ -71,11 +71,8 @@ interface SourcePolicyFinding {
 /** Prose under a source root, which the authored-code ceiling does not describe.
  *
  *  `walkFiles` reads every file under `src`, `tools` and `vendor`, so the 800-line ceiling applied
- *  to Markdown too. That is exactly the three oxlint decision ledgers, and nothing else outside
- *  `.ts` under those roots reaches 400. Their sizes on the evening of 2026-09-20, after that day's
- *  work: `BASELINE.md` 1486 nonblank lines, `SHAPE-RULESET.md` 1414, `FIXER-DECISIONS.md` 134.
- *  They were 823 and 782 that morning, before the fifty-rule fixer review and the shape queue were
- *  written down.
+ *  to Markdown too. That catches the oxlint decision ledgers and nothing else: no other non-`.ts`
+ *  file under those roots reaches 400 lines, and the ledgers run to several times the ceiling.
  *
  *  So the finding asked for one thing: split the record of which lint rules were shipped or
  *  refused, at 800 lines, for a reason belonging to neither half. The number is derived from what
@@ -85,24 +82,12 @@ interface SourcePolicyFinding {
  *  incorrectly (AGENTS.md rule 8).
  *
  *  What bounds those ledgers is retiring an entry whose rule is decided and whose mechanism has
- *  left the source. That is a judgement a line count cannot make. An explicit `copiedFileLimits`
- *  entry still binds a Markdown file, because naming one is a decision rather than an accident of
- *  the walk.
- *
- *  Both revisit conditions this comment set for itself have since fired, which is why the numbers
- *  above are dated rather than a single measurement. `FIXER-DECISIONS.md` is the third file, and
- *  it is the split working as intended: the argument the 37 report-only rules share was extracted
- *  from prose that was repeating it, not added beside it. And both ledgers are at the 1,500-line
- *  mark. Neither fact changes the decision, because both triggers were proxies for the real
- *  question — whether old entries are still live — and the growth is current work rather than
- *  accumulation: the shape queue closed its third tier the same day it was written. The retirement
- *  pass was taken on the evening of 2026-09-20, by the next reader, and the half a scan can do is
- *  done: every backticked rule name, path and identifier in all three ledgers was tested against
- *  `git ls-files` and the source text, and one claim in 4,378 lines named something the tree no
- *  longer carries. `BASELINE.md` records the method and the table. So what is left owed is the
- *  judgement half — whether a decided entry still earns its lines — and that is worth doing when
- *  a reader is slowed down by one. A fourth Markdown file, or a ledger still growing next week
- *  with the same entries in it, is when a line count starts being the right instrument again. */
+ *  left the source, and that is a judgement a line count cannot make. A ledger growing because the
+ *  work it records is current is not the same as one accumulating dead entries, and only a reader
+ *  can tell the two apart. An explicit `copiedFileLimits` entry still binds a Markdown file,
+ *  because naming one is a decision rather than an accident of the walk. A line count becomes the
+ *  right instrument again when a fourth Markdown ledger appears under these roots, or when one
+ *  keeps growing with the same entries still standing in it. */
 const PROSE = /\.md$/;
 
 function walkFiles(root: string): string[] {
@@ -117,11 +102,11 @@ function walkFiles(root: string): string[] {
     // Installed dependencies and build output are nobody's authored source. The three original
     // roots hold neither; `packages` and `.claude`, which the export search reads, hold both.
     // Nor is a dot-directory: every one of the three dozen scratch roots a test opens inside the
-    // checkout carries a leading dot, and no tracked file in any root sits under one. Reading
-    // them cost a gate on 2026-09-20 twice over — the census counted generated fixture bytes as
-    // authored shapes for as long as the suite ran, and the read below lost its race with the
-    // `rmSync` that removes one. `.git` was the first instance of this rule. A named root is
-    // never filtered, only what the walk descends into, so `.claude` still opens.
+    // checkout carries a leading dot, and no tracked file in any root sits under one. Reading them
+    // costs a gate twice over: the census counts generated fixture bytes as authored shapes for as
+    // long as the suite runs, and the read below loses its race with the `rmSync` that removes
+    // one. `.git` was the first instance of this rule. A named root is never filtered, only what
+    // the walk descends into, so `.claude` still opens.
     if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
     const path = join(root, name);
     if (statSync(path).isDirectory()) files.push(...walkFiles(path));
@@ -133,10 +118,9 @@ function walkFiles(root: string): string[] {
 /**
  * `export` on a declaration that nothing outside its own file names.
  *
- * The largest shape in the recorded `/simplify` corpus: 22 of 138 net-negative commits removed
- * one, about 91 sites between them, and 226 were still standing when this check was written. An
- * export is a statement that another file may depend on the name, so changing the declaration
- * means looking for those dependents first — and for these there are none to find.
+ * An export is a statement that another file may depend on the name, so changing the declaration
+ * means looking for those dependents first — and for these there are none to find. It is the
+ * single largest shape a simplification pass removes.
  *
  * The search is textual, which decides two things. A name declared in two files is left alone,
  * because a mention cannot be attributed to one of them. And a name that appears anywhere in
@@ -239,9 +223,9 @@ export function sourceTextFindings(
  * satisfies, because a copied limit also turns the function check off for that file entirely. An
  * obsolete exception is debt, so the gate refuses it rather than carrying it (AGENTS.md rule 8).
  *
- * On 2026-09-19 the map held 93 entries and 10 of them bound anything. The 83 others were written
- * when the ceilings were introduced and kept their files exempt from the function check for as long
- * as nothing read them back.
+ * Most entries in the map bind nothing. They were written when the ceilings were introduced, and
+ * without this check they keep their files exempt from the function check for as long as nobody
+ * reads them back.
  */
 export function staleCopyLimits(read: (path: string) => string | null): SourcePolicyFinding[] {
   const findings: SourcePolicyFinding[] = [];

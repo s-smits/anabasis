@@ -34,9 +34,8 @@ interface RetainedWorkerState {
  *  worker's.
  *
  *  Both surviving verdicts carry the retained state, so the caller has no branch that can drop it.
- *  Until 2026-09-20 the failing branch returned before that assignment, and a turn whose tool call
- *  failed lost the checkpoint the worker had just recorded — the liveness evidence a long turn is
- *  read through (AGENTS.md working rule 6). */
+ *  A failing branch that returned before that assignment would lose the checkpoint the worker had
+ *  just recorded, which is the liveness evidence a long turn is read through. */
 type ResultVerdict =
   | { act: "accept"; result: AcceptedResult; retained: RetainedWorkerState }
   | { act: "fail-call"; error: string; retained: RetainedWorkerState }

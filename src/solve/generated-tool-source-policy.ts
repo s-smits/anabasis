@@ -49,9 +49,9 @@ const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `no
  * safe; what makes it evidence is that the boundary probe reports `networkRefused` to the
  * controller on every worker start, so the denial is executed rather than declared.
  *
- * Egress was tried on 2026-08-19 and reverted. The probe's connect became a real round trip on
- * every start, 33 conformance, runtime and verification cases failed on the refusal that no longer
- * arrived, and nothing had needed the access.
+ * Opening egress here has been tried and reverted. The probe's connect becomes a real round trip on
+ * every worker start, every conformance, runtime and verification case that reads the refusal fails
+ * because the refusal no longer arrives, and nothing needed the access.
  */
 const GENERATED_WORKER_POSTURE: IsolationPosture = { network: false };
 

@@ -42,7 +42,7 @@ const CORPUS: ControlCorpus = {
 };
 
 // Boundary discrimination: a task exactly on the cited constant plus an isolating reject
-// separates > from >= — the W20 lesson that samples either side cannot.
+// separates > from >=, which no pair of samples either side of it can do.
 const CHECK_ID = "charge-fault";
 
 function runControls(
@@ -379,7 +379,7 @@ const task = (temperature: number): BuildTask =>
 
 const TASKS = [task(59), task(60), task(61)];
 
-/** A correctnessModel parameterised by its comparator: the published rule, and the W20 mutation of it. */
+/** A correctnessModel parameterised by its comparator: the published rule, and the mutation of it. */
 function correctnessModel(raisesFault: (temperature: number) => boolean) {
   return async (_checkId: string, request: { publicTask: unknown; artifact: unknown }) => {
     // SAFETY: the runner hands this correctnessModel the public task and artifact this file authored.
@@ -406,7 +406,7 @@ const reject = (temperature: number, fault: boolean, mutationClass: string) => (
   expectedCheckId: CHECK_ID,
 });
 
-/** What W20 shipped: samples strictly either side of the value the rule turns on. */
+/** The corpus a Builder reaches for: samples strictly either side of the value the rule turns on. */
 const EITHER_SIDE: ControlCorpus = {
   accept: [accept(59, false), accept(61, true)],
   reject: [
@@ -434,9 +434,8 @@ describe("a numeric rule's boundary", () => {
   });
 
   it("hides a wrong comparator when every sample stops either side of it", async () => {
-    // The W20 result: the mutation is invisible, so the corpus scores it exactly as it scores the
-    // published rule. This exposes a gap in the controls: they omit the one value that distinguishes
-    // the two comparators.
+    // The mutation is invisible: the corpus scores it exactly as it scores the published rule. The
+    // gap is in the controls, which omit the one value that distinguishes the two comparators.
     const mutated = await run(strict, EITHER_SIDE);
     const published = await run(inclusive, EITHER_SIDE);
     expect(mutated.acceptsPassed).toBe(published.acceptsPassed);

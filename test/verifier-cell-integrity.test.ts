@@ -4,8 +4,8 @@
  * paths, and the window between the write and the spawn is where a second call can overwrite the
  * first one's inputs. Every case below opens that window deliberately and asks what came back.
  *
- * The host is built with `requireOsSandbox: false`, which is the thing to hold on to when reading a
- * pass here. Nothing in this file proves the OS would stop a child reaching outside its cell; it
+ * The host is built with `requireOsSandbox: false`, which bounds what a pass here means. Nothing in
+ * this file proves the OS would stop a child reaching outside its cell; it
  * proves the writer and the process owner keep one caller's bytes separate from another's. The
  * confinement half is proved where it can actually be executed, by `verifier-host-limits.test.ts`
  * for the wall a run requires and by `darwin-seatbelt.test.ts` and `linux-bwrap-verifier.test.ts`

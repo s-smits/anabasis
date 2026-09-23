@@ -18,13 +18,12 @@ import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
  *
  * A Builder session writes `in-flight` first and settles the same record when it returns. A session
  * that never returns — the host killed it, its provider stopped mid-turn — leaves that snapshot as
- * the final state, and run 25 ended with three of four records still reading `in-flight` long after
- * the campaign had stopped. The controller knows the invocation closed, so it says so here.
+ * the final state, so its record still reads `in-flight` long after the campaign has stopped. The
+ * controller knows the invocation closed, so it says so here.
  *
  * The invocation comes straight from the terminal write this run has just made, so the records
- * name the exact run and the exact closing time. Scanning controller state again instead could
- * select an abandoned sibling opening and leave these records open, which is what happened in
- * run 25.
+ * name the exact run and the exact closing time. Scanning controller state again instead selects
+ * whichever opening it finds, which can be an abandoned sibling, and then these records stay open.
  */
 function closeOpenAuthoringRecords(
   repoRoot: string,

@@ -6,8 +6,8 @@
  * file until `appendRecordedCaseRows` in run-driver.ts created the record row, and that runs only
  * once the whole battery is recorded. A battery killed mid-run therefore left intact traces on disk
  * that the verified read could not reach, because `readVerifiedTraceUnder` reads through pointers
- * and there were none — the same shape as run 65's 326-record Builder transcript surviving with
- * nothing in the campaign naming it. Recording the pointer with the case closes that window.
+ * and there were none: evidence surviving on disk with nothing in the campaign naming it is
+ * evidence no reader has. Recording the pointer with the case closes that window.
  *
  * The checks are the ones `src/builder/session-transcript.ts` copied from pi's session-verify and
  * that hold at any moment: present, readable, non-empty, and carrying the identity the reader will

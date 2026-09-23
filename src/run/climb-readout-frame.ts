@@ -117,8 +117,8 @@ export const FRAME_REVISION = sha256(canonicalJson(FRAME));
 const PLACEHOLDER = /\{([A-Za-z]+)\}/g;
 
 /** Fill a frame line. A placeholder without a value, or a value no placeholder asks for, throws:
- *  a sentence that silently kept `{count}` reached a Builder once, and a stale value is the same
- *  defect from the other side. */
+ *  a sentence that silently keeps `{count}` reaches a Builder with the brace still in it, and a
+ *  value left over from the previous wording is the same defect from the other side. */
 export function fill(template: string, values: Readonly<Record<string, string | number>>): string {
   const asked = new Set([...template.matchAll(PLACEHOLDER)].map((match) => match[1]));
   for (const key of Object.keys(values)) {

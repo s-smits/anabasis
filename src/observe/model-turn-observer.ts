@@ -23,11 +23,11 @@ export function observeSolveCase(
 
 /** Close the case span `observeSolveCase` opened, on the emitter that opened it, reading the
  *  outcome every ending already returns rather than settling the span in each of the solver's own
- *  exits. Run c1d2a7 opened 28 of these spans and closed none, so its stream named every case that
- *  started and nothing about how any of them ended: a reader watching that live battery saw 28
- *  beginnings, no outcome and no duration. A typed non-result is the failure state, because the
- *  environment produced no result at all; every other ending completed, including a solve the
- *  whole-solve wall stopped after it had already submitted. */
+ *  exits. Miss one exit and the span never closes, so the stream names every case that started and
+ *  nothing about how any of them ended — a reader watching a live battery sees beginnings, no
+ *  outcome and no duration. A typed non-result is the failure state, because the environment
+ *  produced no result at all; every other ending completed, including a solve the whole-solve wall
+ *  stopped after it had already submitted. */
 export function settlingCaseSpan(
   solver: Solver,
   observer: RunObserver | undefined,

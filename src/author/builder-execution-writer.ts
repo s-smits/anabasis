@@ -9,9 +9,9 @@ import { BUILDER_EXECUTION_EVIDENCE_FILE, type BuilderExecutionEvidence } from "
 import { proseSidecarExists, writeBuilderProse } from "./builder-prose.ts";
 
 /** One file per authoring session: the first session owns the bare name and each later session
- *  takes the next free numbered name. A single epoch-level path could not hold a multi-session
- *  epoch -- run 12x's repair session overwrote the opening build's record and left 3 of its 4
- *  sessions unobservable. */
+ *  takes the next free numbered name. A single epoch-level path cannot hold a multi-session epoch:
+ *  a repair session overwrites the opening build's record, and every session but the last becomes
+ *  unobservable. */
 function claimEvidencePath(epochDir: string): string {
   let path = join(epochDir, BUILDER_EXECUTION_EVIDENCE_FILE);
   for (let session = 2; existsSync(path) || proseSidecarExists(path); session += 1) {

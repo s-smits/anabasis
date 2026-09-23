@@ -9,12 +9,11 @@ import { MEASURE_FOR_FEEDBACK_REASON } from "./next-move.ts";
  * unchanged — only a completed measurement can say whether the environment recovered.
  *
  * A provider-stopped battery that still created a claim measured enough cases to be read, so it
- * resets the counter like any other delivery. One whose claim was refused counts instead: campaign
- * 3fd52f9e-28 recorded three such rounds in a row on 2026-09-17, with 11, 14 and then 24 of 25
- * cases non-results, and each written refusal reset this counter to 0. The declared allowance
- * never engaged, three more authoring rounds opened against the dead provider, and the run stopped
- * only when the Builder's own turn was refused. A dead provider is not remeasured merely because
- * rounds remain.
+ * resets the counter like any other delivery. One whose claim was refused counts instead. Read as a
+ * delivery it would reset the counter on a battery that was almost entirely non-results, the
+ * declared allowance would never engage, and authoring round after authoring round would open
+ * against a dead provider until the Builder's own turn was refused. A dead provider is not
+ * remeasured merely because rounds remain.
  */
 export function nextBlockedRounds(prev: number, result: IterationResult): number {
   const { measure } = result.steps;
@@ -36,8 +35,8 @@ export function nextBlockedRounds(prev: number, result: IterationResult): number
  *  candidates and stays null on a reused round — but the entry alone counted the round that
  *  finally produced evidence, and at the third such round `loopTerminal` ended the run before the
  *  next selection could read what it had just been given, which is why the exit check is here too.
- *  Any round of another shape resets the count. The default round cap was this spin's accidental
- *  bound until its removal on 2026-08-19. */
+ *  Any round of another shape resets the count. Nothing else bounds this spin: the default round
+ *  cap that once ended it by accident is gone. */
 export function nextStalledMeasureRounds(prev: number, result: IterationResult): number {
   const { measure } = result.steps;
   const stalledEntry =
@@ -46,7 +45,6 @@ export function nextStalledMeasureRounds(prev: number, result: IterationResult):
     result.decision.reason.startsWith(MEASURE_FOR_FEEDBACK_REASON);
   const feedbackRows = result.steps.admission?.feedback.length ?? 0;
   const readable = measure?.claim != null || feedbackRows > 0;
-  // The count resets when a measure-for-feedback round writes what the selector reads (2026-09-07,
-  // PR #572); the recorded per-iteration decisions show that recovery as measure, measure, rebuild.
+  // The count resets when a measure-for-feedback round writes what the selector reads.
   return stalledEntry && !readable ? prev + 1 : 0;
 }

@@ -54,8 +54,7 @@ interface EarliestFailure {
 }
 
 /** The Built case width that ran. The harness declares it in `agent/config.yaml`, because the
- *  harness is what knows how heavy one of its cases is and what the host has to run it on; the
- *  width was a bare constant until 2026-09-16 and a run-only setting until 2026-09-18.
+ *  harness is what knows how heavy one of its cases is and what the host has to run it on.
  *
  *  `ANA_BUILT_CONCURRENCY` still wins where it is set, because the width also spends the
  *  provider's session limit, which is the operator's to bound and not the harness's to see. The

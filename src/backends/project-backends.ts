@@ -11,8 +11,8 @@ import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { dirname } from "../meta/path.ts";
 // The project registry decides whether a project exists. This dependency (backends -> run) is
 // deliberate: it lets the selection check read that registry instead of inferring existence from
-// output directories, an inference that missed freshly registered projects with no output yet and
-// refused run 14's launch flags (2026-07-28).
+// output directories, an inference that misses a freshly registered project with no output yet and
+// refuses its launch flags.
 import { recordedProjects } from "../run/project-registry.ts";
 import { type JsonValue, isRecord } from "../meta/json-shape.ts";
 import {

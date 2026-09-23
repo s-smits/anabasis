@@ -25,12 +25,11 @@ function isBorrowedMemberName(node: ESTree.Node): boolean {
  * that answer turns out to be is the name, and that is what the message is asking for when it asks
  * for the domain role rather than the structure.
  *
- * The word is matched whole, not as a substring. Until 2026-09-22 the rule matched the letters
- * anywhere, so `reshaped`, the result of reshaping a list, had to be renamed; the rename chosen,
- * `newQuestions`, named the value no better. A verb built on the word names an operation, not
- * a structure standing in for a role. `WORD_BREAK` is what makes whole-word matching work inside
- * a single identifier, splitting on underscores, digits and case steps so that `jsonShaped` is
- * three words and `reshaped` is one.
+ * The word is matched whole, not as a substring. Matching the letters anywhere instead catches
+ * `reshaped`, the result of reshaping a list, and forces a rename that names the value no better.
+ * A verb built on the word names an operation, not a structure standing in for a role.
+ * `WORD_BREAK` is what makes whole-word matching work inside a single identifier, splitting on
+ * underscores, digits and case steps so that `jsonShaped` is three words and `reshaped` is one.
  *
  * A property read off another value is exempt, through `isBorrowedMemberName`. `parsed.shape` is
  * not this file naming anything — the name belongs to whatever declared it, the rename would have

@@ -50,7 +50,7 @@ const CATALOG = [
 
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
-/** Run 6's shape: a root that transcribes the catalog, and an answer that spells "n/a". */
+/** A root that transcribes the catalogue, beside an answer that spells "n/a". */
 function runSix(taskId: string): Witness {
   return {
     taskId,
@@ -94,15 +94,13 @@ describe("the representation census", () => {
   });
 
   /**
-   * The former calibration case remains here to explain the stricter admission rule. Legacy
-   * iteration 05 transcribes `publicInput.requiredStops` into root `routeFacts` on all 25 tasks
-   * beside a derived `itinerary`, and its recorded taskSetHash 9bc85350082b1ebc backs a measured
-   * 25/25 claim; that evidence kept the severity advisory. Run 67 answered it: its schedule root
-   * fired this finding on 125/125 reference witnesses across five fingerprinted task sets, every
-   * iteration was still admitted, and six batteries measured 150/150 over levels L0-L4 without
-   * finding a limit. Those passing results did not resolve the copied-root finding. Admission
-   * now refuses that representation: the Builder must remove routeFacts or derive its value,
-   * as the finding detail explains. The fixture below checks the refusal itself.
+   * Why the admission rule is strict rather than advisory. A bundle that transcribes
+   * `publicInput.requiredStops` into root `routeFacts` beside a derived `itinerary` can pass every
+   * task it is measured on, and the finding then fires on every reference witness of every task set
+   * while each iteration is still admitted. A battery passing in full does not resolve a
+   * copied-root finding, because the copied root is exactly the part the battery never tested.
+   * Admission now refuses that representation: the Builder must remove routeFacts or derive its
+   * value, as the finding detail explains. The fixture below checks the refusal itself.
    */
   it("blocks an artifact root that copies the same public input on every task", () => {
     const stops = [{ stopId: "ST-01", zoneId: "north" }];
@@ -116,9 +114,9 @@ describe("the representation census", () => {
     expect(findings.filter((f) => BLOCKING_CODES.has(f.code))).toHaveLength(1);
   });
 
-  // Run 67's measured cases held a passing artifact whose schedule was the copied rows in another
-  // order, and one reordered reference witness would have silenced the every-witness aggregate.
-  // Copy detection therefore ignores row order in the compared collection.
+  // A passing artifact can hold the copied rows in another order, and one reordered reference
+  // witness would then silence the every-witness aggregate. Copy detection therefore ignores row
+  // order in the compared collection.
   it("still blocks a copy whose rows are reordered, on every witness or on one", () => {
     const stops = [
       { stopId: "ST-01", zoneId: "north" },
@@ -228,7 +226,7 @@ describe("the representation census", () => {
 });
 
 /**
- * run 52's shape. The candidate's own public schema declares `compensation` as the closed set
+ * The candidate's own public schema declares `compensation` as the closed set
  * {none, flat, reactive}, and the census refused the submit because the reference answer wrote the
  * declared "none". A state the schema names is not a spelling the answer invented; a check reading
  * that field evaluates the state, so there is nothing to repair. The guard the rule was built for
@@ -278,8 +276,8 @@ describe("a value the public schema declares as a closed state", () => {
   });
 });
 
-/** Run 12's shape: the solve reads fields nobody authored, so its derived root is the same
- *  (empty) value on every task while the authored inputs all differ. */
+/** The solve reads fields nobody authored, so its derived root is the same (empty) value on every
+ *  task while the authored inputs all differ. */
 const runTwelve = (taskId: string, requests: string[]): Witness => ({
   taskId,
   publicInput: { requestedItems: requests.map((requestId) => ({ requestId })) },
@@ -361,8 +359,8 @@ describe("representation findings in the solvability gate", () => {
     expect(JSON.stringify(blocking[0])).toContain("accessionCode");
     // Both compared sides are the Builder's own public facts, so the finding crosses in full.
     expect(blocking[0]?.findings?.[0]?.disclosure).toEqual({ class: "authored" });
-    // Transcription also blocks admission since run 67, so it shares this blocking row and no
-    // advisory row remains for this fixture.
+    // Transcription also blocks admission, so it shares this blocking row and no advisory row
+    // remains for this fixture.
     expect(JSON.stringify(blocking[0])).toContain("ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT");
     expect(feedback.filter((row) => row.severity === "advisory")).toHaveLength(0);
     // No hidden expectation leaves with either.

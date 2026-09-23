@@ -89,8 +89,8 @@ export interface HostSolveIsolationEvidence {
   /** True only when every step held: the protected read was refused, the control read returned its
    *  canary, the deny-lifted read returned the protected canary, and the ancestor-rename guard
    *  refused while its lifted control succeeded. A mechanism that merely failed satisfies none of
-   *  them, which is the point — a broken wall has to leave the isolation contractual rather than
-   *  earn `physical` by producing errors. */
+   *  them, so a broken wall leaves the isolation contractual rather than earning `physical` by
+   *  producing errors. */
   isolated: boolean;
   /** False when the mechanism or a required probe could not run. */
   available: boolean;
@@ -259,15 +259,15 @@ export function spawnUnderSolveIsolation(
  * earn `physical` by failing, and the canary appearing in the output refutes a refusal outright
  * however the process exited.
  *
- * The mechanism shapes the refusal string. Seatbelt denies the read, and the kernel reports
+ * The mechanism shapes the refusal string. Seatbelt denies the read and the kernel reports
  * "Operation not permitted". Bubblewrap never mounts the protected path into the namespace, so there
- * is nothing to deny and the read fails with ENOENT instead. For the bwrap mechanism ENOENT
- * therefore counts, which is safe only because the two accompanying controls have to hold as well:
- * the same-policy control read must return its canary, proving that `cat` and the marker format
- * work, and the deny-lifted discrimination read must return the protected canary, proving the path
- * is readable once it is no longer hidden. Neither a broken probe nor an absent file could satisfy
- * both. The default branch, Darwin or an unspecified mechanism, keeps the strict shape, so "no such
- * file" out of a broken Seatbelt profile still fails to earn `physical`.
+ * is nothing to deny and the read fails with ENOENT instead. ENOENT therefore counts for bwrap, and
+ * that is safe only because the two accompanying controls have to hold as well: the same-policy
+ * control read must return its canary, proving `cat` and the marker format work, and the deny-lifted
+ * discrimination read must return the protected canary, proving the path is readable once it is no
+ * longer hidden. Neither a broken probe nor an absent file satisfies both. The default branch,
+ * Darwin or an unspecified mechanism, keeps the strict shape, so "no such file" out of a broken
+ * Seatbelt profile still fails to earn `physical`.
  */
 export function observedRefusal(
   combined: string,

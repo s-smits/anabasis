@@ -171,11 +171,11 @@ function addReadPath(reads: Set<string>, path: string): void {
  *
  * `stat` rather than `lstat`, so the answer is about what the path leads to. A packaged binary and
  * an imported Seatbelt profile are routinely installed as links — every Homebrew executable in
- * `/opt/homebrew/bin` links into `../Cellar` — and `lstat` answers false for all of them. That
- * mattered in `command-guard.ts`, which spelled these four lines with `lstat` until 2026-09-20: on
- * a host whose guard was a link, no guard resolved, nothing was asked about a destructive command,
- * and the allow was silent, because a guard that cannot answer is deliberately not a refusal. A
- * link to a directory is still rejected either way.
+ * `/opt/homebrew/bin` links into `../Cellar` — and `lstat` answers false for all of them. What that
+ * costs is easiest to see in `command-guard.ts`: spell these four lines with `lstat` and, on a host
+ * whose guard is a link, no guard resolves, nothing is asked about a destructive command, and the
+ * allow is silent, because a guard that cannot answer is deliberately not a refusal. A link to a
+ * directory is still rejected either way.
  *
  * `linux-bwrap.ts` keeps its own copy, `isRegularFileDeny`, on `lstat`, and is right to. There the
  * question is what the path *is*, because a tmpfs laid over a link lands on the link's target and

@@ -14,10 +14,9 @@
  *
  * Why the rules exist. `(deny file-read* (subpath P))` names P as a string, so a confined process
  * that can rename an ancestor of P relocates the protected bytes to a path no rule mentions and
- * reads them there. This was measured on 2026-07-27 against the profile `solve-sandbox.ts` emitted
- * before this file existed: a direct read of the canary was refused, renaming the denied directory
- * itself was refused, and renaming its parent succeeded and returned the canary at exit 0. Adding
- * these rules refused that same rename.
+ * reads them there. Measured against a profile without these rules: a direct read of the canary is
+ * refused, renaming the denied directory itself is refused, and renaming its parent succeeds and
+ * returns the canary at exit 0. These rules refuse that last rename.
  *
  * The hole belongs to the allow-by-default posture this solve isolation needs in order to let a
  * verified session reach its provider. The verifier isolation never had it: `darwin-seatbelt.ts` is

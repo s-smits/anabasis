@@ -3,8 +3,8 @@
  * no measurement evidence; the caller persists the projection. Two outputs matter: the contested
  * rows (every verified case where the Judge and the verifier disagreed, named without a threshold)
  * and the Judge exit, which is advice only. The Judge never blocks and never routes an owner
- * (operator decision 2026-09-14); its disagreements reach the rebuild advice packet by family and
- * nothing more.
+ * (operator decision); its disagreements reach the rebuild advice packet by family and nothing
+ * more.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -196,11 +196,10 @@ function judgeExit(contested: readonly ContestedCase[], verified: number): Judge
   return {
     ...base,
     kind: "advisory",
-    // What `vetoed` counts is a cited fail a second sample repeated, and the clause used to read
-    // "N citing shown rules". c1d2a7's round two reported "0 citing shown rules" for a fail that
-    // cited one -- the catalogue-mass rule, with a 0.00061 kg disagreement against a 0.0005 kg
-    // tolerance -- and that fail was not repeated on the re-sample. The author reads this sentence
-    // to decide whether the disagreement deserves its attention, so it names both halves.
+    // What `vetoed` counts is a cited fail a second sample repeated. The clause used to read
+    // "N citing shown rules", which counts a different thing and reads as zero for a fail that did
+    // cite a rule and simply was not repeated on the re-sample. The author reads this sentence to
+    // decide whether the disagreement deserves their attention, so it names both halves.
     reason: `the Judge disagreed with the verifier on ${contested.length} of ${verified} verified cases (${verifierFailJudgePass} verifier-fail/Judge-pass, ${verifierPassJudgeFail} verifier-pass/Judge-fail); ${vetoed} were vetoes, a cited fail of a verifier pass that a second sample repeated, which is what the epoch reviewer settles; the verifier decides every pass`,
   };
 }

@@ -9,9 +9,9 @@
  * Each command gets three writable trees (`solve-command-isolation.ts` owns the rules): a work tree
  * holding the draft, the session home where installs survive between commands (never read back),
  * and a TMPDIR made for this command alone. Reads are open except the repository, protected home
- * roots, other commands' trees and run data; outbound network is open (operator decisions
- * 2026-08-15 and 2026-09-06), so a solver can fetch a toolchain it was not given; and `/tmp` stays
- * writable because build scripts spell it outright (2026-09-15).
+ * roots, other commands' trees and run data; outbound network is open (operator decision), so a
+ * solver can fetch a toolchain it was not given; and `/tmp` stays writable because build scripts
+ * spell it outright.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -55,9 +55,9 @@ const LISTED_PROGRAMS = 20;
 /** The worker side of the draft exchange, with the answer root the draft fills. */
 export interface BuiltFilePort {
   /** A command sees the draft in a folder of this name, so a path the shell uses is the answer's
-   *  own path. Run 08c0f2 compiled `firmware/firmware.ino` at the top of the shell and passed,
-   *  while the checker found the same file at `firmware/firmware/firmware.ino`: the solver and the
-   *  verifier were reading two different roots for one answer. */
+   *  own path. Without it a solver compiles `firmware/firmware.ino` at the top of the shell and
+   *  passes while the checker finds the same file at `firmware/firmware/firmware.ino` — solver and
+   *  verifier reading two different roots for one answer. */
   readonly root: string;
   files(): Promise<Record<string, string>>;
   applyFiles(files: Record<string, string>): Promise<void>;
@@ -130,12 +130,11 @@ function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" |
 /**
  * What the harness would have allowed, appended to a command its own wall cut.
  *
- * The solver of c1d2a7 passed `timeout: 120` on 42 of the 74 calls whose arguments its traces
- * record, and was cut 21 times across 18 solves, while the same bundle's config granted 300 s by
- * default and 900 s on request. "Command timed out after 120 seconds" names the number the solver
- * chose and never the number it had, so the cheapest answer available to it — asking for time it
- * already owned — was the one it could not see. The schema states both numbers at registration, and
- * that demonstrably was not where they decided anything.
+ * "Command timed out after 120 seconds" names the number the solver chose and never the number it
+ * had, so a solver that passes a short `timeout` keeps being cut while the harness grants several
+ * times that by default and more again on request. The cheapest move available to it — asking for
+ * time it already owns — is the one it cannot see. The schema states both numbers at registration,
+ * and that demonstrably is not where they decide anything.
  *
  * Whether this wall cut the command is the same question as what to say about it, so the two have
  * one owner here. Pi's own `code` answers it: Pi attaches `{ cause: result.error }` on a cut, throws
@@ -180,20 +179,18 @@ function canRun(path: string): boolean {
 
 /**
  * The programs the harness installed, given by the names that run them. A location would not help,
- * because the tool tree is in neither the command's folder nor its home. Every case of truss run
- * 298967 (2026-09-15) ran `ls .toolchain` or `ls ~/.toolchain`, found nothing, and wrote its own
- * nonlinear solver in the host's python3 — while the first PATH entry held the Builder's OpenSeesPy
- * interpreter all along. Since 2026-09-16 the list covers every program directory the tool tree
- * has, as the PATH does.
+ * because the tool tree is in neither the command's folder nor its home: a solver left to look runs
+ * `ls .toolchain` or `ls ~/.toolchain`, finds nothing, and re-implements in the host's python3 what
+ * the first PATH entry held all along. The list covers every program directory the tool tree has,
+ * as the PATH does.
  *
  * The bound cuts alphabetically, so whatever fills the first slots decides what the solver hears
- * about. A uv-made venv for a structural domain puts nine unrunnable entries in front of the tree's
- * own programs, and against a bound of twenty that leaves the Builder's `truss-check` and
- * `sectionprops` unnamed behind `pydoc.bat`. Both repairs here are facts rather than judgements
- * about which name matters: an entry no mode lets the command run is not a program it can run by
- * name, and a cut tail is still reachable through the PATH the command already carries. Ranking the
- * survivors by what they look like would be the loop choosing domain content, which is the
- * Builder's to choose.
+ * about. A uv-made venv puts nine unrunnable entries in front of the tree's own programs, and
+ * against a bound of twenty that leaves the domain's own checkers unnamed behind `pydoc.bat`. Both
+ * repairs here are facts rather than judgements about which name matters: an entry no mode lets the
+ * command run is not a program it can run by name, and a cut tail is still reachable through the
+ * PATH the command already carries. Ranking the survivors by what they look like would be the loop
+ * choosing domain content, which is the Builder's to choose.
  */
 function installedPrograms(toolTree: string | null): string {
   // The same directories the command's PATH holds, in its order, so the first entry of a name here
@@ -229,11 +226,11 @@ function readText(path: string): string | null {
 
 /**
  * What the command left in the work tree, the agent's own paths first. Past the answer's bounds an
- * entry is left behind rather than the batch refused, because refusing the batch discarded a source
- * edit together with a toolchain install on 2026-08-19. An own path the draft cannot carry keeps its
- * previous text, since dropping it would read as a deletion the command never asked for, while an
- * own path absent from disk is a deletion the command did mean. Sizes are measured JSON-escaped,
- * because that is how the apply frame carries them.
+ * entry is left behind rather than the batch refused, because refusing the batch discards a source
+ * edit together with whatever oversized thing arrived beside it. An own path the draft cannot carry
+ * keeps its previous text, since dropping it would read as a deletion the command never asked for,
+ * while an own path absent from disk is a deletion the command did mean. Sizes are measured
+ * JSON-escaped, because that is how the apply frame carries them.
  */
 function readTree(root: string, before: Record<string, string>): ReadTree {
   const own: [string, string][] = [];
@@ -327,8 +324,8 @@ export function createBuiltBashTool({
       if (policy === null) {
         throw new Error("the shell cannot run a command: this session has no isolation to run it under");
       }
-      // The Builder's own guard is asked here too (operator decision 2026-09-06), so one set of
-      // rules answers both sides; the description states them, so a refusal surprises nobody.
+      // The Builder's own guard is asked here too (operator decision), so one set of rules answers
+      // both sides; the description states them, so a refusal surprises nobody.
       const refusal = refuseDestructiveCommand(command, guardEnv, safeguardContext, BUILT_SHELL_RULES);
       if (refusal !== null) throw new Error(refusal);
       // One 0700 parent for every command's trees, so the wall can close them all and reopen this one;
@@ -363,10 +360,10 @@ export function createBuiltBashTool({
           },
         });
         const asked = Math.max(1, Math.floor(timeout ?? timeouts.shellDefaultSeconds));
-        // A passed timeout may only raise the default, never lower it. Run de8b40's battery lost 13
-        // commands to `timeout: 120` beside an inner `timeout 880` on a harness allowing 900, and
-        // both failing families were diagnosed as search budget the solver had cut short itself.
-        // The clause above told it so and it asked for 120 again, so the floor is enforced here.
+        // A passed timeout may only raise the default, never lower it. A solver that passes a short
+        // timeout beside a much longer inner one cuts its own search budget short and then fails
+        // for want of it; the clause above says so and gets the same short value again, so the
+        // floor is enforced here rather than left to advice.
         const seconds = Math.min(Math.max(asked, timeouts.shellDefaultSeconds), timeouts.shellMaxSeconds);
         const execution = { env: new NodeExecutionEnv({ cwd: work, shellPath: "/bin/sh", shellEnv: env }) };
         // A non-zero exit throws, so it is caught into a value rather than left to unwind: the

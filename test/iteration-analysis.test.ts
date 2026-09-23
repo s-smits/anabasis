@@ -137,12 +137,11 @@ function repo(withJudges = true): string {
   return root;
 }
 
-/** Run new-sol 2026-08-27: the declared firmware checker missed its own 120 s wall on
- *  three battery compiles while the other cases scored. EXTERNAL_RESULT_UNBOUND blocked the
- *  claim, but the analysis called the three cases an environment failure with no owner, so the
- *  repairable check reached no author session and the round could only rerun unchanged. Since the
- *  host resolves every tool itself, an unbound row has no environment reading left: it says the
- *  check returned a verdict no completed tool run supports. */
+/** A declared external checker can miss its own wall on some cases while the rest score. Reading
+ *  those as an environment failure with no owner leaves the repairable check reaching no author
+ *  session, so the round can only rerun unchanged. Since the host resolves every tool itself, an
+ *  unbound row has no environment reading left: it says the check returned a verdict no completed
+ *  tool run supports. */
 describe("a checker outage recorded in the measured battery", () => {
   function batteryTree(rows: Array<{ code: string; message: string }>): string {
     const root = mkdtempSync(join(tmpdir(), "ana-unbound-"));
@@ -187,9 +186,9 @@ describe("the routing decision", () => {
   });
 
   it("derives the tests owner for both kinds that say the tasks are the subject", () => {
-    // The producers do not stamp this. Two producers recorded different owners for the same
-    // statement, so one of the two reached nobody: w46-opus i03 recorded its only diagnosis as
-    // a `hardness` row with a null owner and routed no feedback at all.
+    // The producers do not stamp this. Left to them, two producers record different owners for
+    // the same statement and one of the two reaches nobody — a sole diagnosis recorded as a
+    // `hardness` row with a null owner routes no feedback at all.
     for (const kind of ["hardness", "curriculum-defect"] as const) {
       expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toEqual({ owner: "tests" });
     }
@@ -240,16 +239,16 @@ describe("host findings — evidence restatements only", () => {
     expect(found[0]?.evidence).toBe(RECORD);
   });
 
-  // Run 08c0f2 i02: six external checks ran no tool, and the packet told the Builder to rerun.
+  // External checks that ran no tool: the packet must not simply tell the Builder to rerun.
   it("leaves a non-result whose kind names no environment to its diagnosis, not a rerun", () => {
     const analysis = packet({ summary: { nonResults: 6 }, cases: stopped(6, "verifier") });
     expect(hostFindings(NO_MEASURED_TREE, analysis)).toEqual([]);
   });
 
   it("adds no finding for an all-pass battery — the measurement note owns finding no limit", () => {
-    // It used to add an advisory harness-defect owned by "tests". The measurement note already
-    // states the same battery with its distance from the aim, its streak and the scope the next
-    // one needs, so this row only repeated it under a defect kind the harness had not earned.
+    // No advisory harness-defect row owned by "tests" is added for it. The measurement note already
+    // states the same battery with its distance from the aim, its streak and the scope the next one
+    // needs, so such a row only repeats it under a defect kind the harness has not earned.
     const analysis = packet({ summary: { passed: 2, passRate: 1, discrimination: "all-pass" } });
     expect(hostFindings(NO_MEASURED_TREE, analysis)).toEqual([]);
   });
@@ -327,8 +326,8 @@ describe("controller admission", () => {
     const evidence = admitFindings(root, packet(), [
       finding({ claim: "the battery did not discriminate", proposedOwner: "tests" }),
     ]);
-    // The author input reads ONLY f.findings; an admission without it renders nothing (the
-    // fullrun-live-01 defect), and an unmarked packet is refused at the author isolation.
+    // The author input reads ONLY f.findings, so an admission without it renders nothing, and an
+    // unmarked packet is refused at the author isolation.
     expect(evidence.feedback[0]?.findings).toEqual([
       {
         code: "harness-defect",
@@ -408,7 +407,7 @@ describe("controller admission", () => {
     expect(admission.feedback.map((row) => [row.owner, row.severity])).toEqual([["brief", "blocking"]]);
     expect(JSON.stringify(admission.feedback)).toContain("files");
     // The request has one owner: every prompt rendering these rows states it once under its own
-    // heading, and a copy per finding put it four times into one authoring prompt (2026-09-19).
+    // heading, and a copy per finding would repeat it once per finding in one authoring prompt.
     expect(JSON.stringify(admission.feedback)).not.toContain(request);
     expect(JSON.stringify(admission.feedback)).toContain(brief.truthChecks[0]!.assertion);
     expect(JSON.stringify(admission.feedback)).toContain(brief.ruleDecisions![0]!.statement);
@@ -442,8 +441,8 @@ describe("controller admission", () => {
       }),
     );
     // The same check, observed rather than demonstrated: it asks for no repair, so it carries no
-    // obligation to bind one to. Astra i13 to i18 shipped the whole `equilibrium` assertion beside
-    // "asks for no repair" six times, 90 per cent of everything the rebuild author read.
+    // obligation to bind one to. Left unbounded, one such assertion repeats verbatim on every
+    // round and crowds out everything else the rebuild author reads.
     const observed =
       publicEpochReview({ status: "completed", ...advisory }, contract).findings[0]?.claim ?? "";
     expect(observed).toContain("check `compile`");
@@ -541,8 +540,8 @@ describe("the per-case feedback restriction", () => {
     const evidence = admitFindings(root, analysisWithTasks("task-901"), [perCase]);
     // The finding is still admitted, so the recorded packet discloses it to the controller.
     expect(evidence.admitted).toEqual([perCase]);
-    // It reaches no author session: its text names a failure location, and the
-    // count-only channel that used to speak for it went with the per-case producer.
+    // It reaches no author session: its text names a failure location, and no count-only channel
+    // speaks for it.
     expect(evidence.feedback).toEqual([]);
     expect(evidence.findingRoutes).toEqual([
       { findingDigest: expect.any(String), kind: "harness-defect", owner: null, reason: "per-case-detail" },

@@ -1,7 +1,7 @@
 /**
- * What lets a measured candidate replace the selected product. The paired comparison went on
- * 2026-09-04 and one battery decides a round now, so nothing here reads a second battery or a
- * Progress Guard verdict; neither survives in `src/` at all.
+ * What lets a measured candidate replace the selected product. The paired comparison is gone and
+ * one battery decides a round, so nothing here reads a second battery or a Progress Guard verdict;
+ * neither survives in `src/` at all.
  *
  * What replaced them is a set of floors the candidate meets on its own. Its claim has to reach
  * `measured` and then pass it, because stopping exactly at `measured` means the battery ran and
@@ -327,7 +327,7 @@ describe("promoteCandidate — one battery, one decision", () => {
     expect(held.decision).toBe("held");
     expect(held.clauses).toEqual(['candidate-unmeasured: its claim stages end at "build-admissible"']);
 
-    // Run a7f9ac: verified cases, but the battery's claim was refused, so the stages stop at measured.
+    // Verified cases, but the battery's claim was refused, so the stages stop at measured.
     const refused = tree(root, `campaigns/${SLUG}/candidates/r4`, `["v4-tasks"]`, MEASURED);
     const unclaimed = promoteCandidate(root, SLUG, refused, "r4", {
       experiment: "build",

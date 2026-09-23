@@ -1,14 +1,13 @@
 /**
  * Which isolation modes each Builder capability requests.
  *
- * Split from `tools.ts` on 2026-08-20, when adding the destructive-command guard to `bash` would
- * have taken that file past its size limit. The map describes the access modes each tool requests;
- * registering the tools themselves stays in `tools.ts`, which re-exports this.
+ * Split from `tools.ts` so that file stays inside its size limit. This map describes the access
+ * modes each tool requests; registering the tools themselves stays in `tools.ts`, which re-exports
+ * it.
  *
- * The rule it carries is unchanged. Declared here means isolated, absent means research, and
- * `session-evidence.ts` reads exactly this map to tell the two apart — so a new path capability
- * that arrives without its declaration is recorded as unisolated research for any reader of that
- * evidence to see.
+ * Declared here means isolated, absent means research, and `session-evidence.ts` reads exactly this
+ * map to tell the two apart — so a new path capability that arrives without its declaration is
+ * recorded as unisolated research for any reader of that evidence to see.
  */
 import type { IsolationMode } from "./candidate-isolation.ts";
 

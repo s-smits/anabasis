@@ -10,11 +10,10 @@
  *
  * This is the only instrument in the authoring loop that can observe a battery being easier than
  * its stated target, which is why no prompt has to exhort the Builder about difficulty: a round
- * that wants tasks its solver misses can measure one before paying for twenty-five. Until
- * 2026-09-19 the tool ran a call sequence the Builder supplied, which made it the author playing
- * solver while holding the answer key; across eight recorded authoring sessions it was called
- * twice, and the three campaigns that used none of it each declared "at most 2 verified passes" and
- * then measured six of six.
+ * that wants tasks its solver misses can measure one before paying for twenty-five. The solve is
+ * the measured solver's own, not a call sequence the Builder supplies, which would be the author
+ * playing solver while holding the answer key. A round that rehearses nothing tends to declare a
+ * pass count far under what it then measures.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -155,9 +154,9 @@ function candidateView(
 
 /** The directory this rehearsal's evidence goes in: its session ordinal, or the next free name
  *  above it. The ordinal counts rehearsals within one session while the directory belongs to the
- *  campaign, so a second authoring session started at `rehearsal-1` again and wrote over the first
+ *  campaign, so a second authoring session would start at `rehearsal-1` again and write over the first
  *  session's solve — exactly the record each session is asked to keep. Taking the next free name
- *  instead follows `claimEvidencePath`, which answered the same collision for the execution
+ *  instead follows `claimEvidencePath`, which answers the same collision for the execution
  *  record. */
 function claimRehearsalDir(dir: string, ordinal: number): string {
   let path = join(dir, `rehearsal-${String(ordinal)}`);
@@ -235,8 +234,8 @@ async function runTrial(
   if (!loaded.ok) return loaded.body;
   const openedCandidateId = candidateId(binding);
   // The expensive half starts here: a Built solve runs under the harness's own wall, which may be
-  // hours, and nothing reads the result of a cancelled call. The caller's signal used to reach only
-  // the verifier stage, so a cancelled rehearsal still paid for its whole solve first. `blocked` is
+  // hours, and nothing reads the result of a cancelled call. A signal that reached only the verifier
+  // stage would let a cancelled rehearsal pay for its whole solve first. `blocked` is
   // the faithful receipt kind for it — the action could not run, which is a separate count from a
   // failure — and it keeps the refund below to one condition.
   if (signal?.aborted === true) {
@@ -304,13 +303,13 @@ function trialOutcome(status: string, verdict: string): BuilderCustomToolSemanti
   return verdict === "not-run" ? "incomplete" : "completed";
 }
 
-/** A rehearsal that never reached a solve has no solver verdict to report, so what the Builder needs
- *  back is the candidate's own cause instead. Stages that name their own keep it — `trialResultSummary`
- *  prefers the body's text, because the same fact written by two owners drifts — and this covers the
- *  ones that carry none. Until 2026-09-20 no branch here read `blocked` at all, so a blank taskId, an
- *  unreadable bundle and a refused fingerprint each came back as "Your solver missed this task": a
- *  solver verdict for a call in which no solver ran, and the one reading that sends a Builder off to
- *  make its battery easier. */
+/** A rehearsal that never reached a solve has no solver verdict to report, so what the Builder
+ *  needs back is the candidate's own cause instead. Stages that name their own keep it —
+ *  `trialResultSummary` prefers the body's text, because the same fact written by two owners drifts
+ *  — and this covers the ones that carry none. Without a branch per blocked stage, a blank taskId,
+ *  an unreadable bundle and a refused fingerprint all read as "Your solver missed this task": a
+ *  solver verdict for a call in which no solver ran, and the one reading that sends a Builder off
+ *  to make its battery easier. */
 function blockedNextAction(stage: string): string {
   if (stage === "request") {
     return "The call named no task, so nothing was rehearsed. Use harness_inspect inventory to choose an authored taskId and repeat it.";

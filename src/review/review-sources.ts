@@ -23,7 +23,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 // Coverage counts host-returned text, not proof of model consumption.
 const READ_CHARS_TOTAL = 4_000_000;
-// Native Claude replaced 60,000-character pages with oversized-result errors, so the page has to
+// Native Claude answers a 60,000-character page with an oversized-result error, so the page has to
 // be small enough that the transport delivers it at all.
 const READ_CHARS_PER_CALL = 16_000;
 const INVENTORY_MAX_FILES = 400;

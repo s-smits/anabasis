@@ -5,8 +5,8 @@ import { childPath } from "./public-artifact-validate.ts";
 /**
  * Paths of compiled nodes that can never accept populated content. An accept corpus whose example
  * at a path is an empty object compiles to `{kind: "object", properties: {}, required: [],
- * additionalProperties: false}`, which rejects every non-empty object there. Run 81's L3 accepts
- * recorded a schema of exactly that node shape, and it refused all 20 complete submissions.
+ * additionalProperties: false}`, which rejects every non-empty object there. A battery carrying one
+ * of those refuses every complete submission, at a path the compiled schema itself made unfillable.
  */
 export function publicArtifactSchemaDegeneracies(root: PublicArtifactSchemaNode, path = "$"): string[] {
   if (root.kind === "object") {

@@ -25,8 +25,8 @@ export interface TurnUsage {
 
 /** The context size, in tokens, at which every slot compacts: through the pi session
  *  (pi-session.ts), or natively in the Claude CLI under `claude-ss`. It sits well below a 1M
- *  window because the CLI's own default never fired inside one -- runs 70 to 72 reached the spend
- *  limit at 309k to 615k tokens with no compaction having happened at all. */
+ *  window because the CLI's own default never fires inside one -- a session reaches its spend limit
+ *  several hundred thousand tokens in with no compaction having happened at all. */
 export const CONTEXT_COMPACT_WINDOW = 300_000;
 
 /** Who compacts the Claude slots' context, named by `CLAUDE_COMPACTION`. `claude-ss`, the default,

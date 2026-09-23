@@ -71,7 +71,7 @@ export function settleGateRun(input: GateSettlementInput): IterationStep {
   // The stall detector reads this hash to tell an exact repeat from a changed diagnosis. Owner,
   // claim, the finding codes and paths and the identifiers quoted inside an author-projected detail
   // belong in it; the detail text itself does not, because a per-execution record id sitting there
-  // makes an identical diagnosis read as new work (w26, five rounds).
+  // makes an identical diagnosis read as new work round after round.
   const findingsHash = semanticFindingsIdentity(blocking, null);
   const evidence: IterationEvidence = {
     ordinal,

@@ -1,5 +1,5 @@
 /**
- * Records and redacts AgentTurnEvent data in the controller (steering 2026-07-11 item 4).
+ * Records and redacts AgentTurnEvent data in the controller.
  *
  * Without this recorder the per-turn event stream is discarded, and nothing records what the agent
  * did between the prompt and its submit; saving the native stream instead would put raw provider
@@ -32,14 +32,9 @@ import type { AgentTurnEvent, BackendId, CompactionRecord } from "./backend-type
 import { redactProviderDiagnostic } from "./diagnostic-redaction.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
-/** v2 added `timingMs` on turns and tool calls, and per-turn provider usage. v3 added
- *  `resultExcerpt` and `argsExcerpt` on failed tool calls alone, so a diagnosis reader sees more of
- *  the arguments and the tool error than the 200-character preview (2026-08-27, from the
- *  AutoSaddler in-depth-diagnosis finding). v4 added `observedMs` on turns and tool calls that
- *  never closed (2026-09-20): a whole-solve wall leaves the running turn open, and its elapsed
- *  time — 6 h 27 m in one recorded truss turn — was the single fact no reader could recover.
- *  Readers take v4 only and read an earlier trace as unreadable (operator decision 2026-09-22),
- *  which is why `trace-read.ts` and `case-trace-pointer.ts` both compare against this constant. */
+/** Readers take this version only and read an earlier trace as unreadable (operator decision), so
+ *  `trace-read.ts` and `case-trace-pointer.ts` both compare against this constant rather than
+ *  carrying a reader per version. Adding or removing a field is therefore a version bump. */
 export const CASE_TRACE_SCHEMA = "case-trace/v4";
 
 /** Evidence bounds: a runaway solve must not turn one case's trace into an unbounded file. */
@@ -48,8 +43,8 @@ const MAX_TRACE_TOOL_CALLS = 400;
 /** The limit applied when assembling assistant and result previews. Transports truncate before
  *  their events arrive here — a successful pi tool call brings at most `RESULT_PREVIEW_CHARS`, 200,
  *  while a failed one brings up to 2,000 for the separate error excerpt — and this limit stays
- *  separate from those (Sol review, run-16 review). They apply to different fields at different
- *  stages, so merging them would change recorded evidence rather than tidy up code. */
+ *  separate from those. They apply to different fields at different stages, so merging them would
+ *  change recorded evidence rather than tidy up code. */
 const PREVIEW_CHARS = 240;
 /** Error rows only: how much of the failing call's result and arguments survives into evidence.
  *  Deliberately larger than PREVIEW_CHARS, because a failed call is the one place a reader needs
@@ -112,8 +107,8 @@ interface TraceTurn {
   outputTokens: number | null;
   tokensUsed: number | null;
   costUsd: number | null;
-  /** Context compactions during the turn, copied from `turn_ended`. Absent in traces written
-   *  before compaction was recorded; empty when none ran. */
+  /** Context compactions during the turn, copied from `turn_ended`. Every turn this recorder opens
+   *  carries the field, empty when none ran. */
   compactions?: CompactionRecord[];
 }
 
@@ -162,10 +157,10 @@ export function createTraceRecorder(opts?: {
   let droppedRawEvents = 0;
   let truncated = false;
   let seq = 0;
-  // Run-keyed digesting (steering 2026-07-12 section 2). A plain SHA-256 over the arguments
-  // exposes a hash anyone holding the trace can test a guessed secret against. This key is random
-  // per recorder and never persisted, so the digest classifies equality inside this one solve and
-  // nothing more, and a dictionary attack has no stable target to aim at.
+  // Run-keyed digesting. A plain SHA-256 over the arguments exposes a hash anyone holding the
+  // trace can test a guessed secret against. This key is random per recorder and never persisted,
+  // so the digest classifies equality inside this one solve and nothing more, and a dictionary
+  // attack has no stable target to aim at.
   const digestKey = crypto.getRandomValues(new Uint8Array(32));
 
   const digestArgs = (args: Record<string, JsonValue> | undefined) => {
@@ -224,9 +219,9 @@ export function createTraceRecorder(opts?: {
   };
 
   const endToolCall = (event: Extract<AgentTurnEvent, { type: "tool_ended" }>): void => {
-    // Match the started record by id, else the oldest same-name call still open in this turn
-    // (steering 2026-07-12 section 2: a dangling call from an earlier turn must not consume a later
-    // turn's id-less completion). A backend that emits only tool_ended writes its record here.
+    // Match the started record by id, else the oldest same-name call still open in this turn, so
+    // that a dangling call from an earlier turn cannot consume a later turn's id-less completion.
+    // A backend that emits only tool_ended writes its record here.
     const open =
       (event.toolCallId === undefined
         ? undefined

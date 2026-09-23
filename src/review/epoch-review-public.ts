@@ -17,10 +17,9 @@ type ReviewContract = {
 };
 
 /** Hardness and an uncertain diagnosis describe what the review observed; neither demonstrates a
- *  defect, so neither may read as an order to edit the product. Astra's reviews i11 to i18
- *  (2026-09-12 to 14) recorded diagnosis-uncertain on equilibrium and provenance in eight rounds,
- *  and every one of them reached the Builder as "inspect and repair that contract" followed by the
- *  blanket repair instruction, which is an order built out of an admitted uncertainty. */
+ *  defect, so neither may read as an order to edit the product. Under the ordinary sentence a
+ *  diagnosis-uncertain finding reaches the Builder as "inspect and repair that contract" followed
+ *  by the blanket repair instruction, which is an order built out of an admitted uncertainty. */
 const isObservation = (kind: AnalysisFindingKind): boolean =>
   kind === "hardness" || kind === "diagnosis-uncertain";
 
@@ -28,13 +27,12 @@ const isObservation = (kind: AnalysisFindingKind): boolean =>
  *  names the public input to move in the fresh battery, not an enforcement the tasks do not own;
  *  an observation asks for nothing.
  *
- *  The curriculum sentence says which way to vary, because the vague form did harm. "Vary this in
- *  the fresh battery" reached c1d2a7's third author against `$.limits.massLimitKg`, and moving a
- *  published limit between batteries is the one move with recorded evidence against it: campaign
- *  846c029d-3 moved its published numbers six times on a byte-identical task set and stayed too
- *  easy for eighteen rounds, and c1d2a7's round two raised five of its six mass limits and
- *  repeated 6 of 6. The variation this finding is about is across the battery's own tasks, which
- *  authoring validation already requires of a shared public input. */
+ *  The curriculum sentence says which way to vary, because the vague form does harm. "Vary this in
+ *  the fresh battery", read against a published limit, invites the author to move that limit from
+ *  one battery to the next, which changes the published magnitudes over a task set that has not
+ *  moved and leaves the battery exactly as easy as it was. The variation this finding is about is
+ *  across the battery's own tasks, which authoring validation already requires of a shared public
+ *  input. */
 function publicAct(kind: AnalysisFindingKind, deferred: boolean): string {
   if (deferred) return "this is advisory and asks for no change before submit";
   if (kind === "curriculum-defect") {
@@ -48,9 +46,9 @@ function publicAct(kind: AnalysisFindingKind, deferred: boolean): string {
 }
 
 /** Where the Builder acts, from the identity the finding names; owner and kind stay controller
- *  fields. In five runs (2026-09-19 to 22) no owner label decided an action: one finding moved from
- *  brief to correctness-model and back, and each Builder acted on the check id, input path or file
- *  beside the label rather than on the label itself. */
+ *  fields. The owner label decides nothing on its own — one finding can move from brief to
+ *  correctness-model and back between rounds — and a Builder acts on the check id, input path or
+ *  file beside the label rather than on the label itself. */
 function publicGroup(finding: AnalysisFinding): string {
   const owner = finding.proposedOwner;
   if (finding.kind === "curriculum-defect" || owner === "tests") return "tasks";
@@ -60,11 +58,11 @@ function publicGroup(finding: AnalysisFinding): string {
   return EVALUATION_SERVED.has(owner) ? "evaluator" : "solver surface";
 }
 
-/** The public sentence for one finding, composed from typed identities alone. Sol run 55aaad's
- *  reviewer named a schema path, the mock headers and the exit predicates; the template sentence
- *  that replaced them told the Builder nothing, and it submitted unchanged bytes as a probe. The
- *  check id, schema path and public input path are public authoring identities, so they cross; the
- *  reviewer's claim is not one and never enters this sentence. */
+/** The public sentence for one finding, composed from typed identities alone. A template sentence
+ *  that names none of them tells the Builder nothing, and an author with nothing to act on
+ *  resubmits unchanged bytes as a probe. The check id, schema path and public input path are public
+ *  authoring identities, so they cross; the reviewer's claim is not one and never enters this
+ *  sentence. */
 function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: Brief | null): string {
   const heading = `Epoch review (${publicGroup(finding)})`;
   const files = routableOwner(finding.proposedOwner) ? ownerWritableFiles(finding.proposedOwner) : [];
@@ -76,10 +74,10 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     finding.publicInputPath === undefined ? null : `public input \`${finding.publicInputPath}\``;
   const input = inputPath === null ? "" : ` (${inputPath})`;
   if (finding.unobserved === true && !deferred) {
-    // The obligation is unobserved, not the path: run 08c0f2 projected two different gaps as "no
-    // declared check observes artifact path `firmware`", a path all nine of its checks read, and
-    // the round-three Builder called the finding puzzling. So the readers are counted here, which
-    // contradicts the bare sentence, and never quoted, which would carry verifier detail across.
+    // The obligation is unobserved, not the path. "No declared check observes artifact path `x`"
+    // is plainly false to an author whose checks all read `x`, and a finding that reads as nonsense
+    // is a finding acted on by nobody. So the readers are counted here, which contradicts the bare
+    // sentence, and never quoted, which would carry verifier detail across.
     const path = finding.artifactSchemaPath;
     const readers = (brief?.truthChecks ?? []).filter((check) =>
       check.execution.artifactPaths.some((declared) => {
@@ -144,11 +142,10 @@ function publicFinding(
   // obligation, a counterexample or a repair instruction.
   //
   // The obligation rides with the repair it was added to bind. A finding that asks for no repair
-  // has nothing to bind it to, and quoting the check back at the author who wrote it filled the
-  // packet instead: Astra i13 to i18 shipped a 15 kB `equilibrium` assertion beside "asks for no
-  // repair" in six consecutive rounds, 90 per cent of everything the rebuild author read, and each
-  // of those rounds rewrote the evaluator and left the tasks alone. The check id already names the
-  // file the author owns.
+  // has nothing to bind it to, and quoting the check back at the author who wrote it fills the
+  // packet instead: a long assertion beside "asks for no repair" can be most of what the rebuild
+  // author reads, and it points at the evaluator in rounds where the tasks were the thing to move.
+  // The check id already names the file the author owns.
   const obligation =
     check === undefined || !repairable
       ? []
@@ -159,10 +156,9 @@ function publicFinding(
           })}`,
         ];
   // A defect the reviewer recorded on a check the Judge had vetoed carries the veto's public
-  // shape: how many verified passes, in which families. The 2026-09-15 replay settled one such veto
-  // against `init-hardware-state`. The Judge's reason and the review's demonstration stay private;
-  // the count and the family are what the Builder needs to know which artifacts the check let
-  // through.
+  // shape: how many verified passes, in which families. The Judge's reason and the review's
+  // demonstration stay private; the count and the family are what the Builder needs to know which
+  // artifacts the check let through.
   const vetoes = settledRows(finding, vetoed, opened);
   const veto =
     vetoes.length === 0
@@ -177,19 +173,17 @@ function publicFinding(
       : [
           `The Judge passed ${String(disputes.length)} verified fail(s) in ${familiesOf(disputes)} holding this obligation satisfied, and the review settled them against the check: it refuses an artifact the obligation admits.`,
         ];
-  // What the probes executed, for a defect the author is being asked to look at. The recorded
-  // reason for the two-occurrence ceiling on forced blocking is that the defect persisted while the
-  // public projection supplied only its check name: the review had run the checks over its own
-  // changed field and the author read a check id. The three identities here are the class the check
-  // id already crosses by — an accept control the Builder wrote, a dotted path under its own
-  // artifactSchema root, and its own declared check ids.
+  // What the probes executed, for a defect the author is being asked to look at. A defect survives
+  // the two-occurrence ceiling on forced blocking when the public projection supplies only its
+  // check name: the review has run the checks over its own changed field and the author reads a
+  // check id. The three identities here are the class the check id already crosses by — an accept
+  // control the Builder wrote, a dotted path under its own artifactSchema root, and its own
+  // declared check ids.
   //
-  // It rides with an advisory finding too, deferred or not. A probe-backed finding demoted to
-  // advice is the case this is for: the live review of campaign 3fd52f9e-4's i09 battery on
-  // 2026-09-18 probed `design.nodes.0.role`, watched `node-placement` refuse an artifact over a
-  // naming rule no published decision states, and was held at advice because the same check had
-  // been named twice before. Without this line that round projects the same check name a third
-  // time, which is what the ceiling exists to stop repeating.
+  // It rides with an advisory finding too, deferred or not, and that is the case it is for: a
+  // probe-backed finding held at advice because the same check has been named twice already.
+  // Without this line the round projects that check name a third time, which is the repetition the
+  // ceiling exists to stop.
   const probed =
     isObservation(finding.kind) || (finding.probes ?? []).length === 0
       ? []
@@ -205,10 +199,9 @@ function publicFinding(
             )
             .join("; ")}.`,
         ];
-  // The request is not repeated here. Every prompt that renders these rows states it once under
-  // its own heading, and the copy per finding put it four times into one 21,571-character authoring
-  // prompt on 2026-09-19 (run 17f9de), in front of the sentence the author had to act on. One duty,
-  // one owner (rule 14).
+  // The request is not repeated here. Every prompt that renders these rows states it once under its
+  // own heading, and a copy per finding puts it several times into one authoring prompt, in front
+  // of each sentence the author has to act on. One duty, one owner (rule 14).
   const context = [...obligation, ...veto, ...dispute];
   // The repair instruction rides only with a demonstrated defect — which, until the request left
   // this list, was every repairable finding, since `context` could not then be empty.
@@ -228,8 +221,9 @@ function publicFinding(
 
 /** Private review prose stays in its recorded evidence; only typed routing reaches authoring.
  *  `deferAdvisory` is the authoring review's reading: an advisory finding asks for no change before
- *  submit and carries no repair order, because 8 of 8 recorded Builders (2026-09-14 to 16) repaired
- *  such a finding at once and paid a fresh full check for it each time, about 75 minutes in all. */
+ *  submit and carries no repair order, because a Builder that meets one mid-session repairs it at
+ *  once and pays a fresh full check for it, spending gate time on advice that was never asked to be
+ *  acted on before submit. */
 export function publicEpochReview(
   review: Pick<EpochReviewEvidence, "status" | "findings" | "disputes"> & {
     contestedReads?: readonly string[];
@@ -242,9 +236,9 @@ export function publicEpochReview(
   // An unfinished review has not weighed the complete contract, so its observations stay private:
   // neither an owner reopen nor a suspended diagnosis may come from a partial reading. One reading
   // is complete on its own, and that is a vetoed case the reviewer settled against the check after
-  // opening the vetoed artifact. The 2026-09-15 replay settled `init-hardware-state` that way in a
-  // review left incomplete by a vanished `.toolchain`; the settlement still crosses, as advice
-  // rather than a reopen, since the tools that review could not read may own the check.
+  // opening the vetoed artifact — a review cut short by a vanished `.toolchain` can still have done
+  // that much. The settlement crosses as advice rather than as a reopen, since whatever the review
+  // could not read may be what owns the check.
   const settled =
     review.status === "completed"
       ? review.findings

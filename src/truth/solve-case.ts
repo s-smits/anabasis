@@ -13,10 +13,9 @@
  * The battery therefore calls `gradeCase` in task order while later `solveCase` calls may still be
  * running, and `rehearseCase` shares the same accepted-byte execution below.
  *
- * Grading decides a `CaseOutcome` and the record is built from it once (2026-09-18). It used to
- * write the record in place through a `setNonResult` helper and a half-built `GradedCase` passed
- * down as a parameter, which spread the ordered reasons a case scores nothing across three
- * functions and left them readable only by following the writes.
+ * Grading decides a `CaseOutcome` and the record is built from it once, rather than written in
+ * place by whichever branch got there, so the ordered reasons a case scores nothing read in one
+ * function instead of across three.
  */
 import type { ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -110,8 +109,8 @@ export interface SolvedCase {
   /** Non-null identifies an invalid controller record that prevents a claim. */
   finalDefect: string | null;
   acceptedSubmit: boolean;
-  /** The controller's clock around the solver call, recorded on each case row. Batteries w35 and
-   *  w36 have none, so a reader of those rows cannot bound how long a case took. */
+  /** The controller's clock around the solver call, recorded on each case row; a row without it
+   *  leaves a reader unable to bound how long the case took. */
   instants: { startedAt: string; endedAt: string };
 }
 
@@ -477,8 +476,8 @@ function acceptedOutcome(
     );
   }
   // A blocking fail on a check whose evidence is complete decides the case, because a tool run
-  // that was skipped could only ever have withheld a pass, never created one. Six cases of run
-  // 08c0f2 failed to compile and were filed here.
+  // that was skipped could only ever have withheld a pass, never created one. A case that failed
+  // to compile is filed here rather than as a non-result.
   const failed = [...blockingFailedCheckIds(scoped.verdict)];
   if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
     // The unattributed verifier kind belongs to generated behaviour, not the environment.
@@ -502,8 +501,8 @@ async function gradeAcceptedArtifact(
   artifactJson: string,
 ): Promise<GradedOutcome> {
   const { taskId } = solved.task;
-  // An evaluator throw over one partial artifact used to abort the entire battery
-  // (falsifier-claude-004). Now it leaves this one case ungraded and the remaining cases still run.
+  // An evaluator throw over one partial artifact leaves this one case ungraded and lets the
+  // remaining cases run, rather than aborting the whole battery as an uncaught throw here would.
   const scoped = await runCaseScope(deps, solved, artifactJson);
   const subject = { phase: "battery" as const, subjectId: taskId, attempt: 1 };
   // Coverage is required only after accepted bytes reached a real correctness-model verdict.

@@ -1,11 +1,10 @@
 /**
  * Controller closure for Builder execution records.
  *
- * Two facts the author side cannot see, both measured on run 25: three of four execution records
- * stayed at `in-flight` after the campaign had ended, and two records were written eighteen and
- * twenty-eight minutes after their own invocation had recorded its terminal. The author writes the
- * record, but only the controller knows when the invocation around it closed, so the closure lives
- * here rather than in the session that opened the record.
+ * Two facts the author side cannot see: whether the record it left at `in-flight` ever closed, and
+ * whether its own write landed after the invocation around it had recorded its terminal, which
+ * happens by tens of minutes. The author writes the record, but only the controller knows when that
+ * invocation closed, so the closure lives here rather than in the session that opened the record.
  *
  * It changes no submit row, no aggregate and no outcome a session settled itself. Closing rewrites
  * one field of a record its session left open, and the post-terminal witness only names the
@@ -70,8 +69,8 @@ function executionFiles(epochDir: string): string[] {
  * "Open" is an opening with no terminal beside it: exactly the state every legitimate Builder write
  * happens in, because the controller driving the session has not closed yet. Only an opening newer
  * than the latest terminal blocks this lookup. An older orphan is read as a past invocation
- * instead: run 25 left one behind, and treating it as open forever disabled closure for that whole
- * campaign. An opening whose timestamp will not parse still blocks, because nothing can establish
+ * instead, because a campaign that left one behind would otherwise read as open forever and get no
+ * closure at all. An opening whose timestamp will not parse still blocks, because nothing can establish
  * where it falls in the order. A campaign with no controller directory has no invocation to be
  * after, so it is never post-terminal.
  */

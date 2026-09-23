@@ -4,13 +4,12 @@
  * admit. That is the defect `absenceSpellingAdmitted` refuses on the writer side, in
  * src/truth/solvability-submission.ts, and this file is where the refusal is pinned.
  *
- * Run w6 is the case. Its writer declared `Type.Union([Type.String(), Type.Null()])` for a finding's
- * table id, the reference answer wrote null on the rows no table owns, and the agent wrote "" on
- * exactly those rows — eight of twenty-five cases failed on that alone, five batteries running,
- * with every count and every other field already correct. Nothing refused the schema first: F2
- * accepted the reference artifact, and the representation census reads the reference answer,
- * which used null correctly. This probe is the enforcement for the Builder prompt rule that a
- * nullable writer field gives its string branch a minimum length.
+ * The shape it catches is a writer declaring `Type.Union([Type.String(), Type.Null()])` for a field
+ * the reference answer leaves null: the agent writes "" on exactly those rows and the cases fail on
+ * that alone, with every count and every other field already correct. Nothing else refuses the
+ * schema first, because F2 accepts the reference artifact and the representation census reads that
+ * same reference answer, which used null correctly. So this probe is the enforcement for the
+ * Builder prompt rule that a nullable writer field gives its string branch a minimum length.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type, type TSchema } from "typebox";
@@ -82,9 +81,10 @@ describe("absenceSpellingAdmitted", () => {
     expect(absenceSpellingAdmitted(tuple, { rows: [null, null] })?.path).toBe("rows[]");
   });
 
-  // run w12: the probe pairs every artifact-writer with the WHOLE artifact, and a non-strict Check
-  // ignores undeclared properties — so a subset writer "admitted" every null root it never typed,
-  // and eight iterations repaired blind until every writer schema rejected the whole artifact.
+  // The probe pairs every artifact-writer with the WHOLE artifact, and a non-strict Check ignores
+  // undeclared properties, so without this a subset writer is charged with every null root it
+  // never typed and the only repair that clears the refusal is a writer schema that rejects the
+  // whole artifact.
   it("does not charge a subset writer with a null root its schema never declares", () => {
     const subset = writer(Type.Object({ summary: Type.String() }));
     expect(absenceSpellingAdmitted(subset, { summary: "ok", tableId: null })).toBeNull();

@@ -18,11 +18,9 @@ const processKill = runtimeProcess.kill.bind(runtimeProcess);
  * default, so without this a runaway command is a host process holding its entire output in
  * memory.
  *
- * It is stated once because four files spelled the same 64 MiB out themselves, each beside a
- * comment explaining that it stops a large working tree from truncating silently at the 1 MiB
- * default — which is Node's contract, not Bun's. There was no default to raise, so the number was
- * never the thing being defended; the cap is. test/trusted-runtime.test.ts holds that reading by
- * capturing two million bytes whole.
+ * The 1 MiB default a reader may be thinking of is Node's contract, not Bun's: there is no default
+ * to raise here, so the number is not what is being defended — the existence of a cap is.
+ * test/trusted-runtime.test.ts holds that reading by capturing two million bytes whole.
  */
 export const CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -182,8 +180,8 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
     // can win: it can finish first and exit zero with a short capture, and nothing in the exit
     // code or the signal then says the output was cut. The captured length is the one fact that
     // reads the same on both sides of that race, so it decides: a capture at or past the cap is
-    // capped. A gate on 2026-09-20 under a load average of 26 is where the race was first seen,
-    // against a test that had been written expecting the kill to win.
+    // capped. The race shows up on a loaded host, where the process reaches the cap and exits
+    // before the kill lands.
     const { maxBuffer } = options;
     const cappedAt = maxBuffer !== undefined && result.stdout.length >= maxBuffer ? maxBuffer : null;
     return {
@@ -206,12 +204,12 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
  * Run a command and return its stdout bytes, throwing with the captured stderr on any failure.
  *
  * The message names which of four endings happened: a non-zero exit, a signal or timeout, a
- * capture that reached `maxBuffer`, or a command that never started. Four files formatted this
- * themselves and reported one — the captured stderr, or the exit code when there was none — which
- * covers a command that ran and refused and nothing else. The two endings that leave `exitCode`
- * null with both streams empty, a missing tool and a child killed at the cap, therefore arrived
- * identically as `git exited null` with nothing after the colon. The cap is read before the exit
- * code because Bun's kill races the child's own exit, and the child winning makes that code zero.
+ * capture that reached `maxBuffer`, or a command that never started. Reporting only the captured
+ * stderr, or the exit code when there is none, covers a command that ran and refused and nothing
+ * else: the two endings that leave `exitCode` null with both streams empty, a missing tool and a
+ * child killed at the cap, then arrive identically as `git exited null` with nothing after the
+ * colon. The cap is read before the exit code because Bun's kill races the child's own exit, and
+ * the child winning makes that code zero.
  *
  * The command is named by its basename rather than by `cmd[0]`, because `hostTool` resolves a
  * developer tool to its absolute path: every git refusal would otherwise open with the Xcode
@@ -244,9 +242,9 @@ export function runTextSyncOrThrow(cmd: readonly string[], options: RunSyncOptio
  * The options are held here rather than passed in because a worker that drifts on `format`,
  * `target` or `splitting` still builds cleanly and then fails inside the confined child, where the
  * failure reaches the controller as a protocol non-result instead of as a build error someone can
- * read. Three call sites build a worker this way — the generated-tool worker process, the Built
- * backend and the evaluator bundle — and each spelled the same options out itself before this.
- * The path is returned rather than recomposed by the caller, since `naming` is what decides it.
+ * read. Three call sites build a worker this way: the generated-tool worker process, the Built
+ * backend and the evaluator bundle. The path is returned rather than recomposed by the caller,
+ * since `naming` is what decides it.
  */
 export async function buildWorkerBundle(
   failure: string,

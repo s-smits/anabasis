@@ -13,9 +13,8 @@ type ToolProvenance = { source: "workspace-toolchain" | "host"; kind: "binary" |
 type SelfGroundedCheck = { checkId: string; adapterId: string };
 
 /** Treat an argument above this size, or one containing a line break, as possible program text:
- *  81% of the 13,090 recorded python3 rows of 2026-09-08 carried the whole checker as
- *  `-c "<source>"`. The rule is bounded — it restricts external checks and does not attempt to
- *  classify every program. */
+ *  four in five recorded python3 rows carry the whole checker as `-c "<source>"`. The rule is
+ *  bounded — it restricts external checks and does not attempt to classify every program. */
 export const PROGRAM_ARGUMENT_MAX_BYTES = 256;
 
 type ProgramArgumentCheck = { checkId: string; toolId: string; bytes: number };

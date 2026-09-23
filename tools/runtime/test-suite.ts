@@ -1,50 +1,39 @@
 /**
  * One `bun test` invocation over the repository suite, under its own output-idle wall.
  *
- * How the suite used to run. Seven shards of `bun test` in sequence, each pinned to four workers,
- * paying Bun's start-up and timings read seven times and leaving three workers idle at every
- * shard's tail. One file took about 150 s alone. Measured on the M1 runner: about 398 s wall.
- *
- * How it runs now. One process, `--parallel` with two workers fewer than the machine has free,
+ * It used to be seven sequential shards of four workers each, paying Bun's start-up and the
+ * timings read seven times over and leaving three workers idle at every shard's tail. Now it is
+ * one process: `--parallel` with two workers fewer than the machine has free,
  * `--max-concurrency=4` inside a file, and the files ordered slowest-first from the recorded
  * timings so the long files start at t=0 and the short ones fill the gaps. The wrapper always
- * writes the timings back (`--update-timings`): the file is ignored by Git and each checkout
- * learns its own order from its first run. `ANA_TEST_WORKERS` overrides the worker count.
- *
- * Why two fewer than the cores. Most heavy tests spawn confined children (Seatbelt or Bubblewrap
- * cells, generated-tool workers, git), so a worker with four concurrent tests already loads more
- * than one core. Measured on a 6-vCPU Linux VM: six workers 295 s with two e2e cases over their
- * 180 s wall, four workers 247 s with 0 failed, three workers left one worker spinning at full
- * CPU with a zombie child and no test running (see the wall below). On the 8-core M1 runner, eight
- * workers take 101 s for 3465 tests with 0 failed; six is the measured default from this change.
+ * writes the timings back (`--update-timings`): the file is ignored by Git, so each checkout
+ * learns its own order from its first run. `ANA_TEST_WORKERS` overrides the worker count. Two
+ * fewer than the cores because most heavy tests spawn confined children -- Seatbelt or Bubblewrap
+ * cells, generated-tool workers, git -- so a worker running four concurrent tests already loads
+ * more than one core.
  *
  * The host the suite shares. The cores a machine has are not the cores this suite gets, and a
- * failure it did not cause is not a verdict on the branch. Two answers, in this order. The worker
- * count subtracts half the one-minute load average, so a runner already carrying four jobs of its
- * own is not asked for three times itself, while a laptop that merely looks busy keeps its
- * workers. And when the first process fails, the run is attributed before it is believed: if a
- * clock ended every failure, or the host passed twice its cores in load while they ran, the failed
- * files run again alone and that verdict is the suite's. On 2026-09-17 the 8-core M1 runner at
- * load 28.9 returned 14 failures, five naming the per-test wall; the same files passed alone, 11
- * of 11, 16 of 16 and 44 of 44. A failure on a quiet host, and more failed files than a busy host
- * explains, both stand as they were printed.
+ * failure it did not cause is not a verdict on the branch. The worker count subtracts half the
+ * one-minute load average, so a runner already carrying four jobs of its own is not asked for
+ * three times itself, while a laptop that merely looks busy keeps its workers. Then, when the
+ * first process fails, the run is attributed before it is believed: if a clock ended every
+ * failure, or the host passed twice its cores in load while they ran, the failed files run again
+ * alone and that verdict is the suite's. A failure on a quiet host, and more failed files than a
+ * busy host explains, both stand as they were printed.
  *
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
  * file; no test is running, so the per-test wall never fires, and an unattended run holds the
  * queue until someone notices. Every chunk of output resets a clock; 180 s of silence (three
  * per-test walls) ends the whole process group and lists what it was running. The wedge sits in
- * the worker's own tail: in the Linux VM on 2026-09-13 it fired twice with 199 of 200 files
- * reported and one worker spinning at 70% CPU over a defunct child, no syscalls, on a 143 ms file.
- * So the wall then runs the files never reported again, once, in one fresh process without
- * workers, and that run's verdict is the suite's for the files it reports -- a file silent there
- * as well was tested by neither process, so its silence is a failure and not a pass. The wall
- * fails the suite outright when more than a few files are missing, which is an early wedge rather
- * than a tail. A failure printed before the wall is kept: the rerun covers the files the first
- * process never finished, never the verdict of one it did.
- * The suite is the wall's owner, so `bun run test` and the gate share one behaviour.
- * `ANA_TEST_IDLE_SECONDS` shortens the wall for its test, and `wallSeconds` widens it in
- * proportion to load the suite did not create.
+ * the worker's own tail, so the wall then runs the files never reported again, once, in one fresh
+ * process without workers, and that verdict is the suite's for the files it reports -- a file
+ * silent there as well was tested by neither process, so its silence is a failure and not a pass.
+ * The wall fails the suite outright when more than a few files are missing, which is an early
+ * wedge rather than a tail. A failure printed before the wall is kept: the rerun covers the files
+ * the first process never finished, never the verdict of one it did. The suite owns the wall, so
+ * `bun run test` and the gate share one behaviour; `ANA_TEST_IDLE_SECONDS` shortens it for its own
+ * test, and `wallSeconds` widens it in proportion to load the suite did not create.
  *
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
@@ -86,9 +75,9 @@ const COMMON_FLAGS = [
 /** `reported` holds every file whose results Bun printed and `failed` those among them with a
  *  `(fail)` line; `inFlight` is the file whose block was printed last, so with one streaming
  *  worker it is the file the wall interrupted. `exitCode` is null when the wall ended the group.
- *  `failures` counts the `(fail)` lines and `clockEnded` how many of them a wall ended rather than
- *  an assertion: a run where the two agree failed on time alone. `errors` counts what Bun printed
- *  outside any test, which appears in no result line and so in neither of the sets. */
+ *  `failures` counts the `(fail)` lines and `clockEnded` how many a wall ended rather than an
+ *  assertion: a run where the two agree failed on time alone. `errors` counts what Bun printed
+ *  outside any test, which appears in no result line and so in neither set. */
 export interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
@@ -134,9 +123,8 @@ interface Attribution {
 
 /** Whose verdict a rerun may give. It exists to settle named files, so its exit code speaks for
  *  the files it printed a result for and for no others: a file silent in the first process -- which
- *  is why it is here -- and silent again is one no process has tested, and returning zero reports a
- *  pass nothing observed. Until 2026-09-20 `main` returned the rerun's code unread, so the one
- *  process whose verdict becomes the suite's was the one with no attribution at all. */
+ *  is why it is here -- and silent again is one no process has tested, and returning zero would
+ *  report a pass nothing observed. So `main` reads this rather than the rerun's own exit code. */
 interface RerunVerdict {
   exitCode: number;
   silent: readonly string[];
@@ -146,9 +134,9 @@ const RERUN_FILE_LIMIT = 8;
 
 /** One spelling for a file, so a name the request gave and a header Bun printed compare as the
  *  same file. Darwin reaches its temp root through a symlink -- `/var` is `/private/var` -- and Bun
- *  prints the header from the path it opened, so the two sides met as different strings and every
- *  file under that root read as never reported. A path that is gone keeps the spelling it was
- *  given, which is the reading the caller already has for it. */
+ *  prints the header from the path it opened, so without this the two sides meet as different
+ *  strings and every file under that root reads as never reported. A path that is gone keeps the
+ *  spelling it was given. */
 function fileIdentity(path: string): string {
   return existsSync(path) ? realpathSync(path) : path;
 }
@@ -170,27 +158,22 @@ function hostLoad(): number {
 }
 
 /** Two workers fewer than the cores, less half of the load the host carries beyond them, and at
- *  least two; `ANA_TEST_WORKERS` overrides. The cores a machine has are not the cores this suite
- *  gets: on 2026-09-17 the 8-core M1 runner was carrying four CPU-bound jobs of its own at a load
- *  average of 28.9, six workers at four concurrent tests each asked for about three times the
- *  machine, and the gate returned 14 failures, five of them naming the per-test wall, on a branch
- *  whose files pass alone.
+ *  least two; `ANA_TEST_WORKERS` overrides. A runner carrying several CPU-bound jobs of its own
+ *  can sit at a load average many times its core count, where six workers at four concurrent tests
+ *  each ask for about three times the machine and the gate returns wall failures on a branch whose
+ *  files pass alone.
  *
  *  Beyond them, because a load average equal to the cores is a machine that is busy rather than
  *  oversubscribed, and the reading counts threads blocked in the kernel as well as threads wanting
- *  a core. The two readings of 2026-09-17 are the brackets, and this reproduces both: the 12-core
- *  laptop at load 11.8 ran 3,479 tests in 122 s with no contended failure on its full ten workers,
- *  which subtracting from the whole reading would have cut to two and halving it to four; the
- *  8-core runner at 28.9 is oversubscribed by 20.9 and still reaches the floor of two.
+ *  a core. Halving rather than subtracting the whole reading is what lets a twelve-core laptop at
+ *  a load just under its cores keep its full worker count, while a host oversubscribed threefold
+ *  still reaches the floor of two.
  *
- *  A third reading, 2026-09-20, says the number is not the whole condition. The same 12-core
- *  laptop at a load of 10.3 — below its cores, so ten workers by this formula and the flat wall
- *  by the next — reported none of its 345 files in four minutes and was ended by the idle wall,
- *  and the same push with `ANA_TEST_WORKERS=4` ran 3,875 tests green. What differed from the
- *  11.8 reading above is what the load was made of: a Spotlight reindex, `mds` at 204% and
- *  `mds_stores` at 136% with a swarm of `mdworker_shared` behind them, which contends for the
- *  disk rather than for cores. A load average cannot say that, so nothing here is re-tuned on
- *  one reading: the lever is the override, or a less loaded host. */
+ *  The number is not the whole condition, though, and nothing here is re-tuned on one reading. A
+ *  load average cannot say what the load is made of: a Spotlight reindex contends for the disk
+ *  rather than for cores, and a laptop that this formula leaves on ten workers can still report
+ *  none of its files before the idle wall while the same push at four workers runs green. The
+ *  lever for that is the override, or a less loaded host. */
 /** The silence a starved host earns. Work on a machine carrying more runnable threads than it
  *  has cores takes proportionally longer to print its first line, and a suite waiting for a core
  *  looks exactly like one that is wedged. Scaling by the same reading `workerCount` uses keeps
@@ -199,9 +182,8 @@ function hostLoad(): number {
  *
  *  The suite's own workers cannot reach the multiplier: two of them spinning on a twelve-core
  *  laptop is a load of two, so a real wedge still ends at the flat wall. It widens only for load
- *  from outside. On 2026-09-20 the wall ended a push gate at 180 s with 340 of 340 files
- *  unfinished, one worker at 99% CPU, while two paid runs held the laptop at a load average of
- *  30.9 on 12 cores; the same reading would have given those files 463 s. */
+ *  from outside — a laptop other work holds at a load of 30.9 on 12 cores gives its files 463 s
+ *  rather than 180. */
 export function wallSeconds(idleSeconds: number, busy = hostLoad(), cores = availableParallelism()): number {
   return Math.round(idleSeconds * Math.max(1, busy / cores));
 }
@@ -307,9 +289,9 @@ async function describeTree(pid: number): Promise<number[]> {
 }
 
 /** End the listed descendants the group kill left behind. A Bubblewrap verifier runs with
- *  `--new-session`, so it is outside the group, and `--die-with-parent` did not end one whose
- *  wedged worker the wall had killed: on the Linux VM (2026-09-13) it stayed in `waitpid` for nine
- *  hours, holding a generated-tools worker from a suite root that no longer existed. */
+ *  `--new-session`, so it is outside the group, and `--die-with-parent` does not end one whose
+ *  wedged worker the wall has killed: it stays in `waitpid` indefinitely, holding a generated-tools
+ *  worker from a suite root that no longer exists. */
 async function killStrays(pids: number[]): Promise<void> {
   const alive = (pid: number): boolean => {
     try {
@@ -455,11 +437,8 @@ async function runWalled(
  *  spawning. They are all attribution rather than execution -- a clock decided rather than an
  *  assertion, the host was carrying more runnable work than it has cores twice over, too many
  *  files failed for a busy host to explain, a file printed no result at all -- so deciding them
- *  here costs a plain call where deciding them inside `main` cost a real sub-suite each.
- *
- *  `cores` is a parameter so a test can state the host it is reasoning about. On 2026-09-17 the
- *  8-core M1 runner reached a load average of 28.9 and returned 14 failures on a branch whose
- *  files pass alone. */
+ *  here costs a plain call where deciding them inside `main` cost a real sub-suite each. `cores`
+ *  is a parameter so a test can state the host it is reasoning about. */
 export function attribute(
   first: WalledRun,
   asked: readonly string[],
@@ -467,8 +446,8 @@ export function attribute(
 ): Attribution {
   const failed = [...first.failed];
   // An error Bun printed outside any test is in its exit code and in no result line, so nothing in
-  // `failed` speaks for it and running those files again cannot unsay it. Until 2026-09-20 a
-  // clock-only or crowded-host rerun of them returned zero and took the error with it.
+  // `failed` speaks for it and running those files again cannot unsay it: a clock-only or
+  // crowded-host rerun would return zero and take the error with it.
   if (first.errors > 0) {
     return { rerun: null, exitCode: first.exitCode ?? 1, because: "unhandled-error", subject: [] };
   }

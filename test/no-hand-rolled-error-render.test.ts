@@ -1,7 +1,6 @@
 /**
  * The rule that sends a caught value to `errorMessage` or `asError` in
- * `src/meta/runtime-values.ts` instead of spelling the ternary again, and the fixer that was
- * refused until the import it needs had a placer.
+ * `src/meta/runtime-values.ts` instead of spelling the ternary again, and its fixer.
  *
  * Both shapes are pinned, and so is every way of not being them: the subject has to be the same
  * text in all three places, the rendering call has to be `String` or `errorMessage`, and a

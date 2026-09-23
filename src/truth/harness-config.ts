@@ -1,6 +1,6 @@
 /** `agent/config.yaml`: the runtime settings a Built Harness declares for itself, read from the
  *  submitted snapshot by the solver, the submit gate and measurement, so all three run the harness
- *  under the walls it asked for rather than three separate sets (operator decision 2026-09-16).
+ *  under the walls it asked for rather than three separate sets (operator decision).
  *
  *  The Builder is told the file exists, not what it holds, and the host maximums live only here
  *  under `src/truth/`, which the Builder cannot read. Each maximum is ten times its default, which

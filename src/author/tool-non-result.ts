@@ -3,11 +3,11 @@
  *
  * The census gate already settles a tool run that timed out or crashed as a repairable
  * `correctness-model` finding and writes the host's own record beside the iteration
- * (`settleNonResult` in census-gate.ts). Campaign run25-sol-0830 showed what that leaves open:
- * eleven recorded no-result records in one campaign -- crashes at exits 42 to 82, a pre-start
- * sandbox refusal and a 60 s simulator timeout -- each refusing a submit on a distinct tree, and
- * nothing counted them. The no-op strike counter could not, because every tree was different, so
- * the Builder kept rewriting the evaluator for 22 refused submits inside that one campaign.
+ * (`settleNonResult` in census-gate.ts). What that leaves open is the repetition: a tool whose runs
+ * keep crashing, refusing at the sandbox or timing out refuses a submit on a distinct tree each
+ * time, and the no-op strike counter cannot see it, because every tree is different. Without a
+ * count of its own the Builder rewrites the evaluator against the same dead tool for as long as the
+ * campaign lasts.
  *
  * Two rules live here, and only these two:
  *
@@ -98,8 +98,8 @@ function sealedNonResultToolId(iterationDir: string): string | null {
 export class ToolNonResultStrikes {
   private readonly counts: Map<string, number>;
   /** Seeded from the campaign's own settled iterations and charged trial runs, so a continuation
-   *  invocation continues the count instead of buying the whole ceiling again -- run 25 spread its
-   *  22 refused submits over four invocations. */
+   *  invocation continues the count instead of buying the whole ceiling again. A campaign's refused
+   *  submits are spread over however many invocations it took. */
   constructor(seed: Readonly<ToolNonResultCounts> = {}) {
     this.counts = new Map(Object.entries(seed));
   }
@@ -168,9 +168,9 @@ export function replayNonResultRefusals(dirs: readonly string[]) {
 }
 
 /**
- * What the author is told about the strike. Below the ceiling it is the running count the run-25
- * loop never had, with the repairs that are worth trying; at the ceiling it is the settlement
- * sentence. Both name only the tool id and the counts.
+ * What the author is told about the strike. Below the ceiling it is the running count, with the
+ * repairs that are worth trying; at the ceiling it is the settlement sentence. Both name only the
+ * tool id and the counts.
  */
 export function toolNonResultFinding(strike: ToolNonResultStrike) {
   const ceiling = POLICY.loop.toolNonResultRefusals;

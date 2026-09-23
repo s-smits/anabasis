@@ -1,22 +1,21 @@
 /**
  * What the turn currently running has already done.
  *
- * The execution record used to receive tool counts only when a turn returned its final result, so a
- * turn that never returned contributed nothing: run w41-opus was killed inside its first turn and
- * recorded `turns: 0`, `toolCalls.total: 0`, an empty `byName` and a null usage for a session that
- * had made 24 controller-hosted tool calls over 5m31s. The transport had emitted every one of those
- * calls as an event; the recorder simply did not count them until the turn finished.
+ * Counting tool calls only when a turn returns its final result means a turn that never returns
+ * contributes nothing. A session killed inside its first turn then records `turns: 0`,
+ * `toolCalls.total: 0`, an empty `byName` and a null usage, however many controller-hosted calls
+ * it actually made: the transport emitted every one of them as an event, and nothing counted them
+ * until the turn finished.
  *
  * So this recorder counts the events as they arrive, and a checkpoint written during a turn
  * includes the calls already made. The completed turn's final counts then replace these running
  * ones, and clearing them at that point is what keeps the same calls from being counted twice.
  *
- * It also identifies failed calls. Per-name counts alone left run w23's "28 failed
- * commandExecution" and run sol-329's 19 of 19 failures unexplained by the execution record. A
- * bounded row per failure records the tool, the time, the request and the response, which is enough
- * for an investigation to see what failed. Both excerpts are redacted and cut, and both are null
- * when the transport carried nothing, rather than an empty string that would read as "nothing was
- * asked".
+ * It also identifies failed calls. Per-name counts alone say "28 failed commandExecution" and
+ * leave the execution record unable to explain any of them. A bounded row per failure records the
+ * tool, the time, the request and the response, which is enough for an investigation to see what
+ * failed. Both excerpts are redacted and cut, and both are null when the transport carried
+ * nothing, rather than an empty string that would read as "nothing was asked".
  */
 import type { AgentTurnEvent } from "../backends/backend-types.ts";
 import { redactTokens } from "../backends/diagnostic-redaction.ts";

@@ -74,16 +74,15 @@ export interface IterationResult {
  * three fields here, so the loop ends a run on spent budget, a dead environment or a measurement
  * that reaches no reader — never on a reading of the tasks.
  *
- * It used to carry more, and both additions were wrong in the same way. A staleness guard ended any
- * round that changed no admitted difficulty evidence, and both of its recorded firings were false:
- * run 45 reported two refused batteries as absent ones, and run 68 stopped 80 seconds after
- * recording a blocking admission the next decision would have read. A loop-level too-hard floor, a
- * raw point pass-rate counter over main claims, was removed on 2026-08-10 because it duplicated the
- * difficulty selector's decision while being blind to the verified-versus-unaccepted distinction —
- * three rounds of admission refusals would have ended the loop as "too hard" even after the
- * selector had excluded that conclusion. Both times the loop was answering a question the decision
- * layer already owned, which is why difficulty evidence is read by the next-move policy and the
- * loop keeps the counters.
+ * Two further counters were tried here and both were wrong in the same way. A staleness guard
+ * ending any round that changed no admitted difficulty evidence fires falsely: it reads refused
+ * batteries as absent ones, and it stops a run that has just recorded a blocking admission the next
+ * decision would have read. A loop-level too-hard floor — a raw point pass-rate counter over main
+ * claims — duplicates the difficulty selector's decision while being blind to the
+ * verified-versus-unaccepted distinction, so three rounds of admission refusals end the loop as
+ * "too hard" after the selector has already excluded that conclusion. Both are the loop answering a
+ * question the decision layer owns, which is why difficulty evidence is read by the next-move
+ * policy and the loop keeps only the counters.
  */
 export interface LoopState {
   budget: CampaignBudgetGate;
@@ -187,9 +186,10 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   input.onOpening?.(kickoff, epochPassOf(decision));
   // Every round that read a placement records it, whatever it then decided to do about it. The
   // record is the rebuild's workspace-reset key, the review's row for what each round did, and —
-  // for the placement that ends a campaign — the only durable trace that it was read at all: run
-  // 662762 stopped on a third placement that exists in no difficulty-decisions file. The write is
-  // content-addressed, so a round that records without authoring adds one file and no duplicate.
+  // for the placement that ends a campaign — the only durable trace that it was read at all;
+  // without this write, a run stops on a placement that exists in no difficulty-decisions file. The
+  // write is content-addressed, so a round that records without authoring adds one file and no
+  // duplicate.
   const placement =
     readout === null
       ? null
@@ -291,10 +291,9 @@ function unresolvedAuthoringRounds(loop: LoopState): number {
 }
 
 /** The repository-relative evidence paths behind a terminal; null when the ending cites nothing.
- *  A `candidate-held` ending cites the recorded promotion row because prose alone left the reader
- *  guessing: truss-run6-opus-0902 closed on four held clauses with `terminalEvidence: null`, and
- *  whoever read it afterwards had to know which file to open. Every other terminal stays
- *  prose-only, since its reason is in the terminal string itself. */
+ *  A `candidate-held` ending cites the recorded promotion row, because prose alone leaves whoever
+ *  reads a run that closed on several held clauses having to know which file to open. Every other
+ *  terminal stays prose-only, since its reason is in the terminal string itself. */
 export function terminalEvidenceFor(
   terminal: string | null,
   result: IterationResult,
@@ -306,8 +305,8 @@ export function terminalEvidenceFor(
 }
 
 /** A failed authoring round whose recomputed decision still names an authoring move may try again,
- *  because a Builder session is stochastic and a single bad round is not a verdict on the product:
- *  12 of 55 recorded runs died on one failed round. The retry is bounded by the shared
+ *  because a Builder session is stochastic and a single bad round is not a verdict on the product;
+ *  without the retry a campaign dies on its first failed round. The retry is bounded by the shared
  *  unresolved-authoring allowance rather than being free, and a clause that already carries its own
  *  bounded escalation or its own owner — `authoring-stalled`, `environment-blocked` — stays
  *  terminal, since retrying it would only spend the allowance on the same wall. */
@@ -323,7 +322,7 @@ function buildFailedTerminal(result: IterationResult, loop: LoopState): string |
   }
   const clauses = result.buildClauses.length > 0 ? ` (${result.buildClauses.join(", ")})` : "";
   // The terminal says the final iteration failed, not the run: a later failed authoring round does
-  // not erase the cases earlier rounds measured, and run w28 ended this way holding 50 of them.
+  // not erase the cases earlier rounds measured, and a run can end this way holding dozens of them.
   return `build-failed: the final iteration produced no build-admissible candidate${clauses}; earlier recorded iterations keep their own evidence`;
 }
 
@@ -344,9 +343,9 @@ function heldCandidateTerminal(result: IterationResult, loop: LoopState): string
   ) {
     return loopGuardTerminal(loop);
   }
-  // The terminal names what blocked continuation rather than reporting a bare code. Three held
-  // runs between truss-w30 and truss-w36-sol each recorded only "candidate-held", and the review
-  // had to open promotion files by hand to learn why each loop had ended.
+  // The terminal names what blocked continuation rather than reporting a bare code: a run that
+  // records only "candidate-held" leaves a reviewer opening promotion files by hand to learn why
+  // the loop ended.
   return result.nextDecision === null
     ? `candidate-held: the ${decision.move} candidate was held and no grounded next decision exists`
     : `candidate-held: the ${decision.move} candidate was held; a next "${result.nextDecision.move}" does not continue in this invocation`;
@@ -392,8 +391,8 @@ export function nextUnresolvedAuthoringStall(
     return prev?.key === key ? { key, rounds: prev.rounds + 1 } : { key, rounds: 1 };
   }
   // A successful adoption resets the stall state. Recording a packet on its own is not enough:
-  // when a new output digest counted as progress, a measurement round carrying no useful evidence
-  // cleared an allowance a held candidate had already spent. Admitted evidence still clears the
+  // counting a new output digest as progress lets a measurement round carrying no useful evidence
+  // clear an allowance a held candidate has already spent. Admitted evidence still clears the
   // streak, one step later and through the key — a published packet becomes the next round's basis,
   // so that round opens a new stall at one round rather than continuing the old one, while a
   // packet that reaches no reader changes no basis and clears nothing.
@@ -408,9 +407,9 @@ function unresolvedAuthoringKey(result: IterationResult): string | null {
     result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
   if (!unresolved) return null;
   // Key the round by what it consumed. A produced digest is new for every analysed round by
-  // construction, so preferring it gave each unresolved round its own key and the declared
-  // allowance could never accumulate: run21 iterations 11-13 and run22 each held under one
-  // unchanged basis and never reached the limit. A genuinely fresh finding still clears the streak,
+  // construction, so preferring it gives each unresolved round its own key and the declared
+  // allowance never accumulates: round after round holds under one unchanged basis and the limit is
+  // never reached. A genuinely fresh finding still clears the streak,
   // because a packet measured on the adopted harness is published and becomes the next round's
   // basis — what is not progress is a digest that was produced and can be consumed by nobody.
   const admissionDigest = result.admissionBasisDigest ?? null;

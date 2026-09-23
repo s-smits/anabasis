@@ -48,10 +48,9 @@ export interface AdmissionInput {
 
 /** What this refusal observed is a byte comparison: `publicBatteryFingerprint` hashes the sorted
  *  public inputs, so ids, families and levels are outside the identity and a moved number is inside
- *  it. The text states that comparison and no other. It read wider until 2026-09-19, naming
- *  batteries that had only moved their published magnitudes as though they had been caught here;
- *  they are not, and the obligation they belong to is the authoring prompt's, where a rule no check
- *  enforces has its one owner. */
+ *  it. The text states that comparison and no other. Read wider, it would name a battery that only
+ *  moved its published magnitudes as though this check had caught it; it has not, and that
+ *  obligation is the authoring prompt's, where a rule no check enforces has its one owner. */
 const REPEATED_CONDITION =
   "This fixed product already measured these public inputs: every task's public input is byte-identical to a battery in the admitted history, whatever its ids, families or levels are now called. A new experiment changes what the tasks require of the solver, or changes the product.";
 
@@ -121,10 +120,9 @@ const SINGLE_OPERATION = {
  *  of a retained task count as scoring, since the family selects the checks that apply to it. So
  *  does the scoring program, and only that: a reference solve or test rewritten for a new battery
  *  moves what the gate rehearses, not what the verifier decides, which is why `scoringHash` is the
- *  evaluator's own import closure rather than the correctness-model directory. Until 2026-09-21 any
- *  byte under correctness-model/ counted, and 10 of 30 recorded new baselines had moved only a
- *  reference solve or a test there; 9 of them read as one harness intervention or task probe once
- *  rebuilt. */
+ *  evaluator's own import closure rather than the correctness-model directory. Counting any byte
+ *  under correctness-model/ instead calls a candidate a new baseline for a rewritten reference solve
+ *  or test, when what it did was one harness intervention or one task probe. */
 export function experimentOperation(
   candidate: CandidateSnapshot,
   adoptedDir: string | undefined,

@@ -35,10 +35,10 @@ type Request =
 type Response = { missing: readonly string[] } | { result: boolean };
 type Child = Bun.Subprocess<"pipe", "pipe", "pipe">;
 /** Time limit for one complete check, including its tool runs. It exceeds the tool limit because
- *  when both were `TOOL_TIMEOUT_CEILING_MS`, a check that ran one tool at the published maximum
- *  could never complete — its own wall expired at the instant the tool was still entitled to run
- *  (Sol run 23a1bc, control `station-09-additional-valid`). starter-pack/contract.md publishes both
- *  numbers together, so the agent can see that the second leaves room for the first. */
+ *  at `TOOL_TIMEOUT_CEILING_MS` for both, a check that ran one tool at the published maximum could
+ *  never complete — its own wall expires at the instant the tool is still entitled to run.
+ *  starter-pack/contract.md publishes both numbers together, so the agent can see that the second
+ *  leaves room for the first. */
 export const EVALUATOR_WALL_MS = 2 * TOOL_TIMEOUT_CEILING_MS;
 
 /** The host side of one check: the tool port it may call, its wall, the lifetime that owns its

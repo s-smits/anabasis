@@ -35,9 +35,9 @@ function materializeTaskData(
   seen = new Set<object>(),
 ): JsonValue {
   if (value === null || isString(value) || isBoolean(value)) return value;
-  // A non-finite number becomes null, as JSON.stringify writes it in the tool's own text. Refusing
-  // it instead voided every call of a truss tool whose damaged state was the mechanism the task
-  // was about (9 of 25 tasks, 2026-09-17).
+  // A non-finite number becomes null, as JSON.stringify writes it in the tool's own text.
+  // Refusing it instead voids every call of a tool whose non-finite state is the mechanism the
+  // task is about, which can be most of a battery.
   if (isNumber(value)) return Number.isFinite(value) ? value : null;
   if (!isObject(value)) throw new Error("generated tool result must be plain finite JSON");
   const target = targets.get(value) ?? value;

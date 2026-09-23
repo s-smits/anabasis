@@ -92,11 +92,10 @@ export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicT
   slug: string;
   kickoff: string;
   /** Whether the resolved Builder transport carries public web search. It is resolved rather than
-   *  requested: `resolvePiSlot` grants it to claude, which serves it as a CLI builtin, and to codex,
-   *  which serves it as a Responses tool, and withholds it from openrouter, whose own routing syntax
-   *  has not been proved live. The one thing it changes is a sentence of the start prompt telling
-   *  the Builder it may search for specifications, standards and the real tools to install, and to
-   *  cite each source beside the rule it supports. */
+   *  requested: `resolvePiSlot` grants it to claude as a CLI builtin and to codex as a Responses
+   *  tool, and withholds it from openrouter, whose routing syntax has not been proved live. It
+   *  changes one sentence of the start prompt, telling the Builder it may search for specifications,
+   *  standards and the real tools to install, and to cite each source beside the rule it supports. */
   webSearch?: boolean;
   expectedTasks: number;
   /** The smallest accepted size when the round leaves the count to the Builder. */
@@ -125,15 +124,11 @@ export interface BuilderCampaignDeps {
   /**
    * Test-only shortened backstop clock; production uses `REVIEW_INTERVAL_MS`, forty minutes.
    *
-   * Forty and not the 120 of 2026-09-10, because 120 minutes was longer than the sessions it
-   * bounded and so never fired. Across the eleven authoring sessions recorded under it, every
-   * review was triggered by the Builder's own `correctness_check`, whose median first call landed
-   * at minute 56 of a session ending near minute 100, and only one session ran past 120 minutes at
-   * all. Truss run truss-opus-20260916T151117729Z-064960 authored for 92 minutes with no preview
-   * and no review, then took three checks and two reviews in its last 18 minutes and submitted 7
-   * minutes after the last one: 3,465 and 2,033 characters of advice arriving with no time left to
-   * act on them. A backstop that fires while the session can still spend is the point of having
-   * one.
+   * Forty because an interval longer than the sessions it bounds never fires, and a review arriving
+   * in a session's last minutes is thousands of characters of advice with no time left to act on
+   * them. A session typically runs an hour and a half and takes its first `correctness_check` near
+   * the middle of it, so a backstop set above that leaves the whole first half unreviewed. The point
+   * of having one is that it fires while the session can still spend.
    */
   reviewIntervalMs?: number;
   open: BuilderSessionDeps["open"];
@@ -268,10 +263,10 @@ class BuilderCampaignController {
     this.experimentProposal = candidate.experimentProposal;
     // A repaired executable is a new submission condition even when the candidate files did not
     // change, so a valid candidate is keyed by its submission condition and a malformed one by its
-    // committed contract-root tree. One identity for these bytes, resolved once: the candidate
-    // memory keys its remembered refusals and its no-op strikes on it, and the execution record
-    // compares submissions on the same value, so none of the three can disagree about what "the
-    // same candidate" means.
+    // committed contract-root tree. One identity, resolved once: the candidate memory keys its
+    // remembered refusals and its no-op strikes on it, and the execution record compares
+    // submissions on the same value, so none of the three can disagree about what "the same
+    // candidate" means.
     const tree = candidateTreeIdentity(this.workspace, candidate.commit);
     this.submittedTree = tree;
     const candidateId = candidate.ok ? conditionKey(candidate) : tree;
@@ -304,8 +299,7 @@ class BuilderCampaignController {
     }
     const { outcome, retryable } = await this.validate(candidate, turn);
     // A typed runtime non-result or a host refusal says nothing about these bytes, so resubmitting
-    // them is not a no-op: campaign 199f6a55 (2026-09-08) struck the same commit twice for one
-    // worker crash.
+    // them is not a no-op; counting it would strike the same commit twice for one worker crash.
     if (outcome.ok || outcome.terminal === true || retryable) return outcome;
     return this.strike(candidateId, outcome);
   }
@@ -320,8 +314,8 @@ class BuilderCampaignController {
   /**
    * Runs the pipeline on submit's own snapshot load, sharing the gate run. Every stage that can
    * run reports, but only a candidate clean through admission and conformance writes an iteration,
-   * so the persisted diagnosis history counts gate verdicts alone. Run 52 made 17 submissions in
-   * one provider turn, which is why the executed stages are remembered per condition; a runtime
+   * so the persisted diagnosis history counts gate verdicts alone. A session can submit many times
+   * in one provider turn, which is why the executed stages are remembered per condition; a runtime
    * non-result or a host refusal is not remembered, since neither is a verdict on the bytes.
    */
   private async validate(
@@ -353,11 +347,10 @@ class BuilderCampaignController {
       settling !== null && report.harness !== null && report.gated !== null
         ? await this.settle(candidate, report.harness, report.gated, settling, turn)
         : this.unsettled(candidate, report);
-    // Safeguard 33 (stack simulation G8 and G9, 2026-09-06): the preview promises parity with
-    // submit on unchanged bytes. A clear check followed by a refused submit of the same snapshot
-    // says the two paths diverged, and nothing else records the pair. Admission is left out,
-    // because it reads EXPERIMENT.json, which the preview judged separately and may have seen
-    // change since.
+    // Safeguard 33: the preview promises parity with submit on unchanged bytes, so a clear check
+    // followed by a refused submit of the same snapshot says the two paths diverged, and nothing
+    // else records the pair. Admission is left out because it reads EXPERIMENT.json, which the
+    // preview judged separately and may have seen change since.
     if (clear !== undefined && !outcome.ok && executed.findings.length > 0) {
       safeguardTriggered(
         "33-preview-clear-submit-refused",
@@ -421,9 +414,8 @@ class BuilderCampaignController {
    *  and the same gate on the same snapshot, written into `trials/<conditionKey>`. One outcome is
    *  remembered per candidate-and-tool condition and the attempt slot is reserved before any stage
    *  runs, so blocked and non-result outcomes spend it too and unchanged bytes never buy the
-   *  validation sequence twice. Changed bytes may preview without limit (operator decision
-   *  2026-09-14: the Opus truss run reached the former ceiling during its first build and then
-   *  submitted unchecked). */
+   *  validation sequence twice. Changed bytes may preview without limit (operator decision): under
+   *  a ceiling, a build that reaches it spends the rest of the session submitting unchecked. */
   async preview(gates: Gate): Promise<GateReport> {
     const report = await previewCandidate(this.workspace, this.candidateCheckContext(), {
       input: this.pipelineInput(),
@@ -693,12 +685,12 @@ export async function runBuilderCampaign(
         submit: (request) => controller.submit(request),
         feedback,
         onExecution: writeExecution,
-        // The execution record survives a host kill at this boundary; the authoring tree did not.
-        // Epoch 309ad53cab4a holds only its seed commit because the run died between gates, so
-        // hours of authored bytes exist in no history and no cycle series can read them. The
-        // salvage commit `beginIteration` makes here is the same one the next iteration would
-        // have made, it returns null on a clean tree, and `attributableChange` already spans the
-        // round base, so a gate's changed paths and its unchanged reading are untouched.
+        // The execution record survives a host kill at this boundary; the authoring tree does not.
+        // A run that dies between gates leaves an epoch holding only its seed commit, so hours of
+        // authored bytes exist in no history and no cycle series can read them. The salvage commit
+        // `beginIteration` makes here is the same one the next iteration would have made, it
+        // returns null on a clean tree, and `attributableChange` already spans the round base, so a
+        // gate's changed paths and its unchanged reading are untouched.
         onCheckpoint: (evidence) => {
           writeExecution(evidence);
           beginIteration(controller.workspace, "checkpoint");

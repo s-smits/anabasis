@@ -9,9 +9,9 @@
  * - `measureDifficulty` tallies the verified cases per item into the recorded battery.
  *
  * Sample size has a single owner, the interval. A thin sample widens it until neither outer zone
- * can be reached, which is what a confidence interval is for; before 2026-09-18 a second
- * case-count floor discarded the placement whenever a Builder changed fewer than four tasks, and
- * the round then reached the author with no measurement note at all. A sample that was never
+ * can be reached, which is what a confidence interval is for. A second case-count floor beside it
+ * only discards placements the interval would have made honestly, and the round then reaches the
+ * author with no measurement note at all. A sample that was never
  * measured, or whose counts are malformed, has no placement: `placeOnBand` returns the same null
  * `wilsonInterval` does, and the selector turns that one null into its one "no difficulty
  * evidence" answer.
@@ -51,7 +51,7 @@ export type BandPlacement = {
   toAim: number;
 };
 
-/** A first battery's aim, about 3 of 25 verified passes (operator decision 2026-09-14). */
+/** A first battery's aim, about 3 of 25 verified passes (operator decision). */
 const FIRST_BATTERY_RATE = 0.12;
 
 /** Scale a rate to n, rounded first so 0.2 × 15 = 3.0000000000000004 reads as 3. */

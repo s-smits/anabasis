@@ -27,7 +27,7 @@ export type NonResultKind = (typeof NON_RESULT_KINDS)[number];
  * then exits unsuccessfully, whether by signal or non-zero exit, is classified as `crash`.
  * `solver` is eligible because its producers are the shared blocker matcher for provider,
  * transport and credential failures, plus controller observations that no work completed:
- * every turn aborted or encountered provider degradation (live-run-08).
+ * every turn aborted or encountered provider degradation.
  * Excluded kinds need different handling. `verifier-throw` indicates an evaluator defect and
  * is handled by suspect-correctness-model; `verifier` has no attributed cause. A `crash` or
  * `protocol` error alone cannot establish environment ownership and may expose a checker

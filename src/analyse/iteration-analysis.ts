@@ -98,9 +98,9 @@ interface ClaimFileSlice {
  * current rule would not have given. Evidence names the rule that produced it, and a reader never
  * relabels old bytes under a new one.
  *
- * The motivating case was run 3, whose packet marked the all-pass census blocking. That finding is
- * advisory now, and without this binding the stale row still outranked the climb at promotion,
- * which is exactly the misroute the severity change had been made to end.
+ * Without that binding, a finding written as blocking under an older rule and advisory under this
+ * one still outranks the climb at promotion — exactly the misroute a severity change is made to
+ * end.
  */
 export const FEEDBACK_POLICY = "severity-route/9-complete-repair-agenda";
 
@@ -138,8 +138,8 @@ export type AnalysisFinding = {
   artifactSchemaPath?: string;
   publicInputPath?: string;
   /** No declared check observes the obligation at all, so no existing check should be repaired for
-   *  it. Run 0dba8e's reviews named the nearest check for an unchecked sketch three times, and the
-   *  Builder dutifully repaired that check each time. */
+   *  it. Without the flag a review names the nearest check instead, and the Builder dutifully
+   *  repairs that check round after round while the obligation stays unobserved. */
   unobserved?: true;
   /** What the reviewer's cited probes executed, composed only from public authoring identities: an
    *  accept control the Builder wrote, a dotted path under a declared artifactSchema root, and the
@@ -148,10 +148,9 @@ export type AnalysisFinding = {
    *  — and these three identities are the same class the finding's own `checkId` and
    *  `artifactSchemaPath` already cross by.
    *
-   *  Opus run 23a1bc is why this field exists: `target-compiles` was named in three consecutive
-   *  reviews, two of them forced blocking, each ordering a full rebuild of a 25-of-25 harness, and
-   *  the defect persisted while the public projection supplied only its check name. A probe is the
-   *  review's strongest evidence, and it was stopping at the boundary. */
+   *  Without this field the probe — the review's strongest evidence — stops at the projection
+   *  boundary, and the same check name arrives round after round with nothing behind it, each time
+   *  ordering a rebuild the author cannot aim. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
 };
 
@@ -229,10 +228,10 @@ export function blockingCounts(value: unknown): Record<string, number> | null {
 
 /** The one isolation strength every case row disclosed. An empty set and a conflicting set both
  *  fail `size === 1`, but they are different facts and so get different messages: zero rows means
- *  no case ran, as on a battery skipped before spend, rather than that anything disagreed — run
- *  opus-331 aborted on the disagreement sentence over an empty set, printing "disagree on isolation
- *  strength ()". Callers stand the analyse phase down before reaching here on a zero-row battery,
- *  and the first throw keeps that precondition loud and accurate for any future caller. */
+ *  no case ran, as on a battery skipped before spend, rather than that anything disagreed; folding
+ *  it into the disagreement arm aborts the run printing "disagree on isolation strength ()".
+ *  Callers stand the analyse phase down before reaching here on a zero-row battery, and the first
+ *  throw keeps that precondition loud for any future caller. */
 function disclosedIsolationStrength(
   slug: string,
   runId: string,
@@ -310,9 +309,9 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   const record = join("campaigns", analysis.slug, CASE_RECORD_FILE);
   const unaccepted = analysis.cases.filter((row) => classifyCaseOutcome(row) === "unaccepted");
   if (unaccepted.length > 0) {
-    // Safe totals only: no task ids and no inferred cause. The claude-med run's 25 unaccepted cases
-    // were read as verified failures, and an Opus rerun later exposed the unsupported cause that
-    // reading had been admitted under.
+    // Safe totals only: no task ids and no inferred cause. Unaccepted cases read as verified
+    // failures carry a cause the evidence never supported into the next round, and only a rerun
+    // exposes it.
     findings.push({
       kind: "diagnosis-uncertain",
       claim: `${unaccepted.length} of ${analysis.cases.length} attempt(s) produced no accepted submission and have no truth verdict; the counts alone do not establish why submission was absent`,
@@ -321,9 +320,9 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       severity: "advisory",
     });
   }
-  // Only a kind that can establish an environment failure earns "rerun unchanged": run 08c0f2 i02
-  // told its Builder that six `verifier` non-results — external checks that ran no tool at all —
-  // were one of those, and they were the harness's own.
+  // Only a kind that can establish an environment failure earns "rerun unchanged". A `verifier`
+  // non-result — an external check that ran no tool at all — is the harness's own defect, so
+  // counting it here would tell the Builder to rerun unchanged around a defect it owns.
   const nonResults = analysis.cases.filter(
     (row) =>
       row.runtimeNonResultKind !== null && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
@@ -344,13 +343,10 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
     });
   }
   if (checkerOutage !== null) findings.push(checkerOutage);
-  // An all-pass battery used to add an advisory harness-defect here with owner "tests". It said
-  // what the measurement note already says, but with a distance, a streak and a scope, under a kind
-  // naming a defect the harness does not have and an owner the evidence had not chosen: the truss
-  // c1d2a7 packet carried "6 or more found no limit", "no battery of this product has found a
-  // limit", "the last 3 batteries all found no limit", "no family held" and that row — five
-  // statements of one fact, beside none of what to do instead. The climb readout owns the sentence
-  // "this battery found no limit".
+  // An all-pass battery deliberately adds nothing here. It once added an advisory harness-defect
+  // with owner "tests", which named a defect the harness does not have and an owner the evidence
+  // had not chosen, and restated in a fifth dialect what the packet already says four other ways.
+  // The climb readout owns the sentence "this battery found no limit".
   return findings;
 }
 

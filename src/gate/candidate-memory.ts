@@ -5,19 +5,19 @@
  * Two rules end repeated work. The in-session no-op counter strikes a byte-identical resubmit of
  * a refused condition (POLICY.loop.noopSubmitStrikes); the persisted identical-diagnosis ceiling
  * counts refused authoring passes across rounds (POLICY.loop.stalledFindingsRepeats). Each repeat
- * below its ceiling is steered with its count, rather than ending the session, because one repeat
- * used to end it outright: runs w26 and w28 each died on a single byte-identical resubmit whose
- * transcript already recorded a concrete next move. The changed-tree cycle strike and the no-submit
- * strike ended on 2026-09-14 by operator decision, since a changed tree with the same diagnosis is
- * ordinary repair, not a stall.
+ * below its ceiling is steered with its count, rather than ending the session, because ending on
+ * the first repeat kills sessions whose transcript already records a concrete next move. There is
+ * no changed-tree cycle strike and no no-submit strike (operator decision), since a changed tree
+ * carrying the same diagnosis is ordinary repair rather than a stall.
  *
- * The counts exist because unbounded repetition is expensive rather than merely untidy. Run 52 paid
- * for census and F2 seventeen times in one provider turn on bytes it had already checked, and run
- * 35 made 141 submissions. Bounding it wrongly is expensive too: campaign 199f6a55 struck the same
- * commit twice for one worker crash it did not cause, and run25-sol-0830 refused 22 submits over
- * eleven no-verdict records on eleven different trees, so no candidate identity ever repeated while
- * one tool kept failing. That last shape is why the tool no-verdict count keeps its own owner
- * (tool-non-result.ts): it counts a failing tool across trees, and its count outlives a session.
+ * The counts exist because unbounded repetition is expensive rather than merely untidy: an
+ * unbounded session will pay for census and F2 a dozen times in one provider turn on bytes it has
+ * already checked, or make a hundred submissions. Bounding it wrongly is expensive too. Charging a
+ * commit for a worker crash it did not cause strikes the same tree twice, and a tool that keeps
+ * failing produces a no-verdict record on every tree it touches, so no candidate identity ever
+ * repeats while the session burns its submits. That last shape is why the tool no-verdict count
+ * keeps its own owner (tool-non-result.ts): it counts a failing tool across trees, and its count
+ * outlives a session.
  */
 import type { AuthorRepairFinding } from "../author/campaign-types.ts";
 import {
@@ -66,10 +66,10 @@ export function findingsRepeatRun(
   return priorBlockedFindingsHashes.length - differs;
 }
 
-/** The steering between the second identical diagnosis and the ceiling. A Sol run on 2026-08-22
- *  recorded one findings hash five rounds in a row on five different trees, and nothing told the
- *  author the diagnosis had not moved; each round read as a fresh refusal. Projected where it is
- *  rendered. */
+/** The steering between the second identical diagnosis and the ceiling. Without it a session can
+ *  record one findings hash round after round on as many different trees, with nothing telling the
+ *  author the diagnosis has not moved, so each round reads as a fresh refusal. Projected where it
+ *  is rendered. */
 export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {
   const ceiling = POLICY.loop.stalledFindingsRepeats;
   return {

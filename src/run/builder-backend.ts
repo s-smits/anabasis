@@ -49,12 +49,12 @@ export function builderSessionOpener(slot: PiSlotRuntime, workspace: string): Op
 }
 
 /** Limit one complete Builder session, not each turn. An explicit option wins, then
- * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no session time cap. The former six-hour default
- * was removed on 2026-09-01: runs 44-46 each spent one silent six-hour turn against it and
- * produced nothing, while the no-progress rule (`builder-turn-loop.ts`), the no-submit notice
- * (`sessionClock`) and the campaign's 40-minute review interval (`builder-campaign.ts`) check
- * progress during the session instead. The review becomes due at a completed host tool call, so it
- * cannot interrupt a silent one. */
+ * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no session time cap. A default cap buys nothing,
+ * because a session that is going to produce nothing spends the whole cap in one silent turn and
+ * then ends. The no-progress rule (`builder-turn-loop.ts`), the no-submit notice (`sessionClock`)
+ * and the campaign's 40-minute review interval (`builder-campaign.ts`) check progress during the
+ * session instead. The review becomes due at a completed host tool call, so it cannot interrupt a
+ * silent one. */
 export function builderSessionCapMs(
   explicit: number | undefined,
   env: Record<string, string>,

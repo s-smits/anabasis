@@ -2,14 +2,12 @@
  * Check that each truth check cites a public rule the Built Harness can read. This validation
  * runs while recording the candidate, before paid battery measurement.
  *
- * Two runs paid for the same defect from opposite sides. run23's `panel-node` family scored 0 of
- * 35: its panel frame rules (first frame, change-only, ordering, fast setup) and its bargraph
- * threshold, bit-order and latch rules were stated in `correctness-model/brief.json` under
- * `decisions`, which the public-resources projection withholds, while the operating guide asked for
- * "change-only frames" without defining them, and `panel-command-behaviour` then rejected 28 of 28.
- * The truss run enforced a member `areaId` to `usedAreas` join the brief states nowhere. In both
- * runs the Builder kept a correctness requirement private beside its implementation, and validation
- * did not refuse the missing public rule.
+ * The defect it exists to refuse is a Builder keeping a correctness requirement private beside the
+ * implementation that enforces it. A frame format, an ordering constraint, a threshold, a bit order
+ * or a required join between two public fields gets stated in `correctness-model/brief.json` under
+ * `decisions`, which the public-resources projection withholds, while the operating guide names the
+ * thing without defining it. The check then rejects every submission in the family, and the solver
+ * had no way to read the rule it was failing.
  *
  * Two structural requirements connect each citation to the public projection:
  *
@@ -51,11 +49,11 @@ function citationFindings(
 /** Check that every citation resolves to a published decision and every check cites one.
  *
  *  A public rule's `families` stays optional public metadata, and nothing compares it with check
- *  applicability. The reverse coverage rule that did, `brief-public-rule-family-uncovered`, was
- *  removed on 2026-09-15: the Builder could satisfy it either by narrowing the list or by adding a
- *  citation, and it refused a rule governing a family whose checks cite a different rule — truss
- *  eaf98f's "model-resolution-rule" in "design-audit". The census still requires a failing reject
- *  for every applicable check in every family, which is the obligation that actually bites. */
+ *  applicability. The reverse coverage rule that did, `brief-public-rule-family-uncovered`, is gone:
+ *  the Builder could satisfy it either by narrowing the list or by adding a citation, and it refused
+ *  a rule that governs a family whose checks legitimately cite a different rule. The census still
+ *  requires a failing reject for every applicable check in every family, which is the obligation
+ *  that actually bites. */
 export function publishedRuleFindings(brief: Brief): ContractFinding[] {
   const published = new Set(publicRuleDecisions(brief).map((decision) => decision.id));
   return brief.truthChecks.flatMap((check, index) => [

@@ -1,22 +1,19 @@
 /**
  * Bounded retries for an authoring turn the provider or transport ended with no build output.
  *
- * Three runs on 2026-09-03 ended `environment-blocked` on the first such turn. run53-sol-0903
- * (source 5515372d) and run55-sol-0903 (source 66536c5b) both settled "Your access token could not
- * be refreshed because you have since logged out or signed in to another account", and
- * truss-run12-sol-0903 settled the per-turn settle cap while the host had no internet for an hour.
- * Every one of those failures was transient: the campaign, the session workspace and the candidate
- * all survived it, and the only thing that ended was the run.
+ * Without them, a token that could not be refreshed, a settle cap reached while the host was off
+ * the network for an hour, or any other transport hiccup ends the whole run as
+ * `environment-blocked` on the first such turn. Each of those is transient: the campaign, the
+ * session workspace and the candidate all survive it, and the only thing that ends is the run.
  *
  * So a failed or aborted no-output turn is retried, except for a disabled account and an allowance
  * that names no clock. The original typed failure still owns environment-blocked classification,
  * and a generic 429, an overload and a token-refresh error all stay eligible for these retries.
  *
  * A limit that says when it resets waits for that instant instead of a step of the ladder below.
- * Campaign 3fd52f9e-28 ended twice on 2026-09-17 against "resets 12pm" and "resets 6:30pm"
- * (Europe/Amsterdam), spending no wait at all, because the allowance matcher read a clock-bounded
- * session limit as exhaustion. Seventeen minutes of ladder could not have reached either clock, so
- * the wait has to be the provider's own number; the three attempts still bound it.
+ * A session limit naming a wall-clock reset is a bounded pause, not exhaustion, and the whole
+ * ladder is seventeen minutes, which cannot reach a reset hours away. So the wait has to be the
+ * provider's own number; the three attempts still bound it.
  *
  * A retry is a paid attempt, and it reserves its own provider turn through the same two gates the
  * first attempt passed. Those gates are asked on both sides of the wait, so a controller stop, a
@@ -32,8 +29,8 @@ import { raceAbort } from "./builder-tool-receipts.ts";
 import { allowanceWait } from "../truth/provider-reset.ts";
 
 /** The whole retry budget for one turn: three further attempts, then the typed non-result. The
- *  waits grow because the observed causes clear on different clocks — a re-login lands in minutes,
- *  a home network outage took closer to an hour. */
+ *  waits grow because the causes clear on different clocks — a re-login lands in minutes, a home
+ *  network outage closer to an hour. */
 export const TURN_RETRY_BACKOFF_MS = [120_000, 300_000, 600_000] as const;
 
 /** Wake a little after the provider's stated reset rather than exactly on it, so a clock that is
@@ -44,10 +41,10 @@ export const PROVIDER_RESET_MARGIN_MS = 60_000;
 const REASON_MAX_CHARS = 300;
 
 /** A refusal no wait clears: the provider says the organisation, account or workspace itself is
- *  disabled, which only its administrator changes. opus-20260905T065506215Z waited out all three
- *  backoffs, 17 minutes, on the same HTTP 403 "Your organization has disabled Claude subscription
- *  access" before ending on the clause it would have ended on at once. The transient set stays
- *  decided on the turn's outcome; this names the one permanent shape. */
+ *  disabled, which only its administrator changes. Without this pattern a run spends all three
+ *  backoffs, seventeen minutes, on the same HTTP 403 before ending on the clause it would have
+ *  ended on at once. The transient set stays decided on the turn's outcome; this names the one
+ *  permanent shape. */
 export const PERMANENT_REFUSAL =
   /\b(?:organi[sz]ation|account|workspace)\b[^\n]{0,80}\b(?:disabled|deactivated|suspended)\b/i;
 

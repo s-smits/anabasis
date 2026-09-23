@@ -1,37 +1,34 @@
 /**
  * Shell rules the two model-visible surfaces carry: the Harness Builder's system prompt, and the
- * Built shell's own tool description. Since 2026-09-06 both shells run behind the same
- * destructive-command guard — built-bash.ts asks it too, passing `BUILT_SHELL_RULES` — so a refusal
- * quotes a line from the list its own agent was shown rather than from the other agent's.
+ * Built shell's own tool description. Both shells run behind the same destructive-command guard —
+ * built-bash.ts asks it too, passing `BUILT_SHELL_RULES` — so a refusal quotes a line from the list
+ * its own agent was shown rather than from the other agent's.
  *
  * The lists are separate because the shells are. The Builder edits one workspace under git; the
  * Built shell runs each command in a fresh folder that is removed afterwards, with no repository and
  * no `.toolchain` directory, only its programs on PATH, which its tool description names — a rule
- * naming the directory sent every case of truss run 298967 (2026-09-15) looking for it. So the Built
+ * naming that directory sends every case looking for something that is not there. So the Built
  * list drops the git-revert line and the installed-tool line, and names a literal `/tmp` child where
  * the Builder names `scratch/.trash/`, whose contents would come back as draft files. Neither may
  * name `$TMPDIR` as a move destination: dcg refuses a move to a variable-rooted path
  * (`core.filesystem:mv-dynamic-path`, "shell variables ... may resolve to /"), so a refusal quoting
  * that spelling would itself be refused.
  *
- * The rules were mined from the recorded traces of 2026-08-27 to 2026-09-02, not written from first
- * principles. Builder sessions (38 records, 66 failed calls): a `cd .toolchain` that moved every
- * later relative path, `rm -rf` and `mv node_modules` refused by the guard, tool config directories
- * aimed at the operator's home, reads of the closed controller tree. Built Harness cases (57 runs,
- * 1,057 failed shell calls): `mkdir /tmp/x` and `mktemp -d` outside the granted directories, 316
- * timeouts mostly on `find /` scans, and `arduino-cli: command not found` for a tool the Builder had
- * installed. The literal redirect target was added on 2026-09-03: of the eleven guard refusals
- * recorded for the Opus Builders of runs 47, 50 and 52, `cat > $W/file` was the shape after `rm -rf`,
- * and the same shape was 41% of the operator's own blocked calls.
+ * Each line answers a failure the recorded traces actually carry rather than one reasoned out from
+ * the guard's rule set. On the Builder side: a `cd .toolchain` that moved every later relative path,
+ * `rm -rf` and `mv node_modules` refused by the guard, tool config directories aimed at the
+ * operator's home, reads of the closed controller tree. On the Built side: `mkdir /tmp/x` and
+ * `mktemp -d` outside the granted directories, timeouts on `find /` scans, and
+ * `arduino-cli: command not found` for a tool the Builder had installed. The redirect line names a
+ * literal target because `cat > $W/file` is the commonest refused shape after `rm -rf`.
  *
- * At most eight rules and about fifteen tokens each (operator decision 2026-09-02), because the list
- * is paid on every turn of both agents.
+ * At most eight rules and about fifteen tokens each (operator decision), because the list is paid on
+ * every turn of both agents.
  *
- * Both lists say a refused command runs nothing. The Builder's line said it lost the turn until
- * 2026-09-18, when the recorded traces refused that: truss run c1d2a7's first authoring session took
- * a dcg refusal at its second call and went on to make 70 calls in that same turn and submit an
- * accepted candidate. The line's remaining unique content, that there is no allow-once, is already
- * the last clause of every refusal the guard returns (`BUILDER_REFUSAL_CLOSE`).
+ * Both lists say a refused command runs nothing, and neither says the turn is lost, because it is
+ * not: a session can take a refusal on its second call, make dozens more in the same turn and submit
+ * an accepted candidate. That there is no allow-once is already the last clause of every refusal the
+ * guard returns (`BUILDER_REFUSAL_CLOSE`).
  */
 export const DCG_RULES: readonly string[] = [
   "Refused: rm -r outside the workspace, find -delete, git clean, git reset --hard.",
@@ -45,10 +42,10 @@ export const DCG_RULES: readonly string[] = [
 ];
 /** Each Built command starts in a fresh folder that is removed afterwards (built-bash.ts), so the
  *  Builder's "workspace root" line would point the solver at nothing, and the time walls come from
- *  the harness's own agent/config.yaml, so the shared line names no number. dcg refuses a redirect to
- *  `$HOME/x` on its own reading, and Built cases of 2026-09-13 to 2026-09-15 lost 18 turns to that
- *  and 51 to `$TMPDIR/…`. Since 2026-09-16 the guard caller admits both before dcg sees them
- *  (command-guard.ts `privateScratchRedirect`), which is why the write line names `$HOME` beside `~`.
+ *  the harness's own agent/config.yaml, so the shared line names no number. dcg on its own refuses a
+ *  redirect to `$HOME/x` and to `$TMPDIR/…`, which costs a solver turn after turn until it finds a
+ *  spelling that passes. The guard caller admits both before dcg sees them (command-guard.ts
+ *  `privateScratchRedirect`), which is why the write line names `$HOME` beside `~`.
  *  It leaves out `$TMPDIR`, which the Built shell makes fresh for each command and never reads back,
  *  so a rule naming it would offer the solver a place its next command cannot revisit. */
 export const BUILT_SHELL_RULES: readonly string[] = [

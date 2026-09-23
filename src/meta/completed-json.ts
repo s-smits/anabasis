@@ -34,8 +34,8 @@ export function writeAtomic(path: string, bytes: string): void {
 
 /**
  * The JSON in `path`. A missing or damaged file throws, exactly as reading and parsing it by hand
- * would. Seventy call sites wrote that parse of `readFileSync(path, "utf8")` out inline, and fifteen
- * skill scripts wrapped it in a local `readJson` of their own.
+ * would. It is the one owner of the `capturedJsonParse(readFileSync(path, "utf8"))` that call sites
+ * and skill scripts otherwise each write out for themselves.
  */
 export function readJsonFile(path: string): JsonValue {
   return capturedJsonParse(readFileSync(path, "utf8"));
@@ -43,9 +43,9 @@ export function readJsonFile(path: string): JsonValue {
 
 /**
  * The JSON in `path`, or null when it is missing, unreadable or not JSON. It is for evidence that
- * may legitimately be absent, where a damaged file may be read the same way as an absent one; eleven
- * of those fifteen scripts carried exactly this reader. A caller that must tell damage from absence
- * uses `readJsonFile` behind its own `existsSync`, or `readCompleted` below.
+ * may legitimately be absent, where a damaged file may be read the same way as an absent one. A
+ * caller that must tell damage from absence uses `readJsonFile` behind its own `existsSync`, or
+ * `readCompleted` below.
  */
 export function readJsonFileOrNull(path: string): JsonValue | null {
   try {

@@ -5,10 +5,10 @@
  * Neither may change a pass, an acceptance, a claim or a promotion: the result is advice
  * attached to controller-owned evidence, and the controller decides what to do with it.
  *
- * Two readers, one lifecycle. The four review callers removed on 2026-09-04 each carried their own
- * session factory, prompt assembly, response parser and evidence writer; this module is the part
- * they actually shared. The reader-specific choices -- what the session reads, what it may report,
- * and where its output is recorded -- stay with each reader.
+ * Two readers, one lifecycle. The review callers each used to carry their own session factory,
+ * prompt assembly, response parser and evidence writer; this module is the part they actually
+ * shared. The reader-specific choices -- what the session reads, what it may report, and where its
+ * output is recorded -- stay with each reader.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { JsonValue } from "../meta/json-shape.ts";
@@ -32,9 +32,9 @@ export type ReaderTurn = {
   error: string | null;
 };
 
-/** One reader session's deadline, continuations included. 246 recorded epoch reviews took a median
- *  of 4 minutes, so the bound is not a throughput limit; it exists for the tail, where one review
- *  reached the Judge's 30-minute wall and lost its findings to it. An hour is the session's own
+/** One reader session's deadline, continuations included. A review settles in a few minutes, so
+ *  the bound is not a throughput limit; it exists for the tail, where a review still working runs
+ *  into the Judge's 30-minute turn wall and loses its findings to it. An hour is the session's own
  *  turn ceiling, so nothing below this cuts a review that is still working. */
 export const READER_DEADLINE_MS = 60 * 60_000;
 

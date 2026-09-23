@@ -2,16 +2,12 @@
  * The Builder execution record: what the Builder actually did inside its one session.
  *
  * `builder-session.json` describes the fixed composition before any model work — the roster, the
- * isolations, the framing digest — and so it cannot answer "what did the Builder do". Run 35 is the
- * measurement of that gap: 43 minutes and 141 refused submissions left 19 record rows, six
- * observability rows and one authoring non-result naming zero sessions, and the only complete
- * account of the session was the workspace git history, which no evidence read.
- *
- * The turn results carried most of the answer all along. Every session settles a per-turn
- * `(byName, failed, total)` tally and reports provider spend when a turn ends, and the driver read
- * the status and dropped the rest. This owner keeps that tally, the spend and the submission
- * history as one evidence per session. A turn that never returns has no settled tally, so
- * `builder-turn-observation.ts` folds the running turn's own events beside it.
+ * isolations, the framing digest — so it cannot answer "what did the Builder do", and without this
+ * record the only complete account of a session is the workspace git history, which no evidence
+ * reads. Every session already settles a per-turn `(byName, failed, total)` tally and reports
+ * provider spend when a turn ends; this owner keeps that tally, the spend and the submission
+ * history as one evidence per session, and `builder-turn-observation.ts` folds a running turn's own
+ * events beside it, since a turn that never returns has no settled tally.
  *
  * It decides nothing: no threshold, gate, verdict or claim reads it, and it is never model-facing.
  * Unknown provider spend stays null rather than zero, so a transport that reported nothing says so
@@ -50,9 +46,8 @@ const MAX_CUSTOM_CALL_RECEIPTS = 512;
 
 export interface BuilderSubmitAttempt {
   experimentProposal?: ExperimentSubmission;
-  /** Whether this row records a real candidate tree or only a controller stop. The outcome reader
-   *  refuses a row that does not say, so no reader has to infer a stop from a commit that happens
-   *  to look like one. */
+  /** A real candidate tree, or only a controller stop. The outcome reader refuses a row that does
+   *  not say, rather than leaving a reader to infer a stop from a commit that looks like one. */
   kind: "candidate" | "controller-terminal";
   /** 1-based submission ordinal within the session. */
   ordinal: number;
@@ -66,10 +61,10 @@ export interface BuilderSubmitAttempt {
   /** The workspace commit at which the controller completed this submission. */
   commit: string;
   /** Content identity of the two contract roots at that commit, as `candidateTreeIdentity` reads
-   *  them; absent on a controller stop, where readers fall back to the commit. A commit sha is not
-   *  a byte identity: A -> B -> A settles at a third sha over the first tree, and a note at the
-   *  workspace root changes the sha over unchanged contract roots. `builder-campaign.ts` keys its
-   *  repeat strikes on this identity, and so do the fields below. */
+   *  them; absent on a controller stop, where readers fall back to the commit. A commit sha is not a
+   *  byte identity: A -> B -> A settles at a third sha over the first tree, and a root note changes
+   *  the sha over unchanged roots. `builder-campaign.ts` keys its repeat strikes on this identity,
+   *  and so do the three comparison fields below. */
   treeId?: string;
   /** Digest over the refused findings; null on acceptance. */
   findingsDigest: string | null;
@@ -79,26 +74,24 @@ export interface BuilderSubmitAttempt {
   /** The previous submission carried the same findings digest; null when there was none. */
   repeatedFindings: boolean | null;
   /** Multiset comparison by finding code against the previous submission; null when there was none.
-   *  The boolean above collapses every partial outcome into one bit: run 68's submit 3 read "same
-   *  issues: no" while one class fell from 50 to 15 and a new class arrived at 100. These three
-   *  counts are what the refusal text shows the Builder instead. */
+   *  The boolean above collapses every partial outcome into one bit — one class falling from 50 to
+   *  15 while another arrives at 100 reads as "same issues: no" — so the refusal text shows these
+   *  three counts instead. */
   findingsDelta: { carried: number; resolved: number; introduced: number } | null;
   /** The contract roots moved since the previous submission; null when there was none. */
   workspaceChanged: boolean | null;
   /** Ordinal of the earliest submission that already carried these bytes; null when none did. The
-   *  two fields above compare against the previous submission only, which is blind to a tree the
-   *  session has returned to: run 35 ended byte-identical to its first submission after 141
-   *  attempts, and every depth-1 comparison along the way truthfully said the tree had changed. */
+   *  two fields above compare against the previous submission only, so a session that wanders away
+   *  from a tree and back reads as changed at every step. */
   treeFirstSubmittedAsAttempt: number | null;
   /** The refusal ended the session instead of costing one more turn. */
   terminal: boolean;
 }
 
 /** One retried authoring turn: a provider or transport failure that produced no build output, and
- *  the wait the controller took before running the same turn again. The row exists so a reviewer
- *  can see that a run survived a transient failure, and at what cost in provider turns, since the
- *  retried attempts are indistinguishable from ordinary turns in every other count.
- *  `turn-retry.ts` owns when one is written. */
+ *  the wait before the same turn ran again. Retried attempts are indistinguishable from ordinary
+ *  turns in every other count, so this row is what says a run survived a transient failure and at
+ *  what cost in provider turns. `turn-retry.ts` owns when one is written. */
 export interface TurnRetryRow {
   /** The authoring role whose turn failed. */
   role: string;
@@ -147,9 +140,8 @@ export interface BuilderExecutionEvidence {
     reportedTurns: number;
     /** How many of those turns never reached their own provider terminal, so their share of the
      *  totals above is the transport's in-flight estimate rather than the provider's account. A
-     *  streamed Claude frame's `usage` is not final, each frame repeats the whole cached input and
-     *  none of them carries a cost, so a total with estimated turns in it bounds nothing in either
-     *  direction — run 17f9de recorded four such epochs as 36.5M input, 3,317 output and no cost. */
+     *  streamed frame's `usage` is not final, each frame repeats the whole cached input and none of
+     *  them carries a cost, so a total holding estimated turns bounds nothing in either direction. */
     estimatedTurns: number;
   };
   /** Milliseconds from session start to the first tool call; null when the Builder called none. */
@@ -165,8 +157,8 @@ export interface BuilderExecutionEvidence {
    *  the number of times the conformance probes and the adoption gates actually executed. */
   uniqueCandidateTrees: number;
   /** Submissions at a tree an earlier submission had already completed at, whether the session came
-   *  straight back to it or returned through others. It reads with the field above: 17 submissions
-   *  over 2 trees is the run-52 shape, and 15 of those cost no second execution. */
+   *  straight back to it or wandered. Read with the field above, it says how many submissions cost
+   *  no second execution. */
   repeatedTreeSubmits: number;
   /** The raw and candidate-only row counts. */
   submitCounts: BuilderSubmitCounts;
@@ -180,9 +172,8 @@ export interface BuilderExecutionEvidence {
    *  own turn. */
   turnRetries: TurnRetryRow[];
   /** Authoring reviews that ran after a completed tool call: the advice characters attached to that
-   *  tool's result (0 when the review found nothing, null when the review failed and the result
-   *  went back unchanged), and how long the review held the session, which the call's own
-   *  `durationMs` leaves out. */
+   *  tool's result (0 when the review found nothing, null when it failed and the result went back
+   *  unchanged), and how long the review held the session, which the call's `durationMs` omits. */
   authoringReviews: Array<{ turn: number; tool: string; adviceChars: number | null; reviewMs: number }>;
   /** Failed tool calls by name. The aggregate above says how many failed; a name says which
    *  contract the session was fighting. */
@@ -208,11 +199,10 @@ export interface BuilderExecutionEvidence {
   proseCapture?: BuilderProseCapture;
   /** `in-flight` appears only on a checkpoint written while the session is still running, and the
    *  settled write replaces it in place. A record left at `in-flight` belongs to a session the host
-   *  killed before its finally ran — run A's SIGTERM erased 66 minutes of authoring evidence
-   *  exactly that way, because the only write happened after the loop settled.
-   *  `recorded-at-terminal` is that same record after the controller closed it at its own terminal:
-   *  the submit rows are real, the aggregates are still a checkpoint's, and no `in-flight` record
-   *  survives an invocation. */
+   *  killed before its finally ran, which is why the checkpoints exist: a single write after the
+   *  loop settles loses the whole session. `recorded-at-terminal` is that record after the
+   *  controller closed it at its own terminal — the submit rows are real, the aggregates are still
+   *  a checkpoint's, and no `in-flight` record survives an invocation. */
   outcome:
     | "recorded"
     | "turn-bound"
@@ -229,10 +219,9 @@ export interface BuilderExecutionEvidence {
   lifecycle?: { kind: "evidence-unavailable"; phase: "session-dispose" };
   /** The controller terminal that closed this record; present exactly on `recorded-at-terminal`. */
   closure?: BuilderExecutionInvocation;
-  /** The invocation that had already recorded its terminal when this record was written. Run 25
-   *  wrote sessions 2 and 4 eighteen and twenty-eight minutes after their invocations ended, into a
-   *  campaign no controller still owned; such a write is kept and named rather than accepted
-   *  silently as though it belonged to the live run. */
+  /** The invocation that had already recorded its terminal when this record was written. A session
+   *  can settle minutes after its invocation ended, into a campaign no controller still owns; that
+   *  write is kept and named rather than accepted silently as part of the live run. */
   postTerminal?: BuilderExecutionInvocation;
   writtenAt: string;
 }
@@ -287,30 +276,25 @@ export function submitProjection(submits: readonly BuilderSubmitAttempt[]): Subm
 }
 
 /** Digest over the findings a refusal returned: codes and author-projected paths, in order, so a
- *  withheld path such as a task location cannot move it. Detail is excluded for the same reason
- *  `semanticFindingsIdentity` excludes it — the published process facts and the "repeat n of m"
- *  steering vary that text every round, which would make every repeat look new. */
+ *  withheld path such as a task location cannot move it. Detail is excluded because the published
+ *  process facts and the "repeat n of m" steering vary that text every round, which would make
+ *  every repeat look new. */
 export function findingsDigest(findings: readonly ContractFinding[]): string {
   return hashJsonValue(findings.map((f) => ({ code: f.code, path: projectFindingForAuthor(f).path })));
 }
 
 /** The repeat identity of one refusal: stage, gate owner and claim, sorted finding codes and
  *  author-projected paths, and the quoted ids named in the projected detail. Raw per-finding free
- *  text is excluded.
- *
- *  Free text cannot carry the identity. Run w26 refused five gate rounds with the same owner, the
- *  same claim and the same 357 findings, and the stall detector still read five different hashes,
- *  because each `EXTERNAL_RESULT_UNBOUND` detail names its own record UUID and 300 of the 357
- *  differed in that one value and nothing else. The session spent 1h57m and $45.96 without ever
- *  repeating a hash. Dropping detail makes all five rounds byte-identical.
+ *  text is excluded, because it cannot carry an identity: a finding detail that names its own record
+ *  UUID gives five byte-identical gate rounds five different hashes, and the stall detector then
+ *  never fires however long the session spends.
  *
  *  The claim stays in, because it is the gate's own summary of its diagnosis rather than a
- *  per-execution artefact: a gate that reports "finding 1" and then "finding 2" has changed its
- *  answer even when it names no finding rows at all. Codes are never protected and stay raw, while
- *  paths and ids are read from the author projection, so a withheld path or detail cannot split a
- *  repeat. The quoted ids stay because census findings group every control under one code, and
- *  repairing 1 of 30 rejected accepts changes only those ids; an unmarked finding projects to a
- *  fixed label and names none, so w26's record UUIDs still cannot split a repeat.
+ *  per-execution artefact: a gate reporting "finding 1" and then "finding 2" has changed its answer
+ *  even when it names no finding rows. Codes are never protected and stay raw, while paths and ids
+ *  come from the author projection, so a withheld path cannot split a repeat. The quoted ids stay
+ *  because census findings group every control under one code, and repairing 1 of 30 rejected
+ *  accepts changes only those ids; an unmarked finding projects to a fixed label and names none.
  *
  *  The controller and the outcome reader share this one rule, so the same refusal cannot read as
  *  progress in the loop and as a repeat in the census. */
@@ -391,10 +375,9 @@ export class BuilderExecutionRecorder {
     this.firstToolMs ??= this.since();
   }
 
-  /** Folds one transport tool event into the turn that is still running: its tally, and the identity
-   *  of the call when it failed. The settled result replaces this tally at `turnCompleted`, so
-   *  nothing is counted twice, and a turn the host kills before then keeps what was already folded
-   *  rather than disappearing from the record. */
+  /** Folds one transport tool event into the turn still running: its tally, and the identity of the
+   *  call when it failed. `turnCompleted` replaces this tally with the settled one, so nothing is
+   *  counted twice and a turn the host kills first keeps what was already folded. */
   turnToolEvent(event: Extract<AgentTurnEvent, { type: "tool_started" | "tool_ended" }>): void {
     if (event.type === "tool_started") {
       this.toolStarted();
@@ -454,9 +437,8 @@ export class BuilderExecutionRecorder {
   }
 
   /** What the provider reported it spent on one turn; absent fields stay unknown. An `estimated`
-   *  turn is one that ended without its own provider terminal, which is what `estimatedTurns`
-   *  qualifies the totals by. Its numbers are still summed, because an estimate beats nothing so
-   *  long as the count beside it says how much of the total is estimate. */
+   *  turn ended without its own provider terminal. Its numbers are still summed, because an
+   *  estimate beats nothing so long as `estimatedTurns` says how much of the total is estimate. */
   reportedUsage(usage: TurnUsage, ending: "final" | "estimated"): void {
     this.reportedTurns += 1;
     if (ending === "estimated") this.estimatedTurns += 1;
@@ -475,8 +457,8 @@ export class BuilderExecutionRecorder {
     }
     this.messagesThisTurn = 0;
     if (result.runtimeIdentity !== undefined) this.runtimeIdentity = result.runtimeIdentity;
-    // A transport that reported no tally leaves the events this turn emitted as the only account of
-    // it, which is worth keeping rather than dropping the turn's calls altogether.
+    // A transport that reported no tally leaves the events this turn emitted as the only account
+    // of it, so the turn's calls are taken from them rather than dropped.
     const calls = result.toolCalls ?? this.running.turnTally();
     this.running.turnSettled();
     this.total += calls.total;
@@ -490,10 +472,9 @@ export class BuilderExecutionRecorder {
   }
 
   /** The session's closest tree so far: the earlier refusal at the same stage with the fewest
-   *  finding codes, derived on demand from the recorded rows rather than kept as a second copy of
-   *  what the submit list already proves. Run w33 wandered from 221 findings at submit 13 to 638 at
-   *  submit 16 while every depth-1 comparison truthfully said the tree had changed, and nothing
-   *  named the regression, so the Builder could not know it had once been closer. */
+   *  finding codes, derived on demand rather than kept as a second copy of what the submit rows
+   *  already prove. A session can wander from 221 findings to 638 while every depth-1 comparison
+   *  truthfully says the tree changed, so without this the Builder cannot know it was once closer. */
   fewestFindingsRefusal(
     stage: BuilderSubmitAttempt["stage"],
   ): { ordinal: number; commit: string; findings: number } | null {
@@ -561,8 +542,8 @@ export class BuilderExecutionRecorder {
     lifecycle?: BuilderExecutionEvidence["lifecycle"],
   ): BuilderExecutionEvidence {
     // The running turn joins the settled ones here rather than at its own edge, because a record
-    // written mid-turn must carry the calls that turn has already made, and the turn's own settled
-    // tally replaces this one when it returns.
+    // written mid-turn must carry the calls that turn has already made; its settled tally replaces
+    // this one when it returns.
     const open = this.running.turnTally();
     const byName = mergeCounts(this.byName, open.byName);
     let custom = 0;

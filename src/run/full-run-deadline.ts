@@ -62,12 +62,12 @@ export class FullRunClosure {
   /**
    * Settle the provider, then record the terminal — even when settlement itself fails.
    *
-   * The active-reservation check used to throw before `close()` ran. If calls were still active
-   * the controller never reached `closeControllerRun`, so the run left an opening with no terminal
-   * beside it and kept its campaign lock. Terminal recording therefore happens in `finally`, where
-   * a settlement that throws cannot skip it. Signal handlers come off afterwards rather than
-   * first, so a SIGTERM arriving during cleanup is still handled here instead of ending the
-   * process on the spot.
+   * The active-reservation check throws when calls are still in flight. Let that throw escape and
+   * the controller never reaches `closeControllerRun`, so the run leaves an opening with no
+   * terminal beside it and keeps its campaign lock. Terminal recording therefore happens in
+   * `finally`, where a settlement that throws cannot skip it. Signal handlers come off afterwards
+   * rather than first, so a SIGTERM arriving during cleanup is still handled here instead of
+   * ending the process on the spot.
    */
   async settleAndClose(cause: unknown): Promise<void> {
     if (this.closed) return;

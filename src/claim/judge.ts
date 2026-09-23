@@ -3,8 +3,8 @@
  * distinguishes intentional abstention from evaluator failure and records the Judge's
  * independence classification derived from the model pins.
  *
- * The Judge has no control census, so a review is always `unvalidated`. A record from before
- * 2026-09-14, when one ran, is refused rather than read (operator decision 2026-09-22). */
+ * The Judge has no control census, so a review is always `unvalidated`. An older record written
+ * while one still ran is refused rather than read (operator decision). */
 import { type EvaluatorIndependence, evaluatorIndependence } from "./calibration.ts";
 import type { NonResultKind } from "./record-events.ts";
 
@@ -29,10 +29,10 @@ export type JudgeEvidence =
       judgePin: string;
       /** Content policy identity used by the census, when the session names one. */
       promptPolicyDigest?: string;
-      /** The Built Harness backend pin, used with judgePin to recalculate `independence`. PR #67
-       *  found that storing only a classification left the validator unable to check its basis.
-       *  Consumers assessing target or plateau decisions must also compare this pin with the
-       *  battery record's backendPin. */
+      /** The Built Harness backend pin, used with judgePin to recalculate `independence`; storing
+       *  the classification alone leaves the validator unable to check its basis. Consumers
+       *  assessing target or plateau decisions must also compare this pin with the battery record's
+       *  backendPin. */
       evaluatedPin: string;
       /** The exact correctnessModel version whose battery this Judge reviewed. */
       correctnessModelId: string;

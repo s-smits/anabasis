@@ -25,8 +25,8 @@ import {
   readlinkSync,
 } from "../meta/filesystem.ts";
 
-/** Above the largest tool tree recorded, which was campaign w47's at 109,509 entries, with finite
- *  headroom over that shape rather than a number chosen to be large. */
+/** Above the largest tool tree observed, which ran to a little over a hundred thousand entries,
+ *  with finite headroom over that shape rather than a number chosen to be large. */
 const READ_ROOT_MAX_ENTRIES = 250_000;
 /** One declared root may contribute at most sixteen GiB of logical file and link bytes. */
 export const READ_ROOT_MAX_BYTES = 16n * 1024n * 1024n * 1024n;

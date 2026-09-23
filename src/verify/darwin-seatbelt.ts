@@ -282,9 +282,9 @@ export function verifyDarwinSeatbeltPlan(
   plan: DarwinSeatbeltPlan,
   runtime: DarwinSeatbeltRuntime = {},
 ): ExactReadDrift | null {
-  // `sandbox-exec` and the imported system profile sit on the read-only system volume, which is
-  // exactly where the failed syscall of 2026-09-03 refused a battery as drift. A support failure
-  // there means the mechanism is unavailable, not that a byte changed.
+  // `sandbox-exec` and the imported system profile sit on the read-only system volume, where a
+  // failed syscall reading as drift refuses the whole battery. A support failure there means the
+  // mechanism is unavailable, not that a byte changed.
   return (
     mechanismDrift(
       darwinSeatbeltSupport(runtime),

@@ -448,10 +448,10 @@ function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): C
       );
     }
     fieldNames.add(field.name);
-    // A root no check reads measures nothing. In run 80 the schema declared firmware source roots
-    // and the reference solve filled them, while every check read only the derived summary, so
-    // replacing or omitting every source file was accepted 25 of 25. Refuse such a root before F2
-    // executes. A check selecting the whole artifact ("$") covers every root, and where no checks
+    // A root no check reads measures nothing: a schema can declare firmware source roots that the
+    // reference solve fills while every check reads the derived summary alone, and then replacing or
+    // omitting every source file is accepted. Refuse such a root before F2 executes. A check
+    // selecting the whole artifact ("$") covers every root, and where no checks
     // exist at all, brief-no-truth-checks already reports that failure without a duplicate here.
     if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
       findings.push(

@@ -222,8 +222,8 @@ export async function inspectTarget(
     if (options[key] !== undefined) args.push(`--${key}`, options[key]);
   }
   // The launched tree's own probe: it imports that tree's modules, so it matches their layout by
-  // construction. Main's probe could not open 03b8cb266, whose pi layer had replaced
-  // src/backends/claude-backend.ts (run 08c0f2).
+  // construction. Main's probe cannot open a tree whose backend layer has moved a module since,
+  // and the layouts diverge exactly when the launch is worth probing.
   const probe = join(plan.dir, ".claude/skills/launch-run/scripts/probe.ts");
   const result = await command([WORKTREE, "run", plan.dir, "bun", "--no-env-file", probe, ...args], {
     cwd: plan.dir,
@@ -407,8 +407,8 @@ export async function launchBatch(
   // The run tree's campaigns and domains are links into the shared root; the observatory build
   // inside the gate reads its evidence snapshot from that root instead of refusing the links.
   // No ANA_TESTED_COMMIT: a gate wrapper that checks the named commit refuses the untracked
-  // campaigns and domains links as a changed tree (a21d2e, 2026-09-14). The probe above already
-  // proved the clean requested source.
+  // campaigns and domains links as a changed tree. The probe above already proved the clean
+  // requested source.
   const gateEnv = { ...process.env };
   delete gateEnv.ANA_TESTED_COMMIT;
   await command([WORKTREE, "run", first.dir, ...(context.gate ?? ["bun", "run", "gate"])], {

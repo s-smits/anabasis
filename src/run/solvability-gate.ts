@@ -1,10 +1,8 @@
 /**
- * F2 checks every task's solvability before adoption (production connection audit, BUILD-STATE
- * 2026-07-26). In fullrun-live-01 the verifier session solved only battery.tasks[0] while the
- * census checked controls, so a candidate whose reference passed task 1 alone could be adopted
- * with the rest of the battery unproven. This gate runs every authored task's reference solve
- * through the pinned verifier host — the same `makeProbeSolvability` the claim writer runs again
- * later — before adoption.
+ * F2 checks every task's solvability before adoption. Solving `battery.tasks[0]` alone while the
+ * census checks controls lets a candidate be adopted with the rest of the battery unproven, so this
+ * gate runs every authored task's reference solve through the pinned verifier host — the same
+ * `makeProbeSolvability` the claim writer runs again later — before adoption.
  *
  * The recorded evidence and findings carry task ids, per-task check results and tool text, all of
  * which are protected. They stay host-side at <iterationDir>/solvability.json and never enter the
@@ -15,10 +13,10 @@
  * level while the per-task join — which task failed which check — the task ids and the tool output
  * stay behind.
  *
- * Run 12 is why the count alone was not enough: two iterations repaired blind against "25 of 25
- * rejected". Run 14 iteration 1 repeated the class, with all 75 check failures sitting inside 3
- * declared checks and only the bare count crossing. Environment non-results belong to the
- * environment and are not counted as product failures.
+ * The count alone is not enough, because "25 of 25 rejected" leaves the author repairing blind
+ * while every one of those failures may sit inside two or three declared checks. The concentration
+ * is what makes the number actionable. Environment non-results belong to the environment and are
+ * not counted as product failures.
  *
  * The representation census reuses these same witnesses without a second execution, looking for
  * copied public inputs and repeated absence spellings. Those are two bounded checks, not a general
@@ -167,8 +165,7 @@ export function makeSolvabilityCensusGate(
  * A blocking finding refuses adoption and returns to the Builder for repair through the submit
  * path, while advisory findings stay recorded without causing a refusal. Neither is the measured
  * admission packet that later controller decisions read — that has its own evidence and projection
- * rules. Both kinds keep the severity they declared, because this grouping makes no new decision
- * about the candidate.
+ * rules.
  */
 function representationFeedback(findings: ContractFinding[]): CampaignFeedback[] {
   const severities = [
@@ -226,11 +223,11 @@ function familyBindingFeedback(findings: readonly ContractFinding[]): CampaignFe
  * One blocking row per refused tool shape, naming Builder-authored identities only — the adapterId
  * the brief declared — so it crosses as its own row. A tool that resolves nowhere makes every
  * witness needing it fail, and the census row above then says only "8 of 8 failed under the
- * installed tools": loop-3 (2026-08-23) spent 26 checks on one refused root nobody could read. A
- * check grounded only by a script the author wrote into `.toolchain` measures agreement with that
- * script, which is what ten truss 25-of-25 batteries measured on 4 September 2026. The brief owner
- * can revise the declared evidence and the tool choice; tool identity on its own does not prove
- * independent semantics.
+ * installed tools", which an author can spend dozens of checks against without ever reading the
+ * refused root. A check grounded only by a script the author wrote into `.toolchain` measures
+ * agreement with that script and nothing else, so a battery that passes every task under one has
+ * measured the author against itself. The brief owner can revise the declared evidence and the tool
+ * choice; tool identity on its own does not prove independent semantics.
  */
 function toolFeedback(
   findings: readonly ContractFinding[],
@@ -312,10 +309,10 @@ function checkConcentration(cases: readonly SolvabilityCaseEvidence[]): Contract
 
 /** Every representation-defect detail comes off the submission path before verification and is
  *  classified generated-toolset-contract, because it describes the public authoring interface —
- *  writer schema, DraftStore, submit — which may be reported to the Builder. Run w12 showed why a
- *  count was not enough: iteration 47 cleared its defect in one pass with the detail, and
- *  iterations 48 to 55 without it took eight. Details are deduplicated and carry no task
- *  identities; the per-task join stays protected. */
+ *  writer schema, DraftStore, submit — which may be reported to the Builder. A bare count is not
+ *  enough: with the detail an author clears the defect in one pass, and without it the same defect
+ *  survives round after round of guessing. Details are deduplicated and carry no task identities;
+ *  the per-task join stays protected. */
 function representationDefectFeedback(
   cases: readonly SolvabilityCaseEvidence[],
   representationDefects: number,

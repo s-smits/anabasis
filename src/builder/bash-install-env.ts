@@ -6,11 +6,10 @@
  * installs run without extra flags.
  *
  * The redirect used to depend on the network policy, on the reasoning that only an installer writes
- * to HOME. An offline session writes there too: on run opus-n2b2 the Builder's first
- * `arduino-cli version` answered `open ~/Library/Arduino15/inventory.yaml: operation not
- * permitted`, because the wall denies the host home that HOME still pointed at. A tool that reads
- * as broken rather than as denied is the failure `hostToolchainEnv` already exists to name, so the
- * redirect now holds under every policy.
+ * to HOME. An offline session writes there too: a bare `arduino-cli version` answers `open
+ * ~/Library/Arduino15/inventory.yaml: operation not permitted`, because the wall denies the host
+ * home that HOME still points at. A tool that reads as broken rather than as denied is the failure
+ * `hostToolchainEnv` already exists to name, so the redirect holds under every policy.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { HARNESS_CONFIG_FILE, type HarnessSettings, harnessSettings } from "../truth/harness-config.ts";
@@ -21,12 +20,12 @@ import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts
 import { ISOLATED_TIMEOUT_MS } from "./candidate-isolation-runtime.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 
-/** The longest one bash call may run. Control generation with an FEA or a toolchain compile ran past
- *  the 10-minute default in 18 campaigns, and the alternative the Builder found for itself was a
- *  background job polled with `sleep`, which the same deadline killed along with the call that
- *  started it. Two hours since 2026-09-14, for a firmware toolchain build; truss Builders then spent
- *  47 to 52 minutes of it on one search call (2026-09-15), which is why the description reserves the
- *  raised ceiling for builds rather than offering it as the usual wall. */
+/** The longest one bash call may run. Control generation with an FEA or a toolchain compile runs
+ *  past a 10-minute default, and the alternative a Builder finds for itself is a background job
+ *  polled with `sleep`, which the same deadline kills along with the call that started it. Two
+ *  hours, sized for a firmware toolchain build. A Builder given that will also spend most of an hour
+ *  of it on a single search call, which is why the description reserves the raised ceiling for
+ *  builds rather than offering it as the usual wall. */
 export const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
 
 /** The workspace-local environment for the host-dispatched Builder shell tool. */
@@ -43,7 +42,7 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     XDG_DATA_HOME: join(home, ".local", "share"),
     // The workspace's packages are links into the repository's node_modules, whose own directory the
     // wall does not list, so a bare `bun` resolving a package from its real path cannot see a hoisted
-    // dependency beside it: truss run fa03b7's first script stopped at pi-ai's `partial-json`.
+    // dependency beside it, so a script stops at a transitive import such as pi-ai's `partial-json`.
     // Resolving from the link's path instead, as the starter's `--preserve-symlinks` test command
     // already does, finds it in the workspace's own node_modules.
     NODE_PRESERVE_SYMLINKS: "1",
@@ -60,11 +59,10 @@ export function bashTimeoutMs(seconds: number | undefined): number {
 }
 
 /** What a killed command tells the model. A bare exit 137 reads as memory pressure, so the Builder
- *  retried the same command and had the retry killed too. The host load is the other half: it is a
+ *  retries the same command and has the retry killed too. The host load is the other half: it is a
  *  runtime fact the Builder cannot observe and cannot tell apart from a command that is simply slow.
- *  Truss run 5211e7's reference search was killed at 3,000 s with the host at load 40 on 12 cores,
- *  where its rerun had about a tenth of one core (2026-09-14), and no reading of the command itself
- *  would have explained that. */
+ *  A search killed at its deadline may have been running on a host loaded to several times its core
+ *  count, with a tenth of a core to itself, and no reading of the command explains that. */
 export function bashKilledNotice(timeoutMs: number): string {
   const load = (loadavg()[0] ?? 0).toFixed(1);
   return `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${load} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`;
@@ -78,10 +76,10 @@ export function bashKilledNotice(timeoutMs: number): string {
  * domain is not solving one of its tasks. The solver it is writing those limits for gets
  * `solver.shell_timeout_max_seconds` per command, `gate.check_seconds` per correctness check and
  * `solver.solve_minutes` for a whole solve — all three from the `agent/config.yaml` in this same
- * workspace, which the Builder wrote and can read. Nothing in the loop ever stated the exchange
- * rate between the two, so truss run c1d2a7 spent 61.0, 36.1 and 23.0 minutes in three serial calls
- * of one authoring round settling its mass limits, for a solver holding 15 minutes per command, and
- * carried that mismatch into the battery unexamined (operator raised it 2026-09-18).
+ * workspace, which the Builder wrote and can read. Nothing else in the loop states the exchange rate
+ * between the two, so a Builder will happily spend an hour of wall clock settling a limit for a
+ * solver it has given fifteen minutes a command, and carry that mismatch into the battery
+ * unexamined.
  *
  * This is a nudge, not a wall: the call already ran, and every number in it is the Builder's own.
  * Both levers are the Builder's too — the settings, and the installed tools whose accuracy-for-time

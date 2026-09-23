@@ -1,8 +1,8 @@
 /**
- * A brief may contain public design constants and allowed values. Run 50 showed that the Judge needs
- * these rules as well as the domain name and the artifact schema: without them it could only abstain
- * on any control that depended on a design rule, which is an abstention about the card rather than
- * about the artifact.
+ * A brief may contain public design constants and allowed values. The Judge needs those rules as
+ * well as the domain name and the artifact schema: without them it can only abstain on any control
+ * that depends on a design rule, which is an abstention about the card rather than about the
+ * artifact.
  *
  * `briefPublicResources` returns public rule assertions and paths beside `designRuleConstants`
  * and `designRuleSets` to the solver, together with public rule decisions and the artifact schema.
@@ -60,11 +60,11 @@ function makePublicResource(name: string, content: PublicResourceContent): Publi
 /**
  * Every published row is rebuilt from its declared fields alone, never handed on as the object the
  * Builder authored. A brief is Builder-authored JSON: a row may carry keys no type names, and
- * returning the authored object put those bytes on the solver tool, the Judge card and the former Repair
- * Engineer's domain card — a rule-decision row carrying reference-artifact or verifier bytes
- * passed validation and reached those model inputs. Validation answers whether a row is
- * well formed; these projections answer what leaves the brief, so an undeclared key reaches no
- * reader even where the validator does not yet refuse it.
+ * returning the authored object puts those bytes on the solver tool and on every review card, so a
+ * rule-decision row carrying reference-artifact or verifier bytes passes validation and reaches
+ * those model inputs. Validation answers whether a row is well formed; these projections answer
+ * what leaves the brief, so an undeclared key reaches no reader even where the validator does not
+ * yet refuse it.
  */
 function publicRuleDecisionRow(decision: BriefRuleDecision): BriefRuleDecision {
   return {
@@ -142,10 +142,10 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   // no model-visible projection carries.
   const ruleDecisions = publicRuleDecisions(brief);
   if (ruleDecisions.length > 0) resources.push(makePublicResource("public-rule-decisions", ruleDecisions));
-  // The Judge card has always carried the artifact schema; the solver's did not. Run w12 lost all
-  // 14 of its verified failures to validity conventions written only in artifact-schema field notes
-  // that the Judge could read and the solver could not, so the same public interface now reaches
-  // both.
+  // The Judge card has always carried the artifact schema; the solver's did not, which left a
+  // validity convention written in an artifact-schema field note readable by the Judge and not by
+  // the solver, and failed cases on a rule the solver was never shown. The same public interface
+  // now reaches both.
   if (brief.artifactSchema.length > 0) {
     resources.push(makePublicResource("artifact-schema", publicArtifactSchemaRows(brief)));
   }
@@ -159,9 +159,8 @@ export function briefPublicResources(brief: Brief): PublicBriefResource[] {
   return resources;
 }
 
-/** The one public card every review model receives. Run 50 added it for the Main Judge's census, so
- *  that a review reads the domain rules from one card rather than inferring them from the trace it
- *  happens to have been shown. */
+/** The one public card every review model receives, so that a review reads the domain rules from
+ *  one card rather than inferring them from whatever trace it happens to have been shown. */
 export function judgePublicDomainOf(
   brief: Brief,
   context: Pick<JudgePublicDomain, "publicRequest" | "toolContract" | "runtimeFacts">,
@@ -177,12 +176,12 @@ export function judgePublicDomainOf(
     ),
     // Both cards exclude `brief.decisions`. It maps which task families the harness covers and
     // which it leaves out, which is not the declaration of a public correctness rule. A Judge-only
-    // `design-decisions` resource once carried it here, added after run 69's missed derived-field
-    // rules, and that was the mistake: a rule the solver never receives is not a public validity
-    // condition, so giving the free text to the Judge alone let it apply conditions the solver
-    // could not have met. Both cards now use truthChecks, designRuleConstants, designRuleSets and
-    // the public ruleDecisions rows, which reach this card through `briefPublicResources` precisely
-    // because the solver receives them too.
+    // resource carrying it here looks like a way to give the reviewer the rules a check missed,
+    // and it is the wrong one: a rule the solver never receives is not a public validity
+    // condition, so free text the Judge alone holds lets it apply conditions the solver could not
+    // have met. Both cards use truthChecks, designRuleConstants, designRuleSets and the public
+    // ruleDecisions rows, which reach this card through `briefPublicResources` precisely because
+    // the solver receives them too.
     toolContract: trustedStructuredClone(context.toolContract),
     runtimeFacts: trustedStructuredClone(context.runtimeFacts),
   };
@@ -206,8 +205,8 @@ export function judgePublicTaskOf(
   return trustedStructuredClone(publicTask);
 }
 
-/** Read the public rules from a saved, valid brief. Missing and unfinished briefs return an
- *  null. Candidate acceptance and the bundle loader remain responsible for brief validity. */
+/** Read the public rules from a saved, valid brief. Missing and unfinished briefs return null.
+ *  Candidate acceptance and the bundle loader remain responsible for brief validity. */
 export function readValidatedBrief(slugDir: string): Brief | null {
   const file = join(slugDir, BRIEF_FILE);
   let parsed: unknown;

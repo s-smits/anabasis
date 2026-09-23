@@ -138,15 +138,15 @@ function compileNode(
   const records = /* SAFETY: the check above returned when `values.length === 0`. */ values as Array<
     Record<string, JsonValue>
   >;
-  // The brief must declare maps whose keys come from task data. Run 68 compiled
-  // `config.busAddresses`, a map of part id to bus address, into a union of the exact key sets its
-  // 20 accept controls happened to contain, so 8 of 25 tasks could not express their correct answer
-  // through submit at all; the agent deleted a correct entry to get accepted, and then failed
-  // verification. Inferring "map" from differing key sets was the first repair, but the same
-  // observations describe ordinary optional-field objects — {mode} beside {mode, timeoutMs} — whose
-  // required keys and per-key types an open map silently drops. So the brief declares the paths
-  // (ArtifactField.openMapPaths). A declared map permits any key but checks each value's shape;
-  // other objects keep the exact key sets found in the accepted examples.
+  // The brief must declare maps whose keys come from task data. A `config.busAddresses` mapping
+  // part id to bus address otherwise compiles into a union of the exact key sets the accept
+  // controls happened to carry, and then a task whose correct answer needs another key cannot
+  // express it through submit at all: the agent deletes a correct entry to be accepted, and fails
+  // verification for the deletion. Inferring "map" from differing key sets was the first repair,
+  // but the same observations describe ordinary optional-field objects — {mode} beside {mode,
+  // timeoutMs} — whose required keys and per-key types an open map silently drops. So the brief
+  // declares the paths (ArtifactField.openMapPaths). A declared map permits any key but checks
+  // each value's shape; other objects keep the exact key sets found in the accepted examples.
   if (maps.paths.has(path)) {
     maps.used.add(path);
     const children = records.flatMap((record) => Object.values(record));

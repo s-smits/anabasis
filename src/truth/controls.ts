@@ -6,13 +6,12 @@
  * that the checks detect a deliberately introduced error, which matters because an accept-only
  * corpus is satisfied by a check that never fails at all.
  *
- * Every reject names the check its mutation must fail, in `expectedCheckId`. Under hw24 any
- * blocking failure counted as discrimination, so a reject labelled for a join could fail an
- * unrelated schema or empty-input check and still satisfy that join's requirement. The census now
- * runs the named check alone on the reject, so a failure elsewhere cannot stand in for the intended
- * one. A reject that targets a join names both the join and its owning check, because hw23 missed
- * aliases and hw24 accepted four incorrect artifacts where the labels were covered and the joins
- * were not.
+ * Every reject names the check its mutation must fail, in `expectedCheckId`, and the census runs
+ * that check alone on the reject. Counting any blocking failure as discrimination instead lets a
+ * reject labelled for a join fail an unrelated schema or empty-input check and still satisfy that
+ * join's requirement. A reject that targets a join names both the join and its owning check,
+ * because a corpus whose check labels are all covered can still leave every join uncovered, and the
+ * incorrect artifacts it then accepts are exactly the ones the joins were there to catch.
  *
  * Each control inherits the required hidden operands of its task, and an explicit override changes
  * only the rows it names. Live outcomes then prove those examples; they never establish an arbitrary
@@ -42,9 +41,9 @@ export type AcceptControl = {
   id: string;
   /** The battery task this artifact answers. Every control is a coherent (taskId, artifact) pair and
    *  evaluates through the same single path as a measured case, because a taskless artifact is not
-   *  established as good or bad relative to any actual problem: in runs 76 and 77 a taskless census
-   *  made every task-relative check a no-op, and the judge self-disabled on abstentions it scored
-   *  100 percent correct. */
+   *  established as good or bad relative to any actual problem: a taskless census makes every
+   *  task-relative check a no-op, and the judge then self-disables on abstentions it has scored 100
+   *  percent correct. */
   taskId: string;
   /** A known-good artifact the verifier must pass. */
   artifact: JsonValue;
@@ -69,7 +68,7 @@ export type RejectControl = {
   /**
    * The brief truth-check id this mutation must fail, applicable to the reject's task. The host
    * census (`runControls`) runs this check alone on the reject, so an unrelated schema or
-   * empty-input failure cannot satisfy it — which is the hw24 shallow-coverage failure.
+   * empty-input failure cannot satisfy it.
    */
   expectedCheckId: string;
   /** Optional hidden operand overrides, merged by check id into the bound task's rows. */
@@ -100,7 +99,7 @@ export function isControlCorpus(value: JsonValue): value is ControlCorpus {
 const optionalString = (value: unknown) => value === undefined || isString(value);
 
 /** The one row-shape parse for a corpus. Every control is bound to one recorded task (operator
- *  verdict 2026-08-07) and every reject names the check its changed fact must fail, so the coverage
+ *  verdict) and every reject names the check its changed fact must fail, so the coverage
  *  pass and the census below can both assume those two facts instead of re-deriving them. */
 function corpusRowFindings(corpus: ControlCorpus): ContractFinding[] {
   const findings: ContractFinding[] = [];
@@ -267,9 +266,9 @@ function hiddenFieldFindings(value: JsonValue, path: string): ContractFinding[] 
 
 /**
  * An accept must carry exactly the declared top-level fields, as a real submission does. Otherwise a
- * representation error keeps it from exercising the correctness checks it was written for: in
- * falsifier-claude-007 the accept author invented {crew, bindings} and all ten accepts were
- * rejected. This helper does not apply the same check to rejects, where a missing or malformed field
+ * representation error keeps it from exercising the correctness checks it was written for: an
+ * accept author who invents top-level fields of their own has every accept rejected before a single
+ * check runs. This helper does not apply the same check to rejects, where a missing or malformed field
  * can be the deliberate mutation; other validators check reject structure, and the host census
  * requires each reject to fail on its own expectedCheckId.
  */
@@ -331,10 +330,10 @@ export function validateAcceptControls(value: JsonValue, schema?: ArtifactField[
 }
 
 /** This module analyses declared artifacts without executing generated code, so its findings can
- *  keep their public detail in author feedback. In water-network live-m8m10-003 five repair sessions
- *  received the detail-free `generated-execution-unclassified` label instead of the specific
- *  controls finding, their obligation lists were empty as well, and all five returned empty patches.
- *  The controller classification stays explicit here for that reason. */
+ *  keep their public detail in author feedback. Falling back to the detail-free
+ *  `generated-execution-unclassified` label instead hands a repair session the label, an empty
+ *  obligation list and nothing to repair, and it returns an empty patch. The controller
+ *  classification stays explicit here for that reason. */
 const validated = (findings: ContractFinding[]): ValidationResult => ({
   ok: findings.length === 0,
   findings: controllerValidatedFindings(findings),
@@ -343,8 +342,8 @@ const validated = (findings: ContractFinding[]): ValidationResult => ({
 /** Public validity is the rule-by-family matrix, derived from the truth checks and the recorded
  *  task families; controls declare evidence and never declare applicability. Every applicable cell
  *  needs one accept, and each applicable check and each family needs one reject naming it (operator
- *  decision 2026-09-15, replacing one reject per cell, which asked a six-check, five-family truss
- *  for thirty rejects). A check no task exercises has a cell on neither side, since both sides are
+ *  decision, replacing one reject per cell, which asked a six-check, five-family domain for thirty
+ *  rejects). A check no task exercises has a cell on neither side, since both sides are
  *  walked from the recorded tasks. These are declared candidates only: the live census proves their
  *  outcomes. An external check needs the same reject as an authored one, because a recorded tool run
  *  establishes that the tool executed, not that it can reject anything. */

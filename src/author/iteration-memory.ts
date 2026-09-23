@@ -2,12 +2,11 @@
  * Cross-iteration Builder memory: what this campaign already tried and lost, delivered through the
  * one channel a repair pass already carries.
  *
- * The controller knew before the model did. Each evidence hashes its failure as `findingsHash`, but
- * the session that produced a repeat was never told it was repeating: a restarted session receives
- * the last iteration's findings for its owner and nothing else, so an A→B→A oscillation reads to it
- * as a first attempt. campaigns/bridge-truss tripped the generated-identity owner guard in
- * iteration 01 and again in 03, where the brief session recorded the symptom and a
- * single-iteration carry that does not reach across the gap.
+ * The controller knows before the model does. Each evidence hashes its failure as `findingsHash`,
+ * but without this a session that produces a repeat is never told it is repeating: a restarted
+ * session receives the last iteration's findings for its owner and nothing else, so an A→B→A
+ * oscillation reads to it as a first attempt, and a guard tripped two iterations ago is tripped
+ * again.
  *
  * Code owns the fact and the model owns the response, so this owner states what happened and never
  * what to author instead.
@@ -83,9 +82,9 @@ function readEpoch(dir: string): IterationEvidence[] {
 
 /**
  * Completed passes of this epoch and of every epoch recorded before it, oldest first and bounded
- * to the lookback window. One epoch per experiment (2026-09-09) leaves one pass per epoch, so a
- * reader bound to its own epoch never delivered anything. A damaged epoch record, which the
- * controller refuses, leaves this epoch reading only itself.
+ * to the lookback window. One epoch per experiment leaves one pass per epoch, so a reader bound to
+ * its own epoch would deliver nothing at all. A damaged epoch record, which the controller refuses,
+ * leaves this epoch reading only itself.
  */
 function readCompleted(campaignDir: string): CompletedPass[] {
   const root = dirname(campaignDir);
@@ -169,15 +168,12 @@ export function iterationMemoryFindings(campaignDir: string): ContractFinding[] 
       seen.set(refusal, [pass.label, ...(seen.get(refusal) ?? [])]);
     }
   }
-  // Most-repeated first, and the stable sort leaves ties in the newest-first order above. The cut
-  // used to fall on whatever the oldest pass had not already filled: a refusal the Builder had
-  // committed in three consecutive passes but first made in the second dropped behind twelve
-  // one-offs from the first, and the line rendered as if nothing were missing, while the repeat
-  // count sat unread in the map's value. It is the reading the two other bounded lists beside this
-  // one take — `standingIssues` sorts by rate before its cut, the advice packet's issue block by
-  // count — and the same defect was found in that packet's finding block on 2026-09-18. A label
-  // several passes carry is a habit; one pass's label is an incident, and the habit is what this
-  // line means.
+  // Most-repeated first, and the stable sort leaves ties in the newest-first order above. Cutting
+  // in insertion order instead drops a refusal made in three consecutive passes behind twelve
+  // one-offs from the oldest pass, and the line renders as if nothing were missing while the repeat
+  // count sits unread in the map's value. A label several passes carry is a habit; one pass's label
+  // is an incident, and the habit is what this line means. The other bounded lists cut the same
+  // way: `standingIssues` sorts by rate first, the advice packet's issue block by count.
   const refusals = [...seen.entries()].sort(([, a], [, b]) => b.length - a.length).slice(0, MAX_REFUSALS);
   if (refusals.length > 0) {
     const rendered = refusals.map(([refusal, passes]) => `${refusal} in ${passes.join(", ")}`).join("; ");

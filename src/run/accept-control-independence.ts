@@ -8,19 +8,13 @@
  * anyway — and the candidate ships with no evidence at all that its checks accept a second correct
  * answer.
  *
- * Two adopted bundles of 2026-09-19 are why this module exists:
- *
- *   truss `truss-opus-20260919T192747000Z-d18bef`  5 of 6 accepts deep-equal `REFERENCE_DESIGNS`
- *                                                  for their task; the 6th is that copy with two
- *                                                  members moved one catalogue step.
- *   run `17f9de-i03`                               all 7 accepts are the reference generator's
- *                                                  templates carrying the reference's own recorded
- *                                                  flash and RAM sizes.
- *
- * Neither was caught, because the control census asks only that accepts pass and rejects fail on
- * their declared check, and a copied reference artifact passes by construction. This module is
- * still the only place the two are held up against each other: `solvability-gate.ts` is its single
- * caller, and it runs there because that is where the F2 witnesses exist.
+ * The control census alone never catches this, because it asks only that accepts pass and rejects
+ * fail on their declared check, and a copied reference artifact passes by construction. Copying
+ * takes several shapes: an accept deep-equal to the reference design for its task, that same copy
+ * with a member or two nudged one catalogue step, or the reference generator's own templates
+ * carrying the reference's recorded numbers. This module is the only place the two corpora are held
+ * up against each other; `solvability-gate.ts` is its single caller, and it runs there because that
+ * is where the F2 witnesses exist.
  *
  * `acceptControlIndependence` records the reading into `solvability.json` beside the representation
  * observations, and `acceptIndependenceFeedback` turns it into at most one advisory row. It refuses
@@ -112,22 +106,11 @@ export function acceptControlIndependence(
  * The advisory row a corpus earns when it shows the domain admits a second correct artifact and
  * then declines to use that freedom.
  *
- * The calibration this waited for arrived on 2026-09-20. Both campaigns that closed that day
- * copied most of their accepts and then measured batteries that found no limit:
- *
- *   truss `3fd52f9e-16`   epoch-47640433acdc   7 accepts, 7 compared, 6 copied, 1 independent
- *                                              batteries 6/6, 6/6, 5/5 — the row fires here
- *   campaign `9c0c68b1-2` epoch-3803ffed507b   4 accepts, 4 compared, 3 copied, 1 independent
- *                                              batteries 25/25, 11/11 — silent under the floor
- *                                              below: four accepts cannot reach five independent
- *                                              ones however they were reached, so what that corpus
- *                                              is short of is accepts, which is another row's to say
- *
  * A copied corpus is only a defect when the domain had room for a second correct answer, and the
  * census cannot see a domain. It can see the corpus, though, and one independent accept is the
  * proof, since an accept the reference did not produce is a correct artifact the reference did not
- * reach. Both campaigns above carry exactly one and then stop, which is the reading worth a
- * sentence to the Builder.
+ * reach. The shape this fires on is a corpus that reaches exactly one such accept and then stops,
+ * copying the rest — and such a corpus goes on to measure batteries that find no limit.
  *
  * Independent means compared and found to differ, which is why `compared` and not `accepts` is the
  * population. An accept whose task reached no passed F2 witness was never held up against

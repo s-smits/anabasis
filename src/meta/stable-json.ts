@@ -22,8 +22,8 @@ export function compareCodeUnits(left: string, right: string): number {
 
 /**
  * Sorted-key JSON text, the one encoder behind every recorded identity and evidence digest. Keys
- * sort by UTF-16 code unit so identity is independent of locale: before 2026-08-05 the evidence
- * copy sorted with `localeCompare`, which let the host's collation reach a recorded digest.
+ * sort by UTF-16 code unit so identity is independent of locale; sorting with `localeCompare`
+ * instead lets the host's own collation reach a recorded digest.
  *
  * The two encodings differ only in `undefined`. Identity (`"omit"`) drops undefined object
  * properties and writes any other undefined as null, so adding an optional field and leaving it

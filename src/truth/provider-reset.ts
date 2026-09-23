@@ -6,10 +6,9 @@ import { PROVIDER_ALLOWANCE } from "./runtime-blocker.ts";
 /**
  * When the provider said it will accept work again, or null when it named no usable clock.
  *
- * A session limit that carries a reset time is a wait, not exhaustion. Campaign 3fd52f9e-28 ended
- * twice on 2026-09-17 — at 07:33 against "resets 12pm (Europe/Amsterdam)" and at 12:36 against
- * "resets 6:30pm" — each time abandoning a live campaign hours before the clock the provider had
- * just handed it, because `PROVIDER_ALLOWANCE` reads both as spent. The clause is the provider's own
+ * A session limit that carries a reset time is a wait, not exhaustion. `PROVIDER_ALLOWANCE` reads
+ * "resets 12pm (Europe/Amsterdam)" and "resets 6:30pm" alike as spent, which abandons a live
+ * campaign hours before the clock the provider has just handed it. The clause is the provider's own
  * number, so `awaitTurnRetry` sleeps on it rather than guessing a backoff that cannot reach it.
  *
  * Resolving to the clock's next occurrence bounds the wait below a day by construction, which is
@@ -26,11 +25,10 @@ const RESET_DATE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\
  *  named no clock -- no wait clears it, so the caller ends the run -- and `at` is the instant they
  *  have all cleared, or null when the text names no allowance and the caller keeps its own backoff.
  *
- *  Each clock belongs to the allowance that named it. Until 2026-09-20 one clause was read across
- *  the whole list, so a session limit naming 12pm spoke for a monthly spend limit standing beside
- *  it: that one names no clock and no wait clears it, and the turn slept until noon only to be
- *  refused again. Where several allowances stand, work resumes when the last of them lifts, not the
- *  first. */
+ *  Each clock belongs to the allowance that named it. Reading one clause across the whole list lets
+ *  a session limit naming 12pm speak for a monthly spend limit standing beside it — that one names
+ *  no clock and no wait clears it, so the turn sleeps until noon only to be refused again. Where
+ *  several allowances stand, work resumes when the last of them lifts, not the first. */
 interface AllowanceWait {
   refuse: boolean;
   at: Date | null;

@@ -4,9 +4,9 @@
  * analysis artifact, with no materiality threshold applied, because these rows are the immutable
  * operator dispute source rather than findings. They enter no admission path and reach no model
  * prompt: a named held-out case in an authoring prompt is exactly the per-task localisation the
- * no-hints boundary protects. hwctrl-live-01 motivated the projection, having four judge/verifier
- * disagreements below its threshold, which could otherwise be found only by opening every judge
- * evidence file by hand. The count of these rows is what the Judge exit in judge-reviews.ts reads.
+ * no-hints boundary protects. Without the projection, the disagreements that sit below a battery's
+ * materiality threshold can be found only by opening every judge evidence file by hand. The count
+ * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
 import { confirmedDisagreement, type JudgeSubjectEvidence } from "../truth/judge.ts";

@@ -200,8 +200,8 @@ describe("recorded safeguard evidence", () => {
   });
 
   it("routes a firing only from the primary's adjudication, never from its count", () => {
-    // Review of 2026-09-13: `route.state` read "routed" for any positive count, an assurance no
-    // recorded byte supported.
+    // A `route.state` of "routed" derived from a positive count alone is an assurance no recorded
+    // byte supports, so a firing with no adjudication stays inconclusive.
     const fx = fixture(LINE);
     const first = build(fx.review);
     expect(sensor(first)).toMatchObject({ status: "fired", route: { state: "inconclusive" } });

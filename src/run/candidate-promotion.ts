@@ -127,20 +127,15 @@ function candidateStateClauses(
   ) {
     clauses.push(`candidate-unmeasured: its claim stages end at "${candidate.claimStage ?? "no evidence"}"`);
   } else if (candidate.claimStage === "measured") {
-    // Run a7f9ac: a session limit cut the battery at 14 verified and 11 provider non-results, the
-    // claim was refused, and the candidate still replaced the product e6e332 had measured at
-    // 24/25. This clause does not read why the claim was refused, and deliberately so. On
-    // c1d2a7-i04 one environment clause (`runtime-model-identity-unproven`) held the only round of
-    // that run with failing cases, rolling its authored bundle back; reading clause names here
-    // would mean threading them into this function to make a second owner of a decision the claim
-    // has already made, and a7f9ac is the case that says holding is right more often than not.
-    // Operator decision 2026-09-18: leave it. If it costs a second candidate, narrow what raises
-    // the clause in `src/claim/` rather than widening the hold. The climb no longer loses the
-    // battery either way, since `ENVIRONMENT_CLAUSES` in `climb-battery-admission.ts` admits a
-    // claim refused only for that clause, and the narrowing has since been made for the shape i04
-    // hit: an absent attestation on bytes the verifier graded leaves the identity unverified
-    // instead of refusing the claim (`src/claim/runtime-model-identity.ts`). What still reaches
-    // here is a contradiction in the census, which is a fact about the run.
+    // A measured candidate whose claim was refused is held, whatever refused it. Without that,
+    // a battery cut short by a session limit still replaces a product measured at a far higher
+    // rate. This clause deliberately does not read why the claim was refused: an environment
+    // clause can hold the only round of a run that had failing cases, and rolling its authored
+    // bundle back costs a real candidate — but reading clause names here would thread them into
+    // this function and make a second owner of a decision the claim has already made (operator
+    // decision). If it costs a candidate, narrow what raises the clause in `src/claim/` rather
+    // than widening the hold. The climb loses no battery either way, since `ENVIRONMENT_CLAUSES`
+    // in `climb-battery-admission.ts` admits a claim refused only for an environment clause.
     clauses.push(
       'candidate-claim-refused: its claim stages end at "measured", so its battery wrote no claim and cannot replace a tree',
     );

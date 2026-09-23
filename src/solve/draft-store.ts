@@ -5,11 +5,9 @@
  * bounded JSON value, and public-schema validation belongs to the writer and submission paths, so a
  * domain's working state and its answer can have different shapes without this class knowing either.
  *
- * Earlier versions modelled that working state as a node-and-edge graph carried over from v1. No
- * consumer ever read it: nothing under `src/solve/` or `starters/` names a graph today, and
- * `inspect_draft` renders whatever the snapshot happens to hold. It is gone. A domain that wants a
- * graph stores one under a key; a domain that wants a table, a list or a single number stores that
- * directly, instead of converting it into nodes and edges on the way in and back out again.
+ * So a domain that wants a graph stores one under a key, and a domain that wants a table, a list or
+ * a single number stores that directly, rather than converting it into nodes and edges on the way
+ * in and back out again.
  *
  * State and files both offer set, get, has, delete and a sorted snapshot, so a caller moving between
  * them keeps one set of habits. Both are Maps, which is also why a key called `__proto__` is a key
@@ -239,7 +237,7 @@ export class DraftStore {
     if (!snap) return draft;
     for (const [key, value] of Object.entries(snap.state)) draft.setValue(key, value);
     for (const [path, content] of Object.entries(snap.files ?? {})) draft.setFile(path, content);
-    draft._seq = 0; // loading a snapshot starts a new mutation sequence at zero
+    draft._seq = 0;
     return draft;
   }
 

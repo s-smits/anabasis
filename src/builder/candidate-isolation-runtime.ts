@@ -107,14 +107,13 @@ interface LinuxIsolationSupport {
 /**
  * One directory's share of the deny walk below, as its own listing decided it under one policy.
  *
- * The walk ran again for every confined call and grew with the workspace: 54 ms per `/bin/true` on
- * the starter workspace and 185 ms once `.toolchain` held 20,000 files (anabasis VM, 2026-09-13).
- * That cost is paid by every guarded command, so it is worth remembering, and a directory's
- * listing may be reused while its own complete metadata is unchanged — adding, removing or
- * renaming an entry moves the mtime, and a change further down is seen by the child directory that
- * holds it, which has a remembered listing of its own. `sameReadRootMetadata` is the same
- * comparison that guards Seatbelt's remembered support in darwin-seatbelt.ts, so one rule decides
- * when either cache is stale.
+ * The walk runs again for every confined call and its cost scales with the tree, so a `.toolchain`
+ * holding tens of thousands of files is paid for by every guarded command. A directory's listing may
+ * therefore be reused while its own complete metadata is unchanged: adding, removing or renaming an
+ * entry moves the mtime, and a change further down is seen by the child directory that holds it,
+ * which has a remembered listing of its own. `sameReadRootMetadata` is the same comparison that
+ * guards Seatbelt's remembered support in darwin-seatbelt.ts, so one rule decides when either cache
+ * is stale.
  */
 interface RememberedListing {
   metadata: ReadRootMetadata;
@@ -170,8 +169,8 @@ function looksOsRefused(status: number | null, stderr: string): boolean {
 
 /** Resolves a relative command against the PATH the process will actually run with, which is the
  *  request's own environment when it declares one. Resolving against the controller's PATH instead
- *  picked a host rg that the workshop cell then refused, and every `inspect` failed (pr180). A
- *  request that declares no environment still keeps the controller's PATH, since that is the
+ *  picks a host binary the workshop cell then refuses, so every call through that capability fails.
+ *  A request that declares no environment still keeps the controller's PATH, since that is the
  *  environment it will inherit. */
 function resolveCommandPath(command: string, env: OptionalEnvValues | undefined): string {
   if (isAbsolute(command)) return realpathSync.native(command);

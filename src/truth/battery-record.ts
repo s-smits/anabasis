@@ -26,9 +26,9 @@ export type CaseRecord = CaseVerdict & {
   taskId: string;
   family: string;
   /** Solver telemetry, kept so that a failure can be explained afterwards. Scoring does not read
-   *  it, which is exactly why it has to be recorded here: falsifier-claude-008 could not explain
-   *  its own 0 of 6 from its evidence, because the solver's errors were handed to the classifier
-   *  and then discarded, leaving the spawned-CLI transcripts as the only durable trace. */
+   *  it, which is exactly why it has to be recorded here: the solver's errors are otherwise handed
+   *  to the classifier and then discarded, leaving the spawned-CLI transcripts as the only durable
+   *  trace of why a battery scored what it did. */
   solver: {
     turns: number;
     /** Provider results completed; the runtime-identity census denominator. */
@@ -87,7 +87,7 @@ export type DiscriminationExecution = {
   acceptsPassed: number;
   rejectsFailed: number;
   /** Rejects that failed their declared `expectedCheckId`, so the intended check caused the
-   *  failure rather than an unrelated schema or empty-input check (finding 1). */
+   *  failure rather than an unrelated schema or empty-input check. */
   rejectsAttributed: number;
   /** The same counts by checkId, used by the claim gate to establish reject coverage for each
    *  declared check. A nonzero total can hide a check with no attributed rejects. These counts
@@ -118,9 +118,9 @@ export type BatteryRecord = {
   /** Terminal state projected into Claim.create. Recorded here so the write does not restate it. */
   terminalReason: string;
   /** What actually happened to this battery, as a closed value rather than free text or something
-   *  a reader infers from the row count. opus-331 recorded "complete" for a variant the
-   *  provider-stop rule had cut short at 7 of 25, and then paired it against a variant that ran all
-   *  25, which is the comparison a closed disposition makes impossible. */
+   *  a reader infers from the row count. Free text lets a battery the provider-stop rule cut short
+   *  after a handful of cases record as "complete" and then be paired against one that ran its
+   *  whole task set; a closed disposition makes that comparison impossible. */
   disposition: BatteryDisposition;
   /** Built-agent capability disclosure used by the claim. */
   capabilities: string[];
@@ -144,10 +144,9 @@ export type BatteryRecord = {
    *  host-derived command digest. The durable form of "the tool ran, on these bytes". */
   executionEvidence: HostVerifierExecutionEvidence[];
   /** Execution counts for each declared intrinsic check over verifier-verified cases. The claim
-   *  gate reads these counts to detect a check that never ran, which is how hw1's answer-key
-   *  comparison was found. Recording them with the battery rather than deriving them at claim time
-   *  preserves the evidence in the evidence log, so a later reader inspects the same counts the
-   *  gate read. */
+   *  gate reads these counts to detect a check that never ran at all, which no per-case verdict
+   *  discloses. Recording them with the battery rather than deriving them at claim time preserves
+   *  the evidence in the evidence log, so a later reader inspects the same counts the gate read. */
   truthCheckFiring: TruthCheckFiringEvidence;
   /** The battery's estimation evidence: scored counts, raw rate, Wilson interval at the registered
    *  confidence, and excluded outcomes by kind. Saved with the battery so a later reader can inspect
@@ -201,9 +200,9 @@ export function publicControlReceipt(receipt: ControlReceipt): PublicControlRece
  * exists because this state previously reached Claim.create and became a product non-claim with an
  * empty denominator even when the provider was the thing that was unavailable, which read as a
  * harness that could not solve anything. The battery and case records are already on disk when this
- * throws, ready for review before a later rerun. A battery with
- * any verified case or a kind outside the environment-owned list, such as verifier-throw,
- * follows the ordinary claim path and retains that path's findings.
+ * throws, ready for review before a later rerun. A battery with any verified case, or a kind
+ * outside the environment-owned list such as verifier-throw, follows the ordinary claim path and
+ * retains that path's findings.
  */
 export class BatteryVerificationNonResult extends Error {
   constructor(
@@ -225,9 +224,9 @@ export class BatteryVerificationNonResult extends Error {
  */
 export const BATTERY_DISPOSITIONS = ["skipped-precase", "provider-stopped", "completed"] as const;
 /**
- * Derived at the one record assembler. `plan` is declared by the caller because "no rows"
- * cannot distinguish a refused battery from an empty one — that inference is exactly what this
- * field replaces. The unattempted count is read from the rows, which carry the fact themselves.
+ * Derived at the one record assembler. `plan` is declared by the caller because "no rows" cannot
+ * distinguish a refused battery from an empty one. The unattempted count is read from the rows,
+ * which carry the fact themselves.
  */
 export function batteryDisposition(
   plan: "scheduled" | "skipped",
@@ -241,13 +240,13 @@ export function batteryDisposition(
 }
 
 /**
- * The human sentence recorded beside the disposition. "complete" stayed truthful only while every
- * battery ran its whole task set, so a provider-stopped battery now says how much of it did not
- * run, and a completed one names the three degenerate shapes that used to live only in diagnostic
- * safeguard lines no evidence reader ever opened (retired 2026-09-02): every case a typed
- * non-result, which opus326 recorded as "complete" five times; no case row at all, which opus-331
- * recorded twice and every later reader then answered from an empty set; and no case that started a
- * single tool call, opus326 again, where the Built solver most likely never launched.
+ * The human sentence recorded beside the disposition. "complete" is truthful only where the battery
+ * ran its whole task set, so a provider-stopped one says how much of it did not run, and a
+ * completed one names the three degenerate shapes that would otherwise record as plain success:
+ * every case a typed non-result; no case row at all, which leaves every later reader answering from
+ * an empty set; and no case that started a single tool call, where the Built solver most likely
+ * never launched. Before this, those three appeared only in diagnostic safeguard lines that no
+ * evidence reader opens.
  */
 export function batteryTerminalReason(
   disposition: BatteryDisposition,

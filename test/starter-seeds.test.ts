@@ -14,8 +14,8 @@
  * whichever backend it is running on, since `src/run/builder-runtime.ts` mounts it with no
  * per-backend branch.
  *
- * The cases run in sequence against one workspace on purpose, which is worth knowing before
- * reordering them: they follow an authoring pass, so a later case reads what an earlier one wrote.
+ * The cases run in sequence against one workspace on purpose, so reordering them breaks them: they
+ * follow an authoring pass, and a later case reads what an earlier one wrote.
  */
 import {
   cpSync,
@@ -47,8 +47,8 @@ const STARTER_ROOT = join(REPO_ROOT, "starters", "pi-built-harness");
 
 const SEED_COMMAND = `${WORKSPACE_BUN_LINK} --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`;
 // Under the repository root on purpose: @ana/* resolve by walking up to the root node_modules, so
-// a workspace outside the tree cannot load the bundles at all (src/truth/solvability.ts:112 makes
-// the same choice for the reference-solve scratch).
+// a workspace outside the tree cannot load the bundles at all (src/truth/solvability.ts makes the
+// same choice for the reference-solve scratch).
 mkdirSync(join(REPO_ROOT, ".scratch"), { recursive: true });
 const SCRATCH = mkdtempSync(join(REPO_ROOT, ".scratch", "starter-seed-"));
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));

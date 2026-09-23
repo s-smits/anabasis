@@ -4,9 +4,9 @@
  * well-formed row is, and `published-rules.ts` owns what citing one means.
  *
  * A public rule had nowhere to go before this field existed. `decisions` is the coverage map and
- * reaches no reader, so run23's `panel-node` family stated its frame, ordering, threshold, bit-order
- * and latch rules there and scored 0 of 35, while the operating guide asked for "change-only frames"
- * that nothing defined. The split here makes a public correctness rule explicit and makes a private
+ * reaches no reader, so a family's frame, ordering, threshold and bit-order rules could be stated
+ * there and read by nobody, while the operating guide named them without defining them and every
+ * submission failed. The split here makes a public correctness rule explicit and makes a private
  * decision declare that it is private: `public` rows are projected to the Built Harness and the
  * Judge through `briefPublicResources`, while `private` rows — search order, allocation recipe,
  * fallback chain, internal tie-breaks that do not determine correctness — reach neither model, and

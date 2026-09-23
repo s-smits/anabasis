@@ -22,12 +22,12 @@ import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety
  *  type nobody established, an assertion with no stated reason, a dictionary whose contents are
  *  anyone's guess, a call routed through reflection so that nothing checks it.
  *
- *  The tree is copied from dmmulroy/anti-slop, first at commit 9b80d9a and since updated to
- *  c44ef22, with the differences recorded in `THIRD_PARTY_NOTICES.md`: the plugin registers
- *  through `eslintCompatPlugin`, upstream's `no-unknown-parameters`, `require-readable-spacing`
- *  and Effect rules are left out, and `rules/prefer-subpath-import.ts` and three of the shared
- *  modules are this repository's own. `ana/unproven-unknown-parameter` is what stands in for the
- *  omitted one, and says there why an exemption list of files was the wrong answer.
+ *  The tree is copied from dmmulroy/anti-slop at commit c44ef22, with the differences recorded in
+ *  `THIRD_PARTY_NOTICES.md`: the plugin registers through `eslintCompatPlugin`, upstream's
+ *  `no-unknown-parameters`, `require-readable-spacing` and Effect rules are left out, and
+ *  `rules/prefer-subpath-import.ts` and three of the shared modules are this repository's own.
+ *  `ana/unproven-unknown-parameter` is what stands in for the omitted one, and says there why an
+ *  exemption list of files was the wrong answer.
  *
  *  Being a copy is what decides where a change goes. A rule whose reason is a fact about
  *  Anabasis — an owner module, a campaign path, a contract this repository declares — belongs in

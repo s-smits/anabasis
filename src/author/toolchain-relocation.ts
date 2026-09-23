@@ -14,11 +14,11 @@ import { hostTool } from "../meta/host-tool.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
-/** What the copy did to one file: a Python launcher header rewritten (uv's single-quoted form
- *  reported separately, since run 8729bb aborted on it), a Mach-O install name moved (run e6e332
- *  aborted on one), nothing, or `retains-adopted-path` -- the copy still names the tree it came
- *  from and nothing here can move that name. The caller drops such a file; this function only
- *  reports it. */
+/** What the copy did to one file: a Python launcher header rewritten, with the single-quoted form
+ *  uv writes reported apart from the ordinary one so a copy that aborts names which of the two it
+ *  met; a Mach-O install name moved; nothing; or `retains-adopted-path` -- the copy still names the
+ *  tree it came from and nothing here can move that name. The caller drops such a file; this
+ *  function only reports it. */
 type LauncherRelocation =
   | "rewritten"
   | "rewritten-single-quoted"

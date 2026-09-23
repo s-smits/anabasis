@@ -249,12 +249,12 @@ describe("the blocking battery re-authoring on disk", () => {
   });
 
   it("reopens from the a65dc8 i02 packet with advisory and blocking task findings", () => {
-    // Run truss-opus-20260906T182424610Z-a65dc8 (source 4efcfe5a3) admitted this packet after its
-    // 25/25 level-1 battery: an advisory `tests` row from the case record, a blocking `tests` row
-    // from the epoch review naming one check and one public input path, and an unowned advisory
-    // diagnosis row. The source at that revision reset the workspace and spent 2 h 7 min
-    // rebuilding a harness that had just passed. The same rows now reopen the adopted product
-    // and leave the experiment scope to the Builder, without prescribing a difficulty level.
+    // The packet this fixture builds is the one admitted after a battery that passed every case: an
+    // advisory `tests` row from the case record, a blocking `tests` row from the epoch review
+    // naming one check and one public input path, and an unowned advisory diagnosis row. Read as an
+    // instruction to start over, those rows reset the workspace and rebuild a harness that had just
+    // passed. They now reopen the adopted product and leave the experiment scope to the Builder,
+    // without prescribing a difficulty level.
     const root = scratchRepo();
     sealSaturatedBattery(root, "base-1", "2026-09-06T18:00:00Z");
     const analysis = join(root, "campaigns", SLUG, "analysis");
@@ -333,8 +333,8 @@ describe("the saturation move", () => {
 
   it("ends the campaign once the whole allowance read the same side", () => {
     // The move this replaced reopened authoring after any number of saturated batteries. Opening
-    // it a fourth time reads the same side again, and the operator has stopped two campaigns by
-    // hand at exactly this point rather than paying for that round.
+    // it a fourth time reads the same side again, which is where an operator stops the campaign by
+    // hand rather than pay for that round.
     const root = scratchRepo();
     sealSaturatedBattery(root, "saturated-1", "2026-08-10T08:00:00Z", 0);
     sealSaturatedBattery(root, "saturated-2", "2026-08-10T09:00:00Z", 1);

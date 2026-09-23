@@ -14,7 +14,7 @@
  * because `sandbox-exec` compiles the profile and then execs that interpreter to start this worker
  * at all. That allowance was a live escape: generated code that recovered the runtime through a
  * computed global lookup ran `spawnSync([Bun.argv[0]])` successfully inside an otherwise isolated
- * worker, measured 2026-08-22. So the interpreter route is closed by removing the capability from
+ * worker. So the interpreter route is closed by removing the capability from
  * the reachable namespace rather than by asking the kernel a second time, and every host binary
  * other than that one literal stays denied by the launch profile.
  *

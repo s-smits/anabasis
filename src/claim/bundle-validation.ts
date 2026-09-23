@@ -62,8 +62,8 @@ export function parseGeneratedSource(source: string, filePath: string): ts.Sourc
 
 /** Collect module specifiers from the syntax tree. The regular-expression check this replaced
  *  matched the words from, import and require inside unrelated string and array literals:
- *  `["from", "fromJoint"]` produced the false specifier ", " and refused a valid bundle
- *  (campaigns/bridge-truss 02, 2026-07-26). The syntax-tree walk reads actual dependencies —
+ *  `["from", "fromJoint"]` produced the false specifier ", " and refused a valid bundle. The
+ *  syntax-tree walk reads actual dependencies —
  *  import and export declarations, `import =` external references, dynamic import() and require()
  *  calls — and `loads` keeps each literal operand node. */
 export function specifiersIn(sourceFile: ts.SourceFile) {
@@ -173,7 +173,7 @@ export function validateAgentBundle(agentDir: string, opts?: { allow?: string[] 
   } catch (error) {
     if (!(error instanceof IrregularBundleEntryError)) throw error;
     // A symlink the walker skipped would be unhashed and unscanned, so validation would approve a
-    // bundle whose runtime import graph it never saw (handover 2026-07-11). Refusing the whole
+    // bundle whose runtime import graph it never saw. Refusing the whole
     // bundle is the only answer available here, because the entry that was skipped is exactly the
     // one whose content nothing below can read.
     return {

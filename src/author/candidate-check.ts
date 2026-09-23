@@ -11,13 +11,10 @@
  * A refusal still leaves the working tree committed, because Git is the Builder's memory; but no
  * later gate reconstructs a candidate from that history, since only the snapshot has an identity.
  *
- * Reading from the snapshot closed an earlier gap. The old session path validated the model's text
- * and then reread only the brief and the tasks, which left two of the bundle's contracts unchecked
- * against the bytes that would actually be measured; this check validates all four JSON files and
- * the operating guide. The solver receives public task data per case through `commitPublicTask`
- * instead, so there is no generated agent-side copy that could go stale or carry hidden data — that
- * design replaced `agent/tasks-public.json` on 2026-07-28, and no such file exists in the tree
- * today.
+ * All four JSON files and the operating guide are validated against the snapshot, not just the
+ * brief and the tasks: a contract checked against the workspace is not checked against the bytes
+ * that will be measured. The solver receives public task data per case through `commitPublicTask`,
+ * so there is no generated agent-side copy that could go stale or carry hidden data.
  *
  * Every outgoing finding passes through the author projection, which withholds unclassified detail
  * by default and so keeps public authoring feedback separate from protected verifier output.
@@ -92,11 +89,10 @@ export type CandidateCheckOutcome = (
        *  consumes these values rather than parsing the same bytes again, so no stage can disagree
        *  with another about what the candidate says. */
       bundle: ValidatedBundle;
-      /** What this candidate's declared tools resolve to on this host, each resolved entry whole —
+      /** What this candidate's declared tools resolve to on this host, each resolved entry whole:
        *  the half of the submission's identity `snapshotId` cannot carry, because the tool tree is
-       *  machine-local by construction and the same bytes evaluate differently over different
-       *  executables. Null when the brief grounds no check on a tool, where there is nothing
-       *  outside the bytes left to move. */
+       *  machine-local and the same bytes evaluate differently over different executables. Null
+       *  when the brief grounds no check on a tool. */
       engineCondition: string | null;
       /** Path-independent identity, retained with adopted conformance for later attribution. */
       verifierEnvironmentHash: string | null;
@@ -213,9 +209,8 @@ export function validatedBundle(workspace: string, loaded: BundleLoad): Validate
 
 function validatedBrief(raw: unknown, findings: ContractFinding[]): Brief | null {
   const result = raw === undefined ? null : validateBrief(raw);
-  // Brief diagnostics describe only the Builder-authored public contract, so they are marked here
-  // as author-visible. The marking is per producer rather than blanket, which is what lets the
-  // isolation fail closed and keep protecting every unrelated or generated finding by default.
+  // Brief diagnostics describe only the Builder-authored public contract, so they are marked
+  // author-visible — per producer, so the isolation still fails closed for every other producer.
   if (result !== null) findings.push(...controllerValidatedFindings(result.findings));
   return result?.ok === true
     ? /* SAFETY: `validateBrief` reported ok, which is the only proof of this shape. */ (raw as Brief)
@@ -223,10 +218,9 @@ function validatedBrief(raw: unknown, findings: ContractFinding[]): Brief | null
 }
 
 /** correctness-model/tasks.json holds the bare task array, and `{tasks: [...]}` is the validator's
- *  shape, which this check supplies. The distinction matters to the author: a file that carries the
- *  wrapper itself would otherwise be validated as a battery whose single "task" is that object, and
- *  the resulting diagnostic would quote back `{"tasks": [...]}` — the very shape the author had just
- *  written. The file-level check refuses it in terms of the file instead. */
+ *  shape, which this check supplies. A file that carries the wrapper itself would otherwise be
+ *  validated as a battery whose single "task" is that object, and the diagnostic would quote back
+ *  the very shape the author had just written; the file-level check refuses it as a file instead. */
 function validatedBattery(
   brief: Brief,
   raw: unknown,
@@ -252,9 +246,8 @@ function validatedBattery(
     ...keyIfDefined("minTasks", context.minTasks),
   };
   const result = validateTasks(brief, { tasks: raw }, mode === "rehearsal" ? {} : taskContext);
-  // A rehearsal reads a battery still being written, and a partial battery still obeys every
-  // task's own input contract; what it cannot yet obey is a rule about the set, so the two
-  // coverage findings are dropped here and left to admission, which sees the finished set.
+  // A rehearsal reads a battery still being written. A partial battery obeys every task's own
+  // input contract but no rule about the set, so the two coverage findings are left to admission.
   if (mode === "rehearsal") {
     result.findings = result.findings.filter(
       (finding) => !["tasks-single-family", "tasks-numeric-boundary-missing"].includes(finding.code),
@@ -268,10 +261,8 @@ function validatedBattery(
 }
 
 /** Refuses an empty, oversized or placeholder guide, or one that names an individual task. Each of
- *  those is decidable from the bytes: the guide is either there or it is not, either inside the
- *  budget or over it, either still carrying the seeded marker or replaced, either naming a task id
- *  or not. Whether guidance reveals an answer is not decidable that way — neither tool names nor
- *  Markdown formatting settle it — so that judgement stays with semantic review. */
+ *  those is decidable from the bytes. Whether guidance reveals an answer is not — neither tool
+ *  names nor Markdown formatting settle it — so that judgement stays with semantic review. */
 function operatingGuideFindings(text: string, battery: TaskBattery | null): ContractFinding[] {
   const guideFinding = (detail: string): ContractFinding[] => [
     controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail }),
@@ -314,10 +305,8 @@ function guideFindings(workspace: string, battery: TaskBattery | null): Contract
 }
 
 /** Mirrors `validatedBrief` for the tools contract: validate one bundle file, push its findings and
- *  return the parsed value only when it is clean. The generated public-data pair belongs to this
- *  contract too — the controller supplies that data itself now — so the check for leftover copies
- *  lives beside the spec rather than in the caller, where it would be one more thing every caller
- *  had to remember. */
+ *  return the parsed value only when it is clean. The controller supplies public data itself, so
+ *  the check for leftover generated copies lives beside the spec rather than in every caller. */
 function validatedToolsSpec(workspace: string, raw: unknown, findings: ContractFinding[]): ToolsSpec | null {
   if (raw === undefined) return null;
   const normalized = normalizeToolsSpec(raw);
@@ -339,12 +328,11 @@ function validatedToolsSpec(workspace: string, raw: unknown, findings: ContractF
 }
 
 /** Refuses a `files` preset whose artifact schema that preset cannot carry, at submit rather than
- *  at worker start: in run 8x the same mismatch surfaced 71 minutes into a paid battery as a
- *  worker-start non-result, which spends the round and measures nothing. The rule and its message
- *  live with their owner, `fileArtifactRootIssue` in draft-files; this check only reports it where
- *  the Builder can still repair it in the same session. A bundle with no accept corpus compiles no
- *  schema, so there is nothing to test here and the refusal stays with the corpus findings, which
- *  is where an empty accept corpus is already the more basic defect. */
+ *  at worker start, where the same mismatch surfaces as a non-result an hour into a paid battery
+ *  that then measures nothing. The rule and its message live with their owner,
+ *  `fileArtifactRootIssue` in draft-files; this check reports it where the Builder can still repair
+ *  it in the same session. A bundle with no accept corpus compiles no schema, so there is nothing
+ *  to test here and the refusal stays with the corpus findings. */
 function filesPresetCapabilityCheck(
   workspace: string,
   brief: Brief,
@@ -417,9 +405,8 @@ export function loadValidatedBundle(
 
   const brief = validatedBrief(briefRaw, findings);
   // Without a valid brief the task and control contracts have nothing to check against, but the
-  // tools spec, the operating guide and the controls envelope do not read the brief at all, so
-  // they are still reported. One check that surfaces everything it can is worth the extra work:
-  // run 766284 (2026-09-16) spent four checks meeting one validator at a time.
+  // tools spec, the operating guide and the controls envelope do not read the brief at all, so they
+  // are still reported: otherwise an author spends one check per validator meeting them in turn.
   if (brief === null) {
     const toolsSpec = validatedToolsSpec(workspace, specRaw, findings);
     if (controlsRaw !== undefined && !isControlCorpus(controlsRaw)) {
@@ -441,9 +428,8 @@ export function loadValidatedBundle(
     if (isControlCorpus(controlsRaw)) {
       const candidate = controlsRaw;
       // Controls bind battery tasks by taskId, and binding needs only readable rows with string
-      // ids. So a control floor or shape finding arrives beside the battery findings rather than
-      // hiding behind them for a round; candidate validation still refuses on the battery findings
-      // themselves.
+      // ids, so a control floor or shape finding arrives beside the battery findings rather than
+      // hiding behind them for a round. Validation still refuses on the battery findings themselves.
       const taskViews = bindableTaskViews(battery, tasksRaw);
       const controlFindings =
         mode === "rehearsal"
@@ -466,13 +452,10 @@ export function loadValidatedBundle(
   filesPresetCapabilityCheck(workspace, brief, toolsSpec, findings);
   findings.push(...guideFindings(workspace, battery));
   if (mode === "admission") {
-    // The fresh contract compares the kickoff, the brief, the battery and the controls against
-    // each other and reads nothing else, so its diagnostics are made of author-written material
-    // and may cross to the author — the third producer marked that way here, after the brief's
-    // diagnostics and the tools spec's. Run 36 attempt 3 spent 102 minutes on two that were not
-    // marked: a 2/20 accept and a 7/20 reject calibration shortfall, each arriving as
-    // generated-execution-unclassified, which tells an author that something is wrong and not
-    // what.
+    // The fresh contract compares the kickoff, the brief, the battery and the controls against each
+    // other and reads nothing else, so its diagnostics are made of author-written material and may
+    // cross to the author. Unmarked, a calibration shortfall arrives as
+    // generated-execution-unclassified, which tells an author that something is wrong and not what.
     findings.push(
       ...controllerValidatedFindings(freshCandidateFindings({ brief, corpus })),
       ...solverShellFindings(toolsSpec),
@@ -482,17 +465,16 @@ export function loadValidatedBundle(
 }
 
 /** Refuses a tools spec that gives the solver no shell, meaning neither the `files` nor the `shell`
- *  preset (operator decision 2026-09-14). `validateToolsSpec` is satisfied by `presets: []` as
- *  long as an artifact-writer is declared, so the refusal has to live one layer up, here: truss
- *  epochs kept declining `files`, whose draft files become the answer, and their solvers were then
- *  left calling only their own tools with nothing to compute, search or test with. `shell` gives
- *  that shell beside an artifact-writer, and the spec validator refuses both presets together, so
- *  the choice is one or the other.
+ *  preset (operator decision). `validateToolsSpec` is satisfied by `presets: []` as long as an
+ *  artifact-writer is declared, so the refusal lives one layer up, here: a Builder that declines
+ *  `files`, whose draft files become the answer, leaves its solver calling only its own tools with
+ *  nothing to compute, search or test with. `shell` gives that shell beside an artifact-writer, and
+ *  the spec validator refuses both presets together, so it is one or the other.
  *
- *  This runs on every admission, which includes the round that cannot act on it: a round of scope
- *  "tasks" keeps the agent fixed and cannot select a preset. Refusing it anyway is deliberate,
- *  because harder tasks do not measure past a known product blocker (rule 11), so the finding names
- *  the product round that owns the repair instead of letting the round measure around the gap. */
+ *  This runs on every admission, including the round that cannot act on it: a round of scope
+ *  "tasks" keeps the agent fixed and cannot select a preset. Refusing anyway is deliberate, because
+ *  harder tasks do not measure past a known product blocker, so the finding names the product round
+ *  that owns the repair instead of letting this one measure around the gap. */
 function solverShellFindings(toolsSpec: ToolsSpec | null): ContractFinding[] {
   if (toolsSpec === null || toolsSpec.presets.some((preset) => preset === "files" || preset === "shell")) {
     return [];
@@ -509,20 +491,20 @@ function solverShellFindings(toolsSpec: ToolsSpec | null): ContractFinding[] {
 
 /**
  * Whether the tools the brief names are installed where the host will look, appending any authoring
- * finding that earns. There are two outcomes.
+ * finding that earns.
  *
  * A named tool id that is not a plain command name, or that resolves to no executable under the
  * workspace `.toolchain` or on the host PATH, produces one bundle finding per tool naming where the
- * host looked. The refusal keeps the session, like any bundle finding, and the ordinary no-op
- * resubmit strikes end it if nothing changes. Accepting instead would spend the whole census before
- * each run settled as a non-result, which reads from the outside as the domain being ungradable
- * rather than as a tool never having been installed.
+ * host looked. The refusal keeps the session, and the ordinary no-op resubmit strikes end it if
+ * nothing changes. Accepting instead would spend the whole census before each run settled as a
+ * non-result, which reads from the outside as the domain being ungradable rather than as a tool
+ * never having been installed.
  *
- * When every named tool resolves, the candidate will be evaluated over those exact executables, and
- * the returned condition digest names every resolved entry whole rather than a projection of a few
- * fields — an earlier four-field projection left out the interpreter a script runs under. The gate
- * cache, the remembered preview and the no-op strike all key on this digest, so an interpreter-only
- * change counts as a new condition, as it already did for `verifierEnvironmentHash`.
+ * When every named tool resolves, the candidate is evaluated over those exact executables, and the
+ * returned condition digest names every resolved entry whole rather than a projection of a few
+ * fields, which would leave out the interpreter a script runs under. The gate cache, the remembered
+ * preview and the no-op strike all key on this digest, so an interpreter-only change is a new
+ * condition.
  */
 function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], findings: ContractFinding[]) {
   if (toolIds.length === 0) return { engineCondition: null, verifierEnvironmentHash: null };
@@ -554,15 +536,12 @@ function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], f
   };
 }
 
-/**
- * Record the working tree, capture the candidate and check its file contract: fingerprint the
- * files, create the immutable bundle snapshot and validate that snapshot. Even a refused candidate
- * remains in the Builder's Git history, so nothing an author wrote is lost by being refused, and
- * every validity decision after this point reads the same captured bytes rather than whatever the
- * workspace holds by then — proposal prose carries no progress identity. F2 solvability and the
- * control census run later on that same bundle; the campaign owns those gates, while this check
- * establishes the candidate's identity and validates the file contract.
- */
+/** Record the working tree, capture the candidate and check its file contract: fingerprint the
+ *  files, create the immutable bundle snapshot and validate that snapshot. Even a refused candidate
+ *  remains in the Builder's Git history, so nothing an author wrote is lost by being refused, and
+ *  every validity decision after this point reads the same captured bytes rather than whatever the
+ *  workspace holds by then. F2 solvability and the control census run later on that same bundle;
+ *  the campaign owns those gates, while this check establishes identity and the file contract. */
 export function checkCandidate(
   workspace: string,
   context: CandidateCheckContext,

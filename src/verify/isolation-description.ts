@@ -4,11 +4,11 @@
  *
  * This description exists because the verifier host, the generated-tool worker and the Built Harness
  * shell each stated their rules twice — once as Seatbelt profile text for Darwin, once as Bubblewrap
- * argv for Linux — so one wall's posture lived in two places with no shared setting. On 2026-08-19
- * the Built Harness shell was given network access, and the change needed five separate edits across
- * two files; the Linux half of one was missed on the first pass and only a second reading caught it.
- * Both adapters now read the same setting. The shell has since moved to an open-read policy with
- * explicit denials, which it constructs separately in `solve-command-isolation.ts`.
+ * argv for Linux — so one wall's posture lived in two places with no shared setting. Turning the
+ * network on for a single caller then took five separate edits across two files, and the Linux half
+ * of one is easy to miss, which leaves the two hosts confining differently while both read as
+ * confined. Both adapters now read the same setting. The shell has since moved to an open-read
+ * policy with explicit denials, which it constructs separately in `solve-command-isolation.ts`.
  *
  * `shared` holds what both mechanisms express, so a change there cannot reach one host and not the
  * other. `seatbelt` holds what only Seatbelt has: its move guards are string rules against a rename,

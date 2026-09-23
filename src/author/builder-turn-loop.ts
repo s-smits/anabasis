@@ -21,12 +21,11 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 const LIVENESS_CHECKPOINT_MS = 60_000;
 
 /** Timeout for a Builder turn when no session timeout was supplied. Without it an absent
- *  `turnTimeoutMs` would fall to the session's one-hour default cap (`DEFAULT_TURN_CAP_MS` in
- *  pi-session.ts) and end a long authoring turn as a typed non-result. Each turn gets up to
- *  twenty-four hours instead (operator decision 2026-09-14, after four recorded turns were cut
- *  mid-work at the earlier six-hour cap), and the next turn opens a fresh window. The campaign's
- *  review schedule in builder-campaign.ts never cancels a turn, so this is the only clock over
- *  one. */
+ *  `turnTimeoutMs` falls to the session's one-hour default cap (`DEFAULT_TURN_CAP_MS` in
+ *  pi-session.ts) and ends a long authoring turn as a typed non-result. Each turn gets up to
+ *  twenty-four hours instead (operator decision), and the next turn opens a fresh window. The
+ *  campaign's review schedule in builder-campaign.ts never cancels a turn, so this is the only
+ *  clock over one. */
 export const BUILDER_TURN_SETTLE_MS = 86_400_000;
 
 export interface BuilderTurnState {
@@ -188,15 +187,13 @@ function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCall
 /** The prompt for the next turn: the continuation for the session's progress, last turn's tool
  *  failures, and whether the owned files are still as the session found them.
  *
- *  The third part replaces the author-first interrupt removed on 2026-09-14. That monitor counted
- *  sixteen tool calls over unchanged owned paths and then cut the turn with a finding; it never
- *  fired in 414 recorded sessions, and a session installing frame3dd or a compiler under
- *  .toolchain would have been cut mid-install for doing exactly the right thing. The fact behind it
- *  is still worth stating: a Builder that has read and probed for a whole turn without touching
- *  agent/ or correctness-model/ may not have noticed, and the transcript it would have to re-read
- *  to notice is long. So the turn boundary states the fact once, in one line, and leaves the
- *  decision with the model -- keep installing, or start writing. Nothing counts it and nothing ends
- *  on it. */
+ *  The third part is a statement rather than an interrupt. A monitor that counts tool calls over
+ *  unchanged owned paths and cuts the turn would cut a session installing a compiler under
+ *  .toolchain mid-install, for doing exactly the right thing. The fact behind it is still worth
+ *  stating: a Builder that has read and probed for a whole turn without touching agent/ or
+ *  correctness-model/ may not have noticed, and the transcript it would have to re-read to notice
+ *  is long. So the turn boundary states it once, in one line, and leaves the decision with the
+ *  model -- keep installing, or start writing. Nothing counts it and nothing ends on it. */
 function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): string {
   const { state, authoring } = input;
   // "Unchanged" is byte identity against the session's opening, not against this turn's start: a

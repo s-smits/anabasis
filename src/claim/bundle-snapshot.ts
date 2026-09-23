@@ -68,8 +68,8 @@ export function bundleSnapshotToolTree(dir: string): string | null {
  *
  *  Both carries of an accepted bundle go through this one function — the seeded authoring
  *  workspace in domain-repo.ts and the retained version in product-versions.ts — because a bundle
- *  that arrives without its tool tree is a bundle whose external checks have no instrument to run.
- *  The climb lost three rounds on 2026-09-02 to exactly that omission. */
+ *  that arrives without its tool tree is a bundle whose external checks have no instrument to run,
+ *  and every round it authors is lost to that. */
 export function linkWorkspaceToolTree(from: string, workspace: string): void {
   const tooling = bundleSnapshotToolTree(from);
   if (tooling === null || bundleSnapshotToolTree(workspace) === tooling) return;
@@ -168,10 +168,9 @@ export function createBundleSnapshot(
 /** Check the existing snapshot or create it from a fingerprint-identical slug tree. */
 export function ensureBundleSnapshot(slugDir: string, fingerprint: FingerprintEvidence): BundleSnapshot {
   // The gates receive the promoted snapshot, not the live tree, so a snapshot arriving here is
-  // reused where it stands. Nesting a second copy under <snapshot>/.bundle-snapshots would move
-  // the bundle's parent away from the workspace whose `.toolchain` tool admission derives from,
-  // and loop-3 (2026-08-23) refused every declared toolchain read root at the F2 census that way,
-  // on submit and check alike.
+  // reused where it stands. Nesting a second copy under <snapshot>/.bundle-snapshots moves the
+  // bundle's parent away from the workspace whose `.toolchain` tool admission derives from, which
+  // refuses every declared toolchain read root at the F2 census, on submit and check alike.
   const parent = basename(dirname(slugDir));
   if (
     basename(slugDir) === bundleSnapshotIdOf(fingerprint) &&

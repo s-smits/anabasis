@@ -9,8 +9,8 @@
  * runs under Bubblewrap with networking disabled. Both halves are checked rather than assumed —
  * `assertIsolatedInterfaces` refuses a domain carrying any interface but `ana-isolated`, and
  * refuses `ana-isolated` itself if it has grown a forward route. The design follows an earlier VM
- * provisioner by the same operator (2026-08-19), which `tools/vm/provision-workshop-cell.sh`
- * records: cloud image on a qcow2 backing file, per-VM ssh key, virtiofs share. That script also
+ * provisioner by the same operator, which `tools/vm/provision-workshop-cell.sh` records: cloud
+ * image on a qcow2 backing file, per-VM ssh key, virtiofs share. That script also
  * takes a clean snapshot; reverting to it stays an operator step, because nothing here calls
  * `snapshot-revert`.
  *

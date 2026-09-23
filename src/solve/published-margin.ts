@@ -7,12 +7,11 @@
  * and the direction of the comparison, completes it — and a complete comparison is public on both
  * sides, so the harness can run it and tell the solver where its own answer stands.
  *
- * This exists because the solver could not see it. On the round4-veryhard truss pack of 2026-09-17
- * (cycle c03, 2 verified of 23) 19 of 19 recorded answers breached a published limit by the numbers
- * they themselves reported, and were submitted anyway; the prompt had asked the solver to compare
- * each reported value with each published requirement itself, which is a duty a solver discharges
- * badly and the harness discharges exactly. Three prompt clauses asking for that comparison, and for
- * margin against it, were removed when this landed.
+ * This exists because the solver could not see it. Asked in the prompt to compare each value its
+ * own answer reports against each published requirement, a solver discharges that duty badly and
+ * submits answers that breach a published limit by the very numbers they report; the harness
+ * discharges it exactly. Three prompt clauses asking for that comparison, and for margin against
+ * it, were removed when this landed.
  *
  * It decides nothing. A comparison whose operand is missing or non-numeric reads as unknown rather
  * than as a breach, clearing every margin does not make an answer correct, and a breach does not
@@ -30,9 +29,9 @@ export type MarginDirection = "atMost" | "atLeast";
  *
  * The host replaces an exact artifact-writer's parameters and execution: the parameters become the
  * public artifact schema, and the call records the answer and returns the margin table below. The
- * Builder can observe neither, and one truss writer's description ended "It runs no analysis and
- * checks nothing against the published limits" while the bound call was returning a table of exactly
- * that. The authored sentence stays, because it says what the tool is for in the domain's own words;
+ * Builder can observe neither, so an authored description can end "It runs no analysis and checks
+ * nothing against the published limits" while the bound call returns a table of exactly that. The
+ * authored sentence stays, because it says what the tool is for in the domain's own words;
  * this one says what runs. It names no count, so every task in a battery serves the same text and
  * the registration stays stable across families.
  */

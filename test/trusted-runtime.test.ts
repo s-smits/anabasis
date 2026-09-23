@@ -135,9 +135,9 @@ describe("a capture that returns no output", () => {
    * mechanism: what has to hold is that passing it throws rather than returning the short read.
    *
    * The cap ending is asserted on the capture and not on `SIGTERM`, because the kill Bun sends at
-   * the cap is a race: this line read `died on SIG` until 2026-09-20, when a gate under a load
-   * average of 26 caught the child finishing first and the whole assertion receiving `""` — the
-   * short read returned as success, which is the case the paragraph above says must throw.
+   * the cap is a race: asserting `died on SIG` passes until a loaded host lets the child finish
+   * first, and the assertion then receives `""` — the short read returned as success, which is the
+   * case the paragraph above says must throw.
    */
   it("names the four endings apart and carries the reason a command could not start", () => {
     expect(() => runTextSyncOrThrow(["/bin/sh", "-c", "echo refused 1>&2; exit 3"])).toThrow(

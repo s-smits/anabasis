@@ -5,11 +5,10 @@
  * executable and records where it came from. A missing id is therefore a `verifier-required` fact
  * the Builder can act on by installing the tool, and never a refusal of the check's logic.
  *
- * This replaced `correctness-model/engines.json` and its admission chain on 2026-09-03. Of the 306
- * engine declarations written in the first three days of that September, every one named an
- * interpreter over a Builder-written script, and the firmware ones shipped their own `Arduino.h`.
- * A declared registry attested the interpreter rather than the check, which let the author supply
- * the world its own artifact was judged in.
+ * It replaced a declared registry, `correctness-model/engines.json`, and its admission chain.
+ * Left to declare its own engines, a Builder names an interpreter over a script it wrote itself,
+ * and a firmware one ships its own `Arduino.h`; the registry then attests the interpreter rather
+ * than the check, which lets the author supply the world its own artifact is judged in.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { openSync, readSync, closeSync, statSync } from "../meta/filesystem.ts";
@@ -62,9 +61,8 @@ function shebangCommand(path: string): string | null {
     .split(/\s+/)
     .filter((word) => word !== "");
   // `env` forwards to the first word that is neither one of its flags (`-S`, `-i`, `--`) nor a
-  // `NAME=value` assignment. The 2026-09-05 replay over 43 recorded tool shapes met none of these,
-  // but a synthetic `#!/usr/bin/env -S PYTHONUNBUFFERED=1 python3` read the assignment as the
-  // interpreter, which is the shape this skips.
+  // `NAME=value` assignment. Without that skip, `#!/usr/bin/env -S PYTHONUNBUFFERED=1 python3`
+  // reads the assignment as the interpreter.
   return basename(words[0] ?? "") === "env"
     ? (words.find(
         (word, index) => index > 0 && !word.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word),
@@ -83,10 +81,10 @@ export function toolProvenance(path: string): Pick<ToolEntry, "kind" | "interpre
 
 /** The bytes of the interpreter a script tool will run under, found the way the verifier cell finds
  *  it: an absolute shebang names its file, and `env` searches the cell's own path. A script's own
- *  digest does not move when its interpreter changes underneath it — eaf98f graded 148 census rows
- *  on 2026-09-14 with a script whose tool digest never moved while its `python3` went from 3.9 to
- *  3.14, and the tool digest alone called both of those one environment. Undefined when the
- *  interpreter cannot be found, which the run itself then reports. */
+ *  digest does not move when its interpreter changes underneath it: a census can grade one half of
+ *  its rows under `python3` 3.9 and the other under 3.14 without the tool digest moving at all, and
+ *  the tool digest alone calls both of those one environment. Undefined when the interpreter cannot
+ *  be found, which the run itself then reports. */
 export function interpreterDigest(path: string, toolTree: string | null): string | undefined {
   const command = shebangCommand(path);
   if (command === null || command === "") return undefined;

@@ -35,7 +35,8 @@ function pointerAt(path: string): BuilderTranscriptPointerV2 {
 }
 
 describe("the Builder transcript pointer", () => {
-  // Run 65 was killed while authoring and nothing in the campaign named its transcript.
+  // A session killed while authoring never ends a turn, so a pointer written at the first turn's
+  // end would leave nothing in the campaign naming its transcript.
   it("names the transcript as the session opens, before its first turn ends", () => {
     const dir = tmpDir("transcript-pointer-");
     const sink = new SessionTranscriptSink();

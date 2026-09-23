@@ -136,9 +136,9 @@ const asNumber = (value: unknown) => (isNumber(value) ? value : 0);
  * running, summed over the whole corpus, so it names no control, task or failure location and
  * crosses the rule 4 boundary as an aggregate over the author's own code.
  *
- * It is reported because the cost is otherwise invisible until it is paid at measurement. Truss
- * epoch 4764 declared seven checks that each re-ran a nonlinear solver over the same design; its
- * gate calls took 397 s and 441 s, and nothing in the result told the author which check that was.
+ * It is reported because the cost is otherwise invisible until it is paid at measurement. Seven
+ * checks that each re-run the same nonlinear solver over one design turn every gate call into
+ * minutes, and without this row nothing in the result tells the author which check is doing it.
  */
 function censusCost(census: JsonObject | null) {
   const rows = Array.isArray(census?.checkCost) ? census.checkCost : [];

@@ -144,11 +144,11 @@ export class PiBuiltWorkerNonResult extends Error {
 
 /** The longest a permitted turn may stay silent: one model call plus one shell command at its
  *  ceiling. Every worker message restarts it, so it catches a stalled provider or worker, not a
- *  solver still working. Before this bound existed a provider stall on turn one held the case for
- *  the full hour -- three 3,600 s non-results in astra-20260908T214013792Z. It was a wall on the
- *  whole turn until 2026-09-14, when truss run 406cca's resilient-bridge-h was cut after 18 traced
- *  tool calls inside one native turn and recorded as a runtime non-result, which is a solver
- *  working being called an environment failure. */
+ *  solver still working. Without it a provider stall on turn one holds the case for the whole solve
+ *  wall and records an hour of nothing. Measuring silence rather than the turn is the other half:
+ *  a wall on the whole turn cuts a solver that has made a dozen traced tool calls inside one native
+ *  turn and records it as a runtime non-result, which calls a working solver an environment
+ *  failure. */
 export const builtTurnWallMs = (shellMaxSeconds: number): number => TURN_TIMEOUT_MS + shellMaxSeconds * 1000;
 
 function dispatchTool(

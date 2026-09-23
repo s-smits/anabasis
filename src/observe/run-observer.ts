@@ -4,8 +4,8 @@
  * this file, so missing observations cost a run its visibility and never supply or change a
  * verdict.
  *
- * A `response` row existed for the prose review callers whose answer survived only as a parse;
- * those callers were removed on 2026-09-04 and the row went with them.
+ * There is no `response` row. It existed for the prose review callers whose answer survived only as
+ * a parse, and it went when they did.
  *
  * Rows form a tree. `parentId` identifies the enclosing row: run → case → turn → steering or
  * follow-up, and null places the row directly under the run named by `runId`. Emit a parent first,
@@ -104,11 +104,10 @@ interface PhaseEvent {
     | "analyse"
     | "admission"
     | "next";
-  /** `deferred` is a step this run holds rather than runs; it already read as a warning in
-   *  `levelOf` with no producer at all. The solve pool delivers its results in input order, so a
-   *  case that finishes while an earlier one is still solving waits before it is graded, and from
-   *  outside that wait was indistinguishable from a stalled verifier: run truss `…4c67fc` closed
-   *  its last case span at `Case canopy-skewed-heads submitted` and said nothing further. */
+  /** `deferred` is a step this run holds rather than runs. The solve pool delivers its results in
+   *  input order, so a case that finishes while an earlier one is still solving waits before it is
+   *  graded, and without this state that wait is indistinguishable from a stalled verifier: the case
+   *  span closes at `submitted` and the stream says nothing further. */
   state: "started" | "completed" | "failed" | "deferred";
   summary: string;
   evidence?: string[];
@@ -116,25 +115,24 @@ interface PhaseEvent {
   subjectId?: string;
 }
 
-/** One settled authoring iteration, from its already-recorded evidence identities. Run w11 wrote
- *  nine observation rows in 5 h 35 m and was then silent for its final 3 h 10 m while 36 iterations
- *  settled `gates-blocked` on one focus owner, so a live reader could not see the convergence
- *  failure without opening every iteration.json. Telemetry only: iteration.json stays the
- *  evidence. */
+/** One settled authoring iteration, from its already-recorded evidence identities. Without it a run
+ *  falls silent for hours while iteration after iteration settles `gates-blocked` on one focus
+ *  owner, and a live reader cannot see that convergence failure without opening every
+ *  iteration.json. Telemetry only: iteration.json stays the evidence. */
 interface IterationEvent {
   ordinal: number;
   outcome: string;
   /** The gate stage the iteration settled at, `null` when it reached none. The stderr line has
-   *  always named it; without it here a reader sees that 36 iterations were blocked and not whether
-   *  they were blocked at one stage or at 36 different ones. */
+   *  always named it; without it here a reader sees that the iterations were blocked and not whether
+   *  they all stopped at one stage or each at a different one. */
   stage: string | null;
   focusOwner: string | null;
   findingsHash: string | null;
 }
 
 /** One completed model turn's tool tally, emitted at the turn boundary. The per-session aggregate
- *  has no time axis: run 48's evidence could not say when its 30 failed Bash calls happened or
- *  whether they clustered, so the review had to re-read the raw transcript. Telemetry only:
+ *  has no time axis, so it cannot say when a session's failed Bash calls happened or whether they
+ *  clustered, and a review reading it has to go back to the raw transcript. Telemetry only:
  *  builder-execution.json stays the evidence. */
 interface TurnToolsEvent {
   turn: number;
@@ -410,20 +408,20 @@ export function observeAnalysisResult(
   }
 }
 
-/** The one [fullrun] stderr emitter. Every line carries its moment (UTC, to the second) because
- *  the liveness triage of runs 13 and 14 had to correlate file mtimes by hand: no emitted line said
- *  when. The tag stays first so grep-based watches (`rg "\[fullrun\]"`) keep matching. Telemetry
- *  only, like the stream above: no verdict reads a log line. */
+/** The one [fullrun] stderr emitter. Every line carries its moment (UTC, to the second), without
+ *  which a liveness triage has to correlate file mtimes by hand because no emitted line says when.
+ *  The tag stays first so grep-based watches (`rg "\[fullrun\]"`) keep matching. Telemetry only,
+ *  like the stream above: no verdict reads a log line. */
 export function fullrunLine(message: string): void {
   console.error(`[fullrun] ${new Date().toISOString().replace(/\.\d{3}Z$/, "Z")} ${message}`);
 }
 
 export function campaignProgressOptions(slug: string): CampaignProgressOptionsResult {
   return {
-    // The number counts the author calls the session used, so the label states that unit. Run 16
-    // logged "controls ok (attempt 6)" against a per-call cap of 3, because the controls session
-    // sums its calls across candidate corpora and patch rounds while every other session's count is
-    // one loop's rounds. Both readings agree on "calls"; only "attempt" implied an ordinal.
+    // The number counts the author calls the session used, so the label states that unit. Read as an
+    // ordinal it contradicts the per-call cap, because the controls session sums its calls across
+    // candidate corpora and patch rounds while every other session's count is one loop's rounds.
+    // Both readings agree on "calls"; only "attempt" implied an ordinal.
     onPhase: (phase, ok, attempts) =>
       fullrunLine(
         `${slug}: session ${phase} ${ok ? "ok" : "FAILED"} (${attempts} author call${attempts === 1 ? "" : "s"})`,

@@ -7,9 +7,9 @@
  *
  * The runtime half of this contract lives beside the barrel rather than under `src/`. The Builder
  * runs its own `bun test` under a wall that opens this directory whole and closes `src/truth`,
- * and Bun lists a module's directory before it opens the file: measured 2026-09-02 (run50-opus),
- * a barrel re-exporting `../../src/truth/truth-checks.ts` failed there with "Cannot find module"
- * while the file itself was granted, and the Builder wrote a stand-in for the whole package.
+ * and Bun lists a module's directory before it opens the file, so a barrel re-exporting
+ * `../../src/truth/truth-checks.ts` fails there with "Cannot find module" while the file itself is
+ * granted -- and the Builder then writes a stand-in for the whole package.
  * Shared JSON shape primitives remain under the already-public `src/meta` authoring interface.
  */
 export type {

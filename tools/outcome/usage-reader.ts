@@ -6,8 +6,8 @@
  * stayed healthy from one no recorded run ever reached, so `.claude/skills/safeguards/SKILL.md`
  * asks for two completed runs, named by run id, whose evidence shows the branch was reached before
  * a quiet sensor may go. That is a judgement about reachability, and nothing in these logs can
- * make it: the census of 2026-09-18 found nine of the fifteen live ids had never fired and retired
- * none of them on that fact.
+ * make it, so a census finding that most live ids have never fired retires none of them on that
+ * fact alone.
  */
 import type { BuilderToolsReport, EpochToolCensus } from "./builder-tools.ts";
 import { builderFailureFindings } from "./builder-failed-calls.ts";
@@ -108,8 +108,8 @@ function pathRecordFindings(epoch: EpochToolCensus): string[] {
 
 function epochToolFindings(epoch: EpochToolCensus): string[] {
   // Failed calls are execution evidence, so they stay readable in exactly the epoch the other
-  // evidence sources miss: run 66 recorded 41 failed native calls beside null session
-  // evidence and a path record that covered none of them.
+  // evidence sources miss: an epoch can hold dozens of failed native calls beside null session
+  // evidence and a path record that covers none of them.
   const failures = builderFailureFindings(epoch.epoch, epoch.failures);
   const { record, composed } = epoch;
   if (composed === null && record === null) {

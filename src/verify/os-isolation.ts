@@ -77,7 +77,8 @@ type PreparedVerifierPlan = {
  *  mechanism or route a call to it. */
 export type VerifierOsIsolationPlan = PreparedVerifierPlan & {
   apply(): Promise<{ ok: true } | { ok: false; reason: string }>;
-  /** `changed` names a real drift of an attested byte; `unavailable` a re-read the host could not complete. */
+  /** `changed` names a real drift of an attested byte; `unavailable` a re-read the host could not
+   *  complete. */
   verify(): ExactReadDrift | null;
 };
 export type VerifierOsIsolation = {

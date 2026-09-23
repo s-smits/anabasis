@@ -5,8 +5,8 @@
  * see are derived rather than written. The public task projection is computed per case at solve
  * time, so there is no agent-side copy of it to read beforehand; the roster of tool names the
  * generated module must register is composed from the tool specification, the selected presets and
- * the public-resource requirement. Both were previously visible only by spending a submission, and
- * this tool shows them without spending one.
+ * the public-resource requirement. The only other way to see either is to spend a submission, which
+ * is what this tool exists to save.
  *
  * It composes the owners that already answer those questions — `loadValidatedBundle` for from-disk
  * contract validity, `commitPublicTask` for the projection and its digest, `expectedBuiltToolNames`
@@ -107,8 +107,8 @@ export interface HarnessInspectBinding {
   /** The Builder's own workspace. The controller binds it; the model cannot name a path. */
   workspace: string;
   /** The exact context the submission check will validate under, so inspect and submit read one
-   *  contract. A weaker inspection would be worse than none: it could report readiness for a
-   *  candidate submit then refuses. */
+   *  contract. A weaker inspection would be worse than none, because it could report readiness for
+   *  a candidate that submit then refuses. */
   context: CandidateCheckContext;
   /** Same-session submit feedback. Optional only for isolated inspection tests. */
   feedback?: BuilderAuthorFeedback;
@@ -199,9 +199,9 @@ function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectPara
 }
 
 /**
- * Whether the two generated modules compile. The summary view can only say they exist, so a Builder
- * once learned that `correctness-model/evaluator.ts` did not compile by spending a submission to
- * find out. This runs the same `typecheckGeneratedModule` that submit runs, over the model's own
+ * Whether the two generated modules compile. The summary view can only say they exist, which leaves
+ * a Builder to learn that `correctness-model/evaluator.ts` does not compile by spending a submission
+ * to find out. This runs the same `typecheckGeneratedModule` that submit runs, over the model's own
  * file, and executes nothing. The diagnostics are already controller-validated and already cross to
  * the author at submit time, so showing them here moves the moment rather than the boundary.
  */
@@ -559,10 +559,10 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
       "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. Start with readiness to combine required files, paged families, sample trials, tool roster, module typechecks and installed tools, and to see what the gate would refuse before a preview spends the attempt. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit findings. Use history to page measured experiments, then runId and optional taskId for older recorded public tasks: read what earlier batteries of this product asked and where they landed before settling what this one demands.",
     parameters: Params,
     run: async (params) => {
-      // Recent Sol and Fable runs followed an overview's "same action" hint into readiness and
-      // inventory, which silently ignored `group`. A selector an action cannot honour is refused
-      // here, before the validation and tsc work is repeated to produce a result that answers a
-      // different question from the one asked.
+      // An overview's "same action" hint leads authors into readiness and inventory still carrying
+      // a `group`, which neither action can honour and both would otherwise ignore in silence. So a
+      // selector an action cannot honour is refused here, before the validation and tsc work is
+      // repeated to produce a result that answers a different question from the one asked.
       if (
         (params.group !== undefined || params.field !== undefined) &&
         !["summary", "typecheck", "feedback"].includes(params.action)
@@ -589,8 +589,8 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
       if (params.action === "feedback") return feedbackResult(feedback, query);
       if (params.action === "history") {
         // The digest and the page kind make two reads of history distinguishable in the execution
-        // record. Before they were recorded, every history receipt was the same `completed`, so
-        // which rows an author had read before it wrote a proposal could not be recovered at all.
+        // record. Without them every history receipt reads as the same bare `completed`, and which
+        // rows an author had in front of it when it wrote a proposal cannot be recovered at all.
         const text =
           binding.readHistory?.(params.runId, params.taskId, params.offset, params.limit) ??
           capturedJsonStringify({

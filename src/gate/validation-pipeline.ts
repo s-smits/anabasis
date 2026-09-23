@@ -12,9 +12,9 @@
  * that yields nothing for the next to read stops the sequence: a bundle refusal leaves no validated
  * contracts, a thrown stage or a runtime non-result says nothing about the bytes, and a candidate
  * whose generated tools failed still gets its control census but no F2, which needs those tools.
- * Before this module the first refusing stage ended the call, so a Builder repaired one stage per
- * check and paid for the whole sequence again to reach the next one: truss run 064960 spent three
- * checks on three stages of a single tree.
+ * Ending the call at the first refusing stage instead means a Builder repairs one stage per check
+ * and pays for the whole sequence again to reach the next one, spending a check per stage on a
+ * single tree.
  *
  * Memory, per session. A gate run is shared by preview and submit for the same candidate, tool
  * condition and scope, in either call order; a host refusal is forgotten, so a recovered host may

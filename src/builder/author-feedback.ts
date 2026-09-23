@@ -15,9 +15,8 @@ import { characterWindow, windowRange } from "./read-window.ts";
 
 const GROUP_PAGE_ROWS = 20;
 const FIELD_PREVIEW_CHARS = 240;
-/** Enough rows to list every variant of a typical large group: over the 189 refusals recorded
- *  between 2026-08-30 and 09-13, a group held 7 variants at the median and 23 at p90, and a
- *  240-character preview showed the first of them. */
+/** Enough rows to list every variant of a typical large group, which holds a handful at the median
+ *  and a couple of dozen at the tail — more than the 240-character preview shows. */
 const VARIANT_INDEX_ROWS = 32;
 const VARIANT_INDEX_CHARS = 160;
 
@@ -45,8 +44,8 @@ interface FindingDelta {
 }
 
 /** One distinct repair within a group. `alsoFor` lists, in arrival order, the subjects of later
- *  rows that read the same apart from their subject: submit 3 of an Opus run on 2026-08-22 carried
- *  80 control rows differing only by example id, which is one repair and eighty subjects. */
+ *  rows that read the same apart from their subject. A submit can carry eighty control rows
+ *  differing only by example id, which is one repair and eighty subjects. */
 interface Variant {
   detail: string;
   count: number;
@@ -78,9 +77,10 @@ function variantText({ detail, alsoFor }: Variant): string {
 }
 
 /**
- * Fold on (code, path), so one defect reads as one group even where its detail varies: under a
- * (code, path, detail) key, w33 showed 632 groups for 638 findings, which is a list and not a
- * diagnosis. Each distinct repair keeps its count in first-seen order, and the paged detail frames
+ * Fold on (code, path), so one defect reads as one group even where its detail varies. Under a
+ * (code, path, detail) key a refusal renders almost as many groups as it has findings, which is a
+ * list and not a diagnosis. Each distinct repair keeps its count in first-seen order, and the
+ * paged detail frames
  * every variant with its count and character length so the rendering stays reconstructible; a
  * single variant pages bare.
  */

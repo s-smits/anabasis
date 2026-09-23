@@ -119,10 +119,10 @@ describe("a declared external tool", () => {
     expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toBeUndefined();
   });
 
-  // Run 36 attempt 2 ended here while its battery still used a self-invented shape, and the
-  // substituted finding list meant neither the Builder nor the evidence ever named that. Both
-  // reasons ship. A tree that fails the record stays a repairable defect: the campaign runs out of
-  // turns instead of settling verifier-required on a bundle the gate never actually reached.
+  // Both reasons ship. Substituting the missing-tool finding for the bundle's own findings leaves
+  // neither the Builder nor the evidence naming the second defect, so it never gets repaired. A
+  // tree that fails the record stays a repairable defect: the campaign runs out of turns instead of
+  // settling verifier-required on a bundle the gate never actually reached.
   it.concurrent("keeps the bundle findings beside the missing-tool finding", async () => {
     const campaignDir = scratchDir("ana-primary-verifier-required-census-");
     const workspace = join(campaignDir, "workspace");
@@ -216,15 +216,15 @@ describe("a declared external tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: true });
   });
 
-  // The first missing-tool refusal keeps the session open for repair, which is run 36's lesson
-  // above. What this case adds is where an unrepaired session ends up, and the answer is not the
-  // one the tool verdict might suggest: an unresolved tool id is a bundle finding, so validation
-  // refuses the tree before the verifier settlement is ever reached. The tree never changes
-  // between submits, so each repeat is a counted no-op strike and the session ends as
-  // authoring-stalled rather than verifier-required. That other ending needs recorded tool
-  // non-results to reach, and builder-campaign-tool-ceiling.test.ts writes them. Nothing here
-  // infers why the Builder kept the declaration or whether a model would have understood the
-  // refusal; the scripted session resubmits unchanged because that is what it was told to do.
+  // The first missing-tool refusal keeps the session open for repair, as the case above shows.
+  // What this case adds is where an unrepaired session ends up, and the answer is not the one the
+  // tool verdict might suggest: an unresolved tool id is a bundle finding, so validation refuses
+  // the tree before the verifier settlement is ever reached. The tree never changes between
+  // submits, so each repeat is a counted no-op strike and the session ends as authoring-stalled
+  // rather than verifier-required. That other ending needs recorded tool non-results to reach, and
+  // builder-campaign-tool-ceiling.test.ts writes them. Nothing here infers why the Builder kept the
+  // declaration or whether a model would have understood the refusal; the scripted session
+  // resubmits unchanged because that is what it was told to do.
   it.concurrent("ends a kept tool declaration on the no-op ceiling instead of burning every turn", async () => {
     const campaignDir = scratchDir("ana-primary-verifier-required-settle-");
     const workspace = join(campaignDir, "workspace");
@@ -251,11 +251,11 @@ describe("a declared external tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["authoring-stalled"] });
   });
 
-  // The handshake belongs to a tree the record accepted. A tree the record refused never reached the
-  // verifier gate, so repeating it cannot settle a clause about a gate that was never consulted;
-  // the unchanged resubmission is instead a no-op strike: steered with its count below the
-  // ceiling, terminal as authoring-stalled at POLICY.loop.noopSubmitStrikes (run 35: 141
-  // byte-identical submissions; run A: 25 refusals inside one turn).
+  // The handshake belongs to a tree the record accepted. A tree the record refused never reached
+  // the verifier gate, so repeating it cannot settle a clause about a gate that was never
+  // consulted; the unchanged resubmission is instead a no-op strike: steered with its count below
+  // the ceiling, terminal as authoring-stalled at POLICY.loop.noopSubmitStrikes. Without the
+  // ceiling a session sends the same bytes over a hundred times and spends the whole budget on it.
   it.concurrent("does not settle verifier-required on a repeated tree that fails the record", async () => {
     const campaignDir = scratchDir("ana-primary-verifier-required-malformed-");
     const workspace = join(campaignDir, "workspace");
@@ -317,13 +317,12 @@ describe("a declared external tool", () => {
   });
 
   // Who owns a tool that will not run is the whole question, because the two answers cost very
-  // different amounts. Reading it as the environment's discards the campaign whole, which is what
-  // happened to w37-opus and truss-w37-sol; w37-opus had already spent two authoring iterations
-  // before it stopped on a tool its own Builder had named. But the Builder chose that tool, so a
-  // crash in it is ordinary authoring work: the round continues and the author is told what to
-  // repair. The case proves that by running a real installed tool that kills itself with a signal,
-  // so the `crash` classification comes from the host's own row rather than from a string this
-  // test picked. What it injects is the control census path — `VerifierExecutionNonResult` through
+  // different amounts: reading it as the environment's discards the campaign whole, including
+  // every authoring iteration already paid for. But the Builder chose that tool, so a crash in it
+  // is ordinary authoring work: the round continues and the author is told what to repair. The
+  // case proves that by running a real installed tool that kills itself with a signal, so the
+  // `crash` classification comes from the host's own row rather than from a string this test
+  // picked. What it injects is the control census path — `VerifierExecutionNonResult` through
   // probeControls, the same typed exception the solvability witness throws — so no F2 solve runs
   // here.
   it.concurrent("continues the round when a tool the brief named reached no completed run", async () => {
@@ -436,13 +435,13 @@ describe("a declared external tool", () => {
   });
 });
 
-/** Campaign regression for the run-36 missing-tool refusal. The scripted session examines the
- *  previous submit reply for installation guidance, then installs the fixture tool. That branch
- *  fails if a second projection replaces the guidance with the generic unclassified label.
- *  The script already knows the tool name and installation procedure; it does not discover a
- *  repair from arbitrary prose. This proves that the guidance reaches a consumer and that the
- *  scripted installation allows the next submission. A live run is needed to establish whether
- *  a model uses the same guidance successfully. */
+/** Campaign regression for the missing-tool refusal. The scripted session examines the previous
+ *  submit reply for installation guidance, then installs the fixture tool. That branch fails if a
+ *  second projection replaces the guidance with the generic unclassified label. The script already
+ *  knows the tool name and installation procedure; it does not discover a repair from arbitrary
+ *  prose. This proves that the guidance reaches a consumer and that the scripted installation
+ *  allows the next submission. A live run is needed to establish whether a model uses the same
+ *  guidance successfully. */
 describe("campaign: a scripted Builder responds to the missing-tool refusal", () => {
   it.concurrent("reads the refusal, installs the tool it names, and reaches build-admissible", async () => {
     const campaignDir = scratchDir("ana-verifier-required-e2e-");

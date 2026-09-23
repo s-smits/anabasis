@@ -95,9 +95,9 @@ export function controlReceiptInvalidFinding(
 /** The one attribution rule: an accept passes with no blocking check, and a reject is attributed
  *  when its expected check is among the checks that blocked it. Other checks may fail on that reject
  *  as well — what proves nothing is a reject that fails somewhere else but not on its named check.
- *  Until 2026-09-14 the blocking set had to be exactly the expected check, and 61 recorded truss
- *  epochs spent most of their refusal rows on that cascade rule, with the adopted evaluators growing
- *  checks that pass on a broken declaration just to satisfy it. */
+ *  Requiring the blocking set to be exactly the expected check is the rule that was tried and
+ *  dropped: it spends most of a session's refusals on cascades, and pushes an authored evaluator
+ *  into growing checks that pass on a broken declaration just to keep the cascade from firing. */
 export function sideMatchesExpected(
   side: ControlReceiptSide,
   expectedOutcome: "pass" | "fail",

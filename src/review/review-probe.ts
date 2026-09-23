@@ -1,12 +1,10 @@
 /**
  * `probe_check`, the epoch reviewer's one executing tool. Every other authority the reviewer has
- * reads bytes: it opens source, quotes it and reasons about it. Run
- * truss-opus-20260916T151117729Z-064960 shows what that costs. Its single harness-defect conceded
- * inside its own claim that "no current artifact can distinguish the two readings and nothing is
- * presently mis-decided", and the host admitted it as advisory; its two decisive observations were
- * filed as `hardness` and `diagnosis-uncertain`, neither of which carries an owner and so neither
- * of which routes anywhere. A reader that cannot execute cannot demonstrate, so `demonstrated()`
- * could only ever mean a length of prose.
+ * reads bytes: it opens source, quotes it and reasons about it. A reader that cannot execute cannot
+ * demonstrate, so without this tool `demonstrated()` can only ever mean a length of prose. What
+ * that costs is a review whose harness-defect concedes inside its own claim that nothing is
+ * presently mis-decided, and whose two decisive observations are filed as `hardness` and
+ * `diagnosis-uncertain` — neither of which carries an owner, so neither routes anywhere.
  *
  * A probe changes one field of a known-correct accept control and runs the candidate's own declared
  * checks over the original and the changed artifact through `runControls` — the same path the
@@ -63,9 +61,9 @@ import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
  *  settle the artifact roots a single review can argue about, and small enough that a review cannot
  *  turn into a second census. */
 export const PROBE_BUDGET = 8;
-/** A replacement value is one field, not a redesigned artifact. In a file map one field is one
- *  file, which is why the ceiling is this high: run 08c0f2's accept controls carry files of up to
- *  3,000 characters of JSON. */
+/** A replacement value is one field, not a redesigned artifact. The ceiling is this high because in
+ *  a file map one field is a whole file, and an accept control's files run to thousands of
+ *  characters of JSON. */
 const VALUE_MAX_CHARS = 4_000;
 /** What one probe executed and what the candidate's own checks said about it. Private review
  *  evidence, because `blockingCheckIds` is verifier detail. */
@@ -141,10 +139,9 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
 
 /** A review that executed probes and then records a harness-defect without saying whether it rests
  *  on them loses the one route to a first-occurrence blocking finding, and its evidence record
- *  cannot link the finding to the rows that support it. The 2026-09-16 replay of run
- *  truss-opus-20260916T151117729Z-064960 ran eight probes, narrated what they returned inside a
- *  claim and left `probeIds` unset, so both were lost. Asking costs one argument, and `probeIds: []`
- *  is the answer when the reading came from source alone. */
+ *  cannot link the finding to the rows that support it — which is exactly what a reviewer does when
+ *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
+ *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */
 export function probeCitationRefusal(
   kind: string,
   state: ProbeState,
@@ -185,7 +182,7 @@ async function openCandidate(root: string, lifetimeRoot: string): Promise<ProbeC
 
 /** The steps of a probe path: the declared grammar of `jsonPathTokens`, plus a quoted key read as
  *  the plain step it names. A file map's keys hold dots, so `$.firmware['fw_logic.cpp']` is the
- *  only way to name one file; run 08c0f2's reviewer tried five spellings and none resolved. */
+ *  only way to name one file, and without the quoted form no spelling of it resolves. */
 function probeSteps(path: string): string[] | null {
   const tokens = path.match(/^\$|\.[A-Za-z_][A-Za-z0-9_-]*|\[(?:0|[1-9]\d*)\]|\[(?:'[^']+'|"[^"]+")\]/g);
   if (tokens?.[0] !== "$" || tokens.join("") !== path) return null;

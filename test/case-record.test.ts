@@ -8,8 +8,7 @@
  * What the rows then have to carry is the denominator. The allowed outcome values keep non-results
  * out of the score, a bijection with the task ids means 24 rows for 23 tasks is a duplicate rather
  * than extra evidence, and the trace pointers carry content digests so that a rewritten or deleted
- * trace demotes its pointer instead of resolving silently. These cases were split out of
- * test/judge-reviews.test.ts when that file's census subject was rewritten around one battery.
+ * trace demotes its pointer instead of resolving silently.
  */
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";

@@ -6,9 +6,9 @@
  * detailed enough to be an answer key.
  *
  * So the census projects counts and withholds locations. The Builder learns how many reference
- * solves failed and how those failures concentrate by declared check, since runs 12 and 14 showed
- * that a bare total tells an author nothing it can act on — but the task ids, the per-task check
- * results and the raw verifier text never cross. The complete record stays host-side in
+ * solves failed and how those failures concentrate by declared check, since a bare total tells an
+ * author nothing it can act on — but the task ids, the per-task check results and the raw verifier
+ * text never cross. The complete record stays host-side in
  * `solvability.json`, which is what makes the projection safe to narrow: nothing is being thrown
  * away, only kept on the correct side of the boundary.
  *
@@ -198,10 +198,9 @@ describe("the F2 pre-adoption solvability census", () => {
     expect(feedback[0]).toMatchObject({ owner: "brief", severity: "blocking" });
     const authorVisible = JSON.stringify(feedback);
     expect(authorVisible).toContain("SOLVABILITY_REPRESENTATION_DEFECT");
-    // The detail describes a public authoring interface: writer schema, DraftStore or submit.
-    // It may reach the Builder without identifying the task. In run w12, iteration 47
-    // resolved this kind of defect with detailed feedback, while iterations 48–55 received
-    // less detail. This test checks the disclosure rule, not that historical comparison.
+    // The detail describes a public authoring interface: writer schema, DraftStore or submit, so it
+    // may reach the Builder provided it identifies no task. That is what this checks — the
+    // disclosure rule itself, not whether the detail shortens the repair.
     expect(authorVisible).toContain("nullable root value");
     expect(authorVisible).not.toContain("t2");
   });

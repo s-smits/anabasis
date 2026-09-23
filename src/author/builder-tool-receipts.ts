@@ -42,9 +42,9 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
 
 /** Elapsed session time, at most once per half hour, and once, after `NO_SUBMIT_REMINDER_MS`
  *  without a submit, the continuation's ask to author. It exists because a Claude Builder session
- *  runs as one turn, so a turn boundary may not come for hours: truss run cc4709 authored for 171
- *  minutes before its first submit (2026-09-16), and the continuation would have said nothing in
- *  all that time. */
+ *  runs as one turn, so a turn boundary may not come for hours. A session can author for three
+ *  hours before its first submit, and without this clock the continuation says nothing in all that
+ *  time. */
 export function sessionClock(
   submitted: () => boolean = () => true,
   now: () => number = () => performance.now(),
@@ -168,9 +168,9 @@ export function withCustomToolReceipts(
           if (hasText(advice)) throw new Error(`${errorMessage(error)}\n${advice}`, { cause: error });
           throw error;
         }
-        // Finished before the review, as a throw is: run 08c0f2 booked 50.6 review minutes as
-        // Builder tool time, one 11.3-minute `write` being review alone. The receipt is in
-        // `details`.
+        // Finished before the review, as a throw is. Booking it afterwards charges the review's own
+        // minutes to the tool, which can be most of a long call's recorded duration. The receipt is
+        // in `details`.
         recorder.customToolFinished(sequence, "returned", result);
         events?.ended(turn, name, false);
         const advice = await settle(name, turn, closure === null);

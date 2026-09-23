@@ -36,8 +36,8 @@ import { productHistoryDirs } from "./product-versions.ts";
 export type { ExcludedBattery };
 
 /** The `climb` row of `thresholds.frozen.yaml`, read at run time. Each missing or invalid field
- *  takes its declared default (operator direction 2026-07-26), so a malformed row degrades to
- *  policy rather than blocking a run that has already been paid for. */
+ *  takes its declared default (operator decision), so a malformed row degrades to policy rather
+ *  than blocking a run that has already been paid for. */
 export interface ClimbThresholds {
   band: [number, number];
 }
@@ -58,7 +58,7 @@ export interface ClimbBattery {
   /** Of `n`, the attempts that produced no accepted submission, which truth therefore never
    *  verified. They stay in `n` as fails once any case is verified, since a hard task may well
    *  fail through a refused submission; a battery refused whole carries no difficulty evidence at
-   *  all, which is the claude-med hw15 reading. */
+   *  all. */
   unaccepted: number;
   measured: MeasuredDifficulty;
   /** The recorded bundle's task-set identity: what "one task set" means across runs. It is not
@@ -123,21 +123,19 @@ export interface ClimbBatteriesRead {
 }
 
 /** How many runs the exclusion summary names under the reason they share before counting the rest.
- *  Campaign 3fd52f9e-28 read one anonymous reason three rounds running while three separate
- *  batteries measured nothing, so each run is named and the denominator says how many there were.
- *  One reason per group, because a whole recorded history refused for one cause is one fact: a
- *  foreign backend pin does exactly that, and reading
- *  planar-truss-synthesis-lay-199f6a55-14 at another pin excluded all sixteen of its batteries,
- *  which the per-run form wrote as the same sentence sixteen times — 2,265 characters of steering.
- *  The evidence rows keep every run id; this bound governs the prose beside them. */
+ *  Each run is named, and the denominator says how many there were, because an anonymous reason
+ *  repeated round after round never tells the reader that several separate batteries measured
+ *  nothing. One reason per group, because a whole recorded history refused for one cause is one
+ *  fact: a foreign backend pin excludes every battery a product ever recorded, and the per-run
+ *  form writes the same sentence once per battery — thousands of characters of steering. The
+ *  evidence rows keep every run id; this bound governs the prose beside them. */
 const NAMED_RUNS_PER_REASON = 4;
 
 /** The sample a battery is read over: the host-identified changed subset when one was recorded,
  *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
  *  to dilute a changed subset's result. It is one function so that the decision, the table and the
- *  allowance all read a battery the same way: before 2026-09-21 the measurement note computed its
- *  own interval over `passed/n`, and a battery whose changed subset scored 0 of 5 reached one
- *  prompt as both 20 of 25 and 0 of 5. */
+ *  allowance all read a battery the same way: a second reader computing its own interval over
+ *  `passed/n` puts the same battery into one prompt twice, once as 20 of 25 and once as 0 of 5. */
 export function decidingSample({ measured: { changedSubset }, passed, n }: ClimbBattery) {
   return changedSubset === undefined
     ? { population: "whole-battery" as const, passes: passed, n }
@@ -228,9 +226,9 @@ function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): Ad
  * threshold, variant and claim checks and names the run behind every exclusion, so the loop here
  * is the population law itself: a directory holding a battery is admitted or excluded, and an
  * admitted battery whose claim was refused is both — it keeps a history row carrying its own
- * refusal and enters no rate. Run 8 recorded a 0 of 25 made entirely of provider outages that an
- * older reader took for a too-hard base; its refusal now stands in the history where the next
- * reader can see that it was the latest thing measured, rather than the experiment before it.
+ * refusal and enters no rate. Drop such a battery and a 0 of 25 made entirely of provider outages
+ * disappears, leaving the next reader to take the experiment before it for the latest thing
+ * measured, and the outage for a too-hard base.
  *
  * Chronology is the claims' recorded `createdAt`, with runId as the tiebreak, and never file
  * mtime. Scored rows — those with a boolean `pass` — are the denominator, and `pass: null` counts
@@ -267,7 +265,7 @@ export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: 
   if (excluded.length === 0) return null;
   const byReason = new Map<string, string[]>();
   // `excluded` arrives sorted by run, so both the groups and the runs inside them are
-  // deterministic, and two reads of one campaign print the same sentence.
+  // deterministic, and two reads of one history print the same sentence.
   for (const row of excluded) byReason.set(row.reason, [...(byReason.get(row.reason) ?? []), row.runId]);
   const groups = [...byReason].map(([reason, runs]) => {
     const rest = runs.length - NAMED_RUNS_PER_REASON;
@@ -333,9 +331,9 @@ export function publicBatteryFingerprint(tasks: ReadonlyArray<{ publicInput: unk
 
 /** A value with its data dropped: field names, value types, and an array reduced to the set of its
  *  elements' schemas, so that neither its length nor its order counts. Over a battery's public
- *  inputs that makes a new mix of the same task kinds the same question, which is what campaign
- *  3fd52f9e-28 was doing: it went from 25 tasks of two kinds to 21 and then 17 of the same two,
- *  and only its fourth battery, 8 tasks of one kind, read as new. */
+ *  inputs that makes a new mix of the same task kinds the same question: going from 25 tasks of
+ *  two kinds to 21 and then 17 of the same two is one exam asked three times, and only a battery
+ *  whose task kinds actually change reads as new. */
 function valueSchema(value: unknown): JsonValue {
   if (Array.isArray(value)) {
     return [...new Set(value.map((element) => canonicalJson(valueSchema(element))))].sort();
@@ -364,8 +362,8 @@ export function publicSchemaPrint(
  *  product is `harnessBundleIdentity` — agent, correctness model and recorded verifier bytes —
  *  which is both what a recorded battery names and what the adopted tree resolves to at admission.
  *  An exam saturated under one evaluator is not thereby answered under another, so there is no
- *  product-free print: the "answered" sentinel that refused every product a third reading of one
- *  exam went on 2026-09-21. */
+ *  product-free print: a product-free "answered" sentinel would refuse a rebuilt product its first
+ *  reading of an exam an earlier product had already saturated. */
 export function productConditionFingerprint(harnessId: string, publicFingerprint: string): string {
   return sha256(`product\n${harnessId}\n${publicFingerprint}`);
 }

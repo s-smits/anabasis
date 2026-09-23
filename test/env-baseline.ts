@@ -11,8 +11,8 @@
  *      never through ambient inheritance into spawned workers or recorded evidence;
  *   4. forced colour — FORCE_COLOR/CLICOLOR_FORCE make Bun wrap `console.error` in ANSI escapes
  *      even when stderr is a pipe, so a child's captured output stops matching the bytes the test
- *      asserts. An interactive agent session exports FORCE_COLOR=3, which failed two tests here on
- *      18 September that pass in a plain terminal.
+ *      asserts. An interactive agent session exports FORCE_COLOR=3, so a test that passes in a
+ *      plain terminal fails when it is run from one.
  *
  * Everything else (HOME, PATH, TMPDIR, locale) stays: tests and product read those legitimately.
  * A test that needs one of the removed names sets it explicitly for its own child.

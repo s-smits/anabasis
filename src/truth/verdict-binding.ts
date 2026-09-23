@@ -55,10 +55,10 @@ export function publicTaskVerdict(
 }
 
 /**
- * Bounded operator detail for an accept rejection: check ids and the first blocking messages. In
- * hw1-v2-claude-004 three repair attempts went out without the issue text that said the verifier was
- * expecting an invented break-record schema, so each one repaired something else; keeping the
- * diagnostic in evidence is what lets that investigation start from what the verifier said.
+ * Bounded operator detail for an accept rejection: check ids and the first blocking messages.
+ * Without the issue text a rejection says only that the accept failed, so a repair aims at whatever
+ * the author guesses and the next attempt guesses again; keeping the diagnostic in evidence is what
+ * lets the investigation start from what the verifier actually said.
  *
  * An accept uses its own task's hidden data, so these messages may carry protected detail, and that
  * is why they stay in evidence: author feedback receives only the permitted public projection.

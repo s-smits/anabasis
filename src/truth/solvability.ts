@@ -251,9 +251,9 @@ async function loadSolvabilityContract(
   if (!battery.ok) return battery;
   const { brief, tasks } = battery.value;
   // The compiled public submission schema is what submit-time acceptance enforces, so F2 has to
-  // check against it and not against the brief's declared roots. Run 81's F2 checked only the
-  // declared top-level roots, which let truth-correct reference artifacts pass here while every
-  // real solve was refused at submit. The loader returns null when the controls file or its accepts
+  // check against it and not against the brief's declared roots. Checking only the declared
+  // top-level roots lets a truth-correct reference artifact pass here while every real solve is
+  // refused at submit. The loader returns null when the controls file or its accepts
   // are absent, which the submission path refuses on its own; a corpus present but failing to
   // compile is a finding here, where it still names the corpus.
   const publicSchema = loadSolvabilityPublicSchema(bundleSnapshot.dir, brief.artifactSchema);
@@ -295,7 +295,7 @@ function bundleSnapshotDriftFinding(
 }
 
 /** Stage 2: resolve tools exactly as measurement will. A missing tool refuses before any witness
- *  runs, because on 2026-08-23 a run charged 25 product failures to a verifier that had never
+ *  runs, because otherwise a whole battery of product failures is charged to a verifier that never
  *  started. An external check whose executable digest matches candidate-authored source is refused
  *  as well: a different digest or a different installation directory still does not make the
  *  instrument independent of the author. */
@@ -481,10 +481,10 @@ function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
 }
 
 /** Stage 3: cases run in the control census's lanes and are recorded in task order. The lane width
- *  is the control census's because the two have the same shape of work: the 7d433e truss candidate
- *  solved its 25 tasks one after another inside the same ten-minute wall as its controls, and met
- *  that wall on all three gate calls. After a stop no further task starts, every case that already
- *  ran keeps its row, and the cleanup finding is admitted once rather than per lane. */
+ *  is the control census's because the two have the same shape of work: a whole task set solved one
+ *  after another inside the same wall the controls run under. After a stop no further task starts,
+ *  every case that already ran keeps its row, and the cleanup finding is admitted once rather than
+ *  per lane. */
 async function solveInLanes(
   session: SolvabilityCaseSession,
   tasks: readonly BuildTask[],
@@ -556,9 +556,9 @@ async function solveInLanes(
 
 /** Stage 4: external checks whose arguments match the program-text rule. Program text passed as an
  *  argument makes an attested interpreter execute candidate-authored logic, which is authored
- *  computation wearing an installed tool's digest — in the truss 0908 census, 81% of the python3
- *  rows used `-c`. The rule detects some such cases and proves no provenance, so it refuses the
- *  shape rather than claiming to establish independence. */
+ *  computation wearing an installed tool's digest, and it is the ordinary way an authored check
+ *  reaches for an interpreter rather than a corner case. The rule detects some such cases and
+ *  proves no provenance, so it refuses the shape rather than claiming to establish independence. */
 function programArgumentFindings(
   verifier: VerifierHostHandle,
   externalIds: ReadonlySet<string>,

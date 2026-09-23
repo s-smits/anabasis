@@ -12,26 +12,24 @@
  * calls is a slow but real attempt, and a timeout carrying no recognised runtime message is a
  * genuine failed attempt. The two narrow exceptions below require zero completed tool calls, zero
  * tool starts and no accepted submit: on those signals the agent never reached the loop at all, so
- * whatever it "failed" at was never a task attempt. The first shape came from runtime-probe-14
- * 004-L0's zero-tool aborts.
+ * whatever it "failed" at was never a task attempt. The first shape is the zero-tool abort.
  *
- * live-run-08 added the second shape. A spend-limit outage made the SDK settle every turn without
- * the declared model billing anything; the provider-degraded markers matched neither the canonical
- * matcher nor the aborted/failed shape, and 50 provider-dead cases were booked as product failures.
- * So a solve whose every outer turn completed no provider result is now classified on the
- * controller's own completed-turn count rather than on marker prose, which is a fact the solver
- * cannot word differently.
+ * The second is a spend-limit outage, where the SDK settles every turn without the declared model
+ * billing anything. The provider-degraded markers match neither the canonical matcher nor the
+ * aborted/failed shape, so every provider-dead case books as a product failure. A solve whose every
+ * outer turn completed no provider result is therefore classified on the controller's own
+ * completed-turn count rather than on marker prose, which is a fact the solver cannot word
+ * differently.
  *
- * Four later gaps, each closed with one clause. The claude run's spend-limit wording, "out of extra
- * usage", filed three provider-limit cases as unaccepted. base-sol i02's close-coded "WebSocket
- * closed 1006" missed the `$` anchor, so a numeric suffix is now admitted. The campaigns -4/-5
- * codex thread-creation fatal ("Session data … looks corrupt or unreadable") recorded two bare
- * aborts with no owner. And on 2026-09-03, during the OpenAI incident "Elevated errors across
- * ChatGPT and Codex", every Codex responses call returned 404 with an empty body; pi-ai words an
- * empty-body error as the bare HTTP status text, so the Built slot's errors read
- * `["Not Found", "turn 1 failed"]`, 404 was not in the status list and the bare text matched
- * nothing, and run57-sol-0903's battery i02 recorded 25 solver-kind non-results one by one instead
- * of stopping after five provider-kind ones and re-measuring once.
+ * Four later gaps, each closed with one clause. The Claude spend-limit wording, "out of extra
+ * usage", filed provider-limit cases as unaccepted. A close-coded "WebSocket closed 1006" missed
+ * the `$` anchor, so a numeric suffix is now admitted. The Codex thread-creation fatal ("Session
+ * data … looks corrupt or unreadable") recorded bare aborts with no owner. And an outage in which
+ * every Codex responses call returns 404 with an empty body: pi-ai words an empty-body error as the
+ * bare HTTP status text, so the Built slot's errors read `["Not Found", "turn 1 failed"]`, 404 was
+ * not in the status list and the bare text matched nothing, and a whole battery recorded
+ * solver-kind non-results one by one instead of stopping after five provider-kind ones and
+ * re-measuring once.
  *
  * Each of those wordings is anchored so that a solver's own prose cannot match it: the thread-open
  * fatal binds to the thread-open wording, and the bare status text is admitted only as a whole
@@ -49,8 +47,7 @@ export const CODEX_THREAD_OPEN_FATAL = /error creating thread[^\n]*session data[
 
 /** Explicit provider allowance exhaustion also ends authoring retries. The "hit your limit" text is
  *  ambiguous on its own, so the clause admitting it requires the SDK wrapper's own prefix, which is
- *  what binds it to the provider rather than to anything the solver wrote (Opus alt1 i02, three
- *  cases). */
+ *  what binds it to the provider rather than to anything the solver wrote. */
 export const PROVIDER_ALLOWANCE =
   /you'?ve hit your (?:(?:monthly|weekly) )?(?:spend|usage|session) limit|you'?ve hit your (?:monthly|weekly) limit|claude code returned an error result: you'?ve hit your limit\b|claude\.ai\/settings\/usage|upgrade to increase your usage limit/i;
 
@@ -112,8 +109,8 @@ export function solverNonResultReason(signals: SolverSignals): string | null {
     if (stopped !== undefined) {
       return `zero completed tool calls and zero tool starts with "${stopped}" and no accepted submit — the agent never reached the loop`;
     }
-    // The no-completed-result condition (live-run-08): every outer turn ended without a provider
-    // result, judged on the controller's completed-turn count instead of marker prose. The zero
+    // The no-completed-result condition: every outer turn ended without a provider result, judged
+    // on the controller's completed-turn count instead of marker prose. The zero
     // starts and zero completions required above restrict this exception to solves with no tool
     // work at all, so any tool activity keeps this clause from removing a failed attempt from the
     // count.

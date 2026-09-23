@@ -32,9 +32,9 @@ export interface ToolsSpec {
   presets: BuiltPresetId[];
   tools: ToolSpec[];
   /** Reason per declined default preset. It is read for recorded bundles, where it is the only
-   *  record of why a preset is absent, but it no longer excuses the absence: a fresh candidate must
+   *  record of why a preset is absent, but it does not excuse the absence: a fresh candidate must
    *  select `files` or `shell`, or its solver has no shell at all (candidate-check, operator
-   *  decision 2026-09-14). */
+   *  decision). */
   declined?: Record<string, string>;
 }
 

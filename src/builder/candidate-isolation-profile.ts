@@ -40,10 +40,9 @@ interface CandidateIsolationProfile {
  *
  * A grant on a path does not by itself make that path reachable. `getcwd`, the dynamic loader,
  * every CommandLineTools shim and the runtime's module resolver stat each directory above the file
- * they open, so
- * a single unstattable ancestor fails the call before the granted file is ever touched. Denying
- * `/Users` that way left the Builder able to write `correctness-model/evaluator.ts` and unable to
- * run a line of it.
+ * they open, so a single unstattable ancestor fails the call before the granted file is ever
+ * touched. Denying `/Users` that way left the Builder able to write
+ * `correctness-model/evaluator.ts` and unable to run a line of it.
  *
  * Existence is not what these walls protect. `file-read-data` still refuses to open any denied file
  * and to enumerate any denied directory, so the most a confined session gains here is confirmation
@@ -113,9 +112,9 @@ function workshopReadRules(): IsolationRule[] {
  * An SBPL subpath grant cannot be subtracted from, and Darwin's ambient temp is a scratch root, so
  * a repository checked out under `/private/var/folders` or `/tmp` sits inside one. Emitting all the
  * scratch grants in a single block therefore re-allowed the whole repository the platform grant had
- * just carved out. Measured 2026-08-19 on the fixture repo, which lives in the OS temp tree: every
- * key-shaped name seeded in the repository became readable. Production's repository is under
- * `/Users`, which is the only reason this never showed there.
+ * just carved out, every key-shaped name in it included. A repository under `/Users` is outside
+ * every scratch root and never shows this, so the fault is invisible except on a checkout that
+ * lives in the OS temp tree — which is where the fixture repository lives.
  *
  * The split is what fixes it: an outer root is granted before the repository is carved out again,
  * an inner one after, so a repository inside a scratch root is closed by the carve-out and a

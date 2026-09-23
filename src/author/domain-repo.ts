@@ -1,8 +1,8 @@
 /**
  * The controller's Git operations on a domain workspace: one repository per campaign epoch, with
  * harness history as a sequence of commits in one workspace rather than a set of sibling snapshot
- * directories (operator direction 2026-07-26: "use git for each harness iteration"). The Builder's
- * own notes live in the two Markdown files builder-memory.ts manages.
+ * directories (operator decision: use Git for each harness iteration). The Builder's own notes live
+ * in the two Markdown files builder-memory.ts manages.
  *
  * The repository is initialised over the seeded starter files rather than copied from an existing
  * `.git`, and on restart the repository already present is reused, so the workspace keeps its
@@ -67,7 +67,7 @@ export type WorkspaceChange = {
 };
 
 /** The harness surface `resetWorkspaceToStarter` returns to the starter seed, which is the
- *  Builder's `harness_reset` scope (operator decision 2026-09-07). */
+ *  Builder's `harness_reset` scope (operator decision). */
 type StarterResetScope = "agent" | "correctness-model" | "all";
 
 function git(dir: string, args: string[]): string {
@@ -80,14 +80,13 @@ function git(dir: string, args: string[]): string {
  * Git tracks exactly the candidate contract; every other path, starter reference included, is
  * workspace scratch. The rules live in `.git/info/exclude` — controller-owned, never tracked,
  * invisible to the Builder's diff — so drift cannot enter a candidate commit at any commit point,
- * whether authoring, salvage or either campaign loop. Run 53's climb stalled on the older shape: a
- * tracked `.gitignore`, then two root helpers, blocked two passes with the task bytes unchanged,
- * and the model answered "delete the helpers" by adding more.
+ * whether authoring, salvage or either campaign loop. A tracked `.gitignore` instead puts the rules
+ * where the Builder can see and edit them, and root helpers it never meant to ship then stall a
+ * climb for passes at a time with the task bytes unchanged.
  *
  * Untracked scratch is also what keeps `workspaceStatus` meaning "the Builder left candidate work
- * unsettled". `.bundle-snapshots/`, which is measurement's own recorded sidecar, once made every
- * iteration open with a salvage commit of bundle-snapshot bytes: epoch-3cafcd9e3cfc's `de6545f`
- * carried 11,721 insertions under that label.
+ * unsettled". `.bundle-snapshots/` is measurement's own recorded sidecar, and tracking it makes
+ * every iteration open with a salvage commit of thousands of insertions of snapshot bytes.
  */
 const EXCLUDE = `${["/*", ...CANDIDATE_INTERFACE.map((entry) => `!/${entry}`), "node_modules/", ".bundle-snapshots/"].join("\n")}\n`;
 /** The workspace contract as the pack ships it, refreshed from the pack on every resume so the
@@ -114,10 +113,10 @@ function linkWorkspaceRuntime(dir: string): void {
   symlinkSync(realpathSync.native(runtimeProcess.execPath), link);
 }
 
-/** Generated package imports resolve by a node_modules walk-up, which in run w29 climbed past the
- *  measured tree; a `campaigns/` symlink broke it entirely and run 52's workspace shim shadowed it.
- *  Bun stops at the workspace `node_modules` that carries the `@ana` link, so both admitted scopes
- *  are linked explicitly here. They are controller-owned scratch and re-created on every call. */
+/** Generated package imports resolve by a node_modules walk-up, which climbs past the measured tree,
+ *  breaks entirely across a `campaigns/` symlink, and can be shadowed by a shim planted inside the
+ *  workspace. Bun stops at the workspace `node_modules` that carries the `@ana` link, so both
+ *  admitted scopes are linked explicitly here: controller-owned scratch, re-created on every call. */
 function linkWorkspacePackageScopes(dir: string): void {
   const modules = join(dir, "node_modules");
   const repositoryModules = realpathSync(new URL("../../node_modules", import.meta.url));
@@ -152,7 +151,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
   const path = join(dir, WORKSPACE_TOOL_TREE);
   if (!lstatSync(path).isSymbolicLink()) return;
   // Safeguard 53: a host kill inside the copy below skips its cleanup and leaves the partial tree
-  // beside the link, where it is excluded from Git and otherwise invisible. Simulation 2026-09-15.
+  // beside the link, where it is excluded from Git and otherwise invisible.
   const leftover = readdirSync(dir).filter((name) => name.startsWith(`${WORKSPACE_TOOL_TREE}-`));
   if (leftover.length > 0) {
     safeguardTriggered(
@@ -183,12 +182,11 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
         const relocated = relocateToolLauncher(link, source, path, name);
         // A file the copy cannot make stand alone is left out of the copy, not treated as a reason
         // to end the run. The refusal this replaces told its reader to recreate the installation in
-        // the repair workspace and then made that impossible: on 2026-09-20 it ended firmware run
-        // 4c67fc at round 2 over `acli/tmp/b1/Blink.ino.elf`, a test sketch the Builder had
-        // compiled inside the tool's own scratch directory, whose debug strings carry the path of
-        // the source it was built from. Dropping the file keeps the whole property the refusal
-        // defended — nothing in the repair tree resolves into the adopted one — and leaves the
-        // Builder a missing file to reinstall instead of no run to reinstall it in.
+        // the repair workspace and then made that impossible, because it fires on things like a
+        // test binary the Builder compiled inside the tool's own scratch directory, whose debug
+        // strings carry the path of the source it was built from. Dropping the file keeps the whole
+        // property the refusal defended — nothing in the repair tree resolves into the adopted one
+        // — and leaves the Builder a missing file to reinstall instead of no run to reinstall in.
         if (relocated === "retains-adopted-path") {
           rmSync(link);
           dropped.push(name);
@@ -212,16 +210,16 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
     }
     rmSync(path);
     renameSync(copy, path);
-    // Safeguard 54: the relocation branch (b7dc474ed) had no evidence writer at all; these counts
-    // are what say it ran.
+    // Safeguard 54: the relocation above has no other evidence writer; these counts are what say
+    // it ran.
     safeguardTriggered(
       "54-rebuild-seed-tool-tree-copied",
       `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
     // Safeguard 55: relocation rewrites launchers only. A copied venv keeps its `home =` line in
-    // pyvenv.cfg, so its stdlib still resolves through the adopted tree — which showed up as
-    // sys.base_prefix in the simulation.
+    // pyvenv.cfg, so its stdlib still resolves through the adopted tree, surfacing there as
+    // sys.base_prefix.
     const homed = [
       ...new Bun.Glob("**/pyvenv.cfg").scanSync({ cwd: path, dot: true, followSymlinks: false }),
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
@@ -325,9 +323,8 @@ function settleTrackedInterface(dir: string): void {
  *  every workspace repository, so HEAD is either a direct commit id or one symbolic ref under
  *  `.git/refs/`. Anything else — a packed ref, a chained symref, a `.git` file, a repository this
  *  owner did not create — reads as unknown and the answer comes from git, which stays the
- *  authority. It is worth the special case because this is the most frequent call here: each commit
- *  path asks twice, and a repository with a hundred iterations spends more time starting git than
- *  reading its own head. */
+ *  authority. The special case earns itself on frequency: each commit path asks twice, and a
+ *  repository with a hundred iterations spends more time starting git than reading its own head. */
 function headFromRefFiles(dir: string): string | null {
   try {
     const head = readFileSync(join(dir, ".git", "HEAD"), "utf8").trim();
@@ -464,8 +461,8 @@ function makeAuthoringCopyWritable(path: string): void {
 }
 
 /** Rebuild agent/ and correctness-model/ byte-identical from the adopted tree, and link that tree's
- *  installed tools: truss-run9-sol lost every control to a missing `.toolchain`, because a bundle
- *  without its tools is a bundle whose checks cannot run. */
+ *  installed tools. Without the link the seeded workspace loses every control to a missing
+ *  `.toolchain`, because a bundle without its tools is a bundle whose checks cannot run. */
 function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguard?: SafeguardContext): void {
   for (const bundle of ["agent", "correctness-model"] as const) {
     rmSync(join(slugDir, bundle), { recursive: true, force: true });
@@ -475,8 +472,8 @@ function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguar
   linkWorkspaceToolTree(seedFrom, slugDir);
   // Safeguard 52: the retained version keeps its tool tree as a link into the adopted epoch. When
   // that target is gone — archives moved, say — the link above is skipped and the seeded workspace
-  // has only the runtime link. That loss surfaced later as tool-missing findings with no stated
-  // cause, which is the shape a sensor is for.
+  // has only the runtime link. That loss surfaces later as tool-missing findings with no stated
+  // cause.
   const seedTree = join(seedFrom, WORKSPACE_TOOL_TREE);
   if (lstatSync(seedTree, { throwIfNoEntry: false })?.isSymbolicLink() === true && !existsSync(seedTree)) {
     safeguardTriggered(

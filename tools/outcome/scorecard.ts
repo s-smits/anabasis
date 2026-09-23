@@ -236,9 +236,9 @@ function submittedParents(builder: BuilderToolsReport): { identity: ParentIdenti
     builder.epochs
       .flatMap((epoch) => epoch.execution.map((execution) => ({ epoch: epoch.epoch, execution })))
       // A postTerminal record was flushed after another invocation had recorded the campaign: its
-      // submit rows are real work, but its late writtenAt would sort it last and hand it the
-      // lastCandidate slot (run 25 flushed two records 18 and 28 minutes after their terminals).
-      // No controller owned the campaign when the write landed, so it cannot move the lineage.
+      // submit rows are real work, but a record landing half an hour past its terminal carries a
+      // late writtenAt that would sort it last and hand it the lastCandidate slot. No controller
+      // owned the campaign when the write landed, so it cannot move the lineage.
       .filter(({ execution }) => execution.postTerminal === undefined)
       .sort((left, right) => compareCodeUnits(left.execution.writtenAt, right.execution.writtenAt))
       .flatMap(({ epoch, execution }) =>
@@ -254,9 +254,9 @@ function submittedParents(builder: BuilderToolsReport): { identity: ParentIdenti
  * The candidate identities the run produced, in the order the records were written.
  *
  * The ordering key is each execution record's own `writtenAt`, not epoch order and not the order
- * the files were appended: tenet 6 requires the latest authoring work to be picked by its recorded
- * time, and run 25 wrote two of its four records after the sessions that precede them in file
- * order. Controller-terminal rows are stops rather than answers, so only candidates are read.
+ * the files were appended: the latest authoring work is picked by its recorded time, because a
+ * record can be written after the sessions that precede it in file order. Controller-terminal rows
+ * are stops rather than answers, so only candidates are read.
  */
 function parentsAxis(builder: BuilderToolsReport): CampaignParents | undefined {
   const rows = submittedParents(builder);

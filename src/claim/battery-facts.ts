@@ -1,10 +1,9 @@
 /**
  * The one owner of "scored" and "passed" over battery case rows. Every producer — the eval
  * runner's score, the denominator counts, the evidence events — and every reader imports these
- * predicates rather than restating them, because four identical copies defined the counts
- * separately until a review of 2026-07-11 found them. With four copies, one changed alone makes a
- * correct aggregate look inconsistent, or lets an incorrect one pass; with one, the question
- * cannot arise.
+ * predicates rather than restating them. The counts were once defined separately in four places,
+ * and with four copies one changed alone makes a correct aggregate look inconsistent, or lets an
+ * incorrect one pass; with one, the question cannot arise.
  */
 import { type CaseOutcomeFields, classifyCaseOutcome } from "./case-record.ts";
 import type { RuntimeIdentityCaseEvidence, RuntimeModelIdentity } from "./runtime-model-identity.ts";

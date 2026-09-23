@@ -75,10 +75,10 @@ export interface GeneratedToolStarterOptions {
   task: PublicTask<unknown>;
   submission: SubmissionPort;
   /** The controller's whole reading of the bundle: trusted tools, presets, declared domain tool
-   *  authorities, operating guide and published limits. It arrives as one value because every caller
-   *  had copied the same four fields out of it, so a fifth field added to that reading reached the
-   *  in-process starter while the confined worker went on solving without it (the published-margin
-   *  review of 2026-09-17). One value cannot be half-copied. */
+   *  authorities, operating guide and published limits. It arrives as one value because callers that
+   *  copy out the fields they need drop the next field added to that reading, which then reaches the
+   *  in-process starter while the confined worker goes on solving without it. One value cannot be
+   *  half-copied. */
   contract: BuiltControllerInterface;
   publicArtifactSchema: PublicArtifactSchema;
   workerSupport?: OsIsolationSupport;
@@ -111,10 +111,10 @@ export function generatedToolWorkerMatches(
 }
 
 /**
- * Checks this starter against the build-time identity before the model runs. The check used to sit
- * after the solve, so a stale receipt cost a whole paid battery: run w16 (2026-08-14) completed 50
- * accepted submissions and discarded every one. The worker condition is known as soon as the starter
- * exists, which is why the refusal happens here and costs no model turn.
+ * Checks this starter against the build-time identity before the model runs. The same check after
+ * the solve costs a whole paid battery to a stale receipt: every case is accepted, solved and then
+ * discarded. The worker condition is known as soon as the starter exists, so the refusal happens
+ * here and costs no model turn.
  *
  * A null or absent receipt is a pre-adoption battery and refuses nothing. A starter that already
  * failed to prepare keeps its own typed non-result, because a sandbox or runtime failure is not a
@@ -144,9 +144,9 @@ export function workerBindingRefusal(
  * The tools the harness itself supplies, which alone enter the binding digest, selected by the
  * recorded domain-tool declaration the parent already holds. Controller, preset and starter tools
  * are the controller's identity and are recorded with the run's source revision instead. Including
- * them in the harness fingerprint made controller wording affect compatibility: one commit shortened
- * a controller label and every harness approved before it became unmeasurable, and on run w16 a
- * dependency update changed a preset-path schema with the same result.
+ * them in the harness fingerprint makes controller wording decide compatibility: shortening a
+ * controller label, or a dependency update that changes a preset-path schema, leaves every harness
+ * approved before it unmeasurable.
  *
  * Filtering by the parent's own declared names rather than by child-reported owner rows matters for
  * a second reason: generated code cannot relabel a tool's owner to pull its schema out of the

@@ -25,8 +25,8 @@ export interface BuilderSessionIsolationEvidence {
 
 export interface BuilderSessionEvidence {
   /** The `contract` field below, not this string, says whether the production opener reconciled
-   *  the complete roster: a contractless probe was once spelled `v2` and a reconciled session `v4`,
-   *  so the version number answered a question it does not own. */
+   *  the complete roster. A schema version names the record's shape, so spelling a contractless
+   *  probe and a reconciled session as two versions makes it answer a question it does not own. */
   schema: typeof BUILDER_SESSION_EVIDENCE_SCHEMA;
   /** The path-record stream every session on this composition writes; many sessions, one id.
    *  A session that opens and touches no path leaves an empty record, and this evidence is then

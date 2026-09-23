@@ -1,6 +1,6 @@
 /**
- * Three sensors for the Main Judge after its control census went (operator decision 2026-09-14).
- * Each appends one safeguard line and changes nothing else: the Judge stays advice and the verifier
+ * Three sensors for the Main Judge, which no longer has a control census (operator decision). Each
+ * appends one safeguard line and changes nothing else: the Judge stays advice and the verifier
  * decides. They watch the shapes that census used to catch, and the ones its removal could invite,
  * so a later review can see whether "advice only" holds up in live runs rather than only in the
  * contract.
@@ -18,7 +18,7 @@ export type JudgeReviewFacts = Pick<JudgeReviewsResult, "runId" | "exit" | "prov
 /** The packet fields the rebuild sensor reads. */
 export type JudgeAdviceFacts = Pick<RebuildAdvicePacket, "runId" | "judge">;
 
-/** The disagreement floor that blocked before 2026-09-14: at least three verifier-fail/Judge-pass
+/** The disagreement floor that used to block a claim: at least three verifier-fail/Judge-pass
  *  cases and at least a fifth of the verified battery. It is kept for one purpose, to count how
  *  often the shape it once blocked on actually occurs. */
 export function atFormerBlockThreshold(exit: JudgeReviewsResult["exit"]): boolean {

@@ -1,16 +1,15 @@
 /**
- * Selects the campaign epoch, as the production restart audit of 2026-07-26 defined it. Each
- * combination of request digest, Builder condition and authoring pass identifies one epoch, so
- * reusing that combination resumes the same epoch after an interruption, and changing it creates a
- * successor that points back to the previous epoch while preserving its files. That is what lets a
- * corrected request restart a campaign without hand-editing state or deleting a directory, which
- * was the restart defect the audit found. The controller records successors and selects the current
- * epoch in the root's epochs.json, appending new entries and moving the current pointer.
+ * Selects the campaign epoch. Each combination of request digest, Builder condition and authoring
+ * pass identifies one epoch, so reusing that combination resumes the same epoch after an
+ * interruption, and changing it creates a successor that points back to the previous epoch while
+ * preserving its files. That is what lets a corrected request restart a campaign without
+ * hand-editing state or deleting a directory. The controller records successors and selects the
+ * current epoch in the root's epochs.json, appending new entries and moving the current pointer.
  *
  * A reopened authoring pass changes the identity too, through `pass`, so a rebuild opens its own
  * epoch and the directory that recorded the first build survives with its history intact. Without
- * that distinction the pointer follows the binding rather than the work: run52-opus-0903 finished
- * with `current` naming its initial build epoch although four later epochs had been created.
+ * that distinction the pointer follows the binding rather than the work, and a run that opened four
+ * later epochs still finishes with `current` naming its initial build.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -118,9 +117,8 @@ function evidenceOf(campaignRoot: string, entry: EpochRecordEntry): CampaignEpoc
 
 /** The epoch a reopening pass would supersede: its own when it has already opened, otherwise the
  *  latest pass on the same prompt and Builder condition -- hence `findLast` over the append order
- *  rather than the first match. The next-move reader used to fall back to the pass-less initial
- *  build, which in 22 recorded campaigns with three or more passes skipped the pass that had just
- *  refused or repaired the product. */
+ *  rather than the first match. Falling back to the pass-less initial build instead skips the pass
+ *  that just refused or repaired the product, in every campaign that ran more than two. */
 export function latestCampaignEpochForBinding(
   campaignRoot: string,
   input: CampaignBindingInput,

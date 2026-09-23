@@ -27,11 +27,11 @@ export async function runModelAttempt<T>(
     return await operation();
   } catch (error) {
     if (error instanceof BuildAgentTurnNonResult) throw error;
-    // Campaigns -4 and -5 threw the codex thread-open fatal instead of settling it as a failed
-    // turn, so it passed every classifier by and recorded a bare abort with no ownership. The rule
-    // is the same one openBuildSession applies: a recognised transport failure becomes the typed
-    // non-result, while code and configuration errors still throw unchanged, because those are
-    // defects here rather than in the environment.
+    // A transport fatal thrown rather than settled as a failed turn — a codex thread-open refusal
+    // is the usual one — passes every classifier by and records a bare abort that belongs to
+    // nobody. The rule is the same one openBuildSession applies: a recognised transport failure
+    // becomes the typed non-result, while code and configuration errors still throw unchanged,
+    // because those are defects here rather than in the environment.
     const message = errorMessage(error);
     if (runtimeNonResultReason([message]) === null) throw error;
     throw new BuildAgentTurnNonResult(role, "failed", [message]);

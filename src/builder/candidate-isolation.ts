@@ -1,22 +1,18 @@
 /**
- * The Builder's candidate workspace access policy, which is a different thing from the Built
- * Harness's solve isolation and should not be read as the same wall under another name. This
- * module derives the policy for one campaign and answers the single question "may this capability
- * touch this path"; candidate-isolation-profile.ts expresses the same policy as a Seatbelt
- * profile, and candidate-isolation-runtime.ts runs operations under it and records a row for every
- * path it decided.
+ * The Builder's candidate workspace access policy, not the Built Harness's solve isolation. This
+ * module derives the policy for one campaign and answers "may this capability touch this path";
+ * candidate-isolation-profile.ts expresses it as a Seatbelt profile, and
+ * candidate-isolation-runtime.ts runs operations under it and records a row per decided path.
  *
  * Two layers apply one derivation rather than two policies. The in-process guard runs first,
- * because it is the only one that can say which rule refused and which interfaces are open, and a
- * session that is told that corrects itself where a bare EACCES leaves it guessing. The operating
- * system then enforces the same policy independently, through Seatbelt on Darwin or Bubblewrap on
- * Linux, because a guard living in the same process as the code it constrains is a convention and
- * not a wall. Nothing snapshots the tree at startup, so a file that appears during the session is
- * decided by the same rules as one that was always there.
- *
- * There is no environment-variable override and no exception for a process already running inside
- * someone else's sandbox: when the mechanism is unavailable the runtime refuses, since a run that
- * was actually unconfined but is recorded as confined is worse evidence than no run at all.
+ * because it alone can say which rule refused and which interfaces are open, and a session told
+ * that corrects itself where a bare EACCES leaves it guessing. Seatbelt on Darwin or Bubblewrap on
+ * Linux then enforces the same policy independently, because a guard living in the same process as
+ * the code it constrains is a convention and not a wall. Nothing snapshots the tree at startup, so
+ * a file appearing mid-session is decided by the same rules as one that was always there. When the
+ * mechanism is unavailable the runtime refuses — no override, and no exception for a process
+ * already inside someone else's sandbox, because a run recorded as confined but actually
+ * unconfined is worse evidence than no run at all.
  */
 import { selectedProductDir } from "../run/product-versions.ts";
 import { existsSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
@@ -34,10 +30,9 @@ import {
 } from "../claim/bundle-snapshot.ts";
 import { parseGeneratedSource, specifiersIn } from "../claim/bundle-validation.ts";
 import * as ts from "typescript5";
-// The module is named for the mechanism that needed it first, but the derivation itself reads the
-// running executable's own installation prefix and is platform-independent. The Built command
-// isolation already imports it, so the Builder imports the same function rather than keeping a
-// second copy that would drift from it.
+// The module is named for the mechanism that needed it first, but the derivation reads the running
+// executable's own installation prefix and is platform-independent. The Built command isolation
+// already imports it, so the Builder imports the same function rather than keeping a second copy.
 import { nodeRuntimeReadRoots } from "../verify/linux-bwrap.ts";
 /**
  * Repository-relative paths whose contents must never enter an authoring session's context. The
@@ -45,11 +40,11 @@ import { nodeRuntimeReadRoots } from "../verify/linux-bwrap.ts";
  * the operator's credential rather than something merely credential-shaped, which is why this list
  * can afford suffixes such as `.pem` and `.key` that the OS stem lists below cannot.
  *
- * This file is the one owner of the secret set. The guard consumes the regex form directly, the
+ * This file is the one owner of the secret set: the guard consumes the regex form directly, the
  * Bubblewrap planner reuses the same patterns to decide which nodes inside a bound repository root
- * must be hidden, and the Seatbelt emitter derives its own dialect from the glob stems below.
- * `.git/config` is absent by intent rather than oversight, because guardPath denies `.git` and
- * everything under it by name a few lines further down.
+ * must be hidden, and the Seatbelt emitter derives its dialect from the glob stems below.
+ * `.git/config` is absent by intent, because guardPath denies `.git` and everything under it by
+ * name further down.
  */
 export const BUILDER_SECRET_PATH_PATTERNS: readonly RegExp[] = [
   /(^|\/)\.env(\.|$)/,
@@ -67,31 +62,24 @@ export const BUILDER_SECRET_PATH_PATTERNS: readonly RegExp[] = [
 /**
  * The names the Seatbelt profile denies by exact filename, in both directions.
  *
- * This list is deliberately narrower than the patterns above, because the two answer different
- * questions. The guard applies its patterns to repository-relative paths, where location has
- * already established that a match is the operator's own material. The profile applies its rules
- * to every path on the host, and there location has done the deciding instead: the profile denies
- * both home roots and the whole repository by subpath before it reaches these names. What a
- * credential-shaped suffix would still catch at that point is therefore public material and the
- * cell's own bytes, and on 2026-08-18 it caught exactly that. A session installing Homebrew could
- * not extract `homebrew-1.pem`, which is Homebrew's own public verification key, so the signed-API
- * install path closed; the same rule stripped three public CA bundles out of a Ruby bottle; and on
- * the authoring profile, the one that has network, `*.pem` was the last rule matching
- * `/private/etc/ssl/cert.pem`, which left the session that installs over TLS unable to read the
- * host trust store at all. Any source tree carrying test certificates fails the same way.
+ * Narrower than the patterns above, because the profile applies to every path on the host rather
+ * than to repository-relative ones, and it has already denied both home roots and the whole
+ * repository by subpath before it reaches these names. What a credential-shaped suffix would still
+ * catch at that point is public material: a `*.pem` deny costs a session Homebrew's public
+ * verification key and with it the signed-API install path, the CA bundles inside a Ruby bottle,
+ * and — as the last rule matching `/private/etc/ssl/cert.pem` — the host trust store the networked
+ * authoring profile needs to install over TLS. Any source tree carrying test certificates fails
+ * the same way.
  *
  * What remains is the set of names some later program reads as configuration or credentials,
  * matched by exact name rather than by shape, because the danger is a file landing where another
  * process will obey it: an `.npmrc` dropped beside a build redirects the next install to whatever
- * registry the agent chose.
- *
- * Agent directories are absent on purpose. `.codex/**` was denied here for its hook scripts, and
- * the same argument would add `.claude/**`, but both hold material an agent has a legitimate
- * reason to read, while the credential inside them — `auth.json` — is denied by name in its own
- * right and the real ones under the home roots are denied by location (operator decision
- * 2026-08-18). The residual risk is narrow and worth naming rather than hiding: a `.codex/hooks`
- * directory written into a candidate tree would run outside this wall if a later host process
- * honoured it.
+ * registry the agent chose. Agent directories are absent on purpose: `.codex/**` and `.claude/**`
+ * hold hook scripts, but also material an agent has a legitimate reason to read, while the
+ * credential inside them — `auth.json` — is denied by name in its own right and the real ones
+ * under the home roots are denied by location (operator decision). The residual risk is a
+ * `.codex/hooks` directory written into a candidate tree, which would run outside this wall if a
+ * later host process honoured it.
  */
 export const BUILDER_CONFIG_DENY_GLOB_STEMS: readonly string[] = [
   ".env",
@@ -102,21 +90,16 @@ export const BUILDER_CONFIG_DENY_GLOB_STEMS: readonly string[] = [
 ];
 
 /**
- * Private-key names, denied on the read side only.
- *
- * They are separate from the config stems above because the two answer opposite questions. A
- * config name is denied in both directions, since the danger is a cell *writing* an `.npmrc` that
- * redirects the next install. A private key is the other way round: a cell writing key-shaped
- * bytes of its own is ordinary setup, and what must not happen is it reading someone else's. So
- * these are read denies, and like every other name the cell's own tree is granted back after them
- * by the later allow rules.
+ * Private-key names, denied on the read side only — the opposite question to the config stems
+ * above. A config name is denied in both directions, since the danger is a cell *writing* an
+ * `.npmrc` that redirects the next install. A cell writing key-shaped bytes of its own is ordinary
+ * setup; what must not happen is it reading someone else's. The cell's own tree is granted back
+ * after these by the later allows.
  *
  * They are needed because the profile opens from `(allow default)` and then carves out the home
- * roots and the repository by subpath. Everything else on the host is still readable at that
- * point, so a key on a mounted volume or a network share stays open unless it is closed by name.
- *
- * `.pem` and `.key` are absent for the reason the config stems give above: the host trust store,
- * Homebrew's own verification key and any source tree's test certificates are all `.pem`, and
+ * roots and the repository by subpath, so a key on a mounted volume or a network share stays open
+ * unless closed by name. `.pem` and `.key` are absent for the reason the config stems give: the
+ * host trust store, Homebrew's verification key and any test certificate are all `.pem`, and
  * denying that suffix closed the signed install path. The names here have no such public use.
  */
 export const BUILDER_PRIVATE_KEY_DENY_GLOB_STEMS: readonly string[] = [
@@ -131,10 +114,10 @@ export const BUILDER_PRIVATE_KEY_DENY_GLOB_STEMS: readonly string[] = [
 export const CANDIDATE_ISOLATION_GUARD_ID = "candidate-isolation/guardPath@v1";
 export const CANDIDATE_ISOLATION_SCHEMA = "candidate-isolation/v1" as const;
 
-/** The host scratch roots an authoring session may write, which are the OS temp trees. They are
- *  re-exported here under the isolation's own name so a reader of this policy does not have to
- *  know that the list is kept beside the solve-side wall policy; both walls reach it through
- *  `scratchWriteRoots` below, so there is one list and not a Darwin copy and a Linux copy. */
+/** The host scratch roots an authoring session may write: the OS temp trees. Re-exported under the
+ *  isolation's own name so a reader of this policy need not know the list is kept beside the
+ *  solve-side wall policy; both walls reach it through `scratchWriteRoots` below, so there is one
+ *  list and not a Darwin copy and a Linux copy. */
 export { BUILDER_SCRATCH_ROOTS as HOST_SCRATCH_ROOTS } from "../verify/wall-policy.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
@@ -156,11 +139,10 @@ export interface CandidateIsolationBinding {
   /** <epochDir>/.oss */
   ossRoot: string;
   /** The one authorised exception to the rule that the cell nests inside the epoch: a microvm
-   *  guest's virtiofs share. When it is set, `ossRoot` may sit under it instead of under
-   *  `epochDir`, because the guest can see only that share and the cell holds nothing but public
-   *  sources and workshop scratch. When it is unset the nesting rule is unchanged and the field is
-   *  left out of the digest entirely, so every binding without a shared cell keeps the policy
-   *  digest it already had. */
+   *  guest's virtiofs share. When set, `ossRoot` may sit under it instead of under `epochDir`,
+   *  because the guest sees only that share and the cell holds nothing but public sources and
+   *  workshop scratch. When unset the nesting rule is unchanged and the field is left out of the
+   *  digest, so every binding without a shared cell keeps the policy digest it already had. */
   sharedCellRoot?: string;
 }
 
@@ -179,9 +161,8 @@ export interface IsolationRule {
  * applying to a file that only appears after the session started.
  *
  * `schema` keeps its recorded `candidate-isolation/v1` spelling because it is an identity inside
- * recorded digests rather than a name to tidy: rewriting it would change the digest of every
- * policy and make old evidence unjoinable to new.
- */
+ * recorded digests: rewriting it would change every policy's digest and make old evidence
+ * unjoinable to new. */
 export interface CandidateAccessPolicy {
   readonly schema: typeof CANDIDATE_ISOLATION_SCHEMA;
   readonly repoRoot: string;
@@ -192,44 +173,42 @@ export interface CandidateAccessPolicy {
     exec: readonly IsolationRule[];
   };
   readonly measuredNamePrefixes: readonly string[];
-  /** The authoring session may install toolchains over the network (operator decision
-   *  2026-08-16), since discovering and installing the domain's real tools is its job. The
-   *  workshop cell stays offline, so a proposed verifier's build has to replay from the bytes it
-   *  was handed rather than fetching something the evidence does not name. */
+  /** The authoring session may install toolchains over the network (operator decision), since
+   *  discovering and installing the domain's real tools is its job. The workshop cell stays
+   *  offline, so a proposed verifier's build replays from the bytes it was handed rather than
+   *  fetching something the evidence does not name. */
   readonly network: "deny" | "allow";
   /** Authoring keeps the established candidate profile; untrusted setup gets deny-default. */
   readonly profile: "candidate" | "isolated-workshop";
   /** Host scratch is an authoring convenience, never ambient workshop authority. */
   readonly scratchWriteRoots: readonly string[];
   /** These roots stay denied after the broader read grants have been emitted. Seatbelt takes the
-   *  last matching rule, so a deny that appears before a grant containing it is simply overwritten
-   *  — position is as much of the policy as presence. */
+   *  last matching rule, so a deny appearing before a grant containing it is overwritten: position
+   *  is as much of the policy as presence. */
   readonly readDenyRoots: readonly string[];
   /** These roots stay denied after the broader write grants have been emitted, for the same
    *  last-matching-rule reason as the read denies above. */
   readonly writeDenyRoots: readonly string[];
   /**
    * The cell's own private runtime directories, exempt from the config-name denies.
-   *
-   * `workshopEnvironment` points HOME, the cache root and TMPDIR at directories inside the cell,
-   * so a toolchain that writes configuration writes it here. The config-name denies exist to stop
-   * a name that a later host process obeys from landing in the candidate tree, and these three
-   * directories are not that tree, because nothing outside the cell reads them. Denying the names
-   * here therefore bought nothing and broke ordinary setup: `npm config set` writes
-   * `$HOME/.npmrc`, and it was refused. The exemption is spelled as exact paths rather than by
-   * widening the deny, so the candidate tree keeps the rule it needs.
+   * `workshopEnvironment` points HOME, the cache root and TMPDIR inside the cell, so a toolchain
+   * that writes configuration writes it here. The config-name denies exist to stop a name a later
+   * host process obeys from landing in the candidate tree, and these three directories are not
+   * that tree, because nothing outside the cell reads them. Denying the names here bought nothing
+   * and broke ordinary setup: `npm config set` writes `$HOME/.npmrc`, and it was refused. The
+   * exemption is spelled as exact paths rather than by widening the deny, so the candidate tree
+   * keeps the rule it needs.
    */
   readonly cellRuntimeRoots: readonly string[];
   readonly digest: string;
 }
 
 /** Measured-evidence names denied anywhere under the epoch directory, matched against every path
- *  segment rather than only the leaf, so a new file inside an evidence directory is as protected
- *  as the directory name itself. The distinction being drawn is authorship: the Builder may read
- *  what it authored — its candidate bundles across iterations, its own scratch, its own run
- *  condition — but never what was measured about what it authored, because measurement is supposed
- *  to reach an author only through the projected feedback channel, where protected verifier detail
- *  has already been stripped. A file read would route around that projection entirely. */
+ *  segment rather than only the leaf, so a new file inside an evidence directory is as protected as
+ *  the directory name. The distinction is authorship: the Builder may read what it authored — its
+ *  candidate bundles, its own scratch, its own run condition — but never what was measured about
+ *  them, because measurement reaches an author only through the projected feedback channel, where
+ *  protected verifier detail has already been stripped. A file read would route around it. */
 const MEASURED_EVIDENCE_NAME_PREFIXES: readonly string[] = [
   CENSUS_FILE,
   CONFORMANCE_FILE,
@@ -248,12 +227,12 @@ const MEASURED_EVIDENCE_NAME_PREFIXES: readonly string[] = [
 ];
 
 /** The workspace directories where an `@ana` shim would shadow the vendor modules for every
- *  generated import, which run 52 did. Generated code lives in `agent/` and `correctness-model/`,
- *  so these are the only directories Node resolution can step through before it leaves the
- *  workspace, and a `node_modules` planted in any of them intercepts the barrel before the
- *  controller's own vendor bytes are reached. The census gate catches a shadow that already exists
- *  and returns it as a blocking finding the next authoring turn can act on; these write denies are
- *  the other half, stopping the Builder from creating one in the first place. */
+ *  generated import. Generated code lives in `agent/` and `correctness-model/`, so these are the
+ *  only directories Node resolution steps through before it leaves the workspace, and a
+ *  `node_modules` planted in any of them intercepts the barrel before the controller's own vendor
+ *  bytes are reached. The census gate catches a shadow that already exists and returns it as a
+ *  blocking finding the next authoring turn can act on; these write denies are the other half,
+ *  stopping the Builder from creating one. */
 const WORKSPACE_SHADOW_ROOTS: readonly string[] = [
   "node_modules",
   "agent/node_modules",
@@ -265,26 +244,22 @@ const WORKSPACE_SHADOW_ROOTS: readonly string[] = [
  *
  * The prefixes stay per barrel rather than pooled into one set, because the barrels sit at
  * different distances from protected source. `agent-bundle` reaches `src/solve` and `src/meta`,
- * which are the Builder's own authoring interface; the correctness runtime lives under `vendor/`
- * and reuses only the already-public `src/meta` shape primitives. Keeping the lists apart is what
- * makes `admit` able to refuse a correctness barrel that re-exported, say, `src/verify/host.ts`,
- * so protected engine source cannot enter through the barrel that sits nearest to it.
- *
- * The correctness runtime moved into `vendor/` on 2026-09-02. Until then the barrel's runtime half
- * was a single file granted inside the otherwise denied `src/truth/`, and Bun lists a directory
- * before it opens a file in it, so the Builder's own `bun test` could not load the barrel at all
- * (run50-opus: "Cannot find module", followed by a hand-written stand-in the census refused). The
- * public type declarations named below are still exact-file exceptions of that kind, which is why
- * `follow` admits them without queueing them: they are read, never loaded.
+ * the Builder's own authoring interface; the correctness runtime lives under `vendor/` and reuses
+ * only the already-public `src/meta` shape primitives. Keeping the lists apart is what lets
+ * `admit` refuse a correctness barrel that re-exported, say, `src/verify/host.ts`, so protected
+ * engine source cannot enter through the barrel that sits nearest to it. That runtime lives under
+ * `vendor/` rather than as a granted file inside the otherwise denied `src/truth/`, because Bun
+ * lists a directory before it opens a file in it, so the Builder's own `bun test` could not load
+ * such a barrel at all. The public type declarations named below are still exact-file exceptions
+ * of that kind, which is why `follow` admits them without queueing them: read, never loaded.
  */
 const AUTHORING_BARRELS: ReadonlyArray<{
   name: string;
   prefixes: readonly string[];
   /** Admit the barrel's type edges as well as its runtime closure. Only `agent-bundle` carries
-   *  this, because the Builder writes `agent/tools.ts` against those declarations and has to be
-   *  able to read them. Extending it to the correctness barrels would admit their type edges into
-   *  controller internals — `src/truth/contracts.ts` among them — that no workspace execution
-   *  ever opens. */
+   *  this, because the Builder writes `agent/tools.ts` against those declarations. Extending it to
+   *  the correctness barrels would admit their type edges into controller internals —
+   *  `src/truth/contracts.ts` among them — that no workspace execution ever opens. */
   readTypeEdges?: true;
   /** Exact public declarations an author must read; their own type imports stay closed. */
   typeDeclarations?: readonly string[];
@@ -304,12 +279,11 @@ const AUTHORING_BARRELS: ReadonlyArray<{
 
 /** The `src/` directories of the agent-bundle barrel, granted whole. The Builder writes
  *  `agent/tools.ts` against these declarations and the barrel above already admits both
- *  directories to it, so they are its authoring interface rather than protected material: reading
- *  and listing them is the point, and the protected `src/truth/` and `src/verify/` trees keep
- *  exact-file exceptions for their public declarations instead. It is derived from the barrel
- *  rather than repeated, so the two lists cannot drift apart. `vendor/` is filtered out because
- *  each barrel already carries its own narrower `vendor-bundle` grant, and the vendor root as a
- *  whole is not the Builder's interface. */
+ *  directories to it, so they are its authoring interface rather than protected material; the
+ *  protected `src/truth/` and `src/verify/` trees keep exact-file exceptions for their public
+ *  declarations instead. Derived from the barrel rather than repeated, so the two lists cannot
+ *  drift apart. `vendor/` is filtered out because each barrel already carries its own narrower
+ *  `vendor-bundle` grant, and the vendor root as a whole is not the Builder's interface. */
 const AGENT_AUTHORING_INTERFACE = AUTHORING_BARRELS.filter(({ name }) => name === "agent-bundle")
   .flatMap(({ prefixes }) => prefixes)
   .values()
@@ -320,9 +294,9 @@ const AGENT_AUTHORING_INTERFACE = AUTHORING_BARRELS.filter(({ name }) => name ==
 /** The read half of the policy flattened to a path list, for consumers whose vocabulary is paths
  *  rather than rules. Every rule projects as an allow and none needs a matching deny, because a
  *  grant names a file or a directory and says nothing about its siblings, which stay closed by
- *  being unnamed. The one consumer today is `builderShellWall`, which sorts the list and hashes it
- *  into the session's recorded wall digest, so a later reader can see exactly which paths a
- *  session was opened with. */
+ *  being unnamed. The one consumer is `builderShellWall`, which sorts the list and hashes it into
+ *  the session's recorded wall digest, so a later reader can see which paths a session was opened
+ *  with. */
 export interface ProjectedReadGrant {
   allow: string[];
 }
@@ -335,19 +309,16 @@ type GuardDecision =
  * The repository modules a generated bundle may read, derived from the vendor barrels' own import
  * specifiers rather than from a second hand-maintained list. Candidate validation owns what a
  * bundle may import and each barrel owns what its `@ana/*` name resolves to, so deriving the grant
- * from the barrels keeps those two facts in one place instead of three, and both layers fail
- * closed: an import that leaves its entry module's declared prefixes throws rather than widening
- * the grant.
+ * keeps those two facts in one place instead of three, and both layers fail closed: an import
+ * leaving its entry module's declared prefixes throws rather than widening the grant.
  *
  * Two things end up in the contract for two different reasons. Every first-level edge of
  * `@ana/agent-bundle`, type edges included, is there so the Builder can read the solve-side
- * contracts it codes against; that was the original shape of this function. Every transitive
- * runtime import of all three barrels is there so workspace code can execute against them under
- * the bash sandbox — the starter seeds `correctness-model/*.test.ts` files that the Builder runs
- * with `bun test`, and those load the whole runtime closure. Only the named public type
- * declarations are added on top; other type edges erase at load and stay closed, controller
- * internals such as `src/truth/contracts.ts` included.
- *
+ * contracts it codes against. Every transitive runtime import of all three barrels is there so
+ * workspace code can execute against them under the bash sandbox — the starter seeds
+ * `correctness-model/*.test.ts` files the Builder runs with `bun test`, and those load the whole
+ * runtime closure. Only the named public type declarations are added on top; other type edges
+ * erase at load and stay closed, controller internals such as `src/truth/contracts.ts` included.
  * External package imports are left out entirely, because the root lockfile already owns which
  * version of them a bundle gets.
  */
@@ -367,13 +338,11 @@ export function deriveBundleContract(repoRoot: string): string[] {
     const queue = [barrel];
     const visited = new Set<string>();
     /**
-     * One declared edge, admitted into the contract and queued for following when it still runs
-     * at load.
-     *
-     * A type-only edge erases at load, and below the barrel it is therefore neither admitted nor
-     * followed. That is not tidiness: `src/solve/built-starter.ts` declares against
-     * `src/truth/task-split.ts`, a file no workspace execution ever opens, so following it would
-     * make `admit` refuse a contract that is already correct.
+     * One declared edge, admitted into the contract and queued for following when it still runs at
+     * load. A type-only edge erases at load, and below the barrel it is therefore neither admitted
+     * nor followed: `src/solve/built-starter.ts` declares against `src/truth/task-split.ts`, a
+     * file no workspace execution ever opens, so following it would make `admit` refuse a contract
+     * that is already correct.
      */
     const follow = (file: string, specifier: string, typeOnly: boolean): void => {
       const readable = readTypeEdges === true && file === barrel;
@@ -395,10 +364,10 @@ export function deriveBundleContract(repoRoot: string): string[] {
       visited.add(file);
       contract.add(file);
       // Read the statement, not the line. `specifiersIn` is the reader src/claim/bundle-validation.ts
-      // already owns for "what does this file import", and it settles a question a line scan
-      // cannot: `biome format` breaks a long specifier list over several lines, which leaves
-      // `from` on a line carrying no `import type`, so a type-only re-export read as a runtime
-      // edge and `admit` refused a contract that was correct.
+      // already owns for "what does this file import", and it settles what a line scan cannot:
+      // `biome format` breaks a long specifier list over several lines, leaving `from` on a line
+      // carrying no `import type`, so a type-only re-export reads as a runtime edge and `admit`
+      // refuses a contract that was correct.
       for (const load of specifiersIn(parseGeneratedSource(readFileSync(file, "utf8"), file)).loads) {
         if (!load.text.startsWith(".")) continue;
         const statement = load.parent;
@@ -416,11 +385,11 @@ export function deriveBundleContract(repoRoot: string): string[] {
 }
 
 /** Checks the binding's nesting twice, once as it is spelled and once as the physical roots
- *  guardPath will later compare against, and returns the physical ones. Both checks are needed
- *  because they catch different mistakes: the lexical one catches a binding that was written
- *  wrong, and the physical one catches a binding whose spelling is fine but whose links land
- *  somewhere else. The one exception to the nesting is a declared shared cell root, a microvm
- *  guest's share, which may hold `ossRoot` in place of the epoch. */
+ *  guardPath will later compare against, and returns the physical ones. Both are needed because
+ *  they catch different mistakes: the lexical one a binding written wrong, the physical one a
+ *  binding whose spelling is fine but whose links land somewhere else. The one exception to the
+ *  nesting is a declared shared cell root, a microvm guest's share, which may hold `ossRoot` in
+ *  place of the epoch. */
 function nestedBindingRoots(binding: CandidateIsolationBinding) {
   const lexicalRepo = resolve(binding.repoRoot);
   const repoRoot = realpathSync.native(binding.repoRoot);
@@ -440,9 +409,9 @@ function nestedBindingRoots(binding: CandidateIsolationBinding) {
     );
   }
   // Controller output may be shared into an isolated source worktree through a `campaigns`
-  // symlink, so the isolation binds to the physical roots guardPath will later see. Keeping the
-  // lexical spelling instead would make every legitimate access to the shared tree resolve
-  // outside the grant and look like an escape attempt.
+  // symlink, so the isolation binds to the physical roots guardPath will later see. The lexical
+  // spelling would make every legitimate access to the shared tree resolve outside the grant and
+  // look like an escape attempt.
   const epochDir = resolveRequested(repoRoot, binding.epochDir);
   const iterationDir = resolveRequested(repoRoot, binding.iterationDir);
   const ossRoot = resolveRequested(repoRoot, binding.ossRoot);
@@ -455,12 +424,12 @@ function nestedBindingRoots(binding: CandidateIsolationBinding) {
 
 /** Read grants for the adopted tool trees this session runs: the controller's adopted domain link,
  *  and the workspace's own `.toolchain` when it points outside this epoch. Both are written by the
- *  controller through `linkWorkspaceToolTree`, and both are needed because they can disagree. An
+ *  controller through `linkWorkspaceToolTree`, and both are needed because they can disagree — an
  *  evaluation correction keeps the tree it was seeded with while a later adoption moves the domain
- *  link, so granting the adopted domain alone left the correction's own `.toolchain/bun` behind a
- *  sibling deny (truss-sol sessions 03 and 04, 2026-09-05). Each resolved tree must be
- *  `epoch-<key>/workspace/.toolchain` of this campaign, which bounds what a re-pointed link can
- *  buy: at worst a sibling epoch's tools, never its evaluator, its evidence or any write path. */
+ *  link, so granting the adopted domain alone leaves the correction's own `.toolchain/bun` behind a
+ *  sibling deny. Each resolved tree must be `epoch-<key>/workspace/.toolchain` of this campaign, so
+ *  a re-pointed link buys at worst a sibling epoch's tools, never its evaluator, its evidence or
+ *  any write path. */
 function adoptedToolReadRules(
   repoRoot: string,
   slug: string,
@@ -537,16 +506,15 @@ export function deriveCandidateIsolation(
     profile: author ? ("candidate" as const) : ("isolated-workshop" as const),
     // Both cells write the host scratch trees, because that is the only route a Builder has to
     // install anything: the authoring session downloads a toolchain there and the offline workshop
-    // unpacks it. Measured 2026-08-18, all three install sessions found the route unaided, and
-    // measured 2026-08-19, a Builder asked to install a scientific library used it to put 71MB of
-    // unpacked wheels where its verifier could read them. It was opt-in behind `--workshop-tmp`
-    // until that flag was removed, which meant the default run could not install at all.
+    // unpacks it, which is how tens of megabytes of a scientific library land where the verifier
+    // can read them. Gating the workshop's share of it behind a flag left the default run unable
+    // to install at all.
     scratchWriteRoots: author ? hostScratchRoots : [join(ossRoot, ".tmp"), ...hostScratchRoots],
     readDenyRoots: author ? [ossRoot] : [],
     writeDenyRoots: author ? WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)) : [],
     // The same three names `workshopEnvironment` creates and exports as HOME, the cache root and
-    // TMPDIR. One owner would be better than two, but until that lands the failure mode of drift
-    // is the cell being unable to write its own configuration, not a silent widening of the wall.
+    // TMPDIR. One owner would be better than two, but the failure mode of drift is the cell being
+    // unable to write its own configuration, not a silent widening of the wall.
     cellRuntimeRoots: author ? [] : [".home", ".cache", ".tmp"].map((name) => join(ossRoot, name)),
   };
   return { ...identity, digest: hashJsonBytes(identity) };
@@ -570,9 +538,9 @@ function resolveRequested(repoRoot: string, requested: string): string {
 
 /** The in-process path check every capability runs before the OS enforces the same policy. The
  *  order of the checks is the policy: the cross-cell and module-shadow denies come first because
- *  they must survive the grants, then the credential and `.git` names, then measured evidence,
- *  and only then the allow rules. A deny that ran after the allows would never be reached for a
- *  path inside a granted subtree, which is exactly where the dangerous ones sit. */
+ *  they must survive the grants, then the credential and `.git` names, then measured evidence, and
+ *  only then the allow rules. A deny running after the allows would never be reached for a path
+ *  inside a granted subtree, which is exactly where the dangerous ones sit. */
 export function guardPath(
   policy: CandidateAccessPolicy,
   capability: string,

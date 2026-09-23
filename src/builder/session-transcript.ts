@@ -1,10 +1,10 @@
 // The controller's own transcript of each Builder session, and the pointer that names it.
 //
 // A pi session holds its history in memory and drops it on dispose, so the controller writes a
-// bounded event record of each session while it runs. Run 65 was killed while authoring and nothing
-// in the campaign named its transcript; the pointer is therefore written as the session opens,
-// while the session may still be killed, and rewritten at settlement. A continued session's rounds
-// append to its one events file, each round under a pointer of its own.
+// bounded event record of each session while it runs. A session killed while authoring leaves
+// nothing in the campaign naming its transcript, so the pointer is written as the session opens,
+// while it may still be killed, and rewritten at settlement. A continued session's rounds append to
+// its one events file, each round under a pointer of its own.
 //
 // `verifyWrittenTranscript` is copied from pi-claude-bridge's session-verify.ts without its
 // record-count clause: a reader watching a file that is still being appended to cannot know the

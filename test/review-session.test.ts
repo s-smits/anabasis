@@ -118,8 +118,8 @@ describe("review sessions", () => {
   });
 });
 
-// Restored from before the pi rewrite: the reader still shares one deadline and one provider
-// allowance across its continuations, and only these two cases fail when it stops doing so.
+// The reader shares one deadline and one provider allowance across its continuations, and only
+// these two cases fail when it stops doing so.
 describe("reader continuation limits", () => {
   it("shares one deadline across settled turns and disposes on expiry", async () => {
     let now = 1_000,

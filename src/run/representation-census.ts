@@ -9,47 +9,25 @@
  *    task, which a check would then enforce as a spelling. A value the public schema declares in
  *    a closed set at that path is exempt.
  *
- * live-run-06 is why this module exists. It passed F2 25 of 25, then measured 0 of 25 with every
- * submit accepted and its accept controls passing 3 of 3. Its retained traces name the cause: the
- * reference answer writes `accessionCode: "n/a"` for records with no local code, the check demands
- * that exact spelling, and the agent wrote "" instead — 95 times, across all 25 cases. A whole
- * measured campaign turned on how one absence is spelled.
+ * The second is why this module exists: a bundle can pass F2 on every task and then measure zero
+ * with every submit accepted, because the reference answer writes `"n/a"` where the agent wrote
+ * `""` and the check demands that exact spelling. A whole measured campaign turns on how one
+ * absence is spelled.
  *
  * Both are pure comparisons over witnesses already in hand, so neither costs an execution, and
  * both block adoption. Findings describe the Builder's own artifact schema and public task
  * projection and nothing else: no task id, no check id, no hidden expectation, no verifier text.
  *
- * The two checks were calibrated by replaying this module over the seven recorded F2 results
- * available at the time. Six of them paired with a task file carrying their exact task ids; the
- * seventh has none on disk and is left out rather than guessed.
+ * A high pass rate is not a refutation of a copying finding, which is why `transcribes` blocks
+ * rather than advises. A root copied from public input on every reference witness can carry a
+ * battery to a perfect score precisely because retyping the task is what made it easy, so the
+ * score and the finding agree rather than contradicting each other. A false positive costs the
+ * Builder one revision of its representation.
  *
- *                        transcribes    absence sentinel    measured
- *   live-run-06          catalogFacts   2 paths             0/25
- *   live-run-04          —              —                   24/25
- *   legacy iteration 05  routeFacts     —                   25/25
- *   live-run-07          —              —                   unmeasured
- *   legacy epoch 89442   —              —                   unmeasured
- *   want-measure         —              —                   unmeasured
- *
- * `transcribes` was advisory at first and became blocking after run 67, because it appeared in
- * both a 0-of-25 bundle and a 25-of-25 bundle and so predicted nothing about the score. Run 67
- * showed why a high score is not a refutation: the finding identified a schedule root copied from
- * publicInput.behaviours on 125 of 125 reference witnesses across five fingerprinted task sets,
- * those iterations passed fingerprinting, and six batteries then measured 150 of 150 passes over
- * levels L0 to L4 — a battery that found no limit, because its verified root could be filled by
- * retyping the task. A high pass rate does not resolve a copying finding, since the copying may be
- * what made the tasks easy. `absence sentinel` flagged only the 0-of-25 bundle. Three of the six
- * calibration rows had a measured battery, so the measured sample behind the blocking policy is
- * small; it rests on those recorded failures and on the cost of spending a campaign to rediscover
- * them. A false positive costs the Builder one revision of its representation.
- *
- * A domain that genuinely needs "none" as an answer declares it in that field's allowedValues.
- * Run 52 is why: the census refused a candidate for writing a value its own public schema listed
- * as one member of a closed set, so the absence rule now exempts a value the schema names at that
- * exact path (`declaredClosedValue` below). The policy before that documented vocabulary
- * exceptions in a deviation row with an `expiresWhen`, and nothing here reads such a row, so it
- * supplied no runtime override at all; the declared closed values are the exemption this code
- * actually enforces.
+ * A domain that genuinely needs "none" as an answer declares it in that field's allowedValues, and
+ * the absence rule exempts a value the schema names at that exact path (`declaredClosedValue`
+ * below). Nothing here reads a written vocabulary deviation with an expiry, so the declared closed
+ * values are the only exemption this code enforces.
  */
 import { plainRecord } from "../meta/json-evidence.ts";
 import { canonicalJson, compareCodeUnits } from "../meta/stable-json.ts";
@@ -103,9 +81,9 @@ function schemaChildren(
 }
 
 /** Whether the public artifact schema declares this exact value as a member of a closed value set
- *  at this exact path — a state the schema names, not a spelling the answer invented. Run 52 is
- *  why: a field whose allowedValues are ["none", "flat", "reactive"] compiles to a closed node,
- *  and the census refused the candidate for writing the declared "none". The exemption is
+ *  at this exact path — a state the schema names, not a spelling the answer invented. A field whose
+ *  allowedValues are ["none", "flat", "reactive"] compiles to a closed node, and without this the
+ *  census would refuse a candidate for writing its own declared "none". The exemption is
  *  deliberately narrow, so every node describing the path must be closed: a closed set beside a
  *  plain string, or beside null, still admits an undeclared spelling of the same absence, which is
  *  the defect this rule guards. An absent schema exempts nothing. */
@@ -144,15 +122,15 @@ function absenceLeaves(
   return into;
 }
 
-/** A copy is still a copy after one sort: run 67's measured cases held a passing artifact whose
- *  schedule was the copied rows in another order, and one reordered witness would likewise silence
- *  the every-witness aggregate below. So copy detection ignores order at the compared collection
- *  itself — its rows sorted by their canonical JSON — and nowhere deeper, because a nested array
- *  is an ordered value (a directed edge, a coordinate pair, a route) and an artifact that reverses
- *  each one has transformed the data rather than retyped it. canonicalJson stays the only
- *  serializer. The known cost is a domain whose requested answer is a pure reordering of a public
- *  list: its reference root now matches as a copy, and the options the finding states — fold the
- *  ordering into a root that also decides something — are the one-pass recovery. */
+/** A copy is still a copy after one sort: an artifact holding the copied rows in another order is
+ *  retyping just the same, and one such witness would otherwise silence the every-witness aggregate
+ *  below. So copy detection ignores order at the compared collection itself — its rows sorted by
+ *  their canonical JSON — and nowhere deeper, because a nested array is an ordered value (a
+ *  directed edge, a coordinate pair, a route) and an artifact that reverses each one has
+ *  transformed the data rather than retyped it. canonicalJson stays the only serializer. The known
+ *  cost is a domain whose requested answer is a pure reordering of a public list: its reference
+ *  root matches as a copy, and the finding's own remedy — fold the ordering into a root that also
+ *  decides something — is the one-pass recovery. */
 function copyKey(value: JsonValue): string {
   if (!Array.isArray(value)) return canonicalJson(value);
   return `[${value
@@ -245,13 +223,11 @@ export function censusRepresentation(witnesses: readonly Witness[], schema?: Pub
 export const BLOCKING_CODES = new Set([CODE["absence-sentinel"], CODE.transcribes]);
 
 /**
- * Detect a reference root that stays constant across different public inputs. Run 12 prompted
- * this: its reference solve read publicInput fields the authored tasks do not carry (busDevices
- * where the tasks carry requestedItems), so `solve` derived the same allocationPlan — one
- * byte-identical value — for 25 tasks whose public inputs all differ, and F2 refused 25 of 25.
- * Only the aggregate count crossed to the Builder, and iteration 2 failed identically: the count
- * says the solve is wrong everywhere, while this observation names a concrete pattern the model
- * can go and investigate.
+ * Detect a reference root that stays constant across different public inputs. The pattern this
+ * catches is a reference solve reading publicInput fields the authored tasks do not carry, so it
+ * derives one byte-identical value for every task and F2 refuses all of them. The aggregate count
+ * alone tells the Builder only that the solve is wrong everywhere, and a rebuild can fail
+ * identically; this observation names a concrete pattern the model can go and investigate.
  *
  * Both compared sides are the Builder's own facts — its solve's outputs, its authored public
  * inputs — so the finding may describe their relationship. It carries no task id, check id,
@@ -259,10 +235,11 @@ export const BLOCKING_CODES = new Set([CODE["absence-sentinel"], CODE.transcribe
  *
  * The empty-proves-nothing rule (`bulky` above) inverts here on purpose. For copying, empty
  * matching empty is no evidence; for responsiveness, a derived root that stays empty while every
- * input differs is exactly the signal, and run 12's constant value was the empty plan. A root that
- * is legitimately constant still yields a true observation with its denominators stated, and the
- * model judges whether that constancy was intended. These findings carry no severity of their own:
- * they accompany an already blocking census result as diagnosis, and BLOCKING_CODES is unchanged.
+ * input differs is exactly the signal, and an empty plan is the usual shape of the defect. A root
+ * that is legitimately constant still yields a true observation with its denominators stated, and
+ * the model judges whether that constancy was intended. These findings carry no severity of their
+ * own: they accompany an already blocking census result as diagnosis, and BLOCKING_CODES is
+ * unchanged.
  */
 export function inputInsensitivity(witnesses: readonly Witness[]): ContractFinding[] {
   if (witnesses.length < 2) return [];

@@ -75,23 +75,20 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
     // CommandLineTools directory therefore stays ahead of everything else.
     //
     // The rest is `toolchainPathDirs`, the same search path the Built Harness shell uses and the
-    // same install roots the read grant covers. A hardcoded literal here is what made a removed
-    // runtime-fact probe lie: it resolved `pio`, `arduino-cli` and `node` off the harness PATH and
-    // reported all three available while this cell answered `command not found` for them, because
-    // /opt/zerobrew/bin was on one list and not the other. What a Builder cannot find, it replaces:
-    // one whose PATH is short concludes the host carries no compiler and writes a substitute, and
-    // run w39-sol shipped a parser as its compiler.
+    // same install roots the read grant covers. A hardcoded literal here instead makes a probe
+    // report tools as available that this cell then answers `command not found` for, because one
+    // install root sits on one list and not the other. What a Builder cannot find, it replaces: one
+    // whose PATH is short concludes the host carries no compiler and writes a substitute, which is
+    // how a parser ends up shipped as a compiler.
     PATH: (directDarwinToolchain
       ? [`${commandLineTools}/usr/bin`, ...toolchainPathDirs()]
       : toolchainPathDirs()
     ).join(":"),
     ...keysIf(directDarwinToolchain, () => ({ SDKROOT: join(commandLineTools, "SDKs", "MacOSX.sdk") })),
     // The names a toolchain uses to find its own installation, which moving HOME into the cell
-    // otherwise hides. The Built Harness shell has carried these since the wall was written and the
-    // Builder cell did not, which left `cargo --version` answering "rustup could not choose a
-    // version" with `~/.rustup` readable on disk the whole time (measured 2026-08-19 by the install
-    // probe). The roots stay read-only; anything a toolchain writes goes to the cell's own cache
-    // below.
+    // otherwise hides. Without them `cargo --version` answers "rustup could not choose a version"
+    // with `~/.rustup` readable on disk the whole time. The roots stay read-only; anything a
+    // toolchain writes goes to the cell's own cache below.
     ...hostToolchainEnv(),
     LANG: "C",
     LC_ALL: "C",
@@ -105,8 +102,8 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
     // Cargo reads its toolchain through RUSTUP_HOME above and writes its registry cache here, so
     // the host installation stays untouched while a crate build still has somewhere to work.
     CARGO_HOME: join(cache, "cargo"),
-    // Node aborts at startup when an inherited OPENSSL_CONF points at a file it cannot read; run
-    // w11 lost 5 workshop actions to it. This is the same neutral pin the other runtimes get.
+    // Node aborts at startup when an inherited OPENSSL_CONF points at a file it cannot read, which
+    // costs the cell every action that runs it. This is the same neutral pin the other runtimes get.
     OPENSSL_CONF: "/dev/null",
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
@@ -117,8 +114,8 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
 export function verifierWorkshopCommand(value: string, max: number): string {
   if (value.trim() === "") refuse("run command must not be empty");
   // Newlines stay. Both cells hand the text to one shell as a single `-c` argument, locally and in
-  // the guest alike, so a multi-line command is one command; truss run 406cca spent a refused call
-  // and a script file working around the one-line rule that used to be here.
+  // the guest alike, so a multi-line command is one command. A one-line rule here only costs the
+  // Builder a refused call and a script file written to work around it.
   if (value.includes("\0")) refuse("run command must be text with no NUL bytes");
   if (value.length > max) refuse(`run command exceeds ${max} bytes`);
   return value;

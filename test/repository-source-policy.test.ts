@@ -49,10 +49,10 @@ describe("source policy", () => {
     ]);
   });
 
-  // `walkFiles` reads every file under `src`, `tools` and `vendor`, and on 2026-09-20 the only
-  // Markdown it found there were the two oxlint ledgers, one of them over the ceiling. The number
-  // measures what the formatter does to authored code, so it was asking for a decision record to
-  // be split at 800 lines for a reason belonging to neither half. A named copied-file ceiling is a
+  // `walkFiles` reads every file under `src`, `tools` and `vendor`, and the only Markdown it finds
+  // there are the oxlint ledgers, one of them over the ceiling. The number measures what the
+  // formatter does to authored code, so applying it to prose asks for a decision record to be split
+  // at 800 lines for a reason belonging to neither half. A named copied-file ceiling is a
   // decision rather than an accident of the walk, so that one still binds.
   it("leaves prose to its own judgement, unless a ceiling names the file", () => {
     const long = Array.from({ length: NEW_FILE_CEILING + 1 }, () => "a line of prose.").join("\n");
@@ -70,8 +70,8 @@ describe("source policy", () => {
 
   // A copied-file ceiling also turns the function check off for its file, so an entry left behind
   // after the file came inside both limits is a silent exemption rather than a dormant number.
-  // That is why the map is swept: it held 93 entries on 2026-09-19 and 10 of them bound anything,
-  // and it is down to 6 today.
+  // That is why the map is swept: most entries stop binding anything long before anyone thinks to
+  // remove them.
   it("refuses a copied-file ceiling once its file is gone or inside both authored limits", () => {
     const stillOver = Array.from({ length: NEW_FILE_CEILING + 1 }, () => "const x = 1;").join("\n");
     const kept = "src/builder/tools.ts";

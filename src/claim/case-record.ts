@@ -2,9 +2,10 @@
  * The case record stores one JSONL row per scheduled case across runs. A row is a structured
  * summary that points to its raw trace files by path and sha256; it does not repeat the traces,
  * and it does not decide who may read them — that belongs to the consuming reader and its own
- * access rules. The summaries point at the traces rather than replacing them because the
- * Meta-Harness comparison found summaries do not recover what raw evidence carries: scores alone
- * reached 34.6, scores with summaries 34.9, and filesystem access to the raw traces 50.0.
+ * access rules. The summaries point at the traces rather than replacing them because a summary does
+ * not recover what the raw evidence carries: a reader given the scores and a per-case summary
+ * arrives at much the same reading as one given the scores alone, while a reader that can open the
+ * traces themselves does markedly better.
  *
  * A lost row is the failure this file is built around, and it is dangerous precisely because it
  * is quiet. Concurrent JSONL appends longer than PIPE_BUF can interleave and tear a line, and a
@@ -151,8 +152,8 @@ type PointerVerdict =
 
 /** One count over classified outcomes, so the verified, unaccepted and non-result arithmetic
  *  cannot drift between the run summary, the controller terminal and the outcome views. It is
- *  exported for the last of those three: the campaign scorecard used to restate all five fields
- *  itself, which is the drift this sentence was written to prevent. */
+ *  exported for the last of those three, whose campaign scorecard would otherwise restate all five
+ *  fields itself. */
 export interface OutcomeTally {
   verified: number;
   passed: number;

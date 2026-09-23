@@ -2,16 +2,14 @@
  *  sequence with its walls and refusal codes, the tool roster and the worked shapes live in
  *  STARTER.md.
  *
- *  Rewritten from an empty slate on 2026-09-19. The file it replaces had grown a method for
- *  guessing how hard a battery was — which requirements to stack, where to pin a limit, how hard
- *  the reference had to search — because until that day nothing could tell a Builder how hard its
- *  tasks were until the controller had paid a round to find out. Each piece of that method arrived
- *  with the campaign that bought it, and the campaigns were still visible in the text: statistics
- *  used as argument, in a surface paid for on every turn of every session. `harness_trial` now
- *  solves one authored task with the measured solver, so the judgement has an instrument and the
- *  prose that stood in for it is gone. What is left states the duty and leaves the route to the
- *  Builder, which is what design prior 10 asks for. The suite beside this file holds the envelope:
- *  nothing another surface owns, each duty once, no measured domain, no number at all. */
+ *  This file once carried a method for guessing how hard a battery was — which requirements to
+ *  stack, where to pin a limit, how hard the reference had to search — because nothing could tell a
+ *  Builder how hard its tasks were until the controller had paid a round to find out.
+ *  `harness_trial` now solves one authored task with the measured solver, so the judgement has an
+ *  instrument and the prose that stood in for it is gone. What is left states the duty and leaves
+ *  the route to the Builder, which is what design prior 10 asks for. The suite beside this file
+ *  holds the envelope: nothing another surface owns, each duty once, no measured domain, no number
+ *  at all. */
 
 import { DCG_RULES } from "../solve/dcg-rules.ts";
 
@@ -23,17 +21,15 @@ export const INTENT_CLAUSE = [
 ] as const;
 
 /** Where the tools are rooted and what is submitted. The pack is the whole standing channel into an
- *  authoring session — there is no skill mechanism and none is wanted (operator decision
- *  2026-09-18: a skill layer costs a moving part and reports no spend) — so the card sends the
- *  Builder to STARTER.md and STARTER.md lists what the pack holds.
+ *  authoring session — there is no skill mechanism and none is wanted (operator decision: a skill
+ *  layer costs a moving part and reports no spend) — so the card sends the Builder to STARTER.md and
+ *  STARTER.md lists what the pack holds.
  *
- *  This card used to enumerate all four reference files itself, on the reading that three of run
- *  c1d2a7's four epochs opened no file with the read tool. A Builder reads through bash, so that
- *  count is evidence of nothing, and the enumeration was a second owner paid on every turn.
- *
- *  The zsh quoting line went with it. It taught one shell quirk in the surface that rule 14
- *  reserves for duties, and a recurring interface failure is answered at the tool rather than with
- *  another sentence. */
+ *  The card does not enumerate the reference files itself. That was a second owner of the list, paid
+ *  for on every turn, and the evidence for it — sessions that opened no file with the read tool —
+ *  proved nothing, because a Builder reads through bash. The zsh quoting line went with it: it
+ *  taught one shell quirk in the surface that rule 14 reserves for duties, and a recurring interface
+ *  failure is answered at the tool rather than with another sentence. */
 export const BUILDER_WORKSPACE_CARD = [
   "The file tools work from the workspace root. Read STARTER.md first; it maps the loop and links the reference files in starter-pack/.",
   "Every file under agent/ and correctness-model/ is submitted; keep scratch files, seed projects and experiments elsewhere in the workspace, not in /tmp.",
@@ -41,22 +37,20 @@ export const BUILDER_WORKSPACE_CARD = [
 
 /** The requested work stays whole: scope, answer shape and difficulty.
  *
- *  The difficulty sentence is the one the 2026-09-19 rewrite changed. Its first duty is to measure
- *  rather than estimate, which is new and is the whole reason the rest could shrink: a Builder that
- *  rehearses a task against its own solver learns in one call what four rounds of campaign
- *  3fd52f9e-10 failed to learn from being told. That campaign declared "at most two verified
- *  passes" in each of four rounds, every round adding a genuinely new coupled requirement, and
- *  measured six, six, six and three of five. Its model of its own solver was wrong by about three,
- *  repeatedly, and no sentence addressed to it had fixed that.
+ *  The difficulty sentence's first duty is to measure rather than estimate, and that is the whole
+ *  reason the rest could shrink. A Builder rehearsing a task against its own solver learns in one
+ *  call what no sentence addressed to it had ever fixed: a Builder's model of its own solver is
+ *  wrong in the same direction round after round, declaring at most a couple of verified passes and
+ *  then measuring most of the battery, even while each round adds a genuinely new coupled
+ *  requirement.
  *
- *  What stays beside it is the one direction with outcome evidence: the 2026-09-15 pack series
- *  graded outside the controller passed 22 of 23 verified cases with one interaction added per
- *  task, and 2 of 23 with the same interactions stacked inside the unchanged limit. Its coupling
- *  half is c1d2a7's round two, whose deflection limit sat at about 0.4 of the strength-governed
- *  optimum's movement so that neither limit was met by ignoring the other; round one's was loose
- *  enough that strength alone decided every design, and that battery passed 6 of 6. The re-tuning
- *  half answers campaign 3fd52f9e-28, which moved only its published magnitudes for four
- *  consecutive batteries.
+ *  What stays beside it is the one direction with outcome evidence. Adding one interaction per task
+ *  leaves a battery almost all of its passes; stacking those same interactions inside an unchanged
+ *  limit takes almost all of them away. The coupling half is the published limits themselves: a
+ *  deflection limit loose enough that strength alone decides every design leaves nothing to
+ *  reconcile, while one set near the strength-governed optimum's own movement means neither limit is
+ *  met by ignoring the other. The re-tuning half answers the failure mode of moving only the
+ *  published magnitudes, battery after battery.
  *
  *  Which requirements to stack stays the Builder's, because prior 10 prescribes no course, and the
  *  pass counts belong to the authoring context, which is the surface that knows this run's battery
@@ -69,21 +63,19 @@ export const SCOPE_CLAUSE = [
 
 /** What the solver may read, and what it must never read.
  *
- *  The tool sentences answer truss campaign 3fd52f9e-7 (2026-09-14 to 09-17), whose proposer tool
- *  was the reference solve: three batteries passed 25 of 25 in one call each, while the same
- *  harness passed 0 of 17 verified very hard tasks with no sizer or search. Decisions joined
- *  controls in the withheld list, and "in any wording" moved onto the whole duty rather than onto
- *  one item, after two independent Builder sessions declared a reference recipe private — "sizes
- *  members by repeated greedy downsizing against the full requirement set" — and then wrote that
- *  same recipe into BUILT_AGENTS.md as guidance, in their own words. No literal comparison of the
- *  two texts could have seen it, which is why the duty is stated over the decision rather than over
+ *  A proposer tool that is the reference solve passes every task in one call each while proving
+ *  nothing about the harness behind it, which — given hard tasks and neither a sizer nor a search —
+ *  solves none of them. So decisions sit in the withheld list beside controls, and "in any wording"
+ *  attaches to the whole duty rather than to one item: a Builder can declare a reference recipe
+ *  private, "sizes members by repeated greedy downsizing against the full requirement set", and then
+ *  write that same recipe into BUILT_AGENTS.md as guidance, in its own words. No literal comparison
+ *  of the two texts would see it, which is why the duty is stated over the decision rather than over
  *  its wording, and why no n-gram census was built to catch it.
  *
- *  The last sentence makes computing the check's own rule the duty, after a 2026-09-17 battery
- *  (2 verified of 23) whose adviser returned a first-order response under second-order limits that
- *  the same public input fully specified: its plain disclaimer changed no answer, because the
- *  solver optimises against the number the tool returns rather than against the caveat beside it.
- *  The worked case is in contract.md. */
+ *  The last sentence makes computing the check's own rule the duty. An adviser returning a
+ *  first-order response under second-order limits that the same public input fully specifies changes
+ *  no answer by putting a plain disclaimer beside it, because the solver optimises against the
+ *  number the tool returns rather than against the caveat. The worked case is in contract.md. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
   "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. Leave the construction method to the solver: a tool may compute and return candidates from public inputs, but not the remaining decision the task asks for. Never ship the reference solve as a solver tool.",
@@ -91,10 +83,10 @@ export const PUBLICATION_CLAUSE = [
 ] as const;
 
 /** Verification that means something, and the real installed tools it rests on. The reached-program
- *  duty answers run 0dba8e, which checked a host helper unit and a compile alone; the install duty
- *  answers run 8, which repeated a rendered "not found" back as its reason for a stand-in, and run
- *  10, which then compiled against a header it had written itself; the last sentence answers run
- *  eaf98f, which pasted the agent's own analysis into the evaluator. */
+ *  duty answers a harness that checked a host helper unit and a compile alone; the install duty
+ *  answers one that repeated a rendered "not found" back as its reason for a stand-in, and one that
+ *  then compiled against a header it had written itself; the last sentence answers one that pasted
+ *  the agent's own analysis into the evaluator. */
 export const VERIFICATION_CLAUSE = [
   "Every advertised capability maps to a check that can fail on real tasks; declare a capability no route can check as an explicit omission in the brief. Decide what the delivered program does by running or computing it on the supplied inputs, not by recognising how it is written, and accept every implementation the brief permits: compiling it, finding its files or exercising a helper it need not call proves nothing. Agreement among check, reference solve and controls is circular when they share an omission.",
   "Acquire the tool before writing around it. The domain's practitioners already have established open-source tooling with a published interface: find it from public sources and install it; Bash has network access. A tool you have not searched for and tried to install is not an unavailable tool.",

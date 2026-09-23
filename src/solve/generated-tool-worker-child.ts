@@ -113,10 +113,10 @@ function writeFrame(secret: string, message: GeneratedToolChildMessage): string 
 
 /**
  * A tool's own result the protocol cannot carry is that call's failure, not the session's: the
- * solver is told and can ask again for a smaller or finite value. Truss 2026-09-17 lost whole paid
- * cases to a utilisation of 1/0 in one tool's details, which arrived as a protocol non-result and
- * ended solves that were otherwise going well. Everything else the worker sends is its own frame,
- * and an unsendable one there means the protocol is broken, so it ends the session.
+ * solver is told and can ask again for a smaller or finite value. One non-finite number in a tool's
+ * details — a utilisation of 1/0 — would otherwise arrive as a protocol non-result and end a paid
+ * solve that was going well. Everything else the worker sends is its own frame, and an unsendable
+ * one there means the protocol is broken, so it ends the session.
  */
 function send(message: GeneratedToolChildMessage): void {
   if (protocolSecret === null) return;

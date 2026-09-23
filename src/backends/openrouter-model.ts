@@ -210,10 +210,10 @@ function normalizeBaseUrl(configured: string): string {
 /**
  * Resolve the OpenAI-completions endpoint and its credential name from one set of env values.
  *
- * A free remote tier can fail through rate limiting -- run 71 ended on a provider 429 -- and a
- * local server is another test option over the same protocol. Pi's openai-completions API reads
- * `model.baseUrl` and sends an ordinary chat completion, so llama.cpp, vLLM and other
- * OpenAI-compatible servers use this transport without a separate implementation.
+ * A free remote tier can fail through rate limiting, and a local server is another test option over
+ * the same protocol. Pi's openai-completions API reads `model.baseUrl` and sends an ordinary chat
+ * completion, so llama.cpp, vLLM and other OpenAI-compatible servers use this transport without a
+ * separate implementation.
  *
  * Host and key resolve together so a key can never be sent to a host it does not belong to.
  * `OPENROUTER_BASE_URL` may tune the path on OpenRouter's own origin; another origin must use the

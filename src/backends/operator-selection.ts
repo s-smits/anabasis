@@ -3,12 +3,12 @@
  *
  * Two files say who serves a run's three slots: `.harness/backends/<slug>.json` and
  * `.harness/backends/default.json`. They combine per slot: the slug file supplies every slot it
- * names, and the default fills the rest. Run 15 showed why whole-file precedence was wrong.
- * `--built-backend claude` on a fresh project wrote `{built}` alone, that one key shadowed the
- * default entirely, the review slot resolved `unconfigured`, and 50 measured cases recorded
- * `judge: "off"` with no control census at all. Run 16, on the same code and with no flag, read the
- * default and ran 86 control subjects per condition. `bb28.json`, which names the builder only, and
- * the partial project pin naming builder and built were silently review-less the same way.
+ * names, and the default fills the rest. Whole-file precedence is the wrong rule here, because
+ * `--built-backend claude` on a fresh project writes `{built}` alone: that one key would shadow the
+ * default entirely, the review slot would resolve `unconfigured`, and the whole battery would
+ * record `judge: "off"` with no control census at all, while the same code with no flag reads the
+ * default and runs its control subjects. A file naming the builder only, or naming builder and
+ * built, goes silently review-less the same way.
  *
  * A slot nobody named is not a slot somebody turned off. Only `{"review": {"disabled": true}}` says
  * off, which is why the write side (`project-backends.ts`) states it instead of deleting the key.
@@ -31,9 +31,8 @@ export const OPERATOR_BACKENDS_DIR = ".harness/backends";
 /**
  * The slug-agnostic file. An automatic project's initial id is `<stem>-<digest[0:8]>`
  * (`src/run/launch-project.ts`), so an operator cannot name `<slug>.json` before the run exists --
- * which is how run 4 measured with both judges disabled while the intended selection sat in
- * `short-request.json`, named for the user's request rather than for its derived slug. This file is
- * the standing selection for every slot no slug file names.
+ * a selection written under the request's own name sits unread while the run measures on the
+ * defaults. This file is the standing selection for every slot no slug file names.
  */
 const OPERATOR_BACKENDS_DEFAULT = "default.json";
 

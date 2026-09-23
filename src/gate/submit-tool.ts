@@ -104,12 +104,13 @@ function repairUnits(findings: readonly ContractFinding[], repair: "actionable" 
 
 /**
  * The refusal the model reads. Beyond the findings it states what a repeating Builder cannot see
- * about itself: how the finding codes moved since the previous submit (run 68 was told "same
- * issues: no" while one class fell from 50 to 15 and another arrived at 100), whether the files
- * moved at all, whether this exact tree was already refused once (run 35 ended byte-identical to
- * its first submission after 141 attempts) and whether an earlier tree carried fewer findings (w33
- * wandered from 221 to 638). Each is a fact about the Builder's own output, or about a set bound
- * before model work began.
+ * about itself: how the finding codes moved since the previous submit, since a bare "same issues:
+ * no" hides one class falling from 50 to 15 while another arrives at 100; whether the files moved
+ * at all; whether this exact tree was already refused once, which is how a session ends
+ * byte-identical to its first submission after a hundred attempts; and whether an earlier tree
+ * carried fewer findings, since a session can wander from 221 findings to 638 while every
+ * comparison truthfully says the tree changed. Each is a fact about the Builder's own output, or
+ * about a set bound before model work began.
  */
 export function renderRefusal(
   outcome: Refused,
@@ -222,9 +223,9 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           reason: "terminal-refusal",
         });
       }
-      // A model does call submit again while the first call is still running: Sol run 23a1bc made
-      // five such calls inside one in-flight submit. Each would otherwise have captured the
-      // workspace again and recorded its own attempt against bytes already under judgement.
+      // A model does call submit again while the first call is still running, several times over.
+      // Each such call would otherwise capture the workspace again and record its own attempt
+      // against bytes already under judgement.
       if (inFlight) {
         return text(
           "Submit is already running; its verdict returns from that first call. Do not call submit again until it returns.",

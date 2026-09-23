@@ -1,9 +1,9 @@
 /**
- * A physical isolation claim needs two checks (U0.7, audit 2026-07-26 P2): a mechanism probe
- * showing that the OS refused a read which otherwise succeeds, and evidence that the measured
- * session activated the matching permission profile. A generic probe alone shows that the mechanism
- * works on this host; it says nothing about whether this battery's worker used it, and a claim
- * resting on the probe alone would be a claim about the machine rather than about the run.
+ * A physical isolation claim needs two checks: a mechanism probe showing that the OS refused a
+ * read which otherwise succeeds, and evidence that the measured session activated the matching
+ * permission profile. A generic probe alone shows that the mechanism works on this host; it says
+ * nothing about whether this battery's worker used it, and a claim resting on the probe alone would
+ * be a claim about the machine rather than about the run.
  *
  * This module combines the two. The mechanism probe and the probe-only `disclosedIsolation` result
  * stay in isolation-evidence.ts, which owns what a probe alone may claim. Built sessions supply the
@@ -46,7 +46,7 @@ const ISOLATION_FAMILIES = {
   >
 >;
 
-/** The verified transport's own session-profile handshake (U0.7). Structural, like
+/** The verified transport's own session-profile handshake. Structural, like
  *  `IsolationProbeEvidence`, so the isolation vocabulary stays transport-independent and a new
  *  transport supplies the same fields without this file learning about it. */
 export type SessionProfileEvidence = {

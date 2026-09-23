@@ -8,10 +8,10 @@
  * not mutate the parent environment it was handed, since the caller goes on using it.
  *
  * The second is where the Builder's bash cell points HOME and the XDG caches. They go inside the
- * admitted tool tree whether or not the session may reach the network, because on run opus-n2b2 an
- * offline session's first `arduino-cli version` tried to read the protected host home and failed
- * before it could report its version. Being offline changes what a tool can fetch, not where it
- * keeps its files, so both cells say the same thing about HOME.
+ * admitted tool tree whether or not the session may reach the network. An offline cell that leaves
+ * HOME on the host sends the first tool that reads its own config into the protected host home,
+ * where it fails before it can even report its version. Being offline changes what a tool can
+ * fetch, not where it keeps its files, so both cells say the same thing about HOME.
  *
  * The third is the budget notice the cell writes about a long authoring call. It reads the
  * harness's own `agent/config.yaml` rather than a fixed ceiling, because a harness that gives its
@@ -151,8 +151,8 @@ describe("the Builder bash cell's environment", () => {
       // Background jobs die with the call's process group, so the long timeout is for builds.
       expect(text).toContain("a job it starts in the background ends with the call");
       // How to bound a search deterministically is STARTER.md's, beside the refusal that needs it.
-      // This cell owns only what its own lifetime does to one: run 5211e7 lost a 3,000 s reference
-      // search to host load, and a battery is only as hard as the search that set its limits.
+      // This cell owns only what its own lifetime does to one: a search backgrounded to escape the
+      // timeout dies with the call, and a battery is only as hard as the search that set its limits.
       expect(text).toContain("keep a long search in the foreground of one call and raise its timeout");
       expect(text).not.toContain("finishes in minutes");
     }

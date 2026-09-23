@@ -2,9 +2,9 @@
  * Resolve Apple developer tools to their executable paths. On Darwin, `/usr/bin/git` and
  * `/usr/bin/otool` are xcrun shims: each invocation resolves the active developer directory before
  * starting the tool, and that lookup can cost more than the command itself. Measured on macOS 15
- * (2026-08-23, `--version`, 40 runs each), git took 9.7 ms through the shim and 3.1 ms directly, and
+ * over 40 `--version` runs each, git takes 9.7 ms through the shim against 3.1 ms directly, and
  * otool 28.0 ms against 6.2 ms. A campaign starts thousands of git processes, mostly for
- * domain-workspace operations, so the shim accounted for a fifth of the suite's git time and most of
+ * domain-workspace operations, so the shim accounts for a fifth of the suite's git time and most of
  * its otool time.
  *
  * PATH is searched first, which preserves a Homebrew installation, a custom build or a test

@@ -6,9 +6,8 @@
  * below `no-repeated-string-literal`'s four-per-file floor at every one of them — so that rule saw
  * a clean tree while the layout was typed out sixty-eight times. `tree-identity`, which reports a
  * name spelled in more than one file as `identity-without-owner`, is the scan that reads across
- * files instead, and this module is the repair it asks for. Thirty-three modules import these names
- * today. The two directory prefixes joined them on 2026-09-22, when the same scan found
- * `correctness-model/` spelled as a candidate prefix in two modules.
+ * files instead, and this module is the repair it asks for. The two directory prefixes joined them
+ * when the same scan found `correctness-model/` spelled as a candidate prefix in two modules.
  *
  * Three bundle names are deliberately absent, because a module already owns each with its meaning
  * attached: `BUILT_AGENTS_FILE` in `src/solve/built-starter.ts`, `REFERENCE_SOLVE_ENTRY` in

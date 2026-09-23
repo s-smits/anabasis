@@ -7,9 +7,6 @@ import type { ClimbReadout } from "./climb-readout.ts";
 import { FRAME_REVISION } from "./climb-readout-frame.ts";
 
 export type DifficultyDecisionEvidence = {
-  /** v4 carried the older evidence packet: a decision beside five streak counts, which the readout
-   *  replaced with its rows and one allowance. The consumers read `difficulty.decision`, `admitted`
-   *  and `excluded`, and those three keep their names across the change. */
   schema: "difficulty-decision/v5";
   runId: string;
   slug: string;

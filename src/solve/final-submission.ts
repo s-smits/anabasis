@@ -253,10 +253,10 @@ export function createSubmissionAuthority(
 
   const exhausted = (): FinalSubmission | null => {
     if (state.accepted || state.attempts < cfg.maxAttempts) return null;
-    // Keep the last substantive rejection visible. In run 44 the later submit calls replaced
-    // draft-unmaterialized with the bare budget state in 24 final records, so the record said the
-    // agent ran out of attempts and never said what it had been getting wrong. The budget
-    // explanation is added once, carrying that earlier code; later calls keep both.
+    // Keep the last substantive rejection visible. Letting a later submit replace it with the bare
+    // budget state leaves the final record saying the agent ran out of attempts and never saying
+    // what it had been getting wrong. The budget explanation is added once, carrying that earlier
+    // code; later calls keep both.
     if (state.rejection?.code !== "attempts-exhausted") {
       const prior = state.rejection;
       state.rejection = {

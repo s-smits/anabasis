@@ -74,15 +74,14 @@ import {
 } from "./verifier-lifetime.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 
-/** Five minutes. Run sol-stable-20260905T1000Z lost its whole battery when a cold Arduino compile
- *  that had passed the census took 60,457 ms on a loaded host, so the limit has to leave room for a
- *  compile several times slower than the one that was measured, while still bounding a tool that
- *  will not finish at all. */
+/** Five minutes. A cold compile that passed the census can take a minute or more on a loaded host,
+ *  and a battery that times it out loses every case, so the limit leaves room for a tool several
+ *  times slower than the one that was measured while still bounding one that will not finish. */
 export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
 /** No single tool run may exceed this wall, whatever the evaluator asks for. It equals the default
- *  (2026-09-14): of 184,953 recorded verifier tool runs, 99 percent finished within 16 s and 7 ran
- *  past 300 s, so a separate higher ceiling would buy those 7 runs at the cost of a 30-minute census
- *  that has little room for any of them. */
+ *  rather than sitting above it: nearly every recorded tool run finishes within seconds, so a
+ *  separate higher ceiling would buy the rare long run at the cost of a 30-minute census that has
+ *  little room for any of them. */
 export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
 const STDOUT_MAX_BYTES = 1024 * 1024;
@@ -411,7 +410,7 @@ function settledToolResult(
  *  parents are refused, and the final entry is replaced rather than truncated: a symlink or hardlink
  *  an earlier tool left behind must not redirect a controller write to somewhere else. Exclusive
  *  creation also refuses a final entry that was replaced concurrently. Per-scope serial execution
- *  owns tool races; this is not a general same-UID filesystem wall and should not be read as one. */
+ *  owns tool races; this is not a general same-UID filesystem wall. */
 function writeCellInput(cell: string, rel: string, content: string): void {
   if (!lstatSync(cell).isDirectory()) authoringDefect("the evaluate cell is no longer a directory");
   let parent = cell;
@@ -715,12 +714,12 @@ class VerifierHost implements VerifierHostHandle {
         `tool "${request.toolId}" ${moved} since the candidate snapshot; refusing to run an unverified tool`,
       );
     }
-    // One host serves one census or solvability pass, and the checks in such a pass often ask a
-    // tool the same question: design-lightweight-steel-trusses-3fd52f9e-16 ran one truss-nlfea
-    // analysis for four checks of every control and met its census wall. So a cell's first run may
-    // be answered from an earlier executed identical run. A cell program's path names its own cell,
-    // which is why it never matches, and a non-result answered nothing, so the next identical
-    // request runs afresh rather than inheriting the failure.
+    // One host serves one census or solvability pass, and the checks in such a pass often ask a tool
+    // the same question — several checks of one control can each want the same analysis, which is
+    // enough repeated work to meet the census wall. So a cell's first run may be answered from an
+    // earlier executed identical run. A cell program's path names its own cell, so it never matches,
+    // and a non-result answered nothing, so the next identical request runs afresh rather than
+    // inheriting the failure.
     const question = hashJsonBytes({
       command: entry.path,
       liveDigest,

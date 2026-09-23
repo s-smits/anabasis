@@ -132,10 +132,10 @@ export function piSessionPolicy(profile: PiProfile) {
  * End a prompt after the turn in which any tool result carried `terminate`: the controller already
  * holds the answer, whether that is an accepted or finally refused Builder submit, a Built submit
  * or a Judge verdict. The turn's other calls still return, and no further provider request follows.
- * Pi on its own ends only a batch whose every call terminates, so a submit that shared an assistant
- * message with another call used to pay for one more request. On the Claude CLI one query spans the
- * whole prompt and still waits for this turn's tool results, which nothing would deliver, so ending
- * aborts that query too; before, it waited until the process went.
+ * Pi on its own ends only a batch whose every call terminates, so without this a submit sharing an
+ * assistant message with another call pays for one more request. On the Claude CLI one query spans
+ * the whole prompt and still waits for this turn's tool results, which nothing would deliver, so
+ * ending aborts that query too rather than leaving it waiting until the process goes.
  */
 function endOnTerminate(agent: Agent, transport: PiProfile["transport"]): FinishTurn {
   let terminated = false;

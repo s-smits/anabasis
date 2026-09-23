@@ -1,6 +1,6 @@
 /**
  * The controller's numeric policy: one value, one comment, one place. Centralising these was an
- * operator direction (2026-07-29) against repeating numeric literals at their consumers.
+ * operator direction against repeating numeric literals at their consumers.
  *
  * `thresholds.frozen.yaml` is declared policy, and a value here that a manifest row also declares
  * is bound to it by test/frozen-manifest-binding.test.ts. Reading a manifest row is
@@ -21,28 +21,27 @@ export const POLICY = {
     /** Manifest row `climb.band`. The pass-rate window a battery is measured against: below it the
      *  tasks are too hard to read, above it no limit was found. Read through the manifest by
      *  `climbThresholds` (src/run/climb-history.ts), which is the value's one owner; every other
-     *  consumer receives it. The Builder's battery contract and src/run/battery-sizing.ts read this
-     *  constant directly until 2026-09-21, so a manifest override moved the recorded placement
-     *  while the Builder's prompt kept quoting these counts and the sizing gate kept holding the
-     *  code-owned ceiling: three owners of one number, disagreeing only when a run overrode it.
-     *  They now take the band as a parameter and the controller passes `climbThresholds(...).band`;
-     *  the default they declare is this row, for a caller with no manifest. */
+     *  consumer receives it. The Builder's battery contract and src/run/battery-sizing.ts take the
+     *  band as a parameter and the controller passes `climbThresholds(...).band`; the default they
+     *  declare is this row, for a caller with no manifest. Reading this constant directly instead
+     *  gives one number three owners, which agree until a manifest override moves the recorded
+     *  placement while the Builder's prompt still quotes these counts and the sizing gate still
+     *  holds the code-owned ceiling. */
     band: CLIMB_BAND,
     /** Consecutive rounds that read one side of the aim before the campaign stops. A round counts
      *  when it placed off the aim on that side, and a round whose claim was refused counts with it,
-     *  because measuring nothing is the same repetition with nothing to place. Three, because runs
-     *  17f9de and c1d2a7 each reached three and the operator stopped each by hand there, and no
-     *  recorded run reached four; the number matches an observed stopping point rather than being
-     *  derived. Counted in batteries and not in solves, so a six-task probe campaign stops at the
-     *  same point as a 25-task one. Counted by `allowance` in src/run/climb-readout.ts and read by
-     *  src/run/next-move.ts. */
+     *  because measuring nothing is the same repetition with nothing to place. Three is where the
+     *  operator has stopped a campaign by hand, so the number matches an observed stopping point
+     *  rather than being derived. Counted in batteries and not in solves, so a six-task probe
+     *  campaign stops at the same point as a 25-task one. Counted by `allowance` in
+     *  src/run/climb-readout.ts and read by src/run/next-move.ts. */
     offAimStreakRounds: 3,
   },
   loop: {
     /** Consecutive batteries that recorded only typed non-results and created no claim before the
      *  loop closes with an environment terminal. Re-measuring an unavailable provider creates no
-     *  evidence (run 169: 12 identical rounds, 600 solver non-results), and a small allowance still
-     *  covers a transient outage. Read by src/run/full-run-round.ts. */
+     *  evidence, however many rounds it is given, and a small allowance still covers a transient
+     *  outage. Read by src/run/full-run-round.ts. */
     environmentBlockedRounds: 3,
     /** Consecutive build-failed rounds before the loop stops trying. One failed authoring round used
      *  to end the campaign, and the recomputed next decision often permits a retry. Read by
@@ -57,13 +56,13 @@ export const POLICY = {
     stalledMeasureRounds: 3,
     /** Consecutive gate refusals carrying one findings hash before the authoring loop terminates,
      *  counting the current attempt. Eight sits strictly between the deepest observed convergent
-     *  streak (w12 repeated one hash six times, then cleared its gates) and the observed
-     *  non-convergent one (w11 recorded one hash 14 times). Read by src/gate/settlement.ts. */
+     *  streak — one hash repeated six times before the gates cleared — and the observed
+     *  non-convergent one, which repeated a hash fourteen times. Read by src/gate/settlement.ts. */
     stalledFindingsRepeats: 8,
     /** Consecutive byte-identical resubmits of a refused authoring identity before the session ends
-     *  as authoring-stalled. One repeat used to end it outright, and runs w26 and w28 each stopped
-     *  that way with a changed next move already in the transcript; each strike below the ceiling
-     *  now returns a counted steering finding instead. A refused submit whose findings digest
+     *  as authoring-stalled. One repeat used to end it outright, which stopped sessions that had a
+     *  changed next move already in the transcript; each strike below the ceiling now returns a
+     *  counted steering finding instead. A refused submit whose findings digest
      *  repeats on a changed tree is ordinary repair and counts nothing. Read by
      *  src/gate/candidate-memory.ts. */
     noopSubmitStrikes: 3,

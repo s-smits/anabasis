@@ -4,9 +4,9 @@
  * `Claim.create()` reads the evidence first and returns every blocking clause at once, because a
  * repair loop that peels off one clause per round pays for a full rerun per defect. Only when the
  * list comes back empty does the write happen, and the write itself is guarded twice: a private
- * constructor stops callers at compile time, and a module-private token stops them at runtime. The
- * audit that prompted the brand found `{ ok: true, statement }` compiling clean with no `new` and
- * no cast, which is a claim nobody wrote.
+ * constructor stops callers at compile time, and a module-private token stops them at runtime.
+ * Without the brand, `{ ok: true, statement }` compiles clean with no `new` and no cast, which is
+ * a claim nobody wrote.
  *
  * `claim-evidence.ts` owns the vocabulary these clauses read. This module owns the decisions.
  */
@@ -65,8 +65,8 @@ export class NonClaimable {
 export class Claim {
   readonly ok = true as const;
   readonly statement: ClaimStatement;
-  // A class without a private member can be satisfied by an object literal: the audit's
-  // `{ ok: true, statement }` compiled without ever calling `Claim.create()`. A private brand makes
+  // A class without a private member can be satisfied by an object literal, so `{ ok: true,
+  // statement }` compiles as a Claim without ever calling `Claim.create()`. A private brand makes
   // TypeScript reject that shortcut, so a caller has to pass through evidence validation to get
   // one of these at all.
   declare private readonly brand: typeof WRITE;
@@ -332,16 +332,16 @@ function conditionIdentityClauses(
 ): ClaimClause[] {
   const clauses: ClaimClause[] = [];
   // An `unattested` row leaves `modelIdentity` unverified in the statement without refusing the
-  // claim: both Astra claims of 2026-09-08 were refused on a route that reports no served model at
-  // all, which is a fact about the route rather than about the scored cases.
+  // claim. A route that reports no served model at all says something about the route rather than
+  // about the scored cases, so refusing the claim over it would discard measured work.
   //
   // Absence and contradiction refuse alike but are named apart, because one reader downstream
   // treats them differently. `climb-battery-admission.ts` admits a battery refused only for an
   // unproven identity into the difficulty population: the environment failed to record who solved
   // the tasks, and the scores still describe these tasks. A contradicted census says something
   // else — another model or transport produced them — so that battery measured a different
-  // condition and belongs to no product's climb. One clause name could not carry both readings,
-  // and until 2026-09-20 the climb took a contradicted battery as its own.
+  // condition and belongs to no product's climb. One clause name cannot carry both readings
+  // without the climb taking a contradicted battery as its own.
   const supportedTransport = ["claude/", "codex/"].some((prefix) => evidence.backendPin.startsWith(prefix));
   if (supportedTransport) {
     clauses.push(
@@ -424,11 +424,11 @@ function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimCl
 }
 
 /** Every non-exception check must have a reject control that failed on exactly this check, because
- *  a check that ran has demonstrated execution and not discrimination: runs 20 and 21 recorded
- *  complete engine-adapter executions while no control had ever made that adapter reject an
- *  artifact. A reject that fails only here establishes that the check told an invalid artifact
- *  apart; what it does not establish is which primitive inside the check produced the verdict,
- *  since source and import validation are authoring checks rather than execution evidence.
+ *  a check that ran has demonstrated execution and not discrimination: an adapter can execute
+ *  completely on every case of a battery while no control has ever made it reject an artifact. A
+ *  reject that fails only here establishes that the check told an invalid artifact apart; what it
+ *  does not establish is which primitive inside the check produced the verdict, since source and
+ *  import validation are authoring checks rather than execution evidence.
  *
  *  External checks are held to the same evidence under the same clause id, so older claims keep
  *  their vocabulary. Whether an external check's tool actually ran belongs elsewhere: the
@@ -455,11 +455,10 @@ function declaredGroundingClauses(
   return clauses;
 }
 
-/** Per-case coverage, from the handover of 2026-07-11. Run-level evidence used to let one case's
- *  or one control's tool execution satisfy the requirement for every case that used the same
- *  check, which means a battery could score 25 cases on one recorded tool run. Each applicable
- *  external check now needs its own execution record for the specific verified case being scored;
- *  another case's run does not cover it. */
+/** Per-case coverage. Run-level evidence would let one case's — or one control's — tool execution
+ *  satisfy the requirement for every case that used the same check, so a whole battery could be
+ *  scored on a single recorded tool run. Each applicable external check needs its own execution
+ *  record for the specific verified case being scored; another case's run does not cover it. */
 function caseGroundingClauses(
   execution: GroundingEvidence["execution"],
   externalByCheck: Map<string, string[]>,
@@ -508,11 +507,11 @@ function executionResolutionClauses(execution: GroundingEvidence["execution"]): 
   ];
 }
 
-/** Detects authored checks that never ran although verified cases applied them. In hw1 all 16 cases
- *  passed without the answer-key comparison ever executing, and the claim was ready: a check that
- *  is declared, applicable and silent looks exactly like a check that agreed. Only a runtime count
- *  separates the two: a declaration states that a task means to exercise a check and says nothing
- *  about whether the verifier ever reached it.
+/** Detects authored checks that never ran although verified cases applied them. A whole battery can
+ *  pass without its answer-key comparison ever executing, and the claim reads as ready: a check
+ *  that is declared, applicable and silent looks exactly like a check that agreed. Only a runtime
+ *  count separates the two, because a declaration states that a task means to exercise a check and
+ *  says nothing about whether the verifier ever reached it.
  *
  *  This function covers intrinsic and authored checks. External checks have their own grounding
  *  clauses, exception groundings have no executable predicate to run, and a case with no accepted
@@ -584,10 +583,10 @@ function nonResultRatioDetail(reason: string | null, nonResultTotal: number, att
     : `${counted}; too many cases could not be measured to support a claim, so rerun when the environment is healthy`;
 }
 
-/** Requires enough operationally valid evidence for a claim. Reporting only the two measured cases
- *  from a battery with 38 crashes would conceal how little was actually measured, and counting
- *  those crashes as failures would be wrong in the other direction (plan-revision finding 6). So
- *  non-results are neither hidden nor scored, and too many of them refuse the claim outright. */
+/** Requires enough operationally valid evidence for a claim. Reporting the two measured cases of a
+ *  battery that crashed the other thirty-eight would conceal how little was actually measured, and
+ *  counting those crashes as failures would be wrong in the other direction. So non-results are
+ *  neither hidden nor scored, and too many of them refuse the claim outright. */
 function denominatorClauses(runStatus: RunStatusEvidence, n: number): ClaimClause[] {
   const clauses: ClaimClause[] = [];
   if (n !== runStatus.verified) {

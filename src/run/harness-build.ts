@@ -263,19 +263,18 @@ export async function buildHarness(
   }
 }
 
-/** A repair review follows a clear check, and the header has to say so: truss run cc4709 and runs
- *  -44 and -47 read its findings as a condition on the check and returned to authoring instead of
- *  submitting (2026-09-16). */
+/** A repair review follows a clear check, and the header has to say so. Left unsaid, a Builder
+ *  reads the review's findings as a condition on the check it just cleared and returns to authoring
+ *  instead of submitting. */
 const REVIEW_HEADER = {
   repair: "Epoch review of the candidate your clear correctness_check just previewed.",
   backstop: "Epoch review of the live workspace.",
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
- *  crosses only with a probe behind it. Five runs from 2026-09-19 to 22 showed 33 advisory rows in
- *  tool results, repeats of one another and promised "for the next round", which no reader carried
- *  and none of which changed what the Builder did. The post-battery review weighs the product
- *  again. */
+ *  crosses only with a probe behind it, because advisory rows arrive in bulk, repeat one another
+ *  and promise themselves "for the next round", and no reader carries them anywhere that changes
+ *  what the Builder does. The post-battery review weighs the product again. */
 export function authoringReviewText(
   trigger: keyof typeof REVIEW_HEADER,
   status: string,
@@ -302,10 +301,8 @@ export function authoringReviewText(
  *  path does this inside its own publish step; this one used to write the review file and stop, so
  *  a dispute the reviewer was invited to make reached nothing that reads it, and the next build
  *  was still told to rebuild the agent around an issue that a review of the tree had called an
- *  evaluation defect. Campaign -10 disputed two of the three issues its
- *  `rebuild-advice-latest.json` still carries as `"dispute": null`. The register is re-read here
- *  rather than reused from the turn above, because a measured battery may have published between
- *  the two moments. */
+ *  evaluation defect. The register is re-read here rather than reused from the turn above, because
+ *  a measured battery may have published between the two moments. */
 export function recordAuthoringDisputes(
   repoRoot: string,
   slug: string,

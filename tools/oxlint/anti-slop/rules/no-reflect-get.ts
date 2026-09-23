@@ -39,9 +39,9 @@ function forwardsGetTrap(node: ESTree.CallExpression): boolean {
  *
  * A Proxy `get` trap forwarding its own three parameters is admitted. It must pass the receiver
  * so that getters see the proxy as `this`, and ordinary property access has no way to pass one.
- * Until 2026-09-22 the one such trap, in `src/solve/task-access-trace.ts`, carried a ledger row
- * that said so. The first form of this admission took any three-argument call, which let
- * `Reflect.get(source, "value", source)` anywhere through, so `forwardsGetTrap` below now requires
+ * The repository's one such trap is in `src/solve/task-access-trace.ts`, which carried a ledger row
+ * until this admission replaced it. The first form of it took any three-argument call, which let
+ * `Reflect.get(source, "value", source)` anywhere through, so `forwardsGetTrap` below requires
  * the call to sit in a plain `get` property of an object literal and to hand on that function's
  * own three parameters, in order.
  *

@@ -155,8 +155,8 @@ export async function runFullRun(
   const safeguardContext = createSafeguardContext(
     safeguardLogDir(campaignDir(repoRoot, launch.project.id), launch.runId),
   );
-  // On 2026-08-30/31, 171,290 entries in the per-user temp root stalled every fresh child spawn in
-  // getdirentries64. Remove this product's own stale scratch first, in a bounded sweep, then let
+  // A per-user temp root that has reached six figures of entries stalls every fresh child spawn
+  // in getdirentries64. Remove this product's own stale scratch first, in a bounded sweep, then let
   // `safeguardTempRootPressure` report whatever pressure remains. The run proceeds either way,
   // because the sweep is a mitigation and not a precondition.
   const swept = cleanStaleTempRootScratch();
@@ -227,8 +227,8 @@ function ensureDcgForBuilder(args: FullRunArgs, deps: FullRunDeps, builder: Camp
 }
 
 /** An unset --max-iterations reads as Infinity, so there is no default round cap (operator
- *  decision 2026-07-29, reaffirmed 2026-08-19). Budgets and typed operational stops still apply,
- *  and this cap fires only when the operator supplies one. */
+ *  decision). Budgets and typed operational stops still apply, and this cap fires only when the
+ *  operator supplies one. */
 export function roundCapTerminal(round: number, roundLimit: number): string | null {
   return round >= roundLimit
     ? `operator-interrupted: round cap ${roundLimit} reached after completed round ${round} (--max-iterations sets it)`
@@ -364,11 +364,11 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
     providerBudget,
   });
   // The verifier lifetime resolves the selected product, and the selector reads it again inside
-  // round one. Either read can refuse a damaged or unreadable retained version — 105 of the 109
-  // retained on one machine, with their product bytes intact. Both refusals used to land before
-  // the opening existed, and `closeControllerRun` prepares a terminal only once it does, so the
-  // campaign died with exit 2 and no recorded reason; a clause present only in stdout is not
-  // durable evidence. `openIfUnopened` gives the close path an opening to record against. It binds
+  // round one. Either read can refuse a damaged or unreadable retained version, including one
+  // whose product bytes are intact. Both refusals used to land before the opening existed, and
+  // `closeControllerRun` prepares a terminal only once it does, so the campaign died with exit 2
+  // and no recorded reason; a clause present only in stdout is not durable evidence.
+  // `openIfUnopened` gives the close path an opening to record against. It binds
   // the epoch on the base kickoff, which is right precisely here: a round that decided nothing has
   // no climb kickoff to preserve, and a round that reached its own decision has already opened
   // on it.

@@ -237,10 +237,10 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         if (params.literal === true) args.push("--fixed-strings");
         if ((params.context ?? 0) > 0) args.push("--context", String(params.context));
         if (params.glob !== undefined && params.glob !== "") args.push("--glob", params.glob);
-        // `--regexp` binds the pattern as a value: a positional `-o …` was read as a flag (run 1aa6e6).
+        // `--regexp` binds the pattern as a value: a positional pattern beginning `-o` reads as a flag.
         args.push("--regexp", params.pattern, target);
         let outcome = await isolatedRead("grep", "rg", args, target, true);
-        // A pattern rg cannot parse is searched as literal text, and says so (run fa03b7: `exit(12`).
+        // A pattern rg cannot parse — an unbalanced `exit(12`, say — is searched as literal text.
         const asText = params.literal !== true && outcome.stderr.includes("regex parse error");
         if (asText) outcome = await isolatedRead("grep", "rg", ["--fixed-strings", ...args], target, true);
         throwIfTraversalError("grep", outcome);

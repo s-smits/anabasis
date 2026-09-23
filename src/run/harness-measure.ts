@@ -1,5 +1,5 @@
 /**
- * Measures an adopted harness in the Build → Measure → Analyse flow (audit 2026-07-26).
+ * Measures an adopted harness in the Build → Measure → Analyse flow.
  *
  * The host verifier owns correctness. The Main Judge runs during the battery, on the session
  * passed through the evaluation options below, and records calibrated disagreement for later
@@ -15,9 +15,9 @@
  * before the probe cannot say afterwards what it ran under. `driveBattery` owns fingerprinting,
  * evaluation and case rows.
  *
- * One battery per iteration, under the iteration's own run id. Until 2026-09-04 the same harness
- * ran twice, with and without adviser tools, so a paired repair contest could read a delta; the
- * repair experiment is gone and the second battery went with it.
+ * One battery per iteration, under the iteration's own run id. The second battery this once ran —
+ * the same harness with and without adviser tools, so a paired repair contest could read a delta —
+ * went when the repair experiment did.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
@@ -339,12 +339,11 @@ async function measureResolvedBattery(
   } catch (error) {
     if (!(error instanceof BatteryVerificationNonResult)) throw error;
   }
-  // One sentence, two readers. This is the round's verdict on its own battery, and it used to
-  // reach stderr alone: the observation stream a live reader watches held no row for it, so a run
-  // whose claim was refused looked from the stream exactly like one whose claim was written. Run
-  // c1d2a7-i04 is the case — `runtime-model-identity-unproven` refused its claim, which held its
-  // candidate and left the next round sizing its battery from a stale landing. A clause present
-  // only in stdout is not durable evidence.
+  // One sentence, two readers. This is the round's verdict on its own battery, and reaching stderr
+  // alone leaves the observation stream a live reader watches with no row for it, so a run whose
+  // claim was refused looks from the stream exactly like one whose claim was written — while the
+  // refusal has in fact held the candidate and left the next round sizing its battery from a stale
+  // landing. A clause present only in stdout is not durable evidence.
   const settled =
     claim === null
       ? {

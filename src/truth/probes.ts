@@ -203,7 +203,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         evidence: hostEvidence,
         rejects: (checkId) => rejectsBlockedBy(execution.controlReceipts, checkId),
       });
-      // A throw skips the check's later tool calls; 077e56 read four unlaunched rows beside one throw.
+      // A throw skips the check's later tool calls, so its declared tools read as never launched.
       if (!execution.controlReceipts.some((receipt) => receipt.nonResultKind === "verifier-throw")) {
         findings = withGroundingFindings(
           findings,

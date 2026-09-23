@@ -12,13 +12,13 @@
 
 /** Completed turns with no submit before the continuation asks for authoring. A fixed count rather
  *  than a share of a ceiling, because a round has no turn ceiling at all unless the operator sets
- *  one; recorded sessions used zero to seven turns before submitting (review of 338970480,
- *  2026-09-14), so eight asks the question after the ordinary range and not inside it. */
+ *  one; an ordinary session uses zero to seven turns before submitting, so eight asks the question
+ *  after that range rather than inside it. */
 const NO_SUBMIT_REMINDER_TURNS = 8;
 
 /** Time since the round opened with no submit before the Builder is asked to author, whichever of
  *  this and the turn count comes first. A turn is not a unit of time: a Claude session runs as one
- *  assistant turn, and one recorded truss Builder turn ran 6 h 27 m, so eight turns can be half an
+ *  assistant turn, and a single Builder turn can run for six hours, so eight turns can be half an
  *  hour or most of a day, and a session that spent a night reading crosses no turn count at all.
  *  Two hours is exactly the Builder's own bash allowance (`BASH_TIMEOUT_MAX_MS`), so the nudge
  *  cannot fire inside one permitted toolchain install. The same bound drives the one notice sent
@@ -97,9 +97,9 @@ export function continuePrompt(goal: GoalState): string {
 }
 
 /** Public runtime fact for the next turn: the owned files are still as the session found them.
- *  The sixteen-call interrupt that once enforced this ended on 2026-09-14 -- it never fired in 414
- *  recorded sessions, and it would have cut a session installing its toolchain -- so the fact
- *  stays as one line the model weighs against its own plan, with nothing counting it. */
+ *  An interrupt at sixteen calls once enforced this and was removed: it never fired, and it would
+ *  have cut a session installing its toolchain. So the fact stays as one line the model weighs
+ *  against its own plan, with nothing counting it. */
 export function unchangedAuthoringNote(owned: "unchanged" | "changed", paths: readonly string[]): string {
   return owned === "unchanged"
     ? `Note: nothing under ${paths.join(" or ")} has changed since this round opened; keep the environment work, and put the candidate in those files.`
@@ -108,8 +108,8 @@ export function unchangedAuthoringNote(owned: "unchanged" | "changed", paths: re
 
 /** Public runtime fact for the next turn: which of the session's own tool calls just failed. The
  *  backend already returned each error in its own tool result, so this adds no information the
- *  session never had; what it saves is re-deriving the tally from a long transcript, which run 66's
- *  session did not do -- it repeated an identical prompt for 32 turns with nothing naming the
+ *  session never had; what it saves is re-deriving the tally from a long transcript, which a stuck
+ *  session does not do -- it repeats an identical prompt turn after turn with nothing naming the
  *  failures. Only the top three names, so it stays one line. */
 export function toolFailureNote(
   calls: { total: number; failed: number; failedByName: Record<string, number> } | undefined,

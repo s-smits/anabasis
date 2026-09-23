@@ -1,11 +1,10 @@
 /**
  * Shared primitive shape checks for values received without a known type.
  *
- * JSON, host payloads and generated-module returns all have to be type-checked before use, and
- * the readers that did it themselves repeated roughly six hundred checks across 119 files, which
- * made a missing check impossible to tell apart from a deliberate one. These predicates give every
- * caller one way to say which primitive type it needs, each keeping the narrowing its original
- * spelling had.
+ * JSON, host payloads and generated-module returns all have to be type-checked before use. Left to
+ * each reader that is hundreds of hand-written checks across the tree, and a missing one is then
+ * impossible to tell apart from a deliberate one. These predicates give every caller one way to
+ * say which primitive type it needs.
  *
  * They are shape tests and not a parser. `isString(value)` says the value is a string; it says
  * nothing about whether that string is a task id, a slug or a digest, so a reader that must refuse
@@ -15,9 +14,8 @@
  * `no-runtime-typeof` and `no-unsafe-dictionary-type` report a `typeof` test, an open dictionary
  * and a callable everywhere else and admit them here in one written shape each, because here is
  * where those rules send every other file. A second copy of `isString` somewhere else is still
- * reported, and so is any other `typeof` in this file. Until 2026-09-22 the admission was a
- * file-scope `off` in `.oxlintrc.json`, which admitted every line of the file rather than the two
- * shapes it owns.
+ * reported, and so is any other `typeof` in this file — the admission names the two shapes rather
+ * than turning the rule off for the file, which would admit every line of it.
  */
 
 /**
@@ -35,14 +33,13 @@
  *
  * Arrays are readonly because a parsed value whose schema is not yet known is evidence a reader
  * inspects rather than a buffer it builds, and a reader that needs another array builds a new one.
- * The keyword first went in without a type error only because `Array.isArray` narrowed every JSON
- * array to `any`; once the overload below narrowed it to this type, seven sites turned out to be
- * writing to one or handing it on as mutable. It also makes this type structurally identical to
- * the `JsonValue` that `@earendil-works/pi-ai` exports, so a value crosses the pi boundary in
- * either direction under one name. Importing pi's type into the pi-facing code instead would have
- * left two names for one shape inside the same expression, since `asRecord` narrows to this one,
- * and re-exporting it from here would have put a provider SDK underneath the verifier, claim and
- * gate trees, where a version bump is not welcome.
+ * Writing to one compiles until the `Array.isArray` overload below is in place, since the library
+ * signature hands every element on as `any`. It also makes this type structurally identical to the
+ * `JsonValue` that `@earendil-works/pi-ai` exports, so a value crosses the pi boundary in either
+ * direction under one name. Importing pi's type into the pi-facing code instead leaves two names
+ * for one shape inside the same expression, since `asRecord` narrows to this one, and re-exporting
+ * it from here would put a provider SDK underneath the verifier, claim and gate trees, where a
+ * version bump is not welcome.
  */
 export type JsonValue =
   | string
@@ -78,9 +75,9 @@ export type JsonObject = { [key: string]: JsonValue };
  *
  * It is spelled `Record` on purpose: TypeScript lets an interface such as `TSchema` be asserted to
  * `Record<string, unknown>` in one step and refuses the same assertion to the literal
- * `{ [key: string]: unknown }`. It was called `ModuleNamespace` until 2026-09-22, when the TypeBox
- * view in draft-tool.ts and two node views in the lint plugins each turned out to have declared
- * their own copy of it.
+ * `{ [key: string]: unknown }`. Named for the module namespace alone it reads as belonging to one
+ * caller, and the TypeBox view in draft-tool.ts and the node views in the lint plugins each
+ * declare a copy of their own instead.
  */
 export type OpenRecord = Record<string, unknown>;
 
@@ -91,8 +88,8 @@ export type OpenRecord = Record<string, unknown>;
  * this file inventing a contract it cannot check. The `never[]` parameters and the `void` result
  * say the same thing from both ends: a caller narrowing to this type has to state the signature it
  * expects before it passes an argument or reads a result, rather than being handed one it may call
- * wrongly. Every function is assignable to it. It returned `unknown` until 2026-09-22, which let a
- * caller read the result without stating anything at all.
+ * wrongly. Every function is assignable to it. An `unknown` result would let a caller read what
+ * came back without stating anything at all.
  */
 export type Callable = (...args: never[]) => void;
 
@@ -117,15 +114,12 @@ export function isBoolean(value: unknown): value is boolean {
  * `isRecord`, which also excludes arrays.
  *
  * The null test belongs here rather than at each call site because `typeof null` is `"object"`.
- * This predicate was named `isObjectTypeof` until 2026-09-20, returned `value is object | null`,
- * and its comment asked every caller to add `value !== null` itself. Seventeen of its twenty-nine
- * callers did, in four spellings — before it, after it, and either way round inside a negation —
- * and twelve did not. One of the twelve was live: a null content part in
- * generated-tool-worker-child.ts passed `!isObjectTypeof(part)`, reached `part.type` and threw a
- * TypeError where its function declares "generated tool result must contain text content", which
- * sent the controller after the wrong owner. The other eleven survive on a guard further up their
- * own caller or on a catch that swallows the TypeError, which is a property of those callers and
- * not of this predicate. A check every caller has to repair is the check that is wrong.
+ * A predicate returning `value is object | null` and asking every caller to add `value !== null`
+ * gets that back in several spellings — before the call, after it, either way round inside a
+ * negation — and from some callers not at all. A miss is live: a null content part passing
+ * `!isObject(part)` in generated-tool-worker-child.ts reaches `part.type` and throws a TypeError
+ * from a function that declares "generated tool result must contain text content", which sends the
+ * controller after the wrong owner. A check every caller has to repair is the check that is wrong.
  */
 export function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null;
@@ -136,12 +130,11 @@ export function isObject(value: unknown): value is object {
  * object; it does not validate nested values or required fields, and it does not recursively
  * validate an arbitrary host value.
  *
- * Sharing it is what stops a caller admitting an array by accident, which is the failure it was
- * extracted for. In falsifier-claude-001 the brief specialist returned valid JSON of an unexpected
- * shape, `validateBrief` read `.decisions.length` on undefined, and the resulting TypeError became
- * a runtime non-result — so a product finding was misclassified as an environment failure. A shape
- * check lets the caller report an invalid artifact to the repair loop instead of crashing. It is
- * only the first step: required fields still need validating.
+ * Sharing it is what stops a caller admitting an array by accident. Without the check, a model
+ * returning valid JSON of an unexpected shape has `validateBrief` read `.decisions.length` on
+ * undefined, and the TypeError becomes a runtime non-result — a product finding misclassified as
+ * an environment failure. A shape check lets the caller report an invalid artifact to the repair
+ * loop instead of crashing. It is only the first step: required fields still need validating.
  */
 export function isRecord(value: unknown): value is JsonObject {
   return isObject(value) && !Array.isArray(value);
@@ -151,10 +144,9 @@ export function isRecord(value: unknown): value is JsonObject {
  * The value as a JSON object, or `null` when it is anything else.
  *
  * Returning the narrowed object rather than a boolean is what makes a nested read readable:
- * `asRecord(asRecord(v)?.usage)`. The operation once existed as four transport copies and as
- * `record` in verifier-port.ts, two of which carried a SAFETY cast they did not need, because the
- * shared predicate already narrows the value. Returning null for every other shape keeps an
- * optional nested read explicit without repeating the check at each level.
+ * `asRecord(asRecord(v)?.usage)`. A caller writing its own copy tends to reach for a SAFETY cast
+ * it does not need, since this predicate already narrows the value. Returning null for every other
+ * shape keeps an optional nested read explicit without repeating the check at each level.
  */
 export function asRecord(value: unknown): JsonObject | null {
   return isRecord(value) ? value : null;
@@ -184,10 +176,9 @@ export function jsonKind(
  * `function`, or `bigint or symbol` for the two primitives JSON has no name for. Branching and
  * narrowing belong to the predicates above; this one only produces a word for a message.
  *
- * It returned `typeof value` until 2026-09-22, which names both null and an array "object". Three
- * of its four callers in `src` repaired that where they stood, each with its own null-and-array
- * ternary in front of the call, and the fourth put `jsonKind` in front. Now the name comes out
- * right the first time and no caller has to correct it.
+ * Returning `typeof value` instead names both null and an array "object", which every caller then
+ * corrects in front of the call with a ternary of its own. The name comes out right here so that
+ * none of them has to.
  */
 export function typeName(value: unknown): string {
   if (value === undefined) return "undefined";

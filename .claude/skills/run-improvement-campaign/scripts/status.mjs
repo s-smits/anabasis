@@ -11,10 +11,9 @@
  * whenever both verdict fields are null, without requiring the typed cause the validated outcome
  * reader requires, so read a capability rate from that reader and not from here. A battery whose
  * run has no terminal and a live controller lock is printed with ", partial" beside its row count,
- * because the remaining cases have not been written yet. What this view is for is the question a
- * fleet of campaigns raises and no single file answers — which run opened on which commit, which
- * one a live controller still holds, and which one has a battery open — and answering it by
- * grepping logs is what it replaces.
+ * because the remaining cases have not been written yet. It answers the question a fleet of
+ * campaigns raises and no single file does: which run opened on which commit, which one a live
+ * controller still holds, and which one has a battery open.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
@@ -276,8 +275,9 @@ export function newestWriteMs(dir, depth = 3, limit = 200) {
 
 /** Battery run directories this run owns, under the retained version and the historical
  *  `domains/<slug>/runs`, each proved by its `backends.json` to carry the opening's source and
- *  slots. Run truss-opus-20260915T160303030Z-298967 wrote its cases under a retained version for
- *  two hours while this read only `domains/<slug>/runs`, and the watcher stopped it as stalled. */
+ *  slots. Both roots are read because a run whose cases land under a retained version looks
+ *  entirely idle to a reader watching only `domains/<slug>/runs`, and the watcher then stops a
+ *  working battery as stalled. */
 function batteryRunDirs(campaignDir, runId) {
   const opening = readJsonFileOrNull(join(campaignDir, "controller", runId, OPENING));
   if (!isString(opening?.source?.commit) || opening.source.dirty !== false) return [];
@@ -311,8 +311,8 @@ function batteryRunDirs(campaignDir, runId) {
   return dirs;
 }
 
-/** Sol15 reached real Built cases while the campaign ledger still had no rows. These writes
- * indicate session activity only; they never supply case outcomes or a capability denominator. */
+/** A battery can reach real Built cases while the campaign ledger still holds no rows, so these
+ * writes indicate session activity only; they never supply case outcomes or a denominator. */
 function builtSessionWriteMs(campaignDir, runId) {
   let newest = null;
   for (const dir of batteryRunDirs(campaignDir, runId)) {
@@ -346,9 +346,8 @@ function bundleFiles(dir, prefix = "") {
 
 /** What the authoring workspace's Git log records. The Builder never commits; the host commits at
  *  tool boundaries, so the log counts rehearsals (`correctness_check`), submit attempts including
- *  refused ones, and repair rounds. Across 210 recorded epoch workspaces the 104 that reached a
- *  submit hold a median of 6 commits, 3 rehearsals, 1 submit and 0 repairs; the worst spent 89
- *  commits on 24 rehearsals, 12 submits and 53 repair rounds without settling. */
+ *  refused ones, and repair rounds. A settling epoch holds a handful of each, so a count in the
+ *  dozens is a session that kept rehearsing and repairing without ever settling. */
 function authoringCommits(campaignDir, epochKey) {
   const log = epochKey === null ? null : join(campaignDir, epochKey, "workspace", ".git", "logs", "HEAD");
   if (log === null || !existsSync(log)) return { commits: 0, rehearsals: 0, submits: 0, repairs: 0 };
@@ -406,9 +405,9 @@ export function harnessMetrics(campaignDir, runId, epochKey = null) {
 
 /** Cases the battery opened and has not settled, with the oldest one's age and the wall that
  *  bounds it. A Built solve writes nothing between its start and its verdict, so an open case is
- *  the only recorded sign the battery is working: on 2026-09-18 run c1d2a7 held three cases open
- *  for 36 minutes while every write-mtime sample stayed frozen at the moment they started. Past
- *  `solve_minutes` the silence is no longer honest and the stall row is right to fire.
+ *  the only recorded sign the battery is working — every write-mtime sample stays frozen at the
+ *  moment the cases started, however long they run. Past `solve_minutes` the silence is no longer
+ *  honest and the stall row is right to fire.
  *
  *  `settled` is keyed by battery run id, not flattened across the run: task ids repeat from one
  *  battery to the next, so a flat set let a task settled in battery 1 hide the same task still open
@@ -459,8 +458,7 @@ function slotLabel(slot) {
 
 /** The controller's own climb decisions for this run, in iteration order: the `ClimbAction` it
  *  chose and how the band placed the battery it settled. A score alone cannot show this half of
- *  the climb, and three too-easy batteries in a row say the ladder moved and the demand did not,
- *  which is the failure AGENTS.md records for campaign 3fd52f9e-28.
+ *  the climb, and three too-easy batteries in a row say the ladder moved while the demand did not.
  *
  *  `difficulty-decisions/` names each file `<iteration>-<evidence digest>`, so it holds one record
  *  per decision rather than one per battery. A `--run <runId>` continuation restarts the round
@@ -484,8 +482,8 @@ export function difficultyDecisions(campaignDir, runId) {
       battery: record.runId,
       action: isString(decision.action) ? decision.action : "?",
       placement: placement === null ? null : `${placement.passes}/${placement.n} ${placement.zone}`,
-      // The zone beside the sentence, because the alarm counts too-easy batteries and must not key
-      // on the action word: `climb` is `placed` on the open stack and was `widen` before that.
+      // The zone beside the sentence, because the alarm counts too-easy batteries and the action
+      // word has been renamed more than once while the zone has not.
       zone: placement?.zone ?? null,
     });
   }

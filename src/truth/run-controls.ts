@@ -50,11 +50,11 @@ interface RunControlsOptions {
   stopped?: () => boolean;
 }
 
-/** Controls evaluated side by side, each in its own scope and cells. The compiler-bound censuses
- *  of 2026-09-13 spent 12 minutes running 69 controls one after another, which is most of a census
- *  wall spent waiting. Four lanes rather than more, because the heavy tools already use several
- *  cores each. Receipts and findings still settle in corpus order, so the lane count changes how
- *  long the census takes and nothing about what it records. */
+/** Controls evaluated side by side, each in its own scope and cells. A compiler-bound census run
+ *  one control after another spends most of the census wall waiting. Four lanes rather than more,
+ *  because the heavy tools already use several cores each. Receipts and findings still settle in
+ *  corpus order, so the lane count changes how long the census takes and nothing about what it
+ *  records. */
 export const CENSUS_LANES = 4;
 
 // --- The control session ---------------------------------------------------------------------
@@ -87,9 +87,9 @@ type Control = ControlCorpus["accept"][number] | ControlCorpus["reject"][number]
 // --- Finding constructors --------------------------------------------------------------------
 
 /** Rows that read alike apart from the control, collected in corpus order and written once each,
- *  naming every control they cover. Without the grouping the author reads the same sentence many
- *  times over: the censuses of 2026-09-12 repeated "stdin is not a string leaf" for 344 controls.
- *  `notes` keep each control's own text for the evidence, and `write` composes the one finding. */
+ *  naming every control they cover. Without the grouping the author reads the same sentence once
+ *  per control — hundreds of repetitions of "stdin is not a string leaf" for one defect. `notes`
+ *  keep each control's own text for the evidence, and `write` composes the one finding. */
 type ControlGroup = {
   ids: string[];
   notes: string[];
@@ -187,8 +187,8 @@ async function evaluateControl(
     });
     // One request shape for controls and measured cases alike, so the correctness model cannot
     // tell a calibration example from a real case, and every task-relative check executes against
-    // actual task facts (runs 76/77). The model receives a clone, because the canonical artifact
-    // was byte-captured at `openSubject` above and generated code never holds the original.
+    // actual task facts. The model receives a clone, because the canonical artifact was
+    // byte-captured at `openSubject` above and generated code never holds the original.
     result = await run.evaluate(
       trustedStructuredClone({ publicTask: evaluateTask, artifact, hidden }),
       scope === undefined ? undefined : { tools: scope.port },
@@ -218,10 +218,10 @@ async function evaluateControl(
   }
 }
 
-/** The host's own row is read first, whether the evaluate returned or threw. Sol run 23a1bc lost a
- *  harness with 61 of 62 controls settled when one `arduino-compile` run hit its time limit and the
- *  evaluation threw: the failure was attributed to the author while the host's timeout row went
- *  unread. The one exception is a throw the generated check owns, such as its own fire-and-forget
+/** The host's own row is read first, whether the evaluate returned or threw. When a tool run hits
+ *  its time limit the evaluation throws, and reading the throw first attributes to the author a
+ *  failure the host's own timeout row already owns — which costs the whole harness over one
+ *  control. The one exception is a throw the generated check owns, such as its own fire-and-forget
  *  run; the host drains that run and records it too, but the generated-code failure keeps its
  *  attribution. A host non-result is this one control's receipt and not the corpus's, so the other
  *  controls still run and this control's DISCRIMINATION_PROBE_NO_VERDICT row keeps the claim
@@ -270,8 +270,8 @@ function addToGroup(
  *  evidence, so the note names only the examples that threw and where to reproduce them. A
  *  verifier-contract refusal also carries the public tool-request violation — a leaf, binding or
  *  argument-shape diagnostic the host composed about the check's own request, never verifier
- *  output — together with the code's remedy. Run w11 spent 36 iterations on the payload-free label
- *  before this note existed, which is what the extra sentence buys. */
+ *  output — together with the code's remedy. Without that sentence the author has only the label,
+ *  and spends iteration after iteration guessing which part of the request the host refused. */
 function addThrown(
   run: ControlSession,
   controlId: string,
@@ -339,9 +339,9 @@ function admitObservation(
     }));
   }
   // A control the host could not run to a verdict witnesses no cell, so the claim stays open.
-  // Before 2026-09-15 only the executed isolation floor noticed, which let a battery whose rejects
-  // had all met a vanished tool start solving. The non-result kind is host structure and may cross
-  // to the author; tool output may not.
+  // Without this finding only the executed isolation floor notices, which lets a battery whose
+  // rejects all met a vanished tool start solving. The non-result kind is host structure and may
+  // cross to the author; tool output may not.
   if ("hostNonResult" in evaluation) {
     addToGroup(run, "no-verdict", control.id, `"${control.id}" (${evaluation.hostNonResult})`, (ids, notes) =>
       identityComposedFinding(
@@ -392,8 +392,8 @@ function admitObservation(
 // --- The accept and reject loops -------------------------------------------------------------
 
 /** How a blocking check's tool runs ended in the verifier cell: tool id and exit, never output. A
- *  tool that fails only under the verifier wall otherwise reads as a wrong check, and truss run
- *  406cca spent 38 calls discovering that Frame3DD could not write its temporary file there. */
+ *  tool that fails only under the verifier wall — because it cannot write its temporary file there,
+ *  say — otherwise reads to the author as a wrong check, and costs dozens of calls to find. */
 function failedToolRuns(
   run: ControlSession,
   controlId: string,
@@ -414,8 +414,8 @@ function failedToolRuns(
 
 async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<void> {
   // Verified under the bound task's own hidden expectations, which is the condition a measured
-  // case gets. Run w12 had 11 of 29 accepts that contradicted their task and passed only because
-  // their hidden rows were empty.
+  // case gets. Otherwise an accept that contradicts its task passes anyway, on the strength of an
+  // empty hidden row.
   const observations = await inLanes(
     corpus.accept,
     run.options.lanes ?? CENSUS_LANES,
@@ -430,8 +430,8 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
     const observed = admitObservation(run, control, observation);
     if (observed?.side.outcome !== "fail") continue;
     // Issue text is protected detail and stays on the evidence message. What the author reads is
-    // the example ids grouped by the declared checks that blocked them: an Opus run on 2026-08-22
-    // read 30 rows of "was rejected" while every one of them named the same eight checks.
+    // the example ids grouped by the declared checks that blocked them, because ungrouped it is
+    // dozens of rows of "was rejected" that all name the same handful of checks.
     issues.push(`"${control.id}": ${blockingIssueSummary(observed.result)}`);
     const blockedBy = [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits);
     const checks = `[${blockedBy.join(", ") || "no named check"}]${failedToolRuns(run, control.id, observation.attempt, blockedBy)}`;

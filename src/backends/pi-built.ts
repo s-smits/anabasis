@@ -98,11 +98,11 @@ type BuiltCaseEvidence = BuiltTurnRecord & {
 };
 
 /** Per-case turn cap of the Built solver when the harness's agent/config.yaml sets none. Four turns
- *  fitted one write, one preview and one submit and nothing else; twelve left room to build or run
- *  the draft, read the result and repair it (operator decision 2026-09-06); twenty-four leave room
- *  for a search or optimisation loop over several candidates (operator decision 2026-09-14). Since
- *  2026-09-16 the harness's own `solver.max_turns` sets it and this is only the default behind it,
- *  which is why `thresholds.frozen.yaml` holds no Built turn limit to disagree with. */
+ *  fit one write, one preview and one submit and nothing else; twelve leave room to build or run the
+ *  draft, read the result and repair it; twenty-four leave room for a search or optimisation loop
+ *  over several candidates (operator decision). The harness's own `solver.max_turns` sets the cap
+ *  and this is only the default behind it, which is why `thresholds.frozen.yaml` holds no Built turn
+ *  limit to disagree with. */
 export const BUILT_DEFAULT_MAX_TURNS = DEFAULT_HARNESS_SETTINGS.maxTurns;
 
 /** What a Built solver is opened with beyond its runtime: the turn cap a test or the export path
@@ -125,11 +125,10 @@ export function builtCapabilities(profile: PiProfile | null): string[] {
 }
 
 let workerDir: string | null = null;
-/** The one worker-bundle directory of this process. The solve wall denies reads under the
- *  repository and the operator home, so a TMPDIR inside either hid the bundle from the confined
- *  worker it was written for: run 3b2559 and its Opus twin both died 0.2 s after opening, with
- *  "Module not found .../worker.mjs". The directory is chosen outside both, and the read allow-roots
- *  then reopen exactly it. */
+/** The one worker-bundle directory of this process. The solve wall denies reads under the repository
+ *  and the operator home, so a TMPDIR inside either hides the bundle from the confined worker it was
+ *  written for, and the child dies within a second of opening on "Module not found .../worker.mjs".
+ *  The directory is chosen outside both, and the read allow-roots then reopen exactly it. */
 function workerBundleDir(): string {
   workerDir ??= mkdtempSync(
     join(workerBundleParent(tmpdir(), [homedir(), dirname(dirname(import.meta.dir))]), "ana-pi-built-"),
@@ -139,8 +138,8 @@ function workerBundleDir(): string {
 
 /** TMPDIR, unless some canonical form of it lies under a canonical form of a denied root; then the
  *  shared system temp, checked the same way. The wall also denies the Claude bridge's config write
- *  under a denied root (run 94e76d), so the same choice serves both. Canonical forms rather than the
- *  written paths, because a lexical check let a TMPDIR symlink into the checkout through. */
+ *  under a denied root, so the same choice serves both. Canonical forms rather than the written
+ *  paths, because a lexical check lets a TMPDIR symlink into the checkout through. */
 function workerBundleParent(tmp: string, deniedRoots: readonly string[]): string {
   const denied = deniedRoots.flatMap(canonicalForms);
   const inside = (path: string) =>
@@ -301,10 +300,10 @@ async function submitAtWall(
 /** The whole-solve wall stopped a solver that was still answering inside its silence wall. Running
  *  out of time is the attempt's own result rather than an environment failure: an accepted submit is
  *  graded, and anything else is an unaccepted case that stays in the difficulty denominator, with
- *  the tool calls its trace saw. Truss run 406cca recorded such a solve as a runtime non-result with
- *  zero tool calls, which removed a real attempt from the denominator. The wall usually lands
- *  mid-call, so the generated worker's pending requests at close are its consequence and are
- *  suppressed here; every other close failure keeps its non-result. */
+ *  the tool calls its trace saw. Recording it as a runtime non-result instead would remove a real
+ *  attempt from the denominator. The wall usually lands mid-call, so the generated worker's pending
+ *  requests at close are its consequence and are suppressed here; every other close failure keeps
+ *  its non-result. */
 function exhaustedOutcome(
   error: PiBuiltWorkerNonResult,
   generatedWorker: GeneratedToolWorkerEvidence,

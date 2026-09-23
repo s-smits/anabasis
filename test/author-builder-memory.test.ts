@@ -153,7 +153,7 @@ describe("Builder memory", () => {
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
-    // Run 1093c9 opened its fourth epoch on three stacked markers.
+    // Without this, a fourth epoch opens on three stacked markers.
     const root = mkdtempSync(join(tmpdir(), "ana-epochs-chain-"));
     const first = join(root, "epoch-aaaa", WORKSPACE_DIR);
     initWorkspace(first);
@@ -167,8 +167,8 @@ describe("Builder memory", () => {
   });
 
   it("caps a carried file and keeps the carry marker inside the ceiling", () => {
-    // Run 52 carried an over-ceiling MEMORY.md three epochs deep, prepending a marker each time.
-    // The carry marker must survive the cut, and the file must arrive under the ceiling.
+    // An over-ceiling MEMORY.md carried three epochs deep gains a marker each time. The carry
+    // marker must survive the cut, and the file must arrive under the ceiling.
     const root = mkdtempSync(join(tmpdir(), "ana-epochs-cap-"));
     const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
     initWorkspace(prior);

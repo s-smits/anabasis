@@ -1,9 +1,9 @@
 /**
- * `EvidenceLog` writes run evidence and records the bytes it produced (steering-delta P1: protect
- * records from the Built Harness). It was introduced when generated modules ran in process and
- * could modify an earlier case's files between runner writes. Runtime isolation now keeps them
- * out, and the writer's manifest check remains useful beside it, because it lets a reader detect
- * changes made outside this writer rather than assume exclusive ownership.
+ * `EvidenceLog` writes run evidence and records the bytes it produced, so that the Built Harness
+ * cannot rewrite a record it is the subject of. It was introduced when generated modules ran in
+ * process and could modify an earlier case's files between runner writes. Runtime isolation now
+ * keeps them out, and the writer's manifest check remains useful beside it, because it lets a
+ * reader detect changes made outside this writer rather than assume exclusive ownership.
  *
  *  - Write each file atomically using a temporary file and rename, avoiding partial JSON at
  *    the final path. Keep each file's sha256 in memory when writing it.
@@ -255,7 +255,7 @@ export function recordedEvidence(
 
 /** Accept only the manifest schema this reader understands, and only the rows it can read.
  *  Otherwise a plausible `files` map with a missing or unknown schemaVersion could be treated as
- *  evidence under rules the reader has never validated (2026-08-03 evidence-reader audit).
+ *  evidence under rules the reader has never validated.
  *
  *  The parsed value is read from `JsonValue` rather than asserted into `Manifest`. The assertion
  *  used to run before the guard, which left every clause of the guard dead to the checker while it

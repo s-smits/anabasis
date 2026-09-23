@@ -2,9 +2,9 @@
  * The model-facing verdict drivers, split from judge.ts at its size ceiling. This file owns the
  * one verdict vocabulary and schema, the parse of a raw model verdict, and the per-subject schema
  * tool every review transport records its verdict through: one budgeted turn, typed error
- * classification, one dispose, and the terminal-capture rule. Transport-native structured output
- * went with the transports that had it; one output method cannot drift from another. judge.ts
- * keeps the census side: sanitizer gate, conformance probe, subject evidence and aggregation.
+ * classification, one dispose, and the terminal-capture rule. No transport takes its own native
+ * structured-output route, so one output method cannot drift from another. judge.ts keeps the
+ * census side: sanitizer gate, conformance probe, subject evidence and aggregation.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { AgentSession } from "../backends/backend-types.ts";
@@ -70,12 +70,12 @@ function isVerdictWord(value: string): value is VerdictWord {
 
 /** The rules a fail may cite for this subject: each shown validity assertion, each shown public
  *  rule-decision statement, and the two fixed citations. A fail that names anything else, or
- *  nothing, is a protocol non-result rather than a verdict, because run 69's hold rested on agent
- *  tool text that no rule stated and asking the prompt for a citation did not stop it.
+ *  nothing, is a protocol non-result rather than a verdict. The set is checked here rather than
+ *  asked for in the prompt, which does not stop a Judge holding an artifact against agent tool text
+ *  that no rule states.
  *
  *  The rule decisions belong in this set because the solver reads them from the same domain card,
- *  so a fail resting on one is citing a rule the artifact's author was also given; before they were
- *  admitted such a fail became a non-result. */
+ *  so a fail resting on one is citing a rule the artifact's author was also given. */
 function citableRules(input: JudgeInput): ReadonlySet<string> {
   const shown = input.publicContext.publicTask?.publicValidityRules?.map((rule) => rule.assertion) ?? [];
   const decisions = input.publicContext.domain.publicResources.find(

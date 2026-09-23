@@ -1,9 +1,9 @@
 /**
  * The byte identity of the paths one authoring session owns, which is how a session's turn boundary
- * tells an unchanged tree from a repaired one. The probe-budget monitor and the no-submit strike
- * that once lived beside it ended on 2026-09-14 (operator decision): neither fired in 414 recorded
- * sessions, and both would have ended a session that spent its first turns installing tools under
- * .toolchain. What survived is the measurement, with no mechanism acting on it.
+ * tells an unchanged tree from a repaired one. A probe-budget monitor and a no-submit strike once
+ * lived beside it and were removed by operator decision: neither ever fired, and both would have
+ * ended a session that spent its first turns installing tools under .toolchain, which is ordinary
+ * authoring rather than a stall. What survived is the measurement, with no mechanism acting on it.
  */
 import { hashBundle } from "../claim/bundle-hash.ts";
 import { existsSync, lstatSync } from "../meta/filesystem.ts";

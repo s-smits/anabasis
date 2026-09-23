@@ -74,8 +74,8 @@ describe("controller abort clause", () => {
   }
 
   it("reads a provider capacity message through the one canonical matcher", () => {
-    // Raised outside a Builder turn wrapper, this reaches the controller as a plain Error. Before
-    // the classifier it recorded no owner at all; run 25's invocation c is that record.
+    // Raised outside a Builder turn wrapper, this reaches the controller as a plain Error, which
+    // without the classifier records no owner at all.
     expect(controllerAbortClause(new Error("429 Too Many Requests: the model is overloaded"))).toBe(
       "environment-blocked",
     );
@@ -120,11 +120,10 @@ describe("a recorded abort names its terminal code", () => {
     }).terminalReason;
   }
 
-  // `loopTerminalCode` takes the head before the first colon. The reason used to lead with
-  // `aborted: `, repeating the `outcome` field recorded beside it, so 45 of the 60 terminals
-  // recorded up to 2026-09-18 resolved to null -- every environment-blocked and budget-limited
-  // ending among them, and whole-run-investigation's digest printed `aborted` for each. Nothing
-  // pinned the recorded encoding, which is how the two vocabularies drifted apart unnoticed.
+  // `loopTerminalCode` takes the head before the first colon, so a reason leading with `aborted: `
+  // — repeating the `outcome` field recorded beside it — resolves to null for every aborted
+  // terminal there is, and a reader of those runs sees `aborted` where the owner should be. These
+  // rows pin the recorded encoding, which is the only thing keeping the two vocabularies together.
   const codes: Array<[LoopTerminalCode, Error]> = [
     ["environment-blocked", new EnvironmentRefusal("no credential is configured")],
     ["budget-limited", new CampaignBudgetExhausted()],

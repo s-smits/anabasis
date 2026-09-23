@@ -19,9 +19,8 @@ export type SolverNonResult = {
 
 /** `solve-wall`: the whole-solve wall stopped a solver that had already called tools. A solver
  *  that reached its tools was working, so the case stays unaccepted with this typed cause rather
- *  than becoming a runtime non-result and leaving the denominator. Until the kind existed, eaf98f
- *  on 2026-09-14 recorded two such cuts as `non-result / runtime` here while their own case rows
- *  said unaccepted with no kind at all. */
+ *  than becoming a runtime non-result and leaving the denominator. Without the kind, the same cut
+ *  reads as `non-result / runtime` here while the case row says unaccepted with no kind at all. */
 type BuiltWorkerTermination =
   | { status: "normal" }
   | { status: "solve-wall"; message: string }
@@ -49,8 +48,8 @@ export type SolveInterfaceCondition = {
   /** The operating guide this case's model read, already inside `systemPromptDigest`. Recorded as
    *  text for the same reason as the rows: a reader judging the guide has to see
    *  the policy this case ran under, and a digest cannot be read. Null stays for the outcome
-   *  reader: a case recorded from a bundle without a guide holds null, and the loader now refuses
-   *  such a bundle. */
+   *  reader: a case recorded from a bundle without a guide holds null, and the loader refuses such
+   *  a bundle. */
   operatingGuide: string | null;
   backendProfileDigest: string;
   maxTurns: number;

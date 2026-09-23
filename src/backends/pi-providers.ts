@@ -117,10 +117,9 @@ export interface ClaudeCli {
   configDir: string;
   baseEnv: OptionalEnvValues;
   cwd?: string | undefined;
-  /** Put the CLI's own `claude_code` preset ahead of the controller's prompt. The Built solver has
-   *  run under that preset since its first measured claude condition; the Builder and review slots
-   *  send their prompt as the whole system prompt, as their own transport did before the pi
-   *  layer. */
+  /** Put the CLI's own `claude_code` preset ahead of the controller's prompt. The Built solver runs
+   *  under that preset; the Builder and review slots send their prompt as the whole system prompt
+   *  instead. */
   claudeCodePreset?: boolean;
 }
 
@@ -171,11 +170,11 @@ function piProfile(
 }
 
 /**
- * The codex transport's credential. A login the Codex CLI's own rule makes due is refreshed first,
- * as the codex app-server this transport replaced refreshed itself. Without it a host that runs no
- * Codex CLI sent a token the provider refused ("Provided authentication token is expired.", Lima
- * VM, 2026-09-21, eight days after its last refresh). A failed refresh keeps a token that has not
- * expired, so the provider decides; an expired one with nothing to renew it is a login fault.
+ * The codex transport's credential. A login the Codex CLI's own rule makes due is refreshed here
+ * first, because a host that never runs the Codex CLI has nothing else to renew it and would send a
+ * token the provider refuses with "Provided authentication token is expired." A failed refresh
+ * keeps a token that has not expired, so the provider decides; an expired one with nothing to renew
+ * it is a login fault.
  */
 async function codexCredential(env: OptionalEnvValues): Promise<Credential> {
   let login = codexLogin(env);
@@ -218,10 +217,10 @@ function credential(
   // The claude transport hands this token to the official Claude CLI as CLAUDE_CODE_OAUTH_TOKEN,
   // which uses the CLI's subscription login support without sending the token through our own HTTP
   // client. The CLI's own /login cannot serve this transport, because its Keychain item is
-  // config-dir-scoped — measured 2026-08-01: a custom CLAUDE_CONFIG_DIR queries the service
-  // "Claude Code-credentials-<dirhash>", which /login never created — while each bridge runs under
-  // its own config dir. The setup-token bypasses login state entirely and bills the same
-  // subscription quota.
+  // config-dir-scoped: a custom CLAUDE_CONFIG_DIR queries the service
+  // "Claude Code-credentials-<dirhash>", which /login never created, and each bridge runs under its
+  // own config dir. The setup-token bypasses login state entirely and bills the same subscription
+  // quota.
   if (hasText(loaded.CLAUDE_CODE_OAUTH_TOKEN)) {
     return { type: "bearer", token: loaded.CLAUDE_CODE_OAUTH_TOKEN };
   }
@@ -252,9 +251,9 @@ export function claudeCompacts(profile: PiProfile): boolean {
 
 /**
  * One slot's served condition and credential, read from the repository env chain. Only the
- * openrouter kind resolves the OpenRouter or custom endpoint. Resolving it for a Claude or Codex
- * condition made a `.env` that names CUSTOM_ADDRESS without CUSTOM_CONTEXT_WINDOW abort a launch
- * that never uses that host (rehearsal-0901).
+ * openrouter kind resolves the OpenRouter or custom endpoint: resolving it for a Claude or Codex
+ * condition lets a `.env` that names CUSTOM_ADDRESS without CUSTOM_CONTEXT_WINDOW abort a launch
+ * that never touches that host.
  */
 export function resolvePiSlot(
   slot: BackendSlot,
@@ -369,11 +368,11 @@ function suppliedCredentials(providerId: string, supply: () => Promise<Credentia
   };
 }
 
-/** The Claude CLI's environment: this process's own without its secrets, the slot's credential,
- *  and a config dir of its own, so the operator's auto-memory and settings never reach it. The
+/** The Claude CLI's environment: this process's own without its secrets, the slot's credential, and
+ *  a config dir of its own, so the operator's auto-memory and settings never reach it. The
  *  entrypoint is named because without it the Agent SDK labels its calls as SDK usage, which a
- *  subscription bills as extra usage: on 2026-09-15 a setup-token the plain CLI served failed
- *  through this bridge with "400 You're out of extra usage". */
+ *  subscription bills as extra usage — a setup-token the plain CLI serves then fails through this
+ *  bridge with "400 You're out of extra usage". */
 function claudeCliEnv(auth: PiCredential, cli: ClaudeCli): Record<string, string | undefined> {
   if (auth.type === "oauth") throw new Error("the claude transport takes a setup-token or an API key");
   return {

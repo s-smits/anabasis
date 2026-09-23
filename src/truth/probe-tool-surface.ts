@@ -2,12 +2,11 @@
  * Compare declared domain tools with the interfaces returned during conformance.
  *
  * A declared tool has two descriptions: the one `agent/tools-spec.json` declares and the one
- * `agent/tools.ts` serves to the agent. Conformance previously compared only the tool names, so run
- * 52 on 2026-09-03 produced a `record_answer` whose served description said it wrote a pin plan only
- * and that file tools were absent, while the spec declared the complete answer; that drift passed
- * conformance for six iterations. The spec is also the text the tools-spec validator screens for a
- * verifier-identity claim or a mode flag, so a served description that differs from it is
- * model-visible text the spec validator never checked.
+ * `agent/tools.ts` serves to the agent. Comparing the names alone lets the two drift for as long as
+ * the bundle lives — a writer whose served description says it records part of the answer while the
+ * spec declares the whole of it, and conformance passes either way. The spec is also the text the
+ * tools-spec validator screens for a verifier-identity claim or a mode flag, so a served
+ * description that differs from it is model-visible text the spec validator never checked.
  */
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
 import type { BuiltStarter, GeneratedToolWorkerEvidence } from "../solve/built-starter.ts";
@@ -94,9 +93,9 @@ export function workerBindingDriftFindings(
 }
 
 /** One refusal per probed worker that did not settle. A close-handshake timeout after all probes
- *  have settled concerns host cleanup rather than the agent bytes: run 6bf0e9 on 2026-09-07 refused
- *  agent bytes for that timeout and accepted the same bytes on the next submit, five rounds running.
- *  The Built slot already treats the same termination as benign after a submit (pi-built.ts). */
+ *  have settled concerns host cleanup rather than the agent bytes, so refusing on it rejects a
+ *  candidate that the next submit accepts unchanged, round after round. The Built slot already
+ *  treats the same termination as benign after a submit (pi-built.ts). */
 export function terminationFindings(
   closed: ReadonlyArray<{ termination: GeneratedToolWorkerEvidence["termination"] } | undefined>,
 ): ContractFinding[] {

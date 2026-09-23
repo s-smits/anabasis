@@ -60,7 +60,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       runId: "run-c3-grounding",
     });
     const report = await evaluate(matchingBattery(slugDir));
-    // discrimination verified through the SAME tool-backed verifier and stayed claimable
+    // Discrimination is verified through the SAME tool-backed verifier, and stays claimable.
     expect(report.evidence.discrimination.claimable).toBe(true);
     expect(report.score).toEqual([
       {
@@ -82,9 +82,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
         checkIds: ["expected-binding", "ghost-ref", "parts-assigned"],
       },
     ]);
-    // subject-bound bindings (handover 2026-07-11): every control and every case that ran the
-    // tool has its OWN entry — one run can no longer ground the whole run. The host orders rows by
-    // phase, subject and attempt whatever the census lane timing, so the comparison is exact.
+    // Bindings are subject-bound: every control and every case that ran the tool has its OWN
+    // entry, so one run cannot ground the whole run. The host orders rows by phase, subject and
+    // attempt whatever the census lane timing, so the comparison is exact.
     // A reject runs only its declared check, so only the rejects naming ghost-ref launch its tool.
     const bySubject = (a: { phase: string; subjectId: string }, b: { phase: string; subjectId: string }) =>
       (a.phase < b.phase ? -1 : a.phase > b.phase ? 1 : 0) ||
@@ -116,7 +116,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     expect(battery.execution.tools[TOOL_ID]).toMatchObject({ kind: "script", interpreter: "sh" });
     // The firing ledger reads the host's rows for the external check and the verdicts for every
     // check: three verified cases ran the tool, none was blocked, and the control runs do not
-    // count (safeguards 25 and 24, recorded).
+    // count.
     expect(battery.truthCheckFiring).toMatchObject({
       verifierVerifiedCount: 3,
       applicableByCheck: { "parts-assigned": 3, "expected-binding": 3 },
@@ -125,7 +125,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     });
     // The durable per-run record: controls + tasks all verified through the tool, every row
     // check-bound with digests, a host-derived executable digest, a real OS wall, and the
-    // host-provided subject join key (P0: list order is never the join)
+    // host-provided subject join key — list order is never the join.
     expect(battery.executionEvidence.length).toBeGreaterThan(0);
     for (const r of battery.executionEvidence) {
       expect(r.toolId).toBe(TOOL_ID);
@@ -157,8 +157,8 @@ describe("makeVerify external-verifier grounding (C3)", () => {
         ]).toContain(r.subjectId);
       }
     }
-    // P0 canonical-artifact binding: the row digests the bytes the RUNNER bound, so a check
-    // cannot be scored against a value its author routed to the tool instead.
+    // Canonical-artifact binding: the row digests the bytes the RUNNER bound, so a check cannot
+    // be scored against a value its author routed to the tool instead.
     const a1 = battery.executionEvidence.find((r: { subjectId: string }) => r.subjectId === "a1");
     expect(a1.artifactDigest).toBe(
       new Bun.CryptoHasher("sha256").update(JSON.stringify(ACCEPTS[0]?.artifact)).digest("hex"),
@@ -248,9 +248,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }, 60_000);
 
   it.concurrent("retries one control once for an environment-owned tool failure, then settles it as its own non-result receipt", async () => {
-    // truss-run16-sol-0903 and Sol run 23a1bc: one control the host could not
-    // run to a verdict used to stop the corpus. Each such control now gets its own non-result
-    // receipt; the remaining controls run, and the coverage result decides whether solving starts.
+    // One control the host cannot run to a verdict used to stop the whole corpus. Each such
+    // control now gets its own non-result receipt; the remaining controls run, and the coverage
+    // result decides whether solving starts.
     const slugDir = externalSlug(VERIFIER_EVALUATOR_SOURCE);
     const runId = "run-control-host-refusal";
     const report = await makeVerify({
@@ -373,7 +373,8 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   it.concurrent("a host non-result outranks a Correctness Model evaluator that swallows it and returns a verdict", async () => {
     // The tool hangs for t3 and the check ignores that outcome. The host still records the
     // timeout while the controls and the other two cases complete.
-    // The short wall stays on the hanging subject alone; a flat 400 ms timed out t1 and t2 under gate load.
+    // The short wall stays on the hanging subject alone: a flat 400 ms times t1 and t2 out under
+    // gate load.
     const SWALLOWING_EVALUATOR_SOURCE = SHORT_WALL_EVALUATOR_SOURCE.replace(
       "timeoutMs: 400",
       'timeoutMs: JSON.stringify(artifact).includes("gamma") ? 400 : 10_000',
@@ -417,11 +418,11 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }, 60_000);
 
   it.concurrent("refuses a cell file the author supplied rather than the submission's own bytes", async () => {
-    // The shim-header shape the tool port exists to close (runs 51/52, 2026-09-03): the check
-    // compiled the artifact against a header its own author wrote, so the artifact was judged in a
-    // compile environment the Builder supplied. `files` must match string leaves or JSON from the
-    // declared projections; an extra header is refused before launch, and the evaluator's throw is a
-    // product finding on the control it happened to.
+    // The shim-header shape the tool port exists to close: a check that compiles the artifact
+    // against a header its own author wrote judges it in a compile environment the Builder
+    // supplied. `files` must match string leaves or JSON from the declared projections; an extra
+    // header is refused before launch, and the evaluator's throw is a product finding on the
+    // control it happened to.
     const AUTHORED_CELL_SOURCE = VERIFIER_EVALUATOR_SOURCE.replace(
       '      files: { "artifact.json": JSON.stringify(artifact) },',
       '      files: { "artifact.json": JSON.stringify(artifact), "Arduino.h": "#define OK 1" },',
@@ -479,10 +480,10 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }
 
   it.concurrent("an applicable externally grounded check the evaluator silently skips grades as a typed non-result, never a verified pass", async () => {
-    // The w30 shape from the other side: the evaluator grades one case by its own
-    // arithmetic and never runs the declared tool for it. No execution evidence exists for that
-    // case, so the host-side outage read has nothing to find — coverage itself must fail closed at
-    // case time. Only t3 skips the tool, so t1/t2 stay verified.
+    // The same hole from the other side: the evaluator grades one case by its own arithmetic and
+    // never runs the declared tool for it. No execution evidence exists for that case, so the
+    // host-side outage read has nothing to find, and coverage itself must fail closed at case
+    // time. Only t3 skips the tool, so t1/t2 stay verified.
     //
     // The skip is per case, not wholesale: an evaluator that never runs the tool at all now fails
     // the control census first (no reject can be attributed to the external check), so the
@@ -500,9 +501,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   }, 60_000);
 
   it.concurrent("a case that fails a check with complete evidence grades as a truth fail even when a tool run was skipped", async () => {
-    // Run 08c0f2: six answers failed to compile, so the downstream tool checks had no build
-    // to run on and the cases were filed as verifier non-results. A skipped run can only withhold
-    // a pass, so the failing authored check decides t3.
+    // An answer that fails to compile leaves the downstream tool checks no build to run on, and
+    // filing those cases as verifier non-results loses a real fail. A skipped run can only
+    // withhold a pass, so the failing authored check decides t3.
     const { scored, t3: failed } = await runSelectiveSkip("run-c3-silent-skip-failed", new Set(["t3"]));
     expect(scored).toEqual(["t1", "t2", "t3"]);
     expect(failed).toMatchObject({ truthOk: false, pass: false });

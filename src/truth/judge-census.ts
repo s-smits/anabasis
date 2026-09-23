@@ -18,8 +18,7 @@ const JUDGE_CENSUS_ABORT_AFTER = 5;
 
 type JudgeCensusAbort = {
   schema: "judge-census-abort/v1";
-  /** One member. Runs before 2026-09-14 could also record `control-census`, which the operator
-   *  removed that day. */
+  /** One member: no control census reaches the Judge. */
   phase: "battery-census";
   attempted: number;
   threshold: number;

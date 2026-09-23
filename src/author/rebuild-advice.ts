@@ -4,34 +4,27 @@
  *
  * The controller's moves are `build | measure | rebuild | stop` and none of them is a climb, so
  * this is the packet an author reads whether it goes on to change the tasks alone or to reopen the
- * whole product. Its order is therefore the instruction, and an order that reads as a defect list
- * gets a defect fix. Campaign 846c029d-3 read a packet in which every line named a defect and an
- * owner, with one line at the end asking for a harder exam: seventeen of its nineteen accepted
- * candidates classified as `build` and none as a task-only climb, its twenty-five public tasks
- * stayed byte-identical from i14 while the correctness model was rewritten each round, and all 450
- * scored cases of the eighteen completed rounds recorded one distinct tool-call count. Where the
- * battery landed now belongs to the climb readout, which renders above this packet, so
- * `renderRebuildAdvice` carries the issue register alone.
+ * whole product. Its order is therefore the instruction, and a packet that reads as a defect list
+ * gets a defect fix rather than a harder exam. Where the battery landed belongs to the climb
+ * readout, which renders above this packet, so `renderRebuildAdvice` carries the issue register
+ * alone.
  *
  * An issue is three recorded facts and no state machine. `absentBatteries` counts the batteries in
  * which its family ran without it, `returned` says the latest observation followed an absence, and
  * `retired` says the family left the task set; `issueStatusWord` derives from them the word every
- * reader used to store for itself. Two representations of one lifecycle can disagree, and one of
- * them was being written by the same function that read it. Issue identity is `kind + family +
- * detail` and deliberately excludes the harness identity, which is what lets one issue be followed
- * across a rebuild.
+ * reader used to store for itself, because two representations of one lifecycle can disagree. Issue
+ * identity is `kind + family + detail` and deliberately excludes the harness identity, which is
+ * what lets one issue be followed across a rebuild.
  *
  * Everything the rows already determine is derived rather than stored — the battery's totals, and
- * how many consecutive packets have carried an unowned diagnosis. Only two fields are written from
- * outside: `diagnosis` carries the diagnosis reader's falsifiable causal claim and `dispute` the
- * epoch reviewer's argument that an issue belongs to the evaluation. Both attach through
- * `attachIssueReadings` after the packet is derived, and neither changes a count or any decision,
- * so the register stays controller-owned and the two readers only annotate it.
+ * how many consecutive packets have carried an unowned diagnosis. Only `diagnosis` and `dispute`
+ * are written from outside, through `attachIssueReadings` after the packet is derived, and neither
+ * changes a count or any decision, so the register stays controller-owned.
  *
- * `renderRebuildAdvice` is the model-visible boundary, and it is bounded by construction rather
- * than by a ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS`
- * findings and `FINDING_CLAIM_CHARS` per claim. Diagnosis prose stays recorded here and never
- * crosses into authoring.
+ * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
+ * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
+ * and `FINDING_CLAIM_CHARS` per claim. Diagnosis prose stays recorded here and never crosses into
+ * authoring.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { authorSessionOwner } from "../analyse/finding-owner.ts";
@@ -85,9 +78,8 @@ export type IssueDiagnosis = {
   /** The authoring area the reader believes owns the cause. This is advice with no authority: the
    *  controller's own routing still decides where a repair goes, and nothing here selects one. */
   interventionClass: FeedbackOwner;
-  /** What a passing case of the same family did differently, or null when the family had none and
-   *  the reader therefore had nothing to contrast against. A cause that explains the pass as well
-   *  as the failure is not a cause. */
+  /** What a passing case of the same family did differently, or null when the family had none to
+   *  contrast against. A cause that explains the pass as well as the failure is not a cause. */
   contrastSuccess: string | null;
   confidence: "low" | "medium" | "high";
   /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
@@ -113,17 +105,15 @@ export type AdviceIssue = {
   /** The latest observation followed an absence: the issue came back. */
   returned: boolean;
   /** The family left the task set, so this battery could not observe the issue. Retirement proves
-   *  no fix, which is why it is a separate fact from absence: run59-opus-0904 carried an
-   *  `uno-sensor-light` failure as active through two batteries of a rebuilt task set that no
-   *  longer had that family, and the advice went on asking the author to move something it could
-   *  not observe. */
+   *  no fix, which is why it is a separate fact from absence: read as absence, it would age towards
+   *  fixed while the advice asked the author to move something it cannot observe. */
   retired: boolean;
   /** The diagnosis reader's falsifiable causal claim; null when none was read or the reading
    *  failed. It is carried forward while the issue lives, so one reading serves later batteries. */
   diagnosis: IssueDiagnosis | null;
   /** The epoch reviewer's argument that this failure belongs to the evaluation. The register keeps
-   *  counting a disputed issue, because a dispute is a reason not to rebuild the agent around it
-   *  and never a reason to stop observing it. */
+   *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
+   *  reason to stop observing it. */
   dispute: string | null;
 };
 
@@ -155,8 +145,7 @@ export type RebuildAdvicePacket = {
   /** The battery, one row per family. The totals are read off these rows rather than stored beside
    *  them, where the two could come to disagree. */
   families: AdviceFamilyRow[];
-  /** Verified failures per declared check, as the battery recorded them. Safeguard 24 logged this
-   *  shape when one check carried every failure (truss 2026-09-04: 20 of 25 on one check). */
+  /** Verified failures per declared check, as the battery recorded them. */
   blockingByCheck: Record<string, number>;
   issues: AdviceIssue[];
   judge: { exit: JudgeReviewsResult["exit"]["kind"]; reason: string; contestedFamilies: string[] } | null;
@@ -172,13 +161,12 @@ type Observed = {
   denominator: number;
 };
 
-/** Standing issues the render shows, and the findings and claim length beside them. This boundary
- *  used to be bounded by nothing at all: Astra i18 rendered 18,196 characters, of which one unowned
- *  finding was 15,824 and six issue lines 1,142, and an author reading a defect list that long
- *  writes a defect fix. These three numbers hold the packet at a few thousand characters whatever
- *  the battery did, while the register goes on recording every issue and finding it derived. Six
- *  matches the standing issues the diagnosis reader offers, so the two readers mean the same thing
- *  by "standing". */
+/** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
+ *  unowned finding alone can run to fifteen thousand characters, and an author reading a defect
+ *  list that long writes a defect fix. These three hold the packet at a few thousand characters
+ *  whatever the battery did, while the register goes on recording every issue it derived. Six
+ *  matches the standing issues the diagnosis reader offers, so the two mean the same by
+ *  "standing". */
 const RENDERED_ISSUES = 6;
 const RENDERED_FINDINGS = 4;
 const FINDING_CLAIM_CHARS = 600;
@@ -349,8 +337,8 @@ export function advanceIssues(
 /** `verified` is the family's truth-verified case count in this battery, or undefined when the
  *  family is not in it at all. Absence of the family retires the issue; a family the provider never
  *  let run observed nothing and moves it neither way, which is the same carry the Judge branch
- *  below makes for the same reason. Campaign 3fd52f9e-28's battery 719f26-i02 recorded 24 provider
- *  non-results of 25 cases, and every family in it still counted as having run. */
+ *  below makes for the same reason. A battery of provider non-results still counts every family in
+ *  it as having run, so the zero-verified branch is what keeps those issues from ageing. */
 function agedIssue(
   issue: AdviceIssue,
   verified: number | undefined,
@@ -359,20 +347,18 @@ function agedIssue(
   if (verified === undefined) return { ...issue, retired: true, dispute: null };
   if (verified === 0) return issue;
   if (issue.kind.startsWith("judge-") && judgeReview === "incomplete") return issue;
-  // An issue the battery no longer shows carries no dispute: campaign -27 kept one across five
-  // batteries of absence, so the field promised a withholding the controller was not applying.
+  // An issue the battery no longer shows carries no dispute: a dispute kept across batteries of
+  // absence promises a withholding the controller is no longer applying.
   return { ...issue, absentBatteries: issue.absentBatteries + 1, retired: false, dispute: null };
 }
 
-/**
- * Attach what the two review readers said to the register this battery just advanced. The readers
- * run after the packet is derived and before it is written, so the digest a rebuild binds covers
- * the complete evidence packet, including readings whose prose the author must not see.
+/** Attach what the two review readers said to the register this battery just advanced. They run
+ *  after the packet is derived and before it is written, so the digest a rebuild binds covers the
+ *  complete evidence packet, including readings whose prose the author must not see.
  *
- * A dispute suspends an issue instead of closing it: the author is told not to rebuild around it,
- * and the next battery still counts it. Only a standing issue can be suspended, because disputing
- * one already fixed or retired would resurrect it.
- */
+ *  A dispute suspends an issue instead of closing it: the author is told not to rebuild around it,
+ *  and the next battery still counts it. Only a standing issue can be suspended, because disputing
+ *  one already fixed or retired would resurrect it. */
 export function attachIssueReadings(
   packet: RebuildAdvicePacket,
   readings: {
@@ -401,8 +387,8 @@ export function attachIssueReadings(
 }
 
 /** The recurrence key of an unowned diagnosis: its public check id, else its artifact path, else
- *  the kind itself, which is all a host-produced unaccepted-count finding carries (Astra 0912, i11
- *  to i19). Every other finding has no key and is never annotated with a recurrence. */
+ *  the kind itself, which is all a host-produced unaccepted-count finding carries. Every other
+ *  finding has no key and is never annotated with a recurrence. */
 function unownedDiagnosisIdentity(
   finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath">,
 ): string | null {
@@ -455,12 +441,9 @@ export function deriveRebuildAdvice(
     //
     // A judge-disagreement row is the one kind that predicate reads wrong. It routes nowhere, so
     // the predicate calls it new, but `judge.reason` above is the same string from the same
-    // producer: c1d2a7's round three printed the whole Judge sentence twice, once as the review
-    // line and once as an advisory finding, and the second copy also spent one of the four rendered
-    // finding slots. The Judge exit has one owner here, the judge block, and the admission record
-    // keeps the row either way. A controller defect is dropped because it is not the author's to
-    // repair: run 08c0f2's third round was asked to inspect the public contract for a mismatch that
-    // was the controller's.
+    // producer, and the duplicate also spends one of the four rendered finding slots. The Judge
+    // exit has one owner here, the judge block, and the admission record keeps the row either way.
+    // A controller defect is dropped because it is not the author's to repair.
     findings: admission.admitted
       .filter(
         (finding) =>
@@ -496,9 +479,9 @@ export function latestRebuildAdvicePath(repoRoot: string, slug: string): string 
  *  another schema wrote is a different fact — no register exists on this source yet — and every
  *  consumer already spells that as null: `advanceIssues` starts its register from `[]`,
  *  `recurrence` counts from one, the epoch reviewer is offered no standing issue and the advisory
- *  note carries no packet. Throwing on it instead killed the first analyse step of all 47 recorded
- *  campaigns when this file moved `families` out of `battery` and dropped `sentinels`, so an
- *  explicitly supported `--project <existing>` continuation could not start. */
+ *  note carries no packet. Throwing on it instead would kill the first analyse step of every
+ *  existing campaign the next time this schema changes, so `--project <existing>` could not
+ *  continue. */
 export function readLatestRebuildAdvice(repoRoot: string, slug: string): RebuildAdvicePacket | null {
   const path = latestRebuildAdvicePath(repoRoot, slug);
   if (!existsSync(path)) return null;
@@ -534,8 +517,8 @@ export function environmentOwned(issue: AdviceIssue): boolean {
 function issueLine(issue: AdviceIssue): string {
   const kind = issue.detail ?? "unknown";
   // The line says which side of the split a non-result fell on, because the standing-issues heading
-  // tells the author an environment non-result calls for an unchanged rerun. In run 08c0f2 i02 six
-  // `verifier` cases sat under that sentence as though it covered them, and it does not.
+  // tells the author an environment non-result calls for an unchanged rerun, and a `verifier` kind
+  // sitting silently under that sentence reads as covered by it when it is not.
   const nonResult = environmentOwned(issue)
     ? `environment non-results of kind ${kind}`
     : `runtime non-results of kind ${kind}, a kind that does not establish an environment failure`;
@@ -548,12 +531,10 @@ function issueLine(issue: AdviceIssue): string {
 }
 
 /** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families
- *  passed every verified case is the climb readout's family line, and naming them here as well
- *  asked opposite things of one family — Astra i16 listed asymmetric-live, damage-tolerance,
- *  obstacle-routing and wind-reversal as confirmed-fixed issues to preserve and then as sentinels
- *  to add a requirement to, which was four of its six issue lines. A retired issue names a family
- *  that left the task set, which the author can neither move nor keep. The register records both
- *  either way, so an issue that returns is still a regression. */
+ *  passed every verified case is the climb readout's family line, and naming them here as well asks
+ *  opposite things of one family — preserve it as a confirmed fix, and harden it as a sentinel. A
+ *  retired issue names a family that left the task set, which the author can neither move nor keep.
+ *  The register records both either way, so an issue that returns is still a regression. */
 function standingLines(issues: readonly AdviceIssue[]): string[] {
   const standing = [...issues]
     .filter(isStanding)
@@ -571,13 +552,11 @@ function standingLines(issues: readonly AdviceIssue[]): string[] {
  *  row the controller could not place, so it is the row most likely to grow, and the cap therefore
  *  belongs to the boundary rather than to any one producer feeding it.
  *
- *  Blocking sorts first because the cap cuts the tail. The standing issues above are ordered by how
- *  many cases they hold before being cut to `RENDERED_ISSUES`; these were cut to four in whatever
- *  order they happened to be admitted, so a blocking finding could sit behind three advisory ones
- *  that arrived first and leave the packet as "1 further admitted finding(s) omitted" — a line that
- *  does not say the omitted row was the blocking one. A blocking finding is an admitted, cited
- *  demonstration of a violated requirement, which is the strongest row this packet carries, while
- *  an advisory is a lead. Within one severity the admitted order stands, so nothing else moves. */
+ *  Blocking sorts first because the cap cuts the tail. Unsorted, a blocking finding can sit behind
+ *  three advisory ones that arrived first and leave the packet saying "1 further admitted
+ *  finding(s) omitted" without saying the omitted row was the blocking one. A blocking finding is
+ *  an admitted, cited demonstration of a violated requirement, the strongest row this packet
+ *  carries, while an advisory is a lead. Within one severity the admitted order stands. */
 function findingLines(findings: readonly AdviceFinding[]): string[] {
   const ordered = [...findings].sort(
     (a, b) => Number(b.severity === "blocking") - Number(a.severity === "blocking"),
@@ -601,13 +580,11 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
 }
 
 /** Which of the harness's own declared checks decided anything, on both sides. `truthCheckFiring`
- *  seeds its counter with every declared check at zero, so the zeros already in the packet are the
- *  roster of checks that let every shipping artifact through, and this line used to discard them.
- *  That roster is what a saturated battery is made of, and the family line cannot state it: a
- *  family reads as "raise its numbers" where a check reads as "this rule refused nothing". Runs
- *  a7f9ac and 719f26 scored 14/14 and 11/11 with all six checks untripped in shipping, and the
- *  packet carried neither line. Zero verified cases prove nothing about any check, so the roster
- *  stays silent until a battery has graded something. */
+ *  seeds its counter with every declared check at zero, so the zeros in the packet are the roster
+ *  of checks that let every shipping artifact through. That roster is what a saturated battery is
+ *  made of, and the family line cannot state it: a family reads as "raise its numbers" where a
+ *  check reads as "this rule refused nothing". Zero verified cases prove nothing about any check,
+ *  so the roster stays silent until a battery has graded something. */
 function blockingLine(
   blockingByCheck: Record<string, number>,
   verified: number,
@@ -622,8 +599,8 @@ function blockingLine(
     .filter(([, count]) => count === 0)
     .map(([checkId]) => checkId)
     .sort();
-  // The sentence is appended only when one check really does carry every failure: 4c67fc's packet
-  // appended it beside a single failed case and six checks, where it said nothing.
+  // The sentence is appended only when one check really does carry every failure; beside a single
+  // failed case and six checks it would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
   return [
     blocked.length === 0

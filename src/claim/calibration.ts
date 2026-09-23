@@ -1,8 +1,8 @@
 /**
  * Control corpus floors and Judge independence. The floors set how many known-correct and
  * deliberately incorrect controls an authored corpus must carry; authoring states and checks the
- * same numbers. The Main Judge no longer runs a control census over that corpus (operator decision
- * 2026-09-14), so no validity rule, bait corpus or calibration rate lives here — a rate computed
+ * same numbers. The Main Judge no longer runs a control census over that corpus (operator
+ * decision), so no validity rule, bait corpus or calibration rate lives here — a rate computed
  * from a census nobody runs would be read as calibration evidence the system does not have.
  */
 import { policyRow, posInt } from "../critic/manifest.ts";

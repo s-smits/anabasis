@@ -118,13 +118,13 @@ export function safeguardTriggered(name: string, detail: string, context?: Safeg
 export const TEMP_SCRATCH_PREFIXES = ["ana-"] as const;
 
 /**
- * Safeguard 21, measured 2026-08-30 and 2026-08-31: the per-user OS temp root held 171,290
- * entries, about 150,000 of them leaked mkdtemp scratch directories from earlier gates and
- * campaigns whose cleanup lives in exit handlers that a SIGKILL never reaches. Every fresh child
- * process then stalled inside a single directory enumeration, so the codex app-server and the Pi
- * Built worker both died on their ready handshakes while established processes carried on
- * untouched and 14 to 20 GB of disk stayed free. The run recorded those deaths as provider or
- * protocol timeouts, and nothing in the evidence named the directory that caused them.
+ * Safeguard 21: the per-user OS temp root has held 171,290 entries, about 150,000 of them leaked
+ * mkdtemp scratch directories from earlier gates and campaigns whose cleanup lives in exit handlers
+ * that a SIGKILL never reaches. Every fresh child process then stalls inside a single directory
+ * enumeration, so the codex app-server and the Pi Built worker die on their ready handshakes while
+ * established processes carry on untouched and tens of gigabytes of disk stay free. The run records
+ * those deaths as provider or protocol timeouts, with nothing in the evidence naming the directory
+ * that caused them.
  *
  * The walk is bounded twice, because the sensor must never become the enumeration it watches: it
  * streams the directory rather than materialising its names, and it stops at TEMP_SCAN_CAP

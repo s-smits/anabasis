@@ -334,8 +334,8 @@ it.concurrent.each(["private", "public", "unproven"] as const)(
     } finally {
       await closeVerifierLifetime(lifetime, "clean");
     }
-    // Two real campaigns, the shared template build included: 24 s alone on this Mac, past 60 s
-    // beside a full gate.
+    // Two real campaigns, the shared template build included: some 24 s alone, past 60 s beside a
+    // full gate, which is the whole reason for the wall below.
   },
   180_000,
 );
@@ -401,10 +401,11 @@ it("derives the operation from the dimensions the bytes moved, and refuses only 
   expect(derived()).toEqual({ operation: "new-baseline", moved: ["harness", "tasks"] });
 });
 
-// i02 of the 2026-09-20 truss campaign declared a repair to the reference solve while
-// correctness-model/reference/index.ts stayed hash e93970a8 across i01, i02 and i03, still reading
-// `DESIGNS[task.taskId]`. The claimed repair never happened and no stage read the prose against the
-// snapshot. The refusal is session-local: the author resolves it without new bytes.
+// A round can declare it repaired the reference solve while that file stays byte-identical to the
+// one the last round submitted, still looking the answer up by task id. Nothing else reads the
+// declared change against the snapshot, so without this refusal the claimed repair simply never
+// happened and the round is recorded as though it had. The refusal is session-local: the author
+// resolves it without new bytes.
 it("refuses a change that names only files the accepted bytes left byte-identical", () => {
   const { base, candidate } = pair();
   bindBaselineRepresentation(base);
@@ -437,8 +438,8 @@ it("refuses a change that names only files the accepted bytes left byte-identica
 });
 
 it("reports every independent proposal refusal at once", () => {
-  // A tasks proposal on a moved product that also counts past its battery used to hear only of the
-  // scope, and learned of the target after a second paid check.
+  // A tasks proposal on a moved product that also counts past its battery is wrong twice over.
+  // Reporting the scope alone would make the author pay a second check to hear about the target.
   const { base, candidate } = pair();
   writeFileSync(join(candidate, "agent/BUILT_AGENTS.md"), "A changed solving method.");
   const codes = (scope: "product" | "tasks", passes: number) =>
@@ -454,8 +455,8 @@ it("reports every independent proposal refusal at once", () => {
 });
 
 it("reads a retained task's changed expectations as moving scoring, and an added task as not", () => {
-  // Review of 2026-09-14: a retained task's private expectation can change scoring while every
-  // public byte looks like a task-only change, so the operation must name it.
+  // A retained task's private expectation can change scoring while every public byte still looks
+  // like a task-only change, so the operation has to name it.
   const { base, candidate } = pair();
   bindBaselineRepresentation(base);
   const tasks = structuredClone(MATCHING_TASKS);
@@ -475,9 +476,10 @@ it("reads a retained task's changed expectations as moving scoring, and an added
   expect(experimentOperation(snapshotOf(candidate), base).moved).toContain("scoring");
 });
 
-// Until 2026-09-21 any changed byte under correctness-model/ read as scoring, so a battery whose
-// reference solve was rewritten to solve it could never be a task probe. The scoring program is the
-// brief and the evaluator with what it imports; the changed files are still named either way.
+// The scoring program is the brief and the evaluator with everything it imports, not every byte
+// under correctness-model/. Reading the whole directory as scoring would mean a battery whose
+// reference solve was rewritten to solve rather than look up could never be a task probe. The
+// changed files are named either way.
 it("reads a rewritten reference solve or test as no scoring move, and anything the evaluator executes as scoring", () => {
   const { base, candidate } = pair();
   bindBaselineRepresentation(base);

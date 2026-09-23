@@ -3,7 +3,7 @@
  * fingerprint the product, run its battery through `makeVerify` (which owns battery.json and the
  * per-case run records), then append one case row per task with evidence digests, and check
  * completeness against the task set — never against a count re-read from the file whose loss is
- * being checked (B-1).
+ * being checked.
  *
  * The driver restates nothing the runner owns: buildInputsHash and backendPin are read back from
  * the battery evidence, the tri-state verdict fields are copied verbatim from the runner's
@@ -11,9 +11,8 @@
  * isolation probe. `isolation: null` explicitly records that isolation has not been proved, rather
  * than leaving a reader to infer it from an absent field.
  *
- * One battery per iteration since 2026-09-04: `batteryCondition` states the main condition that
- * the battery and every case row restate, so the evidence names the offered tool contract it ran
- * under.
+ * One battery per iteration: `batteryCondition` states the main condition that the battery and
+ * every case row restate, so the evidence names the offered tool contract it ran under.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -220,9 +219,9 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   } catch (error) {
     // The runner publishes battery.json before the Judge phase and before it throws a typed
     // environment non-result, so a throw after publication leaves complete verdicts on disk
-    // that belong in the campaign record like any other battery's: live-run-08's environment
-    // non-results, and Astra 0912 i19, whose Judge turn exhausted the provider budget after 25
-    // verdicts had been published and whose rows the record then lacked. The published record
+    // that belong in the campaign record like any other battery's — a Judge turn exhausting the
+    // provider budget after every verdict is published would otherwise cost the record every one of
+    // those rows, and so would a typed environment non-result at the same point. The published record
     // decides, not the error type; a throw before publication has nothing to append, and the check
     // above proved the record holds no row for this run id yet.
     if (existsSync(batteryPath(options.slugDir, options.runId))) {
@@ -244,7 +243,7 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   // An unclaimable discrimination pass skips the paid loop before any case runs
   // (verification-runner.ts, recordUnclaimableBattery): zero rows is that battery's recorded shape and
   // the claim already refuses on the discrimination findings. The bijection rule is for a battery
-  // that ran; iteration 4 of the engine-path loop aborted two variants on it.
+  // that ran, and applying it here aborts a variant that never reached a case.
   const skipped = report.score.length === 0 && !report.evidence.discrimination.claimable;
   if (!skipped) {
     assertCompleteRun(

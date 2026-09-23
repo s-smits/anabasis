@@ -88,11 +88,10 @@ const CARRY_MARKER_PATTERN =
   /^(?:<!-- (?:carried forward from|This epoch is a CLIMB|scratch\/ holds)[^\n]*-->\n+)+/;
 
 /** The Builder's own helper scripts — generators, local checks, debug probes — sit at the top of
- *  `scratch/`, and successor epochs used to rebuild them from nothing at about fifteen minutes
- *  each, so they cross. Only regular files at the top level and only under this size: in truss
- *  campaign -11 the helpers were a few kilobytes while one output directory beside them held
- *  585 MB, which is what a recursive copy would have carried. Scratch is untracked, so nothing
- *  that crosses can enter a candidate. */
+ *  `scratch/`, and a successor epoch otherwise rebuilds each one from nothing, so they cross. Only
+ *  regular files at the top level and only under this size: the helpers are kilobytes, while an
+ *  output directory beside them can hold hundreds of megabytes that a recursive copy would carry.
+ *  Scratch is untracked, so nothing that crosses can enter a candidate. */
 const SCRATCH_DIR = "scratch";
 const SCRATCH_FILE_LIMIT_BYTES = 256 * 1024;
 
@@ -124,10 +123,9 @@ function authoredBody(workspace: string, file: string, starter: string): string 
   return text.trim() === starter.trim() ? "" : text.trim();
 }
 
-/** A memory file that grows by appending the same headed section each pass — run c66e0d carried
- *  three identical "## Status" blocks — spends its byte cap on repetition, and the cap is then
- *  reached by text the next session already knows. Keep one copy of each exact section and drop a
- *  heading that carries nothing under it. */
+/** A memory file grows by appending, so the same headed section arrives once per pass and several
+ *  identical copies of it spend the byte cap on text the next session already knows. Keep one copy
+ *  of each exact section and drop a heading that carries nothing under it. */
 export function withoutRepeatedSections(text: string): string {
   const seen = new Set<string>();
   const [head = "", ...sections] = `\n${text}`.split("\n## ");
@@ -143,9 +141,8 @@ export function withoutRepeatedSections(text: string): string {
 
 /**
  * Limit one memory file to its declared size, keeping the newest bytes and cutting at a line
- * boundary. Which end is kept is the whole decision: run 52's MEMORY.md grew to 8,660 and then
- * 10,174 bytes against an 8,000-byte limit, and keeping the start of the file removed the notes the
- * two climb authors had just appended, which were exactly the ones the next session needed.
+ * boundary. Which end is kept is the whole decision: the file grows by appending, so keeping the
+ * start of it drops the notes the last pass just wrote, which are the ones the next session needs.
  *
  * The marker names how many older bytes went, so a writer sees that its file was cut instead of
  * meeting a shorter file with no explanation, and a file already carrying a marker adds its count
@@ -178,11 +175,10 @@ function cappedToNewest(text: string, bytes: number): string {
  * without memory would, with no empty memory section added to its instructions.
  *
  * It is rendered first in the round prompt, ahead of the request and the controller's statements.
- * That ordering is the fix for a real confusion: notes from an earlier pass used to appear below
- * the current request, task condition and session limit, where the oldest text could read as the
- * latest instruction. The header now says the model wrote these notes, that they may describe an
- * earlier condition, and that everything below overrides them, and the workspace path and the
- * carried file's epoch marker say where they came from — which is already the history a reader
+ * Below them instead, under the current request, task condition and session limit, the oldest text
+ * reads as the latest instruction. The header says the model wrote these notes, that they may
+ * describe an earlier condition, and that everything below overrides them; the workspace path and
+ * the carried file's epoch marker say where they came from, which is already the history a reader
  * needs, so the block adds no further identity field.
  *
  * The size limit is applied on the read as well as on the carry. `carryMemoryForward` bounds what
@@ -225,12 +221,11 @@ function carryScratchHelpers(prior: string, next: string): string[] {
 /**
  * A successor epoch opens on its predecessor's MEMORY.md instead of a blank starter. A successor
  * exists because something in the binding changed — a corrected request, a different engine
- * identity, a different Builder condition — and that writes a fresh workspace; the representation
- * and tool lessons the next pass most wants were exactly the ones being discarded with the old one
- * (plan review, 2026-07-27). Harness identity is untouched by this: memory sits outside both
- * fingerprinted bundles and enters no bundle snapshot. It is written before domain-repo seeds its
- * starters, so the inherited text lands in the successor's own root commit rather than arriving as
- * an unexplained later edit.
+ * identity, a different Builder condition — and that writes a fresh workspace, which would
+ * otherwise discard exactly the representation and tool lessons the next pass most wants. Harness
+ * identity is untouched by this: memory sits outside both fingerprinted bundles and enters no
+ * bundle snapshot. It is written before domain-repo seeds its starters, so the inherited text
+ * lands in the successor's own root commit rather than arriving as an unexplained later edit.
  *
  * The marker is required rather than decoration. The binding changed, which is the reason this
  * epoch exists, so an inherited line may no longer hold and the Builder is told so instead of
@@ -264,9 +259,8 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
       : []),
   ].join("\n");
   try {
-    // The predecessor's own carry markers named its predecessor, while this epoch names only the
-    // file it inherits from. Kept, they stacked one line per epoch: run 1093c9 opened its fourth
-    // epoch on three of them.
+    // The predecessor's own carry markers name its predecessor, while this epoch names only the
+    // file it inherits from. Kept, they would stack one line per epoch at the head of the file.
     const body = authoredBody(prior, MEMORY_FILE, STARTER_MEMORY).replace(CARRY_MARKER_PATTERN, "");
     if (body === "" || existsSync(join(next, MEMORY_FILE))) return;
     mkdirSync(next, { recursive: true });

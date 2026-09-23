@@ -87,10 +87,10 @@ describe("the solve isolation's policy", () => {
     expect(open.deniedReadRoots).toContain(homedir());
   });
 
-  // A read restriction names a path. Measured 2026-07-27 against the profile this module emitted
-  // before `seatbelt-path-guard.ts`: the direct read was refused, renaming the denied directory was
-  // refused, but renaming its parent succeeded and returned the canary at exit 0. These assertions
-  // are the structural half of the fix; the executed half is the fixture's fourth check.
+  // A read restriction names a path, so a profile without `seatbelt-path-guard.ts` refuses the
+  // direct read and the rename of the denied directory, and then lets a rename of its parent
+  // through: the canary comes back at exit 0. These assertions are the structural half of the
+  // guard; the executed half is the fixture's fourth check.
   it("denies the rename of every protected root's ancestors, so a deny cannot be relocated", () => {
     const repoRoot = workRepo();
     const policy = solveIsolationPolicy({ repoRoot });
@@ -245,9 +245,9 @@ describe("composition: a probe certifies only its own family's session", () => {
     expect(composedIsolation(retired, hostSession)).toBe("contractual");
   });
 
-  // PR399 removed the runtime-fact preflight, which left this the pre-Builder refusal for a host
-  // with no isolation mechanism. A plain Error would record `abortClause: null`; the typed class is
-  // what prepareControllerTerminal reads as environment-blocked.
+  // This is the only pre-Builder refusal for a host with no isolation mechanism. A plain Error
+  // would record `abortClause: null`; the typed class is what prepareControllerTerminal reads as
+  // environment-blocked.
   it("refuses a host without an isolation mechanism as a typed environment refusal", () => {
     expect(() => builtSolveIsolation(workRepo(), [], { platform: "win32" })).toThrow(EnvironmentRefusal);
   });

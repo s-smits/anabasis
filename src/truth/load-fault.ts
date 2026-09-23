@@ -9,22 +9,19 @@ import {
  *
  * Loading a generated module runs only Builder-authored bytes through the bundler and the module
  * loader; no task, hidden expectation or verifier output is involved yet. Its diagnostic is
- * therefore authored and crosses in full. Earlier the author read only
- * "generated-correctness-model-load": truss run dffb11 spent two previews on an evaluator import of
- * ../core/, and an unmatched message still hid the cause.
+ * therefore authored and crosses in full. The bare code "generated-correctness-model-load" tells an
+ * author nothing about which import was refused, and a session spends previews rediscovering it.
  *
- * A diagnostic alone cannot distinguish a host denial from a source defect. Run w34's first
- * iteration recorded 36 findings, every one of them `xcode-select: error ... Operation not
- * permitted`; run 52 lost seven iterations and w29 four to an unresolvable `@ana/*` specifier in a
- * symlinked workspace, repairing code that was never broken. A known signature therefore leads the
- * detail with the classification and its sentence.
+ * A diagnostic alone cannot distinguish a host denial from a source defect either, and that is the
+ * expensive confusion: a session reading `xcode-select: ... Operation not permitted`, or an
+ * unresolvable `@ana/*` specifier in a symlinked workspace, spends whole iterations repairing code
+ * that was never broken. A known signature therefore leads the detail with the classification and
+ * its sentence.
  */
 
 /** One signature and the sentence it selects. */
 const LOAD_FAULT_NOTES: readonly (readonly [RegExp, string])[] = [
   // The bundler's own refusal, first so a refused `@ana/` specifier is not read as a host fault.
-  // Truss run 805bcc spent two previews on reference/index.ts importing ../rules.ts while being
-  // told only "generated-correctness-model-load".
   [
     /import outside its bundle or public contract|generated source escapes its/,
     "an import left its package: reference/ is loaded alone by the reference solve, so files there import only reference/ and the public @ana packages; the evaluator imports only files under correctness-model/",

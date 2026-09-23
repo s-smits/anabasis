@@ -61,11 +61,11 @@ export interface BuilderSessionInput {
   advisory?: string;
   /** The operator's cap on session work (`--max-builder-turns`), which model turns and refused
    *  submits share. A turn is one prompt and the tool iterations inside it are free, so a session
-   *  can author everything within turn 1 — loop-1 on 2026-08-23 made 14 refused submits that all
-   *  recorded `turn: 1`, and the turn count never moved — which is why the same number also ends
-   *  the session at its maxTurns-th refused submit. Absent, the round has no cap, as a Codex goal
-   *  has none: it ends on acceptance, a final refusal, `STALLED_TURNS` turns without a successful
-   *  tool call, the budget or a thrown turn. */
+   *  can author everything within turn 1 and make a dozen refused submits that all record
+   *  `turn: 1` without the count moving — which is why the same number also ends the session at
+   *  its maxTurns-th refused submit. Absent, the round has no cap, as a Codex goal has none: it
+   *  ends on acceptance, a final refusal, `STALLED_TURNS` turns without a successful tool call,
+   *  the budget or a thrown turn. */
   maxTurns?: number;
   /** Whether the Builder slot carries public web search. The slot profile decides it and the system
    *  prompt states it, so the session never has to guess whether the tool is there. */
@@ -119,12 +119,12 @@ export interface BuilderSessionDeps {
    *  because a session that failed while authoring still needs a record of the work it did. */
   onExecution?(evidence: BuilderExecutionEvidence): void;
   /** Persist an in-flight snapshot after every controller-hosted tool return and after each turn.
-   *  `onExecution` runs in a finally that a re-raised SIGTERM never reaches, which is why run A's
-   *  66-minute session left no execution evidence at all: the record lived in memory until settle.
-   *  A turn is no boundary either — an Opus run on 2026-08-23 held one turn open for eleven hours
-   *  and twelve `correctness_check` calls without submitting, so a per-turn checkpoint would have
-   *  written nothing. The production caller binds both callbacks to one writer, so the settled
-   *  record replaces the last checkpoint in place. */
+   *  `onExecution` runs in a finally that a re-raised SIGTERM never reaches, so a session killed
+   *  mid-authoring leaves no execution evidence at all: the record lives in memory until settle. A
+   *  turn is no boundary either, since a session can hold one turn open for hours and a dozen
+   *  `correctness_check` calls without submitting, so a per-turn checkpoint would write nothing.
+   *  The production caller binds both callbacks to one writer, so the settled record replaces the
+   *  last checkpoint in place. */
   onCheckpoint?(evidence: BuilderExecutionEvidence): void;
   /** Shared with harness_inspect in production, so the latest bounded submit refusal stays
    *  navigable there without giving inspection any authority over acceptance. */
@@ -205,9 +205,9 @@ class BuilderSessionLifecycleError extends Error {
 
 /** The workspace as the OS resolves it. The controller names the workspace through its own
  *  checkout, and a run worktree reaches `campaigns/` through a symlink into the main checkout while
- *  the isolation grants the physical roots. In truss-run6-opus-0902 and run47-opus-0902 the
- *  Builder's first `cd` into the lexical spelling was refused, and every session there spent its
- *  first minute discovering the physical path. A path that does not resolve keeps its spelling. */
+ *  the isolation grants the physical roots, so a Builder handed the lexical spelling has its first
+ *  `cd` refused and spends its opening minutes discovering the physical path instead of authoring.
+ *  A path that does not resolve keeps its spelling. */
 function physicalWorkspace(workspace: string): string {
   try {
     return realpathSync(workspace);
@@ -225,26 +225,26 @@ function workspaceSentence(input: BuilderSessionInput, previous: PreviousRound |
 
 function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null): string {
   // Read-back of the Builder's own notes, once per fresh session. The Builder writes MEMORY.md and
-  // SCRATCHPAD.md itself, and until this interface existed nothing read them back, so runs sol-329,
-  // w22, w28 and truss-w30 each opened on notes that had been written and never delivered. The
-  // read-back is unconditional on how the previous round ended, and empty until a pass has written
-  // something; builder-memory.ts owns the byte bound and the stale-notes header. A continued
-  // conversation already holds everything the notes would repeat, so it reads none.
+  // SCRATCHPAD.md itself, and without this read-back nothing delivers them, so a fresh session
+  // opens on notes that were written and never read. It is unconditional on how the previous round
+  // ended, and empty until a pass has written something; builder-memory.ts owns the byte bound and
+  // the stale-notes header. A continued conversation already holds everything the notes would
+  // repeat, so it reads none.
   //
   // The block goes FIRST, not last. It is model-authored prose that may predate the current
   // binding, and appended after the request, the workspace, the round limit and the previous
-  // attempt it occupied the most recent and most authoritative position in the kickoff. Everything
-  // the controller states for THIS round now follows it.
+  // attempt it would occupy the most recent and most authoritative position in the kickoff.
+  // Everything the controller states for THIS round now follows it.
   const memory = previous === null ? builderMemoryBlock(input.workspace) : "";
   const rows = [
     ...(previous === null ? [] : [`A new round opens in this conversation. ${ENDED[previous.ending]}`]),
     ...(memory === "" ? [] : [memory]),
     `The user's request, unchanged:\n${input.kickoff}`,
     workspaceSentence(input, previous),
-    // A bound the model cannot observe cannot steer it (run w45), which is why an operator cap is
-    // stated rather than merely enforced. A Claude session can run as a single turn, so the pace is
-    // stated as an action rather than as a turn reserve: truss run cc4709 authored for 171 minutes
-    // past its first clear preview without submitting (2026-09-16).
+    // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
+    // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
+    // meaningless as a pace signal; left with one, a session authors for hours past its first clear
+    // preview without submitting. So the pace is stated as an action instead.
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build and check the candidate, and submit once you are confident` +
       ` that a clear preview and your own checks are sufficient evidence that it works; further polish belongs to the` +
       ` next round. A refused submit returns actionable contract feedback, an unsubmitted candidate returns none.`,

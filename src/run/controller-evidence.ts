@@ -114,8 +114,8 @@ export type ControllerEvidence =
       state: "unfinished";
       lockHeld: boolean;
       /** The dead-process witness. `absent` and `proved-dead` say no live controller can still
-       *  record this opening, which is how run 25's invocation `a` — an opening with no terminal at
-       *  all — closes: the reader states the witness rather than leaving the run open forever. */
+       *  record this opening, which is what closes an opening that never got a terminal: the reader
+       *  states the witness rather than leaving the run open forever. */
       holder: LockHolderState;
       evidence: { opening: string };
     }
@@ -240,16 +240,15 @@ function writeControllerOpening(input: {
     continuation: latestRecordedContinuation(campaign),
     // Earlier controllers of this campaign that wrote an opening and never recorded a terminal:
     // they stopped without recording why, and a reader that walks terminals cannot see them at
-    // all. opus-331 had exactly one, and the fact lived in diagnostic safeguard 13 until
-    // 2026-09-01. Recording it here puts the unaccounted siblings beside the continuation, where
-    // every later reader meets both.
+    // all. Recording them here puts the unaccounted siblings beside the continuation, where every
+    // later reader meets both.
     abandonedRuns: abandonedSiblingRuns(campaign, input.runId),
     epoch: { key: epoch.key, supersedes: epoch.supersedes },
     modelSlots: input.slots,
     // budget.json spans runs and epochs, so a later run moves the counter and the file alone can
-    // never say what this run spent. The snapshot at open and the one at record bracket it: opus
-    // 2026-08-22 recorded 1 iteration against 11 campaign turns, and no reader could say which run
-    // had spent them.
+    // never say what this run spent — a campaign whose turn count is many times any one run's
+    // iteration count leaves no reader able to say which run spent them. The snapshot at open and
+    // the one at record bracket it.
     budget: loadBudget(campaign),
     providerResourceBudget: input.providerBudget?.snapshot() ?? null,
     command: {
@@ -297,18 +296,16 @@ export function prepareControllerTerminal(input: {
   if (existsSync(path)) throw new Error(`${path}: controller terminal evidence already exists`);
   const outcome = input.failure === null ? "completed" : "aborted";
   // A provider refusal during a Builder turn — a 429, a session limit, a timeout — belongs to the
-  // environment, and the pr179 run recorded only `aborted`, which forced the review to infer the
-  // owner from the transcript. The typed clause records that owner instead. By operator decision
-  // on 2026-08-11 `environment-blocked` belongs in the terminal while `outcome` stays
-  // completed/aborted, and the shared classifier in controller-abort-clause.ts supplies a clause
-  // for every abort, unclassified ones included.
+  // environment, and a bare `aborted` forces a reader to infer that owner from the transcript. The
+  // typed clause records it instead. By operator decision `environment-blocked` belongs in the
+  // terminal while `outcome` stays completed/aborted, and the shared classifier in
+  // controller-abort-clause.ts supplies a clause for every abort, unclassified ones included.
   //
-  // The reason leads with that clause and nothing else. It used to lead with `aborted: `, which
-  // repeated the `outcome` field beside it and cost every reader the code, because
-  // `loopTerminalCode` takes the head before the first colon: 45 of the 60 terminals recorded up
-  // to 2026-09-18 resolved to null, including all 25 environment-blocked and both budget-limited
-  // endings, and whole-run-investigation's digest printed `aborted` for each of them. Two clauses
-  // are themselves terminal codes, so leading with the clause is what makes them readable.
+  // The reason leads with that clause and nothing else. Leading with `aborted: ` repeats the
+  // `outcome` field beside it and costs every reader the code, because `loopTerminalCode` takes the
+  // head before the first colon and so resolves the whole terminal to null — environment-blocked
+  // and budget-limited endings included, which then print as `aborted`. Two clauses are themselves
+  // terminal codes, so leading with the clause is what makes them readable.
   const abortClause = outcome === "aborted" ? controllerAbortClause(input.failure) : null;
   const abortReason = errorMessage(input.failure);
   return {

@@ -39,9 +39,8 @@ export interface FingerprintEvidence {
    *  to the solving agent. */
   agentHash: string;
   /** Hash of correctness-model/ excluding tasks.json and controls.json. Battery identity is
-   *  recorded separately from verifier identity (steering-delta P1); this hash once included the
-   *  battery, so editing a task appeared to change the correctness model even when the verifier
-   *  code stayed the same. */
+   *  recorded separately from verifier identity, because including the battery here makes editing a
+   *  task look like a change to the correctness model even when the verifier code is untouched. */
   correctnessModelHash: string;
   /** The scoring program alone: brief.json and evaluator.ts with every module it imports
    *  (`scoring-closure.ts`). Every "did the scoring move" reading compares this, so a rewritten
@@ -198,8 +197,8 @@ export function taskSetDigest(domainDir: string): string | null {
 
 /** The evaluation identity of one bundle directory, read through the same two recorded digests
  *  promotion and experiment freeze already check. It sits beside them because it is exactly their
- *  composition: promotion owned it, admission needed it, and a copy in either file would have
- *  closed a module cycle that neither file's subject asked for. */
+ *  composition: promotion owns it, admission needs it, and a copy in either file would close a
+ *  module cycle that neither file's subject asked for. */
 export function evaluationIdentity(domainDir: string): EvaluationIdentity {
   const recorded = fingerprintSlug(domainDir);
   return {

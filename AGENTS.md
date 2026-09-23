@@ -999,7 +999,7 @@ git log origin/main --format='%(trailers:key=Gate-Finding,valueonly)' | awk 'NF 
 
 | Changed files | While editing | Delivery proof |
 | --- | --- | --- |
-| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Normal push repeats the diff check and skips the gate |
+| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit locally and hold it; the operator approves the push, which repeats the diff check and skips the gate |
 | Test or source | `scripts/worktree.sh run <dir> bun run test -- <owning-paths...>` | One normal push runs the composed gate |
 | Intentional dependency change | One unfrozen install at the root, review manifest plus lock | Frozen install, then source delivery |
 | Stack checkpoint with publication | Union of affected owning checks | One multi-ref push from the clean top runs the gate |
@@ -1067,10 +1067,30 @@ If no useful cut remains, say "already the smallest honest form".
 
 ### Where changes go
 
-Surrounding files go directly to main: `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md`.
-Those are exactly the paths the pre-push hook excludes when it decides a push is
-documentation-only, after which it runs `git diff --check` alone. **Skill and helper scripts are
-not in that set.** A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
+Surrounding files are `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md` — exactly the
+paths the pre-push hook excludes when it decides a push is documentation-only, after which it runs
+`git diff --check` alone. **Commit them locally and leave them there until the operator approves
+the push** (operator decision 2026-09-23). Until then they went straight to main, on the reasoning
+that a note carries no gate and so costs nothing to publish. What that missed is that the gate was
+never the thing standing between a document and its readers — a source change is read by a test, a
+reviewer or a failing build before anyone believes it, and a document is read by nobody. So the
+cheapest path to publication belonged to exactly the files whose only check is someone reading
+them, and on 2026-09-23 two of them were written and pushed inside one turn. Commit the work, say
+where it is and what it claims, and let the operator decide whether it goes out. The approval is
+for the change in front of them and does not carry to the next one.
+
+Ask for it in the reply that reports the work, in a line beside everything else that reply is
+already saying. This is not a question that blocks the turn, so it does not earn an interruption or
+a round trip of its own: finish, report, and name the push as the one thing left. That keeps the
+rule from costing what it was meant to save, which is the operator's attention.
+
+Nothing enforces this. The hook will push a documentation commit as readily as it ever did, and
+`git diff --check` is the whole of what it asks, so this is a standing operator decision held by
+discipline rather than a gate — worth saying plainly, because a rule this file cannot point to a
+consumer for is one a reader should know is unenforced.
+
+**Skill and helper scripts are not in that set**, for publication or for checks.
+A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
 delivery, and how much of the composed gate reaches one depends on the script. `ROOTS` in
 `tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint reads every
 one of them. The suite reaches a script only through a test that imports it: `bun run test`

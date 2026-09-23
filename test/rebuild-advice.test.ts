@@ -26,6 +26,7 @@
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { writeCompleted } from "../src/meta/completed-json.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -80,11 +81,12 @@ function analysis(
   cases: IterationAnalysis["cases"],
   runId = RUN,
   blockingByCheck: Record<string, number> = {},
+  applicableByCheck?: Record<string, number>,
 ): IterationAnalysis {
   const verified = cases.filter((row) => row.truthOk !== null).length;
   const passed = cases.filter((row) => row.truthOk === true).length;
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug: SLUG,
     runId,
     treeRoot: `domains/${SLUG}`,
@@ -107,6 +109,10 @@ function analysis(
       claimClauses: [],
       readinessClauses: [],
       blockingByCheck,
+      // The quiet default is the shape the old single sentence assumed of every untripped check:
+      // applicable to the whole verified battery. A test that means otherwise says so.
+      applicableByCheck:
+        applicableByCheck ?? Object.fromEntries(Object.keys(blockingByCheck).map((id) => [id, verified])),
       summary: {
         runId,
         total: cases.length,
@@ -458,6 +464,31 @@ describe("the issue register and its projection", () => {
     expect(() => readLatestRebuildAdvice(root, SLUG)).toThrow();
   });
 
+  it("keeps a host finding's rule across the write and read that separate two rounds", () => {
+    const root = repo();
+    const evidence = `campaigns/${SLUG}/case-record.jsonl`;
+    writeFileSync(join(root, evidence), "");
+    const host: AnalysisFinding = {
+      kind: "diagnosis-uncertain",
+      claim: "the agent submitted nothing the verifier could read",
+      evidence,
+      proposedOwner: null,
+      severity: "advisory",
+      hostRule: "unaccepted-without-verdict",
+    };
+    const round = (runId: string, previous: RebuildAdvicePacket | null) => {
+      const data = analysis([caseRow("t1")], runId);
+      return deriveRebuildAdvice(data, judges(), admitFindings(root, data, [host]), previous);
+    };
+    // Production puts a serializer and a parser between the two rounds, and the rule is the only
+    // thing keying this finding's recurrence. Deriving twice in memory proves the count while
+    // leaving the field free to be dropped in transit, with both sides of the join still green.
+    writeCompleted(latestRebuildAdvicePath(root, SLUG), round("r1", null));
+    const reread = readLatestRebuildAdvice(root, SLUG);
+    expect(reread?.findings[0]).toMatchObject({ hostRule: "unaccepted-without-verdict" });
+    expect(round("r2", reread).findings[0]).toMatchObject({ repeated: { count: 2, since: "r1" } });
+  });
+
   it("renders families, kinds and counts, and never a task id or verifier text", () => {
     const result = deriveRebuildAdvice(
       analysis([
@@ -551,8 +582,8 @@ describe("the issue register and its projection", () => {
     expect(advice.findings).toEqual([]);
   });
 
-  it("annotates an unowned diagnosis with its consecutive recurrence, keyed by check, path or kind", () => {
-    const uncertain = (checkId?: string, artifactSchemaPath?: string): AnalysisFinding => {
+  it("annotates an unowned diagnosis with its consecutive recurrence, keyed by what it named", () => {
+    const uncertain = (checkId?: string, artifactSchemaPath?: string, hostRule?: string): AnalysisFinding => {
       const finding: AnalysisFinding = {
         kind: "diagnosis-uncertain",
         claim: "the reviewer could not attribute the equilibrium result",
@@ -561,6 +592,7 @@ describe("the issue register and its projection", () => {
         severity: "advisory",
         ...keyIfDefined("checkId", checkId),
         ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
+        ...keyIfDefined("hostRule", hostRule),
       };
       return finding;
     };
@@ -583,14 +615,51 @@ describe("the issue register and its projection", () => {
     expect(changed.findings[0]).toMatchObject({ checkId: "deflection" });
     expect(changed.findings[0]).not.toHaveProperty("repeated");
 
-    // A host finding carries neither identity and is keyed by its kind; a round without it ends
-    // the run of consecutive packets, so its return counts from one.
-    const hostFirst = round("h1", [uncertain()], null);
-    const hostSecond = round("h2", [uncertain()], hostFirst);
+    // A host finding names no check, and the rule that produced it is what supports its
+    // recurrence: the same rule fired twice, which the host observed. A round without it ends the
+    // run of consecutive packets, so its return counts from one.
+    const host = () => uncertain(undefined, undefined, "unaccepted-without-verdict");
+    const hostFirst = round("h1", [host()], null);
+    const hostSecond = round("h2", [host()], hostFirst);
     expect(hostSecond.findings[0]).toMatchObject({ repeated: { count: 2, since: "h1" } });
     const gap = round("h3", [], hostSecond);
     expect(gap.findings).toEqual([]);
-    expect(round("h4", [uncertain()], gap).findings[0]).not.toHaveProperty("repeated");
+    expect(round("h4", [host()], gap).findings[0]).not.toHaveProperty("repeated");
+  });
+
+  it("reads no recurrence from evidence that cannot establish one", () => {
+    // Two reviewer observations that named nothing used to key on the kind itself, the one constant
+    // every finding here shares, so any two of them in consecutive packets rendered as one
+    // diagnosis recurring. The author was told "recurring: 3 consecutive packets" about three
+    // unrelated observations. Naming nothing now keys nothing, and the sentence is absent rather
+    // than wrong; the claims themselves still reach the author every round.
+    const unattributed = (claim: string, artifactSchemaPath?: string): AnalysisFinding => ({
+      kind: "diagnosis-uncertain",
+      claim,
+      evidence: "campaigns/bridge-truss/analysis/review.json",
+      proposedOwner: null,
+      severity: "advisory",
+      ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
+    });
+    const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
+      deriveRebuildAdvice(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
+
+    const first = round("r1", [unattributed("the deflection result is unexplained")], null);
+    const second = round("r2", [unattributed("the mass budget result is unexplained")], first);
+    expect(second.findings[0]).not.toHaveProperty("repeated");
+    expect(renderRebuildAdvice(second)).toContain("the mass budget result is unexplained");
+    expect(renderRebuildAdvice(second)).not.toContain("recurring");
+
+    // A bare declared root is the same case: one word for the whole artifact tells two defects
+    // apart no better than naming nothing. A path below a root does name a place, and recurs.
+    const bare = round("b2", [unattributed("a", "files")], round("b1", [unattributed("b", "files")], null));
+    expect(bare.findings[0]).not.toHaveProperty("repeated");
+    const below = round(
+      "d2",
+      [unattributed("a", "files.main")],
+      round("d1", [unattributed("b", "files.main")], null),
+    );
+    expect(below.findings[0]).toMatchObject({ repeated: { count: 2, since: "d1" } });
   });
 
   it("keeps public aggregate claims while private diagnosis prose cannot change the author handover", () => {
@@ -699,7 +768,7 @@ describe("the issue register and its projection", () => {
     );
     // The check that blocked nothing is the other half of the same record, not a row to discard.
     expect(text).toContain(
-      "Declared checks that blocked no shipping artifact over 3 verified case(s): member-forces.",
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): member-forces 3.",
     );
     expect(text).not.toContain("t1");
     // Two checks share the failures, so the one-check question is not asked.
@@ -721,6 +790,32 @@ describe("the issue register and its projection", () => {
     expect(empty).not.toContain("blocked no shipping artifact");
   });
 
+  it("separates a check no verified case posed from one that refused nothing over the whole battery", () => {
+    // Both read identically under one sentence, and their repairs are opposite: raise the rule, or
+    // give the battery a task that reaches it. Across the recorded corpus 74 of 670 untripped rows
+    // were not the shape that sentence implied — 54 applicable to some verified cases, 20 to none.
+    const rows = [caseRow("t1"), caseRow("t2"), caseRow("t3", { truthOk: false, pass: false })];
+    const text = renderRebuildAdvice(
+      deriveRebuildAdvice(
+        analysis(
+          rows,
+          RUN,
+          { lenient: 0, narrow: 0, unposed: 0, deflection: 1 },
+          { lenient: 3, narrow: 1, unposed: 0, deflection: 3 },
+        ),
+        judges(),
+        admission(),
+        null,
+      ),
+    );
+    expect(text).toContain(
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): lenient 3, narrow 1.",
+    );
+    expect(text).toContain(
+      "Declared checks no verified case posed, so this battery measured nothing about them: unposed.",
+    );
+  });
+
   it("names every declared check when a saturated battery tripped none of them", () => {
     // A battery that passes every case has declared checks firing on its controls and on no
     // shipping artifact at all. Shown only the families that found no limit, the next battery moves
@@ -732,7 +827,7 @@ describe("the issue register and its projection", () => {
     );
     expect(text).not.toContain("Verified failures by declared check");
     expect(text).toContain(
-      "Declared checks that blocked no shipping artifact over 2 verified case(s): geometry-and-clearance, mass-within-limit, strength-and-buckling.",
+      "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 2): geometry-and-clearance 2, mass-within-limit 2, strength-and-buckling 2.",
     );
     // Zero verified cases leave the roster silent: nothing was graded, so no check went untripped.
     const ungraded = [caseRow("t1", { truthOk: null, pass: null, acceptedSubmit: false })];

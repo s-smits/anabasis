@@ -684,7 +684,7 @@ describe("review-yield: composer", () => {
 describe("review-yield: components the current loop no longer contains", () => {
   function currentLoop(root: string): void {
     record(root, "run-a", "analysis", { schema: "iteration-analysis/v4" }, 1);
-    record(root, "run-b", "analysis", { schema: "iteration-analysis/v4" }, 2);
+    record(root, "run-b", "analysis", { schema: "iteration-analysis/v5" }, 2);
   }
 
   it("states absence rather than a zero that reads like a live but unproductive component", () => {

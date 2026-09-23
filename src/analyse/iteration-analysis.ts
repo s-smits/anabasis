@@ -63,10 +63,20 @@ export type BatteryEvidence = {
    *  battery's recorded firing counts. Check ids are public authoring identities, so the counts may
    *  reach the rebuild author; no task id travels with them. */
   blockingByCheck: Record<string, number>;
+  /** checkId -> verified cases the check applied to: the denominator its blocking count is read
+   *  against. Without it a check that refused nothing over 5 applicable cases renders exactly like
+   *  one that refused nothing over 25, and one no verified case posed renders like both, while the
+   *  three ask for different repairs. Applicability is family scope, which is public authoring
+   *  identity. */
+  applicableByCheck: Record<string, number>;
 };
 
+/** The two per-check count maps, carried together because a blocking count means nothing without
+ *  the denominator beside it. */
+type CheckFiring = Pick<BatteryEvidence, "blockingByCheck" | "applicableByCheck">;
+
 export type IterationAnalysis = {
-  schema: "iteration-analysis/v4";
+  schema: "iteration-analysis/v5";
   slug: string;
   /** The one battery this round measured; the analysis files carry the same id. */
   runId: string;
@@ -137,6 +147,12 @@ export type AnalysisFinding = {
   checkId?: string;
   artifactSchemaPath?: string;
   publicInputPath?: string;
+  /** The fixed host rule that produced this finding, for the findings a rule produced rather than
+   *  a model observed. It names the subject the way `checkId` does, and it is what makes recurrence
+   *  supportable for a host finding that names no check: the same rule fired again, which is an
+   *  observation, where two free-text observations resembling one another is an inference. A
+   *  model-produced finding never carries one. */
+  hostRule?: string;
   /** No declared check observes the obligation at all, so no existing check should be repaired for
    *  it. Without the flag a review names the nearest check instead, and the Builder dutifully
    *  repairs that check round after round while the obligation stays unobserved. */
@@ -169,12 +185,44 @@ type AdmissionFindingRoute =
   | { findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner }
   | { findingDigest: string; kind: AnalysisFindingKind; owner: null; reason: NoRouteReason };
 
+/** The subject one finding named, in the public authoring identities it carries: its declared
+ *  check, else the host rule that produced it, else a path naming a place *below* a declared root.
+ *  Null when it names none of them, because two findings that name nothing cannot be told apart,
+ *  and a key that cannot tell them apart is worse than none — it merges unrelated defects into one
+ *  recurrence.
+ *
+ *  This is a naming, not a defect identity, and the difference is the whole of what it may be used
+ *  for. Two reviews naming one check is evidence that they concern one defect; it is not proof,
+ *  because two defects can name the same check. `recurringDefects` and the advice packet both draw
+ *  that inference, and both own it — this function establishes only that the same subject was
+ *  named twice, under the conditions its callers bind it to.
+ *
+ *  A bare root is not a naming. The reviewer's `schemaPath` rule requires only that the first
+ *  segment be a declared `artifactSchema` root, so a domain whose schema has one root offers one
+ *  bare word for any place in its artifact, and every defect then shares one identity: a
+ *  floating-point rule, a header contract and a pin binding recur as each other. A new finding
+ *  arrives already carrying recurrences it had nothing to do with and is demoted by them, or is
+ *  forced blocking at a single recurrence and resets a working harness. A word that names the
+ *  whole artifact identifies no defect in it.
+ *
+ *  The check is preferred over the path because one defect's artifact location may differ between
+ *  reviews of it, and a key built from check-and-path then reads one check named twice as two
+ *  defects that had each occurred once. */
+export function namedSubject(finding: {
+  checkId?: string | null;
+  artifactSchemaPath?: string | null;
+  hostRule?: string | null;
+}): string | null {
+  const path = finding.artifactSchemaPath ?? null;
+  return finding.checkId ?? finding.hostRule ?? (path?.includes(".") === true ? path : null);
+}
+
 function batteryEvidence(
   repoRoot: string,
   slug: string,
   runId: string,
   summary: RunSummary,
-  blockingByCheck: Record<string, number>,
+  firing: CheckFiring,
 ): BatteryEvidence {
   const claimPath = join(claimsDirFor(repoRoot, slug), `${runId}.json`);
   if (!existsSync(claimPath)) {
@@ -191,7 +239,7 @@ function batteryEvidence(
     claimClauses: parsed.claim.ok ? [] : clauseNames(parsed.claim.clauses),
     readinessClauses: parsed.readiness === null ? null : clauseNames(parsed.readiness.clauses),
     summary,
-    blockingByCheck,
+    ...firing,
   };
 }
 
@@ -201,22 +249,30 @@ function batteryIdentity(slugDir: string, runId: string) {
   const parsed = parseJsonAs<{
     buildInputsHash?: string;
     backendPin?: string;
-    truthCheckFiring?: { blockingByCheck?: unknown };
+    truthCheckFiring?: { blockingByCheck?: unknown; applicableByCheck?: unknown };
   }>(readFileSync(path, "utf8"));
   if (!isString(parsed.buildInputsHash) || !isString(parsed.backendPin)) {
     throw new Error(`${path}: battery evidence is missing buildInputsHash/backendPin`);
   }
-  const blockingByCheck = blockingCounts(parsed.truthCheckFiring?.blockingByCheck);
-  if (blockingByCheck === null) {
-    throw new Error(`${path}: battery evidence records no truthCheckFiring.blockingByCheck count map`);
-  }
-  return { buildInputsHash: parsed.buildInputsHash, backendPin: parsed.backendPin, blockingByCheck };
+  const counts = (field: keyof CheckFiring): Record<string, number> => {
+    const map = checkCounts(parsed.truthCheckFiring?.[field]);
+    if (map === null) {
+      throw new Error(`${path}: battery evidence records no truthCheckFiring.${field} count map`);
+    }
+    return map;
+  };
+  return {
+    buildInputsHash: parsed.buildInputsHash,
+    backendPin: parsed.backendPin,
+    firing: { blockingByCheck: counts("blockingByCheck"), applicableByCheck: counts("applicableByCheck") },
+  };
 }
 
-/** The recorded firing field as a count map, or null when it is not one. It is prototype-free like
- *  the verifier inventory, because on a plain object a check id spelled `__proto__` would reach the
- *  inherited setter instead of becoming a key, and the count would silently vanish. */
-export function blockingCounts(value: unknown): Record<string, number> | null {
+/** A recorded firing field as a count map, or null when it is not one; blocking and applicability
+ *  are both read here. It is prototype-free like the verifier inventory, because on a plain object
+ *  a check id spelled `__proto__` would reach the inherited setter instead of becoming a key, and
+ *  the count would silently vanish. */
+export function checkCounts(value: unknown): Record<string, number> | null {
   if (!isRecord(value)) return null;
   const out: Record<string, number> = Object.create(null);
   for (const [checkId, count] of Object.entries(value)) {
@@ -280,7 +336,7 @@ export function deriveIterationAnalysis(
     traces: row.traces,
   }));
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug,
     runId,
     treeRoot,
@@ -290,7 +346,7 @@ export function deriveIterationAnalysis(
       buildInputsHash: battery.buildInputsHash,
       isolationStrength,
     },
-    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.blockingByCheck),
+    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.firing),
     cases,
     absent: [
       "main-judge census: revalidated by runJudgeReviews over this packet, never folded into it",
@@ -318,6 +374,7 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       evidence: record,
       proposedOwner: null,
       severity: "advisory",
+      hostRule: "unaccepted-without-verdict",
     });
   }
   // Only a kind that can establish an environment failure earns "rerun unchanged". A `verifier`

@@ -30,6 +30,7 @@ import {
   type AdmittedClimbRow,
   type ClimbBattery,
   type ClimbBatteriesRead,
+  type ClimbEffort,
   type ClimbFamilySummary,
   type ExcludedBattery,
   climbThresholds,
@@ -98,6 +99,8 @@ type ReadoutRow = {
   claimRefusal: string | null;
   /** Null when the claim was refused. */
   families: ClimbFamilySummary[] | null;
+  /** Null when the claim was refused, or when no case recorded a solver block. */
+  effort: ClimbEffort | null;
   experiment: ExperimentAuthoring | null;
 };
 
@@ -299,6 +302,7 @@ function readoutRow(
     target: readTarget(row),
     claimRefusal: row.excludedReason,
     families: admitted ? row.authoring.familySummary : null,
+    effort: admitted ? row.authoring.effort : null,
     experiment: row.authoring.experimentAuthoring ?? null,
   };
 }
@@ -418,6 +422,7 @@ function targetCell(target: TargetReading | null): string {
 
 function tableLine(row: ReadoutRow): string {
   const count = (value: number | null) => (value === null ? "—" : String(value));
+  const effort = row.effort;
   return `| ${[
     row.runId,
     row.product,
@@ -434,6 +439,9 @@ function tableLine(row: ReadoutRow): string {
     row.toAim === null ? "—" : `${row.toAim > 0 ? "+" : ""}${row.toAim}`,
     row.aim === null ? "—" : `${row.aim[0]}–${row.aim[1]}`,
     targetCell(row.target),
+    effort === null
+      ? "—"
+      : `${count(effort.turns)}t ${count(effort.minutes)}m ${count(effort.toolCalls)}c over ${effort.cases}`,
   ]
     .map(cell)
     .join(" | ")} |`;
@@ -622,7 +630,17 @@ export function readReadoutHistory(
   const unavailable = (text: string) => capturedJsonStringify({ action: "history", unavailable: text });
   let body;
   if (runId === undefined) {
-    body = { band: readout.band, rows: readout.rows, excluded: readout.excluded };
+    // The allowance rides along because it is the one readout field the rows cannot reconstruct:
+    // it counts placements across product identities and includes claim-refused rounds. A Builder
+    // that cannot see it is two rounds into a three-round stop takes a smaller step than the
+    // evidence warrants. It sits ahead of the rows because the page is character-windowed, and a
+    // fact that pages off the end of a long history is one no reader knows to ask for.
+    body = {
+      band: readout.band,
+      allowance: readout.allowance,
+      rows: readout.rows,
+      excluded: readout.excluded,
+    };
   } else {
     const row = history.find((item) => item.battery.runId === runId);
     if (row === undefined) return unavailable("No verified history is bound to this runId.");

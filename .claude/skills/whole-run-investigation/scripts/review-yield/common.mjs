@@ -7,7 +7,10 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 
 export const YIELD_SCHEMA = "wri-review-yield/v1";
 
-export const CURRENT_LOOP_SCHEMA = "iteration-analysis/v4";
+/** Every version the loop that replaced the paired repair contest has written. A schema bump
+ *  records a changed condition, not a changed loop, so a component absent from one version is
+ *  absent from the next; membership, never equality, decides what the loop contains. */
+export const CURRENT_LOOP_SCHEMAS = new Set(["iteration-analysis/v4", "iteration-analysis/v5"]);
 
 /** Iteration run ids ordered by current `-analysis.json` modification time, then id. */
 export function iterationRunIds(campaignDir) {
@@ -40,7 +43,7 @@ export function findingKeys(findings) {
 }
 
 /** The recorded loop that wrote this iteration. `repair-engineer.mjs` already dispatches on it,
- *  because `iteration-analysis/v4` is the loop that replaced the paired repair contest. */
+ *  because those schemas are the loop that replaced the paired repair contest. */
 export function iterationSchema(campaignDir, runId) {
   const analysis = readAnalysis(campaignDir, runId, "analysis");
   return isString(analysis?.schema) ? analysis.schema : null;

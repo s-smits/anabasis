@@ -21,6 +21,7 @@ import type { RuntimePlatform, RuntimeSignal } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { runtimeProcess } from "../meta/process.ts";
+import { trustedExecPath } from "../truth/trusted-runtime.ts";
 import {
   type ReadRootMetadata,
   sameReadRootMetadata,
@@ -124,17 +125,18 @@ function underSystemRoot(path: string): boolean {
 }
 
 /**
- * Grants the running runtime's installation when it lives outside the system baseline, such as in a
- * private prefix. The directory two levels above the executable normally contains `bin` and `lib`,
- * so granting that one directory admits the runtime and its bundled modules without opening the
- * enclosing home. A symlinked executable contributes both its lexical and its resolved prefix, since
- * either spelling may be the one a child opens; a prefix already under a system root is redundant.
+ * Grants the captured runtime executable's installation when it lives outside the system baseline,
+ * such as in a private prefix. The directory two levels above the executable normally contains `bin`
+ * and `lib`, so granting that one directory admits the runtime and its bundled modules without
+ * opening the enclosing home. A symlinked executable contributes both its lexical and its resolved
+ * prefix, since either spelling may be the one a child opens; a prefix already under a system root
+ * is redundant.
  */
 export function nodeRuntimeReadRoots(): string[] {
   const roots = new Set<string>();
-  const candidates = [runtimeProcess.execPath];
+  const candidates = [trustedExecPath];
   try {
-    candidates.push(realpathSync.native(runtimeProcess.execPath));
+    candidates.push(realpathSync.native(trustedExecPath));
   } catch {
     // An unresolvable executable is not a candidate.
   }

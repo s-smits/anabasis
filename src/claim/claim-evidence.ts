@@ -58,9 +58,9 @@ interface DiscriminationEvidence {
  *
  * A check that misreads its hidden operand can skip every case and still leave a ready claim, with
  * only artifact shape actually checked. These counts are what detects a declared check that never
- * runs despite having applicable verified cases, which no static reading of the declarations can
- * do: a declaration establishes intent, and only the battery can record which checks assessed an
- * artifact.
+ * runs despite having applicable verified cases, which `tasks-check-family-unbound` cannot: that
+ * gate refuses a check scoped to families the battery lacks, so it establishes scope on paper
+ * alone, and only the battery can record which checks actually assessed an artifact.
  */
 export type TruthCheckFiringEvidence = {
   /**

@@ -39,6 +39,7 @@ import type { FeedbackOwner } from "./campaign-types.ts";
 import { ownerTarget } from "./feedback-routing.ts";
 import {
   findingSeverity,
+  namedSubject,
   type AdmittedEvidence,
   type AnalysisFinding,
   type IterationAnalysis,
@@ -46,7 +47,7 @@ import {
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v3";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v4";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -129,9 +130,12 @@ type AdviceFinding = {
   kind: AnalysisFinding["kind"];
   claim: string;
   severity: "blocking" | "advisory";
-  /** Public identities retained only to key repeated unowned diagnosis findings. */
+  /** Public identities retained only to key repeated unowned diagnosis findings. `hostRule` is
+   *  carried because `recurrence` reads the previous packet's own findings: dropped here, a host
+   *  finding's run of consecutive packets restarts at one every round. */
   checkId?: string;
   artifactSchemaPath?: string;
+  hostRule?: string;
   /** Set from the second consecutive packet carrying the same unowned diagnosis, so the author
    *  reads a recurrence rather than what looks like a fresh open question each round. */
   repeated?: { count: number; since: string };
@@ -147,6 +151,10 @@ export type RebuildAdvicePacket = {
   families: AdviceFamilyRow[];
   /** Verified failures per declared check, as the battery recorded them. */
   blockingByCheck: Record<string, number>;
+  /** Verified cases each declared check applied to: the denominator the line above is read
+   *  against, and the difference between a rule that let 25 artifacts through and one no task
+   *  posed. */
+  applicableByCheck: Record<string, number>;
   issues: AdviceIssue[];
   judge: { exit: JudgeReviewsResult["exit"]["kind"]; reason: string; contestedFamilies: string[] } | null;
   /** The admitted findings a rebuild may read: aggregate rows only, no per-case subject. */
@@ -386,15 +394,15 @@ export function attachIssueReadings(
   };
 }
 
-/** The recurrence key of an unowned diagnosis: its public check id, else its artifact path, else
- *  the kind itself, which is all a host-produced unaccepted-count finding carries. Every other
- *  finding has no key and is never annotated with a recurrence. */
+/** The recurrence key of an unowned diagnosis, which is the subject it named and nothing else.
+ *  Every other finding has no key. It used to fall through to the kind itself, the constant
+ *  `diagnosis-uncertain` every finding reaching here shares, so any two in consecutive packets read
+ *  as one diagnosis recurring. A diagnosis the reviewer could not attribute is exactly the case
+ *  with no identity to derive, so it gets none. */
 function unownedDiagnosisIdentity(
-  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath">,
+  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath" | "hostRule">,
 ): string | null {
-  return finding.kind === "diagnosis-uncertain"
-    ? (finding.checkId ?? finding.artifactSchemaPath ?? finding.kind)
-    : null;
+  return finding.kind === "diagnosis-uncertain" ? namedSubject(finding) : null;
 }
 
 /** How many consecutive packets have carried this unowned diagnosis, read off the previous packet's
@@ -423,6 +431,7 @@ export function deriveRebuildAdvice(
     analysisDigest: hashJsonBytes(analysis),
     families,
     blockingByCheck: analysis.battery.blockingByCheck,
+    applicableByCheck: analysis.battery.applicableByCheck,
     issues: advanceIssues(previous?.issues ?? [], observed, analysis.runId, families, judgeReview),
     // Advice only: counts and families, never task ids.
     judge:
@@ -460,6 +469,7 @@ export function deriveRebuildAdvice(
           severity: findingSeverity(finding),
           ...keyIfDefined("checkId", finding.checkId),
           ...keyIfDefined("artifactSchemaPath", finding.artifactSchemaPath),
+          ...keyIfDefined("hostRule", finding.hostRule),
           ...keyIfDefined("repeated", identity === null ? undefined : recurrence(previous, identity)),
         };
       }),
@@ -583,10 +593,14 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
  *  seeds its counter with every declared check at zero, so the zeros in the packet are the roster
  *  of checks that let every shipping artifact through. That roster is what a saturated battery is
  *  made of, and the family line cannot state it: a family reads as "raise its numbers" where a
- *  check reads as "this rule refused nothing". Zero verified cases prove nothing about any check,
- *  so the roster stays silent until a battery has graded something. */
+ *  check reads as "this rule refused nothing". The roster then splits on the applicable count,
+ *  because "refused nothing over 25 verified cases" and "no verified case posed it" ask for
+ *  opposite repairs -- raise the rule, or give the battery a task that reaches it. Zero verified
+ *  cases prove nothing about any check, so the roster stays silent until a battery has graded
+ *  something. */
 function blockingLine(
   blockingByCheck: Record<string, number>,
+  applicableByCheck: Record<string, number>,
   verified: number,
   passed: number,
 ): string | null {
@@ -599,6 +613,10 @@ function blockingLine(
     .filter(([, count]) => count === 0)
     .map(([checkId]) => checkId)
     .sort();
+  const applied = untripped.filter((checkId) => (applicableByCheck[checkId] ?? 0) > 0);
+  // A recorded zero, never an absent row: "no verified case posed it" is a measurement, and the
+  // packet may state it only where the battery measured it.
+  const unposed = untripped.filter((checkId) => applicableByCheck[checkId] === 0);
   // The sentence is appended only when one check really does carry every failure; beside a single
   // failed case and six checks it would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
@@ -606,9 +624,12 @@ function blockingLine(
     blocked.length === 0
       ? null
       : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
-    untripped.length === 0
+    applied.length === 0
       ? null
-      : `Declared checks that blocked no shipping artifact over ${verified} verified case(s): ${untripped.join(", ")}.`,
+      : `Declared checks that blocked no shipping artifact, with the verified cases each applied to (of ${verified}): ${applied.map((checkId) => `${checkId} ${applicableByCheck[checkId]}`).join(", ")}.`,
+    unposed.length === 0
+      ? null
+      : `Declared checks no verified case posed, so this battery measured nothing about them: ${unposed.join(", ")}.`,
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
@@ -625,7 +646,7 @@ export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
     disputed.length === 0
       ? null
       : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness, so do not rebuild the agent around them: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
-    blockingLine(packet.blockingByCheck, totals.verified, totals.passed),
+    blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null
       : `Judge review: ${packet.judge.reason}${packet.judge.contestedFamilies.length > 0 ? ` (families: ${packet.judge.contestedFamilies.join(", ")})` : ""}.`,

@@ -48,6 +48,9 @@ interface CaseRow {
   pass: boolean | null;
   acceptedSubmit?: boolean;
   toolCalls?: number;
+  turns?: number;
+  /** Wall-clock minutes the solve took. A negative value records the two instants in reverse. */
+  minutes?: number;
   publicInput?: JsonValue;
 }
 
@@ -56,11 +59,18 @@ type BatteryFields = { [field: string]: JsonValue | undefined };
 const tmp = () => mkdtempSync(join(tmpdir(), "ana-climb-history-"));
 
 function caseRecord(row: CaseRow): JsonValue {
+  const solvedFor = (minutes: number) => new Date(Date.parse(RECORDED_AT) + minutes * 60_000).toISOString();
+  const span = row.minutes === undefined ? {} : { startedAt: RECORDED_AT, endedAt: solvedFor(row.minutes) };
+  const solver = {
+    ...keyIfDefined("toolCalls", row.toolCalls),
+    ...keyIfDefined("turns", row.turns),
+    ...span,
+  };
   return {
     ...keyIfDefined("taskId", row.taskId === null ? undefined : (row.taskId ?? "t")),
     pass: row.pass,
     acceptedSubmit: row.acceptedSubmit ?? row.pass !== null,
-    ...keyIfDefined("solver", row.toolCalls === undefined ? undefined : { toolCalls: row.toolCalls }),
+    ...keyIfDefined("solver", Object.keys(solver).length === 0 ? undefined : solver),
   };
 }
 
@@ -250,6 +260,39 @@ describe("what one battery contributes to the reading", () => {
 
     expect(summary.map((row) => row.family)).toEqual(["arch", "void-span"]);
     expect(summary[1]).toMatchObject({ family: "void-span", attempts: 2, passes: 1 });
+  });
+
+  it("reads the most any one case spent, so two batteries with the same passes are not read alike", () => {
+    // The minutes are run 1aa6e6's: every case passed inside a tenth of its declared walls, which
+    // the pass count alone cannot say.
+    const tree = tmp();
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "t1", pass: true, turns: 1, toolCalls: 25, minutes: 7.3 },
+        { taskId: "t2", pass: true, turns: 2, toolCalls: 53, minutes: 14.8 },
+        // t3's instants are the wrong way round, so its span is unknown while its turns and tool
+        // calls still count; t4 recorded no solver block, which is not a solve that cost nothing.
+        { taskId: "t3", pass: false, turns: 1, toolCalls: 9, minutes: -9.7 },
+        { taskId: "t4", pass: true },
+      ],
+      RECORDED_AT,
+    );
+
+    expect(read(tree).admitted[0]?.authoring.effort).toEqual({
+      cases: 3,
+      turns: 2,
+      minutes: 14.8,
+      toolCalls: 53,
+    });
+  });
+
+  it("states no effort for a battery whose cases recorded no solver block", () => {
+    const tree = tmp();
+    writeBattery(tree, "r1", passes(4), RECORDED_AT);
+
+    expect(read(tree).admitted[0]?.authoring.effort).toBeNull();
   });
 
   it("keeps every case id in the authoring row, disclosing the ones without one", () => {
@@ -542,6 +585,7 @@ describe("the prior public fingerprints the repeated-condition refusal compares 
         taskSetHash: `set-${runId}`,
         caseIds: Array.from({ length: count }, (_, i) => `t${String(i)}`),
         familySummary: [],
+        effort: null,
       },
     };
   }

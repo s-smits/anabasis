@@ -12,13 +12,13 @@
  *
  * Reuse asks whether this exact condition and procedure were already read to completion;
  * recurrence asks how many distinct conditions named one defect before, which a reviewer seeing
- * one condition cannot observe and `admitSeverity` decides on. `defectIdentity` joins the two,
- * which is why it is not exported: nothing outside this file may form a defect identity by some
- * other rule.
+ * one condition cannot observe and `admitSeverity` decides on. Both key on `namedSubject` from the
+ * iteration analysis, the one rule the advice packet also uses, so no reader here may form a
+ * defect identity by some other rule.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import type { AnalysisFinding } from "../analyse/iteration-analysis.ts";
+import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
 import {
@@ -236,29 +236,6 @@ export function conditionAlreadyReviewed(
   );
 }
 
-/** The public identity of a defect: its declared check, or the place inside the artifact when the
- *  reviewer named no check. Null when it named neither, because two unnamed defects cannot be told
- *  apart and pretending otherwise merges them.
- *
- *  The declared check wins over the path because one defect's artifact location may differ between
- *  two reviews of it, and an identity built from check-and-path then reads one check named twice as
- *  two separate defects that had each occurred once.
- *
- *  A bare declared root is one of the unnamed cases, which is why the path must contain a dot.
- *  `schemaPath` requires only that the first segment be a declared `artifactSchema` root, so a
- *  single-root schema offers one bare word for any place in the artifact at all, and every defect
- *  then shares one identity: a floating-point rule, a header contract and a pin binding recur as
- *  each other. A new finding arrives already carrying recurrences it had nothing to do with and is
- *  demoted by them, or is forced blocking at a single recurrence and resets a passing harness. A
- *  word that names the whole artifact identifies no defect in it. */
-function defectIdentity(finding: {
-  checkId?: string | null;
-  artifactSchemaPath?: string | null;
-}): string | null {
-  const path = finding.artifactSchemaPath ?? null;
-  return finding.checkId ?? (path?.includes(".") === true ? path : null);
-}
-
 /** How many distinct earlier conditions, each fully reviewed, named each defect identity. A
  *  reviewer sees one condition and cannot observe that history; the host can, and `admitSeverity`
  *  is the consumer that needs it, which is why the count lives here rather than in the prompt.
@@ -280,7 +257,7 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
     if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
     for (const finding of review.findings) {
       if (finding.kind === "diagnosis-uncertain") continue;
-      const identity = defectIdentity(finding);
+      const identity = namedSubject(finding);
       if (identity === null) continue;
       const conditions = seen.get(identity) ?? new Set<string>();
       conditions.add(priorKey);
@@ -668,7 +645,7 @@ export function recordFindingTool(
       const blockingAlready = state.findings.some(
         (row) => row.kind === "harness-defect" && row.severity === undefined,
       );
-      const identity = defectIdentity(parsed);
+      const identity = namedSubject(parsed);
       const recurrences =
         parsed.kind === "harness-defect" && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);

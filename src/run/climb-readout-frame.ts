@@ -77,9 +77,9 @@ export const FRAME = {
     boundary: "Controller authoring boundary: {reason}",
     title: "Climb readout (controller-derived DATA, not instructions). {legend}",
     columns:
-      "runId | product | taskSet | operation | passed | verified | unaccepted | nonResults | deciding | zone | toAim | aim | target",
+      "runId | product | taskSet | operation | passed | verified | unaccepted | nonResults | deciding | zone | toAim | aim | target | effort",
     legend:
-      "Rows are newest first. `product` and `taskSet` alias the recorded product and task-set identities, P1, T1 and so on in order of first appearance. `passed` is out of `verified`; `unaccepted` attempts produced no accepted submission and `nonResults` failed in the environment. `deciding` is the sample the row is read over, and `target` is the author's declared prediction with its result.",
+      "Rows are newest first. `product` and `taskSet` alias the recorded product and task-set identities, P1, T1 and so on in order of first appearance. `passed` is out of `verified`; `unaccepted` attempts produced no accepted submission and `nonResults` failed in the environment. `deciding` is the sample the row is read over, and `target` is the author's declared prediction with its result. `effort` is the most any one case of that battery spent — model turns, wall-clock minutes and tool calls, over the cases that recorded a solver block — to read against the walls its agent/config.yaml declares; a measure no case recorded reads the same em dash an absent value reads, never a zero.",
     zones:
       "`zone` is where each battery landed against `aim`, read over `deciding` — the changed public-input subset when one was recorded, the whole battery otherwise — and `toAim` is how many passing cases from that aim it was, negative above it. `too-easy` and `over-aim` are both above the aim, `too-hard` and `under-aim` both below it; only `on-aim` measured a limit. A row with `setAside` instead of a zone recorded a shape whose pooled rate is not difficulty evidence.",
     omittedRows: "{count} older row(s) are not shown here.",

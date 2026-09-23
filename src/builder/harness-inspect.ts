@@ -112,6 +112,9 @@ export interface HarnessInspectBinding {
   context: CandidateCheckContext;
   /** Same-session submit feedback. Optional only for isolated inspection tests. */
   feedback?: BuilderAuthorFeedback;
+  /** This round's task count and battery contract, the same bytes the round opened with. Absent
+   *  only for isolated inspection tests. */
+  contract?: string;
   /** Controller-bound, verified public history only; the model cannot supply a filesystem path. */
   readHistory?: (
     runId: string | undefined,
@@ -526,7 +529,13 @@ function actionView(
 ) {
   const { workspace, context } = binding;
   if (params.action === "readiness") {
-    return readinessView(bundle, workspace, params, loadValidatedBundle(workspace, context, "rehearsal"));
+    const view = readinessView(
+      bundle,
+      workspace,
+      params,
+      loadValidatedBundle(workspace, context, "rehearsal"),
+    );
+    return { ...view, ...keyIfDefined("contract", binding.contract) };
   }
   if (params.action === "tools") return toolsView(bundle);
   if (params.action === "task") return taskView(bundle, params);

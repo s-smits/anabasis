@@ -357,12 +357,13 @@ live evidence.
    `tools/loc/complexity-policy.ts` keeps every function's cyclomatic complexity below 22, with the
    existing exceptions frozen in `complexity-baseline.json` — a baseline that only ever shrinks
    (`--write-baseline`). `bun run lint` runs Oxlint over `src tools vendor starters test
-   packages .claude` with two plugins: `anti-slop`, copied from dmmulroy/anti-slop, whose 16 rules
+   packages .claude` with two plugins: `anti-slop`, copied from dmmulroy/anti-slop, whose 17 rules
    include `require-safety-comment-for-type-assertion`, `no-object-parameters`, `no-runtime-typeof`
-   and `no-module-mocking`; and `ana`, with 35 rules, where `tools/oxlint/BASELINE.md` says what is
-   on, `SHAPE-RULESET.md` says what is not yet, and `FIXER-DECISIONS.md` says why 13 of the 51
-   carry a fixer and 38 only report — including the nine whose fixer is mechanically available and
-   refused on purpose. Both plugins are optional in a particular sense: every lint runs them, but
+   and `no-module-mocking`; and `ana`, with 37 rules, where `tools/oxlint/BASELINE.md` says what is
+   on, `SHAPE-RULESET.md` says what is not yet, and `FIXER-DECISIONS.md` says why 15 of the 54
+   carry a fixer and 39 only report — including the nine whose fixer is mechanically available and
+   refused on purpose. Those counts move whenever a rule lands, so read them off the registered
+   rules in each plugin's `index.ts` rather than from here. Both plugins are optional in a particular sense: every lint runs them, but
    their findings and the not-slop ledger fail it only under `bun run lint -- --strict` or with
    `ANA_LINT_STRICT=1` in the environment, and the `.env` is not loaded because `bunfig.toml` sets
    `env = false`. A plain run therefore holds a contributor to oxlint's own rules and counts the
@@ -891,7 +892,9 @@ gates, the UI gate and the formatter can each fail a push that the contract used
 lint report findings that no diff introduced. `bun run format` fixes the format step. `biome format`
 at `lineWidth` 110 owns every line break under `src`, `tools`, `vendor`, `test`, `starters` and
 `packages`, which is why the size ceilings are 800 and 115; the only paths outside it are `.agents`
-and the eleven vendored files an override in `biome.json` names one at a time. `tools/oxlint` came
+and the fourteen vendored files an override in `biome.json` names one at a time — the three
+`pi-agent-session` modules, `pi-built/jsonl.ts` and ten of `pi-claude-bridge`, all of them carried
+from upstream, so that a diff against upstream stays readable. `tools/oxlint` came
 in on 2026-09-20 and cost 25 lint errors, mostly `curly` finding statements the formatter had just
 made multi-line. Also available: `bun run outcome` for read-only reports over recorded evidence,
 `bun run replay -- <campaign>/<runId>` to re-grade a recorded battery through this tree's verifier,

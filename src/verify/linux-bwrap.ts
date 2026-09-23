@@ -17,6 +17,7 @@ import type { RuntimePlatform, RuntimeSignal } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { runtimeProcess } from "../meta/process.ts";
+import { trustedExecPath } from "../truth/trusted-runtime.ts";
 import {
   type ReadRootMetadata,
   sameReadRootMetadata,
@@ -107,15 +108,15 @@ function underSystemRoot(path: string): boolean {
 }
 
 /**
- * The running runtime's installation prefix (two levels above the executable) when it lies outside
+ * The captured runtime executable's installation prefix (two levels above it) when it lies outside
  * the system baseline, so it is readable without opening the enclosing home. A symlinked executable
  * contributes both lexical and resolved prefixes.
  */
 export function nodeRuntimeReadRoots(): string[] {
   const roots = new Set<string>();
-  const candidates = [runtimeProcess.execPath];
+  const candidates = [trustedExecPath];
   try {
-    candidates.push(realpathSync.native(runtimeProcess.execPath));
+    candidates.push(realpathSync.native(trustedExecPath));
   } catch {
     // An unresolvable executable is not a candidate.
   }

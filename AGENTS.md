@@ -1031,13 +1031,24 @@ lanes are editing, `SOLVABILITY_SOURCE_DRIFT` (`src/run/claim-write.ts`), parse 
 half-edited files and host-wall timeouts are all expected. The lane re-runs a failing file alone
 before reporting it, and the coordinator runs the full suite once after every lane has finished.
 
-A comment-only pass is still a source change, and it carries three hazards. `unusedExports`
+A comment-only pass is still a source change, and it carries four hazards. `unusedExports`
 (`tools/loc/source-policy.ts`) counts a name spelled in any other file, comments included, so
 deleting a comment can orphan an export; drop the `export` the gate then names. Any string,
 template or regex literal that moves changes a prompt digest, so compare every literal per file
-against the base before committing. And a rewritten comment keeps only the claims that were checked
+against the base before committing. A rewritten comment keeps only the claims that were checked
 against the code in that turn: a shortened sentence still asserting a refusal nothing performs is a
 new false statement, not a tidier old one.
+
+The fourth is the check itself. Proving that only comments moved by tokenising both versions and
+comparing the streams looks exact, and a bare `ts.createScanner` is not: with no parser driving it,
+it never rescans the `}` closing a `${…}` substitution as a template tail, so the backtick that
+ends that literal reads as one that opens a new one and the next token swallows every byte up to
+the following backtick, comments included. On 2026-09-23 that reported 31 of 90 files as code
+changes, every one of them comment-only, and it did so on the files most worth checking, since a
+prompt-bearing module is exactly the one full of substitutions. Parse instead: `createSourceFile`
+knows where a template ends, and printing both with `removeComments: true` compares what is left.
+The failure is one-directional, so a tokenising check never misses a real change — it just cannot
+tell you when there is none, which is the only thing it was being asked.
 
 Transport is owned by `.claude/skills/codex-luna-swarm/SKILL.md`; read it for the current route,
 which changes whenever a provider's allowance does. Session reports are research rather than

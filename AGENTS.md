@@ -353,7 +353,9 @@ live evidence.
    `thresholds.frozen.yaml` is declared policy, so an executable threshold that disagrees with it
    is a blocking inconsistency rather than an implicit relaxation. New and rewritten files stay at
    or below 800 nonblank lines and functions at or below 115 (`tools/loc/source-policy.ts`, raised
-   from 600 and 80 on 2026-09-20, when `biome format` took ownership of the line breaks), and
+   from 600 and 80 on 2026-09-20, when `biome format` took ownership of the line breaks). That walk
+   covers `src`, `tools` and `vendor` and stops there, so a file under `test` or `packages` is held
+   to no length at all and a long one there is a judgement rather than a gate finding. And
    `tools/loc/complexity-policy.ts` keeps every function's cyclomatic complexity below 22, with the
    existing exceptions frozen in `complexity-baseline.json` — a baseline that only ever shrinks
    (`--write-baseline`). `bun run lint` runs Oxlint over `src tools vendor starters test
@@ -1052,8 +1054,16 @@ half-edited files and host-wall timeouts are all expected. The lane re-runs a fa
 before reporting it, and the coordinator runs the full suite once after every lane has finished.
 
 A comment-only pass is still a source change, and it carries four hazards. `unusedExports`
-(`tools/loc/source-policy.ts`) counts a name spelled in any other file, comments included, so
-deleting a comment can orphan an export; drop the `export` the gate then names. Any string,
+(`tools/loc/source-policy.ts`) takes the exports of `AUTHORED_ROOTS` — `src`, `tools` and
+`packages/ui/src` — and looks for a reader anywhere under the eight `READER_ROOTS`, which are
+deliberately wider than the compiler's import graph and take in `test`, `scripts` and `.claude`.
+A name spelled in a comment counts as a reader, so deleting a comment in a test can orphan an
+export in `src`; drop the `export` the gate then names. Run it whole and never pass it paths,
+because it silently ignores them: the last line of `source-policy.ts` calls `main()` and the last
+line of `complexity-policy.ts`, otherwise the same line, calls `main(Bun.argv.slice(2))`. So
+`bun tools/loc/source-policy.ts test` prints the verdict for `src`, `tools` and `vendor`, and
+reporting it as a pass over `test` claims a check that never ran. Run it with no argument and
+report it as what it is, which is the evidence this hazard wants anyway. Any string,
 template or regex literal that moves changes a prompt digest, so compare every literal per file
 against the base before committing. A rewritten comment keeps only the claims that were checked
 against the code in that turn: a shortened sentence still asserting a refusal nothing performs is a

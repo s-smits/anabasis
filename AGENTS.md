@@ -1131,7 +1131,7 @@ lanes are editing, `SOLVABILITY_SOURCE_DRIFT` (`src/run/claim-write.ts`), parse 
 half-edited files and host-wall timeouts are all expected. The lane re-runs a failing file alone
 before reporting it, and the coordinator runs the full suite once after every lane has finished.
 
-A comment-only pass is still a source change, and it carries four hazards. `unusedExports`
+A comment-only pass is still a source change, and it carries five hazards. `unusedExports`
 (`tools/loc/source-policy.ts`) takes the exports of `AUTHORED_ROOTS` — `src`, `tools` and
 `packages/ui/src` — and looks for a reader anywhere under the eight `READER_ROOTS`, which are
 deliberately wider than the compiler's import graph and take in `test`, `scripts` and `.claude`.
@@ -1157,6 +1157,17 @@ prompt-bearing module is exactly the one full of substitutions. Parse instead: `
 knows where a template ends, and printing both with `removeComments: true` compares what is left.
 The failure is one-directional, so a tokenising check never misses a real change — it just cannot
 tell you when there is none, which is the only thing it was being asked.
+
+The fifth is the blind spot the fourth's remedy creates, and it runs the other way. `removeComments:
+true` removes every comment, which is the point, but some comments are instructions: an
+`@ts-expect-error`, an `oxlint-disable-next-line`, a `biome-ignore`. Those carry behaviour, so a
+pass that rewrites, moves or drops one has changed the build while the comparator reports the two
+versions identical. This is the one direction in which a parse comparison can miss a real change,
+and it misses it silently. Check the directives separately: extract them from both versions and
+compare the text, not the count, because a directive whose rule name was rewritten leaves the count
+alone. On 2026-09-23 that scan over 355 changed files found 8 carrying directives and all 8
+unchanged, which took one command and is the only reason the comparator's verdict means what it
+says.
 
 Transport is owned by `.claude/skills/codex-luna-swarm/SKILL.md`; read it for the current route,
 which changes whenever a provider's allowance does. Session reports are research rather than

@@ -606,7 +606,7 @@ live evidence.
     `feedback`, `history`. `harness_trial` takes one `taskId` and solves it blind with the measured
     Built solver — its own runtime, turn cap, solve wall and confinement — then grades what it
     submitted, returning the rule-4 aggregate verdict, whether it submitted at all, how many turns
-    it used and any typed non-result, under six rehearsals per session and a 30-second total
+    it used and any typed non-result, under six rehearsals per round and a 30-second total
     verifier deadline. Each rehearsal costs one measured case and writes its solve evidence under
     `<campaignDir>/rehearsals/`. Parameterless `submit` alone freezes and accepts candidate bytes.
 

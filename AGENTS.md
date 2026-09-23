@@ -534,10 +534,12 @@ live evidence.
     without making the requested solution any more complex, and a repaired evaluator is a new
     condition rather than proof of a difficulty advance.
 
-    Battery size has one owner, `src/run/battery-sizing.ts`: `floor 5`, `default 25`,
-    `ceiling 60`. A fresh product measures **probe batteries of 5 to 10 tasks**, sized by the
-    Builder, until one of them passes some but not all of its scored cases; only then the requested
-    size. An out-of-range size fails rather than being clamped, because a silently changed size is
+    Battery size has one owner, and it is not the file named after it: the numbers sit in
+    `POLICY.battery` in `src/critic/policy.ts`, beside the loop ceilings, as `floor 5`,
+    `default 25`, `ceiling 60` and `probe {min: 5, max: 10}`, and `src/run/battery-sizing.ts`
+    re-exports them and owns the decisions taken from them. A fresh product measures **probe
+    batteries of 5 to 10 tasks**, sized by the Builder, until one of them passes some but not all
+    of its scored cases; only then the requested size. An out-of-range size fails rather than being clamped, because a silently changed size is
     a silently changed measurement condition. `ClimbAction` is `placed | no-difficulty-evidence |
     repeated-failure-set | family-conflict`: one name for a decision that has a band placement, and
     three for recorded shapes whose rate is not difficulty evidence. The reading itself belongs to

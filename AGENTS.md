@@ -647,6 +647,29 @@ live evidence.
     verifier deadline. Each rehearsal costs one measured case and writes its solve evidence under
     `<campaignDir>/rehearsals/`. Parameterless `submit` alone freezes and accepts candidate bytes.
 
+    Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
+    ones rule 1 depends on without naming, and an agent that has not met them will try to install a
+    toolchain with `bash` and get nowhere. `public_source` takes an exact HTTPS address, the
+    controller brokers the hop, and the bytes land under their own digest in an offline `.oss`
+    workshop. `verifier_workshop` is where they are then unpacked, built and smoke-tested, through
+    `inspect`, `read`, `write`, `run` and `export`, in one deny-default cell with its own PATH. The
+    wall between that cell and the candidate runs both ways and is the part worth remembering: the
+    workshop's commands cannot read the candidate workspace, and the ordinary workspace tools
+    cannot read `.oss`, so text crosses only through the workshop's own `write`. `export` is the
+    one outbound crossing — a single binary, script or package file up to 64 MiB into the
+    candidate's `.toolchain`, keeping the executable bit, returning the byte digest and the
+    installed path, and refusing a destination that already exists, because an upgrade is a
+    workspace edit rather than a second export. A successful run proves which bytes executed, never
+    that the tool is authoritative.
+
+    `harness_reset` is the fifteenth and the narrowest. On a reopen rebuild it returns one surface
+    to the starter seed — `agent` reopens the tooling and keeps the tasks, controls and checks,
+    `correctness-model` reopens the evaluation and keeps the tooling, `all` starts over — once per
+    reopen per scope, in one controller commit that leaves every replaced byte in Git history.
+    Outside a reopen it refuses and says to edit the workspace in place, so it is not a way out of
+    a bad round; it is what makes rule 10's harness intervention a clean start rather than an
+    accumulation.
+
     **`agent/config.yaml` owns each harness's runtime walls** (`src/truth/harness-config.ts`). The
     Builder is told the file exists, not what it holds. The defaults are, for the solver,
     `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300` and

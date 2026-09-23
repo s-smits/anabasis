@@ -802,8 +802,15 @@ next prompt on a reconfigured roster. A round that threw, or a process restart, 
 session that reads the Builder's notes.
 
 Kinds live in `.harness/backends/<project>.json`, layered over `default.json` per slot, and the
-difference between the two absences matters: a missing review key means nobody chose, while
-`{"review":{"disabled":true}}` is an explicit off. Models and efforts come from
+review slot is the one where an absence is easy to misread. Dropping the review key from a project
+file does not turn the reviewers off; it falls through to `default.json`, which in this repository
+says `{"review": {"kind": "claude"}}`, so they run on Claude. Only a review key absent from both
+layers with no `HARNESS_REVIEW_BACKEND` reaches `{enabled: false, source: "unconfigured"}` in
+`resolve.ts`, and `{"review":{"disabled":true}}` reaches the same disabled slot recorded as
+`operator`. Both end with no reviewers and differ only in what the evidence says about why, which
+is the distinction worth keeping. An empty `{"review":{}}` is refused outright rather than guessed
+at. `inherit` is the third value, and it copies the Built slot's kind, model and effort so that the
+review runs the condition the battery ran. Models and efforts come from
 `CODEX_{BUILDER,BUILT,REVIEW}_MODEL` and `CODEX_*_REASONING_EFFORT`, or their `CLAUDE_*`
 equivalents. **An unpinned codex slot defaults to `gpt-5.6-luna` at `xhigh` on all three slots**
 (`src/backends/slot-defaults.ts`), so a launch without env pins silently measures a condition no

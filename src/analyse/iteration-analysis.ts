@@ -55,10 +55,20 @@ export type BatteryEvidence = {
   /** checkId → verified failed cases blocked by that check, from the battery's firing counts.
    *  Check ids are public, so these counts may reach the rebuild author. */
   blockingByCheck: Record<string, number>;
+  /** checkId -> verified cases the check applied to: the denominator its blocking count is read
+   *  against. Without it a check that refused nothing over 5 applicable cases renders exactly like
+   *  one that refused nothing over 25, and one no verified case posed renders like both, while the
+   *  three ask for different repairs. Over the recorded corpus 74 of 670 untripped rows are in the
+   *  latter two shapes. Applicability is family scope, which is public authoring identity. */
+  applicableByCheck: Record<string, number>;
 };
 
+/** The two per-check count maps, carried together because a blocking count means nothing without
+ *  the denominator beside it. */
+type CheckFiring = Pick<BatteryEvidence, "blockingByCheck" | "applicableByCheck">;
+
 export type IterationAnalysis = {
-  schema: "iteration-analysis/v4";
+  schema: "iteration-analysis/v5";
   slug: string;
   /** The one battery this round measured; the analysis files carry the same id. */
   runId: string;
@@ -119,6 +129,12 @@ export type AnalysisFinding = {
   checkId?: string;
   artifactSchemaPath?: string;
   publicInputPath?: string;
+  /** The fixed host rule that produced this finding, for the findings a rule produced rather than
+   *  a model observed. It names the subject the way `checkId` does, and it is what makes recurrence
+   *  supportable for a host finding that names no check: the same rule fired again, which is an
+   *  observation, where two free-text observations resembling one another is an inference. A
+   *  model-produced finding never carries one. */
+  hostRule?: string;
   /** No declared check observes the obligation, so no existing check should be repaired for it. */
   unobserved?: true;
   /** What the cited probes executed, in public authoring identities only: the accept control,
@@ -142,12 +158,46 @@ type AdmissionFindingRoute =
   | { findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner }
   | { findingDigest: string; kind: AnalysisFindingKind; owner: null; reason: NoRouteReason };
 
+/** The subject one finding named, in the public authoring identities it carries: its declared
+ *  check, else the host rule that produced it, else a path naming a place *below* a declared root.
+ *  Null when it names none of them, because two findings that name nothing cannot be told apart,
+ *  and a key that cannot tell them apart is worse than none — it merges unrelated defects into one
+ *  recurrence.
+ *
+ *  This is a naming, not a defect identity, and the difference is the whole of what it may be used
+ *  for. Two reviews naming one check is evidence that they concern one defect; it is not proof,
+ *  because two defects can name the same check. `recurringDefects` and the advice packet both draw
+ *  that inference, and both own it — this function establishes only that the same subject was
+ *  named twice, under the conditions its callers bind it to.
+ *
+ *  A bare root is not a naming. The reviewer's `schemaPath` rule requires only that the first
+ *  segment be a declared `artifactSchema` root, so a domain whose schema has one root offers one
+ *  bare word for any place in its artifact. Across the recorded epoch reviews 5,406 findings named
+ *  a bare root against 3,196 naming a path below one, and in all nine campaigns where an
+ *  unnamed-check harness defect fell back to a path the bare roots collapsed to a single constant.
+ *  Run 17f9de put 2,448 findings on the one root `files`, so a floating-point rule, a header
+ *  contract and a pin binding shared one identity: i03's new peripheral finding arrived carrying
+ *  two recurrences it had nothing to do with and was demoted by them, and the same collapse at
+ *  one recurrence is the 23a1bc failure of resetting a working harness.
+ *
+ *  The check is preferred over the path because one defect's artifact location may differ between
+ *  reviews of it. Run bdd329 named check `change-budget` at path `members` and then at no path,
+ *  and escalation read one check named twice as two defects. */
+export function namedSubject(finding: {
+  checkId?: string | null;
+  artifactSchemaPath?: string | null;
+  hostRule?: string | null;
+}): string | null {
+  const path = finding.artifactSchemaPath ?? null;
+  return finding.checkId ?? finding.hostRule ?? (path?.includes(".") === true ? path : null);
+}
+
 function batteryEvidence(
   repoRoot: string,
   slug: string,
   runId: string,
   summary: RunSummary,
-  blockingByCheck: Record<string, number>,
+  firing: CheckFiring,
 ): BatteryEvidence {
   const claimPath = join(claimsDirFor(repoRoot, slug), `${runId}.json`);
   if (!existsSync(claimPath)) {
@@ -164,7 +214,7 @@ function batteryEvidence(
     claimClauses: parsed.claim.ok ? [] : clauseNames(parsed.claim.clauses),
     readinessClauses: parsed.readiness === null ? null : clauseNames(parsed.readiness.clauses),
     summary,
-    blockingByCheck,
+    ...firing,
   };
 }
 
@@ -174,21 +224,29 @@ function batteryIdentity(slugDir: string, runId: string) {
   const parsed = parseJsonAs<{
     buildInputsHash?: string;
     backendPin?: string;
-    truthCheckFiring?: { blockingByCheck?: unknown };
+    truthCheckFiring?: { blockingByCheck?: unknown; applicableByCheck?: unknown };
   }>(readFileSync(path, "utf8"));
   if (!isString(parsed.buildInputsHash) || !isString(parsed.backendPin)) {
     throw new Error(`${path}: battery evidence is missing buildInputsHash/backendPin`);
   }
-  const blockingByCheck = blockingCounts(parsed.truthCheckFiring?.blockingByCheck);
-  if (blockingByCheck === null) {
-    throw new Error(`${path}: battery evidence records no truthCheckFiring.blockingByCheck count map`);
-  }
-  return { buildInputsHash: parsed.buildInputsHash, backendPin: parsed.backendPin, blockingByCheck };
+  const counts = (field: keyof CheckFiring): Record<string, number> => {
+    const map = checkCounts(parsed.truthCheckFiring?.[field]);
+    if (map === null) {
+      throw new Error(`${path}: battery evidence records no truthCheckFiring.${field} count map`);
+    }
+    return map;
+  };
+  return {
+    buildInputsHash: parsed.buildInputsHash,
+    backendPin: parsed.backendPin,
+    firing: { blockingByCheck: counts("blockingByCheck"), applicableByCheck: counts("applicableByCheck") },
+  };
 }
 
-/** The recorded firing field as a prototype-free count map, or null when it is not one. Without a
- *  prototype, a check id such as `__proto__` stays an ordinary key. */
-export function blockingCounts(value: unknown): Record<string, number> | null {
+/** A recorded firing field as a prototype-free count map, or null when it is not one. Without a
+ *  prototype, a check id such as `__proto__` stays an ordinary key rather than reaching the
+ *  inherited setter, which would drop the count. Blocking and applicability are both read here. */
+export function checkCounts(value: unknown): Record<string, number> | null {
   if (!isRecord(value)) return null;
   const out: Record<string, number> = Object.create(null);
   for (const [checkId, count] of Object.entries(value)) {
@@ -246,7 +304,7 @@ export function deriveIterationAnalysis(
     traces: row.traces,
   }));
   return {
-    schema: "iteration-analysis/v4",
+    schema: "iteration-analysis/v5",
     slug,
     runId,
     treeRoot,
@@ -256,7 +314,7 @@ export function deriveIterationAnalysis(
       buildInputsHash: battery.buildInputsHash,
       isolationStrength,
     },
-    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.blockingByCheck),
+    battery: batteryEvidence(repoRoot, slug, runId, summarizeRun(runId, rows), battery.firing),
     cases,
     absent: [
       "main-judge census: revalidated by runJudgeReviews over this packet, never folded into it",
@@ -279,6 +337,7 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
       evidence: record,
       proposedOwner: null,
       severity: "advisory",
+      hostRule: "unaccepted-without-verdict",
     });
   }
   // Only environment-owned non-result kinds earn "rerun unchanged".

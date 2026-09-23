@@ -32,10 +32,11 @@ export interface BatteryEvidence {
   execution?: JsonValue;
   cases?: Array<{
     taskId?: unknown;
+    family?: unknown;
     pass?: unknown;
     acceptedSubmit?: unknown;
     runtimeNonResult?: unknown;
-    solver?: { toolCalls?: unknown };
+    solver?: { toolCalls?: unknown; turns?: unknown; startedAt?: unknown; endedAt?: unknown };
   }>;
   /** Loose at the boundary: `admitBattery` normalises it. */
   measured?: Omit<Partial<MeasuredDifficulty>, "changedSubset"> & {

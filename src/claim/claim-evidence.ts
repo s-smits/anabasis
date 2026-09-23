@@ -47,8 +47,9 @@ interface DiscriminationEvidence {
 /**
  * Per-check execution counts from a battery. A truth check "fires" when the verifier executes
  * it and returns pass or fail rather than skipping it as inapplicable. The counts detect a
- * declared check that never ran despite applicable verified cases, which a static declaration
- * check such as `tasks-check-unexercised` cannot.
+ * declared check that never ran despite applicable verified cases, which `tasks-check-family-unbound`
+ * cannot: that gate refuses a check scoped to families the battery lacks, so it establishes paper
+ * scope alone. A check applicable on paper still has to be observed running.
  */
 export type TruthCheckFiringEvidence = {
   /**

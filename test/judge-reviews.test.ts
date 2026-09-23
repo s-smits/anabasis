@@ -195,7 +195,7 @@ function repoWith(
   return {
     root,
     analysis: {
-      schema: "iteration-analysis/v4",
+      schema: "iteration-analysis/v5",
       slug: SLUG,
       runId: RUN,
       treeRoot: `domains/${SLUG}`,
@@ -218,6 +218,7 @@ function repoWith(
         claimClauses: [],
         readinessClauses: [],
         blockingByCheck: {},
+        applicableByCheck: {},
         summary: {
           runId: RUN,
           total: cases.length,

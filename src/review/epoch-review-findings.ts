@@ -11,7 +11,7 @@
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import type { AnalysisFinding } from "../analyse/iteration-analysis.ts";
+import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
 import {
@@ -215,17 +215,6 @@ export function conditionAlreadyReviewed(
   );
 }
 
-/** The public identity of a defect: its declared check, else an artifact path below a schema
- *  root. The check wins because reviews of one defect may name different locations. A bare root
- *  names the whole artifact and so identifies nothing; with neither, the result is null. */
-function defectIdentity(finding: {
-  checkId?: string | null;
-  artifactSchemaPath?: string | null;
-}): string | null {
-  const path = finding.artifactSchemaPath ?? null;
-  return finding.checkId ?? (path?.includes(".") === true ? path : null);
-}
-
 /** How many distinct earlier conditions, each fully reviewed, named each defect identity. Any
  *  positive finding kind counts as a naming; `diagnosis-uncertain` does not, because it says the
  *  reviewer could not attribute what it saw. Reviews of the current condition add no count. */
@@ -238,7 +227,7 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
     if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
     for (const finding of review.findings) {
       if (finding.kind === "diagnosis-uncertain") continue;
-      const identity = defectIdentity(finding);
+      const identity = namedSubject(finding);
       if (identity === null) continue;
       const conditions = seen.get(identity) ?? new Set<string>();
       conditions.add(priorKey);
@@ -598,7 +587,7 @@ export function recordFindingTool(
       const blockingAlready = state.findings.some(
         (row) => row.kind === "harness-defect" && row.severity === undefined,
       );
-      const identity = defectIdentity(parsed);
+      const identity = namedSubject(parsed);
       const recurrences =
         parsed.kind === "harness-defect" && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);

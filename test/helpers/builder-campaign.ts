@@ -34,7 +34,7 @@ import { scratchDir } from "./scratch.ts";
 /** The campaign's submit tool as a fixture drives it. The campaign binds the draft and the record
  *  itself, so submit takes no arguments and answers one text block the fixture serialises. */
 export interface FixtureSubmitTool {
-  execute(id: string, args: Record<string, never>): Promise<{ content: { type: "text"; text: string }[] }>;
+  execute(id: string, args: Record<string, string>): Promise<{ content: { type: "text"; text: string }[] }>;
 }
 
 /** The fresh-build campaign input every opening test starts from. */

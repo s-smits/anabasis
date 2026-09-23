@@ -7,7 +7,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  CURRENT_LOOP_SCHEMA,
+  CURRENT_LOOP_SCHEMAS,
   absentRow,
   iterationRunIds,
   iterationSchema,
@@ -60,7 +60,7 @@ function promotionFacts(promotion) {
 }
 
 function row(campaignDir, runId) {
-  if (iterationSchema(campaignDir, runId) === CURRENT_LOOP_SCHEMA) return absentRow(runId, COMPONENT);
+  if (CURRENT_LOOP_SCHEMAS.has(iterationSchema(campaignDir, runId))) return absentRow(runId, COMPONENT);
   const guard = readAnalysis(campaignDir, runId, "progress-guard");
   const contest = readAnalysis(campaignDir, runId, "contest");
   const promotionPath = join(campaignDir, "promotions", `${runId}.json`);

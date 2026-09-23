@@ -12,12 +12,13 @@ import { POLICY } from "../critic/policy.ts";
 import { band01, policyRow } from "../critic/manifest.ts";
 import { sha256 } from "../meta/digest.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type JsonValue, isBoolean, isRecord, isString, jsonKind } from "../meta/json-shape.ts";
+import { type JsonValue, isBoolean, isNumber, isRecord, isString, jsonKind } from "../meta/json-shape.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import {
   type BatteryAdmission,
+  type BatteryEvidence,
   type ExcludedBattery,
   admitBattery,
   currentThresholdDigest,
@@ -64,6 +65,21 @@ export type ClimbFamilySummary = {
   wilson: [number, number];
 };
 
+/** The most any one of a battery's cases spent, over the cases that recorded a solver block:
+ *  model turns, wall-clock minutes and tool calls, null for a measure none recorded. Passes alone
+ *  read a battery solved inside a tenth of its declared walls and one that used them alike — run
+ *  1aa6e6 passed 6 of 6 with no case past 1 turn of its 24 or 15 minutes of its 120, run fa03b7
+ *  passed 6 of 6 with a case at 68 of the same 120, and both reached their author as "6 of 6, too
+ *  easy". `CaseRecord.solver` records it for investigation and scoring still does not read it: it
+ *  is the solver's own behaviour, the measured form of the turns `harness_trial` returns for a
+ *  rehearsal, and no verifier detail, task location or verdict enters. */
+export type ClimbEffort = {
+  cases: number;
+  turns: number | null;
+  minutes: number | null;
+  toolCalls: number | null;
+};
+
 /** One battery's recorded authoring memory. Task bodies stay at
  *  `runs/<runId>/cases/<taskId>/public-task.json`; `publicTaskProjection` digest-reads them. */
 interface ClimbAuthoringRow {
@@ -73,6 +89,8 @@ interface ClimbAuthoringRow {
   caseIds: Array<string | null>;
   /** Public aggregate outcome by author-provided family, never task ids or verifier detail. */
   familySummary: ClimbFamilySummary[];
+  /** Null when no case recorded any measure, which an older battery's rows will not have. */
+  effort: ClimbEffort | null;
   experimentAuthoring?: ExperimentAuthoring;
 }
 
@@ -145,6 +163,37 @@ function familySummary(measured: MeasuredDifficulty): ClimbFamilySummary[] {
     .sort((a, b) => a.family.localeCompare(b.family));
 }
 
+/** A case that recorded no solver block is not a case that spent nothing, so it is left out; a
+ *  battery whose cases recorded none reads null, as an older battery's rows do. */
+function solveEffort(cases: NonNullable<BatteryEvidence["cases"]>): ClimbEffort | null {
+  const spent = cases.flatMap((row) => {
+    if (!isRecord(row.solver)) return [];
+    const { turns, toolCalls, startedAt, endedAt } = row.solver;
+    // An unparseable instant leaves NaN and a reversed pair a negative, and neither is at least
+    // zero, so that span reads unknown rather than a maximum that swallows every real one.
+    const ms =
+      isString(startedAt) && isString(endedAt) ? Date.parse(endedAt) - Date.parse(startedAt) : Number.NaN;
+    return [
+      {
+        turns: isNumber(turns) ? turns : null,
+        minutes: ms >= 0 ? Number((ms / 60_000).toFixed(1)) : null,
+        toolCalls: isNumber(toolCalls) ? toolCalls : null,
+      },
+    ];
+  });
+  if (spent.length === 0) return null;
+  const most = (measure: keyof (typeof spent)[number]): number | null => {
+    const recorded = spent.map((row) => row[measure]).filter(isNumber);
+    return recorded.length === 0 ? null : Math.max(...recorded);
+  };
+  return {
+    cases: spent.length,
+    turns: most("turns"),
+    minutes: most("minutes"),
+    toolCalls: most("toolCalls"),
+  };
+}
+
 function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): AdmittedClimbRow {
   const { evidence, measured } = admitted;
   const scored = (evidence.cases ?? []).filter((row) => isBoolean(row.pass));
@@ -166,6 +215,7 @@ function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): Ad
       taskSetHash,
       caseIds: (evidence.cases ?? []).map((row) => (isString(row.taskId) ? row.taskId : null)),
       familySummary: familySummary(measured),
+      effort: solveEffort(evidence.cases ?? []),
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
     },
     battery: {

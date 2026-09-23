@@ -66,6 +66,7 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     analysisDigest: "d".repeat(64),
     families: [{ family: "beams", verified: 5, passed: 3, unaccepted: 0, nonResults: 0 }],
     blockingByCheck: {},
+    applicableByCheck: {},
     issues,
     judge: null,
     findings: [],

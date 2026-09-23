@@ -19,9 +19,9 @@ import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { scriptedSession } from "./helpers/doubles.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { POLICY } from "../src/critic/policy.ts";
-import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
+import { preSessionRefusal, runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
-import { preSessionRefusal } from "../src/run/builder-campaign-preflight.ts";
+
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 
 afterAll(cleanupScratch);
@@ -42,9 +42,8 @@ describe("the scope a repair round is given", () => {
       unchangedCandidateCommits: { [commit]: POLICY.loop.unchangedCandidateStrikes },
       carried: [],
     };
-    const base = { campaignDir: "/x", experiment: "build" as const };
-    expect(preSessionRefusal(base, memory)).toMatchObject({ clauses: ["authoring-stalled"] });
-    expect(preSessionRefusal({ ...base, rebuildReset: "starter" }, memory)).toBeNull();
+    expect(preSessionRefusal({}, memory)).toMatchObject({ clauses: ["authoring-stalled"] });
+    expect(preSessionRefusal({ rebuildReset: "starter" }, memory)).toBeNull();
   });
 
   it("opens product repair whose findings require public task edits", () => {

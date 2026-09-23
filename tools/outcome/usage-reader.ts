@@ -1,6 +1,13 @@
 /**
- * What the recorded evidence says was used: Builder tool findings per epoch, and which runtime
- * safeguards fired against the inventory in src/meta/safeguard.ts. It reads; it decides nothing.
+ * What the recorded evidence says was used: the Builder's tool findings epoch by epoch, and which
+ * of the runtime safeguards named in `src/meta/safeguard.ts` ever fired. It reads, and it decides
+ * nothing — which matters most for the safeguard half, because a `fired: 0` row is a candidate for
+ * retirement rather than a verdict on one. A zero cannot separate a sensor whose watched branch
+ * stayed healthy from one no recorded run ever reached, so `.claude/skills/safeguards/SKILL.md`
+ * asks for two completed runs, named by run id, whose evidence shows the branch was reached before
+ * a quiet sensor may go. That is a judgement about reachability, and nothing in these logs can
+ * make it, so a census finding that most live ids have never fired retires none of them on that
+ * fact alone.
  */
 import type { BuilderToolsReport, EpochToolCensus } from "./builder-tools.ts";
 import { builderFailureFindings } from "./builder-failed-calls.ts";
@@ -9,9 +16,9 @@ import { existsSync, readFileSync, readdirSync } from "../../src/meta/filesystem
 import { join } from "../../src/meta/path.ts";
 import { SAFEGUARDS_LOG_FILE, SAFEGUARD_INVENTORY } from "../../src/meta/safeguard.ts";
 
-/* Fired-safeguard report: a safeguard that never fired within an epoch of its introduction is
- * removed by operator decision; this answers which fired, where, and which never did. */
-/** The exact line shape safeguardTriggered writes: `<iso timestamp> | <name> | <detail>`. */
+/** The exact line shape `safeguardTriggered` writes: `<iso timestamp> | <name> | <detail>`. A line
+ *  that does not match is counted as malformed rather than skipped, so a change to that writer
+ *  shows up here as a malformed count instead of as a tree of safeguards that suddenly went quiet. */
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+) \| (\S+) \| /;
 
 interface SafeguardUsageRow {
@@ -101,8 +108,8 @@ function pathRecordFindings(epoch: EpochToolCensus): string[] {
 
 function epochToolFindings(epoch: EpochToolCensus): string[] {
   // Failed calls are execution evidence, so they stay readable in exactly the epoch the other
-  // evidence sources miss: run 66 recorded 41 failed native calls beside null session
-  // evidence and a path record that covered none of them.
+  // evidence sources miss: an epoch can hold dozens of failed native calls beside null session
+  // evidence and a path record that covers none of them.
   const failures = builderFailureFindings(epoch.epoch, epoch.failures);
   const { record, composed } = epoch;
   if (composed === null && record === null) {

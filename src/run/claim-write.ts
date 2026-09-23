@@ -1,14 +1,22 @@
 /**
- * Writes one claim record for one recorded battery, using `Claim.create` and `assessReadiness`.
+ * Writes one claim record for one recorded battery, using `Claim.create` and `assessReadiness`: the
+ * step that turns measured case rows into a statement saying what was proved and under which bytes.
  *
- * The claim input is rebuilt from the recorded battery alone, plus `bundles` from a fresh
- * fingerprint of the same tree and `grounding` from the validated brief joined with recorded
- * execution. Readiness is checked at write time: the solvability witness reruns over the bundle
- * snapshot and the run directory is verified again. Absent conformance evidence stays null and
- * yields `conformance-unprobed`.
+ * A write takes a run identity and nothing else. It rebuilds the claim input from the recorded
+ * battery, then adds `bundles` from a fresh fingerprint of the same tree and `grounding` from the
+ * validated brief joined with recorded execution. Process memory never crosses this boundary: a
+ * score still held in a caller's variables would be a second evidence owner, and the bytes on disk
+ * are what the claim is about.
  *
- * The claim goes under campaigns/<slug>/claims/, outside the run directory, since writing into
- * runs/<runId>/ would itself violate the recorded evidence.
+ * Readiness is checked here rather than inherited from the round. The solvability witness reruns
+ * over the immutable bundle snapshot, which drives the generated reference solve and so costs no
+ * model call, and the recorded evidence in the run directory is verified again. Conformance evidence
+ * arrives from the caller or stays null, and null yields `conformance-unprobed`, because absent
+ * evidence cannot establish that the generated tool contract was ever probed.
+ *
+ * The claim file goes under `campaigns/<slug>/claims/`, outside the run directory, since a write
+ * into `runs/<runId>/` after the battery closed is itself the recorded-evidence violation that the
+ * readiness verdict checks for.
  */
 import { mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
@@ -69,9 +77,12 @@ interface WriteRunClaimOptions {
   conformance?: ConformanceEvidence | null;
   /** Passed into the constructive solvability probe (verifier contract, engine profile, timeout). */
   probe?: SolvabilityProbeOptions;
-  /** A probe the caller already holds; tests pass a double. */
+  /** A probe the caller already holds; tests pass a double. It takes the same interface the F2
+   *  adoption gate's probe takes, so the claim-time witness and the pre-adoption one cannot drift
+   *  into asking different questions of one bundle. */
   probeSolvability?: BuildDeps["probeSolvability"];
-  /** Pause before the one retry an environment-owned tool non-result earns; tests pass 0. */
+  /** Pause before the one fresh execution an environment-owned tool non-result earns; tests pass 0
+   *  so they do not sleep. Absent, `toolRetryDelay` supplies the shared `TOOL_RETRY_DELAY_MS`. */
   toolRetryWaitMs?: number;
 }
 
@@ -79,30 +90,45 @@ export interface WrittenRunClaim {
   runId: string;
   /** True when Claim.create created a claim; false carries the complete blocking-clause list. */
   created: boolean;
-  /** Whether the run's recorded evidence verifies, independently of the claim decision. */
+  /** Whether the run's recorded evidence verifies, independently of the claim decision. Computed on
+   *  every write because the round's terminal denominators and `shippingBundleFor` both read it, and
+   *  readiness checks the same directory only on a created claim: deriving this from claim creation
+   *  would leave a refused claim looking unmeasured. */
   batteryRecorded: boolean;
   statement: ClaimStatement | null;
-  /** Verified and passed case counts, computed whether or not the claim was created. */
+  /**
+   * Verified and passed case counts, computed whether or not the claim was created. Promotion's
+   * `candidate-zero-verified` clause reads this rather than a readiness clause: a refused claim
+   * carries `readiness: null`, so a predicate looking for the zero-verified clause would see no
+   * score at all and let a zero-verified candidate through to a paid comparison battery.
+   */
   batteryScore: BatteryScore;
   clauses: ClaimClause[];
-  /** Null exactly when the claim was not created. */
+  /** Null exactly when the claim was not created, since readiness presupposes a measurement
+   *  honest enough to make a statement about. */
   readiness: ReadinessVerdict | null;
   solvabilityFindings: ContractFinding[];
   evidencePath: string;
 }
 
-/** The recorded battery's truth-verified and passed counts. */
+/** The recorded battery's truth-verified and passed counts: a measurement fact, not a decision
+ *  about it. */
 interface BatteryScore {
   verified: number;
   passed: number;
 }
 
-/** Claim evidence lives at `campaigns/<slug>/claims/<runId>.json`, outside the run directories. */
+/** Claim evidence lives at `campaigns/<slug>/claims/<runId>.json`, outside the recorded run
+ *  directories, since a later write into `runs/<runId>/` is the recorded-evidence violation
+ *  readiness checks for. Every consumer — the measure step that writes, the build step, iteration
+ *  analysis and the next move's climb reader — derives the location here, so the rule has one owner. */
 export function claimsDirFor(repoRoot: string, slug: string): string {
   return join(campaignDir(repoRoot, slug), "claims");
 }
 
-/** The adopted tree's brief revalidated at write time. */
+/** The adopted tree's brief, revalidated at write time rather than trusted because it validated at
+ *  adoption. The grounding block below is composed from `truthChecks`, so a brief that no longer
+ *  validates would have the claim declaring checks whose shape nobody has confirmed. */
 function validatedBrief(slugDir: string): Brief {
   const raw: unknown = readJsonFile(join(slugDir, BRIEF_FILE));
   const validation = validateBrief(raw);
@@ -123,10 +149,22 @@ function recordedControlCorpus(slugDir: string): ControlCorpus {
 }
 
 /**
- * Runs the claim-time solvability witness, the same probe the census gate ran before adoption. A
- * verifier non-result becomes a finding beside the claim (readiness then refuses on
- * `no-solvability-witness`) instead of a throw, so the score stays recorded. An environment-owned
- * kind (`sandbox`, `verifierUnavailable`) is retried once; `timeout` and `crash` are recorded at once.
+ * Runs the claim-time solvability witness: the same probe the census gate ran before adoption,
+ * over the same bundle snapshot.
+ *
+ * When its verifier produces no verdict the fact is recorded as a finding beside the claim and
+ * readiness refuses on `no-solvability-witness`, so the score stays recorded and the round
+ * continues. Throwing instead would end the run with no claim written at all, discarding a battery
+ * that had already been measured because the Builder's engine timed out once on a loaded host. The
+ * census gate settles the same event as a repair owner in `settleNonResult`, because a gate is a
+ * round boundary and can route it; a claim write is not, so it only records what happened.
+ *
+ * An environment-owned kind — `sandbox` or `verifierUnavailable`, the two in
+ * `ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS` — earns the one fresh execution the census gate and the
+ * control runner already give it, because a single changed tool signature on a re-attestation would
+ * otherwise cost a fully verified battery its readiness. An author-owned kind, `timeout` or `crash`,
+ * is recorded on the first attempt: it is the evaluator's own tool over inputs the artifact
+ * produced, and a second run says nothing new.
  */
 async function probeOrNoVerdict(
   options: WriteRunClaimOptions,
@@ -156,8 +194,10 @@ async function probeOrNoVerdict(
   }
 }
 
-/** Readiness from a fresh solvability witness and a fresh verification of the run directory. Runs
- *  only for a created statement. */
+/** Readiness from a fresh solvability witness over the immutable bundle snapshot and a fresh
+ *  verification of the recorded evidence in the claim's own run directory. It runs only for a
+ *  created statement, because readiness asks whether a measurement can be relied on and a claim
+ *  that was refused has no measurement to ask about. */
 async function readinessAtWrite(
   options: WriteRunClaimOptions,
   fingerprint: FingerprintEvidence & { taskSetHash: string },
@@ -167,13 +207,19 @@ async function readinessAtWrite(
   solvability: SolvabilityEvidence | null;
   solvabilityFindings: ContractFinding[];
 }> {
-  // A fresh secret key per write, so commitments are not linkable across runs; only keyId is
-  // recorded.
+  // The commitment key is controller secret material scoped to this write. Only its public `keyId`
+  // reaches the evidence — `makeProbeSolvability` records `operandCommitmentKeyId` and nothing else
+  // — and the key is drawn fresh rather than reused, because one key across writes would make
+  // commitments from different runs linkable to each other.
   const operandCommitment = {
     key: crypto.getRandomValues(new Uint8Array(32)),
     keyId: `${options.slug}-${options.runId}-operands`,
   };
-  // The probe's children read source from disk, so a drifted source tree voids the witness.
+  // The probe's children resolve source from disk rather than from this process, so a tree that
+  // moved under them leaves a witness nobody can attribute to particular bytes; readiness then fails
+  // closed on `no-solvability-witness` with the drift named beside it. `sourceStillFrozen` owns the
+  // comparison and measures both moments against the identity captured at process start rather than
+  // against each other, so the check before probing and the check after it ask the same question.
   const sourceDriftFinding = (moment: string) =>
     controllerValidatedFinding({
       code: "SOLVABILITY_SOURCE_DRIFT",
@@ -200,7 +246,10 @@ async function readinessAtWrite(
   return { readiness, solvability: probed.evidence, solvabilityFindings: probed.findings };
 }
 
-/** The bundleSnapshot the score executed under, read only from the recorded battery. */
+/** The bundleSnapshot the score actually executed under, read from the recorded battery and nowhere
+ *  else. The iteration-analysis packet stamps its `identities.bundleSnapshot` from here and every
+ *  case and Judge review it carries hangs off that identity, so a reader taking the live tree's word
+ *  would let a tree edited after the battery name the bundleSnapshot for the whole analysis stage. */
 export function executedBundleSnapshotFact(slugDir: string, runId: string): BundleSnapshotFact {
   const path = batteryPath(slugDir, runId);
   const bundleSnapshot =
@@ -221,8 +270,10 @@ export function executedBundleSnapshotFact(slugDir: string, runId: string): Bund
   return /* SAFETY: the check above threw unless id, agentHash, correctnessModelHash and taskSetHash are all present with the right kind. */ bundleSnapshot as BundleSnapshotFact;
 }
 
-/** The executed bundleSnapshot, which the fresh fingerprint must match: a difference means the tree
- *  changed after verification, and the claim would name bytes the score never ran under. */
+/** Bundle identity comes from the recorded battery's executed bundleSnapshot, and the fresh
+ *  fingerprint has to match it. A difference means the live tree changed between verification and
+ *  claim writing, which would leave the claim naming bytes the score never ran under, so the write
+ *  fails. */
 function bindExecutedBundleSnapshot(
   slug: string,
   runId: string,
@@ -255,10 +306,20 @@ function batteryScoreOf(score: readonly ScoredCase[]): BatteryScore {
   };
 }
 
-/** The case ids whose recorded Judge verdict contradicts the verifier's, read from the same run
- *  directory as the score. Disputes are disclosed on the claim and change no score, decision or
- *  promotion. Only two disagreeing booleans are a dispute; absent or non-boolean Judge evidence is
- *  not. */
+/**
+ * The case ids whose recorded Judge verdict contradicts the verifier's on the same case, read from
+ * the same recorded run directory the score comes from.
+ *
+ * Without this, the join between the two verdicts exists only in the analysis files written after
+ * the claim, so a claim can read `ok: true` while every one of its failures is a verifier-fail
+ * against a Judge-pass and the reader sees nothing contested. It records the identifiers alone:
+ * disputes change no score, no claim decision and no promotion, and the directional counts stay
+ * where they already live, in the recorded battery's Judge aggregate.
+ *
+ * A case is a dispute only when two booleans disagree. Absent, refused or non-boolean Judge evidence
+ * — `judge: "off"`, an errored turn, a designed abstention — is not a disagreement, and this reader
+ * never infers one from a directory layout.
+ */
 function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[] {
   const violations = verifyRunDir(runDir);
   const disputed: string[] = [];
@@ -266,7 +327,8 @@ function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[]
     if (!isBoolean(row.truthOk)) continue;
     const recorded = recordedEvidence(runDir, join("cases", row.taskId, CASE_JUDGE_FILE), violations);
     if (!recorded.ok) continue;
-    // The bytes are digest-checked output of the evidence log, which writes only JSON.
+    // An unguarded parse is safe here: `recordedEvidence` sha-checked these bytes, and the evidence
+    // log is their only writer and serialises JsonValue, so non-JSON cannot arrive.
     const parsed: unknown = capturedJsonParse(recorded.bytes);
     if (!isRecord(parsed) || !isBoolean(parsed.verdict) || parsed.verdict === row.truthOk) continue;
     disputed.push(row.taskId);
@@ -274,7 +336,11 @@ function disputedCaseIds(runDir: string, cases: readonly CaseRecord[]): string[]
   return disputed;
 }
 
-/** The claim's evidence block: recorded battery evidence, executed bundle hashes and grounding. */
+/** The claim's evidence block, read from the recorded battery and the adopted tree: the battery's
+ *  own recorded evidence, the executed bundle hashes, and grounding as both declared in the brief
+ *  and executed during the run. Declared and executed are carried separately because a check naming
+ *  an external tool and a check whose tool actually ran are different facts, and the claim's
+ *  grounding clauses are where that difference has to be visible. */
 function recordedClaimEvidence(
   slugDir: string,
   battery: ReturnType<typeof readRecordedBatteryRecord>,
@@ -333,7 +399,10 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
   const bundleSnapshot = bindExecutedBundleSnapshot(options.slug, runId, battery.bundleSnapshot, fingerprint);
 
   const { recordedInput, evidence } = recordedClaimEvidence(slugDir, battery, bundleSnapshot);
-  // Read from the same recorded bytes as the score, before the readiness probe runs.
+  // Read beside the score, from the same recorded bytes and before the readiness probe touches
+  // the tree. It is evidence beside the claim rather than inside it, because the promotion
+  // decision and the round's terminal are settled after this write — the round measures, then
+  // promotes — so the claim can only name what is already recorded when it is created.
   const disputed = disputedCaseIds(join(slugDir, "runs", runId), battery.cases);
   const claim = Claim.create({
     slug: options.slug,
@@ -360,7 +429,9 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
         slug: options.slug,
         runId,
         createdAt: new Date().toISOString(),
-        // The battery's own run condition; the claim asserts none of its own.
+        // The battery's own run condition, restated here: the claim asserts no condition of its
+        // own, so a reader comparing two claims is comparing what the batteries were measured
+        // under rather than what the claim writer thought they were.
         condition: battery.condition,
         claim: claim.ok
           ? { ok: true, statement: claim.statement }

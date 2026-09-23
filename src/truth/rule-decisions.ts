@@ -3,12 +3,14 @@
  * `numeric-boundary.ts` holds its declaration: `brief.ts` names the field, this file owns what a
  * well-formed row is, and `published-rules.ts` owns what citing one means.
  *
- * `decisions` is the coverage map and reaches no reader, so a rule stated there is invisible to
- * the solver. This field makes public correctness rules explicit and requires private decisions to
- * declare that
- * visibility: `public` rows are projected to the Built Harness and the Judge through
- * `briefPublicResources`, `private` rows — search order, allocation recipe, fallback chain,
- * internal tie-breaks that do not determine correctness — reach neither model, and no check may cite them.
+ * A public rule had nowhere to go before this field existed. `decisions` is the coverage map and
+ * reaches no reader, so a family's frame, ordering, threshold and bit-order rules could be stated
+ * there and read by nobody, while the operating guide named them without defining them and every
+ * submission failed. The split here makes a public correctness rule explicit and makes a private
+ * decision declare that it is private: `public` rows are projected to the Built Harness and the
+ * Judge through `briefPublicResources`, while `private` rows — search order, allocation recipe,
+ * fallback chain, internal tie-breaks that do not determine correctness — reach neither model, and
+ * no check may cite one.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { type ContractFinding, fieldFinding, finding } from "./brief.ts";

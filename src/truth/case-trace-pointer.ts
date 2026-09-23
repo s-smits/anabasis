@@ -2,8 +2,12 @@
  * The per-case half of the transcript pointer problem, written when the case is recorded.
  *
  * `solveCase` writes `cases/<taskId>/trace.json` as soon as the case ends, including on a typed
- * non-result. Recording the pointer with the case, rather than with the whole battery, keeps the
- * traces of a battery killed mid-run reachable by `readVerifiedTrace`, which reads through pointers.
+ * non-result — pi-built.ts hands `recorder.trace()` to both outcome shapes. Nothing pointed at that
+ * file until `appendRecordedCaseRows` in run-driver.ts created the record row, and that runs only
+ * once the whole battery is recorded. A battery killed mid-run therefore left intact traces on disk
+ * that the verified read could not reach, because `readVerifiedTraceUnder` reads through pointers
+ * and there were none: evidence surviving on disk with nothing in the campaign naming it is
+ * evidence no reader has. Recording the pointer with the case closes that window.
  *
  * The checks are the ones `src/builder/session-transcript.ts` copied from pi's session-verify and
  * that hold at any moment: present, readable, non-empty, and carrying the identity the reader will

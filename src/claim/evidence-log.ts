@@ -1,6 +1,9 @@
 /**
- * `EvidenceLog` writes run evidence and records the bytes it produced, so readers can detect
- * changes made outside this writer rather than assume exclusive ownership.
+ * `EvidenceLog` writes run evidence and records the bytes it produced, so that the Built Harness
+ * cannot rewrite a record it is the subject of. It was introduced when generated modules ran in
+ * process and could modify an earlier case's files between runner writes. Runtime isolation now
+ * keeps them out, and the writer's manifest check remains useful beside it, because it lets a
+ * reader detect changes made outside this writer rather than assume exclusive ownership.
  *
  *  - Write each file atomically using a temporary file and rename, avoiding partial JSON at
  *    the final path. Keep each file's sha256 in memory when writing it.
@@ -34,8 +37,9 @@ import { readJsonFile } from "../meta/completed-json.ts";
 export const RUN_MANIFEST_NAME = "run-manifest.json";
 
 /**
- * Namespace of append-mode telemetry. Its recorded digest stays verifiable, but telemetry is
- * never claim evidence and its violations never block.
+ * Historical manifests may contain the retired live journal under this namespace; nothing in
+ * `src` writes one now. Its recorded digest remains verifiable, but telemetry is never claim
+ * evidence, so its violations stay separate from the blocking evidence violations.
  */
 const TELEMETRY_PREFIX = "live/";
 
@@ -67,8 +71,9 @@ const TMP_RE = /\.tmp-\d+$/;
 
 export class EvidenceLog {
   private readonly written = new Map<string, string>();
-  /** Set by the first `record()`. From then on every write republishes the manifest, so a file
-   *  written after publication never reads as foreign if the process dies. */
+  /** Set by the first `record()`. From then on every write republishes the manifest: the battery
+   *  is published before the paid review, and a review file the manifest does not name would make
+   *  the reader call the finished measurement foreign if the process died mid-review. */
   private recorded = false;
 
   constructor(readonly runDir: string) {}
@@ -150,7 +155,9 @@ function diskViolations(runDir: string, manifest: Manifest, seen: Set<string>): 
   const violations: EvidenceLogViolation[] = [];
   for (const { rel, irregular } of walkFiles(runDir)) {
     if (irregular) {
-      // The owner writes only regular files; following a link could read outside the run dir.
+      // The owner only ever writes regular files, so a symlink or special file under a run dir is
+      // an unsupported entry rather than an unexpected one, and following it could read bytes
+      // from outside the recorded directory and record them as the run's own.
       violations.push({
         code: "evidence-irregular",
         path: rel,
@@ -170,8 +177,9 @@ function diskViolations(runDir: string, manifest: Manifest, seen: Set<string>): 
       continue;
     }
     seen.add(rel);
-    // Append expectations count only inside the telemetry namespace, so no manifest entry can
-    // exempt another file from the unrecorded or changed-file checks.
+    // Historical append expectations are honoured only inside the telemetry namespace: a manifest
+    // entry anywhere else cannot exempt a file from the unrecorded or changed-file checks, which
+    // is what would otherwise let one forged row excuse a file from every digest comparison.
     const inTelemetry = rel.startsWith(TELEMETRY_PREFIX);
     const recordedAppend = inTelemetry ? manifest.appends?.[rel] : undefined;
     if (recordedAppend !== undefined) {
@@ -245,8 +253,17 @@ export function recordedEvidence(
   return { ok: true, sha256: expected, bytes };
 }
 
-/** The manifest, or null when its schema version or any row is not one this reader understands,
- *  which callers report as unrecorded evidence. */
+/** Accept only the manifest schema this reader understands, and only the rows it can read.
+ *  Otherwise a plausible `files` map with a missing or unknown schemaVersion could be treated as
+ *  evidence under rules the reader has never validated.
+ *
+ *  The parsed value is read from `JsonValue` rather than asserted into `Manifest`. The assertion
+ *  used to run before the guard, which left every clause of the guard dead to the checker while it
+ *  stayed the only protection at runtime, and it stopped short of the values: a `files` entry
+ *  holding a number reached `sha256(bytes) !== expected` as a non-string and was reported as a
+ *  changed file rather than as a manifest this reader cannot read. A manifest whose rows are not
+ *  the digests and append records this reader compares is now `run-unrecorded`, which is the
+ *  refusal the sentence above already promised. */
 function readManifest(runDir: string): Manifest | null {
   const path = join(runDir, RUN_MANIFEST_NAME);
   if (!existsSync(path)) return null;

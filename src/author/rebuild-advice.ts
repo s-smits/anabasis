@@ -1,18 +1,30 @@
 /**
- * The issue register a continuing author reads about its product, derived from the rows the round
- * already wrote.
+ * What the next-experiment author reads about the product it is continuing: one issue register,
+ * derived from the rows the round already wrote, in place of a model-written repair hypothesis.
  *
- * An issue is three recorded facts: `absentBatteries` counts batteries in which its family ran
- * without it, `returned` says the latest observation followed an absence, and `retired` says the
- * family left the task set. `issueStatusWord` derives the status word from them. Issue identity is
- * `kind + family + detail`, so one issue can be followed across a rebuild.
+ * The controller's moves are `build | measure | rebuild | stop` and none of them is a climb, so
+ * this is the packet an author reads whether it goes on to change the tasks alone or to reopen the
+ * whole product. Its order is therefore the instruction, and a packet that reads as a defect list
+ * gets a defect fix rather than a harder exam. Where the battery landed belongs to the climb
+ * readout, which renders above this packet, so `renderRebuildAdvice` carries the issue register
+ * alone.
  *
- * Two fields come from the review readers: `diagnosis` (the diagnosis reader's causal claim) and
- * `dispute` (the epoch reviewer's argument that the issue belongs to the evaluation). They attach
- * through `attachIssueReadings` and change no count or decision.
+ * An issue is three recorded facts and no state machine. `absentBatteries` counts the batteries in
+ * which its family ran without it, `returned` says the latest observation followed an absence, and
+ * `retired` says the family left the task set; `issueStatusWord` derives from them the word every
+ * reader used to store for itself, because two representations of one lifecycle can disagree. Issue
+ * identity is `kind + family + detail` and deliberately excludes the harness identity, which is
+ * what lets one issue be followed across a rebuild.
  *
- * `renderRebuildAdvice` is the model-visible boundary, bounded by `RENDERED_ISSUES`,
- * `RENDERED_FINDINGS` and `FINDING_CLAIM_CHARS`. Diagnosis prose never crosses into authoring.
+ * Everything the rows already determine is derived rather than stored — the battery's totals, and
+ * how many consecutive packets have carried an unowned diagnosis. Only `diagnosis` and `dispute`
+ * are written from outside, through `attachIssueReadings` after the packet is derived, and neither
+ * changes a count or any decision, so the register stays controller-owned.
+ *
+ * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
+ * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
+ * and `FINDING_CLAIM_CHARS` per claim. Diagnosis prose stays recorded here and never crosses into
+ * authoring.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { authorSessionOwner } from "../analyse/finding-owner.ts";
@@ -54,20 +66,25 @@ type AdviceIssueKind =
   /** The Judge failed what the verifier passed: a disclosure about the verifier's accept. */
   | "judge-failed-verifier-passed";
 
-/** A reader's causal claim about one issue, with the observation that would refute it. */
+/** A reader's causal claim about one issue, with the observation that would refute it. Both halves
+ *  are required, because a cause that cannot be wrong tells the next authoring pass nothing it can
+ *  check. */
 export type IssueDiagnosis = {
-  /** What made this family fail. */
+  /** The causal hypothesis: what made this family fail. */
   cause: string;
   /** The observation that would show the cause is wrong. */
   falsifier: string;
   /** First observed failure boundary, compared with a passing trace only when one was supplied. */
   firstDivergence: string;
-  /** The authoring area the reader believes owns the cause. Advisory: it never selects a route. */
+  /** The authoring area the reader believes owns the cause. This is advice with no authority: the
+   *  controller's own routing still decides where a repair goes, and nothing here selects one. */
   interventionClass: FeedbackOwner;
-  /** What a passing case of the same family did differently; null when the family had none. */
+  /** What a passing case of the same family did differently, or null when the family had none to
+   *  contrast against. A cause that explains the pass as well as the failure is not a cause. */
   contrastSuccess: string | null;
   confidence: "low" | "medium" | "high";
-  /** The battery whose traces the diagnosis was read from. */
+  /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
+   *  describes the battery in front of the author. */
   runId: string;
 };
 
@@ -89,13 +106,15 @@ export type AdviceIssue = {
   /** The latest observation followed an absence: the issue came back. */
   returned: boolean;
   /** The family left the task set, so this battery could not observe the issue. Retirement proves
-   *  no fix. */
+   *  no fix, which is why it is a separate fact from absence: read as absence, it would age towards
+   *  fixed while the advice asked the author to move something it cannot observe. */
   retired: boolean;
-  /** The diagnosis reader's causal claim; null when none was read. Carried forward while the issue
-   *  lives. */
+  /** The diagnosis reader's falsifiable causal claim; null when none was read or the reading
+   *  failed. It is carried forward while the issue lives, so one reading serves later batteries. */
   diagnosis: IssueDiagnosis | null;
-  /** The epoch reviewer's argument that this failure belongs to the evaluation. A disputed issue is
-   *  still counted; the dispute only withholds agent advice. */
+  /** The epoch reviewer's argument that this failure belongs to the evaluation. The register keeps
+   *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
+   *  reason to stop observing it. */
   dispute: string | null;
 };
 
@@ -117,7 +136,8 @@ type AdviceFinding = {
   checkId?: string;
   artifactSchemaPath?: string;
   hostRule?: string;
-  /** Set from the second consecutive packet carrying the same unowned diagnosis. */
+  /** Set from the second consecutive packet carrying the same unowned diagnosis, so the author
+   *  reads a recurrence rather than what looks like a fresh open question each round. */
   repeated?: { count: number; since: string };
 };
 
@@ -126,7 +146,8 @@ export type RebuildAdvicePacket = {
   slug: string;
   runId: string;
   analysisDigest: string;
-  /** The battery, one row per family; totals are derived from these rows. */
+  /** The battery, one row per family. The totals are read off these rows rather than stored beside
+   *  them, where the two could come to disagree. */
   families: AdviceFamilyRow[];
   /** Verified failures per declared check, as the battery recorded them. */
   blockingByCheck: Record<string, number>;
@@ -148,19 +169,24 @@ type Observed = {
   denominator: number;
 };
 
-/** Render bounds that keep the packet at a few thousand characters; the register still records
- *  everything. Six matches the standing issues the diagnosis reader offers. */
+/** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
+ *  unowned finding alone can run to fifteen thousand characters, and an author reading a defect
+ *  list that long writes a defect fix. These three hold the packet at a few thousand characters
+ *  whatever the battery did, while the register goes on recording every issue it derived. Six
+ *  matches the standing issues the diagnosis reader offers, so the two mean the same by
+ *  "standing". */
 const RENDERED_ISSUES = 6;
 const RENDERED_FINDINGS = 4;
 const FINDING_CLAIM_CHARS = 600;
 
-/** An issue this battery observed, that nothing disputes and whose family is still in the task
- *  set. */
+/** An issue this battery observed, that nothing contests and whose family is still in the task set:
+ *  the one thing the diagnosis reader, the epoch reviewer and the render all mean by "standing". */
 export function isStanding(issue: AdviceIssue): boolean {
   return !issue.retired && issue.dispute === null && issue.absentBatteries === 0;
 }
 
-/** The status word for one issue's recorded facts. */
+/** The word for one issue's recorded facts, derived here for readers that show a status rather
+ *  than act on one, so that no reader stores a second copy of the lifecycle. */
 export function issueStatusWord(issue: AdviceIssue): string {
   if (issue.retired) return "retired";
   if (issue.dispute !== null) return "disputed";
@@ -268,9 +294,10 @@ function observedIssues(
   return out;
 }
 
-/** Advances the register by one battery: an observed issue resets its absence and records whether
- *  it came back; an unobserved one ages only when its family ran. A Judge issue with no complete
- *  Judge review is carried unchanged. */
+/** Advance the register by one battery: an observed issue resets its absence and remembers whether
+ *  it came back, and an unobserved one ages only when its family actually ran. A Judge issue that
+ *  no complete Judge review could observe is carried unchanged rather than aged towards a fix,
+ *  because an absent review is not evidence of absence. */
 export function advanceIssues(
   previous: readonly AdviceIssue[],
   observed: readonly Observed[],
@@ -299,7 +326,8 @@ export function advanceIssues(
       returned: prior !== undefined && (prior.absentBatteries > 0 || prior.returned),
       retired: false,
       diagnosis: prior?.diagnosis ?? null,
-      // Observing a disputed issue again does not settle whose defect it is.
+      // A disputed issue observed again is still disputed: the dispute is about whose defect the
+      // failure is, and seeing it a second time is not an answer to that question.
       dispute: prior?.dispute ?? null,
     });
   }
@@ -314,9 +342,11 @@ export function advanceIssues(
   );
 }
 
-/** `verified` is the family's truth-verified case count, or undefined when the family is absent.
- *  An absent family retires the issue; a family with no verified case observed nothing and leaves
- *  the issue unchanged. */
+/** `verified` is the family's truth-verified case count in this battery, or undefined when the
+ *  family is not in it at all. Absence of the family retires the issue; a family the provider never
+ *  let run observed nothing and moves it neither way, which is the same carry the Judge branch
+ *  below makes for the same reason. A battery of provider non-results still counts every family in
+ *  it as having run, so the zero-verified branch is what keeps those issues from ageing. */
 function agedIssue(
   issue: AdviceIssue,
   verified: number | undefined,
@@ -325,15 +355,18 @@ function agedIssue(
   if (verified === undefined) return { ...issue, retired: true, dispute: null };
   if (verified === 0) return issue;
   if (issue.kind.startsWith("judge-") && judgeReview === "incomplete") return issue;
-  // An issue the battery no longer shows carries no dispute.
+  // An issue the battery no longer shows carries no dispute: a dispute kept across batteries of
+  // absence promises a withholding the controller is no longer applying.
   return { ...issue, absentBatteries: issue.absentBatteries + 1, retired: false, dispute: null };
 }
 
-/**
- * Attaches the review readers' diagnoses and disputes to the advanced register, before the packet is
- * written, so the bound digest covers them. Only a standing issue can be disputed; disputing a fixed
- * or retired one would resurrect it.
- */
+/** Attach what the two review readers said to the register this battery just advanced. They run
+ *  after the packet is derived and before it is written, so the digest a rebuild binds covers the
+ *  complete evidence packet, including readings whose prose the author must not see.
+ *
+ *  A dispute suspends an issue instead of closing it: the author is told not to rebuild around it,
+ *  and the next battery still counts it. Only a standing issue can be suspended, because disputing
+ *  one already fixed or retired would resurrect it. */
 export function attachIssueReadings(
   packet: RebuildAdvicePacket,
   readings: {
@@ -372,8 +405,10 @@ function unownedDiagnosisIdentity(
   return finding.kind === "diagnosis-uncertain" ? namedSubject(finding) : null;
 }
 
-/** How many consecutive packets have carried this unowned diagnosis, read off the previous
- *  packet's findings; a reappearance after a gap counts from one again. */
+/** How many consecutive packets have carried this unowned diagnosis, read off the previous packet's
+ *  own findings. A separate history array said the same thing a second time, and an identity absent
+ *  from one round already left the chain, so a reappearance after a gap counts from one again
+ *  without anything having to remember the gap. */
 function recurrence(previous: RebuildAdvicePacket | null, identity: string): AdviceFinding["repeated"] {
   const prior = (previous?.findings ?? []).find((finding) => unownedDiagnosisIdentity(finding) === identity);
   if (previous === null || prior === undefined) return undefined;
@@ -407,9 +442,17 @@ export function deriveRebuildAdvice(
             reason: judges.exit.reason,
             contestedFamilies: [...new Set(judges.contested.map((row) => row.family))].sort(),
           },
-    // Aggregate rows only. A routed row already reaches the session as feedback, so only rows that
-    // route nowhere are kept. A judge-disagreement row repeats `judge.reason` above, and a
-    // controller defect is not the author's to repair.
+    // Per-case findings never leave the controller, and these aggregate rows are already
+    // author-visible by construction. A routed row reaches the same session again as feedback, so
+    // only rows that route nowhere are new information here; the test is the routing predicate and
+    // not the rendered claim, because two findings may carry the same text and dropping both
+    // because one routed would lose the one that did not.
+    //
+    // A judge-disagreement row is the one kind that predicate reads wrong. It routes nowhere, so
+    // the predicate calls it new, but `judge.reason` above is the same string from the same
+    // producer, and the duplicate also spends one of the four rendered finding slots. The Judge
+    // exit has one owner here, the judge block, and the admission record keeps the row either way.
+    // A controller defect is dropped because it is not the author's to repair.
     findings: admission.admitted
       .filter(
         (finding) =>
@@ -441,8 +484,14 @@ export function latestRebuildAdvicePath(repoRoot: string, slug: string): string 
   return join(campaignDir(repoRoot, slug), "analysis", REBUILD_ADVICE_LATEST);
 }
 
-/** The latest packet, or null when none exists or another schema wrote it (no register yet on this
- *  source). A corrupt file throws: a rebuild must not author against unreadable bytes. */
+/** The latest packet, or null when this source recorded none. A corrupt file still throws through
+ *  `parseJsonAs`, because a rebuild must not author against bytes it could not read. A packet
+ *  another schema wrote is a different fact — no register exists on this source yet — and every
+ *  consumer already spells that as null: `advanceIssues` starts its register from `[]`,
+ *  `recurrence` counts from one, the epoch reviewer is offered no standing issue and the advisory
+ *  note carries no packet. Throwing on it instead would kill the first analyse step of every
+ *  existing campaign the next time this schema changes, so `--project <existing>` could not
+ *  continue. */
 export function readLatestRebuildAdvice(repoRoot: string, slug: string): RebuildAdvicePacket | null {
   const path = latestRebuildAdvicePath(repoRoot, slug);
   if (!existsSync(path)) return null;
@@ -457,11 +506,16 @@ const ISSUE_WORDS = {
   "judge-failed-verifier-passed": "verified cases the Judge failed and the verifier passed",
 } as const;
 
-/** An issue whose whole content is an environment failure (provider limit, credential, sandbox).
- *  A crash, protocol violation or `verifier` kind stays the harness's to explain. */
+/** An issue whose whole content is an environment failure. Rule 15 gives a provider limit, a
+ *  missing credential, a sandbox refusal and their relatives to the environment owner, and the
+ *  kinds are taken from the existing set beside that vocabulary rather than restated here. A crash,
+ *  a protocol violation or a `verifier` kind stays the harness's to explain, because a tool that
+ *  ran and died may well be a harness defect. The diagnosis reader offers none of these issues, and
+ *  the issue line below names the split so the author is not told to rerun a failure it owns. */
 export function environmentOwned(issue: AdviceIssue): boolean {
-  // Timeout is excluded: an aggregate issue cannot show solver origin, and a verifier tool timeout
-  // can need author repair.
+  // The shared set admits timeout only with solver-origin evidence at the battery boundary. This
+  // aggregate issue carries no such provenance, and a verifier tool timeout can need author repair,
+  // so timeout is excluded here rather than read as the environment's.
   return (
     issue.kind === "non-result" &&
     issue.detail !== "timeout" &&
@@ -472,6 +526,9 @@ export function environmentOwned(issue: AdviceIssue): boolean {
 
 function issueLine(issue: AdviceIssue): string {
   const kind = issue.detail ?? "unknown";
+  // The line says which side of the split a non-result fell on, because the standing-issues heading
+  // tells the author an environment non-result calls for an unchanged rerun, and a `verifier` kind
+  // sitting silently under that sentence reads as covered by it when it is not.
   const nonResult = environmentOwned(issue)
     ? `environment non-results of kind ${kind}`
     : `runtime non-results of kind ${kind}, a kind that does not establish an environment failure`;
@@ -483,8 +540,11 @@ function issueLine(issue: AdviceIssue): string {
   return `- [${issueStatusWord(issue)}] ${issue.family}: ${issue.count}/${issue.denominator} ${words} (first seen ${issue.firstSeenRunId}, last seen ${issue.lastSeenRunId})${diagnosis}`;
 }
 
-/** Standing issues, largest first, capped. Fixed issues belong to the climb readout's family line
- *  and retired ones name families the author cannot move; the register still records both. */
+/** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families
+ *  passed every verified case is the climb readout's family line, and naming them here as well asks
+ *  opposite things of one family — preserve it as a confirmed fix, and harden it as a sentinel. A
+ *  retired issue names a family that left the task set, which the author can neither move nor keep.
+ *  The register records both either way, so an issue that returns is still a regression. */
 function standingLines(issues: readonly AdviceIssue[]): string[] {
   const standing = [...issues]
     .filter(isStanding)
@@ -498,8 +558,15 @@ function standingLines(issues: readonly AdviceIssue[]): string[] {
   ];
 }
 
-/** Public finding text, capped in count and length. Blocking findings sort first so the cap cuts
- *  advisory ones; within one severity the admitted order stands. */
+/** Public finding text, capped in count and in length. A finding that routes to no owner is the one
+ *  row the controller could not place, so it is the row most likely to grow, and the cap therefore
+ *  belongs to the boundary rather than to any one producer feeding it.
+ *
+ *  Blocking sorts first because the cap cuts the tail. Unsorted, a blocking finding can sit behind
+ *  three advisory ones that arrived first and leave the packet saying "1 further admitted
+ *  finding(s) omitted" without saying the omitted row was the blocking one. A blocking finding is
+ *  an admitted, cited demonstration of a violated requirement, the strongest row this packet
+ *  carries, while an advisory is a lead. Within one severity the admitted order stands. */
 function findingLines(findings: readonly AdviceFinding[]): string[] {
   const ordered = [...findings].sort(
     (a, b) => Number(b.severity === "blocking") - Number(a.severity === "blocking"),
@@ -522,14 +589,15 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
     : lines;
 }
 
-/** Which declared checks decided anything, on both sides. `truthCheckFiring` seeds the record
- *  with every declared check at zero, so the zeros are the roster of checks that let every
- *  shipping artifact through. The roster then splits on the applicable count, because "refused
- *  nothing over 25 verified cases" and "no verified case posed it" ask for opposite repairs --
- *  raise the rule, or give the battery a task that reaches it. Across the recorded corpus 74 of
- *  670 untripped rows were not the shape one sentence implied: 54 applied to some verified cases,
- *  20 to none. Zero verified cases prove no check untripped, so this stays silent until a battery
- *  graded something. */
+/** Which of the harness's own declared checks decided anything, on both sides. `truthCheckFiring`
+ *  seeds its counter with every declared check at zero, so the zeros in the packet are the roster
+ *  of checks that let every shipping artifact through. That roster is what a saturated battery is
+ *  made of, and the family line cannot state it: a family reads as "raise its numbers" where a
+ *  check reads as "this rule refused nothing". The roster then splits on the applicable count,
+ *  because "refused nothing over 25 verified cases" and "no verified case posed it" ask for
+ *  opposite repairs -- raise the rule, or give the battery a task that reaches it. Zero verified
+ *  cases prove nothing about any check, so the roster stays silent until a battery has graded
+ *  something. */
 function blockingLine(
   blockingByCheck: Record<string, number>,
   applicableByCheck: Record<string, number>,
@@ -549,7 +617,8 @@ function blockingLine(
   // A recorded zero, never an absent row: "no verified case posed it" is a measurement, and the
   // packet may state it only where the battery measured it.
   const unposed = untripped.filter((checkId) => applicableByCheck[checkId] === 0);
-  // Only when one check carries every failure.
+  // The sentence is appended only when one check really does carry every failure; beside a single
+  // failed case and six checks it would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
   return [
     blocked.length === 0
@@ -566,8 +635,9 @@ function blockingLine(
     .join("\n");
 }
 
-/** The model-visible projection of the issue register: kinds and counts. Band placement and totals
- *  belong to the climb readout, which renders above it. */
+/** The one model-visible projection of the issue register: kinds and counts, ordered by what the
+ *  next experiment decides. Where the battery landed on the band and what its totals were belong to
+ *  the climb readout, which renders above this packet, so neither is repeated here. */
 export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   const totals = adviceTotals(packet.families);
   const disputed = packet.issues.filter((issue) => issue.dispute !== null && !issue.retired);

@@ -1,8 +1,13 @@
-/** Keep an unfinished JSONL wire record bounded even when a peer never sends LF. */
+/** How much of an unfinished record may be held before the reader stops believing a newline is
+ *  coming. A peer that never sends one would otherwise grow the buffer without limit, and a wire
+ *  peer is exactly the thing whose behaviour this side does not control. */
 export const JSONL_LINE_MAX_BYTES = 2 * 1024 * 1024;
 
-/** Read newline-delimited records with a byte limit. Emit an oversized prefix with a NUL marker
- * so parsing fails, then discard the remaining bytes through the next newline. */
+/** Read newline-delimited records under that byte limit. An oversized line is emitted as its
+ * prefix with a NUL appended, and the remaining bytes are discarded through the next newline. The
+ * NUL is there so the prefix cannot parse: a truncated record that happened to be valid JSON would
+ * be acted on as a whole record, and dropping the line silently would leave the caller reading a
+ * record that never arrived as one that was never sent. Failing the parse says what happened. */
 export async function attachJsonlLineReader(
   stream: AsyncIterable<Uint8Array>,
   onLine: (line: string) => void,

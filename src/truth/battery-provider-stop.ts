@@ -1,10 +1,15 @@
 /**
- * The battery's consecutive-provider stop rule. A provider outage or usage limit can affect every
- * live case at once, so, as the Judge does for its paid calls, after
- * BATTERY_PROVIDER_STOP_CONSECUTIVE consecutive provider-kind solver
- * non-results, no further case is scheduled. Every unscheduled task still records a typed provider
- * non-result naming the stop, so the denominator stays complete. A single provider failure never
- * stops scheduling. A non-provider result resets the count, and active cases finish normally.
+ * The battery's consecutive-provider stop rule. A provider outage or usage limit affects every live
+ * case at once rather than one of them, so a single outage can take most of a battery with it and
+ * paying for the rest buys nothing but more of the same non-result. The Judge census already stops
+ * its paid calls after five consecutive provider errors, and the battery mirrors that rule: after
+ * BATTERY_PROVIDER_STOP_CONSECUTIVE consecutive provider-kind solver non-results, no further case
+ * is scheduled.
+ *
+ * Every unscheduled task still records a typed provider non-result naming the stop, so the
+ * denominator stays complete and the round reads as an operational result rather than a short
+ * battery. A single provider failure never stops scheduling, a non-provider result resets the
+ * count, and cases already in flight finish normally.
  */
 import { mapWithConcurrencyLimit } from "../run/session-pool.ts";
 import { type SolvedCase, unattemptedCase } from "./solve-case.ts";

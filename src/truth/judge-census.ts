@@ -18,6 +18,7 @@ const JUDGE_CENSUS_ABORT_AFTER = 5;
 
 type JudgeCensusAbort = {
   schema: "judge-census-abort/v1";
+  /** One member: no control census reaches the Judge. */
   phase: "battery-census";
   attempted: number;
   threshold: number;

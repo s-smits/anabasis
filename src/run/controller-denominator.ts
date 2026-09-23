@@ -11,8 +11,10 @@ export type Denominator =
  * The case counts of this run's admitted batteries, answered from the case rows. The terminal
  * records this value for skill readers; the controller reader recomputes it from the rows and
  * checks agreement, allowing the older terminal spelling when it describes the same counts.
- * A missing case record is zero rows: a battery refused before any case ran is an operational
- * result with a zero denominator, not an unreadable one.
+ * A missing case record is zero rows rather than an error, because a battery refused before any
+ * case ran is an operational result with a zero denominator. Reading it as unreadable would lose the
+ * one thing it establishes: that nothing was measured, which is a fact and not a gap in the
+ * evidence.
  */
 export function controllerDenominator(campaignDir: string, batteryRunIds: readonly string[]): Denominator {
   if (batteryRunIds.length === 0) return { state: "absent" };

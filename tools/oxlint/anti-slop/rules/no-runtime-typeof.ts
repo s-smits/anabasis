@@ -126,11 +126,29 @@ function isOwnedPrimitivePredicate(
 }
 
 /**
- * Disallow runtime typeof checks that narrow unparsed values instead of decoding them.
+ * A `typeof` in running code, which narrows a value by asking what it happens to be rather than
+ * by parsing it into something the rest of the program can rely on.
  *
- * The primitive predicates a decoder is built from are the one exception, and only in the module
- * that owns them (`isOwnedPrimitivePredicate`). The message names that module, so the report says
- * where the check a caller wanted already lives.
+ * The narrowing works, and that is what makes it attractive: `typeof value === "string"` hands
+ * the branch below a `string` and the compiler agrees. What it does not do is establish anything
+ * about the value as a domain object, so the same question gets asked again at the next reader,
+ * and each caller ends up with its own idea of which shapes the input can take. A decoder at the
+ * boundary asks once and gives everyone downstream a type with a name.
+ *
+ * Three things are admitted. A `typeof x === "undefined"` comparison is an existence probe, and
+ * it is the only expression in the language that can ask about a binding that may not exist at
+ * all, so `isExistenceProbe` passes it. The primitive predicates a decoder is built out of are
+ * admitted in the module that owns them and nowhere else, by `isOwnedPrimitivePredicate`, which
+ * requires the whole function body to be the check and the declared predicate to name exactly
+ * what the answer establishes — `value is number` over a `"string"` test is still reported, and
+ * `"object"` must exclude null as well, since `typeof null` is `"object"`. The message names that
+ * owning module, so a report tells the reader where the check they wanted already lives.
+ *
+ * The third is `allowInTypeGuards`, an option that would admit any `typeof` inside a function
+ * declaring a type predicate. Nothing in this repository sets it: it appears in this file's
+ * schema, its default and its one read, and nowhere else, so every run here has it false.
+ * `.oxlintrc.json` instead turns the whole rule off for `.js` and `.mjs` files, which carry no
+ * annotations to decode into.
  *
  * There is no fix: the repair is a decoder at the I/O boundary, which is a new function and a new
  * type.

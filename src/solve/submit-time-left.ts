@@ -1,9 +1,11 @@
 /**
  * The first submit of a Built solve that still has a quarter or more of its time answers with the
- * time left instead of sending, once. The system prompt states the wall at the start of a long turn;
- * this states it where the decision to stop is made. The reply names only the clock and the
- * published requirements, so it carries nothing the verifier knows. The second call sends, and so
- * does the call the wall makes, since by then less than the share remains.
+ * time left instead of sending, once. Solvers routinely submit by their own call barely a third of
+ * the way into the wall and fail on a requirement they had the time to check. The system prompt
+ * states the wall once, at the start of a long turn; this states it where the decision to stop is
+ * actually made. The reply names only the clock and the published requirements, so it carries
+ * nothing the verifier knows. The second call sends, and so does the call the wall makes, since by
+ * then less than the share remains.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 

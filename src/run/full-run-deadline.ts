@@ -62,9 +62,12 @@ export class FullRunClosure {
   /**
    * Settle the provider, then record the terminal — even when settlement itself fails.
    *
-   * Terminal recording runs in `finally`, so a failed settlement still leaves a terminal and
-   * releases the lock. Signal handlers are removed afterwards, so a SIGTERM during cleanup is still
-   * handled instead of ending the process immediately.
+   * The active-reservation check throws when calls are still in flight. Let that throw escape and
+   * the controller never reaches `closeControllerRun`, so the run leaves an opening with no
+   * terminal beside it and keeps its campaign lock. Terminal recording therefore happens in
+   * `finally`, where a settlement that throws cannot skip it. Signal handlers come off afterwards
+   * rather than first, so a SIGTERM arriving during cleanup is still handled here instead of
+   * ending the process on the spot.
    */
   async settleAndClose(cause: unknown): Promise<void> {
     if (this.closed) return;
@@ -88,8 +91,11 @@ export class FullRunClosure {
       }
       if (cause == null && this.primaryCause !== null) throw this.primaryCause;
     } catch (settlement) {
-      // A settlement failure becomes the cause when no earlier failure exists, so active
-      // reservations never record `completed`; rememberPrimaryCause keeps the first cause.
+      // Record a settlement failure when no earlier failure exists. The `finally` below used to
+      // pass the original cause, which is null on an otherwise successful path, so a run that
+      // still held active reservations recorded `completed`; a retry then did nothing, because
+      // this.closed was already true. `rememberPrimaryCause` keeps the first non-null cause
+      // through the whole of cleanup, so whatever went wrong first is what the terminal names.
       this.rememberPrimaryCause(settlement);
       throw this.primaryCause ?? settlement;
     } finally {

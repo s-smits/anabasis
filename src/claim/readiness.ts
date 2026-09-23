@@ -90,8 +90,13 @@ export interface ReadinessInput {
   taskSetHash: string | null;
   /**
    * Integrity findings for the run directory containing the claim's battery. Files written or
-   * changed outside the evaluation runner's write log cannot support readiness. Null means
-   * verification never ran, which also prevents readiness; only [] means no violations.
+   * changed outside the evaluation runner's write log cannot support readiness, because generated
+   * code runs in-process and can reach the run directory without going through the log.
+   *
+   * Null and [] are different answers, and conflating them is what the null is for: null means the
+   * verification never ran, so nothing was looked at, and it prevents readiness exactly as a
+   * finding would. Only a completed check returning [] establishes that the reader looked and
+   * found no violations.
    */
   evidenceStage: Array<{ code: string; path: string; detail: string }> | null;
 }

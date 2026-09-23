@@ -1,4 +1,13 @@
-/** Production-only generated-source checks which must hold again at the bundling boundary. */
+/**
+ * Production-only generated-source checks, and the isolation policy the worker running that source
+ * is launched under.
+ *
+ * The source checks happen twice on purpose. `assertGeneratedSourceLoaders` parses the files the
+ * candidate declared, which is where a forbidden import can be refused while the file and the
+ * specifier are still in hand; `generatedBuiltinRefusal` refuses the same specifiers inside the
+ * bundler, where a module reached through a path no declared file named still has to resolve. The
+ * first gives the better message, the second closes the case the first cannot see.
+ */
 import { readFileSync } from "../meta/filesystem.ts";
 import { builtinModules } from "../meta/modules.ts";
 import { dirname, isAbsolute, join, relative } from "../meta/path.ts";
@@ -33,14 +42,26 @@ const codeFile = /\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/;
 const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
 
 /**
- * Generated tools stay offline, on both isolation mechanisms; the separately confined Built shell
- * has network access. The boundary probe's networkRefused fact checks this on every start.
+ * The shared network posture of both worker-isolation mechanisms. Generated tools stay offline,
+ * while the separately confined Built shell keeps its network access, so fetching a toolchain
+ * remains possible in the place that is meant to do it and not in the process running the
+ * candidate's own code. It is one part of isolation and no general proof that generated code is
+ * safe; what makes it evidence is that the boundary probe reports `networkRefused` to the
+ * controller on every worker start, so the denial is executed rather than declared.
+ *
+ * Opening egress here has been tried and reverted. The probe's connect becomes a real round trip on
+ * every worker start, every conformance, runtime and verification case that reads the refusal fails
+ * because the refusal no longer arrives, and nothing needed the access.
  */
 const GENERATED_WORKER_POSTURE: IsolationPosture = { network: false };
 
 /**
- * Bubblewrap builds its namespace from argv, so its profile field is a stable, path-independent
- * descriptor rather than a second copy of the launch; a temporary bundle directory cannot change it.
+ * Bubblewrap builds its closed namespace from argv, not from policy text, so there is no profile to
+ * record the way Seatbelt has one. This descriptor is evidence rather than a second, independently
+ * constructed copy of the launch: construction selects the actual argv once, and the structured
+ * identity below binds the exact executable snapshot and bundle. Keeping the sentence
+ * path-independent is what stops a temporary bundle directory, which differs on every run, from
+ * changing the recorded policy representation.
  */
 const LINUX_POLICY_DESCRIPTOR =
   "linux-bwrap generated-tool worker: deny-default, system baseline plus bundle workdir, no network or writable paths";
@@ -58,8 +79,9 @@ export interface GeneratedWorkerPolicy {
   runtimeEnvironment: Record<string, string>;
 }
 
-/** Runtime module namespaces are refused like Node builtins: `bun:ffi` can call posix_spawn
- *  through libc, and `bun` exposes the runtime's launch methods. */
+/** Runtime module namespaces are refused exactly as Node builtins are, because they reach the same
+ *  place by another door: `bun:ffi` loads libc and calls posix_spawn directly, which is a process
+ *  launch that no JavaScript restriction sees, and `bun` exposes the runtime's own launch methods. */
 function runtimeModule(specifier: string): boolean {
   return specifier === "bun" || specifier.startsWith("bun:");
 }
@@ -87,7 +109,10 @@ function generatedSourceEscape(source: string, filePath: string) {
               .filter((name) => name !== "Type");
     piRuntime ??= clause.name?.text ?? names[0] ?? null;
   }
-  // The first loader escape in document order; `forEachChild` stops at the first defined answer.
+  // The first loader escape in document order. `forEachChild` returns whatever its visitor returns
+  // for the first child that answers, so the walk carries the finding back out through its own
+  // return value instead of writing it into a variable this function would then read past the
+  // closure.
   const findLoader = (node: ts.Node): string | undefined => {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       return `import() at line ${sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1}`;
@@ -163,8 +188,11 @@ export function generatedWorkerPolicy(
   const isLinux = support.mechanismId === LINUX_BWRAP_ID;
   let runtimeClosure: ExactReadSnapshot[];
   try {
-    // Bubblewrap's baseline already binds the Bun installation read-only; the executable is
-    // snapshotted only for drift detection.
+    // Darwin needs the exact Mach-O images named, because a deny-default Seatbelt profile grants
+    // reads by literal path. Bubblewrap's baseline already binds the Bun installation read-only, so
+    // the executable is snapshotted there only to detect drift between policy construction and the
+    // confined run — rediscovering the same runtime through a second closure would bind what the
+    // baseline has already bound.
     runtimeClosure = snapshotExactReads(
       isLinux ? [runtimeExecutable] : darwinRuntimeReadPaths(runtimeExecutable),
     );
@@ -189,7 +217,11 @@ export function generatedWorkerPolicy(
         ...BUN_FLAGS,
       ]
     : ["-p", profile, runtimeExecutable, ...BUN_FLAGS];
-  // One identity shape for both hosts; only the profile value differs by mechanism.
+  // The same mechanism fields on both hosts. Platform-specific key names were a presentation detail
+  // rather than a distinct security contract, and one object keeps the Darwin and Linux branches
+  // from drifting apart field by field while the profile value still records what each mechanism
+  // actually enforces. The bundle path is a placeholder here, so the identity describes the policy
+  // and not the temporary directory this run happened to get.
   const identity = hashJsonBytes({
     schema: POLICY_SCHEMA,
     mechanism: {

@@ -17,8 +17,11 @@ export async function stageAndCopy(
   try {
     writeFileSync(staged, content);
     const parent = dirname(target);
-    // A relative path: with an absolute one, mkdir -p meets EPERM on an ancestor outside the
-    // allowed tree before EEXIST. A parent outside workDir is denied by the guard first.
+    // mkdir -p must take a relative path from inside the allowed tree: on an absolute path it
+    // calls mkdir(2) on every ancestor, and the sandbox answers EPERM before the filesystem can
+    // say EEXIST, so it dies at "/private". Every component under workDir is profile-allowed,
+    // because subpath rules match their own root, and a parent outside workDir never reaches this
+    // spawn at all — the guard denies the write first.
     const mkdir = await runIsolated(isolation.policy, isolation.record, {
       capability,
       mode: "write",
@@ -44,13 +47,17 @@ export async function stageAndCopy(
   }
 }
 
-/** Where a truncated command's whole output is kept. Dot-prefixed so the listing tools pass over
- *  it, and never fingerprinted, so it cannot reach a candidate snapshot. */
+/** Where a truncated command's whole output is kept. Dot-prefixed so ripgrep and the listing tools
+ *  pass over it, and never fingerprinted, so it cannot reach a candidate: `createBundleSnapshot`
+ *  copies exactly the fingerprinted file lists, and a stray unhashed file in the slug tree never
+ *  enters the snapshot. */
 const WHOLE_OUTPUT_DIR = ".bash-output";
 let wholeOutputSeq = 0;
 
-/** Keeps the bytes a truncated result dropped, where the read tool can page them, since a
- *  command's output cannot be read again. Nothing prunes these; the workspace is disposable. */
+/** Keep the bytes a truncated result dropped, where the read tool can page them. A draft is
+ *  windowed in place because it can be read again; a command's output cannot, so recovering it
+ *  needs the bytes stored somewhere first. Nothing prunes these: they are written only where output
+ *  was truncated, and the workspace they sit in is disposable. */
 export async function spillWholeOutput(isolation: BuilderIsolation, content: string): Promise<string> {
   wholeOutputSeq += 1;
   const name = `bash-${Date.now().toString(36)}-${wholeOutputSeq.toString(36)}.txt`;

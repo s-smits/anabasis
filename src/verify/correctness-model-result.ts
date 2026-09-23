@@ -9,10 +9,14 @@ export type CorrectnessModelIssue = {
   message: string;
 };
 
-/** Every kind means no truth verdict exists. The verifier host creates `crash` (an engine that died
- *  non-zero) and `protocol` (a response that broke the one-JSON wire contract). The type derives
- *  from this array so it cannot drift from what `hostCreatedNonResult` reads at runtime. */
-
+/** Every kind here means no truth verdict exists, so a case carrying one has `truthOk` and `pass`
+ *  as null rather than a fail. Two of them the verifier host creates itself: `crash`, an engine that
+ *  died non-zero, and `protocol`, a response that broke the one-JSON wire contract.
+ *
+ *  This array is the single spelling of the set, and the type below derives from it, so the
+ *  compile-time members cannot drift from the ones a reader accepts at runtime —
+ *  `src/claim/record-events.ts` spreads this array into `NON_RESULT_KINDS` and validates saved JSON
+ *  against it through `isNonResultKind`, which is the one place a stored kind is checked at all. */
 export const VERIFIER_EXECUTION_NON_RESULT_KINDS = [
   "provider",
   "transport",

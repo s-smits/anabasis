@@ -41,7 +41,10 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
 }
 
 /** Elapsed session time, at most once per half hour, and once, after `NO_SUBMIT_REMINDER_MS`
- *  without a submit, the ask to author. A session may run for hours without a turn boundary. */
+ *  without a submit, the continuation's ask to author. It exists because a Claude Builder session
+ *  runs as one turn, so a turn boundary may not come for hours. A session can author for three
+ *  hours before its first submit, and without this clock the continuation says nothing in all that
+ *  time. */
 export function sessionClock(
   submitted: () => boolean = () => true,
   now: () => number = () => performance.now(),
@@ -86,9 +89,11 @@ export function raceAbort(pending: Promise<unknown>, signal: AbortSignal | undef
   });
 }
 
-/** Wraps host dispatch to record each call, keeping every registered schema and only
- *  recorder-approved arguments. `afterTool` runs after each completed call, and its advice joins
- *  that tool's result. */
+/** Intercept host dispatch rather than infer intent from provider totals. The boundary is narrow
+ *  on purpose: each registered schema is preserved and only recorder-approved arguments are kept.
+ *  Every backend's workspace operation is a host tool, so a call's completion is the one boundary
+ *  at which `afterTool` can run -- after the tool, never inside it -- and its advice rides that
+ *  tool's own result back to the model. */
 export function withCustomToolReceipts(
   tools: readonly PiTool[],
   session: BuilderToolReceiptSession,
@@ -132,7 +137,9 @@ export function withCustomToolReceipts(
     return {
       ...tool,
       execute: async (toolCallId: string, args: unknown, signal?: AbortSignal) => {
-        // Ownership is fixed at arrival: a queued call whose turn ended or advanced is refused.
+        // Ownership is fixed at arrival. A call queued behind a review belongs to the turn that
+        // issued it, so if that turn is cancelled or advances while the call waits, the call is
+        // refused rather than executed and attributed to the successor turn.
         const turn = activeTurn();
         // oxlint-disable-next-line eslint/no-unmodified-loop-condition -- `reviewing` is reset by the review this awaits and `signal.aborted` by the caller's abort, neither of which the rule can see from here.
         while (reviewing !== null && signal?.aborted !== true) await raceAbort(reviewing, signal);
@@ -161,7 +168,9 @@ export function withCustomToolReceipts(
           if (hasText(advice)) throw new Error(`${errorMessage(error)}\n${advice}`, { cause: error });
           throw error;
         }
-        // Finished before the review, as a throw is, so review time is not booked as tool time.
+        // Finished before the review, as a throw is. Booking it afterwards charges the review's own
+        // minutes to the tool, which can be most of a long call's recorded duration. The receipt is
+        // in `details`.
         recorder.customToolFinished(sequence, "returned", result);
         events?.ended(turn, name, false);
         const advice = await settle(name, turn, closure === null);

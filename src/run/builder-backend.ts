@@ -20,9 +20,12 @@ import type { ProjectedReadGrant } from "../builder/candidate-isolation.ts";
  *  effort, so the default level only names what an unpinned slot would open at. */
 const BUILDER_DEFAULTS: PiSlotDefaults = { effort: "high", webSearch: true };
 
-/** The host tool policy, recorded under the shellWall evidence key so a refused call can be traced
- *  to its rule. CandidateAccessPolicy enforces every host-dispatched filesystem call; hostAccess
- *  and readGrant explain it, and the session isolation digest binds its full rules. */
+/** The host tool policy projection, retained under the existing shellWall evidence key so a
+ *  refused call can be traced to the rule that refused it: run
+ *  truss-opus-20260907T160200000Z-bdd329 recorded a git EPERM without the rule that caused it. The
+ *  model receives no workspace grant, because `CandidateAccessPolicy` enforces every
+ *  host-dispatched filesystem call; `hostAccess` and `readGrant` explain that policy, and the
+ *  session isolation digest binds its complete allow and deny rules. */
 export interface BuilderShellWall {
   backend: BackendKind;
   execution: "host-tools";
@@ -46,8 +49,12 @@ export function builderSessionOpener(slot: PiSlotRuntime, workspace: string): Op
 }
 
 /** Limit one complete Builder session, not each turn. An explicit option wins, then
- * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no cap, since the no-progress rule, the no-submit
- * notice and the review interval already check progress during the session. */
+ * `HARNESS_BUILDER_SESSION_CAP_MS`; unset leaves no session time cap. A default cap buys nothing,
+ * because a session that is going to produce nothing spends the whole cap in one silent turn and
+ * then ends. The no-progress rule (`builder-turn-loop.ts`), the no-submit notice (`sessionClock`)
+ * and the campaign's 40-minute review interval (`builder-campaign.ts`) check progress during the
+ * session instead. The review becomes due at a completed host tool call, so it cannot interrupt a
+ * silent one. */
 export function builderSessionCapMs(
   explicit: number | undefined,
   env: Record<string, string>,

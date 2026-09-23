@@ -26,8 +26,6 @@ import { hasText } from "../../src/meta/text.ts";
 export const MCP_SERVER_NAME = "custom-tools";
 export const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
 
-/** What the translation needs from the provider: the model whose rates price the usage, the
- *  registered tool names, and the settings-dependent question of whether the CLI keeps a call. */
 /** The stream-event fields this translation reads, named once so each handler states its input. */
 type StreamDelta = {
   type?: string;
@@ -39,6 +37,11 @@ type StreamDelta = {
 };
 type StreamMessageHeader = { id?: string; model?: string; usage?: UsageCounts };
 
+/** What the translation needs from the provider that it cannot read off an event: the model whose
+ *  rates price the usage, the map from registered SDK tool names back to pi's, and the
+ *  settings-dependent question of whether the CLI is keeping a call for itself rather than handing
+ *  it to pi. A call the CLI keeps opens no block, which is why that question has to arrive here
+ *  rather than being decided later from the turn's content. */
 export type TurnTools = {
   readonly model: Model<Api>;
   readonly toPi: Map<string, string>;
@@ -106,9 +109,10 @@ export function mapToolName(name: string, customToolNameToPi?: Map<string, strin
   return normalized.startsWith(MCP_TOOL_PREFIX) ? name.slice(MCP_TOOL_PREFIX.length) : name;
 }
 
-// Maps SDK tool args to pi tool args via key renaming + pass-through.
-// Pi's own prepareArguments hooks handle any structural transforms (e.g. edit oldText/newText → edits[]).
-// Arguments cross as JsonObject: this port renames keys and passes the values through unopened.
+// Keys are renamed and the values cross as JsonObject, unopened, which is all this port does to a
+// call's arguments. A structural transform -- edit's oldText and newText becoming an `edits[]`
+// array, for one -- belongs to the tool's own pi `prepareArguments` hook instead, which runs later
+// and knows the real parameter shape; doing it here would put that knowledge in two places.
 export function mapToolArgs(toolName: string, args: JsonObject | undefined): JsonObject {
   const renames = SDK_KEY_RENAMES.get(toolName.toLowerCase());
   const result: JsonObject = {};
@@ -116,7 +120,8 @@ export function mapToolArgs(toolName: string, args: JsonObject | undefined): Jso
     const piKey = renames?.get(key) ?? key;
     if (!(piKey in result)) result[piKey] = value; // first alias wins
   }
-  // Pi bash has no default timeout; add a safety default
+  // Pi's bash tool declares no default timeout, so a call the SDK sent without one would reach pi
+  // with none either. This supplies 120 seconds, and a call that named its own timeout keeps it.
   if (toolName.toLowerCase() === "bash" && result.timeout == null) result.timeout = 120;
   return result;
 }
@@ -135,7 +140,11 @@ function updateUsage(output: AssistantMessage, usage: UsageCounts, model: Model<
   if (usage.output_tokens != null) output.usage.output = usage.output_tokens;
   if (usage.cache_read_input_tokens != null) output.usage.cacheRead = usage.cache_read_input_tokens;
   if (usage.cache_creation_input_tokens != null) output.usage.cacheWrite = usage.cache_creation_input_tokens;
-  // Claude Code may report reasoning/thinking tokens separately, while pi's Usage type does not model that field.
+  // Claude Code reports reasoning tokens under either of two names and pi's Usage models neither,
+  // so the count is carried as an extra key beside the four fields pi does model. It stays out of
+  // the `totalTokens` sum below and out of `calculateCost`, so what this turn is priced at is the
+  // same number pi would have reached on its own; a reader that wants the reasoning count asks for
+  // the key and finds it absent when the provider sent neither name.
   const reasoning = usage.reasoning_tokens ?? usage.thinking_tokens;
   if (reasoning != null) {
     // SAFETY: widens pi's Usage by one field it does not model; every reader of the extra key checks for it.

@@ -1,6 +1,7 @@
 /**
- * Tests for full-run-round.ts's ending decisions: when a round ends the campaign, how the
- * per-round counters advance, which ending cites evidence, and which hold the loop may continue.
+ * A round either ends the campaign or it does not, and src/run/full-run-round.ts owns that call:
+ * which ending cites evidence, which hold still lets the loop continue, and how the per-round
+ * counters advance into the next one.
  *
  * Every stop reason lives in one function, so the continuation table is read row by row under a
  * loop state where no guard fires: a row that continues is the table's own verdict rather than a
@@ -160,9 +161,9 @@ describe("loopTerminal", () => {
   });
 
   it("counts three held rounds under one consumed basis, whatever each round produced", () => {
-    // The production shape the key inversion hid: run21 iterations 11-13 and run22 each held under
-    // one unchanged basis while recording a different fresh packet, so the declared held-candidate
-    // allowance never accumulated and the loop kept opening rounds.
+    // Keying the streak on what each round produced hides the production shape: rounds that hold
+    // under one unchanged basis each record a different fresh packet, so the declared
+    // held-candidate allowance never accumulates and the loop keeps opening rounds.
     const heldOn = (basis: string, produced: string) =>
       result("candidate", {
         move: "rebuild",
@@ -200,10 +201,10 @@ describe("loopTerminal", () => {
   });
 
   it("reads a typed code out of every terminal it writes, and out of nothing else", () => {
-    // The exit status is the first reader that must ACT on an ending rather than print it. It used
-    // to read the measured verdict, which gave candidate-held and budget-limited a success status
-    // whenever the last round happened to measure. The code is the
-    // part of the sentence allowed to decide; the prose after the colon stays free to be reworded.
+    // The exit status is the first reader that must ACT on an ending rather than print it. Reading
+    // the measured verdict instead gives candidate-held and budget-limited a success status
+    // whenever the last round happened to measure. The code is the part of the sentence allowed to
+    // decide; the prose after the colon stays free to be reworded.
     expect(loopTerminalCode("stopped: limit-reached")).toBe("stopped");
     expect(loopTerminalCode("candidate-held: the climb candidate was held")).toBe("candidate-held");
     expect(loopTerminalCode("budget-limited: the durable authoring/session-call budget is spent")).toBe(
@@ -316,8 +317,8 @@ describe("loopTerminal", () => {
   });
 
   it("retries a failed build within the strike ceiling, and stops at it", () => {
-    // 12 of 55 recorded runs (2026-08-06 to 08-19) ended on a single failed authoring round while
-    // the recomputed decision named a lawful retry; the streak, not the first failure, ends it.
+    // Ending on the first failed authoring round throws away a lawful retry the recomputed
+    // decision already names; the streak, not the first failure, ends the campaign.
     const failed = result("build-failed", { move: "build", nextMove: "build" });
     expect(loopTerminal(failed, quiet)).toBeNull();
     expect(loopTerminal(failed, { ...quiet, authoringStall: { key: "k", rounds: 2 } })).toBeNull();
@@ -335,8 +336,8 @@ describe("loopTerminal", () => {
 
   it("ends after consecutive environment-blocked batteries instead of re-measuring to the round cap", () => {
     const measuring = result("reused");
-    // Run 169: 12 identical environment-blocked rounds ran to the operator round cap because no
-    // guard read the blocked streak. At the policy threshold the loop closes with its own terminal.
+    // With no guard reading the blocked streak, identical environment-blocked rounds run all the
+    // way to the operator round cap. At the policy threshold the loop closes with its own terminal.
     expect(loopTerminal(measuring, { ...quiet, blockedRounds: 2 })).toBeNull();
     expect(loopTerminal(measuring, { ...quiet, blockedRounds: 3 })).toMatch(/^environment-blocked/);
     // Budget exhaustion still reports first: spend control outranks the environment diagnosis.
@@ -406,8 +407,7 @@ describe("loopTerminal", () => {
   });
 
   // A held candidate's terminal names the move that did not continue, so the reader need not open
-  // the promotion row to learn why (three held runs between truss-w30 and truss-w36-sol recorded a
-  // bare "candidate-held").
+  // the promotion row to learn why; a bare "candidate-held" says nothing about what was refused.
   it("continues a promoted candidate; a held task-only round ends with the move that did not continue", () => {
     expect(loopTerminal(result("candidate", { promoted: true }), quiet)).toBeNull();
     const held = loopTerminal(
@@ -425,7 +425,7 @@ describe("loopTerminal", () => {
   });
 
   it("continues a held build or rebuild into a lawful measure or fresh rebuild", () => {
-    // Run w14 ended candidate-held after one build round with 12 rounds of budget left. The held
+    // Ending candidate-held after one build round throws away the remaining budget. The held
     // candidate publishes nothing, so the selector's next decision is grounded in adopted history
     // and a current-harness measurement may run in the same invocation.
     expect(
@@ -442,8 +442,7 @@ describe("loopTerminal", () => {
     ).toBeNull();
     // A held rebuild may continue into another rebuild round: the sterile repeat is refused at
     // submit (rebuild-evaluation-unmoved), so the continuation buys a changed candidate or a
-    // typed refusal, never a silent identical re-measure (run truss-w38-sol ended on exactly
-    // this decision with budget left).
+    // typed refusal, never a silent identical re-measure.
     expect(
       loopTerminal(
         result("candidate", { move: "rebuild", promoted: false, experiment: "build", nextMove: "rebuild" }),
@@ -529,8 +528,8 @@ describe("loopTerminal", () => {
     expect(loopTerminal(result("reused", { measured: true }), spent)).toMatch(/^budget-limited/);
   });
 
-  // truss-run6-opus-0902 closed on four held clauses and `terminalEvidence: null`, so the reader
-  // had to guess which file states the hold. The recorded promotion row is that file.
+  // A run that closes on held clauses with `terminalEvidence: null` leaves the reader guessing
+  // which file states the hold. The recorded promotion row is that file.
   it("cites the promotion row behind a held candidate, and nothing behind any other ending", () => {
     const held = result("candidate");
     // SAFETY: terminalEvidenceFor reads only promotion.runId off this step.
@@ -552,10 +551,10 @@ describe("loopTerminal", () => {
   });
 
   it("continues an adopted fresh build without asking whether its evidence changed", () => {
-    // The loop once ended any round that changed no admitted climb evidence. Both recorded
-    // firings were wrong (run 45 read refused batteries as absent; run 68 stopped 80 seconds
-    // after recording a blocking, repair-promotable admission), so no staleness guard sits here:
-    // the round cap, the budget gate and the decision layer's own stops bound the loop.
+    // A guard that ended any round changing no admitted climb evidence fired only wrongly: it read
+    // refused batteries as absent, and it stopped runs that had just recorded a blocking,
+    // repair-promotable admission. So no staleness guard sits here, and the round cap, the budget
+    // gate and the decision layer's own stops bound the loop.
     expect(loopTerminal(result("adopted"), quiet)).toBeNull();
     expect(loopTerminal(result("candidate", { promoted: true }), quiet)).toBeNull();
   });
@@ -592,10 +591,10 @@ describe("nextBlockedRounds", () => {
     expect(nextBlockedRounds(2, unmeasured)).toBe(2);
   });
 
-  /** Campaign 3fd52f9e-28 recorded three consecutive provider-stopped batteries on 2026-09-17
-   *  (11, 14 then 24 of 25 cases non-results). Each wrote a claim refused for that same dead
-   *  provider, which reset this counter, so the declared allowance never engaged and three more
-   *  authoring rounds opened. A refusal the provider caused is not a delivery. */
+  /** Consecutive provider-stopped batteries each write a claim, and that claim is then refused for
+   *  the same dead provider. Counting it as a delivery resets this counter, so the declared
+   *  allowance never engages and the loop opens another authoring round against a provider that is
+   *  still down. A refusal the provider caused is not a delivery. */
   const providerStopped = (created: boolean) =>
     double<IterationResult>({ steps: { measure: { disposition: "provider-stopped", claim: { created } } } });
 

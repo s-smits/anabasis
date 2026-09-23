@@ -1,8 +1,13 @@
 /**
- * The Builder's verifier workshop execution owner. A controller broker acquires public HTTPS
- * bytes; inspection, setup, and smoke tests run in one deny-default cell.
- * Every action records its typed outcome in controller evidence. Workshop completion does not
- * admit a verifier or decide whether a submitted artifact is correct.
+ * The Builder's verifier workshop execution owner. A Builder has to install the domain's real tools
+ * before it can write checks around them, so it needs somewhere to fetch, unpack, build and smoke
+ * test third-party source: a controller broker acquires the public HTTPS bytes, and every
+ * inspection, setup step and smoke test after that runs in one deny-default cell.
+ *
+ * Each action appends a typed row to controller evidence — its outcome, its reason and the digests
+ * of policy, request and result — so what the workshop did stays readable after the session that
+ * did it. None of that admits a verifier: workshop completion says a tool builds and answers, not
+ * that a submitted artifact is correct.
  */
 import { keyIfDefined, keyIfNotNull } from "../meta/optional-key.ts";
 import {
@@ -108,8 +113,11 @@ interface WorkshopProcess {
   output: string;
 }
 
-/** Process facts recorded beside the reason, so evidence alone tells a wall refusal (`null`
- *  process) from a command that ran and chose its exit code. Output stays in the tool result. */
+/** The process facts of a command the wall launched, recorded beside the reason: a `null` process
+ *  says the wall refused before launch, an exit code says the command ran and chose it. A later
+ *  reader has only the recorded evidence to draw that distinction from, which is why it is a field
+ *  and not a sentence in the tool result; the output itself stays in that result. The evidence row
+ *  type in verifier-workshop-evidence.ts imports this one. */
 export interface WorkshopProcessFacts {
   exitCode: number | null;
   signal: string | null;
@@ -260,8 +268,10 @@ class Workshop implements VerifierWorkshop {
     });
   }
 
-  /** Creates a workshop directory inside the isolated cell. The nearest existing ancestor is
-   *  resolved first, so a symlink cannot turn creation into a path escape. */
+  /** Create a requested workshop directory through the same isolated cell that will use it, so the
+   *  convenience of auto-setup buys no authority the workshop's own commands do not have. The
+   *  nearest existing ancestor is resolved first, so a symlink cannot turn that creation into a
+   *  path escape. */
   private async ensureDirectory(requested: string): Promise<string> {
     const lexical = workshopPath(this.root, requested);
     if (existsSync(lexical)) {
@@ -487,7 +497,8 @@ class Workshop implements VerifierWorkshop {
         if (outcome.stdout.includes("\0")) {
           throw new VerifierWorkshopRequestRefusal("workshop read admits text files only");
         }
-        // The window carries its line range, so a partial read cannot pass for a complete one.
+        // Checker sources run to thousands of lines and rarely fit one tool result whole. The
+        // window carries its own line range, so a partial read cannot pass for a complete one.
         const window = readWindow(outcome.stdout, offset, limit);
         return { path: relative(this.root, target), bytes, sha256: sha256(outcome.stdout), ...window };
       },

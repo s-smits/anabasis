@@ -1,7 +1,13 @@
 /**
  * The tools a generated harness declares: a host tool spec plus the DraftStore its run writes into.
- * A draft tool's result is framed for the worker protocol, so over-long text is refused rather than
- * shortened, and its nullable numeric parameters are respelled so Pi keeps null and zero apart.
+ *
+ * Two things separate a draft tool from an ordinary one. Its result is framed for the worker
+ * protocol, so text past the evidence ceiling stays a refusal rather than being shortened — the
+ * generated harness's own contract is what conformance measures, and quietly trimming its output
+ * would hide an authoring defect instead of reporting it. And its declared parameters are
+ * rewritten before the pinned validator sees them, because `Type.Union([Type.Number(),
+ * Type.Null()])` is how a nullable value is spelled and null, zero and a real number must all
+ * survive it exactly: a null coerced to 0, or a 0 read as absent, is a different artifact.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
@@ -13,7 +19,11 @@ import { isObject, isRecord, isString, type OpenRecord } from "../meta/json-shap
 
 const DRAFT_TOOL = Symbol.for("anabasis/draft-tool/v1");
 
-/** The marker `defineDraftTool` sets and `isDraftTool` checks. */
+/** `defineDraftTool` sets this marker and `isDraftTool` checks it, which is how `createDomainHarness`
+ *  in built-starter.ts can refuse a tool built any other way: only a tool that went through
+ *  `defineDraftTool` takes a DraftStore as an argument and validates against its declared schema
+ *  first. The optional property describes the shape that check inspects; an ordinary object without
+ *  the marker does not qualify as a draft tool. */
 interface DraftToolBrand {
   readonly [DRAFT_TOOL]?: true;
 }
@@ -65,7 +75,10 @@ interface DefineDraftToolSpec<P extends TSchema, D> extends Omit<DefineToolSpec<
   run: (params: Static<P>, draft: DraftStore, signal?: AbortSignal) => Evidence<D> | Promise<Evidence<D>>;
 }
 
-/** Reads a TypeBox schema by keyword; each rewrite checks the fields it uses. */
+/** The rewrite below reads a TypeBox schema by keyword through `OpenRecord`. TSchema declares no
+ *  string index even though its keywords are enumerable, and its values stay `unknown` because
+ *  TypeBox schemas are not parsed JSON. Each rewrite therefore checks the fields it uses before
+ *  reading them, and hands the result back through TSchema. */
 const isSchema = (value: unknown): value is OpenRecord => isRecord(value);
 
 function piAcceptsNull(schema: OpenRecord): boolean {
@@ -103,7 +116,8 @@ function exactNullableNumeric(schema: OpenRecord): OpenRecord | null {
   const { anyOf: _union, ...wrapper } = schema;
   if (Object.keys(wrapper).some((key) => !ANNOTATION_KEYS.has(key))) return null;
   const { type: numericType, ...numericRules } = numeric;
-  // Always true after the `find` above; stated for the compiler.
+  // The `find` above accepted only `"number"` or `"integer"`, so this is always true; it is stated
+  // for the compiler, which cannot follow a predicate through `Array.prototype.find`.
   if (!isString(numericType)) return null;
   const { type: _nullType, ...nullRules } = nullable;
   const conflicts = Object.keys(wrapper).some(
@@ -154,9 +168,15 @@ function mapSchemaChildren(schema: OpenRecord, visit: (child: OpenRecord) => Ope
   return next;
 }
 
-/** Pi coerces inside each `anyOf` branch, which turns null into zero or zero into null for a
- *  numeric/null union. Its type-array path checks exact types first, so Pi receives that equivalent
- *  spelling; the draft wrapper still validates against the author's original schema. */
+/** Pi tries each `anyOf` branch after coercion. For an exact numeric/null union that turns null into
+ *  zero when number is first, and zero into null when null is first, so the union's own spelling
+ *  decides which value is lost. Its type-array path checks exact JSON types before coercion, so Pi
+ *  is handed that equivalent spelling instead — `exactNullableNumeric` rewrites only a union it has
+ *  proved is exactly number-or-null with no conflicting keywords, and `piAcceptsNull` confirms the
+ *  pinned validator accepts the rewrite before it is adopted. The draft wrapper below still
+ *  validates the received value against the author's original schema, so the rewrite widens nothing.
+ *  `test/draft-tool-nullable-arguments.test.ts` holds both union orders against the pinned
+ *  validator. */
 function piSafeDraftParameters<P extends TSchema>(schema: P): P {
   const visit = (value: OpenRecord): OpenRecord => {
     const next = mapSchemaChildren(value, visit);
@@ -181,8 +201,11 @@ export function defineDraftTool<P extends TSchema, D = unknown>(
       draft: DraftStore,
       signal?: AbortSignal,
     ): Promise<AgentToolResult<D>> => {
-      // The worker protocol passes the model's arguments unchecked, so the declared schema is
-      // enforced here, before any draft write; the error reaches the model as a tool error.
+      // `Static<P>` is erased at runtime, and the worker protocol declares a tool call's arguments
+      // as an open record of unknown values and dispatches them to `execute` without consulting the
+      // tool's own schema, so nothing ahead of this line has checked them. The declared schema is
+      // enforced here, before any draft write, and the thrown error crosses the worker boundary as
+      // an ordinary model-visible tool error the solver can act on.
       if (!Value.Check(spec.parameters, params)) {
         const [first] = Value.Errors(spec.parameters, params);
         throw new Error(

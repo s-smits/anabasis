@@ -1,4 +1,16 @@
-/** The climb readout: one decision per recorded battery, and every rendering reads it. */
+/**
+ * One reading per recorded battery, and every rendering reads that same one. The reading is where a
+ * battery's sample, its placement on the band and its declared target are settled, so most of what
+ * is pinned below is what must not be settled quietly: a battery refused whole takes its own row
+ * instead of being placed as too hard, a claim-refused battery stays in the table with its refusal
+ * and counts inside the allowance, and every non-result counts in the prediction's favour before a
+ * target is called missed.
+ *
+ * The rendering half is bounded rather than open-ended. It drops whole older rows and then the
+ * family line to stay under its character ceiling, and says that it did; it leaves no placeholder
+ * unfilled in any sentence it sends; and nothing protected reaches the text, so changing the failed
+ * task ids changes nothing the Builder can read.
+ */
 import { describe, expect, it } from "bun:test";
 import type {
   AdmittedClimbRow,

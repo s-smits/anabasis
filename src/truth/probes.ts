@@ -1,10 +1,11 @@
 /**
- * The two authoring-time probes the gate runs before admission. The control census runs the
- * declared checks over every task-bound accept and reject and joins the host's tool-run rows to
- * them. The conformance probe opens every task through the generated tools and reconciles what the
- * worker serves with agent/tools-spec.json.
+ * The two authoring-time probes the gate spends before a candidate is admitted: the control census,
+ * which runs the declared checks over every task-bound accept and reject and joins the host's own
+ * tool-run rows to them, and the conformance probe, which opens every task through every generated
+ * tool and reconciles what the worker serves with agent/tools-spec.json.
  *
- * Neither decides correctness; they check the candidate's own declared contract.
+ * Neither of them decides correctness. They decide whether this candidate's own declared contract
+ * holds, and every finding they return routes to one FeedbackOwner in the same session.
  */
 import { type BuiltStarter, closeOneAtATime } from "../solve/built-starter.ts";
 import { harnessSettings } from "./harness-config.ts";
@@ -107,7 +108,8 @@ interface ConformanceProbeResult {
 
 export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeControls {
   return async (slugDir, brief, corpus, tasks, stopped) => {
-    // Per-check evaluation cost, reported back to the author with the census result.
+    // The author cannot see what one of its checks costs: the gate returns one verdict. Summing
+    // the dispatches here is what puts that bill in the same result the author already reads.
     const spend = new Map<string, { evaluations: number; totalMs: number }>();
     let evaluate: EvaluatorFn;
     let verifier: VerifierHostHandle | undefined;
@@ -201,7 +203,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         evidence: hostEvidence,
         rejects: (checkId) => rejectsBlockedBy(execution.controlReceipts, checkId),
       });
-      // A throw skips the check's later tool calls, so unlaunched rows would be misread.
+      // A throw skips the check's later tool calls, so its declared tools read as never launched.
       if (!execution.controlReceipts.some((receipt) => receipt.nonResultKind === "verifier-throw")) {
         findings = withGroundingFindings(
           findings,
@@ -224,8 +226,9 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),
         executionEvidence: hostEvidence,
-        // Every declared tool as resolved now, the same identity submit hashes, not only the
-        // tools some control ran.
+        // The declared tool set as resolved now, which is the identity submit hashed. Hashing only
+        // the tools some control happened to run refused every candidate whose controls left one
+        // declared tool unrun.
         verifierEnvironmentHash: verifierEnvironmentHashOfTools(
           resolveToolInventory({
             toolIds: [...new Set(brief.truthChecks.flatMap((check) => requiredToolsOf(check.execution)))],
@@ -256,9 +259,10 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
   };
 }
 
-/** Appends the grounding and inert-tool findings. The no-verdict row is dropped only when grounding
- *  rows already name every example that reached no verdict; otherwise an unreported example could
- *  let the claim close. */
+/** The grounding rows name the tool and check of an external non-result, so the discrimination
+ *  no-verdict row repeats them when they cover every example that reached no verdict. An example
+ *  no grounding row names — an authored check's own tool run, say — keeps the no-verdict row, or
+ *  the claim would close on a subject nothing reports. */
 export function withGroundingFindings(
   findings: ContractFinding[],
   grounding: GroundingFinding[],
@@ -393,7 +397,7 @@ export async function probeConformanceWithEvidence(
       );
     }
     const specNames = expectedBuiltToolNames(spec, {
-      // The same availability check the tool loader uses.
+      // Use the same availability check as the tool loader above.
       publicResources: readPublicResources(slugDir).length > 0,
     });
     const builtNames = toolset.tools.map((tool) => tool.name);

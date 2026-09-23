@@ -27,7 +27,9 @@ import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
 
-/** The child receives exactly what `builtAgentInterface` produced. */
+/** The child receives exactly what `builtAgentInterface` produced, under the same type rather than
+ *  a re-spelling of it, so the recorded evidence, the worker protocol and the repair packet all
+ *  describe the same bytes. */
 type PiBuiltInterface = BuiltAgentInterface;
 export interface PiBuiltStart {
   type: "start";
@@ -39,8 +41,10 @@ export interface PiBuiltStart {
   nudge: string;
   maxTurns: number;
   fakeResponses?: AssistantMessage[];
-  /** Host-resolved path to the bundled Claude CLI, required for the claude transport. Kept out of
-   *  conditionDigest: a machine path is not a run condition. */
+  /** Host-resolved absolute path to the aliased Agent SDK's bundled Claude CLI binary. The claude
+   *  transport needs it because the esbuild bundle breaks the SDK's own relative discovery of it.
+   *  Kept out of `conditionDigest`: a machine path is not a run condition, and including it would
+   *  make two identical runs on two machines look like different conditions. */
   claudeCliPath?: string;
 }
 export type PiBuiltParentMessage =
@@ -63,12 +67,17 @@ export type PiBuiltChildMessage =
       type: "turn_end";
       turn: number;
       status: "completed" | "failed" | "aborted";
-      /** The provider's or worker's own words for a turn that did not complete. */
+      /** The provider's or worker's own words for a turn that did not complete. The parent records
+       *  it in the trace, where the synthesised marker that stood here before said nothing at all
+       *  about the cause. */
       errorMessage?: string;
       usage?: TurnUsage;
       compactions?: CompactionRecord[];
-      /** The provider identity of a completed turn. It rides its own turn, so a solve cut before
-       *  `done` still attests the turns that completed. Absent on a failed or aborted turn. */
+      /** The provider identity of a completed turn. It rides the turn that produced it, so a solve
+       *  whose last turn never closes still attests the turns that did. `done` is the one message a
+       *  wall-cut solve never sends, so carrying the identities only there leaves a case reporting
+       *  one completed turn and zero identities, which refuses its battery's whole claim on
+       *  `runtime-model-identity-unproven`. Absent on a failed or aborted turn. */
       identity?: NonNullable<AgentTurnResult["runtimeIdentity"]>;
     }
   | { type: "event"; event: AgentTurnEvent }
@@ -132,8 +141,10 @@ function credentialSecret(credential: PiCredential): string {
   return credential.key ?? "";
 }
 
-/** The Claude CLI for this worker. Its config directory is per worker instance, so concurrent cases
- *  sharing the bundle directory do not race on the CLI's state files. */
+/** The Claude CLI for this worker. Its config directory is per worker instance because the cwd is
+ *  the process-wide worker bundle directory: concurrent cases would otherwise share one
+ *  CLAUDE_CONFIG_DIR and race on the CLI's own state files. The generated-tool worker names its
+ *  denied-write path the same way, from the same instance id. */
 function claudeCli(start: PiBuiltStart): ClaudeCli | null {
   if (start.profile.transport !== "claude") return null;
   if (!hasText(start.claudeCliPath)) {
@@ -172,10 +183,14 @@ function proxyTools(start: PiBuiltStart): AgentTool[] {
   }));
 }
 
-/** Whether another prompt may follow this turn. An abort was decided by the host or provider, so it
- *  ends the solve. A single failure does not: the agent keeps its messages, so the next prompt
- *  continues where it stopped. A recognised provider or sandbox failure still ends it, since it
- *  would repeat. */
+/** Whether another prompt may follow this turn. An abort was decided by the host or the provider,
+ *  so re-prompting it would pay for a turn nobody asked for. A single failure is different: the
+ *  agent keeps its messages and tool results, so the next prompt continues the same solve where it
+ *  stopped. Without that, a case whose first turn fails after a dozen useful tool calls ends with
+ *  every remaining turn unused and nothing submitted. A recognised provider or sandbox message
+ *  still ends the solve, because that failure repeats and the case is a non-result either way. The
+ *  switch is exhaustive, so a new status has to be decided here rather than falling into one of
+ *  these answers. */
 function turnContinues(
   status: BuiltTurnStatus,
   failure: string | null,
@@ -272,7 +287,9 @@ async function openWorker(message: PiBuiltStart): Promise<void> {
   const errors: string[] = [];
   let turns = 0;
   let consecutiveFailures = 0;
-  // The cap counts completed turns only; two failures in a row still end the solve.
+  // The cap counts the turns the solver was actually given, and a turn that did not complete gave
+  // it nothing, so a case whose first turn fails does not spend its whole allowance on that turn.
+  // Two failures in a row still end the solve, so retries can never outnumber the solving turns.
   // oxlint-disable-next-line eslint/no-unmodified-loop-condition -- `accepted` is set by the parent's `submit` result in the message handler below, which the rule cannot see from this loop.
   while (identities.length < message.maxTurns && !accepted) {
     turns += 1;

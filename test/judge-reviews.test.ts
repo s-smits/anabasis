@@ -1,14 +1,25 @@
 /**
- * Tests for reading the recorded Main Judge census. No model call happens on this path:
- * `runJudgeReviews` is synchronous and reads the JudgeEvidence the eval runner recorded at MEASURE
- * time. Census fixtures use the production summarizeJudge over hand-written observations, so every
- * aggregate a test relies on is derived by the production aggregator instead of hand-computed
- * into a record validateJudgeEvidence would refuse.
+ * Reading the recorded Main Judge census, which is a pure read and nothing more. `runJudgeReviews`
+ * is synchronous and consumes the `JudgeEvidence` the eval runner wrote at MEASURE time, so no
+ * model is called anywhere below and nothing this file exercises could change a score even if it
+ * wanted to.
  *
- * Proven here: every complete disagreement is named without a materiality threshold; an
- * incomplete, absent or self-contradictory review makes the projection provisional; the Judge
- * exit is advisory at any disagreement count and never routes an owner, including over a
- * historical validated control census; and the projection writes no byte.
+ * The fixtures deserve a word, because they are where this kind of test usually goes wrong. Every
+ * aggregate a case reads is produced by running the production `summarizeJudge` over hand-written
+ * observations, rather than by writing the totals into the record directly. Hand-computed totals
+ * would be a second implementation of the aggregator sitting inside its own test, agreeing with it
+ * by construction and drifting from it silently — and `validateJudgeEvidence` would refuse such a
+ * record anyway, so the fixture would be proving something the production path never sees.
+ *
+ * What the cases establish is mostly restraint. Every complete disagreement is named, in both
+ * directions, with no materiality threshold deciding which are worth mentioning, because the Judge
+ * is advice and a filtered disagreement is advice that quietly edited itself. A review that is
+ * incomplete, absent or self-contradictory makes the projection provisional instead of dropping it
+ * or trusting it. The Judge exit stays advisory at any disagreement count and routes no owner —
+ * including over a historical validated control census, which is the case that would most plausibly
+ * have been treated as authority. And the projection writes no byte: no case row, no evidence file,
+ * no claim, no analysis. That last one is the safety property the rest depends on, since a reader
+ * that can write is a reader that can decide.
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {
@@ -67,7 +78,7 @@ interface CaseSpec {
 interface BatterySpec {
   cases: CaseSpec[];
   /** How battery.json presents its review. Default: the current producer's record. `control-census`
-   *  is a record from before 2026-09-14, when a control census stood behind the review. */
+   *  is a historical record, from when a control census stood behind the review. */
   census?: "none" | "off" | "tampered" | "control-census";
 }
 
@@ -133,7 +144,7 @@ function judgeEvidenceFor(spec: BatterySpec): JudgeEvidence {
   // rather than read it, so this tampering is the thing under test, not the count.
   if (spec.census === "tampered") return { ...evidence, disagreements: evidence.disagreements + 5 };
   if (spec.census !== "control-census") return evidence;
-  // A pre-2026-09-14 record with three answered controls behind it.
+  // A historical record with three answered controls behind it.
   return {
     ...evidence,
     censusSize: { ...evidence.censusSize, controls: 3, total: evidence.censusSize.total + 3 },
@@ -475,8 +486,9 @@ describe("coverage and historical records", () => {
     expect(result.coverage).toEqual({ reviewable: 2, reviewed: 1 });
     expect(result.contested.map((row) => row.taskId)).toEqual(["t1"]);
     expect(result.exit.kind).toBe("advisory");
-    // c1d2a7 round two reported "0 citing shown rules" for a fail that cited one and was not
-    // repeated on the re-sample. The clause counts vetoes, so it says veto and says what one is.
+    // Phrased as "0 citing shown rules", the clause reads as a count of fails that cited nothing,
+    // and a fail that did cite a rule and was not repeated on the re-sample lands in it. The clause
+    // counts vetoes, so it says veto and says what one is.
     expect(result.exit.reason).toContain(
       "0 were vetoes, a cited fail of a verifier pass that a second sample repeated",
     );
@@ -553,21 +565,20 @@ describe("Judge prompt policy", () => {
     expect(census).toContain("Do not list every requirement in the rationale.");
     expect(census).not.toContain("List each stated requirement and check it separately.");
     expect(census).toContain("If a required part is missing, wrong, contradicted, or unsupported");
-    // 2026-08-19: a failure may not rest on a convention the Judge was never shown (run 69).
+    // A failure may not rest on a convention the Judge was never shown.
     expect(census).toContain("a requirement you cannot see cannot ground a failure");
-    // 2026-09-02: a recomputed magnitude is not a check of the shown definition. Both
-    // truss-run6-opus-0902 disputes passed a negative peak against a "largest absolute" rule.
+    // A recomputed magnitude is not a check of the shown definition: comparing magnitudes alone
+    // passes a negative peak against a "largest absolute" rule.
     expect(census).toContain("recompute it from the shown inputs");
     expect(census).toContain("matches in magnitude but differs in sign or definition does not meet it");
-    // 2026-09-15: a recomputation failure shows its inputs, both values and the tolerance; a run the
-    // Judge cannot perform (compile, execute, solve, simulate) is not decided by predicting it.
+    // A recomputation failure shows its inputs, both values and the tolerance; a run the Judge
+    // cannot perform (compile, execute, solve, simulate) is not decided by predicting it.
     expect(census).toContain(
       "states the shown inputs it used, the recomputed value, the declared value and the tolerance quoted from the shown material",
     );
-    // 2026-09-19: the Judge supplies neither the tolerance nor the intermediates. Run de8b40's
-    // bridge-01 failed a verifier-passed case twice on a 0.05 kg tolerance the bound task does not
-    // publish (it publishes `reportToleranceRelative` 0.01, 2.88 kg here), over a gap produced by
-    // member lengths it derived from joint coordinates and got wrong in the second decimal.
+    // The Judge supplies neither the tolerance nor the intermediates. Left to supply them it fails
+    // a verifier-passed case on a tolerance the bound task never published, over a gap produced by
+    // quantities it derived itself and got wrong in the second decimal.
     expect(census).toContain(
       "your construction of that quantity is your own work and not evidence against the output",
     );

@@ -1,9 +1,8 @@
 /**
  * The shared matching fixture uses the generated bundle format in a temporary test directory.
  * Driver tests exercise the real fingerprint, snapshot, verification and record paths there.
- * This never touches domains/ or any runs/ tree: those are system outputs (operator decision,
- * 2026-07-26 — tests invoke the system; only its owners write those outputs). Extracted from
- * test/run-driver.test.ts when the M4 entrypoint test became its second consumer.
+ * This never touches domains/ or any runs/ tree: those are system outputs, and a test invokes the
+ * system rather than writing what the system writes (operator decision).
  */
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
@@ -163,9 +162,8 @@ export const MATCHING_TASKS: BuildTask[] = [
 export const MATCHING_ACCEPTS = [
   // The accept solves its bound task: t2 publicly binds alpha to s3 and beta to s4.
   // Each control belongs to one task.
-  // The judge sees {task, artifact} only — an accept contradicting its own task's
-  // public binding shares bytes with a reject and forces opposite verdicts on one subject
-  // (judge-census simulation, 2026-08-08).
+  // The judge sees {task, artifact} only, so an accept contradicting its own task's public binding
+  // would share bytes with a reject and force opposite verdicts on one subject.
   {
     id: "a1",
     taskId: "t2",
@@ -415,8 +413,9 @@ Declare every part before binding a slot to it.
  *
  * Padding never changes obligation coverage: every padded reject trips `parts-assigned`, which the
  * base corpus already covers, so a candidate deliberately missing `expected-binding` still misses
- * it after padding. Padded accepts preserve the bound task’s valid assignment; padded rejects carry the hidden row their check consumes, so
- * each is genuinely rejected rather than counted as a reject nobody executed.
+ * it after padding. A padded accept preserves the bound task's valid assignment and a padded
+ * reject carries the hidden row its own check consumes, so each one is genuinely rejected rather
+ * than counted as a reject nobody executed.
  */
 export function padToCalibrationFloor<T extends { id: string }>(kind: "accept" | "reject", base: T[]): T[] {
   const floor =
@@ -475,9 +474,6 @@ export function writeMatchingBuildFixture(dir: string): void {
   writeFileSync(join(dir, "agent/tools-spec.json"), JSON.stringify(MATCHING_TOOLS_SPEC));
 }
 
-/** Scripted in-process solver: drives the generated toolset like a model would, flubbing the
- *  named tasks (wrong slot) so pass/fail is deterministic. `onToolsetNames` discloses the tool
- *  contract each solve actually received — the ablation warranty reads it. */
 /** The first part of a fixture task. Every task in this file declares at least one, so an empty
  *  list is a broken fixture rather than a case the flub path means to cover. */
 function firstPart(parts: readonly string[]): string {
@@ -486,6 +482,9 @@ function firstPart(parts: readonly string[]): string {
   return part;
 }
 
+/** Scripted in-process solver: drives the generated toolset like a model would, flubbing the
+ *  named tasks (wrong slot) so pass/fail is deterministic. `onToolsetNames` discloses the tool
+ *  contract each solve actually received — the ablation warranty reads it. */
 export function scriptedMatchingSolver(
   flubTaskIds: ReadonlySet<string> = new Set(),
   onToolsetNames?: (taskId: string, names: string[]) => void,

@@ -1,12 +1,16 @@
-// Shared fixtures of the verification-runner test files: one matching-domain corpus, its
-// evaluator and tools sources, scripted solvers and a scratch root inside the repository.
 /**
- * Verification-runner tests for makeVerify and runControls.
- * The generated tools.ts and evaluator.ts fixtures are written to disk, fingerprinted, loaded
- * and executed through the runner. Model responses are scripted. Smaller control tests also
- * supply evaluator functions directly to isolate attribution and error handling. Together these
- * exercise submission, discrimination, recording and difficulty accounting without making a
- * claim about live model behaviour.
+ * One matching-domain corpus and everything a test needs to run the production verifier over it:
+ * the brief and battery, the accept controls, the generated evaluator and tools sources, and a
+ * scratch root inside the repository.
+ *
+ * The evaluator and tools arrive as source text rather than as imported modules, because the
+ * runner's whole job is to write them to disk, fingerprint them, load them and execute them; a
+ * fixture handed over as an already-imported module would skip the part under test.
+ *
+ * Ten test files import this, and only five of them are the `verification-runner-*` suite — the
+ * others are the battery, discrimination, measure-claim and run-driver files, which want a real
+ * corpus more than they want a verification-runner fixture. So treat it as the shared matching
+ * corpus, and expect a change here to reach further than its name suggests.
  */
 
 import { type JsonObject, asRecord } from "../../src/meta/json-shape.ts";

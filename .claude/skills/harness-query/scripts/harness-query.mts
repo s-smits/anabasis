@@ -3,9 +3,9 @@
  *
  * Every Built Harness bundle keeps the starter-pack layout (`starters/pi-built-harness`):
  * agent/ + <model>/tasks.json + <model>/controls.json, recorded with an optional conformance.json,
- * where <model> is `correctness-model/` (current) or `grader/` (bundles recorded before
- * 2026-08-20). `modelDir` names it once for every read and write below.
- * That shared layout is why one wrapper works for every bundle: the pipeline is
+ * where <model> is `correctness-model/` (current) or `grader/` (older bundles). `modelDir` names it
+ * once for every read and write below. That shared layout is why one wrapper works for every
+ * bundle: the pipeline is
  *
  *   select tasks -> derive probe bundle -> measure -> report
  *
@@ -64,8 +64,6 @@ interface Controls {
   reject: ControlRow[];
 }
 
-// ---------- arguments ----------
-
 interface Options {
   repoRoot: string;
   harnessDir: string;
@@ -83,8 +81,6 @@ interface Options {
   /** Which reviewer sees the shipped artifacts, if any; judge/judge-option.mts owns the choice. */
   judge: JudgeFlags;
 }
-
-// ---------- measure and report ----------
 
 /** One recorded case as this script counts it. A case is a non-result when either typed channel
  *  says so: the solver's `nonResult` object or the verifier-side `runtimeNonResult` string (for
@@ -171,8 +167,6 @@ function modelDir(dir: string): "correctness-model" | "grader" {
 function modelFile(dir: string, file: string): string {
   return join(dir, modelDir(dir), basename(file));
 }
-
-// ---------- selection ----------
 
 function maybeJson(text: string): JsonValue {
   const trimmed = text.trim();
@@ -364,9 +358,9 @@ function selectTasks(recordedTasks: Task[], controls: Controls, options: Options
  *  candidate's `.toolchain` and then the host PATH; when neither holds it, every applicable check
  *  throws and each control comes back `non-result (verifier-throw)`. The battery then refuses at
  *  the control census with `DISCRIMINATION_NOT_PROVEN`, which reads as a bundle defect and is in
- *  fact a missing program: every committed bundle here links `.toolchain` into a campaign
- *  workspace that no longer exists, so a bundle needing `platformio` measures nothing on this
- *  machine while one needing only `clang++` measures normally.
+ *  fact a missing program: a committed bundle's `.toolchain` is a link into a campaign workspace
+ *  that may no longer exist, so a bundle needing `platformio` measures nothing on a host without it
+ *  while one needing only `clang++` measures normally.
  *
  *  Naming it before the copy keeps the refusal free: no probe bundle, no solve, no paid turn. */
 function unresolvedDeclaredTools(dir: string): string[] {
@@ -392,8 +386,6 @@ function unresolvedDeclaredTools(dir: string): string[] {
   if (ids.size === 0) return [];
   return resolveToolInventory({ toolIds: [...ids], toolTree: bundleSnapshotToolTree(dir) }).missing;
 }
-
-// ---------- probe bundle ----------
 
 /** One digest over the measured agent/ and model bytes, so a later reader can say what ran. */
 function bundleDigest(dir: string): string {

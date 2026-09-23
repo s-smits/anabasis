@@ -1,9 +1,9 @@
 /**
- * Tests for the battery driver: one case row per task, digest-checked evidence pointers,
- * completeness against the task set and separate verified, unaccepted and non-result counts.
- * The shared matching fixture (test/helpers/matching-fixture.ts) uses a scripted solver.
- * This avoids provider calls while exercising the real fingerprint, bundle snapshot,
- * verification and recording paths.
+ * The battery driver writes one case row per task, with digest-checked evidence pointers,
+ * completeness against the task set and separate verified, unaccepted and non-result counts. The
+ * shared fixture in test/helpers/matching-fixture.ts supplies a scripted solver, so none of that
+ * costs a provider call while the real fingerprint, bundle snapshot, verification and recording
+ * paths still run.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -719,8 +719,8 @@ describe("battery disposition", () => {
   });
 
   it("names a battery the provider-stop rule cut short", () => {
-    // opus-331 recorded terminalReason "complete" for exactly this variant and paired it against
-    // one that had run all 25 tasks.
+    // Without this the provider-stop rule's own battery records "complete", and a comparison reads
+    // it beside one that ran every task it was given.
     const rows = [
       { runtimeNonResult: null },
       { runtimeNonResult: "provider error 429" },
@@ -733,8 +733,8 @@ describe("battery disposition", () => {
   });
 
   it("records an all-non-result battery as all-non-results instead of complete", () => {
-    // opus326 recorded five batteries whose every case was a typed non-result with terminalReason
-    // "complete"; the shape lived only in a diagnostic safeguard line until 2026-09-01.
+    // A battery whose every case is a typed non-result otherwise reports "complete", which reads as
+    // a measured zero rather than as no measurement at all.
     const dead = [
       { runtimeNonResult: "provider error 429", solver: NO_CALL },
       { runtimeNonResult: "spawn timeout", solver: NO_CALL },
@@ -749,8 +749,8 @@ describe("battery disposition", () => {
         { runtimeNonResult: null, solver: { startedToolCalls: 1 } },
       ]),
     ).toBe("complete");
-    // The two shapes that lived only in diagnostic safeguard lines until 2026-09-02: a completed
-    // record with no case row, and one where no case started a tool call.
+    // The other two shapes that carry no evidence: a completed record with no case row, and one
+    // where no case started a tool call.
     expect(batteryTerminalReason("completed", [])).toBe("no-cases: the battery recorded no case row");
     expect(
       batteryTerminalReason("completed", [

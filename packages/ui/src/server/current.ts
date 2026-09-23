@@ -16,7 +16,10 @@ export interface RunSelection {
   run: string | null;
 }
 
-/** A directory the read boundary refuses (a symlinked campaigns tree) lists no runs instead of aborting the reader. */
+/** A refused directory lists nothing rather than throwing, because the page's job is to show what
+ *  it can read: `safeRunPath` returns null for a path outside the read boundary — a `campaigns`
+ *  symlinked to another checkout is the usual one — and an absent directory reads the same way,
+ *  so a project the reader cannot open costs its own row and not the whole listing. */
 function directories(repoRoot: string, relativePath: string): string[] {
   const path = safeRunPath(repoRoot, relativePath);
   if (path === null || !existsSync(path)) return [];

@@ -1,4 +1,10 @@
-/** Session time limit: no default, environment override, explicit option takes precedence. */
+/**
+ * A Builder authoring session has no default time limit, so the wall exists only when something
+ * sets it: `HARNESS_BUILDER_SESSION_CAP_MS` in the environment, or an explicit option, which wins
+ * over the environment. The fourth case is the one that earns the file. A malformed environment
+ * value is refused rather than read as no limit, because a typo that quietly meant no wall would
+ * only show itself in a session that had already run too long.
+ */
 import { describe, expect, it } from "bun:test";
 import { builderSessionCapMs } from "../src/run/builder-backend.ts";
 

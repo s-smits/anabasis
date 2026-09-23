@@ -2,15 +2,14 @@
  * What the Builder's system prompt is allowed to be, stated as properties rather than as a list of
  * its own sentences.
  *
- * Until 2026-09-19 this suite held about sixty `toContain` calls, one per clause, each with a
- * comment naming the campaign that bought it. That made the prompt unrewritable: changing a word
- * meant editing the assertion that quoted it, so the suite could only ever confirm the text it was
- * written against. It proved the prompt was the prompt.
+ * One `toContain` per clause makes the prompt unrewritable: changing a word means editing the
+ * assertion that quotes it, so the suite can only ever confirm the text it was written against. It
+ * proves the prompt is the prompt.
  *
- * The properties below are the invariants those sentences were approximating: the prompt states
- * nothing another surface owns, says each duty once, carries no measured domain, and fits the turn
- * budget. Inside that envelope the wording is the author's. Where a clause exists for a recorded
- * reason, the reason lives in the producer's comment, which is where it is read when the clause is
+ * The properties below are the invariants those sentences approximate: the prompt states nothing
+ * another surface owns, says each duty once, carries no measured domain, and fits the turn budget.
+ * Inside that envelope the wording is the author's. Where a clause exists for a recorded reason,
+ * that reason lives in the producer's comment, which is what a reader has open when the clause is
  * being changed.
  */
 import { describe, expect, it } from "bun:test";
@@ -58,16 +57,15 @@ function overlap(left: Set<string>, right: Set<string>): number {
 }
 
 describe("Builder start prompt", () => {
-  /** The prompt is paid on every turn of every authoring session; STARTER.md is paid once. The
-   *  rewrite of 2026-09-15 moved the loop, the gates and the walls there and left intent and safety
-   *  here (tenet 14), against a ceiling of a third of the composed prompt it replaced.
+  /** The prompt is paid on every turn of every authoring session; STARTER.md is paid once. So the
+   *  loop, the gates and the walls live there and intent and safety live here (tenet 14), and the
+   *  byte ceiling below is what holds that split in place.
    *
-   *  The ceiling below is lower than that third, and the reduction is the point of this pass. Until
-   *  2026-09-19 the Builder could not see how hard its battery was until the controller measured it
-   *  and paid for a whole round, so the prompt carried a method for guessing: which requirements to
-   *  stack, where to pin a limit, how hard the reference had to search, each with the campaign that
-   *  bought it. `harness_trial` now solves one authored task with the measured solver and returns a
-   *  verdict, so that judgement has an instrument and the prose that substituted for it can go. */
+   *  A Builder that cannot see how hard its battery is until the controller measures it and pays
+   *  for a whole round needs a method for guessing in the prompt: which requirements to stack,
+   *  where to pin a limit, how hard the reference has to search. `harness_trial` solves one
+   *  authored task with the measured solver and returns a verdict, so that judgement has an
+   *  instrument and the prose that substituted for it is gone. */
   it("fits the turn budget with the slack the rehearsal bought", () => {
     expect(bytes(`${PROMPT}\n`)).toBeLessThanOrEqual(6_100);
   });
@@ -87,11 +85,11 @@ describe("Builder start prompt", () => {
     expect(at(DCG_RULES.join("\n"))).toBeGreaterThan(at(VERIFICATION_CLAUSE[0]));
   });
 
-  /** Two independent Builder sessions declared their reference's sizing recipe private and then
-   *  wrote the same recipe into BUILT_AGENTS.md as guidance, in their own words — no literal
-   *  comparison of the two texts could see it, and none did. So the withheld list holds decisions
-   *  beside controls, and "in any wording" sits on the surface rather than on one item: what is
-   *  withheld is the decision, and a paraphrase of it publishes it as surely as its row. */
+  /** A Builder can declare its reference's sizing recipe private and then write that same recipe
+   *  into BUILT_AGENTS.md as guidance, in its own words, where no literal comparison of the two
+   *  texts can see it. So the withheld list holds decisions beside controls, and "in any wording"
+   *  sits on the surface rather than on one item: what is withheld is the decision, and a
+   *  paraphrase of it publishes it as surely as its row. */
   it("withholds a private decision from every wording, not only from its row", () => {
     expect(PROMPT).toContain("private controls and decisions");
     expect(PROMPT).toContain("from everything the solver reads, in any wording, tool results included");
@@ -100,8 +98,8 @@ describe("Builder start prompt", () => {
   /** Every number a Builder may act on has an owner elsewhere: the walls are its own
    *  `agent/config.yaml`, the pass counts are the authoring context's, the gate budgets are
    *  STARTER.md's. A number here is therefore either a second owner or a campaign statistic used as
-   *  argument — nine of the sentences this pass removed were the latter. The property is cheaper to
-   *  hold than the eleven absence assertions it replaces, and it cannot go stale when a wall moves. */
+   *  argument. One property costs less to hold than an absence assertion per wall, and it cannot go
+   *  stale when a wall moves. */
   it("states no number, because every number it could state is owned elsewhere", () => {
     expect(PROMPT).not.toMatch(/\d/);
     for (const wall of Object.values(DEFAULT_HARNESS_SETTINGS).flatMap((group) => Object.values(group))) {
@@ -119,7 +117,7 @@ describe("Builder start prompt", () => {
     for (const code of codes) expect(PROMPT, code).not.toContain(code);
     expect(PROMPT).not.toMatch(/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/);
     // One tool is named, the one that reaches earlier runs; naming it cost less than the
-    // circumlocution (operator decision 2026-09-16). The rest of the roster is the starter's.
+    // circumlocution (operator decision). The rest of the roster is the starter's.
     expect(PROMPT.match(/harness_\w+|correctness_check|\bsubmit\b/g)).toEqual(["harness_inspect"]);
     for (const owned of [
       "runtime.tools.run",
@@ -134,10 +132,11 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** A worked domain in a Builder-visible surface is an answer, not a calibration: the loop measures
-   *  these domains. Run 8 (2026-08-28) repeated a rendered "not found on verification PATH"
-   *  back as its reason for a stand-in, and run 10 compiled against a board header it had written
-   *  itself, so the install duty stays while the domain that taught it does not. */
+  /** A worked domain in a Builder-visible surface is an answer, not a calibration: the loop
+   *  measures these domains, and a Builder shown one repeats it — a rendered "not found on
+   *  verification PATH" comes back as the reason for a stand-in, or a compile succeeds against a
+   *  board header the Builder wrote itself. The install duty stays; the domain that taught it
+   *  does not. */
   it("names no domain, tool or campaign the loop has measured", () => {
     for (const named of [
       "arduino-cli",
@@ -166,9 +165,9 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** One duty, one owner. The removed comments recorded this failure three times by hand — a duty
-   *  stated in the workspace card, again in the clause body and again in the closing paragraph —
-   *  and each time the repetition was found only when someone needed the bytes back. */
+  /** One duty, one owner. The shape this catches is a duty stated in the workspace card, again in
+   *  the clause body and again in the closing paragraph; left to hand inspection, that repetition
+   *  surfaces only when someone needs the bytes back. */
   it("states each duty once", () => {
     for (const [index, sentence] of SENTENCES.entries()) {
       for (const other of SENTENCES.slice(index + 1)) {
@@ -177,11 +176,11 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** The difficulty judgement has an instrument now, so the prompt points at measuring rather than
-   *  carrying a recipe. What remains is the one direction with outcome evidence behind it — the
-   *  2026-09-15 pack series passed 22 of 23 with one interaction added per task and 2 of 23 with the
-   *  interactions stacked inside the unchanged limit — and the counts stay with the authoring
-   *  context that knows this run's battery size (AGENTS.md prior 10: no course is prescribed). */
+  /** The difficulty judgement has an instrument, so the prompt points at measuring rather than
+   *  carrying a recipe. What remains is the one direction with outcome evidence behind it: stacking
+   *  interactions inside an unchanged limit makes a battery far harder than adding one interaction
+   *  per task. The counts stay with the authoring context that knows this run's battery size
+   *  (AGENTS.md prior 10: no course is prescribed). */
   it("points at measurement for difficulty and prescribes no course", () => {
     expect(PROMPT).toContain("measure");
     for (const recipe of [
@@ -197,18 +196,22 @@ describe("Builder start prompt", () => {
     );
   });
 
-  // Runs w28 and w30 made zero searches beside a working WebSearch tool.
-  /** Run pr179-2ea118a-truss reached the settlement clause eleven minutes in, was refused,
-   *  resubmitted the same tree four seconds later and settled with no battery. A Builder told that
-   *  "verifier-required" is an available answer reaches for it, so the clause is controller-owned
-   *  and arrives only in the refusal that needs it. Two segments, so the code sweep above — which
-   *  reads kebab literals of three or more — does not see it. */
+  /** A Builder told that "verifier-required" is an available answer reaches for it: it settles
+   *  minutes in, resubmits the same tree when refused, and the run ends with no battery at all. So
+   *  the clause is controller-owned and arrives only in the refusal that needs it. The literal has
+   *  two segments, so the code sweep above — which reads kebab literals of three or more — does not
+   *  see it. */
   it("names no settlement the controller alone may declare", () => {
     for (const surface of [PROMPT, STARTER_DOC, STARTER_ENTRY]) {
       expect(surface).not.toContain("verifier-required");
     }
   });
 
+  /** A capability the transport carries is still one the Builder has to be told about: an
+   *  unmentioned WebSearch tool goes unused for a whole run. So the sentence is announced where the
+   *  transport has it and withheld where it does not, and both halves are asserted, because a
+   *  prompt that promises search on a transport without it sends the Builder after a tool that
+   *  will not answer. */
   it("announces public web search only when the transport carries it", () => {
     expect(builderSystemPrompt(true)).toContain("You can search the web.");
     expect(builderSystemPrompt(false)).not.toContain("You can search the web.");
@@ -244,10 +247,10 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  /** One direction for the first battery, stated once. Until 2026-09-18 the entry read "Take a
-   *  first battery from easy to hard" while the authoring context the same Builder holds said
-   *  "above what you believe the harness handles": two owners pointing opposite ways at the decision
-   *  that sets a campaign's whole climb, and the entry is the one read first. */
+  /** One direction for the first battery, stated once. An entry reading "from easy to hard" beside
+   *  an authoring context reading "above what you believe the harness handles" is two owners
+   *  pointing opposite ways at the decision that sets a campaign's whole climb, and the entry is
+   *  the one read first. */
   it("points the first battery at the top tier and leaves the counts to the prompt", () => {
     const starter = flat(STARTER_ENTRY);
     expect(starter).toContain(
@@ -264,12 +267,11 @@ describe("STARTER.md gate map", () => {
     expect(starter).toContain("solves that task blind with your own agent");
   });
 
-  /** What a later battery is, which the entry did not say. Run de8b40's probe landed on the aim at
-   *  3 of 6 — "the limit on the current requirements", the one zone whose measurement note carries
-   *  no course at all — and the round that followed grew the same demand to 25 cases. That round
-   *  buys the count the probe had already returned. The direction is still the note's and the
-   *  content is still the Builder's: this says only that more cases at a measured demand is not one
-   *  of the moves. */
+  /** What a later battery is, which the entry otherwise leaves unsaid. A probe landing on the aim
+   *  has measured the limit on the current requirements — the one zone whose measurement note
+   *  carries no course at all — so a round that then grows the same demand to full size buys the
+   *  count the probe already returned. The direction stays the note's and the content stays the
+   *  Builder's: this says only that more cases at a measured demand is not one of the moves. */
   it("states what a later battery is and rules out widening at a measured demand", () => {
     const starter = flat(STARTER_ENTRY);
     expect(starter).toContain("A battery after the first moves the demand or repairs the last measurement.");
@@ -280,7 +282,7 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  // The gate walls are the harness's own settings (operator decision 2026-09-16): the Builder is
+  // The gate walls are the harness's own settings (operator decision): the Builder is
   // told the config exists, never its values, so it cannot design against a stated limit.
   it("names the harness config without stating the walls it sets", () => {
     const starter = flat(STARTER_ENTRY);
@@ -309,8 +311,8 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  // Rediscovered by truss run dffb11 through refusals: the evaluator import rule, the runtime
-  // argument and the transplant settle rule.
+  // The contracts a Builder otherwise rediscovers one refusal at a time: the evaluator import
+  // rule, the runtime argument and the transplant settle rule.
   it("carries the contracts dffb11 found by trial", () => {
     const starter = flat(STARTER_ENTRY);
     for (const contract of [
@@ -326,10 +328,10 @@ describe("STARTER.md gate map", () => {
 
   /** The ladder is the Builder-visible face of the tier scale `query-complexity.mjs` classifies a
    *  measured battery against, so one vocabulary covers authoring and review. Three things separate
-   *  its top two tiers from the two below, and campaign 3fd52f9e-10 — "significantly too easy" four
-   *  rounds running — was missing the last two: limits that trade against each other, a degraded
-   *  state the same answer must also clear, and a duty to report the value each limit was read
-   *  against. A tier row that loses one of the three is a longer sentence, not a harder task. */
+   *  its top two tiers from the two below: limits that trade against each other, a degraded state
+   *  the same answer must also clear, and a duty to report the value each limit was read against. A
+   *  tier row that loses one of the three is a longer sentence rather than a harder task, and a
+   *  campaign authored from it reads as significantly too easy round after round. */
   it("grades the ladder on what an answer holds at once, not on how much it reads", () => {
     for (const tier of ["easy", "medium", "hard", "frontier"]) {
       expect(STARTER_LADDER).toContain(`- **${tier}**`);
@@ -338,8 +340,8 @@ describe("STARTER.md gate map", () => {
       "none of them met at the cost of another",
       "across a whole set of degraded or adversarial states the same one answer must clear",
       "with the worst case and where it falls reported",
-      // What three consecutive 6-of-6 batteries of 3fd52f9e-10 each did instead, named so that the
-      // next author checks its change against them before spending a battery on it.
+      // The three moves that leave a battery exactly as easy as it already was, named so the next
+      // author checks a change against them before spending a battery on it.
       "A tighter number on a rule the tasks already had",
       "More cases of a rule the tasks already had",
       "A new rule that only removes candidates",
@@ -376,9 +378,9 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  /** The ladder answered one side of the aim until 2026-09-18: a battery that scored near the top
-   *  had a section naming what its tiers were missing, and a battery that passed almost nothing had
-   *  nothing at all — on the side a first battery is authored to land on. */
+  /** The ladder has to answer both sides of the aim. With only the above-the-aim section, a
+   *  battery scoring near the top is told what its tiers were missing while one that passes almost
+   *  nothing is told nothing at all — on the side a first battery is authored to land on. */
   it("answers a battery below the aim as well as one above it", () => {
     const below = flat(STARTER_LADDER.split("## When a battery lands below the aim")[1] ?? "");
     expect(below, "the below-the-aim section").not.toBe("");
@@ -395,10 +397,9 @@ describe("STARTER.md gate map", () => {
     );
   });
 
-  /** The other half of the same defect de8b40 recorded: six tasks carried three distinct geometries,
-   *  each family's second task repeating the first and moving only load magnitude and the numeric
-   *  limits. The battery then has one axis left, and the ladder already says moving a number
-   *  measures the same. */
+  /** The other half of the same defect: a family whose second task repeats the first and moves
+   *  only the load magnitude and the numeric limits leaves the battery one axis, and the ladder
+   *  already says moving a number measures the same condition twice. */
   it("asks sibling tasks in a family to vary a structural input, not only its magnitudes", () => {
     const after = flat(STARTER_LADDER.split("## Every battery after the first")[1] ?? "");
     expect(after, "the after-the-first section").not.toBe("");

@@ -1,10 +1,22 @@
 /**
- * One owner for the environment a spawned shell sees. Two halves:
- * - scrubSecretEnv drops the tested credential names and values matching its secret patterns,
- *   keeps ordinary variables, and leaves its input unchanged;
- * - the Builder bash cell points HOME and the XDG roots inside the admitted tool tree whether or
- *   not the session may reach the network — on run opus-n2b2 an offline session's first
- *   `arduino-cli version` tried to read the protected host home and failed before reporting its version.
+ * One owner for the environment a spawned shell sees, read from three angles.
+ *
+ * The first is the scrub. `scrubSecretEnv` is a deny-filter rather than an allowlist, so it has to
+ * catch a credential two ways: by the name it is spelled under, and by the shape of the value when
+ * the name gives nothing away. The fixture carries both, and it carries benign variables too,
+ * because a scrub that dropped `PATH` would be perfectly secure and entirely useless. It also must
+ * not mutate the parent environment it was handed, since the caller goes on using it.
+ *
+ * The second is where the Builder's bash cell points HOME and the XDG caches. They go inside the
+ * admitted tool tree whether or not the session may reach the network. An offline cell that leaves
+ * HOME on the host sends the first tool that reads its own config into the protected host home,
+ * where it fails before it can even report its version. Being offline changes what a tool can
+ * fetch, not where it keeps its files, so both cells say the same thing about HOME.
+ *
+ * The third is the budget notice the cell writes about a long authoring call. It reads the
+ * harness's own `agent/config.yaml` rather than a fixed ceiling, because a harness that gives its
+ * solver an hour per command has made that call cheap, and a notice quoting a constant would argue
+ * against the settings the Builder chose.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -139,8 +151,8 @@ describe("the Builder bash cell's environment", () => {
       // Background jobs die with the call's process group, so the long timeout is for builds.
       expect(text).toContain("a job it starts in the background ends with the call");
       // How to bound a search deterministically is STARTER.md's, beside the refusal that needs it.
-      // This cell owns only what its own lifetime does to one: run 5211e7 lost a 3,000 s reference
-      // search to host load, and a battery is only as hard as the search that set its limits.
+      // This cell owns only what its own lifetime does to one: a search backgrounded to escape the
+      // timeout dies with the call, and a battery is only as hard as the search that set its limits.
       expect(text).toContain("keep a long search in the foreground of one call and raise its timeout");
       expect(text).not.toContain("finishes in minutes");
     }

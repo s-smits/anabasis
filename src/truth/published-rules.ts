@@ -2,9 +2,12 @@
  * Check that each truth check cites a public rule the Built Harness can read. This validation
  * runs while recording the candidate, before paid battery measurement.
  *
- * Without this, a Builder can keep a correctness requirement private beside its implementation,
- * for example in `decisions`, which the public-resources projection withholds, and the solver
- * fails a rule it was never shown.
+ * The defect it exists to refuse is a Builder keeping a correctness requirement private beside the
+ * implementation that enforces it. A frame format, an ordering constraint, a threshold, a bit order
+ * or a required join between two public fields gets stated in `correctness-model/brief.json` under
+ * `decisions`, which the public-resources projection withholds, while the operating guide names the
+ * thing without defining it. The check then rejects every submission in the family, and the solver
+ * had no way to read the rule it was failing.
  *
  * Two structural requirements connect each citation to the public projection:
  *
@@ -15,7 +18,9 @@
  *     paths alone may also omit essential detail such as a frame format, ordering constraint
  *     or required join. A cited decision provides a place to state that detail.
  *
- * The check-program contract requires a citation for every authored check.
+ * Earlier contracts exempted some closed predicates, on the grounds that their declarations already
+ * exposed the operation. The current check-program contract requires a citation for every authored
+ * check instead, because which predicates are self-exposing was itself a judgement the author made.
  *
  * The requirement publishes the correctness statement while leaving the implementation private.
  * Private decisions stay private. These structural checks establish citation availability; they
@@ -42,9 +47,13 @@ function citationFindings(
 }
 
 /** Check that every citation resolves to a published decision and every check cites one.
- *  A public rule's `families` stays optional public metadata and is not compared with check
- *  applicability; the census still needs a failing reject for every applicable check in every
- *  family. */
+ *
+ *  A public rule's `families` stays optional public metadata, and nothing compares it with check
+ *  applicability. The reverse coverage rule that did, `brief-public-rule-family-uncovered`, is gone:
+ *  the Builder could satisfy it either by narrowing the list or by adding a citation, and it refused
+ *  a rule that governs a family whose checks legitimately cite a different rule. The census still
+ *  requires a failing reject for every applicable check in every family, which is the obligation
+ *  that actually bites. */
 export function publishedRuleFindings(brief: Brief): ContractFinding[] {
   const published = new Set(publicRuleDecisions(brief).map((decision) => decision.id));
   return brief.truthChecks.flatMap((check, index) => [

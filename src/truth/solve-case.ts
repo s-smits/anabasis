@@ -1,13 +1,21 @@
 /**
  * One case's solve and verification, held apart from every run-level accumulator.
  *
- * `solveCase` runs concurrently with other cases. Its dependencies exclude the verifier host and
- * every shared accumulator, so it cannot open an evaluation scope or touch another case's state.
+ * A battery solves its cases concurrently and records them one at a time, which
+ * `verification-runner.ts` arranges; `solveCase` is the concurrent half. Its dependencies exclude
+ * the verifier host, the Judge observations, the firing counters and the shared case array, so it
+ * cannot open a second evaluation scope or update one of those accumulators while another case is
+ * being graded. What mutable state it does hold belongs to one case: its submission authority, its
+ * own starter and worker processes, and its own `cases/<taskId>/` evidence paths.
  *
- * Grading is separate because the host keeps one open subject: opening a second scope closes the
- * first. The battery calls `gradeCase` in task order while later solves may still run, and
- * `rehearseCase` shares the same accepted-byte execution. Grading decides one `CaseOutcome` and
- * builds the record from it.
+ * Verification is separate because the host keeps exactly one open subject (`verify/host.ts`), so
+ * opening a second scope closes the first and the closed scope's in-flight engine runs fail closed.
+ * The battery therefore calls `gradeCase` in task order while later `solveCase` calls may still be
+ * running, and `rehearseCase` shares the same accepted-byte execution below.
+ *
+ * Grading decides a `CaseOutcome` and the record is built from it once, rather than written in
+ * place by whichever branch got there, so the ordered reasons a case scores nothing read in one
+ * function instead of across three.
  */
 import type { ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -58,8 +66,9 @@ import { EvaluatorProcessFailure } from "./evaluator-process.ts";
 import { resolveVerifier } from "./verification-registry.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 
-/** What this case may record. Interfaces lack the implicit index signature `JsonValue` needs, so
- *  each is listed even though its bytes are JSON. */
+/** What this case may record. The named members are interfaces, and TypeScript denies an interface
+ *  the implicit index signature `JsonValue` needs, so each one has to be listed here even though
+ *  its bytes are ordinary JSON. */
 export type SolveCaseEvidence =
   | JsonValue
   | BuiltStarterRegistration
@@ -87,17 +96,21 @@ interface SolveCaseDeps {
   write: (path: string, value: SolveCaseEvidence) => void;
 }
 
-/** What the recorder needs from a solved case; it carries no verdict. */
+/** What the recorder needs from a solved case. It carries no verdict and no score, because
+ *  evaluating is the recording stage's job and a solve that judged itself would be the author
+ *  playing verifier. */
 export interface SolvedCase {
   task: BuildTask;
-  /** The pre-solve commitment, the recorder's only source of task bytes for verification. */
+  /** The pre-solve commitment. It is the recorder's only source of task bytes for verification,
+   *  so nothing generated code touched afterwards can reach what is verified. */
   committed: CommittedPublicTask<unknown>;
   solved: SolveOutcome;
   final: FinalSubmission | null;
   /** Non-null identifies an invalid controller record that prevents a claim. */
   finalDefect: string | null;
   acceptedSubmit: boolean;
-  /** Controller clock around the solver call, recorded on the case row. */
+  /** The controller's clock around the solver call, recorded on each case row; a row without it
+   *  leaves a reader unable to bound how long the case took. */
   instants: { startedAt: string; endedAt: string };
 }
 
@@ -118,7 +131,9 @@ type ScoredFields = Pick<
   "acceptedSubmit" | "truthOk" | "pass" | "runtimeNonResult" | "runtimeNonResultKind"
 >;
 
-/** One case's facts; difficulty, firing counts and Judge subjects are projected from these. */
+/** One case's facts, kept once. Difficulty, firing counts and Judge subjects are all projections
+ *  of the battery over these rows rather than fields a case carries, so there is one place a case
+ *  fact can be written and one place it can be wrong. */
 export interface GradedCase {
   record: CaseRecord;
   /** Raw evaluator output stays private, including a verdict overruled by a host non-result. */
@@ -130,19 +145,26 @@ export interface GradedCase {
   solverOrigin: boolean;
 }
 
-/** The final-submission fact, or a note saying why it could not be recorded. */
+/** What the case records as its final-submission evidence: the controller-written fact itself,
+ *  or, when that fact does not serialize, the note recording why nothing else could be written in
+ *  its place — an absent field would read as "no submission", which is a different event. */
 type FinalSubmissionEvidence = FinalSubmission | null | { falsifiedFact: true; note: string };
 
-/** What grading decided about one case: no accepted submission, a defective controller record,
- *  an operational failure that scores nothing, or a verdict over accepted bytes. */
+/** What grading decided about one case beyond the solver's own telemetry. Exactly one arm holds,
+ *  and `scoredFields` below is where each becomes the record shape `battery-record.ts` names for
+ *  it: a real attempt that produced no accepted submission, a defective controller record that is
+ *  recorded as unaccepted whatever the authority claimed, an operational failure that scores
+ *  nothing, or a verdict over accepted bytes. */
 type CaseOutcome =
   | { kind: "unaccepted" }
   | { kind: "invalid-authority" }
   | { kind: "non-result"; reason: string; nonResultKind: NonResultKind }
   | { kind: "truth"; truthOk: boolean };
 
-/** Grading's decision plus what the record does not carry: unbound findings, the raw verdict, and
- *  whether a failure was the solver's, which censors differently. */
+/** The whole of what grading learned before the record is built from it: the decision, the
+ *  claimability findings grading produced, the raw verdict that the record never carries, and
+ *  whether the failure was the solver's rather than the verifier's, because those two censor
+ *  differently. */
 interface GradedOutcome {
   outcome: CaseOutcome;
   unbound: string[];
@@ -159,8 +181,14 @@ const nonResult = (reason: string, nonResultKind: NonResultKind): CaseOutcome =>
   nonResultKind,
 });
 
-/** Checks the controller's final-submission fact is internally consistent before it is read as
- *  JSON. A violation is a submission-authority defect and prevents a claim. */
+/**
+ * The controller writes the final-submission fact, and this checks its own internal consistency
+ * before anything downstream treats its contents as JSON. The record must serialize, and an
+ * accepted artifact must have string bytes, a matching digest and valid JSON. A violation
+ * identifies a defect in the submission authority itself, which is why it prevents a claim rather
+ * than being repaired here: a controller record that contradicts itself cannot be trusted to say
+ * what the solver submitted.
+ */
 function finalSubmissionDefect(final: FinalSubmission | null): string | null {
   try {
     trustedJsonStringify(final);
@@ -179,8 +207,11 @@ function finalSubmissionDefect(final: FinalSubmission | null): string | null {
 }
 
 export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<SolvedCase> {
-  // Commit the task before generated code runs, so nothing it mutates reaches the digest or the
-  // task verification reads; solve and evaluate each get their own clone.
+  // Capture the task before any generated code runs. The canonical bytes and the digest come from
+  // the authoritative task, the public evidence is written before the solver starts, and solve and
+  // evaluate each get an independent clone, so a toolset factory that mutates its view changes only
+  // that clone. Generated code therefore cannot reach the original bytes the digest was taken over,
+  // and cannot change the task verification will consume.
   const committed = commitPublicTask(task);
   deps.write(`cases/${task.taskId}/public-task.json`, {
     taskId: task.taskId,
@@ -189,7 +220,8 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
     publicTask: trustedJsonParse(committed.publicTaskJson),
   });
   const publicTask = committed.view();
-  // The controller keeps the authority; generated code gets only its narrow port.
+  // The controller keeps the submission authority itself and hands generated code only its narrow
+  // port, so acceptance is decided on this side of the wall.
   const authority = createSubmissionAuthority({
     maxAttempts: deps.maxSubmitAttempts,
     publicArtifactSchema: deps.publicArtifactSchema,
@@ -215,7 +247,9 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
       : nonResultOutcome({ kind: "protocol", message: WORKER_BINDING_MISMATCH });
   const endedAt = new Date().toISOString();
   if (solved.runtimeBoundary) deps.write(`cases/${task.taskId}/built-runtime.json`, solved.runtimeBoundary);
-  // Verification reads the captured bytes, never mutable toolset state.
+  // Acceptance and canonical bytes both come from one controller-created transition, so
+  // verification reads those captured bytes rather than mutable toolset state that may have moved
+  // on since.
   const final = authority.finalSubmission();
   const finalDefect = finalSubmissionDefect(final);
   deps.write(
@@ -238,7 +272,10 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
   };
 }
 
-/** A case the battery's stop rule never scheduled: it keeps its row as a provider non-result. */
+/** A case the battery's stop rule never scheduled. The denominator keeps its row, and the typed
+ *  provider non-result naming the stop is the whole of what happened to it. It is built here so the
+ *  scheduler does not assemble a `SolvedCase` of its own beside this file's writer, which is how the
+ *  two shapes would drift. */
 export function unattemptedCase(task: BuildTask, message: string): SolvedCase {
   const at = new Date().toISOString();
   return {
@@ -252,8 +289,9 @@ export function unattemptedCase(task: BuildTask, message: string): SolvedCase {
   };
 }
 
-/** One verifier scope over accepted canonical bytes, closed in `finally` so cleanup and output
- *  recording also run after a failure. */
+/** One verifier scope over accepted canonical bytes: open, evaluate, and close in a `finally`, so
+ *  that child cleanup and output recording still run when evaluation failed — which is exactly the
+ *  case where the recorded output is worth the most. */
 async function runCaseScope(
   deps: Pick<GradeCaseDeps, "brief" | "evaluate" | "verifier" | "verifierLifetime" | "runId">,
   solved: Pick<SolvedCase, "task" | "committed">,
@@ -266,11 +304,16 @@ async function runCaseScope(
   cleanupPending: boolean;
 }> {
   const { task, committed } = solved;
-  // One projection for the host subject and the evaluate request; openSubject digests it at once
-  // and generated code gets a clone, so the two cannot drift.
+  // One projection serves all three evaluate-side consumers: the host subject, the generated
+  // evaluate request and the intrinsic firing census. `openSubject` digests it synchronously and
+  // generated code receives a clone, so sharing one projection cannot leak a mutation and the three
+  // views cannot drift apart.
   const evaluateTask = evaluationPublicTask(deps.brief, task, committed.view());
-  // The host binds the accepted bytes, so the correctness model cannot route another value to an
-  // engine. A port kept past evaluation stays this case's and fails closed.
+  // The host evaluates the accepted submission bytes, which is what stops the correctness model
+  // routing a different value to the engine, and the evidence carries the full join key: runId,
+  // phase, caseId, attempt and the artifact and public-task digests. The scope's port is
+  // evaluation's only verifier contract, and a port retained past evaluation stays this case's port
+  // and fails closed rather than quietly becoming the next case's.
   const scope = deps.verifier.openSubject({
     checks: applicableTruthChecks(deps.brief, task),
     runId: deps.runId,
@@ -291,8 +334,11 @@ async function runCaseScope(
   signal?.addEventListener("abort", abort, { once: true });
   try {
     signal?.throwIfAborted();
-    // The evaluator gets its own parse of the accepted bytes, so mutating its input cannot reach
-    // the engine's input or the record.
+    // Each stage parses afresh: the artifact the correctness model consumes and the artifact bound
+    // to the host are parsed separately from the same accepted canonical bytes, and the model's
+    // task view is parsed fresh from the committed bytes. So a correctness model that mutates its
+    // evaluate input can alter neither the engine's input nor the record, and a toolset mutating
+    // the solve view or post-accept draft state cannot reach any evaluate-side fact.
     verdict = await deps.evaluate(
       trustedStructuredClone({
         publicTask: evaluateTask,
@@ -328,8 +374,9 @@ function lifetimeUsable(lifetime: VerifierLifetime | undefined): boolean {
   return true;
 }
 
-/** Why a rehearsal produced no verdict. Deadline and cancellation are read from the signals,
- *  because an abort surfaces as whatever the aborted stage threw. */
+/** Why a rehearsal produced no verdict. A deadline or a cancellation is read from the signals
+ *  rather than from the error, because an abort surfaces as whatever the aborted stage happened to
+ *  throw, which names the stage and not the cause. */
 function rehearsalFailure(error: unknown, signal: AbortSignal, callerSignal: AbortSignal | undefined) {
   if (error instanceof VerifierOperationalStop) return { status: "non-result", kind: "cleanup-pending" };
   if (signal.aborted) {
@@ -341,8 +388,11 @@ function rehearsalFailure(error: unknown, signal: AbortSignal, callerSignal: Abo
   return { status: "execution-failed" };
 }
 
-/** Grades a rehearsal's accepted bytes with the battery's check program. Only the execution status
- *  and the aggregate `truthOk` bit leave; check ids and verifier diagnostics stay private. */
+/** Invokes the existing check program and host over the rehearsal's accepted bytes. The execution
+ *  status and the one aggregate `truthOk` bit leave this boundary; the raw evaluator result, its
+ *  failing check ids and every verifier diagnostic stay private. That single bit is the author's own
+ *  check program run over the author's own bytes, and it is the only instrument in the authoring
+ *  loop that can show a Builder its battery is easier than the target it stated. */
 export async function rehearseCase(
   workspace: string,
   brief: Brief,
@@ -379,7 +429,8 @@ export async function rehearseCase(
     if (scoped.cleanupPending) return { status: "non-result", kind: "cleanup-pending" };
     if (scoped.failure !== null) throw scoped.failure;
     signal.throwIfAborted();
-    // The battery's own decision, so a grounded check that ran no tool is no pass here either.
+    // The battery's own decision over the same evidence, so a grounded check that returned true
+    // without ever running its tool is no pass here either; only the aggregate bit leaves.
     const subject = { phase: "battery" as const, subjectId: task.taskId, attempt: 1 };
     const outcome = acceptedOutcome(
       scoped,
@@ -399,9 +450,10 @@ export async function rehearseCase(
 }
 
 /**
- * The ordered reasons an accepted artifact scores nothing, else its truth bit. A cleanup failure
- * outranks the verdict it may have corrupted, a throw outranks a missing host run, and a host
- * outage outranks a grounded check that ran no tool, because the outage explains the missing run.
+ * The ordered reasons an accepted artifact scores nothing, and the truth bit when none of them
+ * holds. The order is the contract, not an implementation detail: a cleanup failure outranks the
+ * verdict it may have corrupted, a throw outranks a missing host run, and a host outage outranks a
+ * grounded check that ran no tool, because the outage is what explains the missing run.
  */
 function acceptedOutcome(
   scoped: Awaited<ReturnType<typeof runCaseScope>>,
@@ -423,8 +475,9 @@ function acceptedOutcome(
       hostFailure.outcome,
     );
   }
-  // A blocking fail on a check with complete evidence decides the case; a skipped tool run could
-  // only have withheld a pass.
+  // A blocking fail on a check whose evidence is complete decides the case, because a tool run
+  // that was skipped could only ever have withheld a pass, never created one. A case that failed
+  // to compile is filed here rather than as a non-result.
   const failed = [...blockingFailedCheckIds(scoped.verdict)];
   if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
     // The unattributed verifier kind belongs to generated behaviour, not the environment.
@@ -436,15 +489,20 @@ function acceptedOutcome(
   return { kind: "truth", truthOk: !blockingTruthFailure(scoped.verdict) };
 }
 
-/** Grades one closed verifier scope. A tool run still pending when evaluate returned prevents a
- *  claim, since a late result cannot prove the check used it. */
+/**
+ * Grades one closed verifier scope. A tool call still pending when evaluate returned prevents a
+ * claim. Exempting those calls when some checks had completed was tried and removed, because a
+ * result collected after the fact cannot establish that the check actually used it, so an unawaited
+ * call stays a defect rather than becoming a pass.
+ */
 async function gradeAcceptedArtifact(
   deps: GradeCaseDeps,
   solved: SolvedCase,
   artifactJson: string,
 ): Promise<GradedOutcome> {
   const { taskId } = solved.task;
-  // An evaluator throw leaves only this case ungraded.
+  // An evaluator throw over one partial artifact leaves this one case ungraded and lets the
+  // remaining cases run, rather than aborting the whole battery as an uncaught throw here would.
   const scoped = await runCaseScope(deps, solved, artifactJson);
   const subject = { phase: "battery" as const, subjectId: taskId, attempt: 1 };
   // Coverage is required only after accepted bytes reached a real correctness-model verdict.
@@ -472,7 +530,9 @@ async function gradeAcceptedArtifact(
   };
 }
 
-/** An explicit solve-side non-result wins; otherwise the unaccepted solve's trace is inspected. */
+/** An explicit solve-side non-result wins; otherwise the unaccepted solve's trace is inspected.
+ *  Exported for the standalone bundle entry, whose caller classifies the case without ever reaching
+ *  the grading path. */
 export function solverBlockerOf({ solved, acceptedSubmit }: SolvedCase): string | null {
   return (
     solved.nonResult?.message ??
@@ -489,7 +549,9 @@ export function solverBlockerOf({ solved, acceptedSubmit }: SolvedCase): string 
   );
 }
 
-/** The scored fields of a `CaseRecord`, one arm per outcome. */
+/** The five scored fields of a `CaseRecord`, written as one arm per outcome rather than filled in
+ *  place by whichever branch reached them. The arms are the record kinds `battery-record.ts`
+ *  documents as a closed set, so a new outcome cannot silently borrow another kind's shape. */
 function scoredFields(outcome: CaseOutcome, acceptedSubmit: boolean): ScoredFields {
   const clear = { truthOk: null, runtimeNonResult: null, runtimeNonResultKind: null } as const;
   switch (outcome.kind) {
@@ -536,8 +598,10 @@ function caseRecord(solvedCase: SolvedCase, outcome: CaseOutcome): CaseRecord {
   };
 }
 
-/** Which outcome this case reached, checked in order: a defective final submission, a solver
- *  blocker, no accepted artifact, then verification of the accepted bytes. */
+/** Which of the four outcomes this case reached, along with the evidence the record does not
+ *  carry. Final-submission defects, solver blockers, unaccepted attempts and verified artifacts are
+ *  ordered branches: an invalid authority prevents a claim and stays attributed to the controller,
+ *  while an ordinary refusal reaches neither, because no accepted bytes exist to verify. */
 async function gradeOutcome(deps: GradeCaseDeps, solvedCase: SolvedCase): Promise<GradedOutcome> {
   const { solved, final, finalDefect } = solvedCase;
   if (finalDefect !== null) {
@@ -565,7 +629,8 @@ export async function gradeCase(deps: GradeCaseDeps, solvedCase: SolvedCase): Pr
   return {
     record: caseRecord(solvedCase, graded.outcome),
     verdict: graded.verdict,
-    // Parsed from the captured bytes, so no evaluator mutation or later draft edit reaches it.
+    // Evidence and Judge input are both parsed from the captured bytes after evaluation, so
+    // neither an evaluator mutation nor a later draft edit can change what this case submitted.
     submittedArtifact:
       acceptedSubmit && final?.kind === "artifact" && isString(final.artifactJson)
         ? trustedJsonParse(final.artifactJson)

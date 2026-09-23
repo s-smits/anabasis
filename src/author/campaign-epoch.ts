@@ -1,8 +1,15 @@
 /**
  * Selects the campaign epoch. Each combination of request digest, Builder condition and authoring
- * pass identifies one epoch: reusing it resumes that epoch, and a changed one creates a successor
- * that points to its predecessor and keeps its files. The root's epochs.json records the entries
- * in append order and the current pointer.
+ * pass identifies one epoch, so reusing that combination resumes the same epoch after an
+ * interruption, and changing it creates a successor that points back to the previous epoch while
+ * preserving its files. That is what lets a corrected request restart a campaign without
+ * hand-editing state or deleting a directory. The controller records successors and selects the
+ * current epoch in the root's epochs.json, appending new entries and moving the current pointer.
+ *
+ * A reopened authoring pass changes the identity too, through `pass`, so a rebuild opens its own
+ * epoch and the directory that recorded the first build survives with its history intact. Without
+ * that distinction the pointer follows the binding rather than the work, and a run that opened four
+ * later epochs still finishes with `current` naming its initial build.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -27,8 +34,11 @@ export interface CampaignBindingInput {
   kickoff: string;
   /** Every condition that shapes Builder output. Null is reserved for injected test sessions. */
   builder?: CampaignBuilderCondition | null;
-  /** The evidence identity of a reopening authoring pass, so it opens its own epoch. Absent for
-   *  the initial build and pre-adoption continuations, leaving the key unchanged. */
+  /** The evidence identity of a reopening authoring pass, when this selection is one, so that pass
+   *  opens its own epoch. Absent for the initial build and for pre-adoption continuations, which
+   *  belong in the epoch they are continuing. An evaluation correction carries its own pass and so
+   *  cannot resume an older generation's workspace. Absent leaves the binding byte-identical to
+   *  what the kickoff and Builder condition alone produce. */
   pass?: string;
 }
 
@@ -44,7 +54,9 @@ type EpochRecordEntry = {
   key: string;
   supersedes: string | null;
   createdAt: string;
-  /** Lookup compares these fields, not a recomputed key. */
+  /** Lookup compares these fields rather than recomputing the key from them (`entryFor`), so an
+   *  epoch stays findable by the binding it was written under instead of by a hash recipe a later
+   *  version of this file might spell differently. */
   binding: {
     kickoffHash: string;
     builder: CampaignBuilderCondition | null;
@@ -60,7 +72,8 @@ interface EpochRecord {
 }
 
 /** The supersession record, or null before the first epoch. A damaged record refuses rather than
- *  reading as absent. */
+ *  reading as absent, because a guessed-at lineage would let two epochs both believe they are
+ *  current and the repair is to fix the record, not to delete epochs. */
 function readEpochRecord(campaignRoot: string): EpochRecord | null {
   return readCompleted<EpochRecord>(
     join(campaignRoot, "epochs.json"),
@@ -102,8 +115,10 @@ function evidenceOf(campaignRoot: string, entry: EpochRecordEntry): CampaignEpoc
   return { key: entry.key, dir: join(campaignRoot, entry.key), supersedes: entry.supersedes };
 }
 
-/** The epoch a reopening pass would supersede: its own when it has already opened, otherwise
- *  the latest pass on the same prompt and Builder condition. */
+/** The epoch a reopening pass would supersede: its own when it has already opened, otherwise the
+ *  latest pass on the same prompt and Builder condition -- hence `findLast` over the append order
+ *  rather than the first match. Falling back to the pass-less initial build instead skips the pass
+ *  that just refused or repaired the product, in every campaign that ran more than two. */
 export function latestCampaignEpochForBinding(
   campaignRoot: string,
   input: CampaignBindingInput,
@@ -116,7 +131,9 @@ export function latestCampaignEpochForBinding(
   );
 }
 
-/** The epoch for this exact binding, read without moving the current pointer. */
+/** The epoch for this exact binding, read without moving the controller's current pointer.
+ *  Evidence selection reads it this way because following `current` would cross a corrected ask,
+ *  and selecting by kickoff alone could land on a different Builder condition or authoring pass. */
 export function campaignEpochForBinding(
   campaignRoot: string,
   input: CampaignBindingInput,
@@ -126,8 +143,15 @@ export function campaignEpochForBinding(
 }
 
 /**
- * Selects, or records, the epoch for a binding and points `current` at it. An existing binding
- * reuses its epoch; a new one, including every reopening pass, supersedes the current epoch.
+ * Selects, or records, the epoch for a binding and points `current` at it. Re-running an older
+ * binding re-points `current` at its existing epoch instead of creating a duplicate, and the
+ * iterations completed under it stay valid memory because the binding they were built under is
+ * byte-identical. `current` therefore names the epoch the last authoring pass wrote, which is what
+ * every later reader of this record means by "current".
+ *
+ * A reopening pass carries `pass`, so it never lands in an epoch an earlier pass recorded: it
+ * creates its own, supersedes whatever was current, and inherits that predecessor's memory the same
+ * way a corrected ask does.
  */
 export function selectCampaignEpoch(
   campaignRoot: string,

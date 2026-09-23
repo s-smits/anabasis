@@ -72,7 +72,28 @@ function isGlobalCopyOwner(sourceCode: SourceCode, wrapped: ESTree.Node, name: s
 }
 
 /**
- * Reject non-spread copies of reducer accumulators; pair with oxc/no-accumulating-spread.
+ * A `reduce` callback that copies its own accumulator on every step: `Object.assign({}, acc, …)`,
+ * `Array.from(acc)`, or `acc.concat(…)`, `.slice()`, `.toSorted()` and the rest of the copying
+ * array methods.
+ *
+ * The accumulator grows as the reduce runs, so copying it once per element is quadratic in the
+ * input — a thousand rows is half a million copied entries, and the code reads as though it costs
+ * one pass. `oxc/no-accumulating-spread` already catches `{...acc}` and `[...acc]`, which is the
+ * spelling most people reach for; this rule is the same defect written the other five ways, and
+ * the two are meant to be enabled together.
+ *
+ * What it refuses to guess at is what counts as the accumulator. `referencesAccumulator` resolves
+ * the copied expression through the scope, follows a `const` alias to its initialiser, and
+ * accepts only a chain that actually arrives at the callback's first parameter; a binding written
+ * to after its declaration stops the walk, because what it holds later is no longer decidable
+ * here. `enclosingReducer` gives up at a `FunctionDeclaration`, so a copy inside a named helper
+ * is that helper's business and not attributed to the reduce that happens to enclose it, and it
+ * requires the callback to be the reduce's own first argument rather than any function passed
+ * nearby. `Object.assign` is reported only where the target is a fresh literal and the
+ * accumulator is one of the later sources, which is the copying form; assigning into the
+ * accumulator is the repair, not the defect. The array methods are reported only where the
+ * reduce's initial value is a known array, so a `.concat` on something else in the body is
+ * untouched. `Object` and `Array` themselves have to be the globals.
  *
  * There is no fix: a mutating accumulator and an iterator pipeline are both correct answers, and
  * which one fits depends on what the reducer is building.

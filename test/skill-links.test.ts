@@ -1,5 +1,13 @@
-// Every skill under .claude/skills is named by its directory, and every relative Markdown link,
-// skill path in AGENTS.md, notes/current-state.md and test/, resolves to a file that exists.
+// A skill is found by its directory name, so the directory, the SKILL.md inside it and that file's
+// frontmatter `name` all have to agree. A directory with no SKILL.md, or one whose frontmatter has
+// drifted from its directory, is named here rather than discovered by whoever next tried to load
+// it.
+//
+// The other two cases are about references going stale rather than wrong. Every relative Markdown
+// link under .claude/skills has to resolve, and every `.claude/skills/<name>/` path spelled in
+// AGENTS.md, in notes/current-state.md when that file is present, and in any `.ts` or `.js` file
+// directly under test/, has to name a directory that exists. A renamed skill leaves both kinds of
+// reference reading perfectly well and pointing at nothing.
 import { existsSync, readdirSync, readFileSync, statSync } from "../src/meta/filesystem.ts";
 import { dirname, join, normalize, relative } from "../src/meta/path.ts";
 

@@ -299,10 +299,10 @@ describe("durable verifier ownership", () => {
     expect(f.lifetime.pendingReceipts()).toEqual([lease.id]);
     expect(() => f.lifetime.assertUsable()).not.toThrow();
     expect(await f.lifetime.close()).toEqual([lease.id]);
-    // One sentence covered all seven stops, and it was the sentence for the first: the 2026-09-18
-    // investigation read "restore the host" against 1714 receipts that had every one settled,
-    // because the throw was this one — a begin after close. `solvability.ts` carries the message
-    // into an environment-owned finding, so the wrong sentence routes as evidence.
+    // Each stop carries its own sentence. Where one sentence covers them all, it is the sentence
+    // written for the first, and a reader chasing "restore the host" checks the receipts and finds
+    // every one settled — because the throw was this one, a begin after close. `solvability.ts`
+    // carries the message into an environment-owned finding, so the wrong sentence routes as evidence.
     expect(() => f.lifetime.begin({ role: "tool" })).toThrow(/lifetime is closed/);
   });
 });

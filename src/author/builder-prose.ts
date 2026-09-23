@@ -2,8 +2,11 @@
  * The Builder's own words, recorded beside its execution record.
  *
  * Two kinds of row: the assistant text a turn returned (`message`) and a reasoning summary the
- * transport surfaced while the turn ran (`reasoning`). Nothing here is model-visible or decides a
- * pass, claim or promotion; the rows let an investigation read how a session was reasoning.
+ * transport surfaced while the turn ran (`reasoning`). Nothing here is model-visible and nothing
+ * here decides a pass, a claim or a promotion. The rows exist so an investigation can read how a
+ * session was reasoning at each submit instead of inferring it from tool counts. Without these
+ * rows the only copy of that prose is the provider's own rollout, under a private Codex home, with
+ * nothing in the campaign pointing at it.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync } from "../meta/filesystem.ts";

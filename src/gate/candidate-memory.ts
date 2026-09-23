@@ -5,8 +5,18 @@
  * Two rules end repeated work. The in-session no-op counter strikes a byte-identical resubmit of
  * a refused condition (POLICY.loop.noopSubmitStrikes); the persisted identical-diagnosis ceiling
  * counts refused authoring passes across rounds (POLICY.loop.stalledFindingsRepeats). Each repeat
- * below its ceiling is steered with its count. A changed tree with the same diagnosis is ordinary
- * repair, not a stall. The tool no-verdict count has its own owner (tool-non-result.ts) because it
+ * below its ceiling is steered with its count, rather than ending the session, because ending on
+ * the first repeat kills sessions whose transcript already records a concrete next move. There is
+ * no changed-tree cycle strike and no no-submit strike (operator decision), since a changed tree
+ * carrying the same diagnosis is ordinary repair rather than a stall.
+ *
+ * The counts exist because unbounded repetition is expensive rather than merely untidy: an
+ * unbounded session will pay for census and F2 a dozen times in one provider turn on bytes it has
+ * already checked, or make a hundred submissions. Bounding it wrongly is expensive too. Charging a
+ * commit for a worker crash it did not cause strikes the same tree twice, and a tool that keeps
+ * failing produces a no-verdict record on every tree it touches, so no candidate identity ever
+ * repeats while the session burns its submits. That last shape is why the tool no-verdict count
+ * keeps its own owner (tool-non-result.ts): it counts a failing tool across trees, and its count
  * outlives a session.
  */
 import type { AuthorRepairFinding } from "../author/campaign-types.ts";
@@ -56,9 +66,10 @@ export function findingsRepeatRun(
   return priorBlockedFindingsHashes.length - differs;
 }
 
-/** The steering between the second identical diagnosis and the ceiling, so the author learns the
- *  diagnosis has not moved. Projected where it is rendered. */
-
+/** The steering between the second identical diagnosis and the ceiling. Without it a session can
+ *  record one findings hash round after round on as many different trees, with nothing telling the
+ *  author the diagnosis has not moved, so each round reads as a fresh refusal. Projected where it
+ *  is rendered. */
 export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {
   const ceiling = POLICY.loop.stalledFindingsRepeats;
   return {

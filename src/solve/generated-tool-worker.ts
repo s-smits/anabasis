@@ -74,12 +74,17 @@ export interface GeneratedToolStarterOptions {
   slugDir: string;
   task: PublicTask<unknown>;
   submission: SubmissionPort;
-  /** The controller's whole reading of the bundle, passed as one value so the confined worker
-   *  receives every field the in-process starter does. */
+  /** The controller's whole reading of the bundle: trusted tools, presets, declared domain tool
+   *  authorities, operating guide and published limits. It arrives as one value because callers that
+   *  copy out the fields they need drop the next field added to that reading, which then reaches the
+   *  in-process starter while the confined worker goes on solving without it. One value cannot be
+   *  half-copied. */
   contract: BuiltControllerInterface;
   publicArtifactSchema: PublicArtifactSchema;
   workerSupport?: OsIsolationSupport;
-  /** The session isolation; without it the shell stays registered but refuses every command. */
+  /** The session isolation this case runs under. The shell derives its command profile from it, so
+   *  without one it stays registered and refuses every command: the roster conformance certified is
+   *  the roster the solver sees, and a refusal is honest where a missing tool is not. */
   sessionIsolation?: SolveIsolationPolicy;
   /** Conformance-only direct reads from task.publicInput. Production solve leaves this false. */
   traceTaskAccess?: boolean;
@@ -106,9 +111,14 @@ export function generatedToolWorkerMatches(
 }
 
 /**
- * Checks this starter against the build-time identity before the model runs, so a mismatch costs
- * no model turn. A missing receipt (a pre-adoption battery) refuses nothing, and a starter that
- * failed to prepare keeps its own typed non-result.
+ * Checks this starter against the build-time identity before the model runs. The same check after
+ * the solve costs a whole paid battery to a stale receipt: every case is accepted, solved and then
+ * discarded. The worker condition is known as soon as the starter exists, so the refusal happens
+ * here and costs no model turn.
+ *
+ * A null or absent receipt is a pre-adoption battery and refuses nothing. A starter that already
+ * failed to prepare keeps its own typed non-result, because a sandbox or runtime failure is not a
+ * binding mismatch and reporting it as one would send the repair to the wrong owner.
  */
 export function workerBindingRefusal(
   conformance: ConformanceEvidence | null | undefined,
@@ -131,9 +141,16 @@ export function workerBindingRefusal(
 }
 
 /**
- * The harness's own tools, which alone enter the binding digest; controller, preset and starter
- * tools belong to the controller's source revision. Filtering by the parent's declared names, not
- * child-reported owners, stops generated code relabelling a tool out of the binding.
+ * The tools the harness itself supplies, which alone enter the binding digest, selected by the
+ * recorded domain-tool declaration the parent already holds. Controller, preset and starter tools
+ * are the controller's identity and are recorded with the run's source revision instead. Including
+ * them in the harness fingerprint makes controller wording decide compatibility: shortening a
+ * controller label, or a dependency update that changes a preset-path schema, leaves every harness
+ * approved before it unmeasurable.
+ *
+ * Filtering by the parent's own declared names rather than by child-reported owner rows matters for
+ * a second reason: generated code cannot relabel a tool's owner to pull its schema out of the
+ * binding, because the child is never asked who owns what.
  */
 function declaredDomainTools(
   declared: readonly DomainToolAuthority[],
@@ -200,7 +217,9 @@ function toolInterface(
       ...descriptor,
       parameters:
         /* SAFETY: `AgentTool<never>` types `parameters` as `never`, so a registered JSON Schema cannot be written under that annotation; the schema itself is unchanged. */ descriptor.parameters as never,
-      // The child has no submission port, so the attempt bound is restated here.
+      // The child holds no submission port, so its own submit descriptor carries the unbounded text.
+      // This process holds the port, so it restates the attempt bound from its one owner in
+      // built-starter rather than letting the solver read a promise the child cannot keep.
       description: isSubmit ? submitToolDescription(submission) : descriptor.description,
       execute: isSubmit
         ? async () => {
@@ -213,7 +232,8 @@ function toolInterface(
   return { registration, tools };
 }
 
-/** Opens the child with its one start frame. */
+/** The single start frame a child is opened with: protocol and instance identity, the public task,
+ *  the preset selection and the two paths used to probe denied access during startup. */
 function startWorkerClient(
   options: GeneratedToolStarterOptions,
   bundle: WorkerBundle,
@@ -240,9 +260,14 @@ function startWorkerClient(
 }
 
 /**
- * Writes the task and its public resources into the session home, so a driver can read them from
- * files. Both are already in the model's context, so nothing new crosses the wall. Returns the
- * number of resource files written.
+ * The task and its public resources, written into the session home as files.
+ *
+ * Both are already in the model's context — the task in its first turn, the resources through their
+ * own reader — so this carries nothing new across the wall. What it removes is the step between
+ * having them and computing over them: the shell's own text already advises "a driver you keep in
+ * your home directory and re-run, reading its inputs from a file you edit between commands", and
+ * before this the solver had to retype those inputs into a heredoc to create that file. Returns how
+ * many resource files were written, which is all the shell description needs to name them.
  */
 export function seedSessionHome(
   home: string,
@@ -256,7 +281,9 @@ export function seedSessionHome(
   const used = new Set<string>();
   let written = 0;
   for (const resource of resources) {
-    // One flat name per resource; a collision gets a numeric suffix rather than overwriting.
+    // One flat readable name per resource. A name that sanitises onto one already used keeps both
+    // files under a numeric suffix rather than overwriting the earlier one silently, because a
+    // resource the solver cannot find reads to it as a resource that was never published.
     const base = resource.name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "resource";
     let name = base;
     for (let n = 2; used.has(name); n++) name = `${base}-${n}`;
@@ -282,7 +309,9 @@ async function closeFailedStarter(
   error: unknown,
 ): Promise<BuiltStarter> {
   discardSessionHome(home);
-  // The ready promise may have no caller yet; observe its rejection before close settles it.
+  // A setup failure can close the client before its public ready promise has a caller, which would
+  // surface as an unhandled rejection with no owner. Observe that rejection here, before close
+  // settles it, while leaving the promise itself intact for an ordinary ready caller.
   void client.ready.catch(() => {});
   await client.close();
   if (error instanceof GeneratedToolWorkerNonResult) return nonResultStarter(error);
@@ -293,8 +322,9 @@ async function closeFailedStarter(
 export async function createGeneratedToolStarter(
   options: GeneratedToolStarterOptions,
 ): Promise<BuiltStarter> {
-  // A files preset the schema cannot carry, or a defective agent/config.yaml, ends the case
-  // before a worker starts.
+  // A files preset the schema cannot carry, or a defective agent/config.yaml, ends the case before a
+  // worker starts: both are the candidate's own defects, and a child spawned around one would report
+  // them as a protocol failure from inside the wall instead.
   const issue =
     (options.contract.presets.includes("files")
       ? fileArtifactRootIssue(options.publicArtifactSchema)
@@ -317,15 +347,21 @@ export async function createGeneratedToolStarter(
   }
   let home: string | null = null;
   try {
-    // Opened after the worker exists and inside this cleanup scope, so a failure closes the worker.
-    // The home lasts the session, so a toolchain one command installs survives to the next.
+    // Opened after the worker exists, so a worker that never started leaves nothing behind, and
+    // inside this cleanup scope because a filesystem failure here must close that existing worker.
+    // The home belongs to the session rather than to one command: a toolchain one command installs
+    // is what the next command compiles with, and the work tree beside it is deleted when a command
+    // ends, so an install has nowhere else to survive.
     if (options.contract.presets.some((preset) => preset === "files" || preset === "shell")) {
       mkdirSync(BUILT_COMMAND_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
       home = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
     }
     const ready = await client.ready;
-    // The shell needs the ready client. The preset decides the tool contract; the isolation decides
-    // whether a command may run, so a missing isolation refuses commands without shrinking the roster.
+    // The shell is assembled here rather than passed in, because it needs the worker client, which
+    // exists only once the child is ready. With the files preset it exchanges that preset's file
+    // map; with `shell` it has no draft files to exchange. The preset decides the contract and the
+    // isolation decides whether a command may run, so a missing isolation refuses the command rather
+    // than quietly registering a smaller tool contract than the one conformance certified.
     const shell =
       home === null
         ? []

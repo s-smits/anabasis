@@ -117,8 +117,8 @@ export interface OutcomeMetrics {
     byName: Record<string, ToolStat>;
     /** How many traced solves called each name at least once, against how many solves recorded any
      *  tool call at all. A call count alone cannot separate one solve that leaned on a tool from
-     *  twenty that never reached it: one battery called `screen_truss_geometry` 3 times beside
-     *  179 shell calls, and the aggregate says only "3". */
+     *  twenty that never reached it: a domain tool called three times across a battery of shell
+     *  calls reports as "3" either way. */
     solvesUsing: Record<string, number>;
     tracedSolves: number;
   };
@@ -131,8 +131,8 @@ export interface OutcomeReport {
   caseRecord: "absent" | "present";
   batteries: Record<string, OutcomeMetrics>;
   /** The promotion decisions this run's rounds committed to the controller ledger. Without them a
-   *  `candidate-held` terminal reads as a loss when the hold may be an integrity clause (run w12
-   *  legibility finding). The JSON exports under promotions/ are copies and are not read. */
+   *  `candidate-held` terminal reads as a loss when the hold may be an integrity clause. The JSON
+   *  exports under promotions/ are copies and are not read. */
   promotions: PromotionOutcomeRow[];
   bundle: BundleRecord | null;
 }
@@ -235,10 +235,11 @@ function declaredToolNames(bundleDir: string | null): string[] | null {
     ...spec.tools.map((tool) => (isString(tool.name) ? tool.name : "<unnamed>")),
     ...presetToolNames(presets),
     ...BUILT_STANDARD_TOOL_NAMES,
-    // The controller registers this reserved reader only when the brief carries public resources;
-    // it is never in tools-spec.json. The same predicate the runtime keys registration on decides
-    // this row (the agent dir sits beside correctness-model/ in the recorded slug), so a domain without public
-    // resources counts a hallucinated call to the reader as undeclared instead of declared.
+    // The controller registers this reserved reader only when the brief carries public resources,
+    // so it is never in tools-spec.json and the declared roster would miss it. This row asks the
+    // same question the runtime keys registration on -- does the bundle's sibling
+    // correctness-model/ publish any public resources -- which is why a domain that publishes none
+    // counts a hallucinated call to the reader as undeclared rather than as a declared tool.
     ...(readPublicResources(dirname(bundleDir)).length > 0 ? [PUBLIC_RESOURCES_TOOL] : []),
   ];
 }
@@ -492,9 +493,9 @@ export function outcomeReport(
     battery.push(row);
     byBattery.set(row.runId, battery);
   }
-  // Batteries print in the order their claims were created; a run id orders nothing (truss-13's
-  // `-i02-repair-on` sorted before `-repair-off`, which ran first). A battery with no claim has no
-  // chronology and stays visible first.
+  // Batteries print in the order their claims were created. A run id orders nothing: a variant
+  // suffixed `-repair-on` sorts before `-repair-off` whichever of the two actually ran first. A
+  // battery with no claim has no chronology and stays visible first.
   const measured = [...byBattery.entries()].map(
     ([runId, batteryRows]) =>
       [runId, batteryMetrics(batteryRows, runId, campaignDir, roots, declaredTools)] as const,

@@ -36,7 +36,9 @@ const COV = Bun.env.COV ?? path.join(OUT, "..", "harvest", "cov");
 // The mirror owns a real dependency directory. A node_modules symlink resolves
 // @ana through the source tree and makes vendor mutations test the wrong bytes.
 const mirrorInput = Bun.env.MIRROR ?? path.join(OUT, "mirror");
-// ---- reach map, so peers can be picked per source file ----
+// What every test file executed, as source path to the set of covered lines. Both halves of the
+// adjudication read it: faults are planted on the candidate's own covered lines, and a peer is
+// ranked by how many of those same lines it intersects across the candidate's subject files.
 const reach = new Map();
 // These textual substitutions aim to keep syntax valid. They are not parser-aware and can
 // still break syntax or alter strings. Inspect each mutant; a parse/setup failure is not

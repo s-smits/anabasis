@@ -1,16 +1,29 @@
 /**
- * An optional VM boundary for the Builder's workshop cell, which runs third-party package
- * lifecycle code. Seatbelt and Bubblewrap share the host kernel; this runner instead executes the
- * allowed request over ssh in a libvirt/QEMU guest whose only interface is on a host-only network,
- * under guest Bubblewrap with networking disabled.
+ * An optional machine boundary for the Builder's correctness-model workshop cell.
  *
- * The cell root is a per-campaign child of the guest's virtiofs share, presented under
- * `/srv/share`. The guard and path-record rows are unchanged; only the spawn differs, and a
- * guest-side denial is a command outcome.
+ * The workshop is the one cell that runs third-party package lifecycle code: it installs the
+ * domain's real open-source tools and smoke-tests them. Under Seatbelt or Bubblewrap that code
+ * still shares the host kernel, so one kernel defect ends the isolation. This runner substitutes a
+ * libvirt/QEMU guest for that one cell: the allowed request executes over ssh inside a provisioned
+ * VM whose only network interface sits on a host-only libvirt network, and inside that guest it
+ * runs under Bubblewrap with networking disabled. Both halves are checked rather than assumed —
+ * `assertIsolatedInterfaces` refuses a domain carrying any interface but `ana-isolated`, and
+ * refuses `ana-isolated` itself if it has grown a forward route. The design follows an earlier VM
+ * provisioner by the same operator, which `tools/vm/provision-workshop-cell.sh` records: cloud
+ * image on a qcow2 backing file, per-VM ssh key, virtiofs share. That script also
+ * takes a clean snapshot; reverting to it stays an operator step, because nothing here calls
+ * `snapshot-revert`.
  *
- * Opt-in: `ANA_WORKSHOP_VM=<name>` names a provisioned guest and is read once at campaign mount.
- * Any deviation from the provisioned guest, key, network or transport throws
- * `CandidateIsolationUnavailable`; nothing runs degraded.
+ * The cell root is a per-campaign child of the guest's virtiofs share, so the workshop's host-side
+ * reads and writes keep working unchanged while bwrap presents only those bytes under
+ * `/srv/share`. The model-facing guard and its typed path-record rows stay exactly as under the OS
+ * mechanisms; what changes is only the spawn, and a guest-side denial remains a command outcome.
+ *
+ * Opt-in and provisional: `ANA_WORKSHOP_VM=<name>` names a provisioned guest and is read once,
+ * where the campaign's Builder runtime is built; unset means the default OS isolation, and no CLI
+ * flag offers it yet. Whenever the guest, its key, its isolated network or its transport is not
+ * exactly as provisioned, the runner throws `CandidateIsolationUnavailable`, which the workshop
+ * records as a `mechanism-unavailable` non-result. Nothing runs degraded.
  */
 import { copyFileSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "../meta/filesystem.ts";
 import { basename, isAbsolute, join, relative, sep } from "../meta/path.ts";
@@ -40,7 +53,9 @@ const GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 const OPEN_ATTEMPTS = 24;
 const OPEN_RETRY_MS = 5_000;
 const VIRSH_TIMEOUT_MS = 30_000;
-/* Host keys are not pinned: reprovisioning creates a new one, and the network is host-only. */
+/* The guest host key survives a snapshot revert, since the disk reverts with it, but reprovisioning
+ * builds a fresh disk from the base image and so a fresh key. Pinning known_hosts would turn every
+ * reprovision into a manual cleanup, and buy little on a network only this host can reach. */
 const SSH_OPTIONS = [
   "-o",
   "BatchMode=yes",
@@ -72,7 +87,10 @@ const guestIsolationArgs = () => [
   ...bwrapIsolationArgs({ network: false }),
   ...bwrapWholeRootArgs("--ro-bind"),
 ];
-/** Keep resumable campaign bytes apart across repositories and worktrees sharing one guest. */
+/** One provisioned guest serves whatever campaigns the operator points at it, and two checkouts of
+ *  this repository can run the same domain slug at once. The scope therefore hashes the real
+ *  repository root together with the campaign directory's own name, so each campaign writes into
+ *  its own child of the share and resumes from bytes no sibling could have touched. */
 export function scopeVmWorkshopCell(
   cell: VmWorkshopCell,
   repoRoot: string,
@@ -273,6 +291,11 @@ function guestScript(
   );
   const environment = Object.fromEntries([["PATH", GUEST_PATH], ...pairs]);
   const argv = [request.command, ...request.args].map(mapArg);
+  // The campaign's own share lives under the guest's mount, so the bind that hides its siblings
+  // would also remove its source: bwrap applies these operations in order, and a tmpfs over
+  // `/srv/share` takes the original path away before anything can be bound from it. Parking the
+  // campaign child at `/mnt/ana-share-source` first keeps a live handle on those bytes across
+  // that tmpfs, and the second bind then presents them, and only them, as the whole share.
   const shareMount =
     sourceRoot === GUEST_SHARE
       ? []
@@ -344,7 +367,9 @@ export function createVmWorkshopRunner(
     }
     const decisions = decideGuardedPaths(policy, record, request);
     opened ??= openCell(cell, transport).catch((error: Error) => {
-      opened = null; // Not cached, so a later call can find a repaired guest.
+      // A failed open is not cached: the guest may be starting, or an operator may repair it, and
+      // the next action should look again rather than inherit this answer for the session.
+      opened = null;
       throw error;
     });
     const open = await opened;
@@ -371,7 +396,9 @@ export function createVmWorkshopRunner(
     } finally {
       staged.cleanup();
     }
-    // 255 is ssh's own transport failure, distinct from any guest command exit.
+    // 255 is ssh's own transport failure, distinct from any guest command exit, so it says nothing
+    // about the request and must not be reported as one. The open is dropped and the action
+    // becomes a non-result the next call can retry against a repaired guest.
     if (outcome.status === 255) {
       opened = null;
       throw unavailable(cell, `ssh transport failed (${outcome.stderr.trim().slice(-300)})`);
@@ -387,7 +414,10 @@ export function createVmWorkshopRunner(
       mode: request.mode,
     };
     const profileDigest = hashJsonBytes(identity);
-    // As with Linux Bubblewrap, a guest-side denial is a command outcome, never "os-refused".
+    // The VM is the boundary, so a guest-side denial is a command outcome and the row says
+    // "os-allowed". This is Linux Bubblewrap's posture: the disagreement check that derives
+    // "os-refused" in candidate-isolation-runtime.ts is Darwin-only, because Linux shows a denied
+    // path as an absent one and leaves nothing here to tell refusal from a missing file.
     recordAllowedPaths(policy, record, request, decisions, {
       profileDigest,
       enforcement: "os-allowed",

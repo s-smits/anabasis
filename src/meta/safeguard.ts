@@ -1,13 +1,25 @@
 /**
- * Runtime observations of conditions no existing evidence field records. A safeguard never changes
- * the decision it observes: it prints one line to stderr and, best-effort, appends it to
- * SAFEGUARDS_LOG.txt under the run's safeguards directory.
+ * Runtime observations of conditions that a whole-run review found and that no existing evidence
+ * field recorded. A safeguard leaves the decision it observes exactly as it was: it prints one line
+ * to stderr and appends the same line to SAFEGUARDS_LOG.txt under the run's safeguards directory,
+ * so the condition has both a visible and a saved record tied to the resolved run even when the
+ * battery evidence and the terminal reason have no field that describes it.
  *
- * It writes to stderr because stdout carries protocol data for truth checks and child workers.
+ * Both halves of that are best-effort by contract. A safeguard that cannot write its log line must
+ * not throw into the path it is watching, because the stderr print has already surfaced the
+ * observation and a sensor that crashes a run has changed the thing it was meant to measure.
  *
- * `bun run outcome -- --safeguards <campaignDir...>` joins receipts against the inventory; missing
- * evidence is inconclusive, never zero. The safeguards skill owns the lifecycle. Where an evidence
- * writer can record the condition, a field on that writer replaces the sensor.
+ * The print goes to stderr rather than stdout because stdout carries protocol data: an installed
+ * tool's stdout is the answer a truth check reads, and the generated-tool and Built Harness
+ * children speak their protocols over it. Any module may call this helper, so a `console.log` here
+ * would eventually corrupt the output a truth check or a protocol reader consumes.
+ *
+ * `bun run outcome -- --safeguards <campaignDir...>` joins the receipts against the inventory
+ * below, and missing evidence reads as inconclusive rather than as zero firings; the safeguards
+ * skill owns the rest of the lifecycle. The rule for retirement is the one that keeps this file
+ * small: where an evidence writer can record the condition, a field on that writer replaces the
+ * sensor, because a recorded field is read with one query while a log line has to be counted by
+ * hand across symlinked campaign copies.
  */
 import { appendFileSync, mkdirSync, opendirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
@@ -15,8 +27,22 @@ import { join } from "./path.ts";
 
 export const SAFEGUARDS_LOG_FILE = "SAFEGUARDS_LOG.txt";
 
-/** Every live safeguard name with the date its emission entered source. The name is the log-line
- *  join key; a test pins this list equal to the names emitted from src/. */
+/**
+ * Every live safeguard name with the date its emission entered source. The name is what joins a
+ * log line back to its one emit site, and test/safeguard.test.ts pins this list equal to the names
+ * literally emitted from `src/`, so a sensor cannot be added or removed without moving its row
+ * here and the lifecycle report cannot drift away from what actually fires.
+ *
+ * The gaps in the numbering are retirements rather than accidents, and they are what the rule in
+ * the header looks like in practice: a sensor goes when something that is read with one query
+ * records the same thing. Safeguards 24 and 25 fired in their first live runs and became the
+ * claim's recorded `blockingByCheck` and `executedByCheck` counts. Safeguards 42 to 47 went once epoch
+ * review and Builder execution evidence recorded continuations, severity adjustments, citation
+ * refusals and failed reviews as fields of their own. The other reason a sensor goes is that it
+ * turned out to be watching correct behaviour: 35 reported the diagnosis roster being cut to
+ * MAX_DIAGNOSED_ISSUES, which is the declared six-issue cap doing its job, while 31 still watches
+ * the case it was meant to catch, an issue omitted from the roster the packet was actually given.
+ */
 export const SAFEGUARD_INVENTORY: ReadonlyArray<{ readonly name: string; readonly introduced: string }> = [
   { name: "21-tempdir-spawn-hazard", introduced: "2026-08-31" },
   { name: "31-diagnosis-packet-budget", introduced: "2026-09-05" },
@@ -34,7 +60,10 @@ export const SAFEGUARD_INVENTORY: ReadonlyArray<{ readonly name: string; readonl
   { name: "56-rebuild-workspace-resumed-dirty", introduced: "2026-09-15" },
 ];
 
-/** The log location of one resolved controller run, passed explicitly rather than read from cwd. */
+/** The log location of one resolved controller run. It is passed explicitly rather than derived
+ *  from the process working directory, because fullrun runs work for several owners in one process
+ *  and signal-close callbacks fire long after the cwd stopped identifying anyone; an explicit owner
+ *  keeps every line attributable to the run that produced it. */
 export interface SafeguardContext {
   readonly logDir: string;
 }
@@ -63,7 +92,9 @@ export function createSafeguardContext(logDir: string): SafeguardContext {
   return { logDir };
 }
 
-/** A caller with no resolved run context gets the stderr line and writes no file. */
+/** A caller with no resolved run context gets the stderr line and writes no file. Taking an
+ *  arbitrary directory instead would put durable receipts where no campaign reader ever looks,
+ *  which is how an observation ends up recorded and still invisible. */
 export function safeguardTriggered(name: string, detail: string, context?: SafeguardContext): void {
   const flat = detail.replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX_CHARS);
   const line = `${new Date().toISOString()} | ${name} | ${flat}`;
@@ -81,16 +112,25 @@ export function safeguardTriggered(name: string, detail: string, context?: Safeg
   }
 }
 
-/** The product's own mkdtemp prefixes, shared by this sensor and the launch-time cleaner. */
+/** The product's own mkdtemp prefixes, exported so this sensor and the launch-time cleaner in
+ *  temp-scratch-clean.ts read the same list: a sensor counting one prefix while the cleaner
+ *  removed another would report pressure nothing was clearing. */
 export const TEMP_SCRATCH_PREFIXES = ["ana-"] as const;
 
 /**
- * Safeguard 21: leaked mkdtemp scratch in a large OS temp root stalls every fresh child spawn in
- * directory enumeration, which the run records only as a handshake or provider timeout.
+ * Safeguard 21: the per-user OS temp root has held 171,290 entries, about 150,000 of them leaked
+ * mkdtemp scratch directories from earlier gates and campaigns whose cleanup lives in exit handlers
+ * that a SIGKILL never reaches. Every fresh child process then stalls inside a single directory
+ * enumeration, so the codex app-server and the Pi Built worker die on their ready handshakes while
+ * established processes carry on untouched and tens of gigabytes of disk stay free. The run records
+ * those deaths as provider or protocol timeouts, with nothing in the evidence naming the directory
+ * that caused them.
  *
- * One bounded, throw-free walk: it streams the directory and stops at TEMP_SCAN_CAP entries, so the
- * sensor never becomes the enumeration it watches. A capped walk is itself the hazard, since the
- * stall cost is per entry. An unreadable or absent root reports what it counted.
+ * The walk is bounded twice, because the sensor must never become the enumeration it watches: it
+ * streams the directory rather than materialising its names, and it stops at TEMP_SCAN_CAP
+ * entries. Stopping at the cap is itself a report of the hazard rather than a failure to measure
+ * it, since the stall cost is per entry and not per match. An unreadable or absent root reports
+ * what it counted, which for an absent root is nothing at all.
  */
 export function scanTempRootScratch(root: string): TempRootScratchScan {
   let scanned = 0;

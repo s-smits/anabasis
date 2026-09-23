@@ -1,4 +1,9 @@
-/** Finite numeric comparison. Tolerances come from the public contract and use its units. */
+/** Whether two numbers agree within a tolerance taken from the public contract, in that contract's
+ *  own units. Anything non-finite on either side, and a negative tolerance, returns false rather
+ *  than throwing, so a NaN that reached an artifact fails its own check instead of taking the
+ *  verifier down with it. With both tolerances left at their zero default this is exact equality.
+ *  The relative branch divides both sides by the larger magnitude before comparing, so one
+ *  `relative` figure means the same proportion at 1e3 as at 1e-3. */
 export function numbersWithin(
   actual: number,
   expected: number,
@@ -15,8 +20,12 @@ export function numbersWithin(
   );
 }
 
-/** A one-to-one match, including duplicates. Compatible rows may overlap: greedily taking the
- * first row loses valid matchings when a tolerance makes equality non-transitive. */
+/** Whether every expected row can be paired with a distinct actual row, which is a perfect
+ * matching rather than a scan, and so admits duplicate rows on both sides. Taking the first
+ * compatible row greedily would be wrong here because a tolerance makes `matches` non-transitive:
+ * two expected rows can both be compatible with one actual row while a different assignment pairs
+ * every row up, so the search augments through the rows it has already assigned instead of
+ * committing to its first choice. */
 export function multisetMatches<T>(
   actual: readonly T[],
   expected: readonly T[],

@@ -9,8 +9,9 @@
  * Each command gets three writable trees (`solve-command-isolation.ts` owns the rules): a work tree
  * holding the draft, the session home where installs survive between commands (never read back),
  * and a TMPDIR made for this command alone. Reads are open except the repository, protected home
- * roots, other commands' trees and run data; outbound network is open; `/tmp` stays writable
- * because build scripts name it.
+ * roots, other commands' trees and run data; outbound network is open (operator decision), so a
+ * solver can fetch a toolchain it was not given; and `/tmp` stays writable because build scripts
+ * spell it outright.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import {
@@ -53,7 +54,10 @@ const LISTED_PROGRAMS = 20;
 
 /** The worker side of the draft exchange, with the answer root the draft fills. */
 export interface BuiltFilePort {
-  /** A command sees the draft in a folder of this name, so a shell path is the answer's own path. */
+  /** A command sees the draft in a folder of this name, so a path the shell uses is the answer's
+   *  own path. Without it a solver compiles `firmware/firmware.ino` at the top of the shell and
+   *  passes while the checker finds the same file at `firmware/firmware/firmware.ino` — solver and
+   *  verifier reading two different roots for one answer. */
   readonly root: string;
   files(): Promise<Record<string, string>>;
   applyFiles(files: Record<string, string>): Promise<void>;
@@ -65,7 +69,8 @@ interface BuiltBashOptions {
   /** The `files` preset's draft exchange; null under `shell`, which has no draft files. */
   port: BuiltFilePort | null;
   home: string;
-  /** How many public resource files the session home was seeded with. */
+  /** How many public resource files the session home was seeded with, so the description can name
+   *  what is already on disk rather than leaving the solver to discover it. */
   publicResourceFiles?: number;
   /** The adopted bundle's `.toolchain`, first on PATH; null when it has none. */
   toolTree?: string | null;
@@ -107,7 +112,11 @@ function draftFolder(root: string): string {
   );
 }
 
-/** Pi's bash schema, with the harness's own default and maximum timeout stated in place of Pi's. */
+/** Pi's bash has no default timeout and its own schema says so, but this shell does: the walls come
+ *  from the harness's `agent/config.yaml` as `solver.shell_timeout_seconds` and
+ *  `solver.shell_timeout_max_seconds`. The schema the solver reads therefore states those two
+ *  numbers in place of Pi's sentence, because the sentence it would otherwise read is true of Pi
+ *  and false here. */
 function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" | "shellMaxSeconds">) {
   return Type.Object({
     command: Type.String({ description: "Bash command to execute" }),
@@ -119,9 +128,24 @@ function shellParameters(timeouts: Pick<HarnessSettings, "shellDefaultSeconds" |
   });
 }
 /**
- * What the harness would have allowed, appended to a command its own timeout cut, so the solver
- * learns the time it could ask for. Pi's cause `code` "timeout" identifies this wall ("aborted" is
- * the session wall). Empty when this wall did not cut the command.
+ * What the harness would have allowed, appended to a command its own wall cut.
+ *
+ * "Command timed out after 120 seconds" names the number the solver chose and never the number it
+ * had, so a solver that passes a short `timeout` keeps being cut while the harness grants several
+ * times that by default and more again on request. The cheapest move available to it — asking for
+ * time it already owns — is the one it cannot see. The schema states both numbers at registration,
+ * and that demonstrably is not where they decide anything.
+ *
+ * Whether this wall cut the command is the same question as what to say about it, so the two have
+ * one owner here. Pi's own `code` answers it: Pi attaches `{ cause: result.error }` on a cut, throws
+ * a bare Error on a non-zero exit, and separates "timeout" from "aborted", which is the session wall
+ * rather than this one. Reading that code holds without an argument about when the runner kills
+ * what, which an elapsed-time test would have needed. Empty means this wall did not cut the command.
+ *
+ * Then three states, because there are three: time left to ask for, an ask above the maximum, and
+ * the maximum already in hand. The config file is named in none of them, since the solver cannot
+ * change it mid-battery — raising those numbers is the Builder's lever, and `solverBudgetNotice`
+ * states it there.
  */
 function shellBudgetClause(
   failure: Error | null,
@@ -140,8 +164,10 @@ function shellBudgetClause(
   }
   return `\n\nThat is the whole ${shellMaxSeconds} s this harness allows one command, so ${cheaper}.`;
 }
-/** Whether the command could run this entry by name: an executable file, not a sourced script such
- *  as a venv's `activate` or a broken link. */
+/** Whether the command could run this entry by name. A venv's `bin` is about a third files that
+ *  cannot: `activate` and its .bat, .csh, .fish, .nu, .ps1 and _this.py siblings, `deactivate.bat`
+ *  and `pydoc.bat` are all mode 644 and meant to be sourced rather than executed. A broken link
+ *  runs nothing either. Naming one of those to the solver is naming a program it cannot call. */
 function canRun(path: string): boolean {
   try {
     const entry = statSync(path);
@@ -152,12 +178,23 @@ function canRun(path: string): boolean {
 }
 
 /**
- * The runnable programs the harness installed, named because the tool tree is outside the command's
- * folder and home. Entries are listed in PATH order and cut alphabetically; the rest stays reachable
- * through PATH. No ranking by name, since choosing which programs matter is the Builder's.
+ * The programs the harness installed, given by the names that run them. A location would not help,
+ * because the tool tree is in neither the command's folder nor its home: a solver left to look runs
+ * `ls .toolchain` or `ls ~/.toolchain`, finds nothing, and re-implements in the host's python3 what
+ * the first PATH entry held all along. The list covers every program directory the tool tree has,
+ * as the PATH does.
+ *
+ * The bound cuts alphabetically, so whatever fills the first slots decides what the solver hears
+ * about. A uv-made venv puts nine unrunnable entries in front of the tree's own programs, and
+ * against a bound of twenty that leaves the domain's own checkers unnamed behind `pydoc.bat`. Both
+ * repairs here are facts rather than judgements about which name matters: an entry no mode lets the
+ * command run is not a program it can run by name, and a cut tail is still reachable through the
+ * PATH the command already carries. Ranking the survivors by what they look like would be the loop
+ * choosing domain content, which is the Builder's to choose.
  */
 function installedPrograms(toolTree: string | null): string {
-  // The command's PATH directories, in order; the first of a name is the one that runs.
+  // The same directories the command's PATH holds, in its order, so the first entry of a name here
+  // is the one a bare name would actually run.
   const dirs = toolTree === null ? [] : toolTreeSearchDirs(toolTree);
   const names = [
     ...new Set(
@@ -189,9 +226,11 @@ function readText(path: string): string | null {
 
 /**
  * What the command left in the work tree, the agent's own paths first. Past the answer's bounds an
- * entry is left out rather than the whole batch refused. An own path the draft cannot carry keeps
- * its previous text; an own path absent from disk is a deletion. Sizes are JSON-escaped, as the
- * apply frame carries them.
+ * entry is left behind rather than the batch refused, because refusing the batch discards a source
+ * edit together with whatever oversized thing arrived beside it. An own path the draft cannot carry
+ * keeps its previous text, since dropping it would read as a deletion the command never asked for,
+ * while an own path absent from disk is a deletion the command did mean. Sizes are measured
+ * JSON-escaped, because that is how the apply frame carries them.
  */
 function readTree(root: string, before: Record<string, string>): ReadTree {
   const own: [string, string][] = [];
@@ -267,7 +306,8 @@ export function createBuiltBashTool({
   timeouts = DEFAULT_HARNESS_SETTINGS,
 }: BuiltBashOptions): AgentTool {
   const base = createBashTool();
-  // What the session home already holds; only the shell can read it.
+  // What the session home already holds, stated once because the shell is the only tool that can
+  // read it and the folder sits inside the home WALLS has already introduced.
   const publicFolder = ` Your home directory already holds this task as public/task.json${publicResourceFiles === 0 ? "" : ` and this domain's public rules under public/resources/ (${publicResourceFiles} file${publicResourceFiles === 1 ? "" : "s"})`}.`;
   return {
     ...base,
@@ -284,7 +324,8 @@ export function createBuiltBashTool({
       if (policy === null) {
         throw new Error("the shell cannot run a command: this session has no isolation to run it under");
       }
-      // The Builder's destructive-command guard applies here too; the description states its rules.
+      // The Builder's own guard is asked here too (operator decision), so one set of rules answers
+      // both sides; the description states them, so a refusal surprises nobody.
       const refusal = refuseDestructiveCommand(command, guardEnv, safeguardContext, BUILT_SHELL_RULES);
       if (refusal !== null) throw new Error(refusal);
       // One 0700 parent for every command's trees, so the wall can close them all and reopen this one;
@@ -319,10 +360,14 @@ export function createBuiltBashTool({
           },
         });
         const asked = Math.max(1, Math.floor(timeout ?? timeouts.shellDefaultSeconds));
-        // A passed timeout may only raise the default, never lower it.
+        // A passed timeout may only raise the default, never lower it. A solver that passes a short
+        // timeout beside a much longer inner one cuts its own search budget short and then fails
+        // for want of it; the clause above says so and gets the same short value again, so the
+        // floor is enforced here rather than left to advice.
         const seconds = Math.min(Math.max(asked, timeouts.shellDefaultSeconds), timeouts.shellMaxSeconds);
         const execution = { env: new NodeExecutionEnv({ cwd: work, shellPath: "/bin/sh", shellEnv: env }) };
-        // A non-zero exit throws; the files it wrote are still collected before it is re-raised.
+        // A non-zero exit throws, so it is caught into a value rather than left to unwind: the
+        // files the command wrote before failing are still its work, collected before the re-raise.
         const outcome = await executePiTool(
           shell,
           callId,
@@ -344,7 +389,8 @@ export function createBuiltBashTool({
               .join("")
               .trim()) + budget;
         if (port === null) {
-          // Rewrapped only to carry the budget clause; every other failure keeps its own error.
+          // The shell preset once rethrew the runner's error untouched, which is how the budget
+          // clause missed the preset most solves are given. Rewrapped only when there is a clause.
           if (outcome.failure !== null) {
             throw budget === "" ? outcome.failure : new Error(reported, { cause: outcome.failure.cause });
           }

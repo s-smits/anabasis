@@ -1,8 +1,14 @@
 /**
  * The tool inventory: which installed executables a candidate snapshot's checks may run. It is
- * derived, never declared. Each adapterId resolves against the candidate workspace's `.toolchain`
- * tree first and the host search path second, and its executable is hashed with its source. A
- * missing id is a `verifier-required` fact the Builder can act on by installing the tool.
+ * derived, never declared. A brief names its tools by adapterId; this resolves each id against the
+ * candidate workspace's `.toolchain` tree first and the host search path second, hashes the
+ * executable and records where it came from. A missing id is therefore a `verifier-required` fact
+ * the Builder can act on by installing the tool, and never a refusal of the check's logic.
+ *
+ * It replaced a declared registry, `correctness-model/engines.json`, and its admission chain.
+ * Left to declare its own engines, a Builder names an interpreter over a script it wrote itself,
+ * and a firmware one ships its own `Arduino.h`; the registry then attests the interpreter rather
+ * than the check, which lets the author supply the world its own artifact is judged in.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { openSync, readSync, closeSync, statSync } from "../meta/filesystem.ts";
@@ -55,7 +61,8 @@ function shebangCommand(path: string): string | null {
     .split(/\s+/)
     .filter((word) => word !== "");
   // `env` forwards to the first word that is neither one of its flags (`-S`, `-i`, `--`) nor a
-  // `NAME=value` assignment.
+  // `NAME=value` assignment. Without that skip, `#!/usr/bin/env -S PYTHONUNBUFFERED=1 python3`
+  // reads the assignment as the interpreter.
   return basename(words[0] ?? "") === "env"
     ? (words.find(
         (word, index) => index > 0 && !word.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word),
@@ -72,9 +79,12 @@ export function toolProvenance(path: string): Pick<ToolEntry, "kind" | "interpre
   return { kind: "script", interpreter: command === "" ? null : basename(command) };
 }
 
-/** The digest of the interpreter a script tool runs under, found the way the verifier cell finds it:
- *  an absolute shebang names its file, and `env` searches the cell's own path. A script's own digest
- *  does not move when its interpreter changes. Undefined when the interpreter cannot be found. */
+/** The bytes of the interpreter a script tool will run under, found the way the verifier cell finds
+ *  it: an absolute shebang names its file, and `env` searches the cell's own path. A script's own
+ *  digest does not move when its interpreter changes underneath it: a census can grade one half of
+ *  its rows under `python3` 3.9 and the other under 3.14 without the tool digest moving at all, and
+ *  the tool digest alone calls both of those one environment. Undefined when the interpreter cannot
+ *  be found, which the run itself then reports. */
 export function interpreterDigest(path: string, toolTree: string | null): string | undefined {
   const command = shebangCommand(path);
   if (command === null || command === "") return undefined;
@@ -123,9 +133,9 @@ export function resolveToolInventory(input: ResolveToolInventoryInput): Resolved
   const envDirs = (Bun.env.PATH ?? "").split(":").filter((dir) => dir !== "" && isAbsolute(dir));
   const searchDirs = [
     ...treeDirs.map((dir) => ({ dir, source: "workspace-toolchain" as const })),
-    // `toolchainPathDirs()` stays inside the `??`: a caller's own directories name a tree this
-    // process must not read.
-
+    // `toolchainPathDirs()` stays inside the `??` rather than being merged in: a caller that
+    // supplies its own directories is measuring a tree this process must not read, so adding the
+    // host's own would put this host's tools into that measurement.
     ...(input.pathDirs ?? [...new Set([...toolchainPathDirs(), ...envDirs])]).map((dir) => ({
       dir,
       source: "host" as const,

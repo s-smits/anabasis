@@ -1,4 +1,16 @@
-/** Host boundaries reopen adopted-product authoring; the Builder selects its scope. */
+/**
+ * The host decides that authoring reopens; the Builder decides what to change. These cases hold
+ * that line at three boundaries. The off-aim allowance stops a campaign once it is spent, in the
+ * sentence the frame owns, and one round below the allowance it leaves the round to the Builder,
+ * counting a claim-refused round inside the run but never a refusal on its own. Blocking feedback
+ * reopens the route, and only blocking environment feedback stops instead. The saturation move
+ * opens model-owned authoring while the allowance runs, and ends the campaign once the whole
+ * allowance has read one side.
+ *
+ * The on-disk cases are here because a reopen has to survive the tree moving underneath it: the
+ * pass is kept across a checkout relocation, retained product versions stay distinguishable, and
+ * the author is handed the original request with no curriculum pinned to it.
+ */
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -237,12 +249,12 @@ describe("the blocking battery re-authoring on disk", () => {
   });
 
   it("reopens from the a65dc8 i02 packet with advisory and blocking task findings", () => {
-    // Run truss-opus-20260906T182424610Z-a65dc8 (source 4efcfe5a3) admitted this packet after its
-    // 25/25 level-1 battery: an advisory `tests` row from the case record, a blocking `tests` row
-    // from the epoch review naming one check and one public input path, and an unowned advisory
-    // diagnosis row. The source at that revision reset the workspace and spent 2 h 7 min
-    // rebuilding a harness that had just passed. The same rows now reopen the adopted product
-    // and leave the experiment scope to the Builder, without prescribing a difficulty level.
+    // The packet this fixture builds is the one admitted after a battery that passed every case: an
+    // advisory `tests` row from the case record, a blocking `tests` row from the epoch review
+    // naming one check and one public input path, and an unowned advisory diagnosis row. Read as an
+    // instruction to start over, those rows reset the workspace and rebuild a harness that had just
+    // passed. They now reopen the adopted product and leave the experiment scope to the Builder,
+    // without prescribing a difficulty level.
     const root = scratchRepo();
     sealSaturatedBattery(root, "base-1", "2026-09-06T18:00:00Z");
     const analysis = join(root, "campaigns", SLUG, "analysis");
@@ -321,8 +333,8 @@ describe("the saturation move", () => {
 
   it("ends the campaign once the whole allowance read the same side", () => {
     // The move this replaced reopened authoring after any number of saturated batteries. Opening
-    // it a fourth time reads the same side again, and the operator has stopped two campaigns by
-    // hand at exactly this point rather than paying for that round.
+    // it a fourth time reads the same side again, which is where an operator stops the campaign by
+    // hand rather than pay for that round.
     const root = scratchRepo();
     sealSaturatedBattery(root, "saturated-1", "2026-08-10T08:00:00Z", 0);
     sealSaturatedBattery(root, "saturated-2", "2026-08-10T09:00:00Z", 1);

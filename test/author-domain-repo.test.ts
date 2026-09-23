@@ -1,7 +1,23 @@
 /**
- * The domain workspace repository starts with `git init` over the starter files.
- * Iterations become commits; exported bundle bytes are checked against the session fingerprint.
- * Git keeps Builder history. The fingerprint identifies the bytes used in measurement.
+ * The Builder's workspace is a git repository created over the Pi starter pack, and every
+ * authoring pass ends as a commit in it, so git is the Builder's memory of what it has already
+ * tried. Two things have to hold for that memory to be worth anything. A commit must carry the
+ * candidate contract and nothing else, because a `.gitignore` or a root helper the pass happened
+ * to leave beside a real bundle change would otherwise enter the candidate diff; and a repair
+ * workspace seeded from an adopted bundle must own its own copy of everything it can write,
+ * because a repair writing back through a link would be editing the adopted tree the loop treats
+ * as immutable.
+ *
+ * The seeding half is where the awkward files are. `initWorkspace` copies the adopted `.toolchain`
+ * and rewrites the links inside it, so a tool installed into the repair copy lands in the repair
+ * copy while the adopted bytes stay as they were; a link pointing outside the tree, such as the
+ * runtime itself, keeps its absolute target, because it names a host installation rather than
+ * something the repair owns. Two shapes defeat a naive copy. uv writes a console launcher whose
+ * interpreter path sits inside a single-quoted `sh` header, and rewriting that is not the same
+ * operation as rewriting a link; and a compiled binary can carry debug strings naming the tree it
+ * was built in. Either one throwing reaches the controller as an abort with no owner, losing the
+ * whole round, so both are now the copy's business: several cases here assert a safeguard line and
+ * a seeded workspace instead of a refusal.
  */
 
 import {
@@ -57,7 +73,7 @@ function safeguardLog() {
   return { context, lines };
 }
 
-/** An adopted seed whose venv launcher uses uv's single-quoted header, as run 8729bb's f2py did. */
+/** An adopted seed whose venv launcher uses uv's single-quoted header, as numpy's f2py does. */
 function seedWithUvVenv(seed: string, home: string): string {
   seedBundles(seed);
   const bin = join(seed, ".toolchain/venv/bin");
@@ -160,7 +176,7 @@ describe("the domain workspace repository", () => {
     writeFileSync(join(seed, ".toolchain/venv/pyvenv.cfg"), "home = /host\n");
     writeFileSync(join(bin, "python3"), "#!/bin/sh\n");
     const python = join(realpathSync(bin), "python3");
-    // The header uv 0.9 writes for a console script: run 8729bb aborted its rebuild on numpy's f2py.
+    // The header uv writes for a console script, which is what numpy's f2py carries.
     writeFileSync(
       join(bin, "f2py"),
       `#!/bin/sh\n'''exec' '${python}' "$0" "$@"\n' '''\nfrom numpy.f2py.f2py2e import main\n`,
@@ -247,11 +263,11 @@ describe("the domain workspace repository", () => {
   });
 
   /**
-   * This used to throw, and the throw reached the controller as an abort with no owner. It cost
-   * the firmware run 4c67fc its round 2 on 2026-09-20, over `acli/tmp/b1/
-   * Blink.ino.elf` — a sketch the Builder had compiled inside the tool's scratch directory, whose
-   * debug strings name the tree it was built in. The file is now dropped: the repair tree still
-   * resolves nothing into the adopted one, and what is missing is a tool the Builder reinstalls.
+   * A sketch the Builder compiled inside a tool's scratch directory carries debug strings naming
+   * the tree it was built in, and rewriting those is not rewriting a link. Throwing here reaches
+   * the controller as an abort with no owner and loses the round. The file is dropped instead: the
+   * repair tree still resolves nothing into the adopted one, and what is missing is a tool the
+   * Builder reinstalls.
    */
   it("drops an executable that embeds the adopted tool path, and copies the rest of the tree", () => {
     const seed = tmp();
@@ -276,8 +292,8 @@ describe("the domain workspace repository", () => {
     // The rewritten header quotes the interpreter in a `sh` string, so a destination carrying a
     // quote, a backtick, `$`, a backslash or a newline cannot be written into one. That path comes
     // from the project slug and the campaign root, so it is the same for every launcher in the
-    // tree: the throw this replaces aborted the whole rebuild and told its reader to recreate the
-    // environment in a workspace it had just prevented from existing.
+    // tree: throwing would abort the whole rebuild and tell its reader to recreate the environment
+    // in a workspace it had just prevented from existing.
     const seed = tmp();
     seedWithUvVenv(seed, "/host/python");
     const dir = join(tmp(), "camp$aign");
@@ -359,8 +375,8 @@ describe("the domain workspace repository", () => {
       readFileSync(join(dir, "starter-pack/add-ons.json"), "utf8"),
     );
     // The menu is a projection of the code catalogue, not a second copy of it: a preset tool
-    // added to `built-presets.ts` and not to this file would be invisible to the Builder, which
-    // STARTER.md tells to select nothing absent from here. Run 56 lost its shell exactly so.
+    // added to `built-presets.ts` and not to this file is invisible to the Builder, which
+    // STARTER.md tells to select nothing absent from here, and the solver loses that tool.
     expect(addOns).toEqual(Object.fromEntries(BUILT_PRESET_IDS.map((id) => [id, presetToolNames([id])])));
     const tracked = gitOut(dir, ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n");
     expect(tracked).toEqual(
@@ -465,7 +481,7 @@ describe("the domain workspace repository", () => {
 
   it("pins @ana resolution at the workspace root, replacing a shadow, for the tree and its bundle snapshots", () => {
     const dir = tmp();
-    // A run-52-style shadow left behind where the controller's scope link belongs.
+    // A workspace file left behind where the controller's scope link belongs, shadowing it.
     const shadow = join(dir, "node_modules", "@ana", "agent-bundle");
     mkdirSync(shadow, { recursive: true });
     writeFileSync(
@@ -478,8 +494,8 @@ describe("the domain workspace repository", () => {
     expect(readFileSync(resolved, "utf8")).toBe(
       readFileSync(Bun.resolveSync("@ana/agent-bundle", import.meta.dir), "utf8"),
     );
-    // A bundle snapshot beneath the workspace resolves through the same root — run w29's broken
-    // walk-up past a campaigns/ symlink never gets the chance to matter.
+    // A bundle snapshot beneath the workspace resolves through the same root, so a walk-up past a
+    // campaigns/ symlink never gets the chance to matter.
     expect(Bun.resolveSync("@ana/agent-bundle", join(dir, ".bundle-snapshots", "cap1", "agent"))).toBe(
       resolved,
     );
@@ -553,9 +569,9 @@ describe("the domain workspace repository", () => {
   });
 
   it("keeps every path outside the candidate contract untracked at every commit", () => {
-    // This reproduces run 53: the pass writes a `.gitignore` and two root helpers beside a
-    // valid bundle change. None of them can enter the candidate diff, because the exclude
-    // rules make them workspace scratch, and the files stay on disk for the next pass.
+    // The pass writes a `.gitignore` and two root helpers beside a valid bundle change. None of
+    // them can enter the candidate diff, because the exclude rules make them workspace scratch,
+    // and the files stay on disk for the next pass.
     const dir = tmp();
     initWorkspace(dir);
     seedBundles(dir);

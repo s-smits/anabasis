@@ -9,7 +9,9 @@ const PRESET_TOOL_NAMES = {
   "public-data": [DATA_READER_TOOL],
   files: ["read", "write", "edit", "materialize_files", "bash"],
   // The same shell without the draft-file answer: a structured answer keeps its artifact-writer,
-  // and the solver still computes, searches and tests in a real directory.
+  // and the solver still computes, searches and tests in a real directory. `files` needs a
+  // file-shaped root, so a domain whose answer is structured declines it and leaves its solver
+  // with no shell at all; this preset is what such a domain takes instead (operator decision).
   shell: ["bash"],
 } satisfies Record<BuiltPresetId, readonly string[]>;
 

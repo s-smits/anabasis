@@ -1,6 +1,9 @@
 /**
- * Fault attribution between the Builder and Built Harness. The producer with evidence of a failure
- * assigns the owner; readers consume that assignment rather than infer it from error text.
+ * Fault attribution between the Builder and Built Harness. These values name the component a
+ * failure belongs to; they carry no repair verdict with them. The producer that holds the evidence
+ * of the failure assigns the owner, and every reader consumes that recorded assignment instead of
+ * inferring ownership from error text, which is the one thing that reads the same whoever caused
+ * it.
  */
 export const OWNER_LAYERS = [
   /** Provider/transport/sandbox — never a product fact. */

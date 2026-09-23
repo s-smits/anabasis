@@ -1,13 +1,20 @@
 /**
  * What an epoch review records, and what earlier reviews prove.
  *
- * A review records the measured condition it read, the source it was shown and its findings; later
- * decisions read those bytes alone. Earlier reviews answer two questions only the host can: has
- * this condition already been reviewed, and how many distinct conditions named a defect before.
+ * A review is evidence before it is advice. It names the measured condition it read, the source it
+ * was shown and the findings it recorded, and every later decision reads those bytes rather than
+ * the reviewer's prose, so anything a finding cannot carry in a recorded field is lost.
  *
- * `record_finding` is the reviewer's only writing tool. Each of its refusals is a rule: a finding
- * names public identities the measured brief declares, cites passages `read_source` returned, and
- * carries a demonstration before it may block.
+ * `record_finding` is the reviewer's only writing tool, so the second half of this file is the
+ * whole contract between a reading session and the campaign record. Each refusal there is a rule:
+ * a claim must name public identities the measured brief declares, cite passages `read_source`
+ * actually returned, and carry a demonstration before it may block.
+ *
+ * Reuse asks whether this exact condition and procedure were already read to completion;
+ * recurrence asks how many distinct conditions named one defect before, which a reviewer seeing
+ * one condition cannot observe and `admitSeverity` decides on. Both key on `namedSubject` from the
+ * iteration analysis, the one rule the advice packet also uses, so no reader here may form a
+ * defect identity by some other rule.
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -69,11 +76,13 @@ export type EpochReviewEvidence = {
   obligationsDigest: string;
   /** Repo-relative paths the reviewer opened, in order; a paged file appears once per call. */
   reads: string[];
-  /** Contested-case artifacts the reviewer opened. Private: only counts and families derived from
-   *  them reach authoring. */
+  /** Repository-relative artifacts of the contested cases whose pages the reviewer opened. Private
+   *  settlement evidence: only counts and families cross to authoring, because handing back the
+   *  bytes the verifier decided on is evaluator coaching. Empty when it opened none or never ran. */
   contestedReads: string[];
-  /** Files and characters the host returned against the inventory; they do not prove the model
-   *  read them. */
+  /** What the host returned against the inventory, in files and characters. This counts the host
+   *  side alone, so a complete coverage row establishes that the source was offered, not that the
+   *  review saw it. */
   coverage: {
     files: number;
     opened: number;
@@ -82,15 +91,16 @@ export type EpochReviewEvidence = {
     truncated?: boolean;
     missing?: string[];
   };
-  /** Absent on a review that stopped before reading its source. Private; never reaches authoring. */
+  /** Absent on a review that stopped before reading its source. Host-bound tool provenance is
+   *  private, like everything else the verifier produced, so it never reaches authoring. */
   verifier?: ReviewVerifierEvidence;
   findings: AnalysisFinding[];
   /** Issue ids the review argued belong to the evaluation, with the argument. */
   disputes: Array<{ issueId: string; reason: string }>;
   /** Absent on a review that opened no session. */
   admission?: ReviewAdmission;
-  /** The probes the review executed, absent when none ran. Private: a row names the checks a
-   *  changed field moved, which is verifier detail. */
+  /** What the review executed, absent when it executed nothing. Private: which check reacts to
+   *  which changed field is verifier detail an author must not read. */
   probes?: ReviewProbeRow[];
   report: string | null;
 };
@@ -120,17 +130,23 @@ type BriefIdentities = { schemaRoots: readonly string[]; checkIds: readonly stri
 
 type FindingArgs = ReturnType<typeof findingArgs>;
 
-/** Minimum demonstration length for a blocking finding. It proves only that a concrete case was
- *  written down, not that the argument holds. */
+/** Minimum demonstration length for a blocking finding. The review instructions ask for a
+ *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
+ *  was supplied: a finding that says in so many words it could not construct a concrete case still
+ *  decides the next move. The floor proves only that text was supplied, never that the argument in
+ *  it holds; the citations rule and the one-reopen cap carry the rest. */
 const DEMONSTRATION_MIN_CHARS = 40;
 
 const CITATIONS_UNBOUND =
   "citations must quote 1–4 passages actually returned by read_source; read the source and retry";
 const SEVERITY_REQUIRED = "severity must explicitly be advisory or blocking";
 
-/** One `record_finding` call as the rules read it. The raw `args` stay beside the parsed values
- *  because some rules ask whether a field was supplied at all. `citations` is null both when none
- *  was supplied and when one quoted no returned page. */
+/** Everything one `record_finding` call offers, as the rules below read it. The raw `args` stay
+ *  beside the parsed values because two rules ask whether a field was supplied at all, which a
+ *  parsed value can no longer answer once an absent field and an empty one have both become null.
+ *  `citations` is null both when none was supplied and when none quoted a page `read_source`
+ *  returned; the rule inspecting `args.citations` tells them apart, so citing nothing and citing a
+ *  hallucinated page get different refusals. */
 interface FindingCase {
   parsed: FindingArgs;
   args: Record<string, JsonValue>;
@@ -168,7 +184,9 @@ export function measuredConditionOf({
   };
 }
 
-/** The completed reviews recorded for this campaign; an unreadable review is left out. */
+/** The completed reviews recorded for this campaign. An unreadable review proves nothing either
+ *  way, so it is left out here and each caller decides without it: that means a corrupt file never
+ *  suppresses a fresh review and never contributes a recurrence count. */
 function completedReviews(analysisDir: string): EpochReviewEvidence[] {
   if (!existsSync(analysisDir)) return [];
   return readdirSync(analysisDir)
@@ -188,8 +206,11 @@ function completedReviews(analysisDir: string): EpochReviewEvidence[] {
     });
 }
 
-/** Whether a complete review already covered this condition, reviewer and obligations. A new
- *  contested artifact or standing issue under the same condition is new work. */
+/** Whether a complete review already covered this condition, this reviewer and these obligations.
+ *  All three must match: a new contested artifact or a newly standing issue under an unchanged
+ *  product is new work, and skipping it would leave the one component that reads the measured tree
+ *  against the original request silent about what changed. An unreadable earlier review proves no
+ *  coverage, so it does not count and the review runs again. */
 export function conditionAlreadyReviewed(
   analysisDir: string,
   condition: MeasuredCondition,
@@ -215,9 +236,18 @@ export function conditionAlreadyReviewed(
   );
 }
 
-/** How many distinct earlier conditions, each fully reviewed, named each defect identity. Any
- *  positive finding kind counts as a naming; `diagnosis-uncertain` does not, because it says the
- *  reviewer could not attribute what it saw. Reviews of the current condition add no count. */
+/** How many distinct earlier conditions, each fully reviewed, named each defect identity. A
+ *  reviewer sees one condition and cannot observe that history; the host can, and `admitSeverity`
+ *  is the consumer that needs it, which is why the count lives here rather than in the prompt.
+ *  Rereviews of the current condition, duplicate findings within one review and replay files all
+ *  add no vote, because the question is how many separate measured conditions named the defect.
+ *
+ *  Any kind that makes a positive claim counts as a naming, not only `harness-defect`: a check
+ *  reported as a harness defect in one review and as hardness in the next is still that check being
+ *  named a second time. `diagnosis-uncertain` is the one kind excluded, because it is the reviewer
+ *  saying it could not attribute what it saw, and counting it would let an unattributed observation
+ *  force the next finding on that check to blocking. An observation the reviewer could not
+ *  attribute is not a first naming; the next positive claim about that check is. */
 export function recurringDefects(analysisDir: string, current: MeasuredCondition): Map<string, number> {
   const seen = new Map<string, Set<string>>();
   const currentKey = current.digest;
@@ -237,12 +267,26 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
   return new Map([...seen].map(([identity, conditions]) => [identity, conditions.size]));
 }
 
-/** The severity the host admits for a finding. Only a harness defect is limited:
- *  - one review reopens at most one owner, and blocking needs a cited demonstration;
- *  - a defect with one prior occurrence escalates to blocking, and one with two or more stays
- *    advisory, since repeating the same forced repair did not resolve it;
- *  - a first occurrence owned by the agent tier stays advisory, because source reading alone can
- *    only suspect, unless an executed probe backs it. */
+/** Admit the reviewer's chosen severity under the limits only the host can apply. Nothing here
+ *  narrows the repair the Builder may then make: the continuation decides scope, and this function
+ *  decides the admitted severity alone.
+ *
+ *  Only a harness defect is limited at all, and one review may reopen at most one authoring area,
+ *  because a second blocking defect in a single reading is a reason to inspect the review rather
+ *  than to reopen twice. An agent-tier defect on first occurrence stays advisory because a reviewer
+ *  reading source can only suspect, and one suspicion is enough to discard an entire working
+ *  product. A first finding still reaches authoring, as advice carrying its recorded owner.
+ *
+ *  Escalation is therefore once per defect identity and not more. A defect named in three
+ *  consecutive reviews forces two rebuilds and survives both, because the public projection
+ *  supplies only its check name and repeating the forced repair does not resolve it. So after two
+ *  prior occurrences the finding is kept as advice: it keeps its owner and stays an issue the next
+ *  experiment may act on, which bounds the escalation without declaring the defect fixed.
+ *
+ *  A probe-backed defect is exempt from the first-occurrence agent-tier floor, because a finding
+ *  citing a probe is not a suspicion: the candidate's own declared checks ran over its own accept
+ *  control and over one changed field, and the row records what they decided. The reviewer still
+ *  owes the demonstration, the citations and the one-reopen cap. */
 function admitSeverity(
   kind: string,
   proposedOwner: ReturnType<typeof routableOwnerOf>,
@@ -282,7 +326,9 @@ export function briefIdentities(root: string): BriefIdentities {
   }
 }
 
-/** `record_finding`'s untyped arguments as named values. */
+/** The one place `record_finding`'s untyped argument record becomes named values. It is kept out
+ *  of the rules below so that each of them reads as the rule it is rather than as field parsing,
+ *  and so that a change to how a field is read cannot be made in one rule and missed in another. */
 function findingArgs(args: Record<string, JsonValue>) {
   const record = plainRecord(args);
   const read = (key: string) => (record !== null && isString(record[key]) ? record[key] : "");
@@ -353,8 +399,12 @@ const disputeEligibility: FindingRule = ({ parsed, owner }) => {
     : "this finding cannot dispute an issue: only curriculum or evaluation-side defects may suspend diagnosis; omit disputesIssue and retry";
 };
 
-/** A curriculum defect must name the public input the fresh battery should vary: the claim never
- *  reaches authoring, so that path is all the task author reads. */
+/** What a curriculum defect owes: the public input path the fresh battery should move. The claim
+ *  itself never crosses to authoring, so a curriculum defect naming no identity projects as "the
+ *  epoch review reported curriculum-defect in the public contract; inspect that contract for a
+ *  mismatch", which names nothing the task author can act on — the same empty sentence however many
+ *  rounds report it. A public input path is a public authoring identity, so unlike the claim it
+ *  crosses whole. */
 const curriculumInput: FindingRule = ({ parsed }) =>
   parsed.kind === "curriculum-defect" && parsed.publicInputPath === null
     ? "a curriculum-defect must name, in `publicInputPath`, the public task input the fresh battery should vary; without it the finding reaches the task author as an empty sentence"
@@ -379,10 +429,10 @@ const publicInput: FindingRule = ({ parsed, taskIds }) => {
     : null;
 };
 
-/**
- * Every rule `record_finding` applies, in order. Order is behaviour: the first rule with a reason
- * is the refusal the reviewer sees.
- */
+/** Every rule `record_finding` applies, in the order it applies them. Holding them as a list is
+ *  what keeps `execute` under the complexity ceiling, which inline tests had left no room under.
+ *  Order is behaviour: the first rule with a reason is the reason the reviewer sees and retries
+ *  against, so a rule moves up or down this list only deliberately. */
 const FINDING_RULES: readonly FindingRule[] = [
   ({ state }) =>
     state.findings.length >= MAX_FINDINGS ? `a review records at most ${MAX_FINDINGS} findings` : null,
@@ -424,15 +474,18 @@ function findingVerdict(subject: FindingCase): FindingVerdict {
     const why = rule(subject);
     if (why !== null) return { why };
   }
-  // A rule above already refused a missing severity; this repeat narrows the type.
+  // A rule above already refused a missing severity; this repeat carries that into the type rather
+  // than deciding anything. Both spellings read the same constant so they cannot drift apart.
   return subject.parsed.severity === null
     ? { why: SEVERITY_REQUIRED }
     : { severity: subject.parsed.severity };
 }
 
-/** The finding as the campaign record keeps it. Demonstration, citations and probe numbers join
- *  the protected `claim` text; what each cited probe executed is a separate field because the
- *  author may read it. */
+/** The finding as the campaign record keeps it. The demonstration, the citations and the probe
+ *  numbers stay inside the one protected `claim` string that already carries the reviewer's prose,
+ *  rather than becoming three more fields every projection would have to remember to withhold.
+ *  What each cited probe executed is the exception and gets its own field: it is the one part the
+ *  author may read, and the projection had no other way to reach it. */
 function recordedFinding(
   subject: FindingCase,
   admitted: FindingSeverity,
@@ -544,7 +597,9 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
   };
 }
 
-/** The `record_finding` tool; exported so its refusals can be tested without a review session. */
+/** The `record_finding` tool. It is exported for its own test, like the diagnosis tool: the
+ *  refusals and the one-blocking-defect cap are the contract worth proving, and driving them
+ *  through a live review session would prove the transport instead and cost a model call to do it. */
 export function recordFindingTool(
   offered: readonly AdviceIssue[],
   taskIds: readonly string[],
@@ -556,7 +611,8 @@ export function recordFindingTool(
   const recurring = priors.recurring ?? new Map<string, number>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
   const owners = [...BUILDER_OWNED].filter(routableOwner);
-  // Each owner's writable files, so the reviewer sees what an owner covers before choosing it.
+  // Each owner's writable files, so the reviewer sees what an owner covers before choosing one.
+  // This exposes existing file ownership rather than copying routing policy into the description.
   const surfaces = owners
     .map((owner) => `${owner}: ${ownerWritableFiles(owner).join(", ") || "no direct file"}`)
     .join("; ");
@@ -583,7 +639,9 @@ export function recordFindingTool(
         state.refused += 1;
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
-      // One review may reopen at most one authoring area as blocking.
+      // One review reopens at most one authoring area, so a finding recorded after a blocking
+      // harness-defect is admitted advisory however strong its own case is: a second blocking
+      // defect in one reading is a reason to inspect the review, not to reopen twice.
       const blockingAlready = state.findings.some(
         (row) => row.kind === "harness-defect" && row.severity === undefined,
       );

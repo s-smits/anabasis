@@ -1,13 +1,18 @@
 /**
- * Connects the evaluation runner to the campaign case record. One battery has one runId:
+ * Connect the evaluation runner to the campaign case record. One battery has one runId:
  * fingerprint the product, run its battery through `makeVerify` (which owns battery.json and the
- * per-case run records), append one case row per task with evidence digests, and check
- * completeness against the task set, never against a count re-read from the file being checked.
+ * per-case run records), then append one case row per task with evidence digests, and check
+ * completeness against the task set — never against a count re-read from the file whose loss is
+ * being checked.
  *
  * The driver restates nothing the runner owns: buildInputsHash and backendPin are read back from
- * the battery evidence, verdict fields are copied verbatim, and the isolation result comes from
- * the caller; `isolation: null` records that isolation has not been proved. `batteryCondition`
- * names the offered tool contract the battery and every case row ran under.
+ * the battery evidence, the tri-state verdict fields are copied verbatim from the runner's
+ * CaseRecord vocabulary, and the isolation check result arrives from the caller, which owns the
+ * isolation probe. `isolation: null` explicitly records that isolation has not been proved, rather
+ * than leaving a reader to infer it from an absent field.
+ *
+ * One battery per iteration: `batteryCondition` states the main condition that the battery and
+ * every case row restate, so the evidence names the offered tool contract it ran under.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -214,9 +219,11 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   } catch (error) {
     // The runner publishes battery.json before the Judge phase and before it throws a typed
     // environment non-result, so a throw after publication leaves complete verdicts on disk
-    // that belong in the campaign record like any other battery's, such as environment
-    // non-results or a Judge turn that exhausted the provider budget. The published record decides, not the error type; a throw before publication has nothing to append, and
-    // the check above proved the record holds no row for this run id yet.
+    // that belong in the campaign record like any other battery's — a Judge turn exhausting the
+    // provider budget after every verdict is published would otherwise cost the record every one of
+    // those rows, and so would a typed environment non-result at the same point. The published record
+    // decides, not the error type; a throw before publication has nothing to append, and the check
+    // above proved the record holds no row for this run id yet.
     if (existsSync(batteryPath(options.slugDir, options.runId))) {
       try {
         await appendRecordedCaseRows(options);
@@ -235,8 +242,8 @@ export async function driveBattery(options: DriveBatteryOptions): Promise<DriveB
   const stored = readCaseRecord(options.recordPath);
   // An unclaimable discrimination pass skips the paid loop before any case runs
   // (verification-runner.ts, recordUnclaimableBattery): zero rows is that battery's recorded shape and
-  // the claim already refuses on the discrimination findings. The bijection rule is for a
-  // battery that ran.
+  // the claim already refuses on the discrimination findings. The bijection rule is for a battery
+  // that ran, and applying it here aborts a variant that never reached a case.
   const skipped = report.score.length === 0 && !report.evidence.discrimination.claimable;
   if (!skipped) {
     assertCompleteRun(

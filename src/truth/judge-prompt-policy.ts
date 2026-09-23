@@ -12,11 +12,36 @@ const JUDGE_PROMPT_TARGETS = ["census"] as const;
 type JudgePromptTarget = (typeof JUDGE_PROMPT_TARGETS)[number];
 
 /**
- * The census prompt. Beyond the core instruction it states that an abstention names absent rules
- * only; a failure rests on shown rules, not an unseen convention; a declared value is compared
- * against its whole shown definition, signs included; a recomputation states both values and the
- * published tolerance, and fails only beyond the Judge's own rounding; and a run the Judge cannot
- * perform is not decided by predicting its outcome.
+ * The census prompt. Every clause came on operator instruction with a measured failure behind it,
+ * so removing one drops a defence rather than tidying the text.
+ *
+ * The abstention clause names absent rules and nothing else. "The task is not stated" otherwise
+ * matches every taskless control, and the Judge abstains on the whole accept battery.
+ *
+ * A failure may not rest on a convention the Judge was never shown: a hold built on agent tool text
+ * rather than on a rule in the shown material cites nothing a reader can check it against.
+ *
+ * A declared value is compared against its whole shown definition rather than its magnitude alone,
+ * because a negative peak otherwise passes a "largest absolute" rule once only the magnitude has
+ * been recomputed. The two verifier capabilities the KDD 2026 verifier taxonomy finds text-only
+ * judges miss most are recomputing a derived figure and checking signs (Dücker et al., Verifying
+ * Agents in Rubric-Graded Environments, Table 1), so the clause asks for both.
+ *
+ * A recomputation failure states both values and the tolerance, and survives only a gap beyond the
+ * Judge's own rounding. Without that, a fail can rest on a 12 g gap in 1134 kg that came from
+ * rounded member lengths, where the same input recomputed at full precision passes.
+ *
+ * A recomputation supplies neither its own tolerance nor its own intermediates. A sample otherwise
+ * fails a verifier-passed case on a "gap 0.149 kg > 0.05 kg tolerance" it chose itself, where the
+ * bound task publishes a `reportToleranceRelative` of 0.01 — 2.88 kg on a 288 kg design — and on
+ * member lengths it derived from joint coordinates that differ from the submitted design's in the
+ * second decimal. The rounding clause does not reach that case: the sample can say truthfully that
+ * the gap is well beyond its own rounding, because the error lies in the lengths it derived rather
+ * than in the arithmetic over them.
+ *
+ * A run the Judge cannot perform is not decided by predicting it. The two largest disagreement
+ * shapes across the recorded census are a predicted compile failure that the verifier's real
+ * compile passed, and a pass on "all scenarios" the Judge never ran.
  */
 export const ACTIVE_JUDGE_PROMPTS = {
   census: [

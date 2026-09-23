@@ -1,32 +1,54 @@
 /**
- * Records AgentTurnEvent data as a typed, ordered, bounded and redacted trace:
+ * Records and redacts AgentTurnEvent data in the controller.
  *
- *  - native `raw` events are counted and dropped;
- *  - successful tool calls keep only an argument digest and length, keyed so a guessed value
- *    cannot be confirmed;
- *  - assistant text and tool results survive only as short previews through
- *    `redactProviderDiagnostic`; failed tool calls also keep bounded argument and result excerpts;
- *  - durations use a monotonic clock; a span that never closed has a null duration and records
- *    how long it had run as `observedMs`;
- *  - token and cost telemetry is copied from `turn_ended.usage`; missing usage stays null.
+ * Without this recorder the per-turn event stream is discarded, and nothing records what the agent
+ * did between the prompt and its submit; saving the native stream instead would put raw provider
+ * payloads, tool arguments and whole tool results into run evidence. So the recorder keeps a third
+ * thing: a typed, ordered trace, bounded in size and in what each row retains.
  *
- * The caller supplies the turn number through `beginTurn`, which also starts the turn's clock;
- * `turn_started` events are ignored, so the solver loop owns the one turn counter.
+ *  - native `raw` events are counted and dropped, and no `native` field is stored;
+ *  - a successful tool call keeps an argument digest and length and nothing else. The digest key is
+ *    random and never saved, so a reader holding the trace cannot confirm a guessed value against
+ *    it;
+ *  - assistant text and tool results survive only as short previews, through the shared diagnostic
+ *    redaction owner `redactProviderDiagnostic`;
+ *  - a failed tool call also keeps redacted, bounded argument and result excerpts, because a
+ *    failure is the row a diagnosis reader has to read in detail;
+ *  - duration is measured here on a monotonic clock, since the recorder is what sees both ends of
+ *    every turn and every tool call. A span that never closed stays null rather than reporting the
+ *    time until the reader asked, and records how long it had been running as the separate
+ *    `observedMs`, so an interrupted solve is not also an untimed one;
+ *  - token and cost telemetry is copied from `turn_ended.usage` when the transport reported it
+ *    (`pi-usage.ts` reads pi's). Missing usage stays unknown instead of being recorded as zero.
+ *
+ * The caller supplies the turn number through `beginTurn`, and it is not inferred from
+ * `turn_started` events: the solver loop already owns the turn counter, and a backend that emits
+ * none or emits duplicates must not be allowed to start a second one. `beginTurn` also starts the
+ * clock, so a turn's duration covers the interval from that call to the terminal event, setup
+ * included, rather than trusting a provider-reported duration.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTurnEvent, BackendId, CompactionRecord } from "./backend-types.ts";
 import { redactProviderDiagnostic } from "./diagnostic-redaction.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
-/** Readers accept this version only. */
+/** Readers take this version only and read an earlier trace as unreadable (operator decision), so
+ *  `trace-read.ts` and `case-trace-pointer.ts` both compare against this constant rather than
+ *  carrying a reader per version. Adding or removing a field is therefore a version bump. */
 export const CASE_TRACE_SCHEMA = "case-trace/v4";
 
 /** Evidence bounds: a runaway solve must not turn one case's trace into an unbounded file. */
 const MAX_TRACE_TURNS = 100;
 const MAX_TRACE_TOOL_CALLS = 400;
-/** Preview limit for assistant text and results; independent of any transport's own truncation. */
+/** The limit applied when assembling assistant and result previews. Transports truncate before
+ *  their events arrive here — a successful pi tool call brings at most `RESULT_PREVIEW_CHARS`, 200,
+ *  while a failed one brings up to 2,000 for the separate error excerpt — and this limit stays
+ *  separate from those. They apply to different fields at different stages, so merging them would
+ *  change recorded evidence rather than tidy up code. */
 const PREVIEW_CHARS = 240;
-/** Error rows only: a failed call is the one place a reader needs more than a preview. */
+/** Error rows only: how much of the failing call's result and arguments survives into evidence.
+ *  Deliberately larger than PREVIEW_CHARS, because a failed call is the one place a reader needs
+ *  more than a preview; success rows keep the digest and the preview alone. */
 const ERROR_RESULT_CHARS = 2000;
 const ERROR_ARGS_CHARS = 1000;
 
@@ -37,8 +59,9 @@ interface TraceToolCall {
   turn: number;
   toolName: string;
   toolCallId: string | null;
-  /** HMAC-SHA-256 of the JSON args: equality within this solve only, since the key is never
-   *  persisted. Null when the backend sent none or they do not serialise. */
+  /** A run-keyed HMAC-SHA-256 over the args' JSON — an equality classifier inside this one solve,
+   *  and not a public hash to check guesses against, because the key is random per recorder and
+   *  never persisted. Null when the backend sent no arguments or they do not serialise. */
   argsDigest: string | null;
   /** JSON length of the args — a size signal that carries no content. */
   argsChars: number | null;
@@ -48,11 +71,15 @@ interface TraceToolCall {
   resultPreview: string | null;
   /** Error rows only: redacted result up to ERROR_RESULT_CHARS. Null on success rows. */
   resultExcerpt: string | null;
-  /** Error rows only: redacted JSON of the arguments, up to ERROR_ARGS_CHARS. */
+  /** Error rows only: the redacted JSON of the arguments the agent sent, up to ERROR_ARGS_CHARS.
+   *  Success rows keep the digest and length alone. */
   argsExcerpt: string | null;
-  /** Elapsed time from tool_started to tool_ended; null while open or with no observed start. */
+  /** Elapsed time from tool_started to tool_ended. Null while the call is still open, and null for
+   *  a call a backend created at tool_ended with no start to measure from. */
   timingMs: number | null;
-  /** How long a call that never ended had been running when the trace was taken; null otherwise. */
+  /** How long a call that never ended had been running when the trace was taken — the different
+   *  fact `timingMs` refuses to report as a duration. Null for a call that ended, whose duration is
+   *  `timingMs`, and for one with no observed start. */
   observedMs: number | null;
 }
 
@@ -64,18 +91,24 @@ interface TraceTurn {
   errorMessage: string | null;
   /** "open" = the turn never reached a terminal event (interrupted mid-stream). */
   status: "ended" | "failed" | "open";
-  /** Elapsed time from `beginTurn` to the turn's terminal event; null for a turn that never ended. */
+  /** Elapsed time from `beginTurn` to the turn's terminal event. Null for a turn that never
+   *  reached one, because an interrupted turn's duration is unknown and the time until `trace()`
+   *  was called is a different fact. */
   timingMs: number | null;
-  /** How long an open turn had been running when the trace was taken: a floor, not a duration.
-   *  Null once the turn ended. */
+  /** That different fact: how long an open turn had been running when the trace was taken. The
+   *  turn may have gone on afterwards, so this is a floor rather than a duration — but without it a
+   *  wall-stopped solve records no elapsed time at all. Null once the turn reaches a terminal
+   *  event, where `timingMs` is the answer. */
   observedMs: number | null;
-  /** Provider-reported spend from `turn_ended.usage`; null, never zero, when none was reported.
-   *  `tokensUsed` is the total. */
+  /** What the provider reported it spent on this turn, copied from `turn_ended.usage`. Every field
+   *  is null when the transport reported nothing, because a missing value must never read as a
+   *  plausible zero. `tokensUsed` keeps its v1 name and means the total. */
   inputTokens: number | null;
   outputTokens: number | null;
   tokensUsed: number | null;
   costUsd: number | null;
-  /** Context compactions during the turn, copied from `turn_ended`; empty when none ran. */
+  /** Context compactions during the turn, copied from `turn_ended`. Every turn this recorder opens
+   *  carries the field, empty when none ran. */
   compactions?: CompactionRecord[];
 }
 
@@ -84,7 +117,8 @@ export interface CaseTrace {
   backend: BackendId | null;
   turns: TraceTurn[];
   toolCalls: TraceToolCall[];
-  /** Backend-native `raw` events observed and dropped. */
+  /** Backend-native `raw` events observed and dropped. The count is what proves the sink saw them
+   *  and left their contents out on purpose, rather than never receiving them. */
   droppedRawEvents: number;
   /** True when a bound was hit; the trace is a prefix, not the whole solve. */
   truncated: boolean;
@@ -110,7 +144,8 @@ interface OpenToolCall extends TraceToolCall {
 
 export function createTraceRecorder(opts?: {
   backend?: BackendId;
-  /** Monotonic milliseconds; injected only by tests. */
+  /** Monotonic milliseconds. Injected only by tests; production reads the process clock, which a
+   *  calendar-clock adjustment cannot move backwards. */
   now?: () => number;
 }): TraceRecorder {
   const now = opts?.now ?? (() => performance.now());
@@ -122,7 +157,10 @@ export function createTraceRecorder(opts?: {
   let droppedRawEvents = 0;
   let truncated = false;
   let seq = 0;
-  // A random, never-persisted key, so a trace holder cannot confirm a guessed argument by hashing it.
+  // Run-keyed digesting. A plain SHA-256 over the arguments exposes a hash anyone holding the
+  // trace can test a guessed secret against. This key is random per recorder and never persisted,
+  // so the digest classifies equality inside this one solve and nothing more, and a dictionary
+  // attack has no stable target to aim at.
   const digestKey = crypto.getRandomValues(new Uint8Array(32));
 
   const digestArgs = (args: Record<string, JsonValue> | undefined) => {
@@ -181,8 +219,9 @@ export function createTraceRecorder(opts?: {
   };
 
   const endToolCall = (event: Extract<AgentTurnEvent, { type: "tool_ended" }>): void => {
-    // Match the started record by id, else the oldest same-name call still open in this turn, so a
-    // dangling earlier call cannot take a later id-less completion. Otherwise create the record here.
+    // Match the started record by id, else the oldest same-name call still open in this turn, so
+    // that a dangling call from an earlier turn cannot consume a later turn's id-less completion.
+    // A backend that emits only tool_ended writes its record here.
     const open =
       (event.toolCallId === undefined
         ? undefined
@@ -289,7 +328,8 @@ export function createTraceRecorder(opts?: {
       turnRecord();
     },
     trace(): CaseTrace {
-      // An open span has no duration; `observedMs` says how long it has run so far.
+      // The one place the reader's clock may be read. A span that is still open has no duration,
+      // and saying how long it has run is a different statement from claiming it ended now.
       const taken = now();
       const observed = (startedAt: number | undefined, closed: boolean): number | null =>
         startedAt === undefined || closed ? null : taken - startedAt;

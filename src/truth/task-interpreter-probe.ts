@@ -91,7 +91,8 @@ function callArguments(
         };
   }
   const sampled = sample(parameters);
-  // An unsampleable tool is a finding, never a silent skip.
+  // An unsampleable tool is a finding, never a silent skip: skipping it opens no task through that
+  // tool, so the probe would report nothing at all about the one tool it could not call.
   return accepts(parameters, sampled)
     ? { args: sampled }
     : {
@@ -125,8 +126,13 @@ function absentPaths(
 
 /**
  * Readers and advisers run before writers, so a draft change cannot move an interpreter's access
- * trace. It refuses a public path no task carries and a call that throws. Every row is authored
- * and keeps its detail through the author projection; repeats across tasks collapse.
+ * trace. Two refusals fire in practice: a public path no task carries, which is a misnamed field in
+ * the declaration, and a call that throws.
+ *
+ * Every row is authored and keeps its detail through the author projection, because an unmarked row
+ * arrives at the next authoring pass as the detail-free unclassified label and says nothing.
+ * Repeats across tasks collapse, so a tool broken for every task is one row rather than one per
+ * task.
  */
 export async function probeTaskInterpreters(
   openStarter: (task: BuildTask) => Promise<BuiltStarter>,

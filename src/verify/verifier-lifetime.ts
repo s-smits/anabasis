@@ -37,8 +37,11 @@ export interface VerifierLifetime {
   /** Observe recorded groups and clean exact retained cells. Never signal a persisted PID. */
   recover(): string[];
 }
-/** Why the lifetime refused, each with its own sentence: `solvability.ts` carries the message into
- *  an environment-owned finding, so it must name the actual cause. */
+/** Why the lifetime refused, each reason with its own sentence. One sentence for every reason is
+ *  the first reason's sentence: an investigation then reads "restore the host" against receipts
+ *  that were all settled, because the throw was a `begin` after `close`. `solvability.ts` carries
+ *  this message into an environment-owned finding, so a wrong sentence routes as evidence rather
+ *  than staying in a log. */
 type VerifierStopReason =
   | "unsettled-children"
   | "closed"
@@ -65,8 +68,10 @@ type Stored = { dir: string; intent: Intent; pid: number | null; groupReaped: bo
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * Settles a lease whose child never started: no group to reap, no output opened, no deadline run.
- * Every spawn site settles this way, so their receipts agree about a child that never existed.
+ * Settle a lease whose child never started. Nothing was reaped because no group exists, no output
+ * was opened so collection is complete, and no deadline ran. Three spawn sites settle this way — the
+ * tool host, the reference solve and the evaluator process — and a receipt that disagrees with the
+ * others about a child that never existed is a cleanup fact the terminal reader cannot resolve.
  */
 export function settleUnspawned(lease: VerifierProcessLease): void {
   lease.settle({
@@ -89,8 +94,10 @@ export class VerifierOperationalStop extends Error {
   }
 }
 
-/** Runs `body` and closes the lifetime on the way out, recording whether it threw, so a failed
- *  run is never closed as clean. */
+/** Run `body` and close the lifetime on the way out, recording which way it left. Two callers
+ *  create a lifetime they own for the length of one call, and a `finally` that forgets the throw
+ *  writes a clean close over a failed run — which is then the receipt the terminal reader
+ *  believes. */
 export async function withVerifierLifetime<T>(
   lifetime: VerifierLifetime,
   body: () => Promise<T>,
@@ -151,8 +158,9 @@ const cleanupSchema = Type.Object({
   groupAbsent: Type.Literal(true),
   observedAt: Type.String(),
 });
-/** The receipt file names a verifier process writes, shared by writer and reader. */
-
+/** The four receipts a verifier process writes beside its intent. Each one is written in one place
+ *  and read in another, so the pair agrees through this record rather than through two spellings
+ *  that have to stay the same by hand. */
 const RECEIPT = {
   intent: "intent.json",
   spawned: "spawned.json",

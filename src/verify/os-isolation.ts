@@ -1,8 +1,13 @@
 /**
- * The one platform dispatch for the OS isolation: callers keep one policy value, and this module
- * selects the mechanism that enforces it on the current host, Darwin Seatbelt or Linux Bubblewrap.
- * Support evidence names the mechanism that enforced the policy, and both branches fail closed: an
- * unavailable mechanism returns an explicit reason and the caller does not run open.
+ * The one platform dispatch for the OS isolation. Callers keep a single policy value — which roots
+ * are readable or denied, whether the network is open — and this module selects the mechanism that
+ * enforces that policy on the current host, Darwin Seatbelt or Linux Bubblewrap.
+ *
+ * Support is deliberately mechanism-neutral: an id, an executable, that executable's digest and a
+ * baseline identity. The evidence therefore says which mechanism enforced the policy, rather than
+ * treating a Darwin profile and a Linux mount namespace as interchangeable proof of the same thing.
+ * Both branches fail closed: an unavailable mechanism returns an explicit reason, and the caller
+ * does not run open.
  */
 import {
   DARWIN_SEATBELT_ID,
@@ -30,7 +35,9 @@ export { DARWIN_SEATBELT_ID, LINUX_BWRAP_ID };
 
 type OsIsolationPlatform = "darwin" | "linux";
 
-/** A runtime override carrying the fields either mechanism may use; the selected host ignores the rest. */
+/** A shared test and runtime override carrying the fields either mechanism may use. The selected
+ *  host ignores the irrelevant half, which is what preserves the per-mechanism test boundaries
+ *  rather than forcing one override shape on both. */
 export type OsIsolationRuntime = DarwinSeatbeltRuntime &
   LinuxBwrapRuntime & {
     /** The home whose toolchain install roots the Darwin wall opens; the process HOME by default. */
@@ -50,8 +57,9 @@ export interface OsIsolationSupport {
 }
 
 type VerifierOsIsolationInput = VerifierConfinementRequest & {
-  /** The explicit tool environment. Bubblewrap reapplies it after clearing inherited variables;
-   *  Darwin receives it through the host's spawn call. */
+  /** The explicit tool environment, prepared by the host. Bubblewrap clears inherited variables,
+   *  so it has to reapply this afterwards; Darwin never clears them, so it receives the same values
+   *  through the host's own spawn call. */
   environment: OptionalEnvValues;
 };
 type PreparedVerifierPlan = {
@@ -64,11 +72,13 @@ type PreparedVerifierPlan = {
   exactReadSnapshots: ExactReadSnapshot[];
 };
 
-/** The selected plan with its own lifecycle, closed over the one concrete mechanism's plan so the
- *  host cannot cast or cross-route it. */
+/** The selected plan carries its own lifecycle. Its closures retain the one concrete Darwin or
+ *  Bubblewrap plan chosen at host construction, so the host cannot later cast a plan to the other
+ *  mechanism or route a call to it. */
 export type VerifierOsIsolationPlan = PreparedVerifierPlan & {
   apply(): Promise<{ ok: true } | { ok: false; reason: string }>;
-  /** `changed` names a real drift of an attested byte; `unavailable` a re-read the host could not complete. */
+  /** `changed` names a real drift of an attested byte; `unavailable` a re-read the host could not
+   *  complete. */
   verify(): ExactReadDrift | null;
 };
 export type VerifierOsIsolation = {
@@ -118,8 +128,10 @@ function prepareVerifierPlan<Plan extends PreparedVerifierPlan>(
 }
 
 /**
- * Resolve the current host's mechanism and its support evidence. A platform with neither
- * mechanism returns an explicit unavailable value rather than a fallback.
+ * Resolve the current host's mechanism and its support evidence. A platform with neither supported
+ * isolation returns an explicit unavailable value, instead of leaving each caller to invent its own
+ * fallback. The mechanism-specific support routines still own their exact executable and namespace
+ * checks; this decides only which of them to ask.
  */
 export function osIsolationSupport(runtime: OsIsolationRuntime = {}): OsIsolationSupport {
   const platform = runtime.platform ?? runtimeProcess.platform;
@@ -149,8 +161,9 @@ export function osIsolationSupport(runtime: OsIsolationRuntime = {}): OsIsolatio
 }
 
 /**
- * Select the verifier's mechanism at host construction, never per invocation, so later host code
- * has one uniform capability and no platform switch.
+ * Select the verifier's mechanism at host construction, never per invocation. The prepared plan
+ * captures the matching lifecycle callbacks here, which is what leaves later host code with one
+ * uniform capability and no platform switch or generic plan cast.
  */
 export function verifierOsIsolation(runtime: OsIsolationRuntime): VerifierOsIsolation {
   if ((runtime.platform ?? runtimeProcess.platform) === "linux") {
@@ -165,7 +178,8 @@ export function verifierOsIsolation(runtime: OsIsolationRuntime): VerifierOsIsol
         ),
     };
   }
-  // Read once so every plan of this host binds the same platform roots.
+  // Read once: every plan of this host then binds the same platform roots, so its policy hash
+  // moves only when the command, the inputs or the declared roots move.
   const platformRoots = darwinPlatformReadRoots(runtime.toolchainHome);
   return {
     id: DARWIN_SEATBELT_ID,
@@ -180,12 +194,13 @@ export function verifierOsIsolation(runtime: OsIsolationRuntime): VerifierOsIsol
 }
 
 /**
- * Prove a confined worker's reported pid is the controller's actual child, returning the host pid
- * that names it, or null. Darwin sandbox-exec replaces the spawned process, so the pids match;
- * Bubblewrap's private pid namespace is matched through the kernel's `NSpid` column. The
- * controller's own pid is always rejected.
+ * A confined worker reports its own pid, and the controller proves that report names its actual
+ * child, returning the host pid or null. The proof differs by mechanism: Darwin sandbox-exec
+ * replaces the spawned process, so the two pids match directly, while Bubblewrap runs the worker in
+ * a private pid namespace beneath itself, so the reported pid has to be matched to the host process
+ * through the kernel's `NSpid` column. Either mechanism rejects the controller's own pid, which is
+ * the one report that would make the check pass while proving nothing.
  */
-
 export function witnessConfinedChild(
   reportedPid: number,
   childPid: number | undefined,

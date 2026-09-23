@@ -2,18 +2,23 @@
 import type { IsolationStrength } from "../claim/readiness.ts";
 
 /**
- * The mechanism families that can write a physical solve isolation: Darwin Seatbelt and Linux
- * Bubblewrap, applied from this process (`src/verify/solve-sandbox.ts`). A new family needs its own
- * executed discriminating fixture; a probe naming an unlisted family reads as contractual.
+ * The mechanism families that can write a physical solve isolation. Both apply this process's own
+ * policy, through Darwin Seatbelt or Linux Bubblewrap (`src/verify/solve-sandbox.ts`), and both
+ * work for any transport the host spawns. A new family needs its own executed discriminating
+ * fixture before it may appear here, so this union is the whole list of what has one; a recorded
+ * probe naming a family the union does not list therefore reads as contractual rather than
+ * physical.
  */
 const ISOLATION_FIXTURES = ["host-seatbelt-read-deny/v1", "host-bwrap-read-deny/v1"] as const;
 
-/** Derived from the list, so one edit admits a family everywhere. */
+/** Derived from the list rather than restated beside it, so one edit admits a family and the
+ *  runtime guard below and every `Record<IsolationFixture, ...>` table move with it. */
 export type IsolationFixture = (typeof ISOLATION_FIXTURES)[number];
 
 /**
- * A persisted result from one read-deny fixture, structural so the consumer stays
- * transport-independent. `physical` derives only from the fixture's discriminating conjunction.
+ * A persisted result from one read-deny fixture. It is deliberately structural, so the consumer
+ * stays independent of any particular transport package, but a bare isolation label is not
+ * accepted on its own: `physical` is derived only from the fixture's discriminating conjunction.
  */
 export type IsolationProbeEvidence = {
   fixture: IsolationFixture;
@@ -21,11 +26,13 @@ export type IsolationProbeEvidence = {
   isolated: boolean;
   deniedReadRefused: boolean;
   controlReadSucceeded: boolean;
-  /** The same profile with only the covering deny rules lifted returned the canary, so the refusal
-   *  is attributable to those rules. */
+  /** The same verified profile, with only the covering deny rules lifted, returned the canary. It
+   *  is what makes the refusal attributable to those rules rather than to a broken CLI that would
+   *  have failed the read either way. */
   discriminationReadSucceeded: boolean;
-  /** sha256 of the exact rules the deny check executed; the session evidence must carry the same
-   *  value, so both checks bind identical bytes. */
+  /** sha256 of the exact rules the deny check executed. The verified session's evidence must carry
+   *  the same value, so the two checks bind identical bytes instead of agreeing on a shared
+   *  label. */
   profileDigest?: string | null;
   evidence: string[];
 };

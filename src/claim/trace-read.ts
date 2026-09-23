@@ -1,9 +1,15 @@
 /**
  * Shared case-trace reader: resolve pointer → verify digest → check schema → return parsed trace.
  *
- * Every consumer reads traces through here, so all apply the same checks: the digest through
- * `verifyTracePointers` and a schema from `CASE_TRACE_SCHEMA`. Missing or changed traces produce
- * a specific state for the consumer to report; a matching filename alone is never accepted.
+ * Case traces once had three readers with different integrity checks: the operator view in
+ * tools/outcome verified pointer digests, the UI constructed a path and read its contents, and the
+ * former per-case Judge 2 checked only that the file existed, although its comment claimed digest
+ * verification. This shared reader resolves the row's pointer, recalculates the digest through
+ * `verifyTracePointers`, and requires a schema from `CASE_TRACE_SCHEMA` before returning a trace,
+ * so every consumer now applies the same checks. Missing or changed traces produce a specific
+ * state for the consumer to report, and a file is never accepted merely because its name matches.
+ * Operator views and Judge reviews share this implementation, kept beside the case record that
+ * creates these pointers.
  */
 import { defaultProductDir } from "../meta/campaign-root.ts";
 import { readdirSync, realpathSync, statSync } from "../meta/filesystem.ts";
@@ -15,7 +21,7 @@ import { isSafePathSegment } from "../meta/path-segment.ts";
 import { type JsonValue, isNumber, isObject, isString } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
-/** The trace states every reader reports. */
+/** The same vocabulary the operator projection always reported, now shared by every reader. */
 export type TraceReadState = "recorded" | "no-trace-pointer" | "trace-missing" | "trace-drifted";
 
 /**
@@ -66,9 +72,13 @@ function parseReadableTrace(absPath: string): ReadCaseTrace | null {
 
 /**
  * Read under one base directory. Return the first pointer with an intact digest that parses
- * as a supported trace, trying trace.json names first so the large battery.json pointer is
- * rarely hashed. If none qualifies, report changed evidence before missing evidence; if every
- * pointer is intact but none is a supported trace, report no trace pointer.
+ * as a supported trace, trying trace.json names first. Record rows begin with a battery.json
+ * pointer, and hashing and parsing that 60 KB file for every row only to reject its schema was
+ * measured unnecessary work; the ordering avoids that read while keeping the digest and schema
+ * checks on every pointer actually tried. Once a trace is found the remaining pointers are not
+ * read. If none qualifies, report changed evidence before missing evidence when both were found,
+ * and if every pointer is intact but none carries a supported trace schema, report no trace
+ * pointer.
  */
 export function readVerifiedTrace(row: { traces: TracePointer[] }, baseDir: string): VerifiedTraceRead {
   const ordered = [
@@ -92,8 +102,11 @@ export function readVerifiedTrace(row: { traces: TracePointer[] }, baseDir: stri
  * The producer (run-driver) writes pointers relative to the battery's tree root: the
  * adopted tree `domains/<slug>/` (a sibling of the campaign dir), or `candidates/<run>/` and
  * `contest/<run>/` under it, or a retained tree under `promotions/` or `versions/`. The case
- * record itself sits at the campaign root. Readers search these conventional locations, each a
- * direct directory, and still verify the digest.
+ * record itself sits at the campaign root. Readers search these conventional locations and still
+ * verify the digest, so a matching filename alone is insufficient. All of those locations have to
+ * be searched: a battery measured against the adopted tree leaves a reader that searches only the
+ * campaign root reporting every intact trace as missing. Each candidate root must be a direct
+ * directory before it is used.
  */
 function directDirectory(path: string, parent: string): boolean {
   try {

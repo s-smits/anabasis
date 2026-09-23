@@ -9,9 +9,10 @@ import { batteryPath, readBatteryJoinSlice } from "../truth/battery-record.ts";
 import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
 import { measuredProductDir } from "./product-versions.ts";
 
-/** `operator-signal`: the controller caught SIGTERM mid-battery, so the final battery has accepted
- *  artifacts under `candidates/` and no record; the evidence reader still opens the completed
- *  rounds instead of refusing the whole run. */
+/** `operator-signal`: the controller caught SIGTERM mid-battery, before any verdict. The final
+ *  battery then has accepted artifacts under `candidates/` and no record of its own, and the
+ *  evidence reader still opens the rounds that did complete rather than refusing the whole run —
+ *  the rounds before the signal were measured, and the signal says nothing about them. */
 type MissingFinalRecordOwner = "provider-resource-budget" | "operator-signal";
 
 /** The part of a controller iteration this join reads: its id and the batteries it admitted. */

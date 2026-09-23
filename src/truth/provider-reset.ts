@@ -6,9 +6,10 @@ import { PROVIDER_ALLOWANCE } from "./runtime-blocker.ts";
 /**
  * When the provider said it will accept work again, or null when it named no usable clock.
  *
- * A session limit that carries a reset time, such as "resets 12pm (Europe/Amsterdam)", is a wait,
- * not exhaustion. The clause is the provider's own number, so `awaitTurnRetry` sleeps on it
- * rather than guessing a backoff that cannot reach it.
+ * A session limit that carries a reset time is a wait, not exhaustion. `PROVIDER_ALLOWANCE` reads
+ * "resets 12pm (Europe/Amsterdam)" and "resets 6:30pm" alike as spent, which abandons a live
+ * campaign hours before the clock the provider has just handed it. The clause is the provider's own
+ * number, so `awaitTurnRetry` sleeps on it rather than guessing a backoff that cannot reach it.
  *
  * Resolving to the clock's next occurrence bounds the wait below a day by construction, which is
  * the whole shape a session limit has. A clause naming a calendar date is left unresolved instead:
@@ -24,9 +25,10 @@ const RESET_DATE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\
  *  named no clock -- no wait clears it, so the caller ends the run -- and `at` is the instant they
  *  have all cleared, or null when the text names no allowance and the caller keeps its own backoff.
  *
- *  Each clock belongs to the allowance that named it, so a session limit's clock never speaks for
- *  a spend limit beside it that names none. Where several allowances stand, work resumes when the
- *  last of them lifts, not the first. */
+ *  Each clock belongs to the allowance that named it. Reading one clause across the whole list lets
+ *  a session limit naming 12pm speak for a monthly spend limit standing beside it — that one names
+ *  no clock and no wait clears it, so the turn sleeps until noon only to be refused again. Where
+ *  several allowances stand, work resumes when the last of them lifts, not the first. */
 interface AllowanceWait {
   refuse: boolean;
   at: Date | null;

@@ -1,8 +1,12 @@
 /**
- * Rows for every complete judge/verifier contradiction in a battery, with no materiality
- * threshold. They are the operator's dispute source, not findings: they enter no admission path
- * and reach no authoring prompt, which must never name a held-out case. Their count is what the
- * Judge exit in judge-reviews.ts reads.
+ * Census-to-rows projection over the battery's per-case judge evidence, split from judge-reviews.ts
+ * at its size ceiling. The projection names every complete judge/verifier contradiction on the
+ * analysis artifact, with no materiality threshold applied, because these rows are the immutable
+ * operator dispute source rather than findings. They enter no admission path and reach no model
+ * prompt: a named held-out case in an authoring prompt is exactly the per-task localisation the
+ * no-hints boundary protects. Without the projection, the disagreements that sit below a battery's
+ * materiality threshold can be found only by opening every judge evidence file by hand. The count
+ * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
 import { confirmedDisagreement, type JudgeSubjectEvidence } from "../truth/judge.ts";
@@ -46,7 +50,9 @@ export interface ContestedSubject {
   failedCheckIds: string[];
 }
 
-/** Reads one repo-root-relative evidence file. */
+/** Reads one repo-root-relative evidence file. It lives here rather than in judge-reviews.ts
+ *  because the import already points this way; judge-reviews.ts imports it back for its own
+ *  subject reads. */
 export function readJson(repoRoot: string, rel: string): JsonValue {
   return readJsonFile(join(repoRoot, rel));
 }

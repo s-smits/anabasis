@@ -1,36 +1,37 @@
 /**
- * Match submitted entities to declared entities by an exact key, then compare the fields of
- * each unambiguous pair. This helper contains the shared matching logic; the domain check
- * supplies the entity sets, keys and field comparisons.
+ * Match submitted entities to declared entities by an exact key, then compare the fields of each
+ * unambiguous pair. This module owns the matching; the domain check supplies the entity sets, the
+ * keys, the field comparisons and the check id.
  *
- * This pattern kept being re-implemented per domain, and the re-implementations kept regressing into the
- * same incorrect acceptances: a substring/`includes` key match that accepts a lookalike; a bare
- * name-presence or existence check that accepts an entity nobody declared (a "ghost" endpoint, an
- * artifact endpoint fed from a source that is not an authoritative declared set); a duplicate owner that a
- * set-membership check silently collapses; a count check that a single reused entity satisfies. Prose in a
- * kickoff brief did not reliably prevent these mistakes. This helper gives callers an exact-key
- * comparison, reports duplicate keys explicitly, and requires the caller to state
- * which entity set is authoritative.
+ * The reason it is shared code rather than something each domain writes for itself is that the
+ * easier ways of writing it all fail in the same direction, which is to accept. An `includes` key
+ * match accepts a lookalike. A presence or set-membership test accepts an entity nobody declared,
+ * and quietly collapses two entities that claim one key into one. A count is satisfied by a single
+ * entity used twice. Each of those is a wrong pass rather than a wrong fail, and a wrong pass is
+ * the expensive kind, because it leaves nothing behind for anyone to investigate. So the four
+ * summary conditions below are each written to refuse one of them.
  *
- * The helper enforces these matching rules:
- *   - Keys are matched by exact normalized-string equality through a Map. There is no two-argument fuzzy
- *     comparator and no substring contract. `normalizeKey` is a per-key, single-argument function applied
- *     symmetrically to both sides. Two keys join only when they normalize to the same string.
- *     The caller still owns normalization: it must not collapse distinct domain ids into the
- *     same key. Without such a collapse, `"a"` and `"a_b"` remain distinct.
- *   - Duplicate keys on either side are explicit output (`duplicateKeysLeft` / `duplicateKeysRight`) and
- *     a key with more than one entity on a side never forms a clean matched pair, so an ambiguous or
- *     collapsed owner cannot be silently verified as agreement.
- *   - The caller must name the authoritative side (`authoritative`, no default). That side
- *     lists the required entities; its unmatched entities are
- *     missing-required violations. The non-authoritative side's unmatched entities are surfaced as
- *     `unmatchedRight` / `unmatchedLeft` (present-but-undeclared) — the ghost / floating class — so the
- *     caller can decide whether an undeclared entity is allowed.
+ * Keys join by exact equality of the normalized string, looked up through a Map. There is no
+ * two-argument fuzzy comparator and no substring contract anywhere in the spec: `normalizeKey` is
+ * a single-argument function applied to both sides, so it can lowercase or resolve an alias but
+ * cannot decide that two different strings are close enough. `"a"` and `"a_b"` therefore stay
+ * distinct unless the caller's own normalization collapses them, which makes normalization the one
+ * place a domain distinction can still be lost, and the caller owns it.
  *
- * The helper does no I/O and imports no domain code. It reads only the supplied entity sets and
- * callbacks, reporting which entities correspond and where they disagree. Its `ok` requires all
- * four summary conditions below; the domain check decides whether to use that result or an
- * explicitly chosen subset, and owns the check id.
+ * A key that more than one entity claims forms no matched pair at all. `joinedPair` returns null
+ * unless exactly one entity stands on each side, so the field agreements never run over an
+ * ambiguous owner and cannot report agreement about one; the key instead lands in
+ * `duplicateKeysLeft` or `duplicateKeysRight`, where the caller can see it.
+ *
+ * The caller must name the authoritative side, and there is no default, because the authority is
+ * what decides what "unmatched" means. An unmatched entity on the authoritative side is a required
+ * one that is missing. An unmatched entity on the other side is present but undeclared — the ghost
+ * class — and whether an artifact may carry those is a domain question this module has no way to
+ * answer. So it reports both and folds them into separate booleans rather than deciding.
+ *
+ * It does no I/O and imports no domain code: it reads the entity sets and the callbacks it was
+ * given and nothing else. `ok` requires all four conditions at once, and a domain that genuinely
+ * permits extra entities takes the subset it wants and explains the choice.
  */
 
 import { duplicateKeyGroups, joinedPair } from "./relational-join-pairs.ts";
@@ -120,11 +121,12 @@ export interface RelationalJoinVerdict<L, R> {
   noUndeclared: boolean;
   /** Neither side carried a duplicate key. */
   noDuplicateKeys: boolean;
-  /** All four booleans above. Including noUndeclared and noDuplicateKeys prevents undeclared
-   *  entities and ambiguous keys from passing; earlier generated checks omitted those conditions.
-   *  A domain that permits extra entities must choose the relevant conditions explicitly and
-   *  explain that choice. Keep noDuplicateKeys when each required entity needs one counterpart;
-   *  authoritativeFullyMatched alone does not reject duplicates on the other side. */
+  /** All four booleans above, which is the strict reading: every required entity matched, every
+   *  matched pair agreed, nothing undeclared arrived, and no key was claimed twice on either side.
+   *  A domain that genuinely permits extra entities takes the subset it wants and explains the
+   *  choice, but it should keep `noDuplicateKeys` wherever each required entity needs exactly one
+   *  counterpart, because `authoritativeFullyMatched` tests for duplicates on the authoritative
+   *  side alone and will pass a counterpart set that names one entity twice. */
   ok: boolean;
 }
 

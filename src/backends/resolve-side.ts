@@ -1,7 +1,13 @@
 /**
- * Resolve the Builder and Built Harness slots. Precedence: operator file kind, then environment
- * pin, then the default from project-backend-policy. Unknown kinds and unavailable transports are
- * refused with their configuration source. Models resolve through the descriptor registry and
+ * Resolve the Builder and Built Harness slots. The defaults come from project-backend-policy.ts,
+ * which also records which transports each slot supports, so the two cannot drift apart: a default
+ * hardcoded here beside a support table that does not list it fails every fresh project at
+ * preflight, before it has built anything, and adding a transport cannot change a default by
+ * itself.
+ *
+ * Selection precedence: the operator file's kind, then the environment pin, then the declared
+ * default. Unknown kinds and unavailable transports are refused together with the
+ * configuration source that named them. Models resolve through the descriptor registry and its
  * named environment variables; operator files may not set them.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -129,7 +135,10 @@ export function resolveSide(
       `${operatorPath}: ${side}.model is not an operator field — models are denominated by the descriptor registry (env for slug engines) so run records stay comparable`,
     );
   }
-  // `disabled` and `inherit` are review-only; ignoring them here would silently substitute a slot.
+  // `disabled` and `inherit` belong to the review slot, the only slot with an off state. Ignoring
+  // either here would resolve this slot to the standing default with no sign that the operator had
+  // asked for anything else -- a silent slot substitution, which is the defect class this whole
+  // file refuses.
   if (operator?.disabled !== undefined) {
     throw new Error(
       `${operatorPath}: ${side}.disabled is review-only; choose a backend kind or remove the key`,

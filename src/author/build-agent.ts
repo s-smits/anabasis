@@ -27,8 +27,11 @@ export async function runModelAttempt<T>(
     return await operation();
   } catch (error) {
     if (error instanceof BuildAgentTurnNonResult) throw error;
-    // As in openBuildSession, a recognised transport failure becomes the typed non-result; code
-    // and configuration errors still throw unchanged.
+    // A transport fatal thrown rather than settled as a failed turn — a codex thread-open refusal
+    // is the usual one — passes every classifier by and records a bare abort that belongs to
+    // nobody. The rule is the same one openBuildSession applies: a recognised transport failure
+    // becomes the typed non-result, while code and configuration errors still throw unchanged,
+    // because those are defects here rather than in the environment.
     const message = errorMessage(error);
     if (runtimeNonResultReason([message]) === null) throw error;
     throw new BuildAgentTurnNonResult(role, "failed", [message]);
@@ -60,8 +63,10 @@ export class BuildAgentTurnNonResult extends Error {
   }
 }
 
-/** Opens a session, turning a recognised transport failure into the typed turn non-result.
- *  Programming and configuration errors are rethrown unchanged. */
+/** Session construction is part of the attempted author call, not a step before it: a recognised
+ *  transport failure raised before `runTurn` is reached still leaves the round with no candidate,
+ *  so it travels the same non-result path and stays available for later classification. Programming
+ *  and configuration errors are rethrown unchanged. */
 export async function openBuildSession<T>(open: () => Promise<T>): Promise<T> {
   try {
     return await open();

@@ -147,8 +147,11 @@ async function runAnalysePhase(
 
 /** Whether an admitted packet has blocking feedback. The routing step has already decided
  *  which findings to admit. Host findings such as checkerUnboundFinding can require a repair;
- *  the Judge never does. Every admitted row's severity is read, so blocking host feedback also
- *  controls publication of a held candidate's packet; advisory rows alone do not. */
+ *  the Judge never does. Every admitted row's severity is inspected, not only the Judge's, so
+ *  blocking host feedback also controls publication of a held candidate's packet. Reading the Judge
+ *  alone leaves a host-reported unbound verdict recorded but unused, and the next decision then
+ *  reads older admission, finds no blocker and keeps climbing. Advisory rows alone do not enable
+ *  publication. */
 export function blocksReplacement(feedback: ReadonlyArray<Pick<CampaignFeedback, "severity">>): boolean {
   return feedback.some((row) => row.severity === "blocking");
 }
@@ -337,8 +340,8 @@ export async function settleCandidateEvaluation(input: PostBuildInput): Promise<
   input.providerBudget?.throwIfDenied();
   input.verifierLifetime?.assertUsable();
   const shipping = shippingBundleFor(input, measure);
-  // A null claim states an environment-blocked battery; its recorded
-  // evidence and typed case rows carry the reason, so the absence is only named here.
+  // A null claim states an environment-blocked battery, a dead provider being the usual cause; its
+  // recorded evidence and typed case rows carry the reason, so the absence is only named here.
   if (measure.claim === null) {
     absentSteps.push(
       `battery "${runId}": environment-blocked — typed non-results recorded; no claim was written`,
@@ -346,7 +349,8 @@ export async function settleCandidateEvaluation(input: PostBuildInput): Promise<
   }
   const claimStage = recordMeasurement(measureDir, { runId, ...measure.verdicts });
   // Analysis runs for every measured battery, including one that passed nothing: the battery that
-  // most needs its census and admission read is the one that failed everywhere.
+  // most needs its census and admission read is the one that failed everywhere. A zero-pass skip
+  // here leaves a whole battery of admission refusals undiagnosed.
   const analysed = await runAnalysePhase(input, measure);
   const promotion = settleCheckAndPointer(input, analysed, measure, shipping);
   return {

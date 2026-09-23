@@ -1,25 +1,32 @@
 /**
  * The one validation sequence `correctness_check` previews and `submit` settles, on one captured
- * candidate snapshot:
+ * candidate snapshot, which is design prior 8: validation, conformance, the census and F2 all read
+ * the same frozen bytes.
  *
  *   bundle      the file contract and installed-tool resolution (checkCandidate)
  *   validation  experiment admission against the adopted product (experiment-admission.ts)
  *   conformance generated-tool load and the conformance probe on every task
  *   gates       the control census and, beside it, the F2 reference solve (census-gate.ts)
  *
- * Every stage that can run on the snapshot runs and reports all its findings, so one check shows
- * the Builder every refusing stage. Only a stage that leaves nothing for the next stops the
- * sequence: a bundle refusal leaves no validated contracts, a thrown stage or runtime non-result
- * says nothing about the bytes, and a candidate whose generated tools failed still gets its control
- * census but no F2, which needs those tools.
+ * Every stage that can run on the snapshot runs, and each reports all of its findings. Only a stage
+ * that yields nothing for the next to read stops the sequence: a bundle refusal leaves no validated
+ * contracts, a thrown stage or a runtime non-result says nothing about the bytes, and a candidate
+ * whose generated tools failed still gets its control census but no F2, which needs those tools.
+ * Ending the call at the first refusing stage instead means a Builder repairs one stage per check
+ * and pays for the whole sequence again to reach the next one, spending a check per stage on a
+ * single tree.
  *
- * Per-session memory. Preview and submit share one gate run per candidate, tool condition and
- * scope, in either call order; a host refusal is forgotten so a recovered host may judge the same
- * bytes. A preview remembers its executed stages per condition, in flight included, and spends the
- * condition's preview attempt before anything runs, so unchanged bytes never pay twice. Admission
- * is recomputed on every call because it reads EXPERIMENT.json, which the condition key excludes.
- * Submit keeps its own snapshot load and reuses only the shared gate run. Every executed gate run
- * writes into a new directory, so a reused run still holds exactly its own evidence.
+ * Memory, per session. A gate run is shared by preview and submit for the same candidate, tool
+ * condition and scope, in either call order; a host refusal is forgotten, so a recovered host may
+ * judge the same bytes rather than inheriting its predecessor's verdict. A preview remembers its
+ * executed stages per condition, a call in flight included, and every condition spends its preview
+ * attempt before anything runs, so unchanged bytes never buy the sequence twice. Admission is
+ * recomputed on every call because it reads EXPERIMENT.json, which the condition key leaves out on
+ * purpose: a revised proposal is a new question about bytes that did not change. Submit keeps its
+ * own snapshot load and reuses only the shared gate run, so a preview starting while submit runs
+ * joins submit's stages instead of loading the generated tools a second time. Every executed gate
+ * run writes into its own new directory, so a run another call reuses still holds exactly the
+ * evidence it produced.
  */
 import { type AgentToolsProbes, attestToolConformance } from "../author/agent-tools-session.ts";
 import type { BuiltHarness, CampaignFeedback } from "../author/campaign-types.ts";
@@ -109,7 +116,8 @@ interface ValidationMemory {
   stages: SolvabilityStageCache;
 }
 
-/** The gate implementations and the memory that says whether this scope is settled for these bytes. */
+/** What a shared gate run reuses across candidates: the gate implementations themselves and the
+ *  memory that decides whether this scope has already been settled for these bytes. */
 type SharedGateDeps = {
   readonly gates: Gate;
   readonly memory: ValidationMemory;
@@ -467,13 +475,14 @@ export async function previewCandidate(
     return result;
   };
   const prior = deps.memory.previews.get(key);
-  // A joined call spends the attempt too, so an unmemorable end is not bought again.
+  // A joined call spends the attempt too: if the run it joined ends unmemorable, the next preview
+  // of these bytes must not buy the sequence a second time to learn the same nothing.
   const spent = deps.memory.attempted.has(key);
   deps.memory.attempted.add(key);
   if (prior !== undefined) {
     const executed = await prior;
-    // A remembered result marks every stage as reused at no cost; an unmemorable one is reported as it ended.
-
+    // A remembered result names every executed stage as reused, at no cost; a joined call that
+    // ended unmemorable reports that same end, since it did not run twice either.
     const reused: ExecutedStages = {
       ...executed,
       receipts: executed.receipts.map((receipt) => ({ ...receipt, source: "reused", ms: 0 })),

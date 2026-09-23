@@ -109,8 +109,9 @@ async function start(row: EvaluatorStart, load: () => Promise<CheckModule>): Pro
   const checks = mod.checks as Record<string, CheckFn>;
   const check: unknown = Object.getOwnPropertyDescriptor(checks, row.checkId)?.value;
   if (!isFunction(check)) throw new Error("selected check export is missing");
-  // The port rides both on the request and as the second argument, so either way of reading it
-  // reaches the host.
+  // A check may read the port off the request or take it as the second argument; an authored check
+  // destructuring `{ artifact, runtime }` from the request would otherwise throw on every call. It
+  // rides in both places, so either way of reading it reaches the host.
   const request: Parameters<CheckFn>[0] = { ...row.request, ...keyIfDefined("runtime", runtime) };
   // SAFETY: the selected own export is a function; the host supplies the CheckFn request and validates its result below.
   const result: unknown = await (check as CheckFn)(request, runtime);

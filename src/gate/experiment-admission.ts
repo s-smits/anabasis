@@ -1,7 +1,10 @@
 /**
  * Whether a captured candidate may be measured as the experiment it declares, judged against the
- * adopted product. These rules read bytes and recorded evidence and run no tool, so the pipeline
- * reports them beside the executed stages rather than stopping before them.
+ * adopted product. These rules read bytes and recorded evidence only; they run no tool, so the
+ * pipeline reports them beside the executed stages instead of before them. A scope refusal used to
+ * return early, and the author then met conformance, the census and F2 for the first time only
+ * after rewriting EXPERIMENT.json — paying two round trips for findings that were already
+ * available in the first.
  */
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
@@ -43,15 +46,21 @@ export interface AdmissionInput {
   priorPublicTaskFingerprints?: readonly string[];
 }
 
-/** States exactly the byte comparison `publicBatteryFingerprint` makes over sorted public inputs:
- *  ids, families and levels are outside the identity, and any moved value is inside it. */
+/** What this refusal observed is a byte comparison: `publicBatteryFingerprint` hashes the sorted
+ *  public inputs, so ids, families and levels are outside the identity and a moved number is inside
+ *  it. The text states that comparison and no other. Read wider, it would name a battery that only
+ *  moved its published magnitudes as though this check had caught it; it has not, and that
+ *  obligation is the authoring prompt's, where a rule no check enforces has its one owner. */
 const REPEATED_CONDITION =
   "This fixed product already measured these public inputs: every task's public input is byte-identical to a battery in the admitted history, whatever its ids, families or levels are now called. A new experiment changes what the tasks require of the solver, or changes the product.";
 
 type Baseline = ReturnType<typeof adoptedBaseline>;
 
-/** Whether the candidate keeps the adopted installed verifier and compiled submission schema;
- *  without a baseline proof the answer is `unproven`. */
+/** Whether the candidate keeps the adopted installed verifier and compiled submission schema.
+ *  Unproven is neither preserved nor moved, and the three answers stay apart because a missing
+ *  baseline proof certifies neither reading: treating it as preserved would let an unmeasurable
+ *  change through as a controlled operation, and treating it as moved would deny a candidate that
+ *  changed nothing. */
 function submissionCondition(
   adoptedDir: string,
   candidate: CandidateSnapshot,
@@ -105,11 +114,15 @@ const SINGLE_OPERATION = {
   scoring: "evaluation-correction",
 } as const;
 
-/** What the accepted bytes moved against the adopted baseline: one moved dimension is a controlled
- *  operation, none a repeat, and several, or no readable baseline, a new baseline. Scoring covers the
- *  scoring program and a retained task's expectations, controls and family (the family selects its
- *  checks); a reference solve or test rewritten for a new battery is not scoring. */
-
+/** What the accepted bytes moved against the adopted baseline, derived by the host: one moved
+ *  dimension is a controlled operation, none a repeat, and several, or no readable baseline proof,
+ *  a new baseline that carries no attributable-improvement claim. Expectations, controls and family
+ *  of a retained task count as scoring, since the family selects the checks that apply to it. So
+ *  does the scoring program, and only that: a reference solve or test rewritten for a new battery
+ *  moves what the gate rehearses, not what the verifier decides, which is why `scoringHash` is the
+ *  evaluator's own import closure rather than the correctness-model directory. Counting any byte
+ *  under correctness-model/ instead calls a candidate a new baseline for a rewritten reference solve
+ *  or test, when what it did was one harness intervention or one task probe. */
 export function experimentOperation(
   candidate: CandidateSnapshot,
   adoptedDir: string | undefined,

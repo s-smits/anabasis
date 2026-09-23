@@ -1,11 +1,20 @@
 /**
  * Reads a file's facts, lines and pages while holding one chunk rather than the file.
  *
- * Each request counts newlines forward and discards every chunk, so memory stays constant however
- * late the wanted line is. User context may admit large files, so no admitted text is held.
+ * This is opencode's read tool with one change. Theirs walks the file in 256 KiB leaves, keeps every
+ * leaf in an augmented rope and asks the rope for the byte offset of the first wanted line. A rope
+ * answers repeated line queries cheaply, but a request here asks exactly once and the leaves are
+ * never released, so paging to a late line in a large file holds every byte before it. Counting
+ * newlines forward and discarding each chunk answers the same question in constant memory, which is
+ * what these functions do and what `test/builder-file-window.test.ts` measures on a 24 MiB fixture.
  *
- * `readWindow` and `characterWindow` in read-window.ts own what a window means; these functions
- * only supply the bytes.
+ * That difference is worth the rewrite because user context admits 25 MB per file and 200 MB across
+ * the corpus: holding admitted text for the life of a run is the one place where the raised ceiling
+ * would be paid in resident memory. The four exports are one boundary — everything a caller used to
+ * need the whole text for.
+ *
+ * `readWindow` and `characterWindow` in read-window.ts stay the owners of what a window means and of
+ * what it says it left out. These functions only put the right bytes in front of them.
  */
 import { closeSync, openSync, readSync } from "../meta/filesystem.ts";
 import {
@@ -16,7 +25,7 @@ import {
   windowRange,
 } from "./read-window.ts";
 
-/** One page-sized read per step, whether skipping or collecting. */
+/** opencode's FIRST_CHUNK. One page-sized read per step, whether skipping or collecting. */
 const CHUNK_BYTES = 256 * 1024;
 const NEWLINE = 0x0a;
 
@@ -26,8 +35,10 @@ const SPAN_BYTES = 64 * 1024 + CHUNK_BYTES;
 /**
  * What admission records about a file, from one forward pass that keeps no text.
  *
- * `lines` and `characters` are the totals every later window states, so no window counts the file
- * again. `text` is false when any byte is zero or the file is not valid UTF-8.
+ * `lines` and `characters` are the totals every later window states as its `total`, and both are
+ * recorded at admission, so a window never counts the file again. `text` is false when a byte is
+ * zero or the file is not valid UTF-8: the whole-file half of the content sniff, which the first
+ * chunk alone cannot answer for a file that hides a zero byte in its tail.
  */
 interface TextFileFacts {
   bytes: number;
@@ -38,7 +49,8 @@ interface TextFileFacts {
 
 /**
  * The window of `path` covering lines `offset`..`offset + limit - 1`, where `totalLines` is the
- * count recorded at admission, so the read is one forward pass.
+ * count recorded when the file was admitted. Taking the total from admission rather than counting it
+ * again is what keeps this to one forward pass: the caller already recorded that number.
  */
 export function readFileWindow(
   path: string,
@@ -48,7 +60,8 @@ export function readFileWindow(
 ): ReadWindow {
   const count = limit ?? READ_WINDOW_LINES;
   const range = windowRange(totalLines, offset, count);
-  // An offset past the end answers without a read; an empty span would still hold one empty line.
+  // An offset past the end is how a caller walking a file finds the end, so it answers without a
+  // read. Without this the span would be empty, and an empty span still holds one empty line.
   if (range.to < range.from) return { ...range, total: totalLines, text: "", cut: false };
   const handle = openSync(path, "r");
   try {
@@ -56,7 +69,9 @@ export function readFileWindow(
     const start = skipLines(handle, chunk, range.from - 1);
     const span = collect(handle, chunk, start, count + 1);
     const window = readWindow(span, 1, count);
-    // `readWindow` counted only the span; the file's own total decides whether more follows.
+    // The span is a slice of the file, so `readWindow` counted the lines it was handed rather than
+    // the file's. The file's own total decides what follows, or a windowed read of a large file
+    // would announce itself complete at the end of every span.
     const to = Math.min(range.to, range.from - 1 + (window.to - window.from + 1));
     return { ...window, from: range.from, to, total: totalLines, more: to < totalLines };
   } finally {
@@ -81,14 +96,15 @@ export function scanTextFile(path: string): TextFileFacts {
       return facts;
     }
     try {
-      // Streaming, so a character split across chunks is not a truncated sequence.
+      // Streaming, so a character split across this boundary is completed by the next chunk rather
+      // than failing here as a truncated sequence and marking a text file binary.
       count(decoder.decode(chunk, { stream: true }));
     } catch {
       facts.text = false;
       return facts;
     }
   }
-  // The flush fails on a sequence truncated at the end of the file.
+  // The flush is where a sequence truncated at the end of the file finally fails.
   try {
     count(decoder.decode());
   } catch {
@@ -98,8 +114,13 @@ export function scanTextFile(path: string): TextFileFacts {
 }
 
 /**
- * The exact character page `characterWindow` would return for the whole text, decoded forward
- * keeping only the wanted characters. `limit` is honoured as asked; the caller owns the page ceiling.
+ * The exact character page `characterWindow` would return for the whole text, built by decoding
+ * forward and keeping only the wanted characters. Paging costs one pass over the characters before
+ * the page, which is what a file read without an index costs; it never costs the file in memory.
+ *
+ * `limit` is required and is honoured as asked, because how large a page may be belongs to the
+ * caller's result ceiling rather than to reading a file: the Builder's context tool applies
+ * `characterLimit` before calling here.
  */
 export function readFileCharacterWindow(
   path: string,
@@ -124,7 +145,8 @@ export function readFileCharacterWindow(
 
 /**
  * Every line of the file in order, 1-based, split the way `readWindow` splits text so a line number
- * from a search reaches the same line through a read. The caller keeps only what it needs.
+ * from a search reaches the same line through a read. The caller sees one line at a time and decides
+ * what to keep, which is what lets a search over a 200 MB corpus hold only its matches.
  */
 export function eachFileLine(path: string, visit: (line: string, number: number) => void): void {
   let rest = "";
@@ -136,13 +158,17 @@ export function eachFileLine(path: string, visit: (line: string, number: number)
     rest = parts.pop() ?? "";
     for (const line of parts) visit(line, (number += 1));
   }
-  // An empty file has no lines; any other file ends with one more line, empty after a final newline.
+  // An empty file has no lines at all, which is what `scanTextFile` records for it; every other file
+  // ends with one more line, empty when the file ends in a newline.
   if (any) visit(rest, number + 1);
 }
 
 /**
  * The file's bytes, one chunk at a time. Each chunk is a view on one reused buffer, valid until the
- * next one is requested. Breaking out of the loop runs the `finally` and closes the handle.
+ * loop asks for the next one — the same contract the callback form had, stated rather than enforced.
+ *
+ * A caller that breaks out of the loop still closes the handle at the break, because a `for...of`
+ * over a generator calls its `return()` and that runs the `finally` here.
  */
 function* fileChunks(path: string): Generator<Uint8Array> {
   const handle = openSync(path, "r");
@@ -160,7 +186,11 @@ function* fileChunks(path: string): Generator<Uint8Array> {
 }
 
 /**
- * The same walk, decoded. A piece never splits a character; the last piece is the decoder's flush.
+ * The same walk, decoded. A piece never splits a character, so a caller may iterate it directly.
+ *
+ * The last piece is the decoder's flush, which holds whatever a truncated sequence at the end of the
+ * file leaves behind. A caller that breaks early never reaches it, which is right: it stopped before
+ * the end of the file, and there is no end to flush.
  */
 function* textPieces(path: string): Generator<string> {
   const decoder = new TextDecoder();
@@ -200,7 +230,8 @@ function collect(handle: number, chunk: Uint8Array, start: number, lines: number
       if (chunk[index] === NEWLINE) newlines += 1;
       index += 1;
     }
-    // Streaming, so a character split across chunks is not decoded as a replacement character.
+    // Streaming, so a character split across this boundary is completed by the next chunk instead of
+    // decoding as a replacement character in the middle of a window the model will read.
     parts.push(decoder.decode(chunk.subarray(0, index), { stream: true }));
     position += index;
   }

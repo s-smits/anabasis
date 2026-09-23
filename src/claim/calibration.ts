@@ -1,13 +1,16 @@
 /**
  * Control corpus floors and Judge independence. The floors set how many known-correct and
  * deliberately incorrect controls an authored corpus must carry; authoring states and checks the
- * same numbers. The Main Judge runs no control census over that corpus, so no validity rule, bait
- * corpus or calibration rate lives here.
+ * same numbers. The Main Judge no longer runs a control census over that corpus (operator
+ * decision), so no validity rule, bait corpus or calibration rate lives here — a rate computed
+ * from a census nobody runs would be read as calibration evidence the system does not have.
  */
 import { policyRow, posInt } from "../critic/manifest.ts";
 
 /** The registered control corpus floors, read from the frozen manifest's `evaluatorCalibration` row.
- *  A missing or invalid field takes the default of five. */
+ *  A missing or invalid field takes the pilot default of five. The row is read here rather than in
+ *  the numeric policy table because reading a manifest row belongs at the consumer that acts on
+ *  it; src/critic/policy.ts names this file as the reader and keeps its own values code-only. */
 export const EVALUATOR_CALIBRATION_POLICY = policyRow("evaluatorCalibration", {
   minimumKnownPasses: { bound: posInt, fallback: 5 },
   minimumKnownFailures: { bound: posInt, fallback: 5 },
@@ -20,12 +23,15 @@ export const EVALUATOR_CALIBRATION_POLICY = policyRow("evaluatorCalibration", {
 export type EvaluatorIndependence = "same-model" | "same-family" | "different-family" | "deterministic";
 
 /** Model family follows the vendor. A pin is `backendKind/modelId`, and the model id may have
- *  a vendor prefix (`openrouter/anthropic/claude-opus-4-8`). The backend kind is ignored, so one
- *  vendor's model reached through two transports is not counted independent. Use the model id's
- *  vendor prefix when present, or its leading letters otherwise: `claude-opus-4-8` and
- *  `claude-sonnet-5` share a family. The alias table joins vendor names that differ across
- *  transports, such as `anthropic` and `claude`. Unparseable pins and the broker's `unresolved`
- *  value are classified `same-model`, since an unknown identity cannot establish independence. */
+ *  a vendor prefix (`openrouter/anthropic/claude-opus-4-8`). Classifying on the backend kind would
+ *  call the same vendor's model independent of itself whenever the two slots reached it through
+ *  different transports, such as the Claude keychain and OpenRouter, so the vendor is taken from
+ *  the model id's prefix when it has one and from its leading letters otherwise: `claude-opus-4-8`
+ *  and `claude-sonnet-5` share a family. The alias table exists because one vendor is named
+ *  differently on different transports, `anthropic` on one and `claude` on another. An unparseable
+ *  pin and the broker's `unresolved` value both receive the least independent classification,
+ *  `same-model`, because an unknown model identity cannot establish that the reviewer is
+ *  independent of what it reviews. */
 const VENDOR_ALIASES = new Map([
   ["anthropic", "claude"],
   ["openai", "gpt"],

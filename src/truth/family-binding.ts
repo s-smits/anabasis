@@ -119,7 +119,9 @@ async function searchDonor(
       donor,
     );
     // Host outages throw before this point, so an unsettled evaluate is the correctness model's own
-    // failure, reported as the author's rather than routed to the environment.
+    // failure, and is reported as the author's rather than routed to the environment. Routed to the
+    // environment it reads as "did not settle … unknown", with no hint that the evaluator threw on
+    // a sibling's well-formed design.
     if (!verified.settled) {
       return {
         kind: "stop",
@@ -184,11 +186,11 @@ function familyDonors(witnesses: readonly FamilyWitness[], roots: readonly strin
 /**
  * Does one accepted deliverable answer a whole task family?
  *
- * W20 produced a family of nine tasks whose reports differed but whose module did not. B2 counts
- * tasks per family, B3 checks that a declared axis varies, and the control corpus checks that a
- * mutated artifact is rejected — none of them asks whether task 3's accepted deliverable also
- * satisfies task 7. F2 already holds the missing material: one accepted reference artifact per
- * task, and the ordinary verification path.
+ * A family can hold nine tasks whose reports differ while their module does not. B2 counts tasks
+ * per family, B3 checks that a declared axis varies, and the control corpus checks that a mutated
+ * artifact is rejected — none of them asks whether task 3's accepted deliverable also satisfies
+ * task 7. F2 already holds the missing material: one accepted reference artifact per task, and the
+ * ordinary verification path.
  *
  * The artifact schema's `taskConditioned` roots select the deliverable. A target keeps its
  * report and every other unmarked root byte-identical while the donor's marked roots replace its
@@ -199,10 +201,11 @@ function familyDonors(witnesses: readonly FamilyWitness[], roots: readonly strin
  *
  * Two shortcuts avoid evaluations that cannot add evidence. Sibling deliverables that
  * serialise identically need no evaluation: substituting equal bytes leaves an already passing
- * artifact unchanged — and the family stops at its first donor that no sibling rejects.
+ * artifact unchanged — and the family stops at its first donor that no sibling rejects. A family of
+ * nine identical deliverables therefore costs no evaluation at all rather than seventy-two.
  *
  * Donor searches are independent, so they run in the census lanes and settle in family and donor
- * order: four lanes and one lane return the same findings.
+ * order, which is what makes four lanes and one lane return the same findings.
  *
  * Two limits, stated rather than implied. This disproves uniformity for the witnesses it has; it
  * does not prove that no universal artifact exists anywhere in the solution space. And a rejection
@@ -277,8 +280,9 @@ function hybridArtifact(target: JsonValue, donor: JsonValue, roots: readonly str
   return hybrid;
 }
 
-/** The brief a hybrid is evaluated under: a hybrid runs only the checks that read a moved root. The
- *  others get the projected bytes the target's accepted witness gave them and already passed. */
+/** The brief a hybrid is evaluated under: a hybrid runs only the checks that read a moved root,
+ *  because the others receive the projected bytes the target's accepted witness gave them and have
+ *  already passed on exactly those. */
 function materialBrief(brief: Brief): Brief {
   const materialIds = familyMaterialCheckIds(brief);
   return { ...brief, truthChecks: brief.truthChecks.filter((check) => materialIds.has(check.id)) };

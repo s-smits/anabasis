@@ -1,7 +1,11 @@
 /**
  * Estimation vocabulary: raw success rates with Wilson score intervals at the registered
- * reporting confidence. Decisions use raw counts and intervals only; nothing here smooths or fills
- * an absent measurement. This is the only interval implementation, so every reader agrees.
+ * reporting confidence. Decisions use raw counts and intervals only, because a rate that smooths
+ * or fills an absent measurement would read as a measured one.
+ *
+ * One interval, one confidence, one owner. A second implementation at a rounded z of 1.96, or one
+ * answering [0, 1] rather than nothing at n = 0, makes one battery read two ways depending on which
+ * reader reaches it first.
  */
 
 /** The registered reporting confidence, declared beside the band as `climb.confidence`. */

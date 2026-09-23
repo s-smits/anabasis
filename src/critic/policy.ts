@@ -1,10 +1,16 @@
 /**
- * The controller's numeric policy: one value, one comment, one place.
+ * The controller's numeric policy: one value, one comment, one place. Centralising these was an
+ * operator direction against repeating numeric literals at their consumers.
  *
- * A value a `thresholds.frozen.yaml` row also declares is bound to it by
- * test/frozen-manifest-binding.test.ts; manifest rows are read through src/critic/manifest.ts
- * (`climb` via `climbThresholds` in src/run/climb-history.ts). Every other value is code-only, so
- * adding one moves no manifest digest.
+ * `thresholds.frozen.yaml` is declared policy, and a value here that a manifest row also declares
+ * is bound to it by test/frozen-manifest-binding.test.ts. Reading a manifest row is
+ * src/critic/manifest.ts's job, not this file's: `climb` is read through `climbThresholds`
+ * (src/run/climb-history.ts) and `evaluatorCalibration` through `EVALUATOR_CALIBRATION_POLICY`
+ * (src/claim/calibration.ts). Every other value below is code-only, so adding one moves no
+ * manifest digest.
+ *
+ * Where a value's history is long, it is written once at the consumer that acts on it and named
+ * here by file. A number still states why it is that number.
  */
 
 /** Declared so `band` is a pair rather than `number[]`; consumers destructure it as [lo, hi]. */
@@ -12,48 +18,66 @@ const CLIMB_BAND: [number, number] = [0.2, 0.5];
 
 export const POLICY = {
   climb: {
-    /** Manifest row `climb.band`: the pass-rate window a battery is measured against. Below it the
-     *  tasks are too hard to read; above it no limit was found. `climbThresholds` owns the value
-     *  and passes it to every consumer; this is the default for a caller with no manifest. */
+    /** Manifest row `climb.band`. The pass-rate window a battery is measured against: below it the
+     *  tasks are too hard to read, above it no limit was found. Read through the manifest by
+     *  `climbThresholds` (src/run/climb-history.ts), which is the value's one owner; every other
+     *  consumer receives it. The Builder's battery contract and src/run/battery-sizing.ts take the
+     *  band as a parameter and the controller passes `climbThresholds(...).band`; the default they
+     *  declare is this row, for a caller with no manifest. Reading this constant directly instead
+     *  gives one number three owners, which agree until a manifest override moves the recorded
+     *  placement while the Builder's prompt still quotes these counts and the sizing gate still
+     *  holds the code-owned ceiling. */
     band: CLIMB_BAND,
-    /** Consecutive rounds reading one side of the aim before the campaign stops; a round whose
-     *  claim was refused counts with them. Three matches the observed point where operators
-     *  stopped such runs by hand. Counted in batteries, not solves. Counted by `allowance` in
+    /** Consecutive rounds that read one side of the aim before the campaign stops. A round counts
+     *  when it placed off the aim on that side, and a round whose claim was refused counts with it,
+     *  because measuring nothing is the same repetition with nothing to place. Three is where the
+     *  operator has stopped a campaign by hand, so the number matches an observed stopping point
+     *  rather than being derived. Counted in batteries and not in solves, so a six-task probe
+     *  campaign stops at the same point as a 25-task one. Counted by `allowance` in
      *  src/run/climb-readout.ts and read by src/run/next-move.ts. */
     offAimStreakRounds: 3,
   },
   loop: {
     /** Consecutive batteries that recorded only typed non-results and created no claim before the
      *  loop closes with an environment terminal. Re-measuring an unavailable provider creates no
-     *  evidence; a small allowance covers a transient outage. Read by src/run/full-run-round.ts. */
+     *  evidence, however many rounds it is given, and a small allowance still covers a transient
+     *  outage. Read by src/run/full-run-round.ts. */
     environmentBlockedRounds: 3,
-    /** Consecutive build-failed rounds before the loop stops trying, since the recomputed next
-     *  decision often permits a retry. Read by src/run/full-run-round.ts. */
+    /** Consecutive build-failed rounds before the loop stops trying. One failed authoring round used
+     *  to end the campaign, and the recomputed next decision often permits a retry. Read by
+     *  src/run/full-run-round.ts as `AUTHORING_STALL_LIMIT`, which explains there why a held
+     *  candidate is counted against the same allowance. */
     buildFailedRounds: 3,
     /** Consecutive completed measurements after which the selector still asks to measure for
      *  feedback: the battery ran, yet no admitted feedback and no difficulty evidence reached the
-     *  selector, so a further identical measurement creates nothing new. Matches
-     *  `environmentBlockedRounds`. Read by src/run/full-run-round.ts. */
+     *  selector, so a further identical measurement creates nothing new. This is
+     *  `environmentBlockedRounds` seen from the analysis side rather than the provider side, and
+     *  matches it. Read by src/run/full-run-round.ts. */
     stalledMeasureRounds: 3,
     /** Consecutive gate refusals carrying one findings hash before the authoring loop terminates,
-     *  counting the current attempt. Eight sits between the longest observed streak that still
-     *  converged and the shortest that did not. Read by src/gate/settlement.ts. */
+     *  counting the current attempt. Eight sits strictly between the deepest observed convergent
+     *  streak — one hash repeated six times before the gates cleared — and the observed
+     *  non-convergent one, which repeated a hash fourteen times. Read by src/gate/settlement.ts. */
     stalledFindingsRepeats: 8,
     /** Consecutive byte-identical resubmits of a refused authoring identity before the session ends
-     *  as authoring-stalled; each strike below the ceiling returns a counted steering finding. A
-     *  repeated findings digest on a changed tree is ordinary repair and counts nothing. Read by
+     *  as authoring-stalled. One repeat used to end it outright, which stopped sessions that had a
+     *  changed next move already in the transcript; each strike below the ceiling now returns a
+     *  counted steering finding instead. A refused submit whose findings digest
+     *  repeats on a changed tree is ordinary repair and counts nothing. Read by
      *  src/gate/candidate-memory.ts. */
     noopSubmitStrikes: 3,
-    /** How often one workspace commit may be recorded as an unchanged candidate, across the
-     *  campaign and across invocations, before the round closes as authoring-stalled. Unlike
-     *  `noopSubmitStrikes`, each strike is a completed session whose candidate equals its round
-     *  entry. Keyed by commit, so any write starts a new key. Read by
-     *  src/run/full-run-build-step.ts. */
+    /** How often one workspace commit may be recorded as an unchanged candidate, across the whole
+     *  campaign and across invocations, before the round closes as authoring-stalled.
+     *  `noopSubmitStrikes` does not cover this: it counts refused resubmits inside one session,
+     *  while every strike here is a completed session whose candidate equals its own round entry,
+     *  so the in-session counter starts at zero again. Keyed by commit, so a Builder that writes
+     *  anything starts a new key. Read by src/run/full-run-build-step.ts. */
     unchangedCandidateStrikes: 3,
     /** Refused control censuses attributed to one tool id across a campaign before it ends as
-     *  `verifier-required`. Counted by tool id, because each repair changes the tree while the
-     *  failing tool run does not. Three matches `noopSubmitStrikes`. Read by
-     *  src/author/tool-non-result.ts. */
+     *  `verifier-required`. Counted by tool id rather than candidate identity because each repair
+     *  changes the tree while the unsuccessful tool run does not, so the no-op strike counter sees
+     *  a different tree every time. Three matches `noopSubmitStrikes`: report the defect, allow the
+     *  repair, end the repetition. Read by src/author/tool-non-result.ts. */
     toolNonResultRefusals: 3,
   },
   battery: {

@@ -1,7 +1,15 @@
-// One owner for line counting. Every gate that says "nonblank" means this function, with the six
-// exclusion classes applied.
+// One owner for line counting, so that "nonblank" names the same line in every gate and every
+// report that uses the word: one carrying something other than whitespace. Which files to count is
+// a separate question and a separate function, because the two callers want different answers.
+// `tools/loc/source-policy.ts` measures every file it walks under `src`, `tools` and `vendor`
+// against the authored ceiling and excludes none of them, while `bundleRecord` in
+// `tools/outcome/metrics.ts` sizes a Builder-authored bundle and asks `excludedAs` first, because
+// a bundle carries its own installed dependencies and recorded evidence.
 
-/** generated · evidence · docs · tests · vendored · dependencies */
+/** The six classes of path that are somebody else's lines: written by a generator, recorded as
+ *  evidence, prose rather than code, a test, pinned from upstream, or installed. `bundleRecord`
+ *  counts the files each class takes and reports those counts beside the authored total, so a
+ *  bundle that measures small says which class it is small because of. */
 const EXCLUSIONS: ReadonlyArray<{ kind: string; re: RegExp }> = [
   { kind: "generated", re: /(^|\/)generated\// },
   { kind: "evidence", re: /(^|\/)(evidence|runs)\/|\.jsonl$/ },

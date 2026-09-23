@@ -1,3 +1,16 @@
+/**
+ * One cell, more than one caller. The verifier host writes a tool run's operands into a cell on
+ * disk and then spawns the tool over them, so two runs sharing a cell are two writers over the same
+ * paths, and the window between the write and the spawn is where a second call can overwrite the
+ * first one's inputs. Every case below opens that window deliberately and asks what came back.
+ *
+ * The host is built with `requireOsSandbox: false`, which bounds what a pass here means. Nothing in
+ * this file proves the OS would stop a child reaching outside its cell; it
+ * proves the writer and the process owner keep one caller's bytes separate from another's. The
+ * confinement half is proved where it can actually be executed, by `verifier-host-limits.test.ts`
+ * for the wall a run requires and by `darwin-seatbelt.test.ts` and `linux-bwrap-verifier.test.ts`
+ * for real sandboxed children on the two platforms.
+ */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   existsSync,
@@ -27,8 +40,12 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** These tests exercise the real cell writer and process owner, not OS confinement. OS sandbox
- *  coverage remains in host.test.ts and evaluator-process.test.ts. All canaries are test-owned. */
+/** One opened scope over a fresh cell, with a `wait` tool that spins until a `release` file appears
+ *  beside it. That loop is what makes the concurrency cases possible at all: a tool that ran to
+ *  completion the moment it was spawned would never have two calls in flight together, so there
+ *  would be no window for the second to overwrite the first, and a passing assertion would only be
+ *  saying the two calls happened to be serialised by timing. Holding both readers open and then
+ *  writing `release` once puts both calls inside the cell at the same instant on purpose. */
 function fixture(artifact: JsonObject = { first: "A", second: "B" }) {
   const root = mkdtempSync(join(tmpdir(), "ana-cell-integrity-"));
   roots.push(root);

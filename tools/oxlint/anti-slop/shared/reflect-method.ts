@@ -9,7 +9,17 @@ function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression):
   return variable === null || variable.defs.length === 0;
 }
 
-/** Reports whether a call target names one method on the global Reflect object. */
+/**
+ * Whether a callee names one method on the global `Reflect` — the test `no-reflect-get` and
+ * `no-reflect-apply` share.
+ *
+ * `isGlobalReflect` accepts the name where the scope chain says it is a global reference, and
+ * also where it resolves to a variable with no definition, because an ambient declaration binds
+ * the name without giving it a definition node. A `Reflect` the file declares itself therefore
+ * fails both tests and is somebody's own object. Computed access is read alongside plain access,
+ * since `Reflect["get"](…)` is the same call; a computed key that is not a string literal names
+ * nothing this function can decide and is refused rather than guessed at.
+ */
 export function isGlobalReflectMethodCall(
   sourceCode: SourceCode,
   callee: ESTree.Expression,

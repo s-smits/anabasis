@@ -16,7 +16,8 @@ export type OAuthLoginOptions = {
   onPrompt: (prompt: OAuthPrompt) => Promise<string>;
   onProgress?: (message: string) => void;
   onManualCodeInput?: () => Promise<string>;
-  /** Called when the browser callback wins, to release the manual stdin reader. */
+  /** Called when the browser callback wins the race. The manual stdin reader is then the losing
+   *  route, and without a release it stays a second stdin consumer until the process exits. */
   onManualCodeCancel?: () => void;
 };
 
@@ -37,8 +38,9 @@ type CallbackRoute = {
   provider: string;
 };
 
-/** Open the callback server on its fixed port. A taken port leaves the login to the manual paste
- *  fallback, so a second login session cannot break the first. */
+/** Open the callback server on its fixed port. A port that is already taken settles nothing and
+ *  leaves the login to the manual paste fallback, because a second login session must not make the
+ *  first one unusable. */
 export function startCallbackServer(route: CallbackRoute): CallbackServer {
   let settleWait: ((value: Callback | null) => void) | undefined;
   const waitForCodePromise = new Promise<Callback | null>((resolveWait) => {
@@ -125,7 +127,9 @@ export async function resolveAuthorizationCode(
         manualError = asError(error);
         server.cancelWait();
       });
-    // A closure read keeps `manualError`'s declared type; the checker cannot see the callback assign it.
+    // The assignment above happens inside a callback the checker cannot follow, so after the first
+    // read it narrows `manualError` to `undefined` and calls the second read dead. Reading through
+    // a closure keeps the declared type at both sites.
     const throwManualFailure = (): void => {
       if (manualError !== undefined) throw manualError;
     };
@@ -133,7 +137,9 @@ export async function resolveAuthorizationCode(
     const result = await server.waitForCode();
     throwManualFailure();
     if (hasText(result?.code)) {
-      // Release the manual reader without awaiting it: an embedded manual source may never resolve.
+      // The browser route won, so release the losing manual stdin reader. Its promise settles on
+      // its own after the release and must not be awaited here: an embedded manual source may
+      // legitimately never resolve at all.
       options.onManualCodeCancel?.();
       code = result.code;
       state = result.state;

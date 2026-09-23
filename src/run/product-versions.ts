@@ -98,10 +98,15 @@ export function readProductVersion(repoRoot: string, slug: string, id: string): 
     directDestination(join(dir, part), campaignDir(repoRoot, slug));
   }
   verifyTree(dir, manifest.fingerprint, "retained product version");
-  // The linked tool tree sits outside the fingerprint and may be reclaimed by the operator. A tree
-  // that resolves elsewhere is a changed reference and refused; one that resolves nowhere is
-  // disclosed as null, since readers already fall back to the host PATH and verifyTree above
-  // proves the product's own bytes.
+  // A retained version links its tool tree into an epoch workspace, and those bytes sit outside
+  // the fingerprint by design, at hundreds of megabytes an epoch. An operator reclaiming that
+  // space leaves the link unresolvable, and the equality below then refused every retained version
+  // of the campaign, which stops a continuation before its opening exists, so no terminal records
+  // why. The
+  // product's own bytes are untouched and verifyTree above proves it. A tree that resolves
+  // somewhere else is still a changed reference and still refused; a tree that resolves nowhere is
+  // disclosed as null, and every reader of it already resolves tools on the host PATH and reports
+  // the ones it cannot find.
   const toolTree = bundleSnapshotToolTree(dir);
   if (toolTree !== null && toolTree !== manifest.toolTree) {
     throw new Error(`${dir}: product tool-tree reference changed`);
@@ -187,9 +192,9 @@ export function selectedProductDir(repoRoot: string, slug: string): string {
 /** Whether the battery `runId` measured the version `selectedProductDir` resolves to. The ledger
  *  binds each measured battery to its product version, and a `reused` round binds a later runId to
  *  the same selected version, so the question is the ledger's and never `runId === versionId`.
- *  Null where the answer is unknown rather than "no": a campaign the controller never opened has no
- *  ledger, a campaign before its first selection has no row, and a battery the ledger never bound has no version.
- *  Each leaves the comparison unmade instead of reporting a difference. */
+ *  Null where the answer is unknown rather than "no": a campaign the controller never opened has
+ *  no ledger, a campaign before its first selection has no row, and a battery the ledger never
+ *  bound has no version. Each leaves the comparison unmade instead of reporting a difference. */
 export function measuredSelectedProduct(repoRoot: string, slug: string, runId: string): boolean | null {
   const campaign = campaignDir(repoRoot, slug);
   if (!controllerLedgerExists(campaign)) return null;

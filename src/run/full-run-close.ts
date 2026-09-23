@@ -18,10 +18,12 @@ import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
  *
  * A Builder session writes `in-flight` first and settles the same record when it returns. A session
  * that never returns — the host killed it, its provider stopped mid-turn — leaves that snapshot as
- * the final state. The controller knows the invocation closed, so it says so here.
+ * the final state, so its record still reads `in-flight` long after the campaign has stopped. The
+ * controller knows the invocation closed, so it says so here.
  *
- * The invocation comes straight from the terminal write this run just made, so the records name
- * the exact run and closing time; rescanning controller state could pick an abandoned sibling.
+ * The invocation comes straight from the terminal write this run has just made, so the records
+ * name the exact run and the exact closing time. Scanning controller state again instead selects
+ * whichever opening it finds, which can be an abandoned sibling, and then these records stay open.
  */
 function closeOpenAuthoringRecords(
   repoRoot: string,
@@ -48,13 +50,15 @@ export function closeControllerRun(
   const failure =
     cause ?? (pending.length > 0 ? new VerifierOperationalStop("unsettled-children", pending) : null);
   try {
-    // A run that died before a round opened it has a reason and nowhere to put it. Open it here so
-    // the terminal below records that reason.
+    // A run that died before any round opened it has a reason and nowhere to put it: a terminal is
+    // only prepared beside an opening. Opening it here is what gives that reason somewhere to go,
+    // and before this every such abort left the run unrecorded.
     try {
       state.openIfUnopened?.();
     } catch {
       // The opening is best effort at this point: the run is already ending, and the cause below
-      // is the fact worth keeping. An unopenable campaign leaves the run unrecorded, with its stderr.
+      // is the fact worth keeping. A campaign that cannot be opened keeps the older behaviour —
+      // an unrecorded run whose reason survives only on stderr.
     }
     if (state.opening !== null) {
       finalRecord = prepareControllerTerminal({

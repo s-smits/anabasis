@@ -1,9 +1,27 @@
 /**
- * Tests for the rebuild advice packet, which gives the Builder recorded issue summaries.
- * These checks cover three parts: the issues observed in one battery, their status across
- * later batteries and the fields the model-visible text may contain. Tests that derive a
- * packet through measurement and analysis live in test/harness-measure.test.ts and
- * test/analyse-step.test.ts.
+ * The rebuild advice packet is the one channel by which what a battery recorded reaches the Builder
+ * that writes the next one, and it has two jobs that pull against each other. It has to carry
+ * enough for the Builder to act — which families failed, which checks, how often, and whether an
+ * issue it has seen before came back — while carrying nothing that would hand it the answers. So
+ * the cases here fall into two groups, and both matter equally.
+ *
+ * The first group is what the packet knows. One battery's observations are counted against the
+ * right denominators, with a verified failure, an unaccepted attempt and a non-result kept apart;
+ * an issue then ages across later batteries through active, tentatively-fixed, confirmed-fixed,
+ * regressed, retired and disputed. The retired case is the one to read closely, because a family
+ * that left the task set makes its issue retired rather than fixed, and absence counts towards a
+ * fix only when the family actually ran.
+ *
+ * The second group is what the packet must not say. A finding bound to a single case is dropped
+ * rather than aggregated, the render carries families, kinds and counts but never a task id or
+ * verifier text, and a diagnosis publishes its review metadata while its prose stays private.
+ * Those are the leakage assertions, and a loosened one fails in the worst way available: the packet
+ * still renders, the Builder still reads it, and the battery it authors next is measuring a
+ * question it was quietly handed the answer to.
+ *
+ * Deriving a packet end to end from recorded measurement evidence is a different question and lives
+ * in test/harness-measure.test.ts and test/iteration-analysis.test.ts. Here the inputs are built
+ * directly, so that each rule can be put under a case of its own.
  */
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
@@ -295,8 +313,8 @@ describe("how an issue ages across batteries", () => {
   });
 
   it("retires an issue whose family left the task set, and reactivates it without a regression if the family returns", () => {
-    // run59-opus-0904: an uno-sensor-light failure stayed active through two batteries of a rebuilt
-    // task set without that family. Absence of the family is not evidence of a fix either.
+    // Without this, an issue stays active through every later battery of a rebuilt task set that
+    // no longer holds its family. Absence of the family is not evidence of a fix either.
     const gone = advanceIssues([priorIssue()], [], "r2", ran("joints"), "complete");
     expect(gone).toEqual([
       expect.objectContaining({ retired: true, absentBatteries: 0, lastSeenRunId: "r1" }),
@@ -309,11 +327,11 @@ describe("how an issue ages across batteries", () => {
   });
 
   it("carries an issue unchanged when its family ran but the provider measured none of it", () => {
-    // Campaign 3fd52f9e-28, battery 719f26-i02: 24 of 25 cases were provider non-results. Every
-    // family still appeared in the battery's rows, so each one read as "ran" and its issues aged
-    // one battery closer to confirmed-fixed on a battery that verified nothing. A family that
-    // produced no truth-verified case is evidence in neither direction: it did not leave the task
-    // set, so it is not retired, and nothing observed the issue, so it does not age.
+    // A battery whose cases were nearly all provider non-results still lists every family in its
+    // rows, so reading appearance as "ran" ages each of their issues one battery closer to
+    // confirmed-fixed on a battery that verified nothing. A family that produced no truth-verified
+    // case is evidence in neither direction: it did not leave the task set, so it is not retired,
+    // and nothing observed the issue, so it does not age.
     const held = advanceIssues([priorIssue()], [], "r2", unmeasured("beams"), "complete");
     expect(held).toEqual([
       expect.objectContaining({ absentBatteries: 0, retired: false, lastSeenRunId: "r1" }),
@@ -325,8 +343,8 @@ describe("how an issue ages across batteries", () => {
   });
 
   it("keeps a Judge issue active while the battery's census is unvalidated", () => {
-    // 9ad21d i05: the Judge disagreed on the same deck-span case again under an unvalidated
-    // census, and the issue moved to tentatively-fixed because nothing admissible observed it.
+    // A Judge that disagrees on the same case again under an unvalidated census has observed
+    // nothing admissible, so ageing the issue there would move it to tentatively-fixed.
     const judgeIssue = priorIssue({ kind: "judge-passed-verifier-failed" });
     const unvalidated = advanceIssues([judgeIssue], [], "r2", ran("beams"), "incomplete");
     expect(unvalidated).toEqual([expect.objectContaining({ absentBatteries: 0, lastSeenRunId: "r1" })]);
@@ -338,8 +356,7 @@ describe("how an issue ages across batteries", () => {
   });
 
   it("keeps a dispute only while the issue is disputed", () => {
-    // campaign -27 (run 55aaad): a confirmed-fixed issue carried its
-    // dispute string through five batteries.
+    // Left in place, a dispute string rides a confirmed-fixed issue through every later battery.
     const disputed = priorIssue({ dispute: "the evaluator pins a stale header" });
     const seenAgain = advanceIssues([disputed], [beamsFail], "r2", ran("beams"), "complete");
     expect(seenAgain).toEqual([expect.objectContaining({ dispute: "the evaluator pins a stale header" })]);
@@ -435,8 +452,8 @@ describe("the issue register and its projection", () => {
     expect(readLatestRebuildAdvice(root, SLUG)).toEqual(recorded);
     // A packet from an earlier schema belongs to the source revision that measured it. This source
     // has no register for that campaign, which is what null already means everywhere it is read.
-    // Throwing instead ended the first analyse step of every campaign recorded before v2 hoisted
-    // `families` out of `battery`, so a supported `--project <existing>` continuation could not run.
+    // Throwing instead would end the first analyse step of every campaign recorded under an older
+    // schema, so a supported `--project <existing>` continuation could not run at all.
     writeFileSync(
       latestRebuildAdvicePath(root, SLUG),
       JSON.stringify({ ...recorded, schema: "rebuild-advice/v1" }),
@@ -535,8 +552,8 @@ describe("the issue register and its projection", () => {
   });
 
   it("prints the Judge exit once, through the judge line rather than an advisory finding", () => {
-    // c1d2a7 round three: `judge.reason` and the judge-disagreement finding are the same sentence
-    // from `judgeExit`, so the render carried it twice and the copy spent a rendered finding slot.
+    // `judge.reason` and the judge-disagreement finding are the same sentence from `judgeExit`, so
+    // rendering both carries it twice and the copy spends a rendered finding slot.
     const disagreement: AnalysisFinding = {
       kind: "judge-disagreement",
       claim:
@@ -551,8 +568,8 @@ describe("the issue register and its projection", () => {
   });
 
   it("keeps a controller defect out of the author's packet", () => {
-    // Run 08c0f2's third round was told to inspect the public contract for the controller's own
-    // mismatch, which no authoring change can repair.
+    // Rendered, this sends the author to inspect the public contract for a mismatch the controller
+    // owns, which no authoring change can repair.
     const defect: AnalysisFinding = {
       kind: "controller-defect",
       claim:
@@ -581,8 +598,8 @@ describe("the issue register and its projection", () => {
     };
     const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
       deriveRebuildAdvice(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
-    // The Astra 0912 shape: the same unowned diagnosis rendered to nine consecutive rebuilds. The
-    // claim stays visible every round; from the second round it carries the recurrence.
+    // The same unowned diagnosis can render to rebuild after rebuild. The claim stays visible every
+    // round; from the second round it carries the recurrence.
     const first = round("r1", [uncertain("equilibrium", "members")], null);
     const second = round("r2", [uncertain("equilibrium", "members")], first);
     const third = round("r3", [uncertain("equilibrium", "members")], second);
@@ -735,8 +752,8 @@ describe("the issue register and its projection", () => {
   });
 
   it("summarizes verified failures by declared check without task ids", () => {
-    // The recorded register of truss 2026-09-04: 20 of 25 verified cases failed and every failure
-    // blocked on one check. Safeguard 24 logged that; the packet now carries it as a row.
+    // A battery where most verified cases fail and every failure blocks on one check is a fact the
+    // author needs; the packet carries it as a row rather than leaving it to a safeguard log.
     const rows = [
       caseRow("t1", { truthOk: false, pass: false }),
       caseRow("t2", { truthOk: false, pass: false }),
@@ -754,7 +771,7 @@ describe("the issue register and its projection", () => {
       "Declared checks that blocked no shipping artifact, with the verified cases each applied to (of 3): member-forces 3.",
     );
     expect(text).not.toContain("t1");
-    // Two checks share the failures, so the one-check question is not asked (4c67fc asked it of six).
+    // Two checks share the failures, so the one-check question is not asked.
     expect(text).not.toContain("One check carrying every failure");
     const alone = renderRebuildAdvice(
       deriveRebuildAdvice(
@@ -800,10 +817,9 @@ describe("the issue register and its projection", () => {
   });
 
   it("names every declared check when a saturated battery tripped none of them", () => {
-    // Runs a7f9ac (14/14) and 719f26 (11/11) on one adopted truss bundle: six declared checks,
-    // every one firing on its controls and none on a shipping artifact. The packet showed the
-    // families that found no limit and nothing about the checks, so the next battery moved its
-    // published magnitudes. The roster is the fact that asks for a requirement instead.
+    // A battery that passes every case has declared checks firing on its controls and on no
+    // shipping artifact at all. Shown only the families that found no limit, the next battery moves
+    // its published magnitudes; the roster is the fact that asks for a requirement instead.
     const rows = [caseRow("t1"), caseRow("t2")];
     const counts = { "geometry-and-clearance": 0, "mass-within-limit": 0, "strength-and-buckling": 0 };
     const text = renderRebuildAdvice(
@@ -844,16 +860,15 @@ describe("the issue register and its projection", () => {
   });
 
   /** The cap cuts the tail, so what the tail holds decides what the author never sees. The standing
-   *  issues above this block are ordered by how many cases they hold before they are cut; these were
-   *  cut to four in the order they happened to be admitted. A blocking finding — an admitted, cited
-   *  demonstration of a violated requirement — therefore sat behind any three advisory leads that
-   *  arrived first, and left the packet as "1 further admitted finding(s) omitted", a line that does
-   *  not say the omitted row was the blocking one. */
+   *  issues above this block are ordered by how many cases they hold before they are cut; cutting
+   *  this block in admission order instead puts a blocking finding — an admitted, cited
+   *  demonstration of a violated requirement — behind any three advisory leads that arrived first,
+   *  and leaves the packet saying "1 further admitted finding(s) omitted", a line that does not say
+   *  the omitted row was the blocking one. */
   it("renders the blocking findings before the advisory ones it may have to omit", () => {
-    // A harness-defect naming no routable owner is the one kind that is both unowned, so it reaches
-    // this block at all, and blocking by default. That is the recorded shape: the 2026-09-18 review
-    // of campaign 3fd52f9e-4's i09 battery recorded five findings, four advisory and one blocking
-    // `linear-analysis` harness-defect that named no owner.
+    // A harness-defect naming no routable owner is the one kind that is both unowned, so it
+    // reaches this block at all, and blocking by default. That is the shape a review records: a
+    // handful of advisory findings and one blocking harness-defect that named no owner.
     const defect = (claim: string): AnalysisFinding => ({
       kind: "harness-defect",
       claim,
@@ -886,9 +901,9 @@ describe("the issue register and its projection", () => {
   });
 
   it("bounds the render when the battery fails everywhere and its findings are enormous", () => {
-    // The Astra i18 shape at its limit. That packet rendered 18,196 characters, of which one
-    // unowned finding carrying a whole declared assertion was 15,824, and the author rewrote the
-    // evaluator. The register keeps every row; the model-visible boundary is what is bounded.
+    // One unowned finding carrying a whole declared assertion can be most of a packet's characters
+    // by itself, and an author reading it rewrites the evaluator around it. The register keeps
+    // every row; the model-visible boundary is what is bounded.
     const rows = Array.from({ length: 10 }, (_, index) =>
       caseRow(`t${index}`, { family: `family-${index}`, truthOk: false, pass: false }),
     );
@@ -1035,7 +1050,7 @@ describe("what the author reads", () => {
     expect(rendered).toContain("environment non-result alone calls for an unchanged rerun");
     expect(rendered).toContain("environment non-results of kind provider");
     expect(rendered).not.toContain("an active or regressed issue is what the rebuild must move");
-    // Run 08c0f2 i02: a `verifier` kind is not an environment failure and must not read as one.
+    // A `verifier` kind is not an environment failure and must not read as one.
     const verifier = renderRebuildAdvice(advicePacket([issue({ kind: "non-result", detail: "verifier" })]));
     expect(verifier).toContain(
       "runtime non-results of kind verifier, a kind that does not establish an environment failure",

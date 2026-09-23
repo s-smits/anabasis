@@ -17,8 +17,8 @@ const PUBLIC_ARTIFACT_SCHEMA_VERSION = "public-artifact-schema/v4" as const;
 
 type PublicArtifactScalar = string | number | boolean;
 
-/** The part of an artifact field needed to compile its public schema; local, so solve code needs no
- *  truth import. */
+/** The part of an artifact field needed to compile its public schema. This local type avoids a
+ *  truth import in solve code, which the Built Harness's own bundle would otherwise carry. */
 export interface PublicArtifactFieldInput {
   name: string;
   /** Scalar values accepted for this field. Submission reports any other value before verification. */
@@ -82,8 +82,12 @@ function assertNodeKeys(node: JsonObject, keys: readonly string[], message: stri
   if (!sameKeys(Object.keys(node).sort(), keys)) throw new Error(message);
 }
 
-/** Builds a flat union in canonical order; nested unions are flattened, because
- *  `validatePublicArtifactSchema` refuses them. */
+/** A union's alternatives are never unions themselves: `null` beside two object key sets compiles a
+ *  kind split whose object half is already a union, and `assertUnionNode` in the validator refuses
+ *  the nested form, so a compiler that did not flatten here would hand submit a schema its own
+ *  validator rejects. The canonical order comes from the same requirement: the validator refuses an
+ *  unsorted or duplicated set, and the sort is what keeps one artifact corpus hashing to one
+ *  schema. */
 function unionNode(nodes: PublicArtifactSchemaNode[]): PublicArtifactSchemaNode {
   const flat = nodes.flatMap((node) => (node.kind === "union" ? node.anyOf : [node]));
   const anyOf = [...flat].sort((left, right) => {
@@ -134,9 +138,15 @@ function compileNode(
   const records = /* SAFETY: the check above returned when `values.length === 0`. */ values as Array<
     Record<string, JsonValue>
   >;
-  // Maps keyed by task data must be declared (ArtifactField.openMapPaths): differing key sets alone
-  // cannot tell a map from an object with optional fields. A declared map permits any key and checks
-  // each value's shape; other objects keep the exact key sets of the accepted examples.
+  // The brief must declare maps whose keys come from task data. A `config.busAddresses` mapping
+  // part id to bus address otherwise compiles into a union of the exact key sets the accept
+  // controls happened to carry, and then a task whose correct answer needs another key cannot
+  // express it through submit at all: the agent deletes a correct entry to be accepted, and fails
+  // verification for the deletion. Inferring "map" from differing key sets was the first repair,
+  // but the same observations describe ordinary optional-field objects — {mode} beside {mode,
+  // timeoutMs} — whose required keys and per-key types an open map silently drops. So the brief
+  // declares the paths (ArtifactField.openMapPaths). A declared map permits any key but checks
+  // each value's shape; other objects keep the exact key sets found in the accepted examples.
   if (maps.paths.has(path)) {
     maps.used.add(path);
     const children = records.flatMap((record) => Object.values(record));
@@ -181,7 +191,9 @@ function schemaHash(root: PublicArtifactSchema["root"]): string {
 
 export function compilePublicArtifactSchema(
   declaredFields: readonly PublicArtifactFieldInput[],
-  /** Accept artifacts already validated by the controller; not re-parsed, so the hash stays stable. */
+  /** Every caller passes accept artifacts the controller has already validated. Encoding and
+   *  parsing them again would repeat that work and could change key order during compilation,
+   *  where the schema hash must stay identical for the same input bytes. */
   canonicalAcceptArtifacts: readonly JsonValue[],
 ): PublicArtifactSchema {
   const roots = declaredFields.map((field) => field.name).sort();

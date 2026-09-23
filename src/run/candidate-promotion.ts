@@ -127,9 +127,15 @@ function candidateStateClauses(
   ) {
     clauses.push(`candidate-unmeasured: its claim stages end at "${candidate.claimStage ?? "no evidence"}"`);
   } else if (candidate.claimStage === "measured") {
-    // A refused claim holds the candidate whatever the reason; the claim already made that
-    // decision. A wrongly refused claim is fixed where `src/claim/` raises the clause, not by
-    // widening what may replace a product here.
+    // A measured candidate whose claim was refused is held, whatever refused it. Without that,
+    // a battery cut short by a session limit still replaces a product measured at a far higher
+    // rate. This clause deliberately does not read why the claim was refused: an environment
+    // clause can hold the only round of a run that had failing cases, and rolling its authored
+    // bundle back costs a real candidate — but reading clause names here would thread them into
+    // this function and make a second owner of a decision the claim has already made (operator
+    // decision). If it costs a candidate, narrow what raises the clause in `src/claim/` rather
+    // than widening the hold. The climb loses no battery either way, since `ENVIRONMENT_CLAUSES`
+    // in `climb-battery-admission.ts` admits a claim refused only for an environment clause.
     clauses.push(
       'candidate-claim-refused: its claim stages end at "measured", so its battery wrote no claim and cannot replace a tree',
     );

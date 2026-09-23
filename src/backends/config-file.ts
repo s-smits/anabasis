@@ -1,8 +1,13 @@
-/** Shared fail-closed admission for optional operator configuration files and review choices. */
+/** Shared fail-closed admission for optional operator configuration files and review choices. One
+ *  owner for both, because both answer the same question — what did the operator actually declare —
+ *  and a second reader that guessed differently would run a condition nobody chose. */
 import { readFileSync } from "../meta/filesystem.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 
-/** Missing is optional; an existing file that cannot be read is an invalid operator condition. */
+/** A missing file is the absence of a declaration, which is allowed: the caller then uses its own
+ *  default. A file that exists and cannot be read is a different thing entirely — the operator did
+ *  declare something and the host cannot tell what — so it throws rather than reading as absent,
+ *  which would silently substitute the default for whatever that file says. */
 export function readOptionalConfigFile(path: string, label: string): string | null {
   try {
     return readFileSync(path, "utf8");
@@ -12,7 +17,10 @@ export function readOptionalConfigFile(path: string, label: string): string | nu
   }
 }
 
-/** Review has three mutually exclusive modes; boolean policy keys are literal true, not toggles. */
+/** Review has three mutually exclusive modes, so declaring two is a refusal rather than a
+ *  precedence puzzle. The boolean keys must be a literal `true`: `disabled: false` looks like an
+ *  instruction and means nothing here, since an absent review key already says nobody chose, and
+ *  the two readings of that spelling would be a silent difference in which slot ran. */
 export function validateReviewOperator(
   operator: { kind?: unknown; inherit?: unknown; disabled?: unknown },
   operatorPath: string | null,

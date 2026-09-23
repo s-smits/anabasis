@@ -1,7 +1,11 @@
 /**
- * Whether the files a continuation's EXPERIMENT.json says it changed actually moved. Intent changes
- * no score: this only refuses a declaration the candidate bytes contradict, and the author resolves
- * it in the same session by naming what moved.
+ * Whether the files a continuation says it changed actually moved.
+ *
+ * A continuation can declare a repair to the reference solve across three rounds while the file
+ * keeps one hash throughout, and nothing notices, because EXPERIMENT.json's prose is otherwise
+ * never read against the snapshot. Intent still changes no score — this only refuses a declaration
+ * the accepted bytes contradict, and the author resolves it in the same session by naming what
+ * moved.
  */
 
 import { BATTERY_FILES, type FingerprintEvidence } from "../claim/fingerprint.ts";

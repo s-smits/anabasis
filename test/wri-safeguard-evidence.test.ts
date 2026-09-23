@@ -1,4 +1,16 @@
-/** Exercise the archive writer, not a parallel interpretation of its safeguard fields. */
+/**
+ * These cases run the archive writer itself rather than a second interpretation of its safeguard
+ * fields, because a test that re-derived the fields would only ever agree with itself. What the
+ * writer has to get right is the difference between not knowing and knowing zero: an absent log
+ * stays distinct from an observed zero, a malformed log is not a complete zero even when the
+ * primary asks for completeness, and an observed zero is claimed only after an explicit byte-bound
+ * reconciliation.
+ *
+ * The rest is provenance. A stderr-only firing counts, while unrelated text and the terminal line
+ * are not receipts. A firing routes only from the primary's adjudication and never from its count.
+ * And a firing invents no independent review, while an explicit review is invalidated once the
+ * source drifts underneath it.
+ */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -188,8 +200,8 @@ describe("recorded safeguard evidence", () => {
   });
 
   it("routes a firing only from the primary's adjudication, never from its count", () => {
-    // Review of 2026-09-13: `route.state` read "routed" for any positive count, an assurance no
-    // recorded byte supported.
+    // A `route.state` of "routed" derived from a positive count alone is an assurance no recorded
+    // byte supports, so a firing with no adjudication stays inconclusive.
     const fx = fixture(LINE);
     const first = build(fx.review);
     expect(sensor(first)).toMatchObject({ status: "fired", route: { state: "inconclusive" } });

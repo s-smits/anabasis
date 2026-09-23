@@ -1,4 +1,5 @@
-/** Per-key duplicate and pair checks, kept beside the join to keep its module within the size limit. */
+/** The two per-key steps `relationalJoin` delegates: which keys more than one entity claims, and
+ *  what a key with exactly one entity on each side becomes. */
 import type { DuplicateKeyGroup, FieldAgreement, JoinedPair } from "./relational-join.ts";
 
 /** Keys that more than one entity claims. */

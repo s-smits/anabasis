@@ -9,7 +9,25 @@ import {
 } from "../shared/type-alias-resolution.ts";
 
 /**
- * Ban named aliases that merely conceal TypeScript's unknown top type.
+ * A `type` declaration that resolves to `unknown`, directly or through other aliases.
+ *
+ * The other `unknown` rules — `no-unknown-returns`, `unproven-unknown-parameter`,
+ * `no-unsafe-dictionary-type` — all read a written annotation, and an alias is the one move that
+ * takes the word out of the annotation without taking the top type out of the program. `type
+ * Payload = unknown` reads at every use as though someone had decided something. This rule is
+ * what stops the rest of the set being answered by a rename.
+ *
+ * The resolution follows aliases through aliases, through parentheses, and into any member of a
+ * union, so `type A = B`, `type B = unknown | Other` is reported at `A` as well as at `B`. It
+ * stops where the name is not the alias it looks like: `visibleTypeAlias` walks out to the
+ * nearest scope that declares the name, refuses to resolve one a type parameter is binding, and
+ * refuses again when two declarations of the name tie at the same distance, because there is then
+ * no single thing the name stands for.
+ *
+ * `unknown` itself is not banned, only the alias hiding it. The message says where it stays legal:
+ * at a parsing boundary, where the value genuinely has not been read yet, and on a `cause` field.
+ * Both of those are written `unknown` at the site, which is the point — the reader sees the top
+ * type where it is.
  *
  * There is no fix: the repair is the type the alias was avoiding, and an alias exists because
  * someone did not want to write it.

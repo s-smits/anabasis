@@ -65,7 +65,9 @@ export interface AnalyseStepResult {
   advice: RebuildAdvicePacket;
   /** Reader turns that did not complete, one line each, for the controller terminal's absent
    *  steps. A skipped or locally refused reading (slot off, no standing issue, already reviewed)
-   *  is not absent work; a provider or protocol failure inside the turn is. */
+   *  is not absent work; a provider or protocol failure inside the turn is. Without these lines a
+   *  round that lost both readers to the transport reads as one where the review had nothing to
+   *  say. */
   absent: string[];
 }
 
@@ -115,8 +117,9 @@ export async function analyseStep(
   // displace. The issue register advances on every measured battery, held candidates included: a
   // rebuild reads prior evidence as advice, and an issue that survived a held candidate is still an
   // issue. Published from host and Judge evidence before the epoch review turn, republished with
-  // its findings and disputes, and once more with the diagnoses. Publishing it only after a reader
-  // lost a whole battery's register to a provider interruption inside that advisory model call.
+  // its findings and disputes, and once more with the diagnoses. Publishing it only after the
+  // readers had run would lose a whole battery's register to a provider interruption inside an
+  // advisory model call.
   const publish = (
     reviewFindings: AnalysisFinding[],
     disputes: ReadonlyArray<{ issueId: string; reason: string }>,

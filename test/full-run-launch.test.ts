@@ -1,18 +1,15 @@
 // What a paid run is allowed to start as, and who is allowed to start it.
 //
-// `full-run-launch.ts` is 480 lines and no test file names it. It reads the operator's argv into
-// the condition a run is measured under, derives the project its evidence lands in, and decides
-// whether another controller already owns that campaign. A flag parsed wrongly does not fail the
-// run: it measures a different condition and records it as the intended one, which is the exact
-// failure a frozen prediction exists to catch.
+// A flag parsed wrongly does not fail the run. It measures a different condition and records it as
+// the intended one, which is the exact failure a frozen prediction exists to catch, and it is why
+// every refusal here has to arrive before the first paid call rather than at the first battery.
 //
-// Three groups, because the file holds three compartments:
-//
-//   the flags, where every refusal has to arrive before the first paid call rather than at the
-//   first battery;
-//   the project slug, which decides which campaign tree a run's evidence joins;
-//   the lock holder, where "undeterminable" must never read as "dead" — breaking a live
-//   controller's lock puts two of them on one campaign.
+// The launch path is three modules and this file takes them one group at a time. `parseFullRunArgs`
+// (src/run/launch-arguments.ts) reads the operator's argv into the condition the run is measured
+// under. `slugForDirectInput` (src/run/launch-project.ts) derives the project slug, which decides
+// which campaign tree the run's evidence joins. And `lockHolderState` (src/run/campaign-lock.ts)
+// decides whether another controller already owns that campaign, where "undeterminable" must never
+// read as "dead": breaking a live controller's lock puts two controllers on one campaign.
 
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";

@@ -34,9 +34,11 @@ type Request =
   | { mode: "evaluate"; checkId: string; request: EvaluationRequest; runtime: boolean };
 type Response = { missing: readonly string[] } | { result: boolean };
 type Child = Bun.Subprocess<"pipe", "pipe", "pipe">;
-/** Time limit for one complete check, including tool runs. It is twice the tool limit, so a check
- *  that runs one tool at the published maximum can still complete. starter-pack/contract.md
- *  publishes both numbers together. */
+/** Time limit for one complete check, including its tool runs. It exceeds the tool limit because
+ *  at `TOOL_TIMEOUT_CEILING_MS` for both, a check that ran one tool at the published maximum could
+ *  never complete — its own wall expires at the instant the tool is still entitled to run.
+ *  starter-pack/contract.md publishes both numbers together, so the agent can see that the second
+ *  leaves room for the first. */
 export const EVALUATOR_WALL_MS = 2 * TOOL_TIMEOUT_CEILING_MS;
 
 /** The host side of one check: the tool port it may call, its wall, the lifetime that owns its
@@ -161,17 +163,21 @@ export async function evaluateIsolated(
   return response.result;
 }
 
-/** The child proves its confined pid before the parent trusts any message from it. Kept apart so
- *  the message handler stays under the complexity ceiling. */
+/** The child proves its confined pid before the parent trusts a single message from it. This lives
+ *  apart from its one caller because inlining the guard would put three more branches into the
+ *  message handler below, which already measures 21 against the `CYCLOMATIC_CEILING` of 21 in
+ *  `tools/loc/complexity-policy.ts`. */
 function proveReady(kind: JsonValue | undefined, pid: unknown, child: Child, mechanism: string): void {
   if (kind !== "ready" || !isNumber(pid) || witnessConfinedChild(pid, child.pid, mechanism) === null) {
     throw new EvaluatorProcessFailure("sandbox", "child did not prove its confined pid");
   }
 }
 
-/** A throw with a tool still outstanding is the same abandonment as a return with one: the
- *  parent's counter, not the child's text, decides, so an unawaited call keeps its authored
- *  attribution. */
+/** A throw with a tool still outstanding is the same abandonment as a return with one, and the
+ *  parent's counter decides that, not the child's text, which may say anything. Reporting it as
+ *  `pending` is what keeps an unawaited call attributed to its author: `isAuthoredEvaluatorFailure`
+ *  admits exactly the contract errors and this kind, so every other child error yields to the
+ *  host-outage precedence in control settlement and this one does not. */
 function childErrorFailure(detail: unknown, pendingTools: number, request: Request): EvaluatorProcessFailure {
   if (pendingTools > 0) return new EvaluatorProcessFailure("pending", "threw with pending tool invocations");
   const check = request.mode === "evaluate" ? `check "${request.checkId}" ` : "";

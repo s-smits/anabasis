@@ -1,10 +1,23 @@
 /**
- * Cross-iteration Builder memory: what this campaign already tried and lost, so a restarted
- * session can see that it is repeating itself. It states what happened, never what to author.
+ * Cross-iteration Builder memory: what this campaign already tried and lost, delivered through the
+ * one channel a repair pass already carries.
  *
- * Memory is built from structural evidence fields (ordinals, outcomes, failing stage, attempt
- * counts) plus the (code, path) pairs of earlier findings, each projected through
- * `projectFindingForAuthor`. Feedback claims, evidence and finding detail never enter.
+ * The controller knows before the model does. Each evidence hashes its failure as `findingsHash`,
+ * but without this a session that produces a repeat is never told it is repeating: a restarted
+ * session receives the last iteration's findings for its owner and nothing else, so an A→B→A
+ * oscillation reads to it as a first attempt, and a guard tripped two iterations ago is tripped
+ * again.
+ *
+ * Code owns the fact and the model owns the response, so this owner states what happened and never
+ * what to author instead.
+ *
+ * The isolation holds because memory is built from structural evidence fields — ordinals,
+ * outcomes, the stage a build died at, session attempt counts — plus the (code, path) pairs an
+ * owner has already produced, each one through `projectFindingForAuthor`, which fails closed on
+ * anything a controller validator did not write. `CampaignFeedback.claim` and `.evidence` name
+ * protected host evidence such as the F2 census and verifier stdout, so neither enters, and
+ * finding detail does not either: an identifier and its path are enough to say "you already
+ * produced this".
  */
 import { readFileSync } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
@@ -20,7 +33,8 @@ import { parseExperimentSubmission } from "./experiment-proposal.ts";
 /** The code every memory finding carries in the Builder's opening advisory. */
 export const ITERATION_MEMORY_CODE = "prior-iteration-memory";
 
-/** Completed iterations the memory looks back over. */
+/** Completed iterations the memory looks back over. Four covers an epoch's usual budget without
+ *  turning a session prompt into a transcript. */
 const LOOKBACK = 4;
 
 /** Bound historical reminders; current blocking feedback has its own complete delivery. */
@@ -31,8 +45,14 @@ const MAX_REFUSALS = 12;
 type CompletedPass = { evidence: IterationEvidence; label: string };
 
 /**
- * Whether a parsed record has the fields this reader walks: its ordinal, attempts and feedback
- * findings. A record that parses but lacks them is absent memory, like an unreadable one.
+ * An evidence this reader can walk: the ordinal it sorts by, the attempts `summarise` enumerates,
+ * and the feedback rows `refusalsOf` reads findings out of.
+ *
+ * `parseJsonAs` casts rather than checks, and the ordinal was the only field anything looked at, so
+ * a record left short by an interrupted write reached `Object.entries(undefined)` and threw past
+ * the catch below, taking the whole opening advisory with it over one unreadable pass. That catch
+ * already says what an unreadable pass is: absent memory. This says the same about a pass that
+ * parses and cannot be summarised.
  */
 function summarisable(iteration: IterationEvidence): boolean {
   const rows = iteration.feedback;
@@ -53,7 +73,8 @@ function readEpoch(dir: string): IterationEvidence[] {
       const iteration = parseJsonAs<IterationEvidence>(readFileSync(join(dir, name, ITERATION_FILE), "utf8"));
       if (summarisable(iteration)) evidence.push(iteration);
     } catch {
-      // A missing or half-written record is absent memory.
+      // A missing or half-written evidence is absent memory; an unreadable pass is never
+      // guessed at.
     }
   }
   return evidence.sort((a, b) => a.ordinal - b.ordinal);
@@ -61,7 +82,9 @@ function readEpoch(dir: string): IterationEvidence[] {
 
 /**
  * Completed passes of this epoch and of every epoch recorded before it, oldest first and bounded
- * to the lookback window. A damaged epoch record leaves this epoch reading only itself.
+ * to the lookback window. One epoch per experiment leaves one pass per epoch, so a reader bound to
+ * its own epoch would deliver nothing at all. A damaged epoch record, which the controller refuses,
+ * leaves this epoch reading only itself.
  */
 function readCompleted(campaignDir: string): CompletedPass[] {
   const root = dirname(campaignDir);
@@ -83,8 +106,10 @@ function readCompleted(campaignDir: string): CompletedPass[] {
     .slice(-LOOKBACK);
 }
 
-/** One line per completed pass: its outcome, failing stage, session retries, and its proposal's
- *  gap, change, target and admitted scope. */
+/** One line per completed pass: what it ended as, where it died, how hard its sessions worked and
+ *  what it proposed. A recorded proposal runs to about 2,000 bytes with its digest, so the line
+ *  keeps the parts that answer a repeat: the gap and change say what was tried, the target what was
+ *  expected, and the admitted scope what the bytes actually did. */
 function summarise({ evidence, label }: CompletedPass): string {
   const where = evidence.stage ? ` at ${evidence.stage}` : "";
   const focus = evidence.focusOwner ? `, part ${evidence.focusOwner}` : "";
@@ -125,19 +150,30 @@ function refusalsOf(evidence: IterationEvidence): string[] {
   return [...labels];
 }
 
-/** The memory handed to a restarted session; empty before the first completed iteration. */
+/**
+ * The memory a repair pass hands the session it is about to restart. Empty when the campaign has no
+ * completed iteration yet, so a first build's prompt carries no memory section at all. Both the
+ * timeline and the refusal history span the campaign rather than the epoch.
+ */
 export function iterationMemoryFindings(campaignDir: string): ContractFinding[] {
   const completed = readCompleted(campaignDir);
   if (completed.length === 0) return [];
   const lines = [`Earlier build attempts: ${completed.map(summarise).join("; ")}.`];
   const seen = new Map<string, string[]>();
-  // Walk newest first so sort ties favour recent passes; prepending keeps each pass list in order.
+  // Newest pass first, so the sort's stable ties resolve towards the pass that just ran; each
+  // older label is prepended, which keeps every entry's own pass list chronological as it
+  // renders.
   for (const pass of completed.toReversed()) {
     for (const refusal of refusalsOf(pass.evidence)) {
       seen.set(refusal, [pass.label, ...(seen.get(refusal) ?? [])]);
     }
   }
-  // Most-repeated first, so the cut keeps recurring errors ahead of one-offs.
+  // Most-repeated first, and the stable sort leaves ties in the newest-first order above. Cutting
+  // in insertion order instead drops a refusal made in three consecutive passes behind twelve
+  // one-offs from the oldest pass, and the line renders as if nothing were missing while the repeat
+  // count sits unread in the map's value. A label several passes carry is a habit; one pass's label
+  // is an incident, and the habit is what this line means. The other bounded lists cut the same
+  // way: `standingIssues` sorts by rate first, the advice packet's issue block by count.
   const refusals = [...seen.entries()].sort(([, a], [, b]) => b.length - a.length).slice(0, MAX_REFUSALS);
   if (refusals.length > 0) {
     const rendered = refusals.map(([refusal, passes]) => `${refusal} in ${passes.join(", ")}`).join("; ");

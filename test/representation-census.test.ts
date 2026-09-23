@@ -1,14 +1,27 @@
 /**
- * Tests for the representation census, using live-run-06 as the recorded example. Its retained
- * traces show F2 passed 25/25, every submit was accepted and accept-controls passed 3/3. The
- * battery still measured 0/25 — because the reference answer writes `accessionCode: "n/a"` for
- * records without a local code and the agent wrote "" instead, 95 times across 25 of 25 cases.
+ * A harness can pass every gate it has and still measure nothing, and live-run-06 is the recorded
+ * case of it. Its retained traces show F2 passing 25 of 25, every submit accepted and the accept
+ * controls passing 3 of 3, which is as clean a run-up to a battery as the gates can produce. The
+ * battery then measured 0 of 25. The whole difference was a spelling: the reference answer writes
+ * `accessionCode: "n/a"` for a record with no local code and the agent wrote `""` instead, 95 times
+ * across all 25 cases. Nothing was wrong with the agent's reasoning and nothing was wrong with the
+ * checks; the two sides simply never agreed on how to write "absent", and no gate was looking.
  *
- * These tests cover three requirements:
- *   1. detect that inconsistent representation of absence;
- *   2. allow derived roots and legitimate domain values that resemble absence markers;
- *   3. keep both findings blocking. Run 67 passed its batteries despite copied answer roots,
- *      so a perfect pass rate alone does not justify accepting those roots.
+ * So the census looks for that disagreement before a battery is paid for, and it looks for a second
+ * shape beside it — an artifact root that just copies its public input, which is a root the checks
+ * cannot fail on and therefore a capability nobody measured. Both findings block, because a run
+ * that passes its batteries with copied answer roots has proved only that it can copy.
+ *
+ * The harder half of the file is the quiet cases, and they are the ones to read before trusting a
+ * pass. A root derived from public input rather than copied stays quiet, as does a copy whose
+ * source differs between tasks, a single task copying the whole collection when its sibling does
+ * not, nested ordered pairs that were each reversed, and a real domain value that merely resembles
+ * an absence marker. Reordered rows still block, because reordering is not a different answer.
+ *
+ * One limitation is recorded rather than fixed: a copy wrapped in a new object is not detected,
+ * because the enclosing structure differs and these comparisons work on structure. The authoring
+ * instructions forbid that representation, but forbidding is not detecting, and the case below says
+ * so plainly rather than leaving a later reader to assume the ground is held.
  */
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -37,7 +50,7 @@ const CATALOG = [
 
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
-/** Run 6's shape: a root that transcribes the catalog, and an answer that spells "n/a". */
+/** A root that transcribes the catalogue, beside an answer that spells "n/a". */
 function runSix(taskId: string): Witness {
   return {
     taskId,
@@ -81,15 +94,13 @@ describe("the representation census", () => {
   });
 
   /**
-   * The former calibration case remains here to explain the stricter admission rule. Legacy
-   * iteration 05 transcribes `publicInput.requiredStops` into root `routeFacts` on all 25 tasks
-   * beside a derived `itinerary`, and its recorded taskSetHash 9bc85350082b1ebc backs a measured
-   * 25/25 claim; that evidence kept the severity advisory. Run 67 answered it: its schedule root
-   * fired this finding on 125/125 reference witnesses across five fingerprinted task sets, every
-   * iteration was still admitted, and six batteries measured 150/150 over levels L0-L4 without
-   * finding a limit. Those passing results did not resolve the copied-root finding. Admission
-   * now refuses that representation: the Builder must remove routeFacts or derive its value,
-   * as the finding detail explains. The fixture below checks the refusal itself.
+   * Why the admission rule is strict rather than advisory. A bundle that transcribes
+   * `publicInput.requiredStops` into root `routeFacts` beside a derived `itinerary` can pass every
+   * task it is measured on, and the finding then fires on every reference witness of every task set
+   * while each iteration is still admitted. A battery passing in full does not resolve a
+   * copied-root finding, because the copied root is exactly the part the battery never tested.
+   * Admission now refuses that representation: the Builder must remove routeFacts or derive its
+   * value, as the finding detail explains. The fixture below checks the refusal itself.
    */
   it("blocks an artifact root that copies the same public input on every task", () => {
     const stops = [{ stopId: "ST-01", zoneId: "north" }];
@@ -103,9 +114,9 @@ describe("the representation census", () => {
     expect(findings.filter((f) => BLOCKING_CODES.has(f.code))).toHaveLength(1);
   });
 
-  // Run 67's measured cases held a passing artifact whose schedule was the copied rows in another
-  // order, and one reordered reference witness would have silenced the every-witness aggregate.
-  // Copy detection therefore ignores row order in the compared collection.
+  // A passing artifact can hold the copied rows in another order, and one reordered reference
+  // witness would then silence the every-witness aggregate. Copy detection therefore ignores row
+  // order in the compared collection.
   it("still blocks a copy whose rows are reordered, on every witness or on one", () => {
     const stops = [
       { stopId: "ST-01", zoneId: "north" },
@@ -215,7 +226,7 @@ describe("the representation census", () => {
 });
 
 /**
- * run 52's shape. The candidate's own public schema declares `compensation` as the closed set
+ * The candidate's own public schema declares `compensation` as the closed set
  * {none, flat, reactive}, and the census refused the submit because the reference answer wrote the
  * declared "none". A state the schema names is not a spelling the answer invented; a check reading
  * that field evaluates the state, so there is nothing to repair. The guard the rule was built for
@@ -265,8 +276,8 @@ describe("a value the public schema declares as a closed state", () => {
   });
 });
 
-/** Run 12's shape: the solve reads fields nobody authored, so its derived root is the same
- *  (empty) value on every task while the authored inputs all differ. */
+/** The solve reads fields nobody authored, so its derived root is the same (empty) value on every
+ *  task while the authored inputs all differ. */
 const runTwelve = (taskId: string, requests: string[]): Witness => ({
   taskId,
   publicInput: { requestedItems: requests.map((requestId) => ({ requestId })) },
@@ -348,8 +359,8 @@ describe("representation findings in the solvability gate", () => {
     expect(JSON.stringify(blocking[0])).toContain("accessionCode");
     // Both compared sides are the Builder's own public facts, so the finding crosses in full.
     expect(blocking[0]?.findings?.[0]?.disclosure).toEqual({ class: "authored" });
-    // Transcription also blocks admission since run 67, so it shares this blocking row and no
-    // advisory row remains for this fixture.
+    // Transcription also blocks admission, so it shares this blocking row and no advisory row
+    // remains for this fixture.
     expect(JSON.stringify(blocking[0])).toContain("ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT");
     expect(feedback.filter((row) => row.severity === "advisory")).toHaveLength(0);
     // No hidden expectation leaves with either.

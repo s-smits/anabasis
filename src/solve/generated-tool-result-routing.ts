@@ -1,8 +1,10 @@
 /** What the controller does with a result frame a confined worker sent back.
  *
- *  The transport has already proved the frame's bytes, signature and counter. This decides whether
- *  it answers the request it names and whether its checkpoint may replace the held one; the caller
- *  keeps its pending map, timers and failure latch. */
+ *  The transport has already proved the frame: canonical bytes, a matching signature, the next
+ *  counter. What is left is whether it answers the request it names, and whether the checkpoint it
+ *  carries may replace the one the controller holds. Deciding that here, over three values, leaves
+ *  the caller its pending map, its per-request timers and its failure latch, and names each outcome
+ *  instead of spelling it as which of two callbacks a branch happened to reach. */
 
 import { sameJsonValue } from "../meta/stable-json.ts";
 import type { BuiltStarterCheckpoint } from "./built-starter.ts";
@@ -17,17 +19,23 @@ export type AcceptedResult = Extract<
 
 type ResultFrame = AcceptedResult | Extract<GeneratedToolChildMessage, { type: "request_error" }>;
 
-/** What the controller keeps from a frame it did not refuse. The checkpoint is the worker's state,
- *  not the call's, so a failed call still carries it. `taskAccess` is undefined when the frame's
- *  kind has no such field, and the caller then keeps what it holds. */
+/** What the controller keeps from a frame it did not refuse. The checkpoint is the worker's state
+ *  rather than the call's — the checks below have already proved it against the held one, and a
+ *  failed call still leaves the draft the next call continues from. `taskAccess` is what the frame
+ *  reported, or nothing when its kind carries no such field; the caller keeps what it holds then,
+ *  since an absent field says nothing about what the worker touched. */
 interface RetainedWorkerState {
   checkpoint: BuiltStarterCheckpoint;
   taskAccess: GeneratedTaskAccess | undefined;
 }
 
-/** The three outcomes of a reply. The session survives `accept` and `fail-call`, where the
- *  requested tool refused its call; both carry the retained state, so no branch can drop the
- *  checkpoint a long turn's liveness is read through. */
+/** The three things that can happen to a reply. `fail-call` is the only failure the session
+ *  survives: the tool the solver asked for said no, which is that call's business rather than the
+ *  worker's.
+ *
+ *  Both surviving verdicts carry the retained state, so the caller has no branch that can drop it.
+ *  A failing branch that returned before that assignment would lose the checkpoint the worker had
+ *  just recorded, which is the liveness evidence a long turn is read through. */
 type ResultVerdict =
   | { act: "accept"; result: AcceptedResult; retained: RetainedWorkerState }
   | { act: "fail-call"; error: string; retained: RetainedWorkerState }

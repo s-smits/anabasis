@@ -36,7 +36,9 @@ interface SelectedNextMove {
 
 /** The pass a reopening round binds its epoch on: the measured evidence identity, or the
  * selector's reason when no measurement keyed it. A fresh build carries none. The opening and the
- * build step both read this value, so the opening records the epoch the session writes into. */
+ * build step read this one value, so the epoch the opening records is the epoch the authoring
+ * session writes into. Carry the pass in the build step alone and a seeded continuation records an
+ * empty opening epoch beside the working one. */
 export function epochPassOf(decision: NextMove): string | undefined {
   if (decision.seed === undefined) return undefined;
   return decision.reopenKey ?? decision.reason;

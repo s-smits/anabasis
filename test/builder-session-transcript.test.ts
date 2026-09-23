@@ -1,9 +1,16 @@
 /**
- * Tests for the Builder transcript pointer (src/builder/session-transcript.ts): the controller's
- * event transcript is named as the session opens, each round keeps its own pointer, and the
- * integrity check reports a missing, empty, drifted or malformed transcript
- * instead of asserting one. The event writer's buffering and digest are covered beside the
- * steering tests (authoring-steering.test.ts).
+ * The Builder transcript pointer (src/builder/session-transcript.ts) names the controller's event
+ * transcript as the session opens, before the first turn has ended, and each round keeps its own
+ * pointer on the session's record sequence. That is what lets a round be traced back to the events
+ * it produced, so the pointer has to be written even when the session turns out to have no
+ * transcript directory at all.
+ *
+ * The integrity check then reports a missing, empty, drifted or malformed transcript as four
+ * separate states rather than asserting one exists, and a missing transcript is a warning rather
+ * than a failed session. Reading them apart is the point: an empty file reported as drift would
+ * name an undefined session, and a malformed one that threw would take the round with it. The
+ * event writer's own buffering and digest are covered beside the steering tests in
+ * test/authoring-steering.test.ts.
  */
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -28,7 +35,8 @@ function pointerAt(path: string): BuilderTranscriptPointerV2 {
 }
 
 describe("the Builder transcript pointer", () => {
-  // Run 65 was killed while authoring and nothing in the campaign named its transcript.
+  // A session killed while authoring never ends a turn, so a pointer written at the first turn's
+  // end would leave nothing in the campaign naming its transcript.
   it("names the transcript as the session opens, before its first turn ends", () => {
     const dir = tmpDir("transcript-pointer-");
     const sink = new SessionTranscriptSink();

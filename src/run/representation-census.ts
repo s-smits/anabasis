@@ -1,5 +1,7 @@
 /**
- * Checks the reference witnesses F2 already produced for two representation defects:
+ * Checks the reference witnesses F2 already produced for two representation defects. F2 asks
+ * whether the tasks can be solved at all; these two comparisons ask something F2 never does,
+ * namely whether solving them measures anything:
  *
  *  - `transcribes`: an artifact root equal to the public input or one of its fields on every
  *    task, so filling it measures retyping rather than domain skill;
@@ -7,9 +9,25 @@
  *    task, which a check would then enforce as a spelling. A value the public schema declares in
  *    a closed set at that path is exempt.
  *
- * Both are pure comparisons over witnesses in hand and block adoption. Findings name only the
- * Builder's schema and public projection: no task id, check id, hidden expectation or verifier
- * text.
+ * The second is why this module exists: a bundle can pass F2 on every task and then measure zero
+ * with every submit accepted, because the reference answer writes `"n/a"` where the agent wrote
+ * `""` and the check demands that exact spelling. A whole measured campaign turns on how one
+ * absence is spelled.
+ *
+ * Both are pure comparisons over witnesses already in hand, so neither costs an execution, and
+ * both block adoption. Findings describe the Builder's own artifact schema and public task
+ * projection and nothing else: no task id, no check id, no hidden expectation, no verifier text.
+ *
+ * A high pass rate is not a refutation of a copying finding, which is why `transcribes` blocks
+ * rather than advises. A root copied from public input on every reference witness can carry a
+ * battery to a perfect score precisely because retyping the task is what made it easy, so the
+ * score and the finding agree rather than contradicting each other. A false positive costs the
+ * Builder one revision of its representation.
+ *
+ * A domain that genuinely needs "none" as an answer declares it in that field's allowedValues, and
+ * the absence rule exempts a value the schema names at that exact path (`declaredClosedValue`
+ * below). Nothing here reads a written vocabulary deviation with an expiry, so the declared closed
+ * values are the only exemption this code enforces.
  */
 import { plainRecord } from "../meta/json-evidence.ts";
 import { canonicalJson, compareCodeUnits } from "../meta/stable-json.ts";
@@ -22,12 +40,14 @@ import type { PublicArtifactSchema, PublicArtifactSchemaNode } from "../solve/pu
 export interface Witness {
   taskId: string;
   artifact: unknown;
-  /** From a validated `BuildTask` publicInput or recorded JSON evidence. */
+  /** Assembled from a validated `BuildTask` publicInput or from recorded JSON evidence, so the
+   *  witness states that here rather than making each reader assert it. */
   publicInput: JsonValue;
 }
 
-/** Answers that state "this does not apply" instead of deciding something. "na" and "nil" are
- *  omitted because they are real values in some domains. */
+/** Answers that state "this does not apply" instead of deciding something. The list is kept short
+ *  and unambiguous on purpose: "na" and "nil" are omitted because they are real values in some
+ *  domains — sodium, a null literal — and a census that blocks adoption may not guess. */
 const ABSENCE = new Set(["", "-", "n/a", "none", "null", "not applicable"]);
 
 export interface Observation {
@@ -39,13 +59,14 @@ export interface Observation {
   note: string;
 }
 
-/** Union alternatives flattened into concrete nodes. */
+/** Union alternatives flattened once, so every candidate the two helpers below read is concrete. */
 function alternatives(nodes: readonly PublicArtifactSchemaNode[]): PublicArtifactSchemaNode[] {
   return nodes.flatMap((node) => (node.kind === "union" ? alternatives(node.anyOf) : [node]));
 }
 
-/** The schema nodes describing one child: the property at `key`, a map's value, or an array item
- *  when `key` is null. An undescribed child yields nothing. */
+/** The public-schema nodes describing one child of the nodes above: the property at `key`, the
+ *  value of a data-keyed map, or an array item when `key` is null. An undescribed child yields
+ *  nothing, so a path the schema does not reach is simply left unexempted. */
 function schemaChildren(
   nodes: readonly PublicArtifactSchemaNode[],
   key: string | null,
@@ -59,9 +80,13 @@ function schemaChildren(
   });
 }
 
-/** Whether the schema declares this value in a closed set at this path. Every node describing the
- *  path must be closed, since an open alternative still admits undeclared spellings. An absent
- *  schema exempts nothing. */
+/** Whether the public artifact schema declares this exact value as a member of a closed value set
+ *  at this exact path — a state the schema names, not a spelling the answer invented. A field whose
+ *  allowedValues are ["none", "flat", "reactive"] compiles to a closed node, and without this the
+ *  census would refuse a candidate for writing its own declared "none". The exemption is
+ *  deliberately narrow, so every node describing the path must be closed: a closed set beside a
+ *  plain string, or beside null, still admits an undeclared spelling of the same absence, which is
+ *  the defect this rule guards. An absent schema exempts nothing. */
 function declaredClosedValue(nodes: readonly PublicArtifactSchemaNode[], value: string): boolean {
   const candidates = alternatives(nodes);
   if (candidates.length === 0) return false;
@@ -74,7 +99,10 @@ function declaredClosedValue(nodes: readonly PublicArtifactSchemaNode[], value: 
 }
 
 /** Every string leaf that spells absence, keyed by dotted path with array indices collapsed to
- *  `[]`; one array element is enough to record the path. The schema descends alongside the value. */
+ *  `[]`. One sibling is enough to record the path, because a check that evaluates the spelling
+ *  still fires on the rows that use it and siblings deciding something do not clear those rows.
+ *  The public schema descends alongside the value so a declared closed state is recognised at its
+ *  own path. */
 function absenceLeaves(
   value: JsonValue,
   nodes: readonly PublicArtifactSchemaNode[],
@@ -94,9 +122,15 @@ function absenceLeaves(
   return into;
 }
 
-/** A comparison key that ignores row order at the top level only, so a reordered copy is still a
- *  copy while nested arrays (edges, coordinates, routes) stay ordered values. A requested answer
- *  that is a pure reordering of a public list therefore matches as a copy. */
+/** A copy is still a copy after one sort: an artifact holding the copied rows in another order is
+ *  retyping just the same, and one such witness would otherwise silence the every-witness aggregate
+ *  below. So copy detection ignores order at the compared collection itself — its rows sorted by
+ *  their canonical JSON — and nowhere deeper, because a nested array is an ordered value (a
+ *  directed edge, a coordinate pair, a route) and an artifact that reverses each one has
+ *  transformed the data rather than retyped it. canonicalJson stays the only serializer. The known
+ *  cost is a domain whose requested answer is a pure reordering of a public list: its reference
+ *  root matches as a copy, and the finding's own remedy — fold the ordering into a root that also
+ *  decides something — is the one-pass recovery. */
 function copyKey(value: JsonValue): string {
   if (!Array.isArray(value)) return canonicalJson(value);
   return `[${value
@@ -105,13 +139,16 @@ function copyKey(value: JsonValue): string {
     .join(",")}]`;
 }
 
-/** What one witness says about its own schema. Only the absence rule reads `schema`. */
+/** What one witness says about its own schema. The compiled public artifact schema is optional
+ *  because only the absence rule reads it; without it that rule exempts nothing. */
 export function observe(witness: Witness, schema?: PublicArtifactSchema | null): Observation[] {
   const { taskId } = witness;
   const artifact = plainRecord(witness.artifact);
   if (artifact === null) return [];
   const found: Observation[] = [];
-  // The public values a root could be copied from: the whole input or any of its fields.
+  // The public values a root could be copied from — the whole input, or any of its fields — each
+  // keyed once, so neither key order nor row order is read as a difference and no side is walked
+  // twice.
   const sources = [{ path: "publicInput", key: copyKey(witness.publicInput) }];
   for (const [field, value] of Object.entries(plainRecord(witness.publicInput) ?? {})) {
     sources.push({ path: `publicInput.${field}`, key: copyKey(value) });
@@ -131,7 +168,7 @@ export function observe(witness: Witness, schema?: PublicArtifactSchema | null):
   return found;
 }
 
-/** The finding sentence per kind; both point at the same brief field. */
+/** Both kinds point at the same brief field, so only the sentence they carry varies by kind. */
 const DETAIL = {
   transcribes: (o, n) =>
     `the reference solve fills artifact root "${o.path}" with the value of ${o.note} — identical up to row order — on all ${n} authored tasks, so the agent must retype data the task already hands it before any check reading that root can pass, and those bytes measure transcription instead of domain skill; derive the root, fold it into a root that decides something, or drop it and read public input directly`,
@@ -144,12 +181,18 @@ const CODE = {
   "absence-sentinel": "REFERENCE_ANSWER_SPELLS_ABSENCE",
 } satisfies Record<Observation["kind"], string>;
 
-/** Reports a property only when it holds on every witness; on some tasks only it is task shape. */
+/**
+ * Report a property only when it holds on every witness: one task whose data happens to need an
+ * absence, or whose selection happens to be the whole catalog, is that task's shape; all of them
+ * is the schema's.
+ */
 export function censusRepresentation(witnesses: readonly Witness[], schema?: PublicArtifactSchema | null) {
   const perProperty = new Map<string, Observation[]>();
   for (const witness of witnesses) {
     for (const observation of observe(witness, schema)) {
-      // A root copied from different sources on different tasks is choosing a source, not copying.
+      // A transcribes property is one root copied from the same source: a root that copies
+      // publicInput.left on one task and publicInput.right on another is choosing which public
+      // collection applies, and the detail sentence naming a single source would be false of it.
       const key =
         observation.kind === "transcribes"
           ? `${observation.kind} ${observation.path} ${observation.note}`
@@ -176,14 +219,27 @@ export function censusRepresentation(witnesses: readonly Witness[], schema?: Pub
   return { observations, findings };
 }
 
-/** The finding codes that refuse adoption. */
+/** The kinds that refuse adoption. Split out here so the gate never re-decides severity by hand. */
 export const BLOCKING_CODES = new Set([CODE["absence-sentinel"], CODE.transcribes]);
 
 /**
- * Detects a reference root that stays byte-identical across differing public inputs, typically a
- * solve reading fields the tasks do not carry. Both sides are the Builder's own facts, so the
- * finding names no task id, check id or hidden expectation. Unlike copy detection, an empty value
- * counts here. These findings are diagnosis beside an already blocking result, not blocking codes.
+ * Detect a reference root that stays constant across different public inputs. The pattern this
+ * catches is a reference solve reading publicInput fields the authored tasks do not carry, so it
+ * derives one byte-identical value for every task and F2 refuses all of them. The aggregate count
+ * alone tells the Builder only that the solve is wrong everywhere, and a rebuild can fail
+ * identically; this observation names a concrete pattern the model can go and investigate.
+ *
+ * Both compared sides are the Builder's own facts — its solve's outputs, its authored public
+ * inputs — so the finding may describe their relationship. It carries no task id, check id,
+ * verifier output or hidden expectation.
+ *
+ * The empty-proves-nothing rule (`bulky` above) inverts here on purpose. For copying, empty
+ * matching empty is no evidence; for responsiveness, a derived root that stays empty while every
+ * input differs is exactly the signal, and an empty plan is the usual shape of the defect. A root
+ * that is legitimately constant still yields a true observation with its denominators stated, and
+ * the model judges whether that constancy was intended. These findings carry no severity of their
+ * own: they accompany an already blocking census result as diagnosis, and BLOCKING_CODES is
+ * unchanged.
  */
 export function inputInsensitivity(witnesses: readonly Witness[]): ContractFinding[] {
   if (witnesses.length < 2) return [];

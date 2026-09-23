@@ -51,7 +51,22 @@ function isForbiddenAssertionChain(node: TypeAssertionExpression): boolean {
 }
 
 /**
- * Disallow nested TypeScript type assertions, while permitting chains made only of const assertions.
+ * Two or more type assertions stacked on one expression: `value as unknown as Row`, or the same
+ * thing spelled with angle brackets or hidden behind parentheses.
+ *
+ * One assertion says the author knows something the checker does not. Two say the first one was
+ * not accepted either, and the usual second one is `as unknown`, whose entire job is to widen far
+ * enough that the assertion after it stops being an error. What reaches the reader is a value
+ * carrying a name and no evidence, and the type it started from — the one piece of real
+ * information in the expression — has been discarded on the way.
+ *
+ * A chain of nothing but `as const` is admitted, because `as const` narrows rather than widens
+ * and adds evidence rather than replacing it. `isForbiddenAssertionChain` therefore counts the
+ * assertions and separately asks whether any one of them is something other than `const`, so the
+ * chain has to be both long and lossy before it is reported. The report also fires once per
+ * chain: `isOutermostAssertionInChain` walks out through parentheses and stays silent unless
+ * nothing above is another assertion, so a three-deep chain is one finding at the top rather than
+ * three findings at the same expression.
  *
  * There is no fix: the repair is the one assertion that is true, or the validation that removes
  * both, and a chain exists precisely because neither was obvious.

@@ -1,14 +1,25 @@
 /**
- * Shared backend-slot resolver, so display and launch cannot disagree. It reads only
- * `loadRepoEnv`'s merged values.
+ * Shared backend-slot resolver, so what a display shows and what a launch runs cannot disagree.
  *
- * - The review slot inherits only on request: `{ "inherit": true }` in an operator file or
- *   `HARNESS_REVIEW_BACKEND=inherit`, recorded as `source: "inherited-explicit"`. Unconfigured
- *   means disabled.
- * - Unknown kinds, unavailable transports and unresolved models are refused with their source, so
- *   no pin silently routes to another engine.
- * - Operator files may not set models; named environment pins own them.
- * - Unconfigured defaults per slot come from project-backend-policy.
+ * Resolution rules, each of them a refusal to guess:
+ * - One resolver reads only `loadRepoEnv`'s merged values, with no separate wrapper and no ambient
+ *   env read, so the condition a run reports is the condition it resolved.
+ * - The review slot inherits only when asked to: unconfigured means disabled, and following the
+ *   built backend requires the explicit marker `{ "inherit": true }` in an operator file or
+ *   `HARNESS_REVIEW_BACKEND=inherit`. The choice then carries `source: "inherited-explicit"`, so
+ *   the evidence says the inheritance was chosen rather than fallen into.
+ * - An unknown kind produces an error naming its source, because a typo that silently selected a
+ *   different backend would be measured as the condition the operator thought they asked for.
+ * - Operator files may not set models: the named environment pins are the descriptor registry's one
+ *   model owner, the three independent Codex slots included.
+ * - A provider with no resolved model, from neither an env override nor a default, is an error
+ *   naming the env var, since an evaluation needs an identified model before it can start.
+ * - A kind whose transport is unavailable is refused during resolution, and the transport's own
+ *   no-turn preflight then verifies the CLI, the OAuth credential and support for the exact model.
+ *   A resolver can never silently route a pin to another engine.
+ * - The unconfigured default per slot is declared beside the completeness matrix in
+ *   project-backend-policy.ts -- builder to claude, built to claude -- so the default and the
+ *   slot-support check share one owner and cannot disagree about what a slot may serve.
  */
 import type { BackendKind } from "./backend-kinds.ts";
 import { validateReviewOperator } from "./config-file.ts";
@@ -26,7 +37,9 @@ import { keyIfTruthy } from "../meta/optional-key.ts";
 export type { SlotChoice } from "./resolve-side.ts";
 
 export type ReviewChoice =
-  /** `operator` means explicitly disabled; `unconfigured` means no selection was made. */
+  /** `operator` means explicitly disabled; `unconfigured` means no selection was ever made. The
+   *  two are kept apart because `harness-measure.ts` reports the second before a battery runs, so
+   *  a recorded `judge: "off"` has an explanation rather than looking like a choice. */
   | { enabled: false; source: "unconfigured" | "operator" }
   | {
       enabled: true;
@@ -42,7 +55,9 @@ export type ResolvedSlots = {
   builder: SlotChoice;
   built: SlotChoice;
   review: ReviewChoice;
-  /** Repo-relative operator selection files read, highest precedence first; null when none existed. */
+  /** Repo-relative operator selection files this resolution read, highest precedence first, or null
+   *  when none existed. Together with a slot's `source: "default"`, that null is what records that
+   *  the default was used because no operator file existed to say otherwise. */
   operatorConfig: string | null;
 };
 

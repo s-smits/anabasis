@@ -48,10 +48,19 @@ export function toolDefinition<P extends TSchema, E>(
 }
 
 /**
- * Bound host-side tool output, applied by `defineTool` only: keep as much text as fits and tell the
- * model to ask for a narrower range. A tool that can exceed the ceiling should still window itself,
- * since only it knows what a narrower range means. `defineDraftTool` keeps the refusal, because
- * over-long generated-tool text is an authoring defect for conformance to report.
+ * Bound host-side tool output, applied by `defineTool` alone.
+ *
+ * A controller-owned tool whose result crossed the limit used to throw, which left the model with
+ * no answer and no way to ask for less; four separate tools had the same problem. Keeping as much
+ * text as fits and stating the cut in the text the model receives turns that into an incomplete
+ * answer the model knows is incomplete, which it can act on.
+ *
+ * It stays a fallback. A tool that can exceed the ceiling should still window itself, because only
+ * the tool knows what a narrower range means there — a line offset, a page of matches, one task.
+ *
+ * `defineDraftTool` deliberately keeps the refusal. Its tools are the generated harness's contract
+ * and their results are framed for the worker protocol, so text past the ceiling is an authoring
+ * defect for conformance to report rather than a controller result to shorten.
  */
 function boundEvidenceText(text: string): string {
   if (new TextEncoder().encode(text).byteLength <= TOOL_TEXT_LIMITS.evidence) return text;

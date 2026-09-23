@@ -7,7 +7,6 @@ import type { ClimbReadout } from "./climb-readout.ts";
 import { FRAME_REVISION } from "./climb-readout-frame.ts";
 
 export type DifficultyDecisionEvidence = {
-  /** Consumers read `difficulty.decision`, `admitted` and `excluded`. */
   schema: "difficulty-decision/v5";
   runId: string;
   slug: string;

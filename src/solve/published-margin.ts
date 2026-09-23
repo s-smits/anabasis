@@ -1,12 +1,23 @@
 /**
  * The published limits a prepared answer can be measured against before it is submitted.
  *
- * A truth check's `numericBoundary` names where a task's public input states a limit. With the
- * artifact path that reports the bounded value and the comparison's direction, the comparison is
- * public on both sides, so the harness evaluates it and tells the solver where its answer stands.
+ * A truth check may declare a `numericBoundary`: the public input path carrying a limit, and the
+ * public `designRuleConstants` row naming its value. That says where the limit is but not what it
+ * bounds, so nothing could evaluate it. Adding the artifact path the answer reports that value at,
+ * and the direction of the comparison, completes it — and a complete comparison is public on both
+ * sides, so the harness can run it and tell the solver where its own answer stands.
  *
- * It decides nothing: a missing or non-numeric operand reads as unknown, clearing every margin does
- * not make an answer correct, and a breach does not block submission. The verifier owns correctness.
+ * This exists because the solver could not see it. Asked in the prompt to compare each value its
+ * own answer reports against each published requirement, a solver discharges that duty badly and
+ * submits answers that breach a published limit by the very numbers they report; the harness
+ * discharges it exactly. Three prompt clauses asking for that comparison, and for margin against
+ * it, were removed when this landed.
+ *
+ * It decides nothing. A comparison whose operand is missing or non-numeric reads as unknown rather
+ * than as a breach, clearing every margin does not make an answer correct, and a breach does not
+ * block submission: the verifier owns correctness, and a mis-declared boundary must not be able to
+ * wedge a case. What this removes is the case where the answer's own published numbers already said
+ * it fails and nobody read them.
  */
 import { resolveJsonPath } from "../meta/json-evidence.ts";
 import { type JsonObject, isNumber, isRecord } from "../meta/json-shape.ts";
@@ -14,9 +25,15 @@ import { type JsonObject, isNumber, isRecord } from "../meta/json-shape.ts";
 export type MarginDirection = "atMost" | "atLeast";
 
 /**
- * What an artifact-writer does, stated by the host that binds it: the authored description says
- * what the tool is for, this sentence says what runs. It names no count, so the registration is
- * identical across a battery.
+ * What an artifact-writer does, said by the host that does it.
+ *
+ * The host replaces an exact artifact-writer's parameters and execution: the parameters become the
+ * public artifact schema, and the call records the answer and returns the margin table below. The
+ * Builder can observe neither, so an authored description can end "It runs no analysis and checks
+ * nothing against the published limits" while the bound call returns a table of exactly that. The
+ * authored sentence stays, because it says what the tool is for in the domain's own words;
+ * this one says what runs. It names no count, so every task in a battery serves the same text and
+ * the registration stays stable across families.
  */
 export const WRITER_BINDING_SENTENCE =
   "The host binds this tool: its parameters are the exact public artifact schema, a call records the " +
@@ -60,7 +77,8 @@ export function readMargins(
   publicInput: unknown,
   artifact: unknown,
 ): MarginReading[] {
-  // A non-object holds no path, so its operands read as unknown rather than as a breach.
+  // Both sides are public JSON the caller has not narrowed. Anything that is not an object holds no
+  // path at all, so it reads as an unreadable operand rather than as a breach.
   const answer = isRecord(artifact) ? artifact : {};
   const task = isRecord(publicInput) ? publicInput : {};
   return margins.flatMap((margin) => {
@@ -109,7 +127,10 @@ function marginLine(reading: MarginReading): string {
     : `${reading.label}: ${decimal(reading.reported ?? 0)}, ${bound} ${decimal(reading.limit ?? 0)}; ${decimal(reading.slack)} to spare${share}.`;
 }
 
-/** The margin table the solver reads; empty when no complete boundary applies. */
+/**
+ * The margin table the solver reads, stated once here. Empty when the harness declared no complete
+ * boundary, so a domain that publishes none carries no sentence about them either.
+ */
 export function renderMargins(readings: readonly MarginReading[]): string {
   if (readings.length === 0) return "";
   const worst = readings.some((reading) => reading.breached)

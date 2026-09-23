@@ -1,5 +1,16 @@
-/** Host tool subjects receive the applicable public-input union. Each named check receives only
- * its own declared artifact and public inputs. These cases exercise both boundaries. */
+/**
+ * Two boundaries meet here. A host tool subject receives the union of the public inputs that every
+ * applicable check declared, which is nothing at all when no check applies to the task, and a
+ * legacy brief is refused rather than silently granting the whole task; `taskId` and `family` stay
+ * readable because no declaration covers them. Each named check, meanwhile, receives only its own
+ * artifact, public and hidden operands, so an external check can hand the host its own hidden
+ * operand and nothing another check owns.
+ *
+ * The wall is what makes the controls mean anything. An operand no check declared is hidden, so a
+ * correctness model that reads it fails its own accept. And a numeric rule that publishes the wrong
+ * comparator passes its own controls for as long as every sample stops either side of it, which is
+ * why one task is put on the boundary.
+ */
 import { describe, expect, it } from "bun:test";
 
 import type { JsonValue } from "../src/meta/json-shape.ts";
@@ -31,7 +42,7 @@ const CORPUS: ControlCorpus = {
 };
 
 // Boundary discrimination: a task exactly on the cited constant plus an isolating reject
-// separates > from >= — the W20 lesson that samples either side cannot.
+// separates > from >=, which no pair of samples either side of it can do.
 const CHECK_ID = "charge-fault";
 
 function runControls(
@@ -368,7 +379,7 @@ const task = (temperature: number): BuildTask =>
 
 const TASKS = [task(59), task(60), task(61)];
 
-/** A correctnessModel parameterised by its comparator: the published rule, and the W20 mutation of it. */
+/** A correctnessModel parameterised by its comparator: the published rule, and the mutation of it. */
 function correctnessModel(raisesFault: (temperature: number) => boolean) {
   return async (_checkId: string, request: { publicTask: unknown; artifact: unknown }) => {
     // SAFETY: the runner hands this correctnessModel the public task and artifact this file authored.
@@ -395,7 +406,7 @@ const reject = (temperature: number, fault: boolean, mutationClass: string) => (
   expectedCheckId: CHECK_ID,
 });
 
-/** What W20 shipped: samples strictly either side of the value the rule turns on. */
+/** The corpus a Builder reaches for: samples strictly either side of the value the rule turns on. */
 const EITHER_SIDE: ControlCorpus = {
   accept: [accept(59, false), accept(61, true)],
   reject: [
@@ -423,9 +434,8 @@ describe("a numeric rule's boundary", () => {
   });
 
   it("hides a wrong comparator when every sample stops either side of it", async () => {
-    // The W20 result: the mutation is invisible, so the corpus scores it exactly as it scores the
-    // published rule. This exposes a gap in the controls: they omit the one value that distinguishes
-    // the two comparators.
+    // The mutation is invisible: the corpus scores it exactly as it scores the published rule. The
+    // gap is in the controls, which omit the one value that distinguishes the two comparators.
     const mutated = await run(strict, EITHER_SIDE);
     const published = await run(inclusive, EITHER_SIDE);
     expect(mutated.acceptsPassed).toBe(published.acceptsPassed);

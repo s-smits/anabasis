@@ -1,6 +1,9 @@
 /**
- * The byte identity of the paths one authoring session owns, which tells an unchanged tree from a
- * repaired one.
+ * The byte identity of the paths one authoring session owns, which is how a session's turn boundary
+ * tells an unchanged tree from a repaired one. A probe-budget monitor and a no-submit strike once
+ * lived beside it and were removed by operator decision: neither ever fired, and both would have
+ * ended a session that spent its first turns installing tools under .toolchain, which is ordinary
+ * authoring rather than a stall. What survived is the measurement, with no mechanism acting on it.
  */
 import { hashBundle } from "../claim/bundle-hash.ts";
 import { existsSync, lstatSync } from "../meta/filesystem.ts";

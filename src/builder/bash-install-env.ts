@@ -1,9 +1,15 @@
 /**
  * Shell environment for a Builder authoring session. HOME points into the workspace's `.toolchain`
- * directory under every network policy, so HOME-based installers and tools write inside the
- * workspace, where admission can reuse them, instead of into the denied host home. Two
- * conventional user bin directories join PATH so Python, Rust and similar installs run without
- * extra flags.
+ * directory, the tree tool admission reads later, so HOME-based installers and tools — Arduino's
+ * `~/Library/Arduino15`, Cargo, Go, PlatformIO, pip — write inside the workspace and leave files
+ * admission can reuse. Two conventional user bin directories join PATH so Python, Rust and similar
+ * installs run without extra flags.
+ *
+ * The redirect used to depend on the network policy, on the reasoning that only an installer writes
+ * to HOME. An offline session writes there too: a bare `arduino-cli version` answers `open
+ * ~/Library/Arduino15/inventory.yaml: operation not permitted`, because the wall denies the host
+ * home that HOME still points at. A tool that reads as broken rather than as denied is the failure
+ * `hostToolchainEnv` already exists to name, so the redirect holds under every policy.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { HARNESS_CONFIG_FILE, type HarnessSettings, harnessSettings } from "../truth/harness-config.ts";
@@ -14,8 +20,12 @@ import { type OptionalEnvValues, scrubSecretEnv } from "../backends/scrub-env.ts
 import { ISOLATED_TIMEOUT_MS } from "./candidate-isolation-runtime.ts";
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 
-/** The longest one bash call may run: long enough for a toolchain build, which a background job
- *  cannot outlive. The description reserves it for builds. */
+/** The longest one bash call may run. Control generation with an FEA or a toolchain compile runs
+ *  past a 10-minute default, and the alternative a Builder finds for itself is a background job
+ *  polled with `sleep`, which the same deadline kills along with the call that started it. Two
+ *  hours, sized for a firmware toolchain build. A Builder given that will also spend most of an hour
+ *  of it on a single search call, which is why the description reserves the raised ceiling for
+ *  builds rather than offering it as the usual wall. */
 export const BASH_TIMEOUT_MAX_MS = 120 * 60_000;
 
 /** The workspace-local environment for the host-dispatched Builder shell tool. */
@@ -30,8 +40,11 @@ function builderHomeEnvironment(workDir: string, inheritedPath = Bun.env.PATH) {
     XDG_CACHE_HOME: join(home, ".cache"),
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_DATA_HOME: join(home, ".local", "share"),
-    // Workspace packages link into the repository's node_modules, which the wall does not list;
-    // resolving from the link's path finds hoisted dependencies in the workspace's node_modules.
+    // The workspace's packages are links into the repository's node_modules, whose own directory the
+    // wall does not list, so a bare `bun` resolving a package from its real path cannot see a hoisted
+    // dependency beside it, so a script stops at a transitive import such as pi-ai's `partial-json`.
+    // Resolving from the link's path instead, as the starter's `--preserve-symlinks` test command
+    // already does, finds it in the workspace's own node_modules.
     NODE_PRESERVE_SYMLINKS: "1",
     // Use this run's admitted Bun before ambient wrappers (the operator's ~/.local/bin/bun
     // may sit outside the authoring wall). Workspace tool installs retain their usual precedence.
@@ -45,8 +58,11 @@ export function bashTimeoutMs(seconds: number | undefined): number {
   return Math.min(BASH_TIMEOUT_MAX_MS, Math.round(seconds * 1000));
 }
 
-/** What a killed command tells the model, including the host load, which the Builder cannot
- *  otherwise tell apart from a slow command. */
+/** What a killed command tells the model. A bare exit 137 reads as memory pressure, so the Builder
+ *  retries the same command and has the retry killed too. The host load is the other half: it is a
+ *  runtime fact the Builder cannot observe and cannot tell apart from a command that is simply slow.
+ *  A search killed at its deadline may have been running on a host loaded to several times its core
+ *  count, with a tenth of a core to itself, and no reading of the command explains that. */
 export function bashKilledNotice(timeoutMs: number): string {
   const load = (loadavg()[0] ?? 0).toFixed(1);
   return `Command killed after ${String(timeoutMs / 1000)} s while the host load average was ${load} on ${String(availableParallelism())} cores; a CPU-bound command gets less than a core when load exceeds cores. Pass timeout (seconds, up to ${String(BASH_TIMEOUT_MAX_MS / 1000)}) for a longer build, or split it; give a search fewer iterations`;
@@ -56,9 +72,19 @@ export function bashKilledNotice(timeoutMs: number): string {
  * What one long authoring call cost against the budget this harness gives its own solver, or null
  * when the call would have fitted inside it.
  *
- * The budgets are the solver's per-command, per-check and whole-solve walls from the workspace's
- * own `agent/config.yaml`. This is a nudge, not a wall: the call already ran. Silent at or below
- * the smallest budget, since the solver could have made that call itself.
+ * The Builder's own shell runs for up to two hours and nothing shortens it, because searching a
+ * domain is not solving one of its tasks. The solver it is writing those limits for gets
+ * `solver.shell_timeout_max_seconds` per command, `gate.check_seconds` per correctness check and
+ * `solver.solve_minutes` for a whole solve — all three from the `agent/config.yaml` in this same
+ * workspace, which the Builder wrote and can read. Nothing else in the loop states the exchange rate
+ * between the two, so a Builder will happily spend an hour of wall clock settling a limit for a
+ * solver it has given fifteen minutes a command, and carry that mismatch into the battery
+ * unexamined.
+ *
+ * This is a nudge, not a wall: the call already ran, and every number in it is the Builder's own.
+ * Both levers are the Builder's too — the settings, and the installed tools whose accuracy-for-time
+ * settings decide what those seconds buy. Silent at or below the smallest budget, because a call
+ * the solver could itself have made needs no note.
  */
 export function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings): string | null {
   const commandMs = settings.shellMaxSeconds * 1000;
@@ -68,8 +94,10 @@ export function solverBudgetNotice(elapsedMs: number, settings: HarnessSettings)
   return `This call ran ${s(elapsedMs)} s. ${HARNESS_CONFIG_FILE} gives one solver command ${against(commandMs)}, one correctness check ${against(settings.checkWallMs)} and a whole solve ${against(settings.solveMs)}. Work you calibrate with a call this long may be work your own solver cannot repeat inside those numbers. Both sides of that are yours to move: edit those settings, or tune what you installed under .toolchain, where a tolerance, iteration or resolution setting usually trades a little accuracy for a lot of time.`;
 }
 
-/** The same notice for a workspace, silent while its config is unreadable: the submit gate reports
- *  a defective config, and a nudge never fails a shell call. */
+/** The same notice for a workspace, silent while its config is unreadable. The submit gate owns
+ *  reporting a defective config and reports it with the finding that routes; a nudge that threw here
+ *  would instead fail the shell call the Builder was running, which is never worth an advisory
+ *  sentence. */
 export function workspaceSolverBudgetNotice(workDir: string, elapsedMs: number): string | null {
   try {
     return solverBudgetNotice(elapsedMs, harnessSettings(workDir));
@@ -78,8 +106,16 @@ export function workspaceSolverBudgetNotice(workDir: string, elapsedMs: number):
   }
 }
 
-/** The bash tool description, stating what the wall actually closes; `pathCard` is the shared path
- *  sentence. */
+/**
+ * The bash tool description for the composed policy; `pathCard` is the shared path sentence.
+ *
+ * It used to say the session "can write only there" and that host secrets were unavailable. Neither
+ * was true once the cells were opened so a domain could install what it needs: the Seatbelt profile
+ * bases on `(allow default)` and subtracts named roots, and the in-process guard is handed the
+ * command's `cwd`, not the paths inside the command. A tool description is a runtime fact the model
+ * cannot observe (rule 5), so it now states what the wall actually closes and leaves the workspace
+ * as the instruction it is, rather than describing a confinement that is not there.
+ */
 export function bashDescription(policy: CandidateAccessPolicy, pathCard: string): string {
   const closed =
     "The wall closes the verified repository, this campaign's run evidence and the host's credential and key files; keep your own work inside the workspace.";

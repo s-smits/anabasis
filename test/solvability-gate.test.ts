@@ -1,12 +1,28 @@
 /**
- * Tests for the F2 solvability census before adoption. A candidate whose reference solve
- * passes task 1 but fails task 2 is refused. Feedback includes aggregate failure counts and
- * counts by declared check: runs 12 and 14 received too little information from a total alone.
- * It may also identify constant reference output across different inputs, as tested in
- * test/representation-census.test.ts. Task ids, per-task check results and raw verifier text
- * remain protected. The host retains the complete record in solvability.json.
- * Environment non-results route to the environment owner without becoming product failures.
- * These tests exercise that routing and the permitted feedback fields.
+ * The F2 census runs every authored task's reference solve before a candidate is adopted, and a
+ * candidate that solves task 1 and fails task 2 is refused. That is the easy half. The hard half is
+ * what the refusal is allowed to say back, because the same session that authored the battery is
+ * the session that reads the finding, and a refusal detailed enough to be useful is a refusal
+ * detailed enough to be an answer key.
+ *
+ * So the census projects counts and withholds locations. The Builder learns how many reference
+ * solves failed and how those failures concentrate by declared check, since a bare total tells an
+ * author nothing it can act on — but the task ids, the per-task check results and the raw verifier
+ * text never cross. The complete record stays host-side in
+ * `solvability.json`, which is what makes the projection safe to narrow: nothing is being thrown
+ * away, only kept on the correct side of the boundary.
+ *
+ * The routing cases are the other half, and they exist because an environment failure that reads as
+ * a product failure sends the Builder to repair something that was never broken. A census the wall
+ * cut records no `solvability.json` and returns no feedback at all; a census that cannot execute
+ * blocks while keeping the failure record protected; an unresolved tool gets its own row beside the
+ * count rather than being folded into it; and a plain non-result routes to the environment owner.
+ * Two refusals route to `brief` as blocking instead — a tool whose digest matches known
+ * candidate-authored source, and an external check passing a program as its argument — because
+ * those are the author's declarations, not the host's luck.
+ *
+ * Constant reference output across differing inputs is a related defect and is measured next door
+ * in test/representation-census.test.ts, not here.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -182,10 +198,9 @@ describe("the F2 pre-adoption solvability census", () => {
     expect(feedback[0]).toMatchObject({ owner: "brief", severity: "blocking" });
     const authorVisible = JSON.stringify(feedback);
     expect(authorVisible).toContain("SOLVABILITY_REPRESENTATION_DEFECT");
-    // The detail describes a public authoring interface: writer schema, DraftStore or submit.
-    // It may reach the Builder without identifying the task. In run w12, iteration 47
-    // resolved this kind of defect with detailed feedback, while iterations 48–55 received
-    // less detail. This test checks the disclosure rule, not that historical comparison.
+    // The detail describes a public authoring interface: writer schema, DraftStore or submit, so it
+    // may reach the Builder provided it identifies no task. That is what this checks — the
+    // disclosure rule itself, not whether the detail shortens the repair.
     expect(authorVisible).toContain("nullable root value");
     expect(authorVisible).not.toContain("t2");
   });

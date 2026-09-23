@@ -43,8 +43,12 @@ interface IdentityObservation {
   /** A field the census should carry is missing or blank: nothing was recorded to compare. */
   incomplete: boolean;
   /** Something the census did record disagrees with the pin — a different served model, or a
-   *  different transport or provider attesting the row. It is kept apart from `incomplete`
-   *  because the difficulty population admits absence but refuses contradiction. */
+   *  different transport or provider attesting the row. This is the opposite of `incomplete`:
+   *  the run produced evidence, and the evidence names another condition. The two are separate
+   *  because the difficulty population admits absence and must refuse contradiction
+   *  (`src/run/climb-battery-admission.ts`): a battery some other model solved carries no
+   *  information about this product's tasks, while one whose provider recorded nothing carries
+   *  its scores unchanged. One boolean and one clause name cannot carry both readings. */
   contradictions: string[];
   /** The transport reports no served model by construction; the pin stays configuration. */
   unattested: string | null;
@@ -125,8 +129,10 @@ function inspectPiIdentity(
       identity.provider.resultId === null ||
       identity.provider.resultId.trim() === "",
     contradictions: piContradictions(identity, pin, caseId),
-    // This route never reports a served model, so its absence leaves the identity unverified
-    // without refusing. Any other provider's null model still refuses.
+    // The pinned model is never substituted for the Codex route's absent attestation, because that
+    // would manufacture the very evidence the census exists to check. The absence is a fact about
+    // the route rather than about the run, so the identity stays unverified without refusing the
+    // claim. Any other provider's null model, and any different reported model, still refuses.
     unattested:
       identity.provider.model === null && identity.provider.id === UNATTESTING_PROVIDER
         ? `case "${caseId}": provider "${identity.provider.id}" reported no served model, so the pinned model is configuration rather than attestation`
@@ -152,8 +158,15 @@ function inspectCase(
   found: IdentityCensusFindings,
 ): string | null {
   const { invalid, contradicted, unattested } = found;
-  // Collect contradictions before the count checks can return, so a damaged count never hides
-  // evidence that another model ran.
+  // Read before any branch returns, including the two counts below. Each refusal here records the
+  // case as `blocking`, and `blocking` says only that the pin was not evidenced — an absent, blank
+  // or internally inconsistent census. An identity naming another served model says something else
+  // entirely: that a different condition was measured. The two clauses route to different owners,
+  // one of them an environment clause, so a contradiction recorded beside a broken count must not
+  // leave through the count's exit. Under the count checks, a census whose turn totals disagreed
+  // would take its crossed identities down with it, and a damaged row is exactly the row likeliest
+  // to carry the reading a wrong-model run needs. Nothing here reads a count, so the order costs
+  // one map over rows a refusal would discard.
   const observations = row.identities.map((identity) => inspectIdentity(identity, pin, row.caseId));
   for (const observation of observations) contradicted.push(...observation.contradictions);
   if (!Number.isInteger(row.turns) || row.turns <= 0) {
@@ -167,9 +180,22 @@ function inspectCase(
     return null;
   }
   if (row.completedTurns === 0) {
-    // The clause says "scored case" so it is not read as a non-result list. A verified case with
-    // no completed turn (for example, one cut by the solve wall after submitting) is unattested,
-    // not a contradiction; an unverified one has no graded bytes, so it still refuses.
+    // Named as a scored case on purpose: this clause lists cases inside the verified denominator
+    // whose provider identity is unproven. Phrased any other way it reads as a list of typed
+    // non-results, and a reader files these ids against the run's environment failures instead.
+    //
+    // Absence of an attestation is not a contradiction in one. When the case's bytes reached the
+    // verifier and got a verdict, nothing here says the wrong model ran; the census simply holds
+    // no row, because a turn the whole-solve wall cuts closes no provider result. That is an
+    // ordinary shape: dozens of tool calls, an accepted submit, a verifier pass, and an ended turn
+    // at the wall, which refuses the battery's whole claim if it is treated as invalid.
+    // `unattested` is the bucket for it — the statement leaves `modelIdentity` unverified and
+    // nothing refuses — and it is the same line `src/truth/runtime-blocker.ts` draws on this
+    // count, where zero completed turns is an environment blocker only with no tool calls and no
+    // accepted submit.
+    //
+    // An unverified case keeps the refusal, because no bytes were graded and there is nothing the
+    // missing attestation would have been the identity of.
     (truth === "verified" ? unattested : invalid).push(
       `scored case "${row.caseId}" has no recorded provider identity (identity unproven, not a non-result) across ${String(row.turns)} outer turn(s)`,
     );

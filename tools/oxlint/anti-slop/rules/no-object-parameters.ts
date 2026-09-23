@@ -33,7 +33,14 @@ function memberType(member: ESTree.TSSignature): ESTree.TSType | null {
 }
 
 /**
- * Ban the broad object type on function inputs, including local aliases to object.
+ * A function parameter whose declared type is `object`, wherever in the annotation the word ends
+ * up.
+ *
+ * `object` says the value is not a primitive and stops there. A parameter declared that way
+ * accepts anything any caller has, so the signature rejects nothing, and the narrowing the
+ * function needs before it can read a field happens inside it instead — and then again inside the
+ * next function it passes the value to. A parameter is where a type earns the most, because it is
+ * the one declaration both sides read.
  *
  * A parameter hides the broad type as easily as it spells it, so the search reads through an
  * alias into an array, a tuple, a `readonly` operator, a type literal's property and index
@@ -41,6 +48,12 @@ function memberType(member: ESTree.TSSignature): ESTree.TSType | null {
  * object[]`, `{ rows: object[] }` and `Map<string, object>` each leave a caller with the same
  * unparsed value `object` would; only `WeakMap` and `WeakSet` are exempt, because there the broad
  * type is the language's own key constraint.
+ *
+ * Only a written annotation is read, because a plugin rule never asks the checker, so an
+ * unannotated parameter is invisible here however wide its inferred type comes out. The ten
+ * visitor kinds cover declarations and contracts alike — the arrow, the function, the method
+ * signature, the call and construct signatures, the bare `TSFunctionType` — so an interface asking
+ * for `object` is reported where it is written rather than at each implementation of it.
  *
  * There is no fix: the repair is an owner-provided type parsed at its boundary, so the edit is a
  * new contract in another file and every call site.

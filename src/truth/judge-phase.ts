@@ -1,7 +1,8 @@
 /**
  * The battery's Judge phase reviews only eligible artifacts: accepted submissions with a boolean
  * verifier verdict. The Judge advises and the host verifier decides: nothing in this phase changes
- * pass, acceptance or whether a claim can be created, and no disagreement buys further calls.
+ * pass, acceptance or whether a claim can be created, and no disagreement buys further calls: no
+ * control and no bait subject reaches the Judge at all (operator decision).
  */
 import type { RunCondition } from "../claim/case-record.ts";
 import { existsSync } from "../meta/filesystem.ts";
@@ -23,7 +24,9 @@ import { JUDGE_PUBLIC_CONTEXT_FILE, JUDGE_PUBLIC_CONTEXT_SCHEMA } from "./declar
 
 /** The Judge's public context card for this run, and the one builder of the domain card every
  *  review model receives: the brief's public projection, the Builder-declared tools and the
- *  declared runtime facts. The card carries all
+ *  declared runtime facts. Two builders of this card drift apart silently: one path keeps sending
+ *  populated prompts while the other sends a null publicRequest, toolContract and runtimeFacts to
+ *  reviewers who then judge an artifact without knowing what was asked for. The card carries all
  *  declared public rules; each subject binds only the applicable task projection. Missing
  *  tools-spec bytes state a null contract; a spec that fails validation throws, because a card
  *  built from an invalid contract would misdescribe the condition to every reviewer. */

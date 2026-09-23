@@ -68,8 +68,12 @@ function readLock(path: string): LockFile {
   } catch {
     return existsSync(path) ? { state: "unreadable", raw: "" } : { state: "absent" };
   }
-  // Only an object is a lock record; any other parsed JSON is `unreadable`, so readers refuse
-  // rather than throw.
+  // A lock file holds an object, or it holds nothing this host can judge. `null`, a bare number, a
+  // string and an array all parse, and asserting each of them to be a LockRecord made the first
+  // reader throw rather than refuse: `.token` off null in `lockToken`, `Number(record.pid)` off
+  // null in `holderIsDead`. A throw is not the refusal this file's one rule asks for —
+  // undeterminable is never dead — and the answer for it already exists, so anything that is not
+  // an object becomes `unreadable` here.
   try {
     const record = asRecord(parseJsonAs<unknown>(raw));
     return record === null ? { state: "unreadable", raw } : { state: "read", raw, record };

@@ -1,14 +1,15 @@
 /**
- * The `@ana/correctness-model-bundle` API for generated correctness models (`evaluator.ts`).
- * Solve-side validation refuses this protected package (`bundle-validation.ts`,
- * `CORRECTNESS_MODEL_PACKAGE`). Correctness-model loading makes it available to checks.
- * Add exports when generated code needs them.
+ * What a generated `evaluator.ts` imports when it imports `@ana/correctness-model-bundle`. The two
+ * sides of the bundle see this package differently on purpose: solve-side validation refuses it by
+ * name (`CORRECTNESS_MODEL_PACKAGE` in `bundle-validation.ts`), so an agent cannot import the
+ * vocabulary its own answers are judged in, while correctness-model loading makes it available to
+ * the checks. A name is exported from here once a generated consumer imports it and not before.
  *
  * The runtime half of this contract lives beside the barrel rather than under `src/`. The Builder
  * runs its own `bun test` under a wall that opens this directory whole and closes `src/truth`,
- * and Bun lists a module's directory before it opens the file: measured 2026-09-02 (run50-opus),
- * a barrel re-exporting `../../src/truth/truth-checks.ts` failed there with "Cannot find module"
- * while the file itself was granted, and the Builder wrote a stand-in for the whole package.
+ * and Bun lists a module's directory before it opens the file, so a barrel re-exporting
+ * `../../src/truth/truth-checks.ts` fails there with "Cannot find module" while the file itself is
+ * granted -- and the Builder then writes a stand-in for the whole package.
  * Shared JSON shape primitives remain under the already-public `src/meta` authoring interface.
  */
 export type {

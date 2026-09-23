@@ -1,12 +1,29 @@
 /**
- * Tests for Builder memory (src/author/builder-memory.ts): the two workspace Markdown files
- * the Builder can update and later passes read back.
+ * The two Markdown files the Builder writes in its workspace, and what a later epoch inherits from
+ * them. They sit outside the accepted bundle and carry no correctness authority, so nothing here is
+ * about whether the notes are right; it is about whether they arrive, bounded and attributed,
+ * without disturbing a prompt that has to stay byte-identical.
  *
- * The required properties: an untouched starter renders nothing (a first build's prompts stay
- * byte-identical to what they were before this module existed), inherited memory fits within
- * a byte cap, and the read path also caps files the Builder edited itself. A carried file keeps
- * its origin marker. Existing successor notes take precedence, and a missing predecessor leaves
- * the successor without inherited notes rather than failing the campaign.
+ * That last part is why the empty case is the load-bearing one. An untouched starter must render
+ * nothing at all — not an empty block, not a bare heading — because a prompt digest is a recorded
+ * condition identity, which means a stray newline out of this module does not make the prompt
+ * slightly different, it makes every run after it a different measured condition from every run
+ * before it.
+ *
+ * The rest is inheritance and its ceiling, and the ceiling is where the interesting failures live.
+ * `src/author/builder-memory.ts` caps MEMORY.md at 8,000 bytes and SCRATCHPAD.md at 2,000, applying
+ * each on the inherited write and again on the prompt read, so four separate paths can meet a
+ * ceiling: the inherited block, a file the Builder hand-wrote, a carried
+ * file, and a carried file the Builder then edited back over it. The fourth is the one that really
+ * needs its own case, because truncating it must not take the carry marker with it — a carried file
+ * that loses its marker reads as the successor's own work, and the next Builder then treats a
+ * predecessor's conclusions as notes it wrote itself. For the same reason a file carried across
+ * several epochs names only its immediate predecessor, so the header cannot grow into a chain.
+ *
+ * Around that sit the ordinary rules: scratch is carried selectively, small top-level helpers but
+ * not output directories, an epoch that already has memory of its own is never overwritten by an
+ * inherited one, and a missing predecessor leaves the successor with no inherited notes rather than
+ * failing the campaign, since a first epoch has no predecessor by definition.
  */
 import {
   appendFileSync,
@@ -136,7 +153,7 @@ describe("Builder memory", () => {
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
-    // Run 1093c9 opened its fourth epoch on three stacked markers.
+    // Without this, a fourth epoch opens on three stacked markers.
     const root = mkdtempSync(join(tmpdir(), "ana-epochs-chain-"));
     const first = join(root, "epoch-aaaa", WORKSPACE_DIR);
     initWorkspace(first);
@@ -150,8 +167,8 @@ describe("Builder memory", () => {
   });
 
   it("caps a carried file and keeps the carry marker inside the ceiling", () => {
-    // Run 52 carried an over-ceiling MEMORY.md three epochs deep, prepending a marker each time.
-    // The carry marker must survive the cut, and the file must arrive under the ceiling.
+    // An over-ceiling MEMORY.md carried three epochs deep gains a marker each time. The carry
+    // marker must survive the cut, and the file must arrive under the ceiling.
     const root = mkdtempSync(join(tmpdir(), "ana-epochs-cap-"));
     const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
     initWorkspace(prior);

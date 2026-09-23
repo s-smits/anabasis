@@ -17,7 +17,10 @@ const classEntries: Array<[string, string[]]> = Object.entries(CLASSES);
 const anchorClass = new Map<string, number>();
 type Submit = { kind: string; turn: number; atMs: number; outcome: string; stage?: string | null };
 type Row = { turn: number; atMs: number; kind: "message" | "reasoning"; text: string };
-/** The execution-record fields a test may override; the session outcome decides whether its rows count as evidence. */
+/**
+ * The execution-record fields a test may override; the session outcome decides whether its rows
+ * count as evidence.
+ */
 type Execution = { outcome: string };
 
 const ROWS: Row[] = [
@@ -521,8 +524,8 @@ describe("prose posture classifier", () => {
   });
 
   it("reads no posture from a session the controller closed as a typed non-result", async () => {
-    // Run truss-opus-20260916T151117729Z-064960 captured one row in its second epoch: the
-    // provider's own "You've hit your session limit". v4 labelled it as Builder reasoning.
+    // The only row such an epoch captures is the provider's own "You've hit your session limit",
+    // and a classifier that reads the transcript alone labels that as Builder reasoning.
     const limit = "You've hit your session limit · resets 8:50pm (Europe/Amsterdam)";
     const dir = writeEpoch([{ turn: 1, atMs: 10, kind: "message", text: limit }], [], {
       outcome: "turn-non-result",

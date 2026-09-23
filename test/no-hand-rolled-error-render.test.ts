@@ -1,7 +1,6 @@
 /**
  * The rule that sends a caught value to `errorMessage` or `asError` in
- * `src/meta/runtime-values.ts` instead of spelling the ternary again, and the fixer that was
- * refused until the import it needs had a placer.
+ * `src/meta/runtime-values.ts` instead of spelling the ternary again, and its fixer.
  *
  * Both shapes are pinned, and so is every way of not being them: the subject has to be the same
  * text in all three places, the rendering call has to be `String` or `errorMessage`, and a
@@ -10,10 +9,11 @@
  * `inner.error` are different subjects and only one of them is the caught value.
  *
  * The fix is pinned the same way, and only over a bare identifier; a call or a member is reported
- * and left, since the rewrite would read it once where the original read it up to three times. Four sites over two owners produce one import carrying both
- * names, because the import edit rides on every diagnostic rather than the first and the second
- * name arrives on the pass after the first one landed. A rewrite that left the name undefined
- * would be worse than the report, so the expression and the import land together or not at all.
+ * and left, since the rewrite would read it once where the original read it up to three times.
+ * Four sites over two owners produce one import carrying both names, because the import edit
+ * rides on every diagnostic rather than the first, and the second name arrives on the pass after
+ * the first one landed. A rewrite that left the name undefined would be worse than the report, so
+ * the expression and the import land together or not at all.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, fixedSource, reportedLines } from "./helpers/oxlint-rule-fixture.ts";

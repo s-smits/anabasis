@@ -1,7 +1,51 @@
 /**
- * The epoch reviewer's standing instruction. The reviewer's file owns the admission rules that
- * decide what a finding becomes; this file owns what the reviewer is asked to do. `requestDigest`
- * hashes this text, so any edit here is a new condition and no earlier review is reused.
+ * The epoch reviewer's standing instruction. It lives beside the reviewer rather than inside it
+ * because it is text, not logic: `epoch-review-findings.ts` owns the admission rules that decide
+ * what a finding becomes, and this file owns what the reviewer is asked to do. Both are condition
+ * identities — `requestDigest` in `epoch-reviewer.ts` hashes the public request, the policy version
+ * and this text together, so an edit here correctly refuses to reuse a review recorded under the
+ * previous wording, and adding the probe is what moved that policy to v5.
+ *
+ * Several paragraphs below are shaped by what the recorded corpus of reviews keeps producing, and
+ * rewriting one without that reason will reintroduce the shape it was written against.
+ *
+ * Almost every recorded finding is advisory, so the blocking floor names the demonstration that can
+ * actually reach it rather than describing a severity nothing produces. The two paragraphs that
+ * settled a Judge veto and its mirror image are one, because the Judge exit is `none` for most
+ * batteries and the reopen they instructed does not happen.
+ *
+ * A large share of findings carry no checkId, no artifactSchemaPath and no publicInputPath, and
+ * `hardness` and `diagnosis-uncertain` route to no owner while still spending one of the six slots
+ * `MAX_FINDINGS` allows. So the routing paragraph says outright that the claim itself never crosses
+ * to authoring, and the three separate sentences telling the reviewer to stay advisory when
+ * uncertain are one.
+ *
+ * A reviewer that runs probes, then writes a finding narrating what they returned without citing
+ * them in `probeIds`, leaves shut the first-occurrence blocking route that probing opens.
+ * `record_finding` asks for the citation.
+ *
+ * The review clock's backstop fires forty minutes into a session whether or not anything has been
+ * authored yet, so the reviewer reads unfinished trees by design and will meet a `brief.json` of
+ * `{}` or a `tools.ts` returning no tools. Spending the one blocking finding on a placeholder the
+ * next turn replaces costs the session a round, so the orientation sentence says a seed placeholder
+ * is unwritten work, while the parts already authored are still read.
+ *
+ * The curriculum sentence once asked for "a perfect or near-perfect battery" while the campaign it
+ * reviews aims at a band well below that. Every score between the two readings — the whole
+ * `over-aim` zone, whose own name says the limit was not measured — was a battery the reviewer had
+ * no stated reason to inspect. The orientation now states where the battery landed, and this
+ * paragraph reads against that placement rather than against perfection.
+ *
+ * The probe paragraph names a closed value set as the replacement to reach for, because that is the
+ * shape one probe settles outright: a public input publishing a closed set, a declared check
+ * reading the field and testing only a bound on it, and so nothing to refuse a value the set does
+ * not contain even though the reference search enumerates the set for itself.
+ *
+ * Rule 4's floor, every check citing a public rule, is routinely met while its ceiling — that one
+ * decision a passing answer needs stays unpublished — goes unread, because the private
+ * `ruleDecisions` rows a bundle carries tend to describe the reference's own search order, which
+ * never enters a verdict. The reviewer already holds the tree and the probe, so that is a missing
+ * duty rather than a missing input.
  */
 export const EPOCH_REVIEW_PROMPT = [
   "You are the epoch reviewer for an agent-harness campaign. Read the task set, solving agent and correctness model. The orientation distinguishes a measured battery from an authoring checkpoint; use verifier execution and scores only when supplied. An authoring checkpoint has no new battery result, so assess the requirements in source without inferring runtime success or failure. It is also read mid-flight: a file still holding the seed's placeholder — an empty brief, an evaluator exporting only the seed's example, a tools module returning no tools — is work not yet done rather than a defect, and the turn after yours was going to write it. Review what has been authored; where nothing has been, say so and record nothing. You decide nothing: you cannot change a pass, an acceptance, a claim or a promotion. Record findings, then close with a short synthesis using the host-recorded severity record_finding returned.",

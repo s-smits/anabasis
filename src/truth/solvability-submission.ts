@@ -38,8 +38,9 @@ type SolvabilitySubmissionResult =
   | { status: "non-result"; detail: string };
 type SolvabilitySubmissionPathFailure = Exclude<SolvabilitySubmissionResult, { status: "accepted" }>;
 
-/** One reference artifact's submission result, before any truth verdict. A failed outcome carries
- *  its whole attribution: owner, kind and author-visible classification. */
+/** One reference artifact's submission result, before any truth verdict exists. A failed outcome
+ *  already carries its whole attribution — owner, kind and the author-visible classification — so a
+ *  reader never has to infer who owns the failure from the message text. */
 export interface SolvabilitySubmissionOutcome {
   artifactJson: string | null;
   submissionPath: SolvabilitySubmissionPathEvidence | null;
@@ -112,7 +113,9 @@ function schemaAccepts(tool: AgentTool<never>, artifact: Record<string, JsonValu
   }
 }
 
-/** The domain artifact-writers whose parameter schema accepts this artifact. */
+/** The declared domain artifact-writers whose own parameter schema accepts this artifact. A writer
+ *  whose schema refuses the payload can never carry F2, so the spellings it would permit are not
+ *  this artifact's problem. */
 function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonValue>): AgentTool<never>[] {
   return starter.registration.tools
     .filter(({ owner, authority }) => owner === "domain" && authority === "artifact-writer")
@@ -121,13 +124,27 @@ function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonVa
 }
 
 /**
- * The first position where the writer accepts `""` although the reference answer writes null,
- * giving absence two spellings for the agent to choose between. Only the empty string counts:
- * "n/a" or "none" can be legitimate free text.
+ * The first position where the writer accepts `""` although the reference answer writes null — the
+ * second spelling of absence. Where the reference answer writes null, null is how the contract says
+ * "does not apply", so a writer schema that also accepts the empty string there gives one meaning
+ * two spellings and leaves the agent to pick. Run w6 is why this is checked: its writer declared
+ * `Type.Union([Type.String(), Type.Null()])`, the agent wrote `""` on the rows the answer leaves
+ * absent, and eight of twenty-five cases failed on that alone with every other field correct.
  *
- * Each probe replaces one null in a shallow copy along the walked path, so nothing shared is
- * mutated. Array indices collapse to `[]` only in the reported path; deduplication uses the exact
- * position, because a tuple may type its positions differently.
+ * Only the empty string counts here, not the wider absence vocabulary of
+ * `src/run/representation-census.ts`. That census reads what the reference answer wrote and may
+ * assess an "n/a" in the domain; this reads what a writer permits the agent to write, where "n/a" or
+ * "none" can be legitimate free text. The narrow rule is the empty string standing beside a
+ * reference null.
+ *
+ * The comparison uses the writer schema and the reference artifact without running the verifier, and
+ * its findings still travel the protected submission-result feedback path.
+ *
+ * One traversal finds each null and probes a copy of the artifact with `""` at that position. The
+ * copy is built from shallow copies along the walked path, so nothing shared is mutated. Array
+ * indices collapse to `[]` in the reported path alone: deduplication is on the exact position,
+ * because a tuple types its positions separately and collapsing them would let the first element
+ * decide for a later one the writer types differently.
  */
 export function absenceSpellingAdmitted(
   tool: AgentTool<never>,
@@ -144,8 +161,10 @@ export function absenceSpellingAdmitted(
       if (probed.has(exact)) return null;
       probed.add(exact);
       if (!schemaAccepts(tool, build(""))) return null;
-      // A non-strict Check ignores undeclared positions, so "" alone proves nothing. The position
-      // is this writer's only when it can also reject there.
+      // A non-strict Check ignores undeclared positions, so accepting "" proves nothing on its own:
+      // a subset writer paired with the whole artifact "admits" every null root it never typed, which
+      // cost run w12 eight blind iterations. The position belongs to this writer only when the writer
+      // can also reject something there.
       return schemaAccepts(tool, build(UNDECLARED_POSITION_PROBE)) ? null : { path };
     }
     if (Array.isArray(value)) {
@@ -172,8 +191,11 @@ export function absenceSpellingAdmitted(
   return null;
 }
 
-/** Checks every compatible writer for a second spelling of absence before choosing a submission
- *  path, so no alternative path can bypass it. Uses schemas only; no writer runs. */
+/** Check each compatible domain writer for a second spelling of absence before a submission path is
+ *  selected. Whole-artifact writers and the `files` preset are alternatives to one another, so a
+ *  check placed inside only one of them could be bypassed by taking the other; an earlier
+ *  trace-replay alternative carried the same risk. This reads tool schemas and the reference artifact
+ *  without executing a writer, and so reports the same ambiguity whichever path will carry F2. */
 function absenceSpellingRefusal(starter: BuiltStarter, artifact: Record<string, JsonValue>): string | null {
   for (const tool of acceptingWriters(starter, artifact)) {
     const ambiguous = absenceSpellingAdmitted(tool, artifact);
@@ -190,9 +212,16 @@ function absenceSpellingRefusal(starter: BuiltStarter, artifact: Record<string, 
 }
 
 /**
- * Attributes a worker failure. After the ready handshake, a `runtime` or `protocol` failure is the
- * generated code's: a representation defect. `sandbox` stays an environment failure. A controller
- * deadline of any kind is a non-result, since a slow child says nothing about its bytes.
+ * Attribute a worker failure. A child that answered its ready handshake had already installed its
+ * isolation before generated code loaded, so a `runtime` or `protocol` failure after that point
+ * belongs to the generated factory, its registration or its execution — a product defect, not a host
+ * outage. `sandbox` remains an environment failure.
+ *
+ * A controller deadline is the exception whatever kind it carries, because the clock says only that
+ * the child did not answer in time and never that its bytes are wrong. Read as a representation
+ * defect, a worker that missed its ready handshake or its close deadline sends the Builder off to
+ * repair a writer that passes every task before and after. Those deadlines return an operational
+ * non-result instead.
  */
 function startedWorkerFailure(failure: BuiltStarterNonResult): SolvabilitySubmissionPathFailure {
   const detail = failure.message;
@@ -398,8 +427,9 @@ async function structuredWriterPath(
   return last;
 }
 
-/** Only the public JSON artifact enters this confined worker; verifier results, hidden task data
- *  and repair details do not. */
+/** Only the public JSON artifact enters this confined worker from the isolated reference solver.
+ *  Verifier results, hidden task data and repair details do not cross, which is what keeps an F2 run
+ *  from becoming a channel that carries protected detail back to the author. */
 async function traverseReferenceArtifact(options: Traversal): Promise<SolvabilitySubmissionResult> {
   let controller: ControllerInterface;
   try {
@@ -432,7 +462,7 @@ async function traverseReferenceArtifact(options: Traversal): Promise<Solvabilit
   }
 }
 
-/** Serialises, schema-checks, writes, materialises and submits one isolated solve result. */
+/** Serialise, public-schema check, write, materialise and submit one isolated solve result. */
 export async function submitSolvabilityReferenceArtifact(
   options: SolvabilitySubmissionRequest,
 ): Promise<SolvabilitySubmissionOutcome> {

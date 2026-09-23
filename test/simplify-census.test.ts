@@ -3,10 +3,10 @@
  * decides which catchers run where.
  *
  * Two silent failures are worth a test. A catcher can be written, imported and registered in the
- * plugin and then named in no config at all, in which case it reports nothing and nobody notices
- * — the census simply has one shape fewer than it thinks. And a whole-tree scan can go quiet: it
- * finds names by pattern over text it read itself, so a changed format or a mistyped root gives
- * an empty list, which reads exactly like a clean tree.
+ * plugin and then named in no config at all, in which case it reports nothing and the census simply
+ * has one shape fewer than it thinks. And a whole-tree scan can go quiet: it finds names by pattern
+ * over text it read itself, so a changed format or a mistyped root gives an empty list, which reads
+ * exactly like a clean tree.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import oxlintrc from "../.oxlintrc.json" with { type: "json" };
@@ -55,22 +55,21 @@ export function beta(rows: string[]): string[] {
 const DECLARING = new Map([
   // One identity spelled in two files with nothing naming it, and one with a constant that does.
   // Both are needed: the owner branch changes what the row asks for, from "decide where the name
-  // goes" to "import the one that exists", and only the second half proves the scan can tell.
-  // The third line of each is the same name assembled by `join`, which the scan read straight
-  // past until it learned to paste adjacent segments: two literals, neither an identity alone.
-  // The fourth line is a class the scan must stay quiet about: one file declares the tag as a
-  // member's type, which makes every other copy of it checked by the compiler, so the second
-  // spelling is not an unowned one. The seventh is the same fact written as a union and the ones
-  // after it the same fact again as an `as const` array a type is derived from, both of which the
-  // member form read straight past. The fifth and sixth are owned names whose declaration comes
-  // first: the row must point at the file with work to do, and say which of the two repairs it
-  // is, since a private constant is nothing the other file can import. Lines 13 to 15 are three
-  // short names: `census.json` in three files is a layout, `battery.json` in two is a coincidence
-  // and `package.json` in three is the toolchain's. Lines 16 to 19 are the two faces of
-  // `satisfies`: `readonly Stage[]` hands the array to the compiler, while a record whose values
-  // are `string[]` checks its keys and leaves `campaign-brief.json` to nobody. Lines 20 and 21 are a
-  // loader and its hostile twin: the path handed to `pathToFileURL` is the module system's, while
-  // the same `join` without the call is a name like any other.
+  // goes" to "import the one that exists", and only the second half proves the scan can tell. The
+  // third line of each is the same name assembled by `join`, two literals neither of which is an
+  // identity alone, which needs the scan to paste adjacent segments. The fourth line is a class the
+  // scan must stay quiet about: one file declares the tag as a member's type, so the compiler checks
+  // every other copy and the second spelling is not unowned. The seventh is that fact as a union and
+  // the ones after it the same fact as an `as const` array a type is derived from, both of which the
+  // member form misses. The fifth and sixth are owned names whose declaration comes first: the row
+  // must point at the file with work to do and say which of the two repairs it is, since a private
+  // constant is nothing the other file can import. Lines 13 to 15 are three short names:
+  // `census.json` in three files is a layout, `battery.json` in two is a coincidence and
+  // `package.json` in three is the toolchain's. Lines 16 to 19 are the two faces of `satisfies`:
+  // `readonly Stage[]` hands the array to the compiler, while a record whose values are `string[]`
+  // checks its keys and leaves `campaign-brief.json` to nobody. Lines 20 and 21 are a loader and its
+  // hostile twin: the path handed to `pathToFileURL` is the module system's, while the same `join`
+  // without the call is a name like any other.
   [
     "src/identity-reader.ts",
     `if (row.schema !== "campaign-opening/v9") throw new Error("bad");\nreadFileSync("campaign-opening.json");\nreadFileSync(join(dir, "campaign-opening", "terminal.json"));\nif (row.receipt !== "control-receipt/v7") return;\nexport const RECORD_FILE = "campaign-record.jsonl";\nconst LOCAL_FILE = "campaign-local.jsonl";\ntype Level = "campaign-level/v1" | "other-level/v1";\nconst FIXTURES = [\n  "campaign-fixture/v1",\n] as const;\ntype Fixture = (typeof FIXTURES)[number];\nconst mod = await load<typeof import("../../campaign-loader.ts")>("campaign-loader.ts");\nreadFileSync(join(dir, "census.json"));\nreadFileSync(join(dir, "battery.json"));\nreadFileSync("package.json");\nconst STAGES = [\n  "campaign-stage/v1",\n] satisfies readonly Stage[];\nreadFileSync("campaign-brief.json");\nconst staged = Bun.pathToFileURL(join(worktree, "campaign-staged.ts")).href;\nconst unstaged = join(worktree, "campaign-unstaged.ts");\n`,
@@ -163,9 +162,8 @@ export function touch(path: string): void {
 }
 `,
   ],
-  // Two files that share nothing but the punctuation a formatter writes. Six closing lines is a
-  // six-line match, and the deepest nesting in this repository is oxlint's own rules, where every
-  // one of them ends `}); / } / }, / }; / }, / });`.
+  // Two files that share nothing but the punctuation a formatter writes: six closing lines is a
+  // six-line match, and oxlint's own rules all end with the same six.
   [
     "src/closers-a.ts",
     `const alpha = one({
@@ -231,9 +229,8 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
 `,
   ],
   // Three peers of one family, each a function of the claimed size read only by `reader.ts`. The
-  // reader lists all three in one array, so each has two siblings sharing its `scan-` prefix
-  // beside it, and folding one in would leave the family short a member rather than remove a
-  // helper.
+  // reader lists all three in one array, so each has two siblings sharing its `scan-` prefix beside
+  // it, and folding one in would leave the family short a member rather than remove a helper.
   [
     "src/scan-a.ts",
     `export function countVowels(text: string): number {
@@ -284,12 +281,11 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
   ],
   // The one shape `single-reader-export` still claims: a file whose only export is a function of
   // the size the corpus moved, read from one other file in the same directory. `owner.ts` above
-  // holds four exports and is therefore a layer, not a helper with a home to move to.
+  // holds four exports and is a layer, not a helper with a home to move to.
   [
     "src/single-export.ts",
-    // Deliberately not a copy of \`readOpening\` above. It was one, differing in a single string
-    // literal, and once the copy scan started normalising literals it reported the pair — in a
-    // fixture whose contract is one of each shape. The algorithm is now a different one.
+    // Deliberately not a copy of \`readOpening\` above: normalising literals makes a pair differing
+    // in one string a reported copy, in a fixture whose contract is one of each shape.
     `export function readClosing(dir: string): string {
   const cleaned = dir.replace(/\\s+/gu, "");
   if (cleaned === "") return "";
@@ -314,10 +310,10 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
 }
 `,
   ],
-  // Two files naming the same closed vocabulary. Standing on 2026-09-20 as `src/critic/policy.ts`
-  // against `src/run/terminal.ts`, seven of the nine terminal codes matched, and they match because
-  // the set has one meaning: a code added to one file and not the other is the defect, not the
-  // agreement. Nothing in the run does anything, so nothing in it can move to an owner.
+  // Two files naming the same closed vocabulary. They agree because the set has one meaning, so a
+  // code added to one file and not the other is the defect and the agreement is the correct state:
+  // the copy scan has to stay quiet here. Neither file does anything with the codes — one is an
+  // array and the other a Set — so there is no body a shared owner could hold.
   [
     "src/vocab-a.ts",
     `export const OPENING_CODES = [
@@ -342,9 +338,9 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
 ]);
 `,
   ],
-  // Two probes returning the one verdict shape their declared type gives them. Shorthand
-  // properties and a `? …` continuation read as code to a floor that counts anything but a closing
-  // bracket, so the pair was reported while the only line doing work was the `return`.
+  // Two probes returning the one verdict shape their declared type gives them. Shorthand properties
+  // and a `? …` continuation read as code to a floor counting anything but a closing bracket, which
+  // reports the pair although the only line doing work is the `return`.
   [
     "src/verdict-a.ts",
     `export function guardProbe(path: string): ProbeVerdict {
@@ -379,9 +375,9 @@ const usedThere = zetaName + epsilonName + deltaName + gammaName + betaName + al
 }
 `,
   ],
-  // Two closed sets. `kickoff` and `no-feedback` are produced by the writer below, `authoring`
-  // by nobody — the comment naming it is prose, not a producer — `reject-controls` by nobody, and
-  // `plan-exhausted` by the test under READERS alone, which the row says. `other-level/v1` in
+  // Two closed sets. `kickoff` and `no-feedback` are produced by the writer below; `authoring` by
+  // nobody, the comment naming it being prose rather than a producer; `reject-controls` by nobody;
+  // and `plan-exhausted` by the test under READERS alone, which the row says. `other-level/v1` in
   // src/identity-reader.ts is the same shape on one line, beside a member the writer produces.
   [
     "src/stage-vocabulary.ts",
@@ -428,9 +424,8 @@ export const passes = { verifiedPasses: 1 };
     ".claude/skills/simplify/run.mts",
     `import { scriptHelper } from "../../../src/owner.ts";\nconsole.log(scriptHelper("."));\n`,
   ],
-  // Two registered rules, one of which a fixture makes report and one of which nothing anywhere
-  // names. Both halves are needed: a scan that only ever sees uncovered rules would pass with a
-  // path prefix typed wrongly, which is the failure it exists to catch one level up.
+  // Two registered rules, one a fixture makes report and one nothing names. Both halves are needed:
+  // a scan that only ever sees uncovered rules would pass with a path prefix typed wrongly.
   [
     "tools/oxlint/ana/index.ts",
     `const plugin = {\n  rules: {\n    "no-covered-shape": coveredShape,\n    "no-untested-shape": untestedShape,\n  },\n};\n`,
@@ -439,10 +434,10 @@ export const passes = { verifiedPasses: 1 };
     "test/no-covered-shape.test.ts",
     `import { runRule } from "./harness.ts";\nrunRule("no-covered-shape", "const a = 1;");\n`,
   ],
-  // The tree has moved to `campaign-opening/v10`, which makes the two `v9` spellings above the
-  // superseded shape. The comment and the backticked prose spell the old tag without reading it,
-  // and the fixture under test/ holds an old row on purpose, so none of the three is a row. The
-  // skill script spells its old tag in single quotes, which is the other quote code uses.
+  // The tree has moved to `campaign-opening/v10`, making the two `v9` spellings above superseded.
+  // The comment and the backticked prose spell the old tag without reading it, and the fixture under
+  // test/ holds an old row on purpose, so none of the three is a row. The skill script spells its
+  // old tag in single quotes, the other quote code uses.
   [
     "src/schema-writer.ts",
     `const row = { schema: "campaign-opening/v10", receipt: "judge-receipt/v2" };\n// \`campaign-opening/v9\` was the shape before the run condition moved in.\nconst note = \`campaign-opening/v9 rows are read by the archive\`;\n`,
@@ -453,9 +448,9 @@ export const passes = { verifiedPasses: 1 };
   ],
   [".claude/skills/simplify/receipts.mjs", `if (row.receipt !== 'judge-receipt/v1') process.exit(1);\n`],
   // Something runs every module above: the entry the manifest names imports the source files for
-  // effect, and the prose below names the skill scripts and the plugin. Two are left out on
-  // purpose — `src/never-run.ts`, which nothing names, and `src/probe-only.ts`, which one test
-  // imports and nothing else — and the comment naming never-run.ts in the entry does not count.
+  // effect, and the prose below names the skill scripts and the plugin. Two are left out on purpose
+  // — `src/never-run.ts`, which nothing names, and `src/probe-only.ts`, which one test imports and
+  // nothing else — and the comment naming never-run.ts in the entry does not count.
   [
     "src/entry.ts",
     `// never-run.ts is left out on purpose.
@@ -500,10 +495,10 @@ function isAnaRule(rule: string): boolean {
 /**
  * The rule names `tools/oxlint/ana/index.ts` registers, read out of the file.
  *
- * Importing the plugin would be the direct way to ask, and it is the wrong one: `tools/oxlint`
- * is outside the typecheck program, because the plugin's own node types declare a `parent` the
- * rules read as optional, and importing the index from a test drags every rule file into
- * `tsc` and fails the gate on types nobody here owns.
+ * Importing the plugin would be the direct way to ask, and it is the wrong one: `tools/oxlint` is
+ * outside the typecheck program, because the plugin's own node types declare a `parent` the rules
+ * read as optional, and importing the index from a test drags every rule file into `tsc` and fails
+ * the gate on types nobody here owns.
  */
 function registeredRules(): string[] {
   const source = readFileSync(resolve(repoRoot, "tools/oxlint/ana/index.ts"), "utf8");
@@ -522,12 +517,11 @@ describe("the simplify catcher registration", () => {
   });
 
   it("keeps the census advisory, and out of the config the gate loads", () => {
-    // Nothing here blocks: several of these catchers are heuristics that cannot pass the
-    // admission test a gating rule has to pass, and the answer to a whole group is sometimes
-    // "no". `bun run lint` reads `.oxlintrc.json`; `bun run simplify` is the only reader of
-    // this file, so a catcher moved into the gate has to be moved on purpose.
-    // A tuned rule is written `["warn", options]`, so the severity is the first entry when the
-    // setting is a list and the whole setting otherwise.
+    // Nothing here blocks: several of these catchers are heuristics that cannot pass the admission
+    // test a gating rule has to pass, and the answer to a whole group is sometimes "no".
+    // `bun run lint` reads `.oxlintrc.json`; `bun run simplify` is the only reader of this file, so
+    // a catcher moved into the gate has to be moved on purpose. A tuned rule is written
+    // `["warn", options]`, so the severity is the first entry when the setting is a list.
     const severities = Object.values(simplify.rules).map((setting) =>
       Array.isArray(setting) ? setting[0] : setting,
     );
@@ -640,10 +634,9 @@ describe("the whole-tree simplify scans", () => {
     expect(quiet).not.toContain("touch");
     // A fixture names it, which is the whole of what the rule scan asks for.
     expect(quiet).not.toContain("no-covered-shape");
-    // One file declares this tag as a member's type, so a typo in the other copy is a build
-    // failure and the second spelling has an owner already: the compiler. The union says the same
-    // thing about a value a second file assigns with its own constant, so the owner branch must
-    // not win over the type one.
+    // One file declares this tag as a member's type, so a typo in the other copy is a build failure
+    // and the second spelling already has an owner: the compiler. The union says the same about a
+    // value a second file assigns with its own constant, so the owner branch must not win over it.
     expect(quiet).not.toContain("control-receipt");
     expect(quiet).not.toContain("campaign-level");
     // An `as const` array a type is derived from is the same fact a third way, and the derivation
@@ -651,9 +644,9 @@ describe("the whole-tree simplify scans", () => {
     expect(quiet).not.toContain("campaign-fixture");
     expect(quiet).not.toContain("campaign-loader");
     expect(quiet).not.toContain("campaign-staged");
-    // A short name in two files is a coincidence, one the toolchain names is `bun`'s, and one in
-    // a `satisfies readonly Stage[]` array is the compiler's; three files spelling `census.json`
-    // is a layout, and a record `satisfies` that says `string[]` checks nothing about the value.
+    // A short name in two files is a coincidence, one the toolchain names is `bun`'s, and one in a
+    // `satisfies readonly Stage[]` array is the compiler's; three files spelling `census.json` is a
+    // layout, and a record `satisfies` saying `string[]` checks nothing about the value.
     expect(quiet).not.toContain("battery.json");
     expect(quiet).not.toContain("package.json");
     expect(quiet).not.toContain("campaign-stage");
@@ -671,8 +664,8 @@ describe("the whole-tree simplify scans", () => {
   });
 
   it("reports a same-prefix peer its reader imports for a use of its own", () => {
-    // The family fixture's three peers again, with a reader that imports all three and uses each
-    // in its own statement. Nothing lists them together, so each is a helper with one reader, and
+    // The family fixture's three peers again, with a reader importing all three and using each in
+    // its own statement. Nothing lists them together, so each is a helper with one reader, and
     // `longestRun([1])` shows the bracket in an argument does not read as a list.
     const peers = [...DECLARING].filter(([path]) => path.startsWith("src/scan-"));
     const reader = `import { countVowels } from "./scan-a.ts";
@@ -689,12 +682,11 @@ export const pairs = [splitPairs(".").size, 2];
   });
 
   /**
-   * Literals are normalised, so a copy that differs only in the words it prints is still one copy,
-   * and what the copies say decides whether they are one owner. Two renderers that differ in their
-   * label are reported. The typebox enum and the switch are the two shapes normalisation would
-   * otherwise fold into one: the enum is a single statement, under the two-statement floor, and the
-   * switch pairs carry eight different words, which is a table and not a routine — each copy says
-   * something the other does not, so there is no body a shared owner could hold.
+   * Literals are normalised, so a copy differing only in the words it prints is still one copy, and
+   * what the copies say decides whether they are one owner. Two renderers differing in their label
+   * are reported. The typebox enum and the switch are the two shapes normalisation would otherwise
+   * fold into one: the enum is a single statement, under the two-statement floor, and the switch
+   * pairs carry eight different words, a table rather than a routine, so there is no shared body.
    */
   it("reports a repeat that differs in one string literal, and not a list of distinct ones", () => {
     const near = (kind: string): string => `export function render${kind}(row: string): string {
@@ -746,22 +738,9 @@ export const pairs = [splitPairs(".").size, 2];
   });
 
   /**
-   * Two copies inside one file. The earlier run scan skipped that pair until 2026-09-20 — it read
-   * the corpus as a set of file pairs and a file is not a pair with itself — so the shape went
-   * unreported exactly where a reader is most likely to have written it twice. Dropping the skip
-   * over this tree found three, of which two were real and are now one function each: the two
-   * `context.report` blocks in `ana/no-hand-rolled-error-render`, and the resolution-id validation
-   * written once for a block of rows and once for a single row in the prediction ledger script.
-   *
-   * The second half is the guard: four statements repeated three times match themselves four lines
-   * down, and a scan without a non-overlap test reports two ranges over one block, which is the one
-   * thing growing the match was meant to stop.
-   */
-  /**
    * A file saying on its first line that it is vendored is kept as its upstream wrote it, as a
-   * vendor directory is: `truncateHead` and `truncateTail` in the pi-mono truncate utility share
-   * their opening, and the matching upstream test is copied beside them. A first line that only
-   * mentions something vendored is the copy the scan exists for.
+   * vendor directory is, copied test included. A first line that only mentions something vendored
+   * is the copy the scan exists for.
    */
   it("skips a copy in a file whose first line says where it was vendored from, and only that", () => {
     const read = (text: string): string[] =>
@@ -776,6 +755,15 @@ export const pairs = [splitPairs(".").size, 2];
     ]);
   });
 
+  /**
+   * Two copies inside one file. A scan reading the corpus as a set of file pairs skips that shape,
+   * since a file is not a pair with itself, and misses it exactly where a reader is most likely to
+   * have written the same block twice.
+   *
+   * The second half is the guard: four statements repeated three times match themselves four lines
+   * down, and a scan without a non-overlap test reports two ranges over one block, which is the one
+   * thing growing the match was meant to stop.
+   */
   it("reads two copies of a run in one file, and not a run matching a shift of itself", () => {
     const read = (path: string, text: string): string[] =>
       treeFindingsOver(new Map([[path, text]]), new Map([[path, text]]))
@@ -794,12 +782,11 @@ export const pairs = [splitPairs(".").size, 2];
   });
 
   /**
-   * A property's name is a field, not a binding, even where a local shares its spelling. Four
-   * reads of one object's fields into locals named after them are not a copy of four reads of
-   * another object's other fields, which is what `readRequest` and `recordedTaskContent` in the UI
-   * server were reported as on 2026-09-22. The other side is the copy that reading hid: two
-   * blocks slicing one vector list into prototypes, identical but for whether the key `vectors:`
-   * shared its spelling with a local.
+   * A property's name is a field, not a binding, even where a local shares its spelling. Four reads
+   * of one object's fields into locals named after them are not a copy of four reads of another
+   * object's other fields. The other side is the copy that reading it as a binding hides: two blocks
+   * slicing one vector list into prototypes, identical but for whether the key `vectors:` shared its
+   * spelling with a local.
    */
   it("reads a property name as spelled, whatever the locals are called", () => {
     const read = (text: string): string[] =>
@@ -831,11 +818,10 @@ export const pairs = [splitPairs(".").size, 2];
   });
 
   /**
-   * Where a copy sits decides whether anyone can own it. A copy in a test, an example, a fixture
-   * or vendored code is written to stand alone, and two separately published packages do not import
-   * each other, so a block in each has no owner both could call. Inside one package the same pair
-   * is reported. The package is the nearest `package.json` above the file; without one, the whole
-   * tree is one package.
+   * Where a copy sits decides whether anyone can own it. A copy in a test, an example, a fixture or
+   * vendored code is written to stand alone, and two separately published packages do not import
+   * each other, so a block in each has no owner both could call. Inside one package the same pair is
+   * reported. The package is the nearest `package.json` above the file; without one, the tree is one.
    */
   it("reports a copy one package can own, and not one in a test, an example or two packages", () => {
     const alpha = TWICE.slice(0, TWICE.indexOf("\n\n") + 1);
@@ -866,8 +852,8 @@ export const pairs = [splitPairs(".").size, 2];
 
   /**
    * A site's id hashes the text of every place it spans. The copy scan compares literals as one
-   * token whatever they spell, so an edited literal in the second copy is still reported at the
-   * same places — and the id that once hashed the first place alone kept its answer for it.
+   * token whatever they spell, so an edited literal in the second copy is still reported at the same
+   * places, and an id hashing the first place alone would keep its answer across that edit.
    */
   it("names a copied block by the text of both copies, wherever the file puts them", () => {
     const id = (text: string): string => {
@@ -889,11 +875,10 @@ export const pairs = [splitPairs(".").size, 2];
     const root = scratchDir("ana-corpus-dotdir-");
     await Bun.write(join(root, "authored.ts"), "export const kept = 1;\n");
     await Bun.write(join(root, ".falsifier-scratch-x", "generated.ts"), "export const staged = 2;\n");
-    // Three dozen test files stage a bundle inside the checkout so its `@ana/*` imports resolve
+    // Dozens of test files stage a bundle inside the checkout so its `@ana/*` imports resolve
     // through the root node_modules, and `test` is one of the roots this scan reads. Their bytes
-    // entered the census as authored shapes for as long as the suite ran, and the read could lose
-    // its race with the removal: a gate died on 2026-09-20 with `ENOENT` on an `intent.json` that
-    // had existed when the walk listed it.
+    // would enter the census as authored shapes for as long as the suite runs, and the read can lose
+    // its race with the removal, failing with ENOENT on a file that existed when the walk listed it.
     expect([...corpus([root], [".ts"]).keys()]).toStrictEqual([join(root, "authored.ts")]);
   });
 

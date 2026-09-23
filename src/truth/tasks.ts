@@ -3,8 +3,9 @@
  * the public fields reaches an agent.
  *
  * Every finding names a path, an id, a count or a key shape, so it survives author projection like
- * the brief and controls diagnostics beside it, rather than reaching the Builder as the
- * detail-free `generated-execution-unclassified` label.
+ * the brief and controls diagnostics beside it. Unmarked they fail closed to a single
+ * `generated-execution-unclassified` label, and a battery then keeps a self-invented task shape
+ * through submit after submit, because nothing it is told names the shape it invented.
  *
  * The field gate runs alone — the rules below it read fields it is the only proof of. After it,
  * one pass binds each task to the checks applicable to it, and each rule reads those rows. None of
@@ -57,7 +58,7 @@ export interface TaskValidationContext {
   /** Battery size from the ask manifest, or its upper bound when `minTasks` opens a range. Check it
    *  while the Builder can still repair the candidate. The census gate repeats the count after
    *  fingerprinting as independent evidence, rather than being the first place a wrong count is
-   *  detected (A0). */
+   *  detected. */
   exactTasks?: number | null;
   /** The smallest accepted size when the round leaves the count to the Builder; absent when the ask
    *  states one size. */

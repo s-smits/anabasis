@@ -63,7 +63,10 @@ export function feedbackOwner(feedback: readonly CampaignFeedback[]): FeedbackOw
   return owners.size === 1 ? (feedback[0]?.owner ?? null) : null;
 }
 
-/** The owner label with the files it names, so "instructions" points at the operating guide. */
+/** The owner label with the file it names. Nothing model-visible mapped "instructions" to
+ *  agent/BUILT_AGENTS.md, and it showed: most packets pointing at that owner preceded a successor
+ *  that had left the guide byte-identical. Naming the file is what turns the label into an
+ *  address. */
 export function ownerTarget(owner: FeedbackOwner): string {
   const files = routableOwner(owner) ? ownerWritableFiles(owner) : [];
   return files.length === 0 ? owner : `${owner} (${files.join(", ")})`;

@@ -34,8 +34,8 @@ interface GroundedControl {
   id: string;
   taskId: string;
   hidden?: readonly { checkId: string }[];
-  /** A reject's named check. It owes a completed tool run only for that check, since a hollow
-   *  design another check refuses may leave the analysis unrun. */
+  /** A reject's named check. It owes a completed tool run only for that check, because a hollow
+   *  design that another check refuses first may legitimately leave the analysis unrun. */
   expectedCheckId?: string | null;
 }
 
@@ -61,8 +61,12 @@ export const TOOL_REFUSED_CODE = "verifier-tool-refused";
  * One declared tool-grounded truth check as the control census actually exercised it.
  *
  * Two numbers, both host-measured: how often the host ran that tool for this check, and how many
- * reject controls the check itself blocked. An external check that never launches its tool, or
- * never rejects anything, otherwise reads as working until the paid battery is spent.
+ * reject controls the check itself blocked. A check declared as external-verifier grounding can
+ * hold reject controls in the census and reject nothing at all over a hundred graded rows —
+ * because the compiler it could spawn was never attested by the wall, or because the build path
+ * was defined and never called and the check decided from a syntax scan instead. Both read as a
+ * working check right up until the paid battery has been spent, which is what these two numbers
+ * are here to prevent.
  */
 export type ToolCheckCoverage = {
   checkId: string;
@@ -73,8 +77,9 @@ export type ToolCheckCoverage = {
   /** Reject controls this check was the blocking check for. Recorded beside the launches so a
    *  reader can see both; the per-family reject census, not this row, owns discrimination. */
   rejects: number;
-  /** The declared evidence kind, carried so an authored check over an installed interpreter is not
-   *  read as a declared external instrument. */
+  /** The declared evidence kind, carried so that a row is not read as independence it never
+   *  claimed. A bundle may declare every check `authored` over an installed interpreter, and
+   *  without this field those rows are indistinguishable from a declared external instrument's. */
   kind?: "authored" | "external";
 };
 
@@ -108,13 +113,15 @@ function externalChecksForControl(
 /** One finding per external check with no completed tool run, naming the examples that owe one.
  *
  *  An accept always owes a completed run: passing without the tool is a hollow pass. A reject
- *  aimed at the check may be refused before the analysis runs (a design declaring no loss path
- *  cannot be analysed for member loss) once another reject aimed at that check
- *  completed a run, so the tool still takes part in rejecting something. A run the check started
- *  and did not complete is still owed on every example.
+ *  aimed at the check may be refused before the analysis runs — a design declaring no loss path
+ *  cannot be analysed for member loss — once another reject aimed at that check has completed a
+ *  run, because the tool then still takes part in rejecting something. A run the check started and
+ *  did not complete is still owed on every example.
  *
- *  One row per check/tool pair, not per example: it states the total count and names up to eight
- *  examples, with the remaining count when necessary. */
+ *  One row per check/tool pair, not per (control, check) pair, which states the same defect once
+ *  per example and can turn a handful of distinct missing pairs into a hundred and fifty rows. A
+ *  row per pair states the total count and names up to eight examples, with the remaining count
+ *  when necessary, so the Builder addresses the requirements rather than the repetitions. */
 export function unexecutedGroundingFindings(input: {
   brief: Brief;
   tasks: readonly GroundedTask[];
@@ -155,7 +162,8 @@ export function unexecutedGroundingFindings(input: {
     const applicable = externalChecksForControl(brief, externalChecks, taskById.get(control.taskId));
     const settled = input.settled.get(control.id);
     // A pair the host never ran for any example is inertToolFindings' one row, which the census
-    // also returns, so it is skipped here rather than stated twice.
+    // also returns, so it is skipped here rather than stated twice — once per pair and again once
+    // per example.
     for (const check of applicable.filter((pair) =>
       evidence.some((row) => row.checkId === pair.checkId && row.toolId === pair.adapterId),
     )) {
@@ -169,10 +177,12 @@ export function unexecutedGroundingFindings(input: {
       ) {
         continue;
       }
-      // The check did call the tool and the host could not run it: that is the environment's
-      // row, not a missing call. Only a control the runner settled as that refusal counts; a
-      // timeout, crash or throw on the retry is the author's, and is still a call rather than a
-      // missing one.
+      // The check did call the tool and the host could not run it: that is the environment's row,
+      // not a missing call. Without the distinction a sandbox refusal reads to the author as its
+      // own defect. Only a control the runner settled as that refusal counts; a timeout, crash or
+      // throw on the retry is the author's. Either way it is still a call, not a missing one, and
+      // an author told to call a tool whose calls have timed out adds more calls instead of fixing
+      // the run.
       const refusal =
         settled?.hostNonResult != null && environmentOwnedToolNonResult(settled.hostNonResult)
           ? rows.find((row) => environmentOwnedToolNonResult(row.outcome))
@@ -205,8 +215,9 @@ export function unexecutedGroundingFindings(input: {
   ];
 }
 
-/** Every quoted id an author finding names, since a bare count leaves the Builder unable to find
- *  the rest. */
+/** Every quoted id an author finding names. Capping the list and counting the rest leaves the
+ *  Builder unable to find the unnamed ones, and it routinely clears more than a capped list would
+ *  have shown. */
 export function namedExamples(controlIds: readonly string[]): string {
   return controlIds.map((id) => `"${id}"`).join(", ");
 }

@@ -23,18 +23,24 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { scoringClosureHash } from "./scoring-closure.ts";
 
 /** The evaluation identity one measurement was labelled under: the scoring program plus the
- *  battery pair (tasks.json, controls.json). A controls-only correction moves the second half
- *  alone; a rewritten reference solve or test moves neither. */
+ *  battery pair (tasks.json, controls.json) that supplied its controls corpus. Both halves are
+ *  needed to say a finding describes a given tree, because a controls-only correction moves the
+ *  second while leaving the first byte-identical, and the case labels a run produces are
+ *  conditioned on the controls as much as on the checker. A reference solve or test rewritten
+ *  beside them labels nothing, so it leaves the identity where it was. */
 export type EvaluationIdentity = { scoringHash: string | null; taskSetHash: string | null };
 
 export interface FingerprintEvidence {
   ok: true;
   slug: string;
-  /** Hash of everything under agent/. Public tasks are supplied per case rather than stored
-   *  here, so a battery-only change leaves this hash unchanged. */
+  /** Hash of everything under agent/. The public task projection is supplied separately for each
+   *  case through `commitPublicTask` rather than stored in this bundle, so changing only the
+   *  battery leaves this hash unchanged, which is what distinguishes a task change from a change
+   *  to the solving agent. */
   agentHash: string;
-  /** Hash of correctness-model/ excluding tasks.json and controls.json, so editing a task does
-   *  not read as a verifier change. */
+  /** Hash of correctness-model/ excluding tasks.json and controls.json. Battery identity is
+   *  recorded separately from verifier identity, because including the battery here makes editing a
+   *  task look like a change to the correctness model even when the verifier code is untouched. */
   correctnessModelHash: string;
   /** The scoring program alone: brief.json and evaluator.ts with every module it imports
    *  (`scoring-closure.ts`). Every "did the scoring move" reading compares this, so a rewritten
@@ -76,7 +82,8 @@ export function batteryHash(correctnessModelDir: string): string | null {
 
 /**
  * Fingerprint `slugDir`, which must contain exactly the two-bundle layout: `agent/` and `correctness-model/`.
- * Returns every validation finding at once, so a repair loop sees the whole list.
+ * Returns every validation finding at once, because a repair loop should see the whole list rather
+ * than one finding per round.
  */
 export function fingerprintSlug(
   slugDir: string,
@@ -104,13 +111,16 @@ export function fingerprintSlug(
     }
   }
 
-  // A brief.json marks a generated build, which selects the source scans below.
+  // Generated builds write brief.json before authoring the correctness model, so its presence is
+  // what selects the capability scan below; a read-only fixture without that marker skips it.
   const generated = existsSync(join(correctnessModelDir, basename(BRIEF_FILE)));
   const validation = validateAgentBundle(agentDir, keyIfDefined("allow", opts?.allow));
   if (!validation.ok) return { ok: false, slug, findings: validation.findings };
 
-  // Irregular entries reject here: a symlinked correctness-model file would run at verification
-  // but be absent from the content address.
+  // Validation already walked agent/, and an irregular entry there returned findings above. The
+  // correctness-model bundle is hashed here, so its irregular entries have to reject here: a
+  // symlinked correctness-model file would be verified at runtime while being absent from the
+  // verifier's content address, which is the one place a reader looks to say what ran.
   let agent: ReturnType<typeof hashBundle>;
   let correctnessModel: ReturnType<typeof hashBundle>;
   try {
@@ -129,7 +139,9 @@ export function fingerprintSlug(
       })),
     };
   }
-  // Generated correctness-model source may not spawn processes or forward the ambient environment.
+  // Brief-marked generated source may not spawn processes or forward the ambient environment.
+  // `scannableBundleSource` leaves test files out, since they are not part of what the verifier
+  // executes.
   const correctnessModelSourceFindings: BundleValidationFinding[] = generated
     ? correctnessModel.files.flatMap((file) => {
         if (!scannableBundleSource(file)) return [];
@@ -147,7 +159,9 @@ export function fingerprintSlug(
         }));
       })
     : [];
-  // The import checks cannot see a copy of the verifier's computation in agent code; this does.
+  // The import checks above close the route where agent code imports the verifier's modules, but
+  // a copy leaves no import behind, and the solver's roster would then answer the question the
+  // battery asks. This check reads the agent's own source for that copy.
   const decidingInAgent: BundleValidationFinding[] = generated
     ? agentCarriesDecidingComputation(agentDir, agent.files, correctnessModelDir, correctnessModel.files).map(
         (copy) => ({
@@ -181,8 +195,10 @@ export function taskSetDigest(domainDir: string): string | null {
   }
 }
 
-/** The evaluation identity of one bundle directory, from the same two digests promotion and
- *  experiment freeze check. */
+/** The evaluation identity of one bundle directory, read through the same two recorded digests
+ *  promotion and experiment freeze already check. It sits beside them because it is exactly their
+ *  composition: promotion owns it, admission needs it, and a copy in either file would close a
+ *  module cycle that neither file's subject asked for. */
 export function evaluationIdentity(domainDir: string): EvaluationIdentity {
   const recorded = fingerprintSlug(domainDir);
   return {

@@ -3,8 +3,8 @@
  * distinguishes intentional abstention from evaluator failure and records the Judge's
  * independence classification derived from the model pins.
  *
- * The Judge has no control census, so a review is always `unvalidated`; a record carrying one
- * is refused rather than read. */
+ * The Judge has no control census, so a review is always `unvalidated`. An older record written
+ * while one still ran is refused rather than read (operator decision). */
 import { type EvaluatorIndependence, evaluatorIndependence } from "./calibration.ts";
 import type { NonResultKind } from "./record-events.ts";
 
@@ -29,8 +29,10 @@ export type JudgeEvidence =
       judgePin: string;
       /** Content policy identity used by the census, when the session names one. */
       promptPolicyDigest?: string;
-      /** The Built Harness backend pin, stored so `independence` can be recalculated from
-       *  judgePin. Target or plateau readers must also compare it with the battery's backendPin. */
+      /** The Built Harness backend pin, used with judgePin to recalculate `independence`; storing
+       *  the classification alone leaves the validator unable to check its basis. Consumers
+       *  assessing target or plateau decisions must also compare this pin with the battery record's
+       *  backendPin. */
       evaluatedPin: string;
       /** The exact correctnessModel version whose battery this Judge reviewed. */
       correctnessModelId: string;
@@ -52,8 +54,10 @@ export type JudgeEvidence =
       /** How independent this evaluator is from the evaluated model — derived from the two
        *  pins, never asserted. */
       independence: EvaluatorIndependence;
-      /** Typed causes of evaluator errors in this census, counted per NonResultKind; present only
-       *  when an attempt failed. Diagnostic only: validity and decision never read it. */
+      /** Typed causes of evaluator errors in this census, counted per NonResultKind. Present only
+       *  when at least one attempt failed, so a zero-verdict census names what failed — provider,
+       *  protocol, transport — instead of flattening every cause into prose. Diagnostic only:
+       *  validity and decision never read it. */
       errorKinds?: Partial<Record<NonResultKind, number>>;
     };
 
@@ -86,8 +90,9 @@ function aggregateDecision(evidence: Exclude<JudgeEvidence, { judge: "off" }>): 
   return "advisory-comparison";
 }
 
-/** Recalculate the aggregate relationships used by claim creation, since matching the
- * JudgeEvidence shape does not prove its counts, classifications and decisions agree. */
+/** Recalculate the aggregate relationships used by claim creation. Saved evidence may be older,
+ * manually constructed or inconsistent, and matching the JudgeEvidence TypeScript shape cannot
+ * establish that its counts, classifications and decisions agree. */
 export function validateJudgeEvidence(evidence: JudgeEvidence): void {
   if (evidence.judge === "off") return;
 

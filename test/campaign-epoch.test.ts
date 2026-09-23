@@ -1,8 +1,26 @@
 /**
- * Tests for campaign epoch selection: which authoring workspace a round is given, when a
- * corrected prompt or another Builder supersedes the previous one, and what the epochs record
- * says afterwards. A damaged or foreign record refuses loudly rather than starting a fresh
- * campaign over it.
+ * Which authoring workspace a round is handed, and when the answer is a new one. An epoch is one
+ * Builder condition under one prompt, so the whole question is what counts as a change of
+ * condition: a corrected prompt, a different Builder or a different upstream route each open a
+ * successor, while a measurement round and a re-run of the same binding do not. Getting that wrong
+ * is not a filing error — mixing two Builder conditions into one epoch means the evidence recorded
+ * under it no longer describes a single condition, and nothing downstream can separate them again.
+ *
+ * So the successor cases all assert a second thing as well: the predecessor is left
+ * byte-identical. A successor that pointed at its predecessor and also
+ * edited it would look correct from the new epoch and would have rewritten the record the old one's
+ * results were measured against. Two consecutive reopens get a case for exactly that reason, since
+ * one reopen can pass by accident where two cannot.
+ *
+ * The rest of the file is the record itself, and it fails closed everywhere. A damaged epochs record
+ * refuses loudly and names the file rather than starting a fresh campaign over the top of it,
+ * because starting fresh is indistinguishable from success and quietly abandons whatever was there.
+ * A `campaign.json` sitting at the root is not epoch evidence either; only the record names an
+ * epoch. Underneath, the atomic-write helpers get their own cases: a published file appears whole
+ * with no `.tmp` left beside it, a rename that cannot happen leaves no temporary behind, and
+ * `readJsonFile` refuses the damaged or missing file that `readJsonFileOrNull` is entitled to read
+ * as absent — the pair being the point, since absent and unreadable are different facts and only
+ * one of them is ordinary.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import {
@@ -76,7 +94,7 @@ describe("campaign epoch selection (R0)", () => {
   });
 
   it("resolves an epoch recorded with the retired domain and engines fields to its own directory", () => {
-    // Every campaign written before 2026-09-15 hashed `domain` and `engines: null` into its key.
+    // A campaign written under the older key shape hashed `domain` and `engines: null` into it.
     // Lookup compares the binding fields, so the old key and directory stay in force and no
     // second epoch opens for the same prompt, Builder and pass.
     const root = scratch("retired-fields");

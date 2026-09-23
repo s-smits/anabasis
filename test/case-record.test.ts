@@ -1,8 +1,14 @@
 /**
- * Tests for the case record: one writer serialises appends, and a strict reader refuses incomplete
- * lines or sequence gaps. Allowed outcome values keep non-results out of the score; matching each
- * task to one row fixes the denominator. Trace pointers include content digests. Split out of
- * test/judge-reviews.test.ts when that file's census subject was rewritten around one battery.
+ * The case record has one writer that serialises every append and a strict reader that refuses an
+ * incomplete line or a gap in the sequence, because a lost row is a defect rather than an absence:
+ * a tolerant reader would let a torn file read as a shorter run that simply measured less. The same
+ * strictness runs the other way as well, so opening an existing record strict-reads it first and a
+ * torn file refuses to grow.
+ *
+ * What the rows then have to carry is the denominator. The allowed outcome values keep non-results
+ * out of the score, a bijection with the task ids means 24 rows for 23 tasks is a duplicate rather
+ * than extra evidence, and the trace pointers carry content digests so that a rewritten or deleted
+ * trace demotes its pointer instead of resolving silently.
  */
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";

@@ -1,4 +1,10 @@
-// Bun discovers this ESM test through test/claude-codex-sessions.test.js.
+// The subject is `.claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs`, which sits in a
+// dot-directory Bun's discovery never descends into, so a suite written beside it would sit green
+// and unread. That is why this file lives in `test/` and reaches back across the boundary with a
+// relative import, and why it is `.mjs`: the script is plain ESM and is also spawned here as a
+// subprocess, so the test speaks the same dialect it does. Nothing else in the tree exercises the
+// script's behaviour — `test/build-manifest.test.ts` only matches its name in a rendered command
+// line — so the batch policy, the argument reader and the launch path are covered here or nowhere.
 import assert from "../src/meta/assert.ts";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";

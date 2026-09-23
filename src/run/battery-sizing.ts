@@ -6,16 +6,28 @@
  * the census evidence all read that one pair, so a probe battery is the ordinary battery with
  * different bounds rather than a second sizing system.
  *
- * `batterySize` bounds every size the controller asks for. An out-of-range size fails rather than
- * being clamped, because a silently changed size is a changed measurement condition.
+ * `batterySize` bounds every size the controller asks for (operator decision: one climbing system
+ * between 5 and 60 queries an iteration). An out-of-range size fails rather than being clamped,
+ * because the size is part of the measurement condition, so a request quietly rounded into range
+ * would be measured under a condition nobody chose and read back as though it had been.
  *
- * `batterySizingGate` picks the round's count. A product measures probe batteries until one passes
- * some but not all of its scored cases, and only then the requested size: a handful of tasks
- * already shows a battery far too easy or far too hard. The probe size is the Builder's.
+ * `batterySizingGate` picks the round's count (operator decision). A product measures probe
+ * batteries until one passes some but not all of its scored cases, and only then the requested
+ * size, because eight or so tasks already say as much about a battery that is far too easy or far
+ * too hard as twenty-five do — a first battery heading for 25 of 25 otherwise spends hours of
+ * solves to say it. The probe leaves its own size to the Builder, so the tasks rather than a count
+ * decide what the probe measures.
  *
  * Past the probe the round is sized to the smallest battery that still carries the last reading
- * (`smallestSizeHoldingTooEasy`). The count reaches the author through `taskCountSentence` alone;
- * the gate returns a count and nothing else, and the climb readout owns the landing.
+ * (`smallestSizeHoldingTooEasy`). Holding the adopted size as the state instead, and reading no
+ * later landing, lets one weak probe fix the cost of every round after it: a product that graduates
+ * on a 3-of-6 then pays 25 solves a round to re-read "significantly too easy". The reading is never
+ * traded for the saving, and the size stays a condition code owns, which is why the count reaches
+ * the author through `taskCountSentence` alone and nothing here tells a Builder what its next
+ * battery is expected to score. The gate returns a count and nothing else — a note beside it
+ * restating the landing would repeat what the measurement note in the same prompt already says. The
+ * climb readout owns the landing, and `renderProbeSizing` is the one sentence a probe-sized round
+ * adds.
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -60,13 +72,22 @@ export function batterySize(requested: number | undefined): number {
 
 /**
  * The smallest battery whose interval still excludes the band on the easy side at the rate just
- * measured, or `requested` when no smaller one does.
+ * measured, or `requested` when no smaller one does. A battery read significantly too easy spends
+ * its whole size to say one thing, and a gate that reads no landing past the probe makes the
+ * adopted size the state, so one weak probe commits the product to the requested size for every
+ * later round.
  *
- * The rate is realised with `Math.floor`, the least favourable count at each size, so rounding
- * never flatters the reading; this is also why small probe sizes rarely qualify. A battery near the
- * band keeps the requested size.
+ * The saving never buys the reading, so the rate is realised with `Math.floor`, the least
+ * favourable count at each size, and a size is never chosen because rounding flattered it. A rate
+ * of 0.88 carries at eleven tasks, where 9 of 11 still reads too easy (lower bound 0.523), for 44%
+ * of the solves. Six does not: six reads too easy only at 6 of 6, and 0.88 of six floors to 5,
+ * whose interval overlaps the band and so says nothing. That arithmetic is why the loop starts
+ * above the probe ceiling and loses nothing by it. A battery near the band keeps the requested
+ * size — 15 of 25 holds at no size below it.
  *
- * This predicts nothing about the next battery; `placeOnBand` refuses a placement it cannot make.
+ * This predicts nothing about the next battery. It states the size at which the last reading would
+ * have survived, so a Builder that succeeds in making the tasks harder lands lower, and
+ * `placeOnBand` refuses a placement it cannot make rather than misplacing it.
  */
 function smallestSizeHoldingTooEasy(landed: ProbeLanding, requested: number, band: [number, number]): number {
   if (landed.n === 0) return requested;
@@ -79,8 +100,11 @@ function smallestSizeHoldingTooEasy(landed: ProbeLanding, requested: number, ban
 }
 
 /** `requested` is a `batterySize` result; `landing` reads the selected product's latest admitted
- *  battery and is called only when that decides the size. `band` is the run's band, so sizing and
- *  placement read the same one; the default serves a caller with no manifest. */
+ *  battery and is called only when that decides the size. `band` is the run's band, which the
+ *  caller reads from the manifest through `climbThresholds`: this gate used to read
+ *  `POLICY.climb.band` directly, so a manifest override moved the placement while the size that
+ *  would have held it stayed on the code-owned ceiling. The default is that code-owned row, for a
+ *  caller with no manifest. */
 export function batterySizingGate(
   requested: number,
   adoptedTasks: number | null,

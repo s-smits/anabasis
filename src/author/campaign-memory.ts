@@ -1,6 +1,8 @@
 /**
- * Restores campaign progress from recorded iterations, so the next iteration number, unresolved
- * findings and repetition counts survive a restart. It makes no build or verification decision.
+ * Restore campaign progress from recorded iterations. This file reads the history the authoring
+ * loop uses; it makes no build or verification decision of its own. Progress survives a process
+ * restart because the next iteration number, the unresolved findings and the repetition counts all
+ * come from the campaign directory rather than from anything held in memory.
  */
 import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -16,20 +18,31 @@ export interface CampaignMemory {
   clause: CampaignClause | null;
   /** Latest completed child tree. Null means no evidence can prove a repair baseline. */
   workspaceCommit: string | null;
-  /** Last candidate condition that reached the gates and stayed blocked, with its spent strikes.
-   *  Bundle-stage refusals leave no iteration evidence, so they stay session-local. */
+  /** The last candidate and tool condition that reached the gates and stayed blocked, with its
+   *  spent strikes. Only a gate-settled refusal leaves iteration evidence, so a bundle-stage
+   *  refusal stays session-local by design. */
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
-  /** The unbroken trailing run of gates-blocked findings hashes, oldest first, for the stall
-   *  detector. Any other outcome resets it. */
+  /** The unbroken trailing run of gates-blocked findings hashes, oldest first. The stall detector
+   *  counts repeats over it, which is how a loop that keeps churning the tree without moving the
+   *  findings is stopped: every fingerprint differs while the findingsHash does not, so the
+   *  fingerprint cannot detect it. Any other outcome resets the run. */
   trailingBlockedFindingsHashes: string[];
-  /** The trailing run of pre-fingerprint refusals; a gate settlement resets it. */
+  /** A separate pre-fingerprint refusal streak, since that bound is the authoring one rather than
+   *  the gate's. A gate settlement resets it. */
   trailingBuildFailureHashes: string[];
-  /** Refused control censuses already charged to each declared engine id, so a restarted
-   *  invocation continues the count instead of receiving a fresh allowance. */
+  /** Refused control censuses this campaign has already charged to each Builder-declared engine
+   *  id, read from the census gate's own records. Restoring the per-engine count is what makes a
+   *  restarted invocation continue it instead of receiving a fresh allowance, since a campaign can
+   *  spread its refusals over several invocations and exhaust none of them. */
   toolNonResultRefusals: ToolNonResultCounts;
-  /** How often each workspace commit was recorded as an unchanged candidate. Keyed by commit and
-   *  never reset, so the count survives sessions and invocations; a moved tree takes a new key. */
+  /** How often each workspace commit has been recorded as an unchanged candidate: a settled
+   *  iteration whose child tree equals its own round entry. The round then refuses it as
+   *  `candidate-unchanged` without measuring it, so the strike costs one whole authoring session
+   *  and leaves no trace inside the next one. Keyed by commit and never reset, because the evidence
+   *  is per tree: one commit can collect the clause twenty times over as many controller
+   *  invocations, where a per-session or trailing-run counter sees one sighting each time. A commit
+   *  the Builder actually moves takes its own key. */
   unchangedCandidateCommits: Record<string, number>;
   carried: CampaignFeedback[];
 }
@@ -39,13 +52,15 @@ function ordinalOf(name: string): number | null {
   return Number.isFinite(ordinal) ? ordinal : null;
 }
 
-/** Next free ordinal from the on-disk campaign history. */
+/** Next free ordinal from the on-disk campaign history; no scheduler state exists anywhere
+ *  else. */
 export function nextOrdinal(campaignDir: string): number {
   return Math.max(0, ...listIterationDirs(campaignDir).map((name) => ordinalOf(name) ?? 0)) + 1;
 }
 
 /** A trailing findings run over one outcome, extended by a matching iteration and reset by any
- *  other. Shared by the disk replay and the in-session extension. */
+ *  other. One rule serves the disk replay and the in-session extension, so the two cannot
+ *  disagree. */
 const trailOf =
   (outcome: IterationEvidence["outcome"]) =>
   (trail: readonly string[], evidence: IterationEvidence): string[] =>
@@ -53,7 +68,9 @@ const trailOf =
 
 export const extendTrailingBlockedFindings = trailOf("gates-blocked");
 
-/** The commit of a fingerprinted iteration that changed nothing since its round entry, else null. */
+/** The one reading of "this settled iteration changed nothing": a completed gate settlement whose
+ *  fingerprinted child tree is its own round entry, with no path added and none deleted. The
+ *  round's `candidate-unchanged` refusal reads the same three fields on the same evidence. */
 export function unchangedCandidateCommit(evidence: IterationEvidence): string | null {
   const change = evidence.workspaceChange;
   if (evidence.outcome !== "fingerprinted") return null;
@@ -61,7 +78,8 @@ export function unchangedCandidateCommit(evidence: IterationEvidence): string | 
   return change.changedPaths.length === 0 && change.deletedPaths.length === 0 ? change.commit : null;
 }
 
-/** Adds one completed iteration to the per-commit unchanged count. */
+/** Add one completed iteration to the per-commit unchanged count, for the replay and the running
+ *  invocation alike. */
 function countUnchanged(
   counts: Readonly<Record<string, number>>,
   evidence: IterationEvidence,
@@ -70,8 +88,10 @@ function countUnchanged(
   return commit === null ? { ...counts } : { ...counts, [commit]: (counts[commit] ?? 0) + 1 };
 }
 
-/** Strikes already spent on the commit this campaign would resubmit: the replayed tally plus the
- *  running invocation's iterations, read at the newest recorded commit. */
+/** Strikes already spent on the commit this campaign would resubmit: the replayed tally extended
+ *  by the iterations of the running invocation, read at that invocation's newest recorded commit.
+ *  Zero when the newest iteration moved the tree, which is the whole point of the per-commit
+ *  key. */
 export function unchangedCandidateSubmissions(
   memory: CampaignMemory,
   iterations: readonly IterationEvidence[],
@@ -81,7 +101,9 @@ export function unchangedCandidateSubmissions(
   return commit === null ? 0 : (counts[commit] ?? 0);
 }
 
-/** Settled iteration directories, oldest first; the replay reads more than one file from each. */
+/** Settled iteration DIRECTORIES, oldest first. The directory rather than the record file,
+ *  because the replay reads two recorded files out of it: the iteration record and the census
+ *  gate's no-verdict record beside it. */
 function completedIterationDirs(campaignDir: string): string[] {
   return listIterationDirs(campaignDir)
     .filter((name) => ordinalOf(name) !== null)
@@ -114,8 +136,10 @@ function readIteration(file: string): IterationEvidence {
   return evidence;
 }
 
-/** The blocking findings still unresolved after one iteration; shared by the in-process path and
- *  the disk replay. A gate settlement replaces older findings; a failed build keeps them. */
+/** The blocking findings still unresolved after one iteration. Applied in-process after each
+ *  iteration and replayed from disk on restart, so the two paths cannot drift. A complete gate
+ *  settlement — fingerprinted or gates-blocked — replaces the older findings, while a failed build
+ *  cannot establish that any earlier finding was fixed. */
 export function settleUnresolved(
   pending: CampaignFeedback[],
   evidence: IterationEvidence,
@@ -158,7 +182,9 @@ function replay(dirs: string[], chargedTrialRuns: readonly string[] = []): Campa
       evidence,
     );
     memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
-    // Other outcomes do not reset the strike count, matching the in-session counter.
+    // No reset on other outcomes: the in-session counter is touched only by gate settlements, so a
+    // build-failed pass between two identical blocked sets does not break the streak there and must
+    // not break it here.
     if (evidence.outcome !== "gates-blocked") continue;
     const candidateId = evidence.candidateConditionId ?? evidence.submissionConditionId ?? null;
     memory.lastBlockedCandidateStrikes =
@@ -167,20 +193,26 @@ function replay(dirs: string[], chargedTrialRuns: readonly string[] = []): Campa
         : 0;
     memory.lastBlockedCandidateId = candidateId;
   }
-  // Engine ids come from the census gate's recorded fields, never from feedback text.
+  // Read the engine id from the census gate's record rather than extracting it from feedback text.
+  // A counter that can end a campaign must use the host's recorded fields.
   memory.toolNonResultRefusals = replayNonResultRefusals([...dirs, ...chargedTrialRuns]);
   return memory;
 }
 
-/** The epoch's unresolved build and gate feedback, or null when none remains. */
+/** Exact-epoch build and gate feedback for the run decision, or null when none remains. The author
+ *  loop replays this same queue, so the controller does not copy it into the measured campaign
+ *  record. */
 export function latestPreAdoptionFeedback(epoch: CampaignEpochEvidence): CampaignFeedback[] | null {
   const feedback = replay(completedIterationDirs(epoch.dir)).carried;
   return feedback.length === 0 ? null : feedback;
 }
 
-/** Resumes from disk. An iteration directory without a record is unfinished work: skipped, but
- *  its files and ordinal are kept. An unreadable record or a different campaign binding returns
- *  empty memory with a refusing clause. */
+/** Resume from disk. A directory without iteration.json holds unfinished work from an invocation
+ *  that never recorded its result: it is skipped when restoring memory, its files and its reserved
+ *  iteration number are preserved, and it is not reported as completed. An existing record that
+ *  cannot be parsed blocks the restart with `improvement-memory-missing`, because its history
+ *  cannot safely be treated as absent. A different campaign binding refuses reuse in the same way,
+ *  since its iterations describe another condition. */
 export function resumeCampaignMemory(campaignDir: string, slug: string, kickoffHash: string): CampaignMemory {
   const bindingFile = join(campaignDir, "campaign.json");
   if (!existsSync(bindingFile)) {

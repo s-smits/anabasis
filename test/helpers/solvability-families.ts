@@ -1,9 +1,21 @@
 /**
- * Two sibling tasks whose marked deliverable the family census exchanges, plus a lone family.
+ * The fixture the family census runs against: two sibling tasks in one family, and a third alone.
  *
- * `ta` and `tb` share family "one"; `tc` is a family of its own. Each task carries a report as well
- * as an answer, so the artifact has no root the truth relation ignores and a transplant that only
- * the report distinguishes still has something to fail on.
+ * The census works by exchanging the marked deliverable between siblings and asking whether a
+ * declared check notices, so the fixture has to make that exchange detectable at all. `ta` and `tb`
+ * share family "one" and carry different answers, while `tc` is family "two" and has no sibling to
+ * swap with. Each task carries a report beside its answer, which means the artifact has no root the
+ * truth relation ignores, and a transplant that only the report distinguishes still has a check
+ * that fails on it.
+ *
+ * The three `FamilySpec` switches are the hostile cases, and each one names a different way the
+ * census can look like it worked when it did not. Leaving the answer root unmarked stops the census
+ * running at all, because `familyBinding` returns an empty list the moment there are no
+ * task-conditioned roots (`src/truth/family-binding.ts`) — so an unmarked fixture would report
+ * no separation failures and read as a pass. Throwing on a mismatch instead of returning false is
+ * the difference between a check that rejected the transplant and one that never settled. And
+ * dropping tb's required hidden operand must refuse, rather than quietly making the check
+ * inapplicable and leaving the sibling pair uncovered.
  */
 import type { ToolInventory } from "../../src/verify/verifier-port.ts";
 import {
@@ -16,11 +28,9 @@ import {
   specimen,
 } from "./solvability-specimen.ts";
 
-// ---------------------------------------------------------------------------------------------
-// Family fixtures: two siblings whose marked deliverable the census exchanges, plus a lone family.
-
 interface FamilySpec {
-  /** The two family-one answers. Repeating one recreates W20: distinct tasks, one deliverable. */
+  /** The two family-one answers. Repeating one gives distinct tasks a single deliverable, which is
+   *  the shape the census exists to catch. */
   answers: [string, string];
   /** Mark the answer root task-conditioned. Unmarked, the census does not run at all. */
   material?: boolean;
@@ -52,8 +62,6 @@ export const checks = {
 
 const REPORT_CHECK = check({ id: "report-present", roots: ["$.report"] });
 const MARKED_ANSWER = { name: "answer", "shape": "string", taskConditioned: true as const };
-/** ta and tb share family "one"; tc is a family of its own. Each carries a report as well, so the
- *  artifact has no root the truth relation ignores. */
 function familyTasks(
   answers: readonly string[],
   hidden: (taskId: string, expected: string) => FixtureTask["hidden"],

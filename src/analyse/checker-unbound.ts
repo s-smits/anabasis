@@ -1,9 +1,11 @@
 /** A checker outage the Builder owns: EXTERNAL_RESULT_UNBOUND rows recorded in the measured
  *  battery. The row says a check reported an externally grounded verdict that no host tool run
  *  supports — the check never called `runtime.tools.run`, or it read a non-result as an answer.
- *  The host resolves every tool itself, so the owner is the check code, not the environment. The
- *  routed claim carries public identities and counts only; task ids and process facts stay in the
- *  battery. */
+ *  Since the host resolves every tool itself there is no declared registry left to blame, which is
+ *  what makes the check code the owner. Without this row a checker whose own compiles exceed its
+ *  timeout blocks the claim and reads as an environment failure with no owner, so the one
+ *  repairable thing in it never reaches an author session. The routed claim carries public
+ *  identities and counts only; task ids and process facts stay in the battery. */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join, relative } from "../meta/path.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";

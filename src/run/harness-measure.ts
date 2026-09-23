@@ -1,12 +1,23 @@
 /**
- * Measures an adopted harness: one battery per iteration, under the iteration's own run id.
+ * Measures an adopted harness in the Build → Measure → Analyse flow.
  *
- * The host verifier owns correctness. The Main Judge runs during the battery and records
- * disagreement; its advice changes no score, case row, denominator or claim eligibility. The
- * controller supplies the request, the product and the AskManifest task settings.
+ * The host verifier owns correctness. The Main Judge runs during the battery, on the session
+ * passed through the evaluation options below, and records calibrated disagreement for later
+ * analysis; its advice changes no truth score, case row, denominator or claim eligibility. One
+ * measurement path serves every domain, because the AskManifest supplies the task settings this
+ * entrypoint once hardcoded and the controller supplies that manifest along with the request and
+ * the selected product. Nothing here describes the request in a command grammar of its own.
  *
- * Isolation evidence is recorded before any paid turn; driveBattery owns fingerprinting,
+ * The module connects components rather than adding behaviour of its own: slot resolution selects
+ * the Built engine, transport support and executed isolation probes establish what isolation
+ * evidence exists, and that result is recorded before any paid turn — including contractual
+ * isolation, when contractual is all the checks establish, because a battery that spent turns
+ * before the probe cannot say afterwards what it ran under. `driveBattery` owns fingerprinting,
  * evaluation and case rows.
+ *
+ * One battery per iteration, under the iteration's own run id. The second battery this once ran —
+ * the same harness with and without adviser tools, so a paired repair contest could read a delta —
+ * went when the repair experiment did.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
@@ -158,11 +169,16 @@ export function resolveBuiltSlot(
     slug,
     "a verified battery needs process isolation proven by an executed read-deny check, and that transport has none — add one to it, or pin an isolated transport",
   );
-  // Disclose an unconfigured review slot before paying for cases; an explicit `disabled` needs no
-  // warning. Measurement still proceeds, since the verifier decides correctness without the Judge.
+  // Report an unconfigured review slot before measurement rather than after it. Run 15 measured
+  // 50 cases before the missing reviewer became apparent in its recorded `judge: "off"` condition.
+  // An explicit `disabled` is the operator's choice and needs no warning; `unconfigured` is a
+  // fallback the operator should see before paying for cases. This is a disclosure and not a
+  // refusal, because the host verifier decides correctness independently of the Judge, so the
+  // battery is still worth what it costs.
   if (!slots.review.enabled && slots.review.source === "unconfigured") {
     fullrunLine(
-      // default.json first: a prompt-derived slug is only known after the run.
+      // default.json first: a prompt-driven slug is a prompt hash, so `<slug>.json` is a file the
+      // operator can only name after the run that needed it.
       `${slug}: no review slot configured — this battery records judge:"off" and no Judge reviews; pin one in .harness/backends/default.json, .harness/backends/${slug}.json, or HARNESS_REVIEW_BACKEND`,
     );
   }
@@ -323,8 +339,11 @@ async function measureResolvedBattery(
   } catch (error) {
     if (!(error instanceof BatteryVerificationNonResult)) throw error;
   }
-  // The round's verdict on its battery goes to the observation stream as well as stderr, so a
-  // refused claim is visible there and not only in terminal output.
+  // One sentence, two readers. This is the round's verdict on its own battery, and reaching stderr
+  // alone leaves the observation stream a live reader watches with no row for it, so a run whose
+  // claim was refused looks from the stream exactly like one whose claim was written — while the
+  // refusal has in fact held the candidate and left the next round sizing its battery from a stale
+  // landing. A clause present only in stdout is not durable evidence.
   const settled =
     claim === null
       ? {

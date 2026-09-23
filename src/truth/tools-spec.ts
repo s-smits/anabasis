@@ -31,8 +31,10 @@ export type ToolSpec = {
 export interface ToolsSpec {
   presets: BuiltPresetId[];
   tools: ToolSpec[];
-  /** Reason per declined default preset, read for recorded bundles. A fresh candidate must still
-   *  select `files` or `shell` (candidate-check). */
+  /** Reason per declined default preset. It is read for recorded bundles, where it is the only
+   *  record of why a preset is absent, but it does not excuse the absence: a fresh candidate must
+   *  select `files` or `shell`, or its solver has no shell at all (candidate-check, operator
+   *  decision). */
   declined?: Record<string, string>;
 }
 

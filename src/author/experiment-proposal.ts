@@ -11,8 +11,11 @@ import { isRecord } from "../meta/json-shape.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 import { EXPERIMENT_FILE } from "./builder-memory.ts";
 
-/** Author claims about the next experiment, never a verdict. The target is a verified-pass count
- *  bound before outcomes; the host derives its denominator and what the bytes moved. */
+/** Author claims about the next experiment, never host-certified difficulty and never a verdict.
+ *  The target is deliberately thin — a comparator and a verified-pass count — because it is bound
+ *  before any outcome is known, and a richer declaration would only be a richer thing to write
+ *  after the fact. What the bytes actually moved is derived by the host from the captured
+ *  measurement, not read from these fields. */
 const ExperimentProposalSchema = Type.Object(
   {
     scope: Type.Union([Type.Literal("tasks"), Type.Literal("product")]),
@@ -75,7 +78,9 @@ function parseExperimentProposal(value: unknown): Parsed {
   return { ok: true, proposal };
 }
 
-/** A recorded submission, or null unless it parses and its digest matches. */
+/** Historical intent stays author text, so only a captured, digest-bound declaration crosses:
+ *  a submission whose digest does not match the proposal it carries is read as no declaration at
+ *  all rather than as a corrected one. */
 export function parseExperimentSubmission(value: unknown): ExperimentSubmission | null {
   if (!isRecord(value)) return null;
   const { digest, ...proposal } = value;
@@ -83,7 +88,9 @@ export function parseExperimentSubmission(value: unknown): ExperimentSubmission 
   return parsed.ok && digest === hashJsonValue(parsed.proposal) ? { ...parsed.proposal, digest } : null;
 }
 
-/** Captures and digests EXPERIMENT.json, independently of candidate identity. */
+/** Capture intent once, independently of candidate identity, so the declaration is fixed before
+ *  the round that tests it and cannot be tuned to the result. Rewording this file produces a new
+ *  digest and nothing else: it establishes membership in a new experiment, not a harder one. */
 export function captureExperimentSubmission(
   workspace: string,
 ): { ok: true; experiment: ExperimentSubmission } | { ok: false; findings: ContractFinding[] } {

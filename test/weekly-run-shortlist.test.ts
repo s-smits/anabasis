@@ -12,7 +12,7 @@
  * test holds the fixture against the producer's own source.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -41,6 +41,7 @@ import type { OutcomeMetrics, OutcomeReport } from "../tools/outcome/metrics.ts"
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { weekWindow, withinWeek } from "../.claude/skills/main/week.ts";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
 import {
   bindSynthesis,
   buildLunaPlan,
@@ -651,12 +652,8 @@ describe("binding a published WRI synthesis", () => {
   const run = { runId: "run-1", source: { commit, dirty: false, sourceDigest: "d".repeat(64) } };
   const census = [{ ...run, campaign: "/campaigns/c" }];
 
-  /**
-   * `archive-scaffold` writes the review, but only through `scaffoldArchive`, which needs a whole
-   * investigation directory to produce one field. So the review here is written by hand and the
-   * three fields the selector reads are held against the scaffold's own source: if the schema tag
-   * or the identity spelling moves, this fails rather than passing on a record nothing writes.
-   */
+  /** A published review carrying only the three fields the selector reads, under the schema the
+   *  validator owns; the scaffold's own output is held to that schema where the scaffold is tested. */
   const publishArchive = (repo: string, folder: string, identity: { runId: string; commit: string }) => {
     const dir = join(repo, "notes", "runs", folder);
     mkdirSync(dir, { recursive: true });
@@ -664,21 +661,12 @@ describe("binding a published WRI synthesis", () => {
     writeFileSync(
       join(dir, "review.json"),
       `${JSON.stringify({
-        schema: "wri-archive/v1",
+        schema: ARCHIVE_SCHEMA,
         identity: { runId: identity.runId, sourceRevision: identity.commit },
       })}\n`,
     );
     return dir;
   };
-
-  it("writes its review under the fields the archive scaffold still emits", () => {
-    const scripts = join(import.meta.dir, "..", ".claude", "skills", "whole-run-investigation", "scripts");
-    const scaffold = readdirSync(scripts).find((name) => name.startsWith("archive-scaffold."));
-    expect(scaffold).toBeDefined();
-    const text = readFileSync(join(scripts, scaffold ?? ""), "utf8");
-    expect(text).toContain('schema: "wri-archive/v1"');
-    expect(text).toContain("sourceRevision: source.commit");
-  });
 
   it("binds a descriptive archive folder by run id and full source revision, digesting its synthesis", () => {
     const repo = gitRepo();

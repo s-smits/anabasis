@@ -20,8 +20,7 @@
  */
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { isAbsolute } from "#src/meta/path.ts";
-import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 
 const die: ExitWith = exitWith("position-packet");
@@ -142,14 +141,10 @@ if (import.meta.main) {
     values: ["transcript", "summary-file", "exchanges", "result-chars"],
     flags: [],
   });
-  const transcript = parsed.single.get("transcript");
-  const summaryFile = parsed.single.get("summary-file");
-  if (transcript === undefined || !isAbsolute(transcript)) {
-    die("--transcript must be an absolute path to an SDK session .jsonl");
-  }
-  if (summaryFile === undefined || !isAbsolute(summaryFile)) {
-    die("--summary-file must be an absolute path to the authored summary");
-  }
+  const required = requiredOption(die, parsed.single);
+  const absolute = absoluteOption(die);
+  const transcript = absolute("transcript", required("transcript"));
+  const summaryFile = absolute("summary-file", required("summary-file"));
   if (!existsSync(transcript)) die(`${transcript} does not exist`);
   if (!existsSync(summaryFile)) die(`${summaryFile} does not exist`);
   const count = Number(parsed.single.get("exchanges") ?? "5");

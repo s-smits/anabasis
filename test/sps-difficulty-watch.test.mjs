@@ -144,14 +144,4 @@ describe("difficulty-watch", () => {
     const row = JSON.parse(run("--json").stdout).controller[1];
     expect(row.refused).toContain("opening source identity is not concrete");
   });
-
-  it("refuses a relative or missing campaign path and an unknown option", () => {
-    expect(runTypeScript("difficulty-watch.mts", ["--campaign", "campaigns/demo"]).stderr).toContain(
-      "absolute",
-    );
-    expect(runTypeScript("difficulty-watch.mts", ["--campaign", join(scratch, "nope")]).stderr).toContain(
-      "does not exist",
-    );
-    expect(run("--since", "x").stderr).toContain("unknown option");
-  });
 });

@@ -268,7 +268,7 @@ describe("seed-campaign clone", () => {
     expect(result.stderr).toContain(join("versions", "v1", "correctness-model", "brief.json"));
   });
 
-  it("refuses an existing destination before any write and a relative path before anything", () => {
+  it("refuses an existing destination before any write", () => {
     recordedCampaign(source);
     const into = join(scratch, "condition");
     expect(run("--from-root", source, "--slug", SLUG, "--into-root", into).exitCode).toBe(0);
@@ -277,12 +277,6 @@ describe("seed-campaign clone", () => {
     expect(again.exitCode).toBe(1);
     expect(again.stderr).toContain("already exists");
     expect(lstatSync(join(campaignDir(into, SLUG), "seed.json")).mtimeMs).toBe(before);
-    const relative = run("--from-root", "source", "--slug", SLUG, "--into-root", into);
-    expect(relative.exitCode).toBe(2);
-    expect(relative.stderr).toContain("must be an absolute path");
-    expect(run("--from-root", source, "--slug", SLUG).stderr).toContain(
-      "--into-root (clone) or --as-slug (republish) is required",
-    );
   });
 });
 

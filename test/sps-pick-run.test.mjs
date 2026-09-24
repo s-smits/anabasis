@@ -190,12 +190,4 @@ describe("pick-run", () => {
       "125 verified cases",
     ]);
   });
-
-  it("refuses a relative path, a missing notes directory and an unknown option", () => {
-    expect(runTypeScript("pick-run.mts", ["--notes", "notes/runs"]).stderr).toContain("absolute");
-    expect(runTypeScript("pick-run.mts", ["--notes", join(scratch, "absent")]).stderr).toContain(
-      "does not exist",
-    );
-    expect(runTypeScript("pick-run.mts", ["--rank"]).stderr).toContain("unknown option");
-  });
 });

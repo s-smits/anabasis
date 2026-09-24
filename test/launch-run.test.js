@@ -270,7 +270,7 @@ describe("one-command run launcher", () => {
       expect(() => ownedService({ code: 1, out: "permission denied" }, plan, own)).toThrow("stop refused");
       expect(() =>
         validateStopPlan({ ...plan, service: service.replace("test-run", "another-run") }, own),
-      ).toThrow();
+      ).toThrow("stop requires an absolute worktree, exact run service, and positive deadline/grace");
       expect(
         await stopRun(
           plan,
@@ -307,7 +307,6 @@ describe("one-command run launcher", () => {
 
   it("keeps every preset to one or two non-empty lines and plans each by name", () => {
     const names = Object.keys(PRESETS);
-    expect(names).toEqual(["truss"]);
     for (const name of names) {
       expect(
         PRESETS[name].split("\n").every((line) => line.trim()),
@@ -358,14 +357,14 @@ describe("one-command run launcher", () => {
     });
   });
 
-  it("preserves custom prompt punctuation as one argument and refuses ambiguous input", () => {
+  it("preserves custom prompt punctuation as one argument and forwards a time cap", () => {
     const prompt =
       "Build $(touch /tmp/never) with `literal` and 'quotes'.\nPreserve the second line verbatim.";
     const options = parseOptions(["custom", "--prompt", prompt, "--run", "one-run"]);
     const [plan] = planRuns(options, "/tmp/launch", "unused");
     expect(parseFullRunArgs(fullrunArgs(plan, options, source)).prompt).toBe(prompt);
-    // The four-hour Opus loop (2026-09-07) ends a run at a round boundary instead of a kill; the
-    // launched tree's own parser reads the forwarded flag (PR #572), so it is only forwarded here.
+    // A time cap ends a run at a round boundary instead of a kill; the launched tree's own parser
+    // reads the forwarded flag, so it is only forwarded here.
     const bounded = parseOptions([
       "custom",
       "--prompt",
@@ -376,34 +375,37 @@ describe("one-command run launcher", () => {
       "14400000",
     ]);
     expect(fullrunArgs(plan, bounded, source).join(" ")).toContain("--stop-after-ms 14400000");
-    for (const args of [
-      ["truss", "--budget", "0"],
-      ["truss", "--budget", "5", "--budget", "7"],
-      ["truss", "--stop-after-ms", "4h"],
-      [...CUSTOM, "truss", "--run", "same"],
-      ["truss", "truss", "--run", "same"],
-      ["unknown"],
-      ["truss", "--prompt", "replacement"],
-      ["custom", "--prompt", "three\nprompt\nlines"],
-      ["custom", "--prompt", "\nblank"],
-      ["custom", "--prompt", "text\0"],
-      ["custom", "--prompt", "text\r"],
-      ["truss", "--env-file", "relative"],
-      ["truss", "truss", "--project", "old-project"],
-      ["truss", "--project", "../old"],
-      ["truss", "--model", "sol,opus", "--project", "old-project"],
-      ["truss", "--verifier-registry", "/tmp/retired-registry.json"],
-      ["truss", "--claim", "unsupported"],
-      ["truss", "--run", "../old"],
-      ["truss", "--condition", "sol,sol"],
-      ["truss", "--condition", "sol,unknown"],
-      ["truss", "--model", "astra", "--condition", "sol"],
-      ["truss", "--model", "astra", "--model", "sol"],
-      ["truss", "--model", "unknown"],
-      ["truss", "--condition", "sol,opus", "--run", "one-id"],
-    ]) {
-      expect(() => parseOptions(args)).toThrow();
-    }
+  });
+
+  const PROMPT_REFUSAL = "--prompt must be one or two non-empty lines without CR or NUL";
+  const RUN_REFUSAL = "--run requires one preset, one condition and a safe id of at most 86 characters";
+  const PROJECT_REFUSAL = "--project requires one preset, one condition and an existing project id";
+  it.each([
+    [["truss", "--budget", "0"], "--budget must be a positive integer"],
+    [["truss", "--budget", "5", "--budget", "7"], 'option "--budget" may be passed only once'],
+    [["truss", "--stop-after-ms", "4h"], "--stop-after-ms must be a positive integer"],
+    [[...CUSTOM, "truss", "--run", "same"], RUN_REFUSAL],
+    [["truss", "truss", "--run", "same"], RUN_REFUSAL],
+    [["truss", "--run", "../old"], RUN_REFUSAL],
+    [["truss", "--condition", "sol,opus", "--run", "one-id"], RUN_REFUSAL],
+    [["unknown"], "unknown preset unknown; use --list"],
+    [["truss", "--prompt", "replacement"], "custom and --prompt must be supplied together"],
+    [["custom", "--prompt", "three\nprompt\nlines"], PROMPT_REFUSAL],
+    [["custom", "--prompt", "\nblank"], PROMPT_REFUSAL],
+    [["custom", "--prompt", "text\0"], PROMPT_REFUSAL],
+    [["custom", "--prompt", "text\r"], PROMPT_REFUSAL],
+    [["truss", "--env-file", "relative"], "--env-file must be absolute"],
+    [["truss", "--claim", "unsupported"], 'unknown option "--claim"'],
+    [["truss", "truss", "--project", "old-project"], PROJECT_REFUSAL],
+    [["truss", "--project", "../old"], PROJECT_REFUSAL],
+    [["truss", "--model", "sol,opus", "--project", "old-project"], PROJECT_REFUSAL],
+    [["truss", "--condition", "sol,sol"], "name each condition once"],
+    [["truss", "--condition", "sol,unknown"], "unknown condition unknown; choose"],
+    [["truss", "--model", "unknown"], "unknown condition unknown; choose"],
+    [["truss", "--model", "astra", "--condition", "sol"], "--model and --condition are one option"],
+    [["truss", "--model", "astra", "--model", "sol"], 'option "--model" may be passed only once'],
+  ])("refuses the launch options %j with %s", (args, refusal) => {
+    expect(() => parseOptions(args)).toThrow(refusal);
   });
 
   // "Continue from the truss run above" names the stopped run's project; the controller continues
@@ -442,7 +444,7 @@ describe("one-command run launcher", () => {
     );
     expect(environment.CLAUDE_BUILT_MODEL).toBe("claude-opus-5");
     expect(environment.PATH.split(":").filter((part) => part === "/usr/bin")).toHaveLength(1);
-    expect(() => prepareEnvironment(plan, credentials)).toThrow();
+    expect(() => prepareEnvironment(plan, credentials)).toThrow("credential snapshot already exists");
     // A numbered token alone is not the one the run reads.
     writeFileSync(join(root, ".env"), "CLAUDE_CODE_OAUTH_TOKEN3=fixture-other\n");
     expect(() => readCredentials(parseOptions(["truss"]), root, {})).toThrow("no API-key or shell fallback");
@@ -676,13 +678,16 @@ describe("one-command run launcher", () => {
     Object.assign(plan, { source, budget: "1320", ...requestIdentity(fullrunArgs(plan, options, source)) });
     const valid = openingFor(plan);
     expect(openingProblems(valid, plan)).toEqual([]);
-    for (const changed of [
-      { ...valid, source: { ...source, dirty: true } },
-      { ...valid, project: { ...valid.project, requestDigest: "wrong" } },
-      { ...valid, providerResourceBudget: { cap: 25 } },
-      { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-5.6-sol" } } },
+    for (const [changed, problem] of [
+      [{ ...valid, source: { ...source, dirty: true } }, "dirty source"],
+      [{ ...valid, project: { ...valid.project, requestDigest: "wrong" } }, "prompt/request digest"],
+      [{ ...valid, providerResourceBudget: { cap: 25 } }, "provider budget"],
+      [
+        { ...valid, modelSlots: { ...valid.modelSlots, built: { kind: "codex", model: "gpt-5.6-sol" } } },
+        "built model slot",
+      ],
     ]) {
-      expect(openingProblems(changed, plan).length).toBeGreaterThan(0);
+      expect(openingProblems(changed, plan)).toContain(problem);
     }
     // An opening whose source is not a concrete identity is refused by the reader before any field.
     const controller = join(plan.dir, "campaigns", "truss-project", "controller", plan.runId);

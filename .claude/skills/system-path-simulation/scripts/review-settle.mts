@@ -33,7 +33,7 @@
  * staging fault; the review's own status is in the evidence, never an exit code.
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { isAbsolute, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
@@ -43,27 +43,21 @@ import { readLatestRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import type { ContestedCase } from "#src/analyse/judge-contested.ts";
-import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
 import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/truth/declared-projection.ts";
 
 const fail: ExitWith = exitWith("review-settle");
 
 const args = parseOrDie(fail, { values: ["repo", "slug", "run", "vetoed", "scratch", "request"] });
-for (const name of ["repo", "slug", "run", "scratch"]) {
-  if (!args.single.has(name)) fail(`--${name} is required`);
-}
-for (const name of ["repo", "scratch"]) {
-  if (!isAbsolute(args.single.get(name) ?? "")) fail(`--${name} must be an absolute path`);
-}
-if (args.single.has("vetoed") && !isAbsolute(args.single.get("vetoed") ?? "")) {
-  fail("--vetoed must be an absolute path");
-}
-const repo = args.single.get("repo") ?? "";
-const slug = args.single.get("slug") ?? "";
-const runId = args.single.get("run") ?? "";
-const scratch = args.single.get("scratch") ?? "";
-const vetoedPath = args.single.get("vetoed") ?? "";
+const requiredValue = requiredOption(fail, args.single);
+const absolute = absoluteOption(fail);
+const repo = absolute("repo", requiredValue("repo"));
+const slug = requiredValue("slug");
+const runId = requiredValue("run");
+const scratch = absolute("scratch", requiredValue("scratch"));
+const vetoedOption = args.single.get("vetoed");
+const vetoedPath = vetoedOption === undefined ? "" : absolute("vetoed", vetoedOption);
 if (vetoedPath !== "" && !existsSync(vetoedPath)) fail(`${vetoedPath}: missing`);
 const vetoed: ContestedCase[] = vetoedPath === "" ? [] : JSON.parse(readFileSync(vetoedPath, "utf8"));
 if (!Array.isArray(vetoed)) fail(`${vetoedPath}: expected a ContestedCase array`);

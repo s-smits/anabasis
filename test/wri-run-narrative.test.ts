@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { CASE_TRACE_SCHEMA } from "../src/backends/trace-capture.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { CLASS_NAMES, type ProseRow, anchorVector, axis, writeSession } from "./helpers/prose-session.ts";
 import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import {
@@ -24,23 +24,14 @@ import {
   classifyTimeline,
 } from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
 
-const dirs: string[] = [];
 const RUN = "r1";
 const KICKOFF = "one line";
 // The key is a digest of the epoch's binding, so every campaign opened with this kickoff shares it.
-const EPOCH = selectCampaignEpoch(temp("hb4-epoch-key-"), { kickoff: KICKOFF }).key;
+const EPOCH = selectCampaignEpoch(scratchDir("hb4-epoch-key-"), { kickoff: KICKOFF }).key;
 const OPENED = "2026-09-19T10:00:00.000Z";
 const SESSION_MS = 60 * 60 * 1000;
 
-afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-function temp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
+afterAll(cleanupScratch);
 
 /** A stand-in for the model: an anchor lands on its own class axis, and any other text lands on the
  *  axis its own first word names, so a fixture says what it means in the text itself. A first word
@@ -65,7 +56,7 @@ function uuidAt(ms: number, tail: string): string {
 
 /** One campaign holding one run, one Builder session and whatever reviews the caller names. */
 function campaignWith(rows: ProseRow[], reviews: Array<{ atMs: number; claims: string[] }>): string {
-  const campaign = temp("hb4-narrative-");
+  const campaign = scratchDir("hb4-narrative-");
   mkdirSync(join(campaign, "controller", RUN), { recursive: true });
   writeFileSync(join(campaign, "controller", RUN, "opening.json"), JSON.stringify({ writtenAt: OPENED }));
 
@@ -144,7 +135,6 @@ describe("consecutive stretches", () => {
     expect(found[0]?.classes.every((name: string) => ADRIFT.has(name))).toBe(true);
     expect(driftRuns(units.slice(0, 5))).toEqual([]);
     expect(consecutive(units, (unit: { class: string }) => unit.class === "uncertain", 6)).toEqual([]);
-    expect(DRIFT_RUN).toBe(5);
   });
 
   it("reads a review id's own mint time out of its UUIDv7", () => {
@@ -181,7 +171,7 @@ describe("run narrative", () => {
 
     const narrative = await buildNarrative({ campaign, runId: RUN, embed: fakeEmbed });
     expect(narrative.state).toBe("classified");
-    expect(narrative.calibration).toMatchObject({ driftRun: 5, restatedCosine: RESTATED_COSINE });
+    expect(narrative.calibration).toMatchObject({ driftRun: DRIFT_RUN, restatedCosine: RESTATED_COSINE });
 
     const slots = slotsOf(narrative);
     const [session] = slots.builder.sessions;
@@ -331,7 +321,7 @@ describe("timeline with the narrative attached", () => {
   });
 
   it("skips an observation stream this reader cannot accept instead of failing the whole lane", () => {
-    const campaign = temp("hb4-narrative-");
+    const campaign = scratchDir("hb4-narrative-");
     mkdirSync(join(campaign, "observability"), { recursive: true });
     writeFileSync(
       join(campaign, "observability", `${RUN}.jsonl`),

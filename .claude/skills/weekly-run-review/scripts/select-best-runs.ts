@@ -28,6 +28,7 @@ import { builderToolsReport } from "#tools/outcome/builder-tools.ts";
 import { type OutcomeReport, outcomeReport } from "#tools/outcome/metrics.ts";
 import { scorecardFromReports } from "#tools/outcome/scorecard.ts";
 import { mainCheckout, openedAt, recordedRuns } from "#tools/runs/discover.ts";
+import { ARCHIVE_SCHEMA } from "#skills/whole-run-investigation/scripts/archive-shape.mjs";
 
 export const WEEKLY_SELECTION_SCHEMA = "weekly-best-run-selection/v2";
 
@@ -243,7 +244,7 @@ export function rankFinalists<T extends Seatable>(runs: readonly T[], top: numbe
   };
 }
 
-/** Published WRI archives under `<repo>/notes/runs`, by run id. Only a `wri-archive/v1` review
+/** Published WRI archives under `<repo>/notes/runs`, by run id. Only an `ARCHIVE_SCHEMA` review
  *  naming its run and full source revision beside a synthesis is indexed. */
 export function publishedArchives(repo: string): Map<string, Archive[]> {
   const root = join(repo, "notes", "runs");
@@ -254,7 +255,7 @@ export function publishedArchives(repo: string): Map<string, Archive[]> {
     const identity = asRecord(review?.identity);
     const runId = identity?.runId;
     const sourceCommit = identity?.sourceRevision;
-    if (review?.schema !== "wri-archive/v1" || !existsSync(synthesisPath)) continue;
+    if (review?.schema !== ARCHIVE_SCHEMA || !existsSync(synthesisPath)) continue;
     if (!isString(runId) || !isString(sourceCommit) || !/^[0-9a-f]{40}$/.test(sourceCommit)) continue;
     index.set(runId, [...(index.get(runId) ?? []), { synthesisPath, runId, sourceCommit }]);
   }

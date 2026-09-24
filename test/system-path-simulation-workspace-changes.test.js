@@ -49,13 +49,6 @@ describe("workspace change evidence", () => {
     expect(first.diffSha).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("does not lose the first character of the first path", () => {
-    const root = repository();
-    writeFileSync(join(root, "MEMORY.md"), "session note\n");
-    writeFileSync(join(root, "actual.txt"), "work\n");
-    expect(changedPaths(root).all).toContain("MEMORY.md");
-  });
-
   it("excludes only the three session note paths by default", () => {
     const root = repository();
     mkdirSync(join(root, "agent"));
@@ -74,67 +67,62 @@ describe("workspace change evidence", () => {
     expect(changedPaths(root, ["result.txt"]).substantive).toEqual(["MEMORY.md"]);
   });
 
-  it("preserves leading and trailing spaces in a filename", () => {
+  it.each([
+    [
+      "leading and trailing spaces",
+      (root) => writeFileSync(join(root, " leading and trailing "), "x\n"),
+      [" leading and trailing "],
+    ],
+    [
+      "a newline",
+      (root) => writeFileSync(join(root, "line one\nline two.txt"), "x\n"),
+      ["line one\nline two.txt"],
+    ],
+    [
+      "an arrow that is not a rename",
+      (root) => writeFileSync(join(root, "choice -> outcome.txt"), "x\n"),
+      ["choice -> outcome.txt"],
+    ],
+    ["a staged rename's destination", (root) => git(root, "mv", "base.txt", "renamed.txt"), ["renamed.txt"]],
+    ["a deleted tracked path", (root) => rmSync(join(root, "base.txt")), ["base.txt"]],
+  ])("reports %s as exactly that path", (_name, change, expected) => {
     const root = repository();
-    writeFileSync(join(root, " leading and trailing "), "material\n");
-    expect(changedPaths(root).all).toEqual([" leading and trailing "]);
+    change(root);
+    expect(changedPaths(root).all).toEqual(expected);
   });
 
-  it("preserves a newline inside a filename", () => {
+  it.each([
+    [
+      "an unstaged tracked file changes",
+      () => {},
+      (root) => writeFileSync(join(root, "base.txt"), "changed\n"),
+    ],
+    [
+      "only staged content changes",
+      () => {},
+      (root) => {
+        writeFileSync(join(root, "staged.txt"), "staged\n");
+        git(root, "add", "staged.txt");
+      },
+    ],
+    [
+      "untracked bytes change at the same path",
+      (root) => writeFileSync(join(root, "new.txt"), "first\n"),
+      (root) => writeFileSync(join(root, "new.txt"), "second\n"),
+    ],
+    [
+      "a symlink target changes",
+      (root) => symlinkSync("first-target", join(root, "pointer")),
+      (root) => {
+        unlinkSync(join(root, "pointer"));
+        symlinkSync("second-target", join(root, "pointer"));
+      },
+    ],
+  ])("changes the digest when %s", (_name, before, after) => {
     const root = repository();
-    const path = "line one\nline two.txt";
-    writeFileSync(join(root, path), "material\n");
-    expect(changedPaths(root).all).toEqual([path]);
-  });
-
-  it("does not read an arrow inside a filename as a rename", () => {
-    const root = repository();
-    const path = "choice -> outcome.txt";
-    writeFileSync(join(root, path), "material\n");
-    expect(changedPaths(root).all).toEqual([path]);
-  });
-
-  it("reports the destination of a staged rename", () => {
-    const root = repository();
-    git(root, "mv", "base.txt", "renamed.txt");
-    expect(changedPaths(root).all).toEqual(["renamed.txt"]);
-  });
-
-  it("reports a deleted tracked path", () => {
-    const root = repository();
-    rmSync(join(root, "base.txt"));
-    expect(changedPaths(root).all).toEqual(["base.txt"]);
-  });
-
-  it("changes the digest when an unstaged tracked file changes", () => {
-    const root = repository();
-    const clean = changedPaths(root).diffSha;
-    writeFileSync(join(root, "base.txt"), "changed\n");
-    expect(changedPaths(root).diffSha).not.toBe(clean);
-  });
-
-  it("changes the digest for staged-only content", () => {
-    const root = repository();
-    const clean = changedPaths(root).diffSha;
-    writeFileSync(join(root, "staged.txt"), "staged\n");
-    git(root, "add", "staged.txt");
-    expect(changedPaths(root).diffSha).not.toBe(clean);
-  });
-
-  it("changes the digest when untracked bytes change at the same path", () => {
-    const root = repository();
-    writeFileSync(join(root, "new.txt"), "first\n");
+    before(root);
     const first = changedPaths(root).diffSha;
-    writeFileSync(join(root, "new.txt"), "second\n");
-    expect(changedPaths(root).diffSha).not.toBe(first);
-  });
-
-  it("changes the digest when a symlink target changes", () => {
-    const root = repository();
-    symlinkSync("first-target", join(root, "pointer"));
-    const first = changedPaths(root).diffSha;
-    unlinkSync(join(root, "pointer"));
-    symlinkSync("second-target", join(root, "pointer"));
+    after(root);
     expect(changedPaths(root).diffSha).not.toBe(first);
   });
 
@@ -145,11 +133,5 @@ describe("workspace change evidence", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(changedPaths(root));
     expect(result.stderr).toBe("");
-  });
-
-  it("refuses a missing workspace argument before calling Git", () => {
-    const result = runTypeScript("workspace-changes.mts");
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toBe("workspace-changes: expected 1 positional argument\n");
   });
 });

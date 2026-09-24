@@ -54,8 +54,6 @@ import {
   SHA256,
 } from "./catalogue-shape.mjs";
 
-export { ARCHIVE_FILES, predictionFrozenHash };
-
 /** The runtime log, whose filename is never a safeguard identity. */
 const SAFEGUARDS_LOG_STEM = SAFEGUARDS_LOG_FILE.replace(/\.txt$/, "");
 const isLogName = (value) => value === SAFEGUARDS_LOG_STEM || value === SAFEGUARDS_LOG_FILE;

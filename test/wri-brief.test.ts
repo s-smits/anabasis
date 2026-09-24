@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { readEpochRecord, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
@@ -14,12 +14,11 @@ import {
   runScope,
   tierOf,
 } from "../.claude/skills/whole-run-investigation/scripts/brief.mjs";
-import { lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
+import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const START = "2026-09-19T00:00:00.000Z";
 const BUDGET = { turnBudget: null, turnsUsed: 0, status: "active" };
-const dirs: string[] = [];
 
 const unaccepted = (runId: string): CaseRecordRow =>
   caseRecordRow("t-unaccepted", "f", { runId, acceptedSubmit: false, truthOk: null, pass: false });
@@ -33,24 +32,13 @@ const nonResult = (runId: string): CaseRecordRow =>
     runtimeNonResultKind: "runtime",
   });
 
-function temp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 const json = (value: JsonValue) => `${JSON.stringify(value, null, 2)}\n`;
 
 /** A campaign holding one run's opening, its epochs and its own case rows. */
 function campaignWith(rows: CaseRecordRow[], { epochs = 1, terminal = false } = {}): string {
-  const campaign = temp("ana-brief-campaign-");
+  const campaign = scratchDir("ana-brief-campaign-");
   const controller = join(campaign, "controller", RUN);
   mkdirSync(controller, { recursive: true });
   // Each new kickoff opens an epoch through the controller's own writer, so the count is the record's.
@@ -106,13 +94,14 @@ describe("how big is this run", () => {
     expect(scope.why).toContain("no scored case");
   });
 
-  it("separates a short run, an ordinary one and one long or deep enough to earn every lane", () => {
-    const scored = { epochs: 1, batteries: 1, scored: true };
-    expect(tierOf({ ...scored, hours: 1 }).tier).toBe("probe");
-    expect(tierOf({ ...scored, hours: 6 }).tier).toBe("standard");
-    expect(tierOf({ ...scored, hours: 13 }).tier).toBe("deep");
-    expect(tierOf({ ...scored, hours: 6, epochs: 3 }).tier).toBe("deep");
-    expect(tierOf({ ...scored, hours: 6, batteries: 3 }).tier).toBe("deep");
+  it.each([
+    [{ hours: 1 }, "probe"],
+    [{ hours: 6 }, "standard"],
+    [{ hours: 13 }, "deep"],
+    [{ hours: 6, epochs: 3 }, "deep"],
+    [{ hours: 6, batteries: 3 }, "deep"],
+  ])("reads a scored run of %o as %s", (size, tier) => {
+    expect(tierOf({ epochs: 1, batteries: 1, scored: true, ...size }).tier).toBe(tier);
   });
 
   it("asks for more semantic lanes as the tier rises, and never the same number twice", () => {
@@ -155,7 +144,7 @@ describe("how big is this run", () => {
   });
 
   it("selects the named lanes for a tier that names some, and every lane for one that does not", () => {
-    expect(lanesForScope({ lanes: null })).toHaveLength(12);
+    expect(lanesForScope({ lanes: null })).toEqual(LANES);
     expect(lanesForScope({ lanes: CAMPAIGN_LANES }).map((lane: { name: string }) => lane.name)).toEqual(
       CAMPAIGN_LANES,
     );
@@ -165,7 +154,7 @@ describe("how big is this run", () => {
 describe("what the read said", () => {
   function reviewWith(steps: JsonValue[], captures: Record<string, string>): string {
     const campaign = campaignWith([verified(RUN)], { terminal: true });
-    const reviewDir = temp("ana-brief-review-");
+    const reviewDir = scratchDir("ana-brief-review-");
     writeFileSync(
       join(reviewDir, "wri-review.json"),
       json({ schema: "wri-review/v1", reviewDir, campaign, runId: RUN, steps }),

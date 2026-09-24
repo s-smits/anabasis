@@ -1,23 +1,14 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.mjs";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import type { BuilderSubmitAttempt } from "../src/author/builder-execution.ts";
-
-const dirs: string[] = [];
 
 type DigestFixture = { campaign: string; domainsRoot: string };
 
@@ -72,16 +63,10 @@ function executionRecord(rows: Array<Partial<BuilderSubmitAttempt>>, calls = 0):
   });
 }
 
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 function fixture(): DigestFixture {
-  const root = mkdtempSync(join(tmpdir(), "ana-digest-"));
-  dirs.push(root);
+  const root = scratchDir("ana-digest-");
   const campaign = join(root, "campaigns", "demo");
   const domain = join(root, "domains", "demo-slug");
   mkdirSync(join(campaign, "epoch-aa"), { recursive: true });
@@ -219,9 +204,22 @@ function providerRow(runId: string, taskId: string): CaseRecordRow {
   });
 }
 
-/** A valid provider-resource-budget/v2 snapshot with these role counts. */
+/** Write an empty case trace at `path` under `root`, returning the row's trace binding. */
+function writeTrace(root: string, path: string): { path: string; sha256: string }[] {
+  const trace = JSON.stringify({
+    schema: "case-trace/v4",
+    turns: [],
+    toolCalls: [],
+    truncated: false,
+    droppedRawEvents: 0,
+  });
+  mkdirSync(dirname(join(root, path)), { recursive: true });
+  writeFileSync(join(root, path), trace);
+  return [{ path, sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex") }];
+}
+
 /** Check the untyped script's output once. */
-function digestOf(paths: ReturnType<typeof fixture>): string {
+function digestOf(paths: DigestFixture): string {
   const digest: unknown = buildDigest(paths);
   if (!isString(digest)) throw new Error("buildDigest must return the digest text");
   return digest;
@@ -297,45 +295,25 @@ describe("digest", () => {
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });
 
-  it("refuses a pre-v5 decision by name rather than reading its retired counters", () => {
+  // Only the version separates a retired meaning from a current one, since `placed` is spelled the same
+  // in both vocabularies. A refusal must not read as the empty-section sentence either: absence says read
+  // the controller's decision reasons, refusal says read the campaign with the tree that wrote it.
+  it.each([
+    [
+      "an unversioned pre-v5 record",
+      { runId: "legacy-0", difficulty: { decision: { action: "climb" }, saturatedClimbs: 4, admitted: 4 } },
+      "no schema",
+    ],
+    ["a v3 record", { schema: "difficulty-decision/v3", runId: "old-0" }, "difficulty-decision/v3"],
+  ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
-    const dir = join(paths.campaign, "difficulty-decisions");
-    mkdirSync(dir);
-    // The shape a pre-v5 controller recorded. Its action word `climb` is not one of v5's four, but
-    // two of them — `placed` and `repeated-failure-set` — are spelled the same in both vocabularies,
-    // so nothing inside a record like this separates a retired meaning from a current one. The
-    // version is the whole of the evidence, and the ledger prints the file rather than the reading.
-    writeFileSync(
-      join(dir, "0.json"),
-      JSON.stringify({
-        runId: "legacy-0",
-        difficulty: {
-          decision: { action: "climb", currentLevel: 2, nextLevel: 3 },
-          saturatedLevels: 4,
-          saturatedClimbs: 4,
-          saturatedBroadens: 1,
-          admitted: 4,
-          excluded: [],
-        },
-      }),
-    );
+    mkdirSync(join(paths.campaign, "difficulty-decisions"));
+    writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain("refused, not difficulty-decision/v6 — 0.json: no schema");
-    expect(digest).not.toContain("legacy-0");
-    expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
-  });
-
-  it("says a decision was refused rather than falling through to the never-recorded line", () => {
-    const paths = fixture();
-    const dir = join(paths.campaign, "difficulty-decisions");
-    mkdirSync(dir);
-    writeFileSync(join(dir, "0.json"), JSON.stringify({ schema: "difficulty-decision/v3", runId: "old-0" }));
-    // Absence and refusal read alike in a ledger that prints neither, and they call for opposite
-    // moves: one says read the controller's own decision reasons, the other says read this campaign
-    // with the tree that wrote it. So the empty-section sentence must not stand in for a refusal.
-    const digest = digestOf(paths);
-    expect(digest).toContain("refused, not difficulty-decision/v6 — 0.json: difficulty-decision/v3");
+    expect(digest).toContain(`refused, not difficulty-decision/v6 — 0.json: ${reason}`);
+    expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
+    expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
   });
 
   it("raises the perfect-battery trigger off the zone that replaced the climb action", () => {
@@ -359,8 +337,9 @@ describe("digest", () => {
     expect(perfect("on-aim")).not.toContain("PERFECT BATTERY AFTER CLIMB");
   });
 
-  it("flags checks with reject controls but no measured rejection and counts those that rejected", () => {
+  it("reads the recorded check table, submits, decisions and roster, and never verifier issue text", () => {
     const digest = digestOf(fixture());
+    // Checks with reject controls but no measured rejection, and the submits that rejected.
     expect(digest).toContain("UNTRIPPED IN SHIPPING (rejCtl>0, shipRej=0 over 2 graded rows): alpha-check");
     expect(digest).not.toContain(
       "UNTRIPPED IN SHIPPING (rejCtl>0, shipRej=0 over 2 graded rows): alpha-check, beta-check",
@@ -368,6 +347,22 @@ describe("digest", () => {
     expect(digest).toContain("3 submits (refused:2 accepted:1)");
     expect(digest).toContain("topFindingsDigest aaaa1111 x2");
     expect(digest).not.toContain("surviving pairs");
+    // An absent decisions directory says no decision was recorded, not that the selector never ran.
+    expect(digest).toContain("no recorded difficulty decisions: no climb decision was recorded");
+    expect(digest).not.toContain("never ran");
+    // Each half of the check table names the terminal ledger and the exact tree it came from.
+    expect(digest).toContain("graded oracle rows: 2 (from 2 terminal case rows)");
+    expect(digest).toContain("correctness-model/controls.json");
+    expect(digest).toContain("a candidate battery may declare a different corpus");
+    expect(digest).toContain("measured adopted-tree demo-slug");
+    // A repeated candidate evaluator is flagged when the noun precedes the judging verb.
+    expect(digest).toContain("judge_pin_choice");
+    expect(digest).toContain(
+      "ORACLE-PREVIEW SUSPECT: repeated per-case candidate evaluation via public tool",
+    );
+    // Rule 4: verifier issue text never crosses into the digest.
+    expect(digest).not.toContain("secret-verifier-detail-7731");
+    expect(digest).not.toContain("missing token");
   });
 
   it("counts an omitted blocking field but not an explicit false or a warning", () => {
@@ -503,25 +498,9 @@ describe("digest", () => {
     expect(digestOf(paths)).toContain("case rows with solver instants: 1 of 3");
   });
 
-  it("says no climb decision was recorded instead of claiming the selector never ran", () => {
-    // run47-opus-0902: no difficulty-decisions directory, yet round 2's selector ran and chose rebuild.
-    const digest = digestOf(fixture());
-    expect(digest).toContain("no recorded difficulty decisions: no climb decision was recorded");
-    expect(digest).not.toContain("never ran");
-  });
-
-  it("names the terminal ledger and the exact tree each half of the check table came from", () => {
-    const digest = digestOf(fixture());
-    expect(digest).toContain("graded oracle rows: 2 (from 2 terminal case rows)");
-    expect(digest).toContain("correctness-model/controls.json");
-    expect(digest).toContain("a candidate battery may declare a different corpus");
-    expect(digest).toContain("measured adopted-tree demo-slug");
-  });
-
   it("keys the check table and tool roster on the candidate that graded the measured rows", () => {
-    // run23 and truss measured a candidate battery while this block read the adopted tree, so the
-    // rejCtl column described controls unused by the measured cases. Move the graded battery
-    // into a candidate root with its own corpus and tool spec: the digest must follow the rows.
+    // Move the graded battery into a candidate root with its own corpus and tool spec: the digest
+    // must follow the rows rather than read the adopted tree's unused controls.
     const paths = fixture();
     const adopted = join(paths.domainsRoot, "demo-slug");
     const candidate = join(paths.campaign, "candidates", "fullrun-i02");
@@ -565,14 +544,6 @@ describe("digest", () => {
     expect(digest).not.toContain("measured candidate");
   });
 
-  it("flags a repeated candidate evaluator when the noun precedes the judging verb", () => {
-    const digest = digestOf(fixture());
-    expect(digest).toContain("judge_pin_choice");
-    expect(digest).toContain(
-      "ORACLE-PREVIEW SUSPECT: repeated per-case candidate evaluation via public tool",
-    );
-  });
-
   it("excludes archived battery copies and solvability roots from terminal trace totals", () => {
     const paths = fixture();
     const root = join(paths.domainsRoot, "demo-slug");
@@ -591,12 +562,6 @@ describe("digest", () => {
     expect(digest).toContain("traces 2 · distinct tool sequences 1 · tool errors 0");
     expect(digest).toContain("submit                     2");
     expect(digest).not.toContain("traces 4");
-  });
-
-  it("never carries verifier issue text into the digest", () => {
-    const digest = digestOf(fixture());
-    expect(digest).not.toContain("secret-verifier-detail-7731");
-    expect(digest).not.toContain("missing token");
   });
 
   it("classifies a submit by the producer's kind and never by a terminal flag", () => {
@@ -675,7 +640,7 @@ describe("digest", () => {
     expect(damaged).not.toContain("epoch-aa: workshop 2 actions");
   });
 
-  // The 2026-09-08 ledgers (digest-ledgers.mjs). Each case writes the recorded shape a real
+  // The ledgers digest-ledgers.mjs reads. Each case writes the recorded shape a real
   // campaign carries and checks the trigger row a lane is admitted on, plus its nearest quiet shape.
   it("classifies provider non-results as censoring and flags a decision read on a censored battery", () => {
     const paths = fixture();
@@ -833,7 +798,7 @@ describe("digest", () => {
     expect(quiet).not.toContain("JUDGE CENSUS WITHOUT CONTROLS");
     expect(quiet).not.toContain("controlValidity");
 
-    // Run de8b40 recorded exactly this, 1 of 6, and the validated-only trigger hid it.
+    // One disagreement in six must still trigger; a validated-only trigger would hide it.
     writeFileSync(join(paths.campaign, "analysis", "run-1-judges.json"), judges(1));
     expect(digestOf(paths)).toContain("CENSUS WITH DISAGREEMENT (angle 2 trigger): 1 census(es)");
 
@@ -890,159 +855,129 @@ describe("digest", () => {
   });
 
   it("each measured product keeps its check corpus, join targets and case denominator", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-product-digest-"));
-    try {
-      const campaign = join(root, "campaigns", "demo");
-      const rows: CaseRecordRow[] = [];
-      for (const [id, verified, joins] of [
-        ["initial", 25, 6],
-        ["successor", 22, 9],
-      ] as const) {
-        const product = join(campaign, "versions", id);
-        mkdirSync(join(product, "correctness-model"), { recursive: true });
-        mkdirSync(join(product, "agent"));
-        writeFileSync(join(product, "correctness-model", "tasks.json"), "[]");
-        const checks = Array.from({ length: id === "initial" ? 7 : 8 }, (_, index) => ({
-          id: `check-${index}`,
-        }));
-        writeFileSync(
-          join(product, "correctness-model", "brief.json"),
-          JSON.stringify({ truthChecks: checks }),
-        );
-        writeFileSync(
-          join(product, "correctness-model", "controls.json"),
-          JSON.stringify({
-            reject: Array.from({ length: joins + 1 }, (_, index) =>
-              index < joins
-                ? { expectedCheckId: "check-0", targetsJoin: "bound-input" }
-                : { expectedCheckId: "check-0" },
-            ),
-          }),
-        );
-        for (let index = 0; index < 25; index++) {
-          const path = `runs/${id}/cases/t${index}/trace.json`;
-          const trace = JSON.stringify({
-            schema: "case-trace/v4",
-            turns: [],
-            toolCalls: [],
-            truncated: false,
-            droppedRawEvents: 0,
-          });
-          mkdirSync(join(product, "runs", id, "cases", `t${index}`), { recursive: true });
-          writeFileSync(join(product, path), trace);
-          if (index < verified) {
-            writeFileSync(
-              join(product, "runs", id, "cases", `t${index}`, "verifier.json"),
-              JSON.stringify({ ok: true, issues: [] }),
-            );
-          }
-          const traces = [{ path, sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex") }];
-          rows.push(
-            index < verified
-              ? caseRecordRow(`t${index}`, "fam", { runId: id, traces })
-              : caseRecordRow(`t${index}`, "fam", {
-                  runId: id,
-                  traces,
-                  acceptedSubmit: false,
-                  truthOk: null,
-                  pass: false,
-                }),
-          );
-        }
-        recordDigestBattery(product, [id]);
-      }
-      // A refused candidate and an unrelated claim cannot lend checks or grounding to shipping work.
-      mkdirSync(join(campaign, "candidates", "refused", "correctness-model"), { recursive: true });
+    const root = scratchDir("ana-product-digest-");
+    const campaign = join(root, "campaigns", "demo");
+    const rows: CaseRecordRow[] = [];
+    for (const [id, verified, joins] of [
+      ["initial", 25, 6],
+      ["successor", 22, 9],
+    ] as const) {
+      const product = join(campaign, "versions", id);
+      mkdirSync(join(product, "correctness-model"), { recursive: true });
+      mkdirSync(join(product, "agent"));
+      writeFileSync(join(product, "correctness-model", "tasks.json"), "[]");
+      const checks = Array.from({ length: id === "initial" ? 7 : 8 }, (_, index) => ({
+        id: `check-${index}`,
+      }));
       writeFileSync(
-        join(campaign, "candidates", "refused", "correctness-model", "brief.json"),
-        JSON.stringify({ truthChecks: [{ id: "refused-only" }] }),
+        join(product, "correctness-model", "brief.json"),
+        JSON.stringify({ truthChecks: checks }),
       );
-      mkdirSync(join(campaign, "claims"));
       writeFileSync(
-        join(campaign, "claims", "unrelated.json"),
+        join(product, "correctness-model", "controls.json"),
         JSON.stringify({
-          claim: { statement: { groundings: [{ checkId: "check-0", kind: "unrelated-grounding" }] } },
+          reject: Array.from({ length: joins + 1 }, (_, index) =>
+            index < joins
+              ? { expectedCheckId: "check-0", targetsJoin: "bound-input" }
+              : { expectedCheckId: "check-0" },
+          ),
         }),
       );
-      writeLedger(campaign, rows);
-      const digest: unknown = buildDigest({ campaign, domainsRoot: join(root, "domains") });
-      if (!isString(digest)) throw new Error("buildDigest must return digest text");
-      const initial = digest.split("product root:")[1] ?? "";
-      const successor = digest.split("product root:")[2] ?? "";
-      expect(initial).toContain("25 (from 25 terminal case rows)");
-      expect(initial).toMatch(/^check-0\s+reach-only\s+7\s+0\s+6\s+0$/m);
-      expect(initial).not.toContain("check-7");
-      expect(successor).toContain("22 (from 25 terminal case rows)");
-      expect(successor).toMatch(/^check-0\s+reach-only\s+10\s+0\s+9\s+0$/m);
-      expect(successor).toContain("check-7");
-      expect(digest).toContain("successor: graded 22 · unaccepted 3 · non-result 0");
-      expect(digest).not.toContain("over 47 graded rows");
-      expect(digest).not.toContain("refused-only");
-      expect(digest).not.toContain("unrelated-grounding");
-      writeFileSync(join(campaign, "case-record.jsonl"), "");
-      expect(buildDigest({ campaign, domainsRoot: join(root, "domains") })).toContain(
-        "no terminal case rows",
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+      for (let index = 0; index < 25; index++) {
+        const traces = writeTrace(product, `runs/${id}/cases/t${index}/trace.json`);
+        if (index < verified) {
+          writeFileSync(
+            join(product, "runs", id, "cases", `t${index}`, "verifier.json"),
+            JSON.stringify({ ok: true, issues: [] }),
+          );
+        }
+        rows.push(
+          index < verified
+            ? caseRecordRow(`t${index}`, "fam", { runId: id, traces })
+            : caseRecordRow(`t${index}`, "fam", {
+                runId: id,
+                traces,
+                acceptedSubmit: false,
+                truthOk: null,
+                pass: false,
+              }),
+        );
+      }
+      recordDigestBattery(product, [id]);
     }
+    // A refused candidate and an unrelated claim cannot lend checks or grounding to shipping work.
+    mkdirSync(join(campaign, "candidates", "refused", "correctness-model"), { recursive: true });
+    writeFileSync(
+      join(campaign, "candidates", "refused", "correctness-model", "brief.json"),
+      JSON.stringify({ truthChecks: [{ id: "refused-only" }] }),
+    );
+    mkdirSync(join(campaign, "claims"));
+    writeFileSync(
+      join(campaign, "claims", "unrelated.json"),
+      JSON.stringify({
+        claim: { statement: { groundings: [{ checkId: "check-0", kind: "unrelated-grounding" }] } },
+      }),
+    );
+    writeLedger(campaign, rows);
+    const digest = digestOf({ campaign, domainsRoot: join(root, "domains") });
+    const initial = digest.split("product root:")[1] ?? "";
+    const successor = digest.split("product root:")[2] ?? "";
+    expect(initial).toContain("25 (from 25 terminal case rows)");
+    expect(initial).toMatch(/^check-0\s+reach-only\s+7\s+0\s+6\s+0$/m);
+    expect(initial).not.toContain("check-7");
+    expect(successor).toContain("22 (from 25 terminal case rows)");
+    expect(successor).toMatch(/^check-0\s+reach-only\s+10\s+0\s+9\s+0$/m);
+    expect(successor).toContain("check-7");
+    expect(digest).toContain("successor: graded 22 · unaccepted 3 · non-result 0");
+    expect(digest).not.toContain("over 47 graded rows");
+    expect(digest).not.toContain("refused-only");
+    expect(digest).not.toContain("unrelated-grounding");
+    writeFileSync(join(campaign, "case-record.jsonl"), "");
+    expect(digestOf({ campaign, domainsRoot: join(root, "domains") })).toContain("no terminal case rows");
   });
 
   it("copied traces use their battery's product fingerprint, or report the missing product", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-shared-traces-"));
-    try {
-      const campaign = join(root, "campaigns", "demo");
-      const domain = join(root, "domains", "demo");
-      const old = join(campaign, "versions", "old");
-      mkdirSync(join(domain, "correctness-model"), { recursive: true });
-      mkdirSync(join(domain, "agent"));
-      const rows: CaseRecordRow[] = [];
-      for (const id of ["old", "new"]) {
-        writeFileSync(
-          join(domain, "correctness-model", "brief.json"),
-          JSON.stringify({ truthChecks: [{ id: `${id}-only` }] }),
-        );
-        const path = `runs/${id}/cases/task/trace.json`;
-        const trace = JSON.stringify({
-          schema: "case-trace/v4",
-          turns: [],
-          toolCalls: [],
-          truncated: false,
-          droppedRawEvents: 0,
-        });
-        mkdirSync(join(domain, "runs", id, "cases", "task"), { recursive: true });
-        writeFileSync(join(domain, path), trace);
-        writeFileSync(
-          join(domain, "runs", id, "cases", "task", "verifier.json"),
-          JSON.stringify({ ok: true, issues: [] }),
-        );
-        rows.push(
-          caseRecordRow("task", "fam", {
-            runId: id,
-            traces: [{ path, sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex") }],
-          }),
-        );
-        recordDigestBattery(domain, [id]);
-        if (id === "old") {
-          cpSync(join(domain, "agent"), join(old, "agent"), { recursive: true });
-          cpSync(join(domain, "correctness-model"), join(old, "correctness-model"), { recursive: true });
-        }
-      }
-      writeLedger(campaign, rows);
-      const digest: unknown = buildDigest({ campaign, domainsRoot: join(root, "domains") });
-      if (!isString(digest)) throw new Error("buildDigest must return digest text");
-      expect(digest.split("product root:")[1]).toContain("old-only");
-      expect(digest.split("product root:")[1]).not.toContain("new-only");
-      expect(digest.split("product root:")[2]).toContain("new-only");
-      rmSync(old, { recursive: true, force: true });
-      const missing = buildDigest({ campaign, domainsRoot: join(root, "domains") });
-      expect(missing).toContain(
-        "product binding unresolved: old — no retained product matches battery fingerprint",
+    const root = scratchDir("ana-shared-traces-");
+    const campaign = join(root, "campaigns", "demo");
+    const domain = join(root, "domains", "demo");
+    const old = join(campaign, "versions", "old");
+    mkdirSync(join(domain, "correctness-model"), { recursive: true });
+    mkdirSync(join(domain, "agent"));
+    const rows: CaseRecordRow[] = [];
+    for (const id of ["old", "new"]) {
+      writeFileSync(
+        join(domain, "correctness-model", "brief.json"),
+        JSON.stringify({ truthChecks: [{ id: `${id}-only` }] }),
       );
-      expect(missing).not.toContain("old-only");
-      expect(missing).toContain("old: graded 1 · unaccepted 0 · non-result 0");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+      const traces = writeTrace(domain, `runs/${id}/cases/task/trace.json`);
+      writeFileSync(
+        join(domain, "runs", id, "cases", "task", "verifier.json"),
+        JSON.stringify({ ok: true, issues: [] }),
+      );
+      rows.push(
+        caseRecordRow("task", "fam", {
+          runId: id,
+          traces,
+        }),
+      );
+      recordDigestBattery(domain, [id]);
+      if (id === "old") {
+        cpSync(join(domain, "agent"), join(old, "agent"), { recursive: true });
+        cpSync(join(domain, "correctness-model"), join(old, "correctness-model"), { recursive: true });
+      }
     }
+    writeLedger(campaign, rows);
+    const paths = { campaign, domainsRoot: join(root, "domains") };
+    const digest = digestOf(paths);
+    expect(digest.split("product root:")[1]).toContain("old-only");
+    expect(digest.split("product root:")[1]).not.toContain("new-only");
+    expect(digest.split("product root:")[2]).toContain("new-only");
+    rmSync(old, { recursive: true, force: true });
+    const missing = digestOf(paths);
+    expect(missing).toContain(
+      "product binding unresolved: old — no retained product matches battery fingerprint",
+    );
+    expect(missing).not.toContain("old-only");
+    expect(missing).toContain("old: graded 1 · unaccepted 0 · non-result 0");
   });
 });

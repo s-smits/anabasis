@@ -1,19 +1,18 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   buildReviewYield,
   epochReviewer,
   renderReviewYield,
   repairEngineer,
 } from "../.claude/skills/whole-run-investigation/scripts/review-yield.mjs";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, utimesSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";
 import { REBUILD_ADVICE_SCHEMA } from "../src/author/rebuild-advice.ts";
 import { DIAGNOSIS_READING_SCHEMA } from "../src/review/diagnosis-reader.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 
-const dirs: string[] = [];
 type Yield = {
   verdict: string;
   summary: {
@@ -37,17 +36,11 @@ type Yield = {
 type JsonValue = string | number | boolean | null | JsonValue[] | { [field: string]: JsonValue };
 type RecordedEvidence = { [field: string]: JsonValue };
 
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 /** An empty campaign with analysis and promotion directories; each test adds its records. */
 function campaign(): string {
-  const root = mkdtempSync(join(tmpdir(), "ana-review-yield-"));
-  dirs.push(root);
+  const root = scratchDir("ana-review-yield-");
   mkdirSync(join(root, "analysis"), { recursive: true });
   mkdirSync(join(root, "promotions"), { recursive: true });
   return root;

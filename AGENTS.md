@@ -1309,7 +1309,7 @@ For a stack, write down `parent head → child head` for every edge, restack fro
 edge, and propagate through the later children in order. If the bottom PR lacks current main, every
 descendant is behind main through inherited ancestry even when the internal edges pass — though
 surrounding-only main changes do not require a source restack. Name the first stale edge and the
-full affected suffix.
+full affected suffix. Fix a stack bottom to top, resolving each conflict once.
 
 A stack is linear. Each pull request's branch is its parent's head followed by its own commits,
 with no merge commit in it, so its range reads as exactly the work it proposes, in the order it

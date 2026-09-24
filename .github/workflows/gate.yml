@@ -1,5 +1,7 @@
 # The composed gate on GitHub Actions: the same deterministic runtime, typecheck, lint and test
-# boundary as the pre-push hook in .githooks/pre-push. A concurrency group cancels superseded runs.
+# boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this runs
+# once a day on main, and on demand, to catch what only a clean runner shows. It is not a required
+# check, so a pull request merges without it.
 #
 # Both jobs use the stable release in .bun-version, shared with local setup and launch.
 #
@@ -13,9 +15,10 @@
 # repository, and `assertSupportedHostRuntime` accepts Linux — it pins the runtime, not the OS.
 name: gate
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    # A scheduled run always checks out the default branch, so this is main as it stands that day.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 concurrency:
   group: gate-${{ github.ref }}
   cancel-in-progress: true

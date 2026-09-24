@@ -7,10 +7,10 @@
  * The census, which already ran inside the battery, checks the Judge against the verifier. The
  * epoch reviewer reads the measured tree and asks whether the result reflects the requested
  * capability; a weak evaluation can produce passes without exposing its omissions in failures.
- * The diagnosis reader proposes causes for the unresolved issues that are
- * left. None of them changes a pass, an acceptance, a claim or a promotion: the reviewer's findings
- * enter the same admission gate as every host finding, and the diagnosis reader only annotates
- * issues the controller derived.
+ * The diagnosis reader reads the solver's traces and locates where the harness failed it on the
+ * standing issues that are left. None of them changes a pass, an acceptance, a claim or a
+ * promotion: the reviewer's findings enter the same admission gate as every host finding, and the
+ * diagnosis reader only annotates issues the controller derived.
  *
  * Publication order preserves completed evidence. Admission and the issue register are written
  * from host and Judge evidence before either advisory model turn, then updated with reader results. The
@@ -72,7 +72,7 @@ export interface AnalyseStepResult {
 }
 
 /** Reader results decided locally, before or without a model turn. */
-const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off", "no-offered-issue"]);
+const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off"]);
 
 interface AnalyseStepOptions {
   safeguardContext?: SafeguardContext;
@@ -164,9 +164,9 @@ export async function analyseStep(
   const reading = await readDiagnoses({
     repoRoot,
     analysis,
+    measuredDir,
     advice: derived,
     review,
-    ...keyIfDefined("safeguardContext", options.safeguardContext),
     ...keyIfDefined("observer", observer),
     ...keyIfDefined("providerBudget", providerBudget),
   });

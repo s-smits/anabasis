@@ -173,7 +173,7 @@ export function iterationMemoryFindings(campaignDir: string): ContractFinding[] 
   // one-offs from the oldest pass, and the line renders as if nothing were missing while the repeat
   // count sits unread in the map's value. A label several passes carry is a habit; one pass's label
   // is an incident, and the habit is what this line means. The other bounded lists cut the same
-  // way: `standingIssues` sorts by rate first, the advice packet's issue block by count.
+  // way: `diagnosableIssues` sorts by rate first, the advice packet's issue block by count.
   const refusals = [...seen.entries()].sort(([, a], [, b]) => b.length - a.length).slice(0, MAX_REFUSALS);
   if (refusals.length > 0) {
     const rendered = refusals.map(([refusal, passes]) => `${refusal} in ${passes.join(", ")}`).join("; ");

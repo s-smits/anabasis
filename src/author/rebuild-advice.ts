@@ -23,8 +23,9 @@
  *
  * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
  * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
- * and `FINDING_CLAIM_CHARS` per claim. Diagnosis prose stays recorded here and never crosses into
- * authoring.
+ * and `FINDING_CLAIM_CHARS` per claim. A diagnosis crosses as its layer, intervention, boundary
+ * and falsifier, which the diagnosis reader drew from solver traces and public context alone; its
+ * causal argument stays recorded here.
  */
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { authorSessionOwner } from "../analyse/finding-owner.ts";
@@ -35,8 +36,6 @@ import { canonicalJson } from "../meta/stable-json.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
-import type { FeedbackOwner } from "./campaign-types.ts";
-import { ownerTarget } from "./feedback-routing.ts";
 import {
   findingSeverity,
   namedSubject,
@@ -47,7 +46,7 @@ import {
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v4";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v5";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -66,26 +65,45 @@ type AdviceIssueKind =
   /** The Judge failed what the verifier passed: a disclosure about the verifier's accept. */
   | "judge-failed-verifier-passed";
 
-/** A reader's causal claim about one issue, with the observation that would refute it. Both halves
- *  are required, because a cause that cannot be wrong tells the next authoring pass nothing it can
- *  check. */
+/** Where in the harness the diagnosis reader locates a failure: the part of the Built Harness a
+ *  repair would touch. `solver` says the harness gave the solver what it needed and the solve still
+ *  went wrong, which is a finding in its own right rather than an abstention. */
+export const DIAGNOSIS_LAYERS = [
+  "operating-guide",
+  "tool-contract",
+  "tool-behaviour",
+  "representation",
+  "walls",
+  "missing-tool",
+  "solver",
+] as const;
+export type DiagnosisLayer = (typeof DIAGNOSIS_LAYERS)[number];
+
+/** The kind of change the diagnosis proposes, independent of which file carries it. */
+export const DIAGNOSIS_INTERVENTIONS = ["publish", "correct", "extend", "raise-wall", "none"] as const;
+export type DiagnosisIntervention = (typeof DIAGNOSIS_INTERVENTIONS)[number];
+
+/** A structured reading of why one or more issues' solves failed, located at a step of a recorded
+ *  trace, with the observation that would refute it. It is advice: it selects no owner and changes
+ *  no count, and the controller's own routing still decides where any repair goes. */
 export type IssueDiagnosis = {
-  /** The causal hypothesis: what made this family fail. */
-  cause: string;
-  /** The observation that would show the cause is wrong. */
-  falsifier: string;
-  /** First observed failure boundary, compared with a passing trace only when one was supplied. */
-  firstDivergence: string;
-  /** The authoring area the reader believes owns the cause. This is advice with no authority: the
-   *  controller's own routing still decides where a repair goes, and nothing here selects one. */
-  interventionClass: FeedbackOwner;
-  /** What a passing case of the same family did differently, or null when the family had none to
-   *  contrast against. A cause that explains the pass as well as the failure is not a cause. */
-  contrastSuccess: string | null;
-  confidence: "low" | "medium" | "high";
   /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
    *  describes the battery in front of the author. */
   runId: string;
+  layer: DiagnosisLayer;
+  intervention: DiagnosisIntervention;
+  /** The first observed failure boundary: the tool called at that step, or null when the boundary is
+   *  the solve's end (a wall, a missing submission), and what the trace shows there. */
+  boundary: { tool: string | null; reading: string };
+  /** The causal argument. Recorded for review and never rendered to the author. */
+  cause: string;
+  /** One observation a later battery could record that would show the reading is wrong. */
+  falsifier: string;
+  /** Sampled failing cases the reader said the reading holds for, of those it was shown, of all the
+   *  cases carrying the issues, and the passing contrasts it cited. */
+  support: { cases: number; shown: number; matching: number; contrasts: number };
+  /** Derived from `support` by the controller, never stated by the reader. */
+  confidence: "low" | "medium" | "high";
 };
 
 export type AdviceIssue = {
@@ -109,7 +127,7 @@ export type AdviceIssue = {
    *  no fix, which is why it is a separate fact from absence: read as absence, it would age towards
    *  fixed while the advice asked the author to move something it cannot observe. */
   retired: boolean;
-  /** The diagnosis reader's falsifiable causal claim; null when none was read or the reading
+  /** The diagnosis reader's structured reading; null when none was read or the reading
    *  failed. It is carried forward while the issue lives, so one reading serves later batteries. */
   diagnosis: IssueDiagnosis | null;
   /** The epoch reviewer's argument that this failure belongs to the evaluation. The register keeps
@@ -172,9 +190,7 @@ type Observed = {
 /** Standing issues the render shows, and the findings and claim length beside them. Unbounded, one
  *  unowned finding alone can run to fifteen thousand characters, and an author reading a defect
  *  list that long writes a defect fix. These three hold the packet at a few thousand characters
- *  whatever the battery did, while the register goes on recording every issue it derived. Six
- *  matches the standing issues the diagnosis reader offers, so the two mean the same by
- *  "standing". */
+ *  whatever the battery did, while the register goes on recording every issue it derived. */
 const RENDERED_ISSUES = 6;
 const RENDERED_FINDINGS = 4;
 const FINDING_CLAIM_CHARS = 600;
@@ -370,12 +386,16 @@ function agedIssue(
 export function attachIssueReadings(
   packet: RebuildAdvicePacket,
   readings: {
-    diagnoses?: ReadonlyArray<IssueDiagnosis & { issueId: string }>;
+    diagnoses?: ReadonlyArray<{ issueIds: readonly string[]; diagnosis: IssueDiagnosis }>;
     disputes?: ReadonlyArray<{ issueId: string; reason: string }>;
   },
 ): RebuildAdvicePacket {
+  // One reading may cover several issues, which is how the reader says two kinds in two families
+  // are one harness flaw; each issue it names carries the same reading.
   const diagnosed = new Map(
-    (readings.diagnoses ?? []).map(({ issueId, ...diagnosis }) => [issueId, diagnosis] as const),
+    (readings.diagnoses ?? []).flatMap(({ issueIds, diagnosis }) =>
+      issueIds.map((issueId) => [issueId, diagnosis] as const),
+    ),
   );
   const disputed = new Map((readings.disputes ?? []).map((row) => [row.issueId, row.reason] as const));
   if (diagnosed.size === 0 && disputed.size === 0) return packet;
@@ -533,11 +553,24 @@ function issueLine(issue: AdviceIssue): string {
     ? `environment non-results of kind ${kind}`
     : `runtime non-results of kind ${kind}, a kind that does not establish an environment failure`;
   const words = issue.kind === "non-result" ? nonResult : ISSUE_WORDS[issue.kind];
-  const diagnosis =
-    issue.diagnosis === null
-      ? ""
-      : `\n  diagnosis (${issue.diagnosis.runId}, ${issue.diagnosis.confidence} confidence, points at ${ownerTarget(issue.diagnosis.interventionClass)})`;
+  const diagnosis = issue.diagnosis === null ? "" : `\n  ${diagnosisLine(issue.diagnosis)}`;
   return `- [${issueStatusWord(issue)}] ${issue.family}: ${issue.count}/${issue.denominator} ${words} (first seen ${issue.firstSeenRunId}, last seen ${issue.lastSeenRunId})${diagnosis}`;
+}
+
+/** The diagnosis as the author reads it: where the harness failed, what kind of change it points
+ *  to, and what would prove it wrong. The cause stays in review evidence, because the boundary and
+ *  the falsifier are the parts a next pass can check against its own traces, and a causal paragraph
+ *  is the part an author adopts without checking. The support counts say how far one reading was
+ *  sampled, so a reading drawn from one case does not read like a pattern. */
+export function diagnosisLine(diagnosis: IssueDiagnosis): string {
+  const { support, boundary } = diagnosis;
+  const contrasts =
+    support.contrasts === 0
+      ? ", no passing contrast"
+      : `, ${support.contrasts} passing contrast${support.contrasts === 1 ? "" : "s"}`;
+  const where = boundary.tool === null ? "at the solve's end" : `at a call to ${boundary.tool}`;
+  const reading = /[.!?]$/.test(boundary.reading) ? boundary.reading : `${boundary.reading}.`;
+  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.layer} layer, intervention ${diagnosis.intervention}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
 }
 
 /** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families

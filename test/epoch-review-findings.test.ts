@@ -25,13 +25,13 @@ import {
 import { authoringReviewText, recordAuthoringDisputes } from "../src/run/harness-build.ts";
 import {
   attachIssueReadings,
+  isStanding,
   issueStatusWord,
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
   renderRebuildAdvice,
 } from "../src/author/rebuild-advice.ts";
 import type { AdviceIssue } from "../src/author/rebuild-advice.ts";
-import { standingIssues } from "../src/review/diagnosis-reader.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
@@ -485,7 +485,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         publicEpochReview({ status: "completed", ...state }),
       );
       expect(state.disputes).toHaveLength(0);
-      expect(standingIssues(advice.issues).map((row) => row.id)).toEqual([BEAMS]);
+      expect(advice.issues.filter(isStanding).map((row) => row.id)).toEqual([BEAMS]);
       expect(renderRebuildAdvice(advice)).not.toContain("evaluation defect");
     }
   });

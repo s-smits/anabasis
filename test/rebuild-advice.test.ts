@@ -704,28 +704,17 @@ describe("the issue register and its projection", () => {
       ...advice,
       issues: [
         priorIssue({
-          diagnosis: {
-            cause: "PLANTED-CAUSE",
-            firstDivergence: "PLANTED-DIVERGENCE",
-            interventionClass: "brief",
-            contrastSuccess: "PLANTED-CONTRAST",
-            falsifier: "PLANTED-FALSIFIER",
-            confidence: "low",
-            runId: "r1",
-          },
+          diagnosis: { ...READING, cause: "PLANTED-CAUSE", runId: "r1", confidence: "low" },
         }),
         priorIssue({ family: "joints", dispute: "PLANTED-DISPUTE" }),
       ],
     };
     const diagnosed = renderRebuildAdvice(withReadings);
-    expect(diagnosed).toContain("r1, low confidence, points at brief");
-    for (const planted of [
-      "PLANTED-CAUSE",
-      "PLANTED-DIVERGENCE",
-      "PLANTED-CONTRAST",
-      "PLANTED-FALSIFIER",
-      "PLANTED-DISPUTE",
-    ]) {
+    expect(diagnosed).toContain("diagnosis (r1, low confidence");
+    // The reader's prompt holds no protected detail, so its located boundary and its falsifier
+    // reach the author; the cause is its free argument and stays recorded, as a dispute's prose does.
+    expect(diagnosed).toContain(READING.falsifier);
+    for (const planted of ["PLANTED-CAUSE", "PLANTED-DISPUTE"]) {
       expect(diagnosed).not.toContain(planted);
     }
     const changed: RebuildAdvicePacket = {
@@ -735,16 +724,7 @@ describe("the issue register and its projection", () => {
         // A dispute's presence is public (the render names the family); only its prose is private.
         ...row,
         dispute: row.dispute === null ? null : "different private dispute",
-        diagnosis:
-          row.diagnosis === null
-            ? null
-            : {
-                ...row.diagnosis,
-                cause: "different private cause",
-                firstDivergence: "different private location",
-                contrastSuccess: "different passing contrast",
-                falsifier: "different private falsifier",
-              },
+        diagnosis: row.diagnosis === null ? null : { ...row.diagnosis, cause: "different private cause" },
       })),
     };
     expect(hashJsonBytes(changed)).not.toBe(hashJsonBytes(withReadings));
@@ -951,7 +931,7 @@ describe("the issue register and its projection", () => {
 describe("a reading attaches to an issue without changing what the battery counted", () => {
   it("attaches a diagnosis to the named issue without changing counts or status", () => {
     const before = advicePacket([issue(), issue({ id: JOINTS, kind: "unaccepted", family: "joints" })]);
-    const after = attachIssueReadings(before, { diagnoses: [READING] });
+    const after = attachIssueReadings(before, { diagnoses: [{ issueIds: [BEAMS], diagnosis: READING }] });
     expect(after.issues[0]?.diagnosis?.cause).toBe(READING.cause);
     expect(after.issues[0]?.count).toBe(2);
     expect(issueStatusWord(after.issues[0] ?? issue())).toBe("active");
@@ -1033,16 +1013,31 @@ describe("what the author reads", () => {
     expect(rendered).not.toContain("- [disputed]");
   });
 
-  it("a diagnosis publishes review metadata while its prose stays private", () => {
+  it("a diagnosis publishes its layer, boundary, intervention and falsifier, and keeps its cause", () => {
     const rendered = renderRebuildAdvice(advicePacket([issue({ diagnosis: READING })]));
-    for (const text of [READING.cause, READING.falsifier, READING.firstDivergence, READING.contrastSuccess]) {
-      expect(rendered).not.toContain(text);
-    }
-    expect(rendered).toContain("medium confidence");
-    expect(rendered).toContain("points at tools-spec");
-    expect(
-      renderRebuildAdvice(advicePacket([issue({ diagnosis: { ...READING, contrastSuccess: null } })])),
-    ).toBe(rendered);
+    expect(rendered).toContain(
+      "diagnosis (r2, medium confidence: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): tool-contract layer, intervention correct.",
+    );
+    expect(rendered).toContain(
+      `First failure boundary at a call to write_layout: ${READING.boundary.reading}. Falsifier:`,
+    );
+    expect(rendered).toContain(`Falsifier: ${READING.falsifier}`);
+    expect(rendered).not.toContain(READING.cause);
+    const atEnd = renderRebuildAdvice(
+      advicePacket([
+        issue({
+          diagnosis: {
+            ...READING,
+            boundary: { tool: null, reading: "the turn cap ended the solve mid-draft" },
+            support: { ...READING.support, contrasts: 0 },
+          },
+        }),
+      ]),
+    );
+    expect(atEnd).toContain("no passing contrast");
+    expect(atEnd).toContain(
+      "First failure boundary at the solve's end: the turn cap ended the solve mid-draft",
+    );
   });
 
   it("environment non-results do not instruct a rebuild to change the harness", () => {

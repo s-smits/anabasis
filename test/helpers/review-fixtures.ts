@@ -10,11 +10,11 @@
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import {
   type AdviceIssue,
+  type IssueDiagnosis,
   type RebuildAdvicePacket,
   REBUILD_ADVICE_SCHEMA,
   adviceIssueId,
 } from "../../src/author/rebuild-advice.ts";
-import type { DiagnosisReaderEvidence } from "../../src/review/diagnosis-reader.ts";
 import type { ReviewState } from "../../src/review/epoch-review-findings.ts";
 import { emptyProbeState } from "../../src/review/review-probe.ts";
 import type { ReaderTool } from "../../src/review/review-reader.ts";
@@ -37,6 +37,22 @@ export const REVIEW_IDENTITY = {
   reviewerEffort: "low",
   requestDigest: "request-digest",
   obligationsDigest: "obligations-digest",
+};
+
+/** A diagnosis the reader produced, complete enough that every field has a recorded value. Its
+ *  cause is the one field that stays in the record; the render test checks that it does. */
+export const READING: IssueDiagnosis = {
+  runId: "r2",
+  layer: "tool-contract",
+  intervention: "correct",
+  boundary: {
+    tool: "write_layout",
+    reading: "the writer's second call omits the joint list the schema requires",
+  },
+  cause: "the writer tool cannot express a pinned joint",
+  falsifier: "a beams solve writes a pinned joint through write_layout and still fails",
+  support: { cases: 2, shown: 3, matching: 3, contrasts: 1 },
+  confidence: "medium",
 };
 
 export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {
@@ -70,35 +86,6 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     issues,
     judge: null,
     findings: [],
-  };
-}
-
-/** A diagnosis the reader produced, complete enough that every field has a recorded value. Tests
- *  that check what stays private need one whose prose must not appear in the rendered advice. */
-export const READING = {
-  issueId: BEAMS,
-  cause: "the writer tool cannot express a pinned joint",
-  falsifier: "a beams task passes with a pinned joint",
-  firstDivergence: "the writer's second call omits the joint list the schema requires",
-  interventionClass: "tools-spec" as const,
-  contrastSuccess: "the passing case of this family needed no pinned joint",
-  confidence: "medium" as const,
-  runId: "r2",
-};
-
-/** The record a diagnosis tool writes into, offering one issue and holding nothing yet. */
-export function diagnosisSink(): DiagnosisReaderEvidence {
-  return {
-    schema: "diagnosis-reading/v1",
-    slug: "truss",
-    runId: "r2",
-    readerPin: null,
-    offered: [BEAMS],
-    diagnoses: [],
-    abstentions: [],
-    refused: 0,
-    error: null,
-    readerText: null,
   };
 }
 

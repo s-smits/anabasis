@@ -18,6 +18,7 @@ import {
 } from "./common.mjs";
 import { currentDiagnosis } from "./current-readers.mjs";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
+import { DIAGNOSIS_READING_SCHEMA } from "#src/review/diagnosis-reader.ts";
 
 export const REPAIR_OWNERS = new Set(["tools-spec", "instructions", "fingerprint", "correctness-model"]);
 
@@ -84,8 +85,9 @@ function row(campaignDir, runId, nextRunId) {
   const judges = readAnalysis(campaignDir, runId, "judges");
   const admission = readAnalysis(campaignDir, runId, "admission");
   const coverage = isRecord(judges) && isRecord(judges.coverage) ? judges.coverage : null;
-  const diagnosable = Number.isInteger(coverage?.diagnosable) ? coverage.diagnosable : 0;
-  const diagnosed = Number.isInteger(coverage?.diagnosed) ? coverage.diagnosed : 0;
+  // `Number.isInteger` proves the value but narrows no type, so the proven integer is restated as one.
+  const diagnosable = Number.isInteger(coverage?.diagnosable) ? Number(coverage.diagnosable) : 0;
+  const diagnosed = Number.isInteger(coverage?.diagnosed) ? Number(coverage.diagnosed) : 0;
   const owned = ownedFindings(judges);
   const consumed = consumer(runId, admission, owned);
   const { nextOwner, changed, shared } = nextRepair(campaignDir, nextRunId, consumed);
@@ -125,7 +127,7 @@ export function collect(campaignDir) {
     );
   }
   const current = rows.filter(
-    (entry) => entry.evidenceSchema === "diagnosis-reading/v1" && entry.opportunity === true,
+    (entry) => entry.evidenceSchema === DIAGNOSIS_READING_SCHEMA && entry.opportunity === true,
   );
   if (current.length > 0) {
     reasons.push(

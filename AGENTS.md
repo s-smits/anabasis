@@ -1065,6 +1065,24 @@ dependencies, and only then minimum new code. Preserve trust validation, data-lo
 security, accessibility and requested behaviour. Reuse the focused checks and the ordinary gate.
 If no useful cut remains, say "already the smallest honest form".
 
+### Versions
+
+The repository follows Semantic Versioning, and a version has one owner: a `vMAJOR.MINOR.PATCH`
+tag on a commit of `main`, published as the GitHub release of the same name with
+`gh release create v<X.Y.Z> --target <full sha>`. Nothing in the tree has a version of its own: the
+root `package.json` carries none, and the `version` in `packages/ui/package.json` follows the
+repository's, so a release commit sets it to the number the tag will carry. `v0.0.1` marks `main`
+at `fae8fdb`, the state before PR #7 landed, where the UI package still read `0.1.0` (operator
+decision 2026-09-24).
+
+The operator decides when a version is cut and which part moves, and an agent never bumps one on
+its own initiative, not even after landing a stack. An incremental release moves the patch number
+(`0.0.1` to `0.0.2`), a bigger one the minor number (`0.0.2` to `0.1.0`), and a breaking one, the
+operator's "proud" release, the major number (`0.1.0` to `1.0.0`), each resetting the parts to its
+right. When asked, tag the exact commit the operator names, or current `origin/main` when none is
+named, and say which commit that was, because local `main` can hold documentation commits that
+were never pushed.
+
 ### Where changes go
 
 Surrounding files are `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md` — exactly the

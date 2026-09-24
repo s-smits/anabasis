@@ -19,7 +19,6 @@ import {
   parseGeneratedSource,
   validateAgentBundle,
 } from "./bundle-validation.ts";
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { scoringClosureHash } from "./scoring-closure.ts";
 
 /** The evaluation identity one measurement was labelled under: the scoring program plus the
@@ -87,7 +86,7 @@ export function batteryHash(correctnessModelDir: string): string | null {
  */
 export function fingerprintSlug(
   slugDir: string,
-  opts?: { slug?: string; allow?: string[] },
+  opts?: { slug?: string },
 ): FingerprintEvidence | FingerprintRejection {
   const slug = opts?.slug ?? slugDir.split("/").findLast(Boolean) ?? slugDir;
   const agentDir = join(slugDir, "agent");
@@ -114,7 +113,7 @@ export function fingerprintSlug(
   // Generated builds write brief.json before authoring the correctness model, so its presence is
   // what selects the capability scan below; a read-only fixture without that marker skips it.
   const generated = existsSync(join(correctnessModelDir, basename(BRIEF_FILE)));
-  const validation = validateAgentBundle(agentDir, keyIfDefined("allow", opts?.allow));
+  const validation = validateAgentBundle(agentDir);
   if (!validation.ok) return { ok: false, slug, findings: validation.findings };
 
   // Validation already walked agent/, and an irregular entry there returned findings above. The

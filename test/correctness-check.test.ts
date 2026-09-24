@@ -147,8 +147,8 @@ function session(dir: string, options: Session) {
         },
       ),
     expectedTasks: 4,
-    ...keyIfDefined("feedback", options.feedback),
-    ...keyIfDefined("planAdvice", options.planAdvice),
+    feedback: options.feedback ?? new BuilderAuthorFeedback(),
+    planAdvice: options.planAdvice ?? (() => []),
   });
   let receipt: BuilderCustomToolSemantic | undefined;
   const check = async () => {
@@ -286,6 +286,8 @@ describe("correctness_check", () => {
         throw new Error("the description needs no preview");
       },
       expectedTasks: 4,
+      feedback: new BuilderAuthorFeedback(),
+      planAdvice: () => [],
     });
     for (const gate of ["installed tools", "EXPERIMENT.json", "conformance", "control census", "F2"]) {
       expect(description).toContain(gate);

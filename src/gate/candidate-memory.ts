@@ -45,15 +45,14 @@ type Refusal = { terminal?: boolean; findings: ContractFinding[] };
  */
 class NoopStrikes {
   constructor(
-    private key: string | null = null,
-    private count = 0,
-    private readonly ceiling: number = POLICY.loop.noopSubmitStrikes,
+    private key: string | null,
+    private count: number,
   ) {}
 
   strike(key: string) {
     this.count = key === this.key ? this.count + 1 : 0;
     this.key = key;
-    return { count: this.count, terminal: this.count >= this.ceiling };
+    return { count: this.count, terminal: this.count >= POLICY.loop.noopSubmitStrikes };
   }
 }
 

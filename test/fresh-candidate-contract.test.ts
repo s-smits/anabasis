@@ -21,13 +21,14 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { initWorkspace, workspaceHead, workspaceStatus } from "../src/author/domain-repo.ts";
+import { commitAll, initWorkspace, workspaceHead, workspaceStatus } from "../src/author/domain-repo.ts";
 import { freshCandidateFindings } from "../src/author/fresh-candidate-contract.ts";
 import {
   type CandidateCheckContext,
   type CandidateCheckOutcome,
   loadValidatedBundle,
   checkCandidate,
+  retiredToolFindings,
   validatedBundle,
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
@@ -558,6 +559,75 @@ describe("the operating guide", () => {
       accept(dir);
     });
   }
+
+  // A guide names tools the solver will not have when the roster moved and the guide did not. The
+  // workspace's own history is what tells a retired tool from any other word in a code span, so the
+  // case declares one, commits, and then retires it.
+  const retire = (dir: string, name: string): void => {
+    const retired = { name, kind: "advisor", description: "an adviser this bundle later removed" };
+    writeJson(dir, "agent/tools-spec.json", {
+      ...MATCHING_TOOLS_SPEC,
+      tools: [...MATCHING_TOOLS_SPEC.tools, retired],
+    });
+    commitAll(dir, "declare an adviser");
+    writeJson(dir, "agent/tools-spec.json", MATCHING_TOOLS_SPEC);
+  };
+
+  it("refuses a guide still naming a tool this bundle has since retired", () => {
+    const dir = workspace();
+    retire(dir, "signal_reference");
+    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
+    expect(refuse(dir).findings).toContainEqual(
+      expect.objectContaining({
+        code: "operating-guide-retired-tool",
+        path: "agent/BUILT_AGENTS.md",
+        detail: expect.stringContaining("signal_reference"),
+      }),
+    );
+  });
+
+  it("refuses each retired tool a guide names on its own, so every finding names one tool", () => {
+    const dir = workspace();
+    retire(dir, "signal_reference");
+    commitAll(dir, "retire the first adviser");
+    retire(dir, "pin_advisor");
+    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\`, then \`pin_advisor(slot)\`.\n`);
+    const retired = refuse(dir).findings.filter((finding) => finding.code === "operating-guide-retired-tool");
+    expect(retired.map((finding) => finding.detail)).toEqual([
+      expect.stringContaining("names pin_advisor as a tool"),
+      expect.stringContaining("names signal_reference as a tool"),
+    ]);
+  });
+
+  const unretired: Array<[string, string]> = [
+    ["the retired name in prose only", "The old signal_reference adviser is gone; bind from the parts list."],
+    ["the retired name inside a longer code token", "Read `signal_reference_table` in the public input."],
+    ["a current tool in a code span", "Run `hint` before binding a slot."],
+    ["a field that was never a tool", "Every row carries a `slot` and a `part`."],
+  ];
+  for (const [name, line] of unretired) {
+    it(`accepts ${name}`, () => {
+      const dir = workspace();
+      retire(dir, "signal_reference");
+      guide(dir, `${MATCHING_OPERATING_GUIDE}\n${line}\n`);
+      accept(dir);
+    });
+  }
+
+  // The Builder keeps committing while a preview runs, so the workspace's HEAD can move past the
+  // captured candidate before its history is read. The verdict belongs to the captured bytes.
+  it("reads the history the candidate was captured at, not the history HEAD has reached since", () => {
+    const dir = workspace();
+    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
+    const captured = checkCandidate(dir, ASK);
+    if (!captured.ok) throw new Error(JSON.stringify(captured.findings));
+    retire(dir, "signal_reference");
+    commitAll(dir, "retire the adviser");
+    const verdict = (commit: string) =>
+      codes(retiredToolFindings(dir, commit, captured.snapshotDir, captured.bundle.toolsSpec));
+    expect(verdict(captured.commit)).toEqual([]);
+    expect(verdict(workspaceHead(dir))).toEqual(["operating-guide-retired-tool"]);
+  });
 
   it("refuses a bundle with no guide", () => {
     const dir = workspace();

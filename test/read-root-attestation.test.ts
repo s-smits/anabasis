@@ -82,22 +82,22 @@ await mock.module("../src/meta/filesystem.ts", () => ({
   opendirSync: hostileOpendirSync,
 }));
 
-const { attestReadRootFile, createReadRootBudget, READ_ROOT_MAX_BYTES } = await import(
+const { attestReadRootFile, createReadRootBudget, READ_ROOT_MAX_BYTES, settledBeforeRead } = await import(
   "../src/verify/read-root-attestation.ts"
 );
 
 describe("read-root attestation hostile transitions", () => {
-  it("reopens and rehashes on every attestation, so a same-size rewrite cannot hide behind its metadata", () => {
+  it("reopens and rehashes a file changed within the settling window, so a same-size rewrite cannot hide behind its metadata", () => {
     const root = nodeFs.mkdtempSync(join(tmpdir(), "ana-read-root-digest-reuse-"));
     const file = join(root, "runtime.bin");
     nodeFs.writeFileSync(file, "before");
     try {
       const first = attestReadRootFile(file, createReadRootBudget());
       expect(attestReadRootFile(file, createReadRootBudget()).digest).toBe(first.digest);
-      // Each attestation reopens. A metadata comparison cannot stand in for the bytes: ext4 stamps
-      // ctime at the kernel's coarse resolution, so a same-size rewrite inside one granule leaves
-      // the whole tuple — device, inode, mode, size, mtime and ctime — identical. Measured on
-      // 2026-09-22: 198 of 200 same-size rewrites were indistinguishable that way.
+      // A file written this moment is reopened on each attestation. A metadata comparison cannot
+      // stand in for its bytes: ext4 stamps ctime at the kernel's coarse resolution, so a same-size
+      // rewrite inside one granule leaves the whole tuple — device, inode, mode, size, mtime and
+      // ctime — identical.
       expect(opensByPath.get(file)).toBe(2);
       const { atime, mtime } = nodeFs.statSync(file);
       nodeFs.writeFileSync(file, "after!");
@@ -109,6 +109,19 @@ describe("read-root attestation hostile transitions", () => {
     } finally {
       nodeFs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("reuses a digest only for a file that had settled before it was read", () => {
+    // The Bun executable was written long before this process started, so its second attestation
+    // is answered from memory; the freshly written file above is reopened every time.
+    const runtime = process.execPath;
+    const first = attestReadRootFile(runtime, createReadRootBudget());
+    const opened = opensByPath.get(runtime) ?? 0;
+    expect(attestReadRootFile(runtime, createReadRootBudget()).digest).toBe(first.digest);
+    expect(opensByPath.get(runtime) ?? 0).toBe(opened);
+    const settled = { ...first.metadata, ctimeNs: "1000000000" };
+    expect(settledBeforeRead(settled, 3_000_000_000n)).toBe(true);
+    expect(settledBeforeRead(settled, 2_999_999_999n)).toBe(false);
   });
 
   it("rejects an oversized sparse file before allocating or reading its contents", () => {

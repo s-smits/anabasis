@@ -48,11 +48,18 @@ import {
 } from "../truth/controls.ts";
 import { DATA_FILE, DATA_READER_MODULE } from "../truth/data-session.ts";
 import { type HiddenExpectation, type TaskBattery, validateTasks } from "../truth/tasks.ts";
-import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../truth/tools-spec.ts";
+import {
+  type ToolsSpec,
+  expectedBuiltToolNames,
+  normalizeToolsSpec,
+  validateToolsSpec,
+} from "../truth/tools-spec.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
-import { isString, type JsonValue } from "../meta/json-shape.ts";
+import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import { hostTool } from "../meta/host-tool.ts";
+import { CAPTURE_MAX_BYTES, decodeOutput, runSyncOrThrow, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { type ExperimentSubmission, captureExperimentSubmission } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
@@ -302,6 +309,70 @@ function operatingGuideFindings(text: string, battery: TaskBattery | null): Cont
 function guideFindings(workspace: string, battery: TaskBattery | null): ContractFinding[] {
   const guide = readBundleFile(workspace, BUILT_AGENTS_FILE);
   return guide === null ? [missingBundleFile(BUILT_AGENTS_FILE)] : operatingGuideFindings(guide, battery);
+}
+
+/** Every tool name the tools spec declared in the history of `commit`. Git is the Builder's memory,
+ *  and the only record of which words were once tools. The walk starts at the commit the candidate
+ *  was captured at, never at HEAD, because the Builder can commit while a check runs and a commit's
+ *  ancestry never changes. `git log` writes each revision that added or changed the spec as the
+ *  `cat-file --batch` request for its blob, so one process answers for every revision, each blob a
+ *  header line carrying its byte size followed by that many bytes. The filter names what to keep
+ *  because git's excluding `d` drops the root commit too. A revision committed half-written is not
+ *  JSON and names no tools. */
+function historicalToolNames(workspace: string, commit: string): Set<string> {
+  const git = [hostTool("git"), "-C", workspace];
+  const input = runTextSyncOrThrow(
+    [...git, "log", `--format=%H:${TOOLS_SPEC_FILE}`, "--diff-filter=AMT", commit, "--", TOOLS_SPEC_FILE],
+    { maxBuffer: CAPTURE_MAX_BYTES },
+  );
+  const blobs = runSyncOrThrow([...git, "cat-file", "--batch"], { input, maxBuffer: CAPTURE_MAX_BYTES });
+  const names: unknown[] = [];
+  for (let at = 0; at < blobs.length; ) {
+    const header = blobs.indexOf(10, at);
+    const end = header + 1 + Number(decodeOutput(blobs.subarray(at, header)).split(" ")[2]);
+    try {
+      const spec = capturedJsonParse(decodeOutput(blobs.subarray(header + 1, end)));
+      if (isRecord(spec) && Array.isArray(spec.tools)) {
+        names.push(...spec.tools.filter(isRecord).map((tool) => tool.name));
+      }
+    } catch {
+      // Half-written: the revisions around it still name their tools.
+    }
+    at = end + 1;
+  }
+  return new Set(names.filter(isString));
+}
+
+/** Refuses a guide that names, as code, a tool this bundle's spec once declared and declares no
+ *  longer: the solver has no such tool, and a guide telling it to call one sends it into a refused
+ *  call on every case. Each retired name is its own finding, so every detail names one tool. Only the word a code span opens with counts, and only when the span is that
+ *  word or continues it with a call's parenthesis or an argument, because a retired name in prose
+ *  or inside a longer identifier may be a field or a concept that shares the word.
+ *
+ *  The guide and the roster are the snapshot's. The snapshot is one tree with no history, so the
+ *  names it once declared come from the workspace repository at `commit`, the commit it was
+ *  captured at, and the verdict is a function of those immutable objects. The same bytes captured
+ *  at two commits can therefore differ, and each outcome records the commit its verdict read. */
+export function retiredToolFindings(
+  workspace: string,
+  commit: string,
+  snapshotDir: string,
+  toolsSpec: ToolsSpec | null,
+): ContractFinding[] {
+  const guide = readBundleFile(snapshotDir, BUILT_AGENTS_FILE);
+  if (toolsSpec === null || guide === null) return [];
+  const roster = new Set(expectedBuiltToolNames(toolsSpec, { publicResources: true }));
+  const opened = new Set(Array.from(guide.matchAll(/`([^`\n( ]*)[^`\n]*`/g), ([, word]) => word));
+  return [...historicalToolNames(workspace, commit)]
+    .filter((name) => opened.has(name) && !roster.has(name))
+    .sort()
+    .map((name) =>
+      controllerValidatedFinding({
+        code: "operating-guide-retired-tool",
+        path: BUILT_AGENTS_FILE,
+        detail: `${BUILT_AGENTS_FILE} names ${name} as a tool, which ${TOOLS_SPEC_FILE} declared earlier and declares no longer — the solver has no such tool, so name only the tools its roster holds now`,
+      }),
+    );
 }
 
 /** Mirrors `validatedBrief` for the tools contract: validate one bundle file, push its findings and
@@ -568,7 +639,11 @@ export function checkCandidate(
     ...new Set((loaded.brief?.truthChecks ?? []).flatMap((check) => requiredToolsOf(check.execution))),
   ].sort();
   const toolCondition = candidateToolVerdict(snapshot.dir, requiredToolIds, toolFindings);
-  const findings = [...loaded.findings, ...toolFindings];
+  const findings = [
+    ...loaded.findings,
+    ...toolFindings,
+    ...retiredToolFindings(workspace, change.commit, snapshot.dir, loaded.toolsSpec),
+  ];
   if (findings.length > 0) {
     return { ok: false, stage: "bundle", findings, commit: change.commit, ...proposalKeys };
   }

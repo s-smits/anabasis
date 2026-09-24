@@ -22,7 +22,7 @@ import {
   gateFeedbackFindings,
 } from "../builder/author-feedback.ts";
 import { visibleError } from "../builder/read-window.ts";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
+import { readFileSync } from "../meta/filesystem.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { type JsonObject, asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -45,12 +45,10 @@ interface CorrectnessCheckBinding {
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
-   *  rows exactly as it pages a refusal's and the Builder has one place to read findings.
-   *  `builder-campaign.ts` always binds it; the absent branch below is a test's shape, not a
-   *  session's. */
-  feedback?: BuilderAuthorFeedback;
+   *  rows exactly as it pages a refusal's and the Builder has one place to read findings. */
+  feedback: BuilderAuthorFeedback;
   /** Where EXPERIMENT.json and this round's rehearsals disagree, as advice that refuses nothing. */
-  planAdvice?: () => string[];
+  planAdvice: () => string[];
 }
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
@@ -96,21 +94,19 @@ function stageRows(
   result: "complete" | "incomplete",
 ) {
   const delta =
-    result === "complete"
-      ? (binding.feedback?.recordCheck(stage, rows, snapshotId ?? undefined) ?? null)
-      : null;
+    result === "complete" ? binding.feedback.recordCheck(stage, rows, snapshotId ?? undefined) : null;
   const overview = authorFindingOverview(rows);
-  const paged =
-    binding.feedback === undefined
-      ? "No feedback store is bound: only this page of groups is readable here."
-      : FEEDBACK_NAVIGATION;
   const navigation =
-    result === "incomplete" ? INCOMPLETE_NAVIGATION : rows.length === 0 ? overview.navigation : paged;
+    result === "incomplete"
+      ? INCOMPLETE_NAVIGATION
+      : rows.length === 0
+        ? overview.navigation
+        : FEEDBACK_NAVIGATION;
   // The same three counts a submit refusal carries. A list of findings says what is wrong now; the
   // counts say what the last edit did to that list, which is the question an author previewing a
   // changed tree is actually asking. They are absent when the sequence did not complete or no
-  // feedback store is bound, since there is then no previous check to count against, and a result
-  // served from memory carries the `REPEATED` note rather than counts of an edit nobody made.
+  // earlier check or submit exists to count against, and a result served from memory carries the
+  // `REPEATED` note rather than counts of an edit nobody made.
   const sinceLast =
     delta === null
       ? {}
@@ -122,7 +118,6 @@ function stageRows(
 }
 
 function readSealed(path: string): JsonObject | null {
-  if (!existsSync(path)) return null;
   try {
     return asRecord(parseJsonAs<unknown>(readFileSync(path, "utf8")));
   } catch {
@@ -284,7 +279,7 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
     run: async () => {
       const report = await binding.preview();
       const body = resultOf(binding, report);
-      const advice = binding.planAdvice?.() ?? [];
+      const advice = binding.planAdvice();
       // Kept off `body`, which is the model-visible text: the codes already reach the model there,
       // grouped, and restating them would change what every check returns.
       const codes = [

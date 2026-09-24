@@ -46,6 +46,10 @@ const protectedHomeReadRoots = (): string[] => PROTECTED_HOME_NAMES.map((name) =
 const { repoRoot, binding } = makeIsolationRepo(SCRATCH, "repo");
 const policy = deriveCandidateIsolation(binding, "author");
 
+/** One command under a Seatbelt profile, with no environment, as the isolation runs it. */
+const sandboxed = (profile: string, ...argv: string[]) =>
+  spawnSync("/usr/bin/sandbox-exec", ["-p", profile, ...argv], { env: {}, timeout: 10_000 });
+
 describe.if(DARWIN)("executed OS enforcement", () => {
   it("writes physical only on the three-way probe conjunction, and refuses without the mechanism", () => {
     const proof = proveCandidateIsolation(policy, binding);
@@ -93,13 +97,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
         const cellPolicy = deriveCandidateIsolation(binding, purpose);
         const { profile } = candidateIsolationProfile(cellPolicy, "exec");
         const readable = (root: string) =>
-          names.filter(
-            (name) =>
-              spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", join(root, name)], {
-                env: {},
-                timeout: 10_000,
-              }).status === 0,
-          );
+          names.filter((name) => sandboxed(profile, "/bin/cat", join(root, name)).status === 0);
         expect(readable(places.home), `${purpose} home`).toEqual([]);
         expect(readable(places.repository), `${purpose} repository`).toEqual([]);
         // Location still owns the roots that hold the real ones.
@@ -107,13 +105,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
         // on a denied file still succeeds and would prove nothing.
         for (const root of protectedHomeReadRoots()) {
           const probe = existsSync(root) && statSync(root).isDirectory() ? join(root, ".") : root;
-          expect(
-            spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", probe], {
-              env: {},
-              timeout: 10_000,
-            }).status,
-            `${purpose} ${root}`,
-          ).not.toBe(0);
+          expect(sandboxed(profile, "/bin/cat", probe).status, `${purpose} ${root}`).not.toBe(0);
         }
         // The authoring profile denies the workshop tree wholesale, so only the workshop sees its own.
         expect(readable(places.cell), `${purpose} cell`).toEqual(
@@ -147,11 +139,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     for (const purpose of ["author", "workshop"] as const) {
       const cellPolicy = deriveCandidateIsolation(binding, purpose);
       const { profile } = candidateIsolationProfile(cellPolicy, "exec");
-      const reads = (target: string) =>
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", target], {
-          env: {},
-          timeout: 10_000,
-        }).status === 0;
+      const reads = (target: string) => sandboxed(profile, "/bin/cat", target).status === 0;
       expect(reads("/private/etc/ssl/cert.pem"), `${purpose} trust store`).toBe(true);
       for (const secret of [
         join(homedir(), ".ssh", "id_ed25519"),
@@ -170,9 +158,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     const { binding: named } = makeIsolationRepo(SCRATCH, "anchored-names");
     const namedPolicy = deriveCandidateIsolation(named, "author");
     const { profile } = candidateIsolationProfile(namedPolicy, "read", ["/bin/cat"]);
-    const reads = (path: string) =>
-      spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", path], { env: {}, timeout: 10_000 })
-        .status === 0;
+    const reads = (path: string) => sandboxed(profile, "/bin/cat", path).status === 0;
     for (const [name, open] of [
       ["key.p12.bak", true],
       ["key.p12", false],
@@ -199,16 +185,8 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     const { profile } = candidateIsolationProfile(cellPolicy, "exec");
     const roundTrips = (name: string) => {
       const target = join(binding.ossRoot, name);
-      const wrote =
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/usr/bin/touch", target], {
-          env: {},
-          timeout: 10_000,
-        }).status === 0;
-      const read =
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", target], {
-          env: {},
-          timeout: 10_000,
-        }).status === 0;
+      const wrote = sandboxed(profile, "/usr/bin/touch", target).status === 0;
+      const read = sandboxed(profile, "/bin/cat", target).status === 0;
       return { wrote, read };
     };
     for (const name of ["homebrew-1.pem", "server.key", "id_ed25519"]) {
@@ -227,12 +205,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     const { profile } = candidateIsolationProfile(cellPolicy, "exec");
     const writes = (target: string) => {
       mkdirSync(join(target, ".."), { recursive: true });
-      return (
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/usr/bin/touch", target], {
-          env: {},
-          timeout: 10_000,
-        }).status === 0
-      );
+      return sandboxed(profile, "/usr/bin/touch", target).status === 0;
     };
     for (const root of cellPolicy.cellRuntimeRoots) {
       for (const name of [".npmrc", ".netrc", ".env"]) {
@@ -280,21 +253,14 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     ];
     for (const target of corpus) {
       const guard = guardPath(policy, "read", "read", target).decision;
-      const os = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", target], {
-        env: {},
-        timeout: 10_000,
-      });
+      const os = sandboxed(profile, "/bin/cat", target);
       expect(guard === "allow" ? os.status === 0 : os.status !== 0, target).toBe(true);
     }
   });
 
   it("allows candidate writes and refuses repository writes and secret reads under the exec profile", () => {
     const { profile } = candidateIsolationProfile(policy, "exec", ["/bin/sh"]);
-    const sh = (command: string) =>
-      spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
-        env: {},
-        timeout: 10_000,
-      });
+    const sh = (command: string) => sandboxed(profile, "/bin/sh", "-c", command);
     expect(sh(`echo authored > ${join(binding.iterationDir, "slug", "note.txt")}`).status).toBe(0);
     expect(sh(`echo evil > ${join(repoRoot, "pwned.txt")}`).status).not.toBe(0);
     expect(sh(`cat ${join(repoRoot, ".env")}`).stdout).not.toContain("SECRET=1");
@@ -355,11 +321,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     writeFileSync(canary, "HOST-HOME-CANARY");
     try {
       const { profile } = candidateIsolationProfile(policy, "exec", ["/bin/sh"]);
-      const sh = (command: string) =>
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
-          env: {},
-          timeout: 10_000,
-        });
+      const sh = (command: string) => sandboxed(profile, "/bin/sh", "-c", command);
       // Reachability: the ancestors of the candidate tree stat, so its own files open.
       expect(sh(`stat -f%N ${homedir()} && stat -f%N ${repoRoot}`).status).toBe(0);
       expect(
@@ -379,11 +341,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     // `extraReadPaths` grants the one executable a spawned command needs, and the question is
     // whether that grant leaks sideways into the repository or host home.
     const { profile } = candidateIsolationProfile(policy, "exec", ["/bin/cat"]);
-    const reads = (target: string) =>
-      spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/cat", target], {
-        env: {},
-        timeout: 10_000,
-      });
+    const reads = (target: string) => sandboxed(profile, "/bin/cat", target);
     expect(reads(join(repoRoot, ".env")).status).not.toBe(0);
     expect(reads(join(homedir(), ".ssh", "id_ed25519")).status).not.toBe(0);
   });
@@ -406,8 +364,7 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     writeFileSync(protectedFile, "PROTECTED-BYTES");
     try {
       const { profile } = candidateIsolationProfile(policy, "exec", ["/bin/ls", "/bin/cat"]);
-      const run = (argv: string[]) =>
-        spawnSync("/usr/bin/sandbox-exec", ["-p", profile, ...argv], { env: {}, timeout: 10_000 });
+      const run = (argv: string[]) => sandboxed(profile, ...argv);
       const listed = run(["/bin/ls", parent]);
       expect(listed.status).toBe(0);
       expect(listed.stdout).toContain("truth-checks.ts");
@@ -436,20 +393,12 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     const { port } = server;
     try {
       const author = candidateIsolationProfile(policy, "exec", ["/usr/bin/nc"]).profile;
-      const open = spawnSync(
-        "/usr/bin/sandbox-exec",
-        ["-p", author, "/usr/bin/nc", "-z", "127.0.0.1", String(port)],
-        { timeout: 10_000 },
-      );
+      const open = sandboxed(author, "/usr/bin/nc", "-z", "127.0.0.1", String(port));
       expect(open.status).toBe(0);
       const cell = candidateIsolationProfile(deriveCandidateIsolation(binding, "workshop"), "exec", [
         "/usr/bin/nc",
       ]).profile;
-      const refused = spawnSync(
-        "/usr/bin/sandbox-exec",
-        ["-p", cell, "/usr/bin/nc", "-z", "127.0.0.1", String(port)],
-        { timeout: 10_000 },
-      );
+      const refused = sandboxed(cell, "/usr/bin/nc", "-z", "127.0.0.1", String(port));
       expect(refused.status).not.toBe(0);
     } finally {
       server.stop(true);

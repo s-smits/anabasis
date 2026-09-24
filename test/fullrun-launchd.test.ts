@@ -15,12 +15,15 @@ import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { runtimeProcess } from "../src/meta/process.ts";
-const LAUNCHD = ".launchd";
-const RUN_LOG = "run.log";
-const BUN_VERSION = ".bun-version";
-const EXIT_2 = "exit 2";
-const BIN_SH = "#!/bin/sh";
-const LAUNCHCTL_STATE = "launchctl.state";
+
+interface LauncherOptions {
+  /** The worktree's `.bun-version`; `null` writes none. */
+  pin?: string | null | undefined;
+  /** Shell actions for each fake launchctl verb; an unlisted verb exits 2. */
+  launchctl?: Record<string, string>;
+  plutil?: string[];
+  bun?: string[];
+}
 
 // The launcher checks the selected runtime and writes the launchd configuration. These cases
 // exercise refusals before launch and use a fake launchctl for publication, startup and cleanup
@@ -28,10 +31,13 @@ const LAUNCHCTL_STATE = "launchctl.state";
 
 const script = join(import.meta.dirname, "..", "tools", "fullrun-launchd.zsh");
 const dirs: string[] = [];
-/** launchd labels a rehearsal registered; each is booted out after the test. */
-const labels: string[] = [];
 const macIt = it.if(runtimeProcess.platform === "darwin");
-const uid = process.getuid?.() ?? 501;
+const BIN_SH = "#!/bin/sh";
+const STATE = '"$ANA_FAKE_LAUNCHCTL_STATE"';
+/** `print` answers running while the fake service exists. */
+const PRINT_LIVE = String.raw`if [ -f ${STATE} ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1`;
+const START = `: > ${STATE}; exit 0`;
+const STOP = `/bin/rm -f ${STATE}; exit 0`;
 
 function temp(): string {
   const dir = mkdtempSync(join(tmpdir(), "ana-launchd-"));
@@ -39,20 +45,81 @@ function temp(): string {
   return dir;
 }
 
-function run(args: string[], environment: Record<string, string> = {}) {
-  const path = [environment.PATH, dirname(Bun.argv[0]!), Bun.env.PATH].filter(Boolean).join(":");
-  const result = spawnSync(script, args, { env: { ...Bun.env, ...environment, PATH: path } });
-  return { status: result.status, stderr: `${result.stderr}${result.stdout}` };
+function executable(path: string, lines: string[]): void {
+  writeFileSync(path, [...lines, ""].join("\n"));
+  chmodSync(path, 0o755);
 }
 
-function spawnRun(args: string[], environment: Record<string, string> = {}) {
+function launcherEnv(environment: Record<string, string>) {
   const path = [environment.PATH, dirname(Bun.argv[0]!), Bun.env.PATH].filter(Boolean).join(":");
-  return Bun.spawn({
-    cmd: [script, ...args],
-    env: { ...Bun.env, ...environment, PATH: path },
-    stdout: "pipe",
-    stderr: "pipe",
+  return { ...Bun.env, ...environment, PATH: path };
+}
+
+function run(args: string[], environment: Record<string, string> = {}) {
+  const result = spawnSync(script, args, { env: launcherEnv(environment) });
+  return { status: result.status, output: `${result.stderr}${result.stdout}` };
+}
+
+function frozenEnvironment() {
+  const path = [dirname(Bun.argv[0]!), "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+  const [home, codexHome, tmp] = [temp(), temp(), temp()];
+  const map = [`HOME=${home}`, `CODEX_HOME=${codexHome}`, `TMPDIR=${tmp}`, `PATH=${path}`];
+  return { args: map.flatMap((entry) => ["--env", entry]), home, codexHome, tmp, path };
+}
+
+/** A worktree pinned to the running Bun, a frozen map, and fake launchd tools first on PATH. */
+function launcher(options: LauncherOptions = {}) {
+  const worktree = temp();
+  const fakeBin = temp();
+  const state = join(fakeBin, "launchctl.state");
+  const pin = options.pin === undefined ? Bun.version : options.pin;
+  if (pin !== null) writeFileSync(join(worktree, ".bun-version"), `${pin}\n`);
+  const verbs = options.launchctl ?? { print: PRINT_LIVE, bootstrap: START };
+  const body = Object.entries(verbs).map(([verb, action]) => `if [ "$1" = "${verb}" ]; then ${action}; fi`);
+  executable(join(fakeBin, "launchctl"), [BIN_SH, ...body, "exit 2"]);
+  if (options.plutil) executable(join(fakeBin, "plutil"), options.plutil);
+  if (options.bun) executable(join(fakeBin, "bun"), options.bun);
+  const frozen = frozenEnvironment();
+  const launchd = join(worktree, ".launchd");
+  const argv = (label: string, extra: readonly string[] = [], command = ["bun", "--version"]) => [
+    "--worktree",
+    worktree,
+    "--log",
+    join(worktree, "run.log"),
+    "--label",
+    label,
+    ...frozen.args,
+    ...extra,
+    "--",
+    ...command,
+  ];
+  const env = (environment: Record<string, string>) => ({
+    PATH: fakeBin,
+    ANA_FAKE_LAUNCHCTL_STATE: state,
+    ...environment,
   });
+  return {
+    worktree,
+    fakeBin,
+    state,
+    frozen,
+    launchd,
+    plist: (label: string) => join(launchd, `${label}.plist`),
+    receipt: (label: string) => join(launchd, `${label}.plist.receipt.json`),
+    run: (
+      label: string,
+      extra: readonly string[] = [],
+      environment: Record<string, string> = {},
+      command?: string[],
+    ) => run(argv(label, extra, command), env(environment)),
+    spawn: (label: string, environment: Record<string, string>) =>
+      Bun.spawn({
+        cmd: [script, ...argv(label)],
+        env: launcherEnv(env(environment)),
+        stdout: "pipe",
+        stderr: "pipe",
+      }),
+  };
 }
 
 async function waitForFile(path: string, exited: Promise<number>): Promise<void> {
@@ -64,288 +131,147 @@ async function waitForFile(path: string, exited: Promise<number>): Promise<void>
   throw new Error(`timed out waiting for ${path}`);
 }
 
-async function finish(child: ReturnType<typeof spawnRun>) {
-  const [status, stdout, stderr] = await Promise.all([
+async function finish(child: ReturnType<ReturnType<typeof launcher>["spawn"]>) {
+  const [status] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
-  return { status, output: `${stderr}${stdout}` };
-}
-
-function frozenEnvironment(home = temp()) {
-  const path = [dirname(Bun.argv[0]!), "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
-  const tmp = temp();
-  const codexHome = temp();
-  return {
-    args: [
-      "--env",
-      `HOME=${home}`,
-      "--env",
-      `CODEX_HOME=${codexHome}`,
-      "--env",
-      `TMPDIR=${tmp}`,
-      "--env",
-      `PATH=${path}`,
-    ],
-    home,
-    codexHome,
-    tmp,
-    path,
-  };
+  return status;
 }
 
 afterEach(() => {
-  for (const label of labels.splice(0)) {
-    spawnSync("/bin/launchctl", ["bootout", `gui/${uid}/${label}`]);
-  }
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("fullrun launchd launcher", () => {
   it("runs with NO_RCS so login files cannot reselect the Bun executable the worktree pinned", () => {
-    // Run 45's first launch aborted here: without -f, ~/.zshenv reordered PATH onto a same-version
-    // but different runtime executable, which fails the run's host check.
+    // Without -f, ~/.zshenv can reorder PATH onto a same-version but different runtime
+    // executable, which fails the run's host check.
     expect(readFileSync(script, "utf8").split("\n")[0]).toBe("#!/bin/zsh -f");
   });
 
-  macIt("refuses an incomplete invocation instead of launching a partly configured job", () => {
-    const missing = run(["--worktree", temp(), "--log", "/tmp/x.log"]);
-    expect(missing.status).toBe(2);
-    expect(missing.stderr).toContain("usage: fullrun-launchd.zsh");
-
-    const noCommand = run(["--worktree", temp(), "--log", "/tmp/x.log", "--label", "ana.test", "--"]);
-    expect(noCommand.status).toBe(2);
-
-    const unknown = run(["--nope", "value"]);
-    expect(unknown.status).toBe(2);
-    expect(unknown.stderr).toContain("unknown argument: --nope");
-
-    const missingValue = run(["--worktree"]);
-    expect(missingValue.status).toBe(2);
-    expect(missingValue.stderr).toContain("--worktree: missing value");
-
-    const duplicate = run([
-      "--worktree",
-      temp(),
-      "--worktree",
-      temp(),
-      "--log",
-      "/tmp/x.log",
-      "--label",
-      "ana.test",
-      "--",
-      "bun",
-    ]);
-    expect(duplicate.status).toBe(2);
-    expect(duplicate.stderr).toContain("--worktree: may be specified only once");
-  });
-
-  macIt("refuses a worktree that does not pin a Bun version", () => {
-    const worktree = temp();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test",
-      "--",
-      "true",
-    ]);
+  macIt.each([
+    [["--worktree", "/tmp/w", "--log", "/tmp/x.log"], "usage: fullrun-launchd.zsh"],
+    [
+      ["--worktree", "/tmp/w", "--log", "/tmp/x.log", "--label", "ana.test", "--"],
+      "usage: fullrun-launchd.zsh",
+    ],
+    [["--nope", "value"], "unknown argument: --nope"],
+    [["--worktree"], "--worktree: missing value"],
+    [
+      ["--worktree", "/a", "--worktree", "/b", "--log", "/x", "--label", "l", "--", "bun"],
+      "--worktree: may be specified only once",
+    ],
+  ])("refuses the incomplete invocation %j with %s", (args, message) => {
+    const result = run(args);
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("has no .bun-version");
+    expect(result.output).toContain(message);
   });
 
-  macIt("refuses a launch map that omits or relativises the private Codex roots", () => {
-    const worktree = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const path = [dirname(Bun.argv[0]!), "/usr/bin", "/bin"].join(":");
-    const omitted = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test.incomplete-map",
-      "--env",
-      `HOME=${temp()}`,
-      "--env",
-      `PATH=${path}`,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(omitted.status).toBe(2);
-    expect(omitted.stderr).toContain("HOME, CODEX_HOME, TMPDIR, and PATH");
-
-    const relativeTmp = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test.relative-tmp",
-      "--env",
-      `HOME=${temp()}`,
-      "--env",
-      `CODEX_HOME=${temp()}`,
-      "--env",
-      "TMPDIR=relative-tmp",
-      "--env",
-      `PATH=${path}`,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(relativeTmp.status).toBe(2);
-    expect(relativeTmp.stderr).toContain("frozen TMPDIR must be absolute");
-  });
-
-  macIt("refuses when the running Bun is not the version the worktree pins", () => {
-    const worktree = temp();
-    writeFileSync(join(worktree, BUN_VERSION), "99.99.99\n");
-    const environment = frozenEnvironment();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test",
-      ...environment.args,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("the worktree pins 99.99.99");
-  });
-
-  macIt("refuses a worktree whose node_modules is a symlink, because a run owns its dependencies", () => {
-    const worktree = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    symlinkSync(temp(), join(worktree, "node_modules"));
-    const environment = frozenEnvironment();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test",
-      ...environment.args,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("run must own its dependencies");
-    expect(result.stderr).toContain("scripts/worktree.sh setup");
-    // The refusal happens before any plist is written.
-    expect(existsSync(join(worktree, LAUNCHD))).toBe(false);
-  });
+  const path = [dirname(Bun.argv[0]!), "/usr/bin", "/bin"].join(":");
+  macIt.each([
+    { refuses: "a worktree that does not pin a Bun version", pin: null, message: "has no .bun-version" },
+    {
+      refuses: "a running Bun other than the pinned one",
+      pin: "99.99.99",
+      message: "the worktree pins 99.99.99",
+    },
+    {
+      refuses: "a launch map that omits the private Codex roots",
+      map: () => ["--env", `HOME=${temp()}`, "--env", `PATH=${path}`],
+      message: "HOME, CODEX_HOME, TMPDIR, and PATH",
+    },
+    {
+      refuses: "a launch map with a relative TMPDIR",
+      map: () =>
+        [`HOME=${temp()}`, `CODEX_HOME=${temp()}`, "TMPDIR=relative-tmp", `PATH=${path}`].flatMap((e) => [
+          "--env",
+          e,
+        ]),
+      message: "frozen TMPDIR must be absolute",
+    },
+    {
+      refuses: "a duplicate environment key",
+      extra: ["--env", "HOME=/twice"],
+      message: "duplicate environment key: HOME",
+    },
+    {
+      refuses: "a label that could escape the launchd directory",
+      label: "../outside",
+      message: "invalid launchd label",
+    },
+    {
+      refuses: "a worktree whose node_modules is a symlink, because a run owns its dependencies",
+      prepare: (worktree: string) => symlinkSync(temp(), join(worktree, "node_modules")),
+      message: "run must own its dependencies; run scripts/worktree.sh setup",
+    },
+  ])(
+    "refuses $refuses before writing any plist",
+    ({ pin, map, extra = [], label = "ana.test", prepare, message }) => {
+      const fixture = launcher({ pin });
+      prepare?.(fixture.worktree);
+      const args = map
+        ? [
+            "--worktree",
+            fixture.worktree,
+            "--log",
+            join(fixture.worktree, "run.log"),
+            "--label",
+            label,
+            ...map(),
+            "--",
+            "bun",
+            "--version",
+          ]
+        : undefined;
+      const result = args ? run(args) : fixture.run(label, extra);
+      expect(result.status).toBe(2);
+      expect(result.output).toContain(message);
+      expect(existsSync(fixture.launchd)).toBe(false);
+    },
+  );
 
   macIt("refuses a symlinked launchd directory before publishing into the foreign tree", () => {
-    const worktree = temp();
+    const fixture = launcher();
     const foreign = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    symlinkSync(foreign, join(worktree, LAUNCHD));
-    const frozen = frozenEnvironment();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test.parent-symlink",
-      ...frozen.args,
-      "--",
-      "bun",
-      "--version",
-    ]);
+    symlinkSync(foreign, fixture.launchd);
+    const result = fixture.run("ana.test.parent-symlink");
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("launchd directory must not be a symlink");
+    expect(result.output).toContain("launchd directory must not be a symlink");
     expect(readdirSync(foreign)).toEqual([]);
   });
 
   macIt("writes the frozen environment exactly once and resolves Bun through its PATH", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
+    const fixture = launcher();
     const ambientHome = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
     const label = "ana.test.exact-environment";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--env",
-        "ANA_VISIBLE=value",
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, HOME: ambientHome, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
+    const result = fixture.run(label, ["--env", "ANA_VISIBLE=value"], { HOME: ambientHome });
     expect(result.status).toBe(0);
-    const plist = readFileSync(join(worktree, LAUNCHD, `${label}.plist`), "utf8");
+    const plist = readFileSync(fixture.plist(label), "utf8");
     expect(plist).toContain("<string>/usr/bin/env</string>\n    <string>-i</string>");
-    expect(plist.match(/<string>HOME=/g)).toHaveLength(1);
-    expect(plist.match(/<string>CODEX_HOME=/g)).toHaveLength(1);
-    expect(plist.match(/<string>TMPDIR=/g)).toHaveLength(1);
-    expect(plist.match(/<string>PATH=/g)).toHaveLength(1);
-    expect(plist).toContain(`<string>HOME=${frozen.home}</string>`);
-    expect(plist).toContain(`<string>CODEX_HOME=${frozen.codexHome}</string>`);
-    expect(plist).toContain(`<string>TMPDIR=${frozen.tmp}</string>`);
-    expect(plist).toContain(`<string>PATH=${frozen.path}</string>`);
+    const { home, codexHome, tmp, path: frozenPath } = fixture.frozen;
+    for (const entry of [`HOME=${home}`, `CODEX_HOME=${codexHome}`, `TMPDIR=${tmp}`, `PATH=${frozenPath}`]) {
+      expect(plist.match(new RegExp(`<string>${entry.split("=")[0]}=`, "g"))).toHaveLength(1);
+      expect(plist).toContain(`<string>${entry}</string>`);
+    }
     expect(plist).toContain("<string>ANA_VISIBLE=value</string>");
     expect(plist).not.toContain("<key>EnvironmentVariables</key>");
     expect(plist).not.toContain(ambientHome);
-    const receiptPath = join(worktree, LAUNCHD, `${label}.plist.receipt.json`);
-    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-    const digest = new Bun.CryptoHasher("sha256")
-      .update(readFileSync(join(worktree, LAUNCHD, `${label}.plist`)))
-      .digest("hex");
-    expect(receipt).toEqual({
+    const digest = new Bun.CryptoHasher("sha256").update(readFileSync(fixture.plist(label))).digest("hex");
+    expect(JSON.parse(readFileSync(fixture.receipt(label), "utf8"))).toEqual({
       schema: "superloop-launchd-plist-receipt/v1",
-      plist: realpathSync(join(worktree, LAUNCHD, `${label}.plist`)),
+      plist: realpathSync(fixture.plist(label)),
       sha256: digest,
     });
-    expect(result.stderr).toContain(`published plist SHA-256: ${digest}`);
+    expect(result.output).toContain(`published plist SHA-256: ${digest}`);
   });
 
   macIt(
     "refuses a same-UID replacement after publication and leaves the digest receipt for diagnosis",
     () => {
-      const worktree = temp();
-      const fakeBin = temp();
-      const state = join(fakeBin, LAUNCHCTL_STATE);
-      const realBun = realpathSync(Bun.argv[0]!);
-      const publishHelper = join(import.meta.dirname, "..", "tools", "fullrun-launchd-publish.ts");
-      writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-      const fakeBun = join(fakeBin, "bun");
-      writeFileSync(
-        fakeBun,
-        [
+      const fixture = launcher({
+        bun: [
           BIN_SH,
           'if [ "$2" = "$ANA_PUBLISH_HELPER" ] && [ "$3" != "--verify" ]; then',
           '  "$ANA_REAL_BUN" "$@"',
@@ -354,500 +280,166 @@ describe("fullrun launchd launcher", () => {
           '  exit "$status"',
           "fi",
           'exec "$ANA_REAL_BUN" "$@"',
-          "",
-        ].join("\n"),
-      );
-      chmodSync(fakeBun, 0o755);
-      const fakeLaunchctl = join(fakeBin, "launchctl");
-      writeFileSync(
-        fakeLaunchctl,
-        [
-          BIN_SH,
-          String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-          'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-          EXIT_2,
-          "",
-        ].join("\n"),
-      );
-      chmodSync(fakeLaunchctl, 0o755);
-      const frozen = frozenEnvironment();
-      const pathIndex = frozen.args.indexOf(`PATH=${frozen.path}`);
-      if (pathIndex < 0) throw new Error("frozen PATH argument is absent");
-      frozen.args[pathIndex] = `PATH=${fakeBin}:${frozen.path}`;
-      const label = "ana.test.post-publication-replacement";
-      const result = run(
-        [
-          "--worktree",
-          worktree,
-          "--log",
-          join(worktree, RUN_LOG),
-          "--label",
-          label,
-          ...frozen.args,
-          "--",
-          "bun",
-          "--version",
         ],
-        {
-          PATH: fakeBin,
-          ANA_FAKE_LAUNCHCTL_STATE: state,
-          ANA_REAL_BUN: realBun,
-          ANA_PUBLISH_HELPER: publishHelper,
-        },
-      );
+      });
+      // The fake bun must win inside the frozen map too, where the launcher resolves the helper's runtime.
+      const pathIndex = fixture.frozen.args.indexOf(`PATH=${fixture.frozen.path}`);
+      fixture.frozen.args[pathIndex] = `PATH=${fixture.fakeBin}:${fixture.frozen.path}`;
+      const label = "ana.test.post-publication-replacement";
+      const result = fixture.run(label, [], {
+        ANA_REAL_BUN: realpathSync(Bun.argv[0]!),
+        ANA_PUBLISH_HELPER: join(import.meta.dirname, "..", "tools", "fullrun-launchd-publish.ts"),
+      });
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain("published plist changed before launchctl bootstrap");
-      expect(existsSync(state)).toBe(false);
-      expect(readFileSync(join(worktree, LAUNCHD, `${label}.plist`), "utf8")).toBe("hostile replacement\n");
-      expect(existsSync(join(worktree, LAUNCHD, `${label}.plist.receipt.json`))).toBe(true);
+      expect(result.output).toContain("published plist changed before launchctl bootstrap");
+      expect(existsSync(fixture.state)).toBe(false);
+      expect(readFileSync(fixture.plist(label), "utf8")).toBe("hostile replacement\n");
+      expect(existsSync(fixture.receipt(label))).toBe(true);
     },
   );
 
   macIt("boots out a service when its plist changes after successful bootstrap", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        String.raw`if [ "$1" = "bootstrap" ]; then printf "hostile after bootstrap\n" > "$3"; : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi`,
-        'if [ "$1" = "bootout" ]; then /bin/rm -f "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
+    const fixture = launcher({
+      launchctl: {
+        print: PRINT_LIVE,
+        bootstrap: String.raw`printf "hostile after bootstrap\n" > "$3"; ${START}`,
+        bootout: STOP,
+      },
+    });
     const label = "ana.test.post-bootstrap-replacement";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
+    const result = fixture.run(label);
     expect(result.status).toBe(2);
-    expect(result.stderr).toContain("published plist changed after bootstrap");
-    expect(existsSync(state)).toBe(false);
-    expect(readFileSync(join(worktree, LAUNCHD, `${label}.plist`), "utf8")).toBe("hostile after bootstrap\n");
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist.receipt.json`))).toBe(true);
-  });
-
-  macIt("refuses duplicate environment keys before writing a plist", () => {
-    const worktree = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const frozen = frozenEnvironment();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "ana.test.duplicate-environment",
-      ...frozen.args,
-      "--env",
-      `HOME=${temp()}`,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("duplicate environment key: HOME");
-    expect(existsSync(join(worktree, LAUNCHD))).toBe(false);
+    expect(result.output).toContain("published plist changed after bootstrap");
+    expect(existsSync(fixture.state)).toBe(false);
+    expect(readFileSync(fixture.plist(label), "utf8")).toBe("hostile after bootstrap\n");
+    expect(existsSync(fixture.receipt(label))).toBe(true);
   });
 
   macIt("publishes only a complete linted plist and never overwrites a stale target", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        'if [ "$1" = "print" ]; then exit 1; fi',
-        'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const fakePlutil = join(fakeBin, "plutil");
-    writeFileSync(fakePlutil, "#!/bin/sh\nexit 1\n");
-    chmodSync(fakePlutil, 0o755);
-    const frozen = frozenEnvironment();
+    const fixture = launcher({ plutil: [BIN_SH, "exit 1"] });
     const label = "ana.test.atomic-plist";
-    const plist = join(worktree, LAUNCHD, `${label}.plist`);
-    const failed = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
+    const failed = fixture.run(label);
     expect(failed.status).not.toBe(0);
-    expect(existsSync(plist)).toBe(false);
-    expect(readdirSync(join(worktree, LAUNCHD))).toEqual([]);
-    expect(existsSync(state)).toBe(false);
+    expect(readdirSync(fixture.launchd)).toEqual([]);
+    expect(existsSync(fixture.state)).toBe(false);
 
-    writeFileSync(plist, "preserve-me\n");
-    const stale = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
+    writeFileSync(fixture.plist(label), "preserve-me\n");
+    const stale = fixture.run(label);
     expect(stale.status).toBe(2);
-    expect(stale.stderr).toContain("plist already exists");
-    expect(readFileSync(plist, "utf8")).toBe("preserve-me\n");
-    expect(existsSync(state)).toBe(false);
+    expect(stale.output).toContain("plist already exists");
+    expect(readFileSync(fixture.plist(label), "utf8")).toBe("preserve-me\n");
+    expect(existsSync(fixture.state)).toBe(false);
   });
 
-  macIt("refuses a bootstrap whose print output does not prove a running service", () => {
-    for (const mode of ["waiting", "missing-pid"]) {
-      const worktree = temp();
-      const fakeBin = temp();
-      const state = join(fakeBin, LAUNCHCTL_STATE);
-      writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-      const fakeLaunchctl = join(fakeBin, "launchctl");
-      writeFileSync(
-        fakeLaunchctl,
-        [
-          BIN_SH,
-          String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then if [ "$ANA_LIVE_MODE" = "waiting" ]; then printf "state = waiting\npid = 4242\n"; else printf "state = running\n"; fi; exit 0; fi; exit 1; fi`,
-          'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-          'if [ "$1" = "bootout" ]; then /bin/rm -f "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-          EXIT_2,
-          "",
-        ].join("\n"),
-      );
-      chmodSync(fakeLaunchctl, 0o755);
-      const frozen = frozenEnvironment();
-      const result = run(
-        [
-          "--worktree",
-          worktree,
-          "--log",
-          join(worktree, RUN_LOG),
-          "--label",
-          `ana.test.not-live-${mode}`,
-          ...frozen.args,
-          "--",
-          "bun",
-          "--version",
-        ],
-        {
-          PATH: fakeBin,
-          ANA_FAKE_LAUNCHCTL_STATE: state,
-          ANA_LIVE_MODE: mode,
-          ANA_LAUNCHD_LIVE_WAIT_ATTEMPTS: "20",
-        },
-      );
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("controller service is not live after bootstrap");
-      expect(existsSync(state)).toBe(false);
-    }
+  macIt.each([
+    ["waiting", String.raw`printf "state = waiting\npid = 4242\n"`],
+    ["missing-pid", String.raw`printf "state = running\n"`],
+  ])("refuses a bootstrap whose print output (%s) does not prove a running service", (mode, answer) => {
+    const fixture = launcher({
+      launchctl: {
+        print: `if [ -f ${STATE} ]; then ${answer}; exit 0; fi; exit 1`,
+        bootstrap: START,
+        bootout: STOP,
+      },
+    });
+    const result = fixture.run(`ana.test.not-live-${mode}`, [], { ANA_LAUNCHD_LIVE_WAIT_ATTEMPTS: "20" });
+    expect(result.status).toBe(2);
+    expect(result.output).toContain("controller service is not live after bootstrap");
+    expect(existsSync(fixture.state)).toBe(false);
   });
 
-  macIt("removes its final plist when bootstrap fails without establishing the service", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        'if [ "$1" = "bootstrap" ]; then exit 73; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
-    const label = "ana.test.bootstrap-failure";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
-    expect(result.status).toBe(73);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist`))).toBe(false);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist.receipt.json`))).toBe(false);
-    expect(readdirSync(join(worktree, LAUNCHD))).toEqual([]);
-    expect(existsSync(state)).toBe(false);
+  macIt.each([
+    {
+      outcome: "removes its plist when bootstrap fails without a service",
+      bootstrap: "exit 73",
+      print: PRINT_LIVE,
+      status: 73,
+      kept: false,
+      service: false,
+    },
+    {
+      outcome: "does not claim a foreign service that appears after bootstrap fails",
+      bootstrap: `: > ${STATE}; exit 73`,
+      print: PRINT_LIVE,
+      status: 73,
+      kept: false,
+      service: true,
+    },
+    {
+      outcome: "keeps its plist once bootstrap owns the service even if print fails",
+      bootstrap: START,
+      print: `if [ -f ${STATE} ]; then exit 74; fi; exit 1`,
+      status: 74,
+      kept: true,
+      service: true,
+    },
+  ])("$outcome", (row) => {
+    const fixture = launcher({ launchctl: { print: row.print, bootstrap: row.bootstrap } });
+    const label = "ana.test.bootstrap-outcome";
+    const result = fixture.run(label);
+    expect(result.status).toBe(row.status);
+    expect(existsSync(fixture.plist(label))).toBe(row.kept);
+    expect(existsSync(fixture.receipt(label))).toBe(row.kept);
+    expect(existsSync(fixture.state)).toBe(row.service);
+    if (!row.kept) expect(readdirSync(fixture.launchd)).toEqual([]);
   });
 
-  macIt("does not claim a foreign service that appears after its bootstrap fails", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, "foreign-service.state");
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 73; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
-    const label = "ana.test.bootstrap-foreign";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
-    expect(result.status).toBe(73);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist`))).toBe(false);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist.receipt.json`))).toBe(false);
-    expect(existsSync(state)).toBe(true);
-  });
-
-  macIt("preserves the final plist after bootstrap owns the service even if print then fails", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        'if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then exit 74; fi; exit 1; fi',
-        'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
-    const label = "ana.test.bootstrap-owned";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
-    expect(result.status).toBe(74);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist`))).toBe(true);
-    expect(existsSync(join(worktree, LAUNCHD, `${label}.plist.receipt.json`))).toBe(true);
-    expect(existsSync(state)).toBe(true);
-  });
-
-  macIt("refuses a symlink or directory created at the destination while lint is running", async () => {
-    for (const targetKind of ["symlink", "directory"] as const) {
-      const worktree = temp();
-      const fakeBin = temp();
-      const entered = join(fakeBin, "plutil.entered");
-      const release = join(fakeBin, "plutil.release");
-      const state = join(fakeBin, LAUNCHCTL_STATE);
-      writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-      const fakeLaunchctl = join(fakeBin, "launchctl");
-      writeFileSync(
-        fakeLaunchctl,
-        [
-          BIN_SH,
-          'if [ "$1" = "print" ]; then exit 1; fi',
-          'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-          EXIT_2,
-          "",
-        ].join("\n"),
-      );
-      chmodSync(fakeLaunchctl, 0o755);
-      const fakePlutil = join(fakeBin, "plutil");
-      writeFileSync(
-        fakePlutil,
-        [
+  macIt.each(["symlink", "directory"] as const)(
+    "refuses a %s created at the destination while lint is running",
+    async (targetKind) => {
+      const fixture = launcher({
+        plutil: [
           BIN_SH,
           ': > "$ANA_PLUTIL_ENTERED"',
           'while [ ! -f "$ANA_PLUTIL_RELEASE" ]; do /bin/sleep 0.01; done',
           "exit 0",
-          "",
-        ].join("\n"),
-      );
-      chmodSync(fakePlutil, 0o755);
-      const frozen = frozenEnvironment();
-      const label = `ana.test.concurrent-${targetKind}`;
-      const plist = join(worktree, LAUNCHD, `${label}.plist`);
-      const child = spawnRun(
-        [
-          "--worktree",
-          worktree,
-          "--log",
-          join(worktree, RUN_LOG),
-          "--label",
-          label,
-          ...frozen.args,
-          "--",
-          "bun",
-          "--version",
         ],
-        {
-          PATH: fakeBin,
-          ANA_FAKE_LAUNCHCTL_STATE: state,
-          ANA_PLUTIL_ENTERED: entered,
-          ANA_PLUTIL_RELEASE: release,
-        },
-      );
+      });
+      const entered = join(fixture.fakeBin, "plutil.entered");
+      const release = join(fixture.fakeBin, "plutil.release");
+      const label = `ana.test.concurrent-${targetKind}`;
+      const child = fixture.spawn(label, { ANA_PLUTIL_ENTERED: entered, ANA_PLUTIL_RELEASE: release });
       await waitForFile(entered, child.exited);
       const redirect = temp();
-      if (targetKind === "symlink") symlinkSync(redirect, plist);
-      else mkdirSync(plist);
+      if (targetKind === "symlink") symlinkSync(redirect, fixture.plist(label));
+      else mkdirSync(fixture.plist(label));
       writeFileSync(release, "release\n");
-      const result = await finish(child);
-      expect(result.status).not.toBe(0);
-      expect(existsSync(state)).toBe(false);
+      expect(await finish(child)).not.toBe(0);
+      expect(existsSync(fixture.state)).toBe(false);
       expect(readdirSync(redirect)).toEqual([]);
-      if (targetKind === "directory") expect(readdirSync(plist)).toEqual([]);
-    }
-  });
+      if (targetKind === "directory") expect(readdirSync(fixture.plist(label))).toEqual([]);
+    },
+  );
 
   macIt("publishes the descriptor bytes even when the linter tries to swap its input path", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    const linted = join(fakeBin, "linted.plist");
-    const launched = join(fakeBin, "launched.plist");
-    const malicious = join(fakeBin, "malicious.plist");
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    writeFileSync(malicious, "malicious replacement\n");
-    const fakePlutil = join(fakeBin, "plutil");
-    writeFileSync(
-      fakePlutil,
-      [
+    const fixture = launcher({
+      plutil: [
         BIN_SH,
         '/bin/cp "$3" "$ANA_LINTED_PLIST"',
         '/bin/mv "$ANA_MALICIOUS_PLIST" "$3" 2>/dev/null || true',
         "exit 0",
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakePlutil, 0o755);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        'if [ "$1" = "bootstrap" ]; then /bin/cp "$3" "$ANA_LAUNCHED_PLIST"; : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
-    const label = "ana.test.staging-swap";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
       ],
-      {
-        PATH: fakeBin,
-        ANA_FAKE_LAUNCHCTL_STATE: state,
-        ANA_LAUNCHED_PLIST: launched,
-        ANA_LINTED_PLIST: linted,
-        ANA_MALICIOUS_PLIST: malicious,
-      },
+      launchctl: { print: PRINT_LIVE, bootstrap: `/bin/cp "$3" "$ANA_LAUNCHED_PLIST"; ${START}` },
+    });
+    const [linted, launched, malicious] = ["linted", "launched", "malicious"].map((name) =>
+      join(fixture.fakeBin, `${name}.plist`),
     );
+    writeFileSync(malicious!, "malicious replacement\n");
+    const label = "ana.test.staging-swap";
+    const result = fixture.run(label, [], {
+      ANA_LAUNCHED_PLIST: launched!,
+      ANA_LINTED_PLIST: linted!,
+      ANA_MALICIOUS_PLIST: malicious!,
+    });
     expect(result.status).toBe(0);
-    expect(readFileSync(launched, "utf8")).toBe(readFileSync(linted, "utf8"));
-    expect(readFileSync(launched, "utf8")).toContain(`<string>${label}</string>`);
-    expect(existsSync(malicious)).toBe(true);
+    expect(readFileSync(launched!, "utf8")).toBe(readFileSync(linted!, "utf8"));
+    expect(readFileSync(launched!, "utf8")).toContain(`<string>${label}</string>`);
+    expect(existsSync(malicious!)).toBe(true);
   });
 
   macIt("terminates a delayed linter promptly on SIGTERM and leaves a foreign target alone", async () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const entered = join(fakeBin, "plutil.entered");
-    const lintPid = join(fakeBin, "plutil.pid");
-    const terminated = join(fakeBin, "plutil.terminated");
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      '#!/bin/sh\nif [ "$1" = print ]; then exit 1; fi\n: > "$ANA_FAKE_LAUNCHCTL_STATE"\n',
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const fakePlutil = join(fakeBin, "plutil");
-    writeFileSync(
-      fakePlutil,
-      [
+    const fixture = launcher({
+      plutil: [
         "#!/usr/bin/env bun",
         'import { writeFileSync } from "node:fs";',
         "writeFileSync(Bun.env.ANA_PLUTIL_PID!, `${process.pid}\\n`);",
@@ -857,114 +449,45 @@ describe("fullrun launchd launcher", () => {
         "  process.exit(143);",
         "});",
         "await new Promise(() => setInterval(() => {}, 60_000));",
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakePlutil, 0o755);
-    const frozen = frozenEnvironment();
-    const label = "ana.test.lint-sigterm";
-    const plist = join(worktree, LAUNCHD, `${label}.plist`);
-    const child = spawnRun(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "--version",
       ],
-      {
-        PATH: fakeBin,
-        ANA_FAKE_LAUNCHCTL_STATE: state,
-        ANA_PLUTIL_ENTERED: entered,
-        ANA_PLUTIL_PID: lintPid,
-        ANA_PLUTIL_TERMINATED: terminated,
-      },
+    });
+    const [entered, lintPid, terminated] = ["entered", "pid", "terminated"].map((name) =>
+      join(fixture.fakeBin, `plutil.${name}`),
     );
-    await waitForFile(entered, child.exited);
-    writeFileSync(plist, "foreign target\n");
+    const label = "ana.test.lint-sigterm";
+    const child = fixture.spawn(label, {
+      ANA_PLUTIL_ENTERED: entered!,
+      ANA_PLUTIL_PID: lintPid!,
+      ANA_PLUTIL_TERMINATED: terminated!,
+    });
+    await waitForFile(entered!, child.exited);
+    writeFileSync(fixture.plist(label), "foreign target\n");
     child.kill("SIGTERM");
     const status = await Promise.race([child.exited, Bun.sleep(2_000).then(() => null)]);
     if (status === null) {
       child.kill("SIGKILL");
       try {
-        runtimeProcess.kill(Number(readFileSync(lintPid, "utf8").trim()), "SIGKILL");
+        runtimeProcess.kill(Number(readFileSync(lintPid!, "utf8").trim()), "SIGKILL");
       } catch {
         // The linter may have exited between the timeout and cleanup.
       }
       throw new Error("launcher did not terminate within two seconds of SIGTERM");
     }
-    await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    await finish(child);
     expect(status).not.toBe(0);
-    expect(existsSync(terminated)).toBe(true);
-    expect(readFileSync(plist, "utf8")).toBe("foreign target\n");
-    expect(readdirSync(join(worktree, LAUNCHD))).toEqual([`${label}.plist`]);
-    expect(existsSync(state)).toBe(false);
+    expect(existsSync(terminated!)).toBe(true);
+    expect(readFileSync(fixture.plist(label), "utf8")).toBe("foreign target\n");
+    expect(readdirSync(fixture.launchd)).toEqual([`${label}.plist`]);
+    expect(existsSync(fixture.state)).toBe(false);
   });
 
   macIt("preserves trailing newlines and carriage returns in ProgramArguments", () => {
-    const worktree = temp();
-    const fakeBin = temp();
-    const state = join(fakeBin, LAUNCHCTL_STATE);
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const fakeLaunchctl = join(fakeBin, "launchctl");
-    writeFileSync(
-      fakeLaunchctl,
-      [
-        BIN_SH,
-        String.raw`if [ "$1" = "print" ]; then if [ -f "$ANA_FAKE_LAUNCHCTL_STATE" ]; then printf "state = running\npid = 4242\n"; exit 0; fi; exit 1; fi`,
-        'if [ "$1" = "bootstrap" ]; then : > "$ANA_FAKE_LAUNCHCTL_STATE"; exit 0; fi',
-        EXIT_2,
-        "",
-      ].join("\n"),
-    );
-    chmodSync(fakeLaunchctl, 0o755);
-    const frozen = frozenEnvironment();
+    const fixture = launcher();
     const label = "ana.test.argument-bytes";
-    const result = run(
-      [
-        "--worktree",
-        worktree,
-        "--log",
-        join(worktree, RUN_LOG),
-        "--label",
-        label,
-        ...frozen.args,
-        "--",
-        "bun",
-        "line\n",
-        "carriage\rreturn",
-      ],
-      { PATH: fakeBin, ANA_FAKE_LAUNCHCTL_STATE: state },
-    );
+    const result = fixture.run(label, [], {}, ["bun", "line\n", "carriage\rreturn"]);
     expect(result.status).toBe(0);
-    const plist = readFileSync(join(worktree, LAUNCHD, `${label}.plist`), "utf8");
+    const plist = readFileSync(fixture.plist(label), "utf8");
     expect(plist).toContain("<string>line\n</string>");
     expect(plist).toContain("<string>carriage&#13;return</string>");
-  });
-
-  macIt("refuses a label that could escape the launchd directory", () => {
-    const worktree = temp();
-    writeFileSync(join(worktree, BUN_VERSION), `${Bun.version}\n`);
-    const frozen = frozenEnvironment();
-    const result = run([
-      "--worktree",
-      worktree,
-      "--log",
-      join(worktree, RUN_LOG),
-      "--label",
-      "../outside",
-      ...frozen.args,
-      "--",
-      "bun",
-      "--version",
-    ]);
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain("invalid launchd label");
-    expect(existsSync(join(worktree, LAUNCHD))).toBe(false);
   });
 });

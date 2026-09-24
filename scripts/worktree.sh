@@ -220,8 +220,8 @@ prepare() {
   else
     # Replacing node_modules takes the modules a running command is importing out from under it.
     # Every entry point reaches the removal through here, so the refusal stands here rather than
-    # beside one of them.
-    busy "$dir" && fail "$dir is in use by a running command and its node_modules is linked, unmarked or prepared for other dependencies; run scripts/worktree.sh setup $dir when it is free"
+    # beside one of them. An absent node_modules takes nothing from anyone.
+    { [ -e "$dir/node_modules" ] || [ -L "$dir/node_modules" ]; } && busy "$dir" && fail "$dir is in use by a running command and its node_modules is linked, unmarked or prepared for other dependencies; run scripts/worktree.sh setup $dir when it is free"
     source=$(clone_source "$want" "$dir")
     rm -rf "$dir/node_modules"
     if [ -n "$source" ] && clone_path "$source" "$dir" node_modules; then
@@ -362,9 +362,35 @@ running_commands() {
           if (pid[n] in mine) continue
           own = 0
           for (p = pid[n]; p != "" && p != "0" && p != "1"; p = parent[p]) if (p == self) { own = 1; break }
-          if (!own) print command[n]
+          if (!own) print pid[n] " " command[n]
         }
       }')
+}
+
+# The working directories of those same processes. A command line need not name its tree: bash
+# 5.1 and later, and zsh, exec the last command of `cd <tree> && bun run test` in place of the
+# shell, leaving a bare `bun run test` that the scan above cannot place. The kernel still knows
+# where it stands. Linux reads it from /proc and Darwin from lsof; a process belonging to another
+# user yields nothing, and the list is taken from the snapshot so this script's own family stays
+# out of it. A shell or an agent CLI merely standing in a tree is left out too: neither opens
+# node_modules itself, and whatever it starts stands there as its own process and is found.
+running_cwds() {
+  [ -z "${CWDS+set}" ] || return 0
+  running_commands
+  # Named by argv[0] rather than the kernel's command name, which an agent CLI may set to its
+  # version string.
+  local movers
+  movers=" $(printf '%s\n' "$PROCESSES" | awk '{
+    name = $2; sub(/.*\//, "", name); sub(/^-/, "", name)
+    if (name !~ /^(sh|bash|zsh|dash|fish|login|claude|codex|caffeinate)$/) print $1
+  }' | tr '\n' ' ') "
+  if [ -d /proc/self ]; then
+    CWDS=$(find /proc/[0-9]*/cwd -maxdepth 0 -printf '%p %l\n' 2>/dev/null |
+      awk -v movers="$movers" '{ split($1, part, "/"); if (index(movers, " " part[3] " ")) { sub(/^[^ ]+ /, ""); print } }')
+  else
+    CWDS=$(lsof -a -d cwd -Fpn 2>/dev/null |
+      awk -v movers="$movers" '/^p/ { p = substr($0, 2) } /^n/ && index(movers, " " p " ") { print substr($0, 2) }')
+  fi
 }
 
 # The command `run` exec's into carries neither this script's name nor the worktree path in its
@@ -425,6 +451,15 @@ busy() {
   fi
   running_commands
   case "$PROCESSES" in *"$1"*) return 0 ;; esac
+  running_cwds
+  local real
+  real=$(cd "$1" 2>/dev/null && pwd -P) || real=$1
+  case "
+$CWDS
+" in *"
+$real
+"* | *"
+$real/"*) return 0 ;; esac
   return 1
 }
 

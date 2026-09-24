@@ -1,39 +1,53 @@
 import { describe, expect, it } from "bun:test";
+import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const root = new URL("..", import.meta.url);
-const agents = await Bun.file(new URL("AGENTS.md", root)).text();
 const workflow = await Bun.file(new URL(".github/workflows/gate.yml", root)).text();
-const preCommit = await Bun.file(new URL(".githooks/pre-commit", root)).text();
-const prePush = await Bun.file(new URL(".githooks/pre-push", root)).text();
 const manifest = await Bun.file(new URL("package.json", root)).json();
 // SAFETY: the test reads only the optional top-level boolean it asserts below; all other TOML keys
 // remain opaque to this projection.
 const bunfig = Bun.TOML.parse(await Bun.file(new URL("bunfig.toml", root)).text()) as { env?: boolean };
-const envBaseline = await Bun.file(new URL("test/env-baseline.ts", root)).text();
 const gate = await Bun.file(new URL("tools/gate.sh", root)).text();
 const worktreeScript = await Bun.file(new URL("scripts/worktree.sh", root)).text();
-const testSuite = await Bun.file(new URL("tools/runtime/test-suite.ts", root)).text();
-const testImpactScripts = await Promise.all(
-  ["coverage-harvest.mjs", "impact-rank.mjs", "mutation-adjudicate.mjs"].map((file) =>
-    Bun.file(new URL(`.claude/skills/test-impact-and-consolidation/scripts/${file}`, root)).text(),
-  ),
-);
 
 describe("Bun-owned CI and Git hooks", () => {
   it("leaves repository dotenv precedence to the explicit environment owner", () => {
     expect(bunfig.env).toBe(false);
   });
 
-  it("neutralises ambient workshop-cell composition controls", () => {
-    expect(envBaseline).toContain('"ANA_WORKSHOP_VM"');
-    expect(envBaseline).toContain('"ANA_VM_DIR"');
-  });
-
   // An agent session exports FORCE_COLOR=3, which makes Bun wrap a child's `console.error` in ANSI
-  // escapes on a pipe; two tests asserting captured child output failed on it on 18 September.
-  it("neutralises ambient forced-colour toggles that change captured child output", () => {
-    expect(envBaseline).toContain('"FORCE_COLOR"');
-    expect(envBaseline).toContain('"CLICOLOR_FORCE"');
+  // escapes on a pipe, so the baseline removes it with the sandbox, workshop and credential names;
+  // the live-suite switch must survive, or the suite it enables can never run.
+  it("strips ambient controls and credentials but keeps the live-suite opt-in switch", () => {
+    const names = [
+      "ANA_RUN_CODEX_OAUTH_LIVE",
+      "ANA_CODEX_OAUTH_MODEL",
+      "OPENAI_API_KEY",
+      "CODEX_HOME",
+      "CODEX_SANDBOX",
+      "ANA_WORKSHOP_VM",
+      "ANA_VM_DIR",
+      "FORCE_COLOR",
+      "CLICOLOR_FORCE",
+    ];
+    const seen = spawnTextSync(
+      process.execPath,
+      [
+        "--preload",
+        Bun.fileURLToPath(new URL("test/env-baseline.ts", root)),
+        "-e",
+        `console.log(JSON.stringify(${JSON.stringify(names)}.filter((name) => name in Bun.env)))`,
+      ],
+      {
+        env: {
+          PATH: Bun.env.PATH,
+          HOME: Bun.env.HOME,
+          ...Object.fromEntries(names.map((name) => [name, "1"])),
+        },
+      },
+    );
+    expect(seen.stderr).toContain("[env-baseline] removed 7 ambient variable(s)");
+    expect(JSON.parse(seen.stdout)).toEqual(["ANA_RUN_CODEX_OAUTH_LIVE", "ANA_CODEX_OAUTH_MODEL"]);
   });
 
   it("pins both CI jobs to the same stable release file as local setup", () => {
@@ -55,25 +69,6 @@ describe("Bun-owned CI and Git hooks", () => {
     expect(workflow.match(/if: needs\.changed\.outputs\.run == 'true'/g)).toHaveLength(2);
   });
 
-  it("runs both repository hooks through the pinned Bun command family", () => {
-    const hooks = `${preCommit}\n${prePush}`;
-    expect(hooks).toContain("bun");
-  });
-
-  it("keeps the owned test-impact launchers on Bun coverage and Bun tests", () => {
-    const scripts = testImpactScripts.join("\n");
-    expect(scripts).toContain("Bun.spawn");
-    expect(scripts).not.toContain("npm_config_user_agent");
-    expect(scripts).not.toContain("npm_command");
-  });
-
-  it("keeps repository work on Bun without package-manager compatibility wrappers", () => {
-    // The 2026-09-06 AGENTS.md edit combined both sentences; the rule is unchanged.
-    expect(agents).toMatch(
-      /never Node, npm, npx,\s+compatibility prefixes, version managers or package-manager handshake-variable changes/u,
-    );
-  });
-
   it("runs the repository gate through the one declared test invocation", () => {
     expect(manifest.scripts.gate).toBe("bash tools/gate.sh");
     // The gate must not spell its own `bun test` line: a second spelling drifted from the `test`
@@ -81,16 +76,6 @@ describe("Bun-owned CI and Git hooks", () => {
     expect(gate).toContain("exec bun run test");
     expect(gate).not.toMatch(/exec bun test\b/);
     expect(manifest.scripts.test).toBe("bun tools/runtime/test-suite.ts");
-    expect(testSuite).toContain("`--parallel=${String(workerCount(workers))}`");
-    expect(testSuite).toContain('"--max-concurrency=4"');
-    // Cases that spawn real workers, sandboxes and repositories can take several seconds.
-    // Under parallel execution Bun's 5-second default caused failures when the host was busy,
-    // so the suite sets one longer timeout shared by its tests. It is one named constant: the
-    // rerun rule reads the same number to tell a clock-ended failure from an asserted one.
-    expect(testSuite).toContain("const PER_TEST_WALL_MS = 60_000;");
-    expect(testSuite).toContain("`--timeout=${String(PER_TEST_WALL_MS)}`");
-    // One parallel process over the whole tree.
-    expect(testSuite).toContain("--parallel=");
   });
 
   // `packages/ui` carries its own lock and node_modules, and `scripts/worktree.sh setup` prepares

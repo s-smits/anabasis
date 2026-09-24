@@ -63,6 +63,11 @@ const OPERAND_FLAGS = new Set([
   "--cwd",
 ]);
 const IDLE_WALL_SECONDS = 180;
+/** Bun prints no `(pass)` line when any of these is set, as a quieter mode for agents, and
+ *  `runWalled` counts a file as reported only from its result lines. Inherited from an agent's
+ *  shell, every passing file read as unreported, so no clock-only, crowded-host or idle-wall rerun
+ *  could run. The suite owns the output it parses, so its child never sees them. */
+const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID"]);
 
 const PER_TEST_WALL_MS = 60_000;
 const COMMON_FLAGS = [
@@ -334,10 +339,10 @@ async function runWalled(
   // outlive the kill. An interrupt reaching the suite is forwarded to the group before exiting.
   const child = Bun.spawn(command, {
     cwd: REPO_ROOT,
-    // `AGENT=0` because Bun detects an agent session (`CLAUDECODE`, `AGENT`, `REPL_ID`) and then
-    // prints failures alone: no header and no `(pass)` line for a file that passed, so every such
-    // file reads as never reported and a clock-only failure is refused its rerun.
-    env: { ...Bun.env, ANA_TEST_TMPDIR: temporaryRoot, AGENT: "0" },
+    env: {
+      ...Object.fromEntries(Object.entries(Bun.env).filter(([name]) => !AGENT_MARKERS.has(name))),
+      ANA_TEST_TMPDIR: temporaryRoot,
+    },
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",

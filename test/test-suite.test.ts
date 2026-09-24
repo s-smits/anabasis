@@ -389,52 +389,6 @@ describe("the wall itself", () => {
     }
   }, 60_000);
 
-  it("reads a passing file as reported when launched from an agent session", async () => {
-    // Bun prints only failures when it detects an agent (`CLAUDECODE`, `AGENT`, `REPL_ID`), so a
-    // gate started from one read every passing file as silent and refused a clock-only rerun.
-    const host = scratchDir("ana-suite-agent-");
-    const fixture = join(host, "fixture"),
-      marker = join(host, "first-run");
-    mkdirSync(fixture);
-    writeFileSync(
-      join(fixture, "quick.test.ts"),
-      `import { it } from "bun:test";\nit("passes", () => {});\n`,
-    );
-    writeFileSync(
-      join(fixture, "slow.test.ts"),
-      `import { it } from "bun:test";
-it("times out once", async () => {
-  if (await Bun.file(${JSON.stringify(marker)}).exists()) return;
-  await Bun.write(${JSON.stringify(marker)}, "slow");
-  await Bun.sleep(2_000);
-}, 200);
-`,
-    );
-    const run = Bun.spawn(["bun", SUITE, join(fixture, "quick.test.ts"), join(fixture, "slow.test.ts")], {
-      cwd: REPO_ROOT,
-      env: {
-        ...Bun.env,
-        CLAUDECODE: "1",
-        AGENT: "1",
-        REPL_ID: "1",
-        TMPDIR: host,
-        ANA_TEST_TMPDIR: host,
-        ANA_TEST_WORKERS: "1",
-        ANA_TEST_HOST_LOAD: "0",
-      },
-      stdout: "ignore",
-      stderr: "pipe",
-    });
-    try {
-      const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
-      expect(err).not.toContain("printed no result at all");
-      expect(err).toContain("1 test(s) failed on time alone, none on an assertion; running their 1 file(s)");
-      expect(code).toBe(0);
-    } finally {
-      run.kill("SIGKILL");
-    }
-  }, 60_000);
-
   it("runs a wedged file again in a fresh process, keeping the request's filter, and takes that verdict", async () => {
     // The tail wedge: the group goes silent with one file unfinished. That file passes on its own,
     // so the rerun's verdict replaces what would otherwise have been the wall's failure. The rerun
@@ -472,6 +426,51 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
       expect(err).toContain("1 of 1 files were never finished; running them again in one fresh process");
       expect(err).toContain("1 pass");
       expect(err).not.toContain("dropped the request's filter");
+      expect(code).toBe(0);
+    } finally {
+      run.kill("SIGKILL");
+    }
+  }, 60_000);
+
+  it("runs a file a clock failed again when launched by an agent, which tells Bun to hide passes", async () => {
+    // Bun prints no `(pass)` line when `CLAUDECODE`, `AGENT` or `REPL_ID` is set, and the suite
+    // counts a file as reported only from its result lines. Inherited from an agent's shell, every
+    // passing file then read as unreported and the clock-only rerun never ran. The baseline strips
+    // these variables from this process, so the case sets them again for the suite it spawns.
+    const host = scratchDir("ana-suite-parallel-");
+    const fixture = join(host, "fixture"),
+      marker = join(host, "first-run");
+    mkdirSync(fixture);
+    writeFileSync(
+      join(fixture, "clock.test.ts"),
+      `import { it } from "bun:test";
+it("times out once, then passes", async () => {
+  if (await Bun.file(${JSON.stringify(marker)}).exists()) return;
+  await Bun.write(${JSON.stringify(marker)}, "timed out");
+  await Bun.sleep(5_000);
+}, 300);
+`,
+    );
+    writeFileSync(join(fixture, "fine.test.ts"), `import { it } from "bun:test";\nit("passes", () => {});\n`);
+    const run = Bun.spawn(["bun", SUITE, join(fixture, "clock.test.ts"), join(fixture, "fine.test.ts")], {
+      cwd: REPO_ROOT,
+      env: {
+        ...Bun.env,
+        TMPDIR: host,
+        ANA_TEST_TMPDIR: host,
+        ANA_TEST_WORKERS: "2",
+        ANA_TEST_HOST_LOAD: "0",
+        CLAUDECODE: "1",
+        AGENT: "1",
+        REPL_ID: "1",
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    try {
+      const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
+      expect(err).toContain("failed on time alone, none on an assertion; running their 1 file(s) again");
+      expect(err).not.toContain("printed no result at all");
       expect(code).toBe(0);
     } finally {
       run.kill("SIGKILL");

@@ -97,6 +97,56 @@ the rule registered, its sites fixed, its traps written into the rule's own comm
 its section here stops changing a decision. Shorten the ledger from the oldest end rather than put
 it on the ignore list; `SHAPE-RULESET.md` lost two shipped `ana` entries that way on 2026-09-20.
 
+## Three owner rules for the skill library, and their debt, 2026-09-23
+
+The duplicate-block scans find a helper copied line for line, and the skill scripts' drift was
+never that: each script re-spelled the same meaning its own way, so `tree/duplicate-run` had
+nothing to match. Three `ana` rules now send the meaning to its owner, each registered at `error`
+with its offenders listed file by file in `.oxlintrc.json`. The seven
+`whole-run-investigation` scripts being moved onto the library in the same pass
+(`build-manifest`, `manifest-inputs`, `manifest-compose`, `validate-archive`, `validate-reports`,
+`trace-digest`, `finding-recurrence`) are on none of the lists, so each rule holds them the moment
+their migration lands.
+
+`ana/no-hand-read-argv` refuses `Bun.argv`, `process.argv` and `runtimeProcess.argv` read by hand
+under `.claude/skills/` outside `main/cli.ts`: **19 sites in 19 files**. Two reads pass. `argv[0]`
+is the runtime's executable, which eight scripts read to re-spawn Bun. And the slice handed to the library
+passes, directly, behind `import.meta.main ? … : []`, or through a local `main(argv)` whose
+parameter the rule follows by position into a library call, which is how `seed-campaign.mts`,
+`case-census.mjs`, `parse-markdown-tasks.mjs` and `prose-classify.mjs` pass today. A local
+function that takes the slice and parses it itself reports at the call, because following the
+parameter is what tells it apart from one that forwards.
+
+`ana/no-hand-spelled-git` refuses a git subprocess spelled by hand — `hostTool("git")`, a command
+array opening with `"git"`, `spawnSync("git", …)`, `` $`git …` `` — under `.claude/skills/`
+outside `main/git.ts` and `main/run.ts`: **7 sites in 3 files**, four of them in `launch.ts`. It
+covers `src` too, where it reports nothing: production cannot import a skill module, and `src`
+already has two owners that differ on purpose, the committing helper in `src/author/domain-repo.ts`
+that pins the author identity and the read-only capture in `src/run/source-identity.ts` that runs
+without optional locks. `tools/` is left out. It spells git at seven sites in six files with no
+owner of its own, and making it import a skill module is a layering decision a lint rule should
+not take by the back door.
+
+`ana/no-hand-read-controller-evidence` refuses a path to `opening.json` or `terminal.json` that
+reaches a JSON read under `.claude/skills/` outside `main/run.ts`, whose `openRecordedRun` reaches
+the controller's strict reader: **16 sites in 11 files**. The shipped defect it answers was
+`runtimeNonResult === true` tested against a field holding a reason string. The file may be spelled
+as the literal, a local `const OPENING = "opening.json"`, or the `OPENING_FILE` and `TERMINAL_FILE`
+that `src/run/controller-lineage.ts` exports; importing the constant and joining it by hand is
+still a hand read, because the constant names the file and says nothing about its fields. What
+passes is every use that parses no field: `zip-run.mjs` adding both files to an archive as bytes,
+`trace-digest.mjs` matching the `terminal.json.tmp-*` prefix of an orphan, `existsSync` discovery
+in `digest-ledgers.mjs`, and the file named in a message in `run-overview.mjs`. `zip-run.mjs` is
+nonetheless on the list, for one line: `buildBundle` parses the opening to read
+`source.commit` into its manifest.
+
+The debt was paid the same day, so the three override blocks that carried it are gone from
+`.oxlintrc.json` and each rule now holds every file under `.claude/skills/` with no exemption.
+The scripts were moved rather than excused: `status`, `watch` and `close-advisories` became one
+`campaign.ts`, `launch.ts` reads its opening through `openRecordedRun` and its git through
+`gitText`, and every other listed file declares its options to `main/cli.ts`. A file cannot rejoin a
+list, because there is no list left to widen; a new hand read is fixed in the script.
+
 ## Four rules admitted, three refused, 2026-09-20
 
 `unicorn/explicit-length-check` (15 sites), `eslint/no-useless-assignment` (5),

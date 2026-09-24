@@ -41,7 +41,12 @@ describe("ana/no-hand-spelled-tree-root", () => {
     expect(reports("src/example.ts")).toStrictEqual(expected);
   });
 
-  it("speaks to the controller only, and never to the two files that own the answer", () => {
+  it("reads a skill script as a live reader too, and leaves a skill's own test fixture alone", () => {
+    expect(reports(".claude/skills/launch-run/scripts/example.mts")).toStrictEqual(expectedLines(PATHS));
+    expect(reports(".claude/skills/launch-run/scripts/example.test.ts")).toStrictEqual([]);
+  });
+
+  it("speaks to live readers only, and never to the two files that own the answer", () => {
     expect(reports("tools/report/example.ts")).toStrictEqual([]);
     expect(reports("src/meta/campaign-root.ts")).toStrictEqual([]);
     expect(reports("src/run/product-versions.ts")).toStrictEqual([]);

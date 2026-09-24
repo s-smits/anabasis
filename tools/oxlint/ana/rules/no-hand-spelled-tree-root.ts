@@ -1,6 +1,6 @@
 import { defineRule } from "@oxlint/plugins";
 
-import { isOneOf, isUnder } from "../shared/file-role.ts";
+import { isOneOf, isTestFile, isUnder } from "../shared/file-role.ts";
 import { importTracker } from "../shared/import-fix.ts";
 
 /**
@@ -49,8 +49,13 @@ export const noHandSpelledTreeRootRule = defineRule({
     const imports = importTracker("campaign-root.ts", MODULE);
     return {
       // A test builds its own fixture tree and has to name it; a reporter under tools/ reads a
-      // path it was handed. Only the controller resolves a live tree, and only it has an owner.
-      before: () => isUnder(context.filename, "src") && !isOneOf(context.filename, OWNERS),
+      // path it was handed. The controller resolves a live tree, and so does a skill script: one
+      // under .claude/ that joins "campaigns" onto a checkout's root reads the same ledger the
+      // controller writes, and a layout change the owner follows leaves that script reading nothing.
+      before: () =>
+        (isUnder(context.filename, "src") || isUnder(context.filename, ".claude")) &&
+        !isTestFile(context.filename) &&
+        !isOneOf(context.filename, OWNERS),
       Program: (node) => imports.read(node),
       CallExpression(node) {
         const { callee } = node;

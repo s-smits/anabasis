@@ -88,7 +88,7 @@ describe("judgeSessionFor", () => {
   it("carries the slot's pin and the census prompt digest without resolving a credential", () => {
     // No credential anywhere: the session resolves its slot when a subject opens one, not here.
     const session = required(judgeSessionFor(ROUTED, repoWith({})), "an enabled review's census session");
-    expect(session.pin).toBe("openrouter/openai/gpt-4o-mini@providers=unconstrained");
+    expect(session.pin).toBe(required(reviewSlotPin(ROUTED), "the routed review's pin"));
     expect(session.promptPolicyDigest).toBe(ACTIVE_JUDGE_PROMPT_DIGESTS.census);
   });
 });

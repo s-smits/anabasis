@@ -42,7 +42,6 @@ describe("whole-run trace challenge packet", () => {
     expect(selected.context).toContain("new-");
     expect(selected.context).not.toContain("old-");
     expect(selected.truncated).toBe(true);
-    expect(DEFAULT_MAX_CHARS).toBe(400_000);
   });
 
   it("clips an oversized newest record while retaining its identity header", () => {

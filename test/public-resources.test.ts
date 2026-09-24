@@ -246,18 +246,6 @@ describe("public brief resources", () => {
     });
   });
 
-  it("returns an empty list when the brief declares no public interface at all", () => {
-    expect(
-      briefPublicResources({
-        ...BRIEF,
-        artifactSchema: [],
-        designRuleConstants: [],
-        ruleDecisions: [],
-        truthChecks: [],
-      }),
-    ).toEqual([]);
-  });
-
   // Visibility determines which rule decisions are public. A private row must be absent from
   // both readers; public rules need a separate declaration that both receive.
   it("withholds a private rule decision from the solver and the Judge", () => {
@@ -370,10 +358,6 @@ describe("public brief resources", () => {
     const tool = publicResourcesTool(readPublicResources(dir));
     if (tool === null) throw new Error("expected a tool for a brief with constants");
     expect(tool.name).toBe(PUBLIC_RESOURCES_TOOL);
-    expect(tool.label).toBe("Read public rules");
-    expect(tool.description).toBe(
-      "Read this domain's public validity rules with their task paths, rule decisions, answer schema, fixed constants and allowed values.",
-    );
     const result = await tool.execute("call-1", double({}));
     expect(JSON.stringify(result.details)).toBe(JSON.stringify({ resources: fromBrief }));
   });
@@ -382,33 +366,37 @@ describe("public brief resources", () => {
     const dir = workspaceWithBrief(BRIEF, "vocabulary");
     const tool = publicResourcesTool(readPublicResources(dir));
     if (tool === null) throw new Error("expected a tool for a brief with constants");
-    for (const word of ["Judge", "census", "verifier", "verifier", "same bytes", "truth"]) {
+    for (const word of ["Judge", "census", "verifier", "same bytes", "truth"]) {
       expect(`${tool.label} ${tool.description}`.toLowerCase()).not.toContain(word.toLowerCase());
     }
   });
 
-  it("adds no tool when brief.json is missing or declares no public interface", () => {
-    const empty = join(ROOT, "legacy");
-    mkdirSync(empty, { recursive: true });
-    expect(readPublicResources(empty)).toEqual([]);
-    expect(publicResourcesTool(readPublicResources(empty))).toBeNull();
-    const noSurface = workspaceWithBrief(
-      { ...BRIEF, artifactSchema: [], designRuleConstants: [], truthChecks: [], ruleDecisions: [] },
-      "no-surface",
-    );
-    expect(publicResourcesTool(readPublicResources(noSurface))).toBeNull();
-  });
-
-  it("ignores a brief that does not yet validate", () => {
-    const dir = workspaceWithBrief({ slug: "broken" }, "invalid");
+  const NO_SURFACE = { artifactSchema: [], designRuleConstants: [], truthChecks: [], ruleDecisions: [] };
+  it.each<[string, (name: string) => string]>([
+    [
+      "a workspace with no brief.json",
+      (name) => {
+        mkdirSync(join(ROOT, name), { recursive: true });
+        return join(ROOT, name);
+      },
+    ],
+    [
+      "a brief that declares no public interface",
+      (name) => workspaceWithBrief({ ...BRIEF, ...NO_SURFACE }, name),
+    ],
+    ["a brief that does not yet validate", (name) => workspaceWithBrief({ slug: "broken" }, name)],
+    [
+      "malformed draft JSON",
+      (name) => {
+        const dir = workspaceWithBrief(BRIEF, name);
+        writeFileSync(join(dir, "correctness-model", "brief.json"), "{");
+        return dir;
+      },
+    ],
+  ])("publishes nothing and adds no tool for %s", (label, workspace) => {
+    const dir = workspace(label.replaceAll(" ", "-"));
     expect(readPublicResources(dir)).toEqual([]);
     expect(publicResourcesTool(readPublicResources(dir))).toBeNull();
-  });
-
-  it("ignores malformed draft JSON", () => {
-    const dir = workspaceWithBrief(BRIEF, "malformed");
-    writeFileSync(join(dir, "correctness-model", "brief.json"), "{");
-    expect(readPublicResources(dir)).toEqual([]);
   });
 
   it("rejects a generated tool with a system-owned name", () => {

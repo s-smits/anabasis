@@ -39,7 +39,7 @@ const VERDICT_WORD_SET: ReadonlySet<string> = new Set<string>(VERDICT_WORDS);
 
 /** The one verdict representation, the schema tool's parameters. The three outcomes are mutually exclusive by construction: abstention is a first-class verdict word, so
  * no field combination can state both a decision and an abstention. */
-export const JUDGE_VERDICT_SCHEMA = {
+const JUDGE_VERDICT_SCHEMA = {
   type: "object",
   properties: {
     verdict: { type: "string", enum: [...VERDICT_WORDS] },

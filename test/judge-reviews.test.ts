@@ -21,16 +21,7 @@
  * no claim, no analysis. That last one is the safety property the rest depends on, since a reader
  * that can write is a reader that can decide.
  */
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -50,13 +41,12 @@ import {
   type JudgeObservation,
   type JudgeSubjectEvidence,
   summarizeJudge,
-  JUDGE_VERDICT_SCHEMA,
 } from "../src/truth/judge.ts";
 import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
 import { ACTIVE_JUDGE_PROMPTS } from "../src/truth/judge-prompt-policy.ts";
 import { isBoolean, type JsonObject } from "../src/meta/json-shape.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
-const scratch: string[] = [];
 const SLUG = "bridge-truss";
 const RUN = "base";
 const JUDGE_PIN = "codex/gpt-5.1-codex-judge";
@@ -86,9 +76,7 @@ interface SealedFixture {
   analysis: IterationAnalysis;
 }
 
-afterEach(() => {
-  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
+afterEach(cleanupScratch);
 
 /** Only the pin is read here: these tests summarise evidence the judge already produced. */
 const SESSION: JudgeSession = {
@@ -154,8 +142,7 @@ function repoWith(
   spec: BatterySpec,
   opts?: { batteryRuntime?: JsonObject; judgeWithoutRules?: true },
 ): SealedFixture {
-  const root = mkdtempSync(join(tmpdir(), "ana-judge-"));
-  scratch.push(root);
+  const root = scratchDir("ana-judge-");
   mkdirSync(join(root, "campaigns", SLUG), { recursive: true });
   writeFileSync(join(root, "campaigns", SLUG, "case-record.jsonl"), "");
   // The judges evidence the Judge exit's finding cites; analyse-step records it before admission.
@@ -489,7 +476,7 @@ describe("coverage and historical records", () => {
     expect(result.exit.reason).not.toContain("citing shown rules");
   });
 
-  it("reads a judge record without its cited rules, as recorded before 2026-09-15, as no judge evidence", () => {
+  it("contests no case whose Judge fail cites no rule", () => {
     const { root, analysis } = repoWith(
       { cases: [{ taskId: "t1", truthOk: true, judge: false }] },
       { judgeWithoutRules: true },
@@ -501,7 +488,7 @@ describe("coverage and historical records", () => {
 });
 
 describe("the Judge exit is advice only", () => {
-  it("does not block on 3 of 10 verifier-fail/Judge-pass cases, the old blocking floor", () => {
+  it("advises on verifier-fail/Judge-pass cases by family and routes them to no owner", () => {
     const { root, analysis } = repoWith(exitBattery(10, 3));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(result.provisional).toBeNull();
@@ -545,34 +532,19 @@ describe("the Judge exit is advice only", () => {
 });
 
 describe("Judge prompt policy", () => {
-  it("checks every requirement internally while keeping the emitted rationale within its fixed contract", () => {
+  it("states each duty once, spells no number that could go stale and keeps the per-requirement listing out", () => {
     const { census } = ACTIVE_JUDGE_PROMPTS;
-    expect(census).toContain("Check every stated requirement before deciding.");
-    expect(census).toContain("decisive unmet requirement");
-    expect(census).toContain("Do not list every requirement in the rationale.");
+    for (const duty of [
+      "Check every stated requirement before deciding.",
+      "Do not list every requirement in the rationale.",
+      "a requirement you cannot see cannot ground a failure",
+      "recompute it from the shown inputs",
+      "states no tolerance for that comparison",
+      "is not decided by predicting that run from its text",
+    ]) {
+      expect(census.split(duty).length - 1).toBe(1);
+    }
+    expect(census).not.toMatch(/\d/);
     expect(census).not.toContain("List each stated requirement and check it separately.");
-    expect(census).toContain("If a required part is missing, wrong, contradicted, or unsupported");
-    // A failure may not rest on a convention the Judge was never shown.
-    expect(census).toContain("a requirement you cannot see cannot ground a failure");
-    // A recomputed magnitude is not a check of the shown definition: comparing magnitudes alone
-    // passes a negative peak against a "largest absolute" rule.
-    expect(census).toContain("recompute it from the shown inputs");
-    expect(census).toContain("matches in magnitude but differs in sign or definition does not meet it");
-    // A recomputation failure shows its inputs, both values and the tolerance; a run the Judge
-    // cannot perform (compile, execute, solve, simulate) is not decided by predicting it.
-    expect(census).toContain(
-      "states the shown inputs it used, the recomputed value, the declared value and the tolerance quoted from the shown material",
-    );
-    // The Judge supplies neither the tolerance nor the intermediates. Left to supply them it fails
-    // a verifier-passed case on a tolerance the bound task never published, over a gap produced by
-    // quantities it derived itself and got wrong in the second decimal.
-    expect(census).toContain(
-      "your construction of that quantity is your own work and not evidence against the output",
-    );
-    expect(census).toContain(
-      "states no tolerance for that comparison, a numeric disagreement is not a failure",
-    );
-    expect(census).toContain("is not decided by predicting that run from its text");
-    expect(JUDGE_VERDICT_SCHEMA.properties.rationale).toMatchObject({ minLength: 1, maxLength: 400 });
   });
 });

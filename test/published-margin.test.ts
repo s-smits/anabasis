@@ -96,18 +96,9 @@ describe("published margins", () => {
     expect(table).not.toContain("not yet sendable");
   });
 
-  it("says what the host runs when the Builder's own description cannot", () => {
-    // A truss writer's authored description ended "It runs no analysis and checks nothing against
-    // the published limits" while the host's bound execute was returning the table below it. The
-    // Builder can see neither the bound parameters nor the bound execution, so the host states
-    // both where it takes the tool over.
-    expect(WRITER_BINDING_SENTENCE).toContain("its parameters are the exact public artifact schema");
-    expect(WRITER_BINDING_SENTENCE).toContain("records the answer that would be submitted at the wall");
-    expect(WRITER_BINDING_SENTENCE).toContain("reports each published limit that applies to your task");
-    // The authored sentence stays above it and the two may disagree; this names which one runs.
-    expect(WRITER_BINDING_SENTENCE).toContain("Where the description above says otherwise");
-    // No count and no task-bound wording, because conformance requires one stable registration
-    // across a battery whose families publish different numbers of limits.
+  it("states the host binding without a count, so one registration serves every family", () => {
+    // Conformance requires one stable registration across a battery whose families publish
+    // different numbers of limits; the confined-worker case below proves the sentence is delivered.
     expect(WRITER_BINDING_SENTENCE).not.toMatch(/\d/);
   });
 

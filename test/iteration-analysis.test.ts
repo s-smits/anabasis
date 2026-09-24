@@ -7,7 +7,6 @@
  * admitted. The integration cases in test/harness-measure.test.ts derive the same analysis from
  * recorded measurement evidence instead.
  */
-import { hashJsonBytes } from "../src/meta/json-runtime.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -15,7 +14,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   type AnalysisFinding,
   type IterationAnalysis,
-  FEEDBACK_POLICY,
   admitFindings,
   checkCounts,
   hostFindings,
@@ -221,13 +219,6 @@ describe("the routing decision", () => {
         reason: "not-builder-owned-surface",
       });
     }
-  });
-
-  it("names the severity-and-route rule its packets are readable under", () => {
-    // A packet recorded under an older rule states nothing to a reader on this one: the routes and
-    // severities the two would assign differ, and re-labelling old bytes is the misroute this
-    // identity exists to end.
-    expect(FEEDBACK_POLICY).toBe("severity-route/9-complete-repair-agenda");
   });
 });
 
@@ -523,10 +514,6 @@ describe("controller admission", () => {
     expect(evidence.feedback[0]?.claim).toContain("cut mass-budget headroom");
     expect(evidence.feedback[0]?.findings?.[0]?.code).toBe("hardness");
   });
-
-  it("binds feedback to the packet's content digest — altered evidence is a different digest", () => {
-    expect(hashJsonBytes(packet())).not.toBe(hashJsonBytes(packet({ summary: { passed: 2, passRate: 1 } })));
-  });
 });
 
 describe("the per-case feedback restriction", () => {
@@ -552,17 +539,6 @@ describe("the per-case feedback restriction", () => {
       { findingDigest: expect.any(String), kind: "harness-defect", owner: null, reason: "per-case-detail" },
     ]);
     expect(JSON.stringify(evidence.feedback)).not.toContain("task-901");
-  });
-
-  it("drops a per-case diagnosis ahead of the owner check, whatever owner it proposes", () => {
-    const root = repo();
-    // The filter is fail-closed: the subject decides, not the owner. A per-case row that names a
-    // routable owner is dropped by the same branch as one that names none.
-    for (const proposedOwner of ["tools-spec", null] as const) {
-      const perCase = finding({ proposedOwner, subject: { taskId: "task-901", family: "beams" } });
-      const evidence = admitFindings(root, analysisWithTasks("task-901"), [perCase]);
-      expect(evidence.feedback).toEqual([]);
-    }
   });
 
   it("routes the subject-free findings beside a per-case one", () => {

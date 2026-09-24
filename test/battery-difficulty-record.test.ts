@@ -214,8 +214,7 @@ describe("the family tally", () => {
     );
     expect(failed.cases.length).toBeGreaterThan(0);
     for (const row of failed.cases) {
-      expect(row.pass).toBe(false);
-      expect(row.truthOk).toBeNull();
+      expect(row).toMatchObject({ acceptedSubmit: false, pass: false, truthOk: null });
     }
     expect(failed.measured.items.reduce((sum, row) => sum + row.attempts, 0)).toBe(failed.cases.length);
     expect(failed.measured.items.every((row) => row.passes === 0)).toBe(true);

@@ -504,22 +504,35 @@ live evidence.
 
    The reviewer may also **execute**. `probe_check` takes one accept control, one rooted path into
    its artifact in the spelling the declared checks use (`$.layout.members[0].area`, read through
-   `jsonPathTokens`) and one replacement value; it runs the candidate's declared checks over the
-   original and the changed artifact and reports which checks moved. At most eight per review,
-   accept controls only, on a path that already exists. A probe whose original did not pass, or
-   whose changed artifact reached no verdict, is not evidence. Every harness-defect finding cites
-   its `probeIds`, or sends `[]` for a source-only reading, and a probe-backed harness defect may
-   be admitted blocking on first occurrence. Otherwise a first agent-side defect stays advisory,
-   and recurrence is keyed by the declared check the finding names, or by the artifact path when it
-   names no check — but only a path below a declared schema root. A bare root is not an identity:
-   `schemaPath` requires the first segment alone, so a one-root domain offers exactly one word for
-   the whole artifact, and across the recorded corpus every campaign that fell back to a path
-   collapsed to a single constant. Run 17f9de demoted a new finding on two recurrences that
-   belonged to other defects; the same collapse raises one at a single recurrence, which is how a
-   25-of-25 harness came to be reset. Only curriculum or evaluation-side defects may dispute an
-   issue, and a dispute keeps the issue counted while withholding the agent advice. Public
-   candidate analysis and checks of published limits are legitimate solving support — call a tool
-   an answer shortcut only when it supplies the remaining decision the solver was meant to make.
+   `jsonPathTokens`) and one change: either a replacement value, or, for a text leaf, a `find` that
+   occurs exactly once in it and the `replace` that takes its place, and refuses a call sending both
+   or neither. The edit exists because a field that is a whole source file can run past the
+   4,000-character ceiling a value is held to (`VALUE_MAX_CHARS`, `src/review/review-probe.ts`)
+   while the line two readings of a rule disagree about occurs in it once. It runs the candidate's
+   declared checks over the original and the changed artifact and reports which checks moved. At
+   most eight per review (`PROBE_BUDGET`), accept controls only, on a path that already exists. A
+   probe whose original did not pass, or whose changed artifact reached no verdict, is not evidence.
+   Every harness-defect finding cites its `probeIds`, or sends `[]` for a source-only reading, and a
+   probe-backed harness defect may be admitted blocking on first occurrence. Otherwise a first
+   agent-side defect stays advisory, and recurrence is keyed by the declared check the finding
+   names, or by the artifact path when it names no check — but only a path below a declared schema
+   root. A bare root is not an identity: `schemaPath` requires the first segment alone, so a
+   one-root domain offers exactly one word for the whole artifact, and across the recorded corpus
+   every campaign that fell back to a path collapsed to a single constant. Run 17f9de demoted a new
+   finding on two recurrences that belonged to other defects; the same collapse raises one at a
+   single recurrence, which is how a 25-of-25 harness came to be reset. Only curriculum or
+   evaluation-side defects may dispute an issue, and a dispute keeps the issue counted while
+   withholding the agent advice. Public candidate analysis and checks of published limits are
+   legitimate solving support — call a tool an answer shortcut only when it supplies the remaining
+   decision the solver was meant to make.
+
+   An authoring review reads two things the Builder never sees. One is the bytes the Built solver
+   submitted in each of the round's blind rehearsals, beside the one verdict they earned; the
+   Builder that ran them saw the verdict and not the bytes. The other is the probes the previous
+   review of the same round rested its findings on, as the exact `probe_check` calls that re-run them
+   (`carriedDemonstrations`, `src/review/epoch-reviewer.ts`). A carried probe is a lead and backs
+   no finding until this review runs it again, because its number belonged to another review over
+   bytes that may since have changed.
 
    Reviewer spend is not an axis for savings. The reviewer is the only component that reads the
    measured tree against the original request, so make it smarter and let the build iterate more.
@@ -799,13 +812,23 @@ live evidence.
     complete one. Protected verifier output is never stored or pointed at.
 
     A Builder authoring session has no default wall; `HARNESS_BUILDER_SESSION_CAP_MS` may set a
-    positive-integer one, and a Builder bash install may run for up to two hours. The Epoch
-    Reviewer reads the authoring tree always at the completion of a host tool call and never inside
-    one: after a clear `correctness_check` whose agent, correctness-model or battery bytes have
-    changed since the last review, it reads that immutable snapshot, and after **40 minutes** without a
-    review (`REVIEW_INTERVAL_MS`, `src/gate/review-clock.ts`) it reads the live workspace at the
-    next completed tool call. The clock restarts when a review finishes, and the public projection
-    of its findings rides that tool's result. No probe budget and no no-submit strike bounds a
+    positive-integer one, and a Builder bash install may run for up to two hours. An authoring
+    review starts at the completion of a host tool call, never inside one, and then runs beside the
+    session rather than holding it (`AuthoringReviews`, `src/run/authoring-review.ts`). It always
+    reads frozen bytes: after a clear `correctness_check` whose agent, correctness-model or battery
+    bytes have changed since the last review, that check's immutable snapshot, and after **40
+    minutes** without a review (`REVIEW_INTERVAL_MS`, `src/gate/review-clock.ts`) a snapshot of the
+    workspace taken at the call that started it. So an edit the Builder makes while it runs is not
+    in what it reads, and a draft that cannot be frozen is not read live in its place: the clock
+    stays due and the next completed call tries again. One review runs at a time, and a trigger
+    that fires meanwhile waits in the clock, which keeps only the latest validated product, so
+    triggers coalesce rather than queue. The clock restarts when a review finishes, and the public
+    projection of its findings rides the first tool result after that. Submit is the one call that
+    waits for it. A submit made while a review runs is held until the review finishes, which the
+    reader session's one-hour deadline bounds (`READER_DEADLINE_MS`, `src/review/review-reader.ts`),
+    and when the review shows findings the Builder has not read, they come back in place of the
+    verdict and the call counts as no submit (`reason: "review-unread"`), so the same bytes sent
+    next are a first submission of them. No probe budget and no no-submit strike bounds a
     session's reconnaissance before its first authoring change. A round runs as a Codex goal
     (`src/author/builder-continuation.ts`): every continuation restates the request and the round's
     facts, a round has no turn cap unless `--max-builder-turns` sets one, and three turns in a row

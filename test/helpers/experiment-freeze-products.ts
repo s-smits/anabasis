@@ -1,18 +1,16 @@
 /**
- * The adopted product the experiment-freeze e2e files continue from, and the one scripted intent
- * case they share. The real-submit cases run the campaign's own submit, census and full-task F2
- * over an adopted product. Every case used to build and adopt the same initial product itself,
- * which cost the suite one serial worker for minutes; then one file built both variants once and
- * ran 21 cases four at a time on one worker, and that file alone set the suite's wall (68 s in the
- * Linux VM, 154 s gate). The cases now live in three files, one per product variant, so they spread
- * across workers and each file builds only the variant it needs.
+ * The adopted products experiment-intent{,-tool}.e2e.test.ts continue from, and the one scripted
+ * continuation each of its rows runs. A row rewrites a fresh workspace from the fixture, edits it,
+ * declares an experiment and submits through the campaign's own submit, census and full-task F2
+ * over a private copy of the adopted product; the accepted bytes then decide the attribution. Two
+ * variants are adopted: authored checks alone, and checks that require the installed fixture tool.
  */
 import { PLAN_FIELDS } from "./experiment-plan.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { expect } from "bun:test";
 import { double, required, scriptedSession } from "./doubles.ts";
 import { uppercaseFixture } from "./uppercase-fixture.ts";
-import { cpSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { scratchDir } from "./scratch.ts";
 import { fingerprintSlug } from "../../src/claim/fingerprint.ts";
@@ -31,47 +29,38 @@ import type { BuiltHarness, FeedbackOwner } from "../../src/author/campaign-type
 import type { HarnessExperiment } from "../../src/critic/types.ts";
 import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
 
-export const FRESH = {
+const FRESH = {
   slug: "matching",
   kickoff: "Build a harness.",
   expectedTasks: 4,
   maxTurns: 1,
 } as const;
+const FIXTURE_TOOL = ".toolchain/bin/uppercase-fixture";
 
 export interface AdoptedProduct {
   adoptedDir: string;
   harness: BuiltHarness;
 }
 
-/** Kinds whose continuation redesigns the public battery (new inputs and a new family). */
-const REDESIGNED = new Set([
-  "tasks",
-  "product-tasks",
-  "schema-tasks",
-  "schema-product",
-  "schema-scope-revision",
-  "unsolvable",
-  "blocked-tasks",
-  "blocked-product",
-  "tool-relocated",
-  "tool-tasks",
-  "tool-product",
-  "tool-unknown",
-  "tool-mid-gate",
-]);
-/** Kinds whose continuation changes the installed tool's bytes before submit. */
-const TOOL_EDITED = new Set(["tool-tasks", "tool-product", "tool-only"]);
-const CHANGED_TOOL = "#!/bin/sh\n# changed implementation\nexit 0\n";
-
-/** kind, proposed scope, prior-evidence owner, admitted scope (null: refused), refusal text, gate calls */
-type IntentRow = readonly [
-  string,
-  "tasks" | "product",
-  FeedbackOwner | null,
-  HarnessExperiment | null,
-  string | null,
-  number,
-];
+/** One continuation: the fixture battery (redesigned or the adopted one) plus an edit, under a
+ *  declared scope. `admitted` is the attribution the accepted bytes must carry; `refused` is the
+ *  code the submission must name instead. */
+export interface IntentRow {
+  tool: boolean;
+  scope: "tasks" | "product";
+  redesign: boolean;
+  /** The owner of an admitted blocking finding about the adopted product. */
+  owner?: FeedbackOwner;
+  edit?: (workspace: string) => void;
+  /** Refused as a scope mismatch first, then revised to product scope in the same session. */
+  revise?: true;
+  /** An edit made while the gates run, after submit captured the candidate. */
+  midGate?: (workspace: string) => void;
+  /** No conformance probes run, so the submission condition stays unproven: a build. */
+  unprobed?: true;
+  admitted?: HarnessExperiment;
+  refused?: string;
+}
 
 export function censusGates(lifetime: VerifierLifetime) {
   const options = { verifierLifetime: lifetime };
@@ -83,9 +72,9 @@ export function censusGates(lifetime: VerifierLifetime) {
   });
 }
 
-/** One scripted Builder turn: edit the workspace, submit once, and optionally revise after a
- *  scope-mismatch refusal. The last prompt and submission text are readable by the case. */
-export function scriptedBuilderTurn(edit: () => void, revise?: () => void) {
+/** One scripted Builder turn: edit the workspace and submit, and optionally revise after a
+ *  scope-mismatch refusal and submit again. */
+function scriptedBuilderTurn(edit: () => void, revise?: () => void) {
   const last = { prompt: "", submission: "" };
   const open: BuilderCampaignDeps["open"] = async (tools) =>
     scriptedSession(async ({ prompt }) => {
@@ -106,8 +95,7 @@ export function scriptedBuilderTurn(edit: () => void, revise?: () => void) {
   return { open, last };
 }
 
-/** The initial build a file's real-submit cases continue from, adopted through the real product
- *  path. Two variants: authored checks alone, and checks that require the fixture tool. */
+/** The initial build a row continues from, adopted through the real product path. */
 export async function buildAdopted(tool: boolean): Promise<AdoptedProduct> {
   const root = scratchDir("ana-adopted-product-");
   const lifetime = createVerifierLifetime({ root: join(root, "verifier-lifetime") });
@@ -137,156 +125,126 @@ export async function buildAdopted(tool: boolean): Promise<AdoptedProduct> {
   }
 }
 
-/** A case's own copy of the file's adopted product, so its edits and its unchanged-bytes
- *  assertion touch nothing another case reads. */
-export function adoptedCopy(root: string, shared: AdoptedProduct): AdoptedProduct {
-  const adoptedDir = join(root, "adopted");
-  cpSync(shared.adoptedDir, adoptedDir, { recursive: true });
-  return { adoptedDir, harness: shared.harness };
+/** The edits a row composes from. */
+export const EDITS = {
+  /** An edited installed tool: a new verifier condition under the same agent and scoring program. */
+  tool: (workspace: string) => writeFileSync(join(workspace, FIXTURE_TOOL), "#!/bin/sh\n# changed\nexit 0\n"),
+  /** A singleton-array accept control, which widens the compiled submission schema. */
+  schema: (workspace: string) => {
+    const path = join(workspace, "correctness-model/controls.json");
+    const controls = JSON.parse(readFileSync(path, "utf8"));
+    controls.accept[0].artifact.answer = [controls.accept[0].artifact.answer];
+    writeFileSync(path, JSON.stringify(controls));
+  },
+  /** A controls-only correction: the calibration corpus moves, the scoring program does not. */
+  controls: (workspace: string) => {
+    const path = join(workspace, "correctness-model/controls.json");
+    writeFileSync(path, readFileSync(path, "utf8") + "\n");
+  },
+} as const;
+
+function proposal(scope: IntentRow["scope"]) {
+  return {
+    scope,
+    target: { comparator: "at-least" as const, verifiedPasses: 0 },
+    gap: "The prior battery did not test the proposed condition.",
+    change: "Change the proposed condition.",
+    ...PLAN_FIELDS,
+    expectedResult: "All four tasks remain publicly solvable.",
+  };
 }
 
-/** One continuation over a copy of the adopted product: the proposal is checked through
- *  immutable submit, census and full-task F2, and the outcome against the row. */
-export async function checkIntent(
-  adopted: AdoptedProduct,
-  [kind, scope, owner, actual, refusal, expectedGates]: IntentRow,
-): Promise<void> {
+function priorEvidence(owner: FeedbackOwner | undefined) {
+  const claim = {
+    severity: "blocking" as const,
+    claim: "Repair the adopted product.",
+    evidence: "admitted.json",
+  };
+  return {
+    kind: "admitted-packet" as const,
+    digest: "adopted-feedback",
+    feedback: owner === undefined ? [] : [{ owner, ...claim }],
+  };
+}
+
+/** Runs one row over a private copy of the adopted product and checks its outcome. */
+export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promise<void> {
   const root = scratchDir("ana-proposed-experiment-");
   const lifetime = createVerifierLifetime({ root: join(root, "verifier-lifetime") });
   try {
-    const tool = kind.startsWith("tool-");
-    const { adoptedDir, harness: adoptedHarness } = adoptedCopy(root, adopted);
-    const original = readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8");
-    if (kind === "tool-unknown") {
-      const path = join(adoptedDir, "conformance.json");
-      const evidence = JSON.parse(readFileSync(path, "utf8"));
-      delete evidence.verifierEnvironmentHash;
-      writeFileSync(path, JSON.stringify(evidence));
-    }
-    const campaignDir = join(root, kind);
+    // A private copy of the adopted product, so a row's edits touch nothing another row reads.
+    const adoptedDir = join(root, "adopted");
+    cpSync(shared.adoptedDir, adoptedDir, { recursive: true });
+    const adoptedGuide = readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8");
+    const campaignDir = join(root, "continuation");
     const workspace = join(campaignDir, "workspace");
+    const writePlan = (scope: IntentRow["scope"]) =>
+      writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(proposal(scope)));
     const gates = censusGates(lifetime);
     let gateCalls = 0;
-    const proposal = {
-      scope,
-      target: { comparator: "at-least" as const, verifiedPasses: 0 },
-      gap: "The prior battery did not test the proposed condition.",
-      change: `Change ${kind}.`,
-      ...PLAN_FIELDS,
-      expectedResult: "All four tasks remain publicly solvable.",
-    };
     const session = scriptedBuilderTurn(
       () => {
-        uppercaseFixture(workspace, REDESIGNED.has(kind), tool);
-        if (TOOL_EDITED.has(kind)) {
-          writeFileSync(join(workspace, ".toolchain/bin/uppercase-fixture"), CHANGED_TOOL);
-        }
-        if (tool) {
-          expect(fingerprintSlug(workspace)).toMatchObject({
-            agentHash: adoptedHarness.fingerprint.agentHash,
-            correctnessModelHash: adoptedHarness.fingerprint.correctnessModelHash,
-          });
-        }
-        writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(proposal));
-        if (kind.startsWith("schema-")) {
-          const path = join(workspace, "correctness-model/controls.json");
-          const controls = JSON.parse(readFileSync(path, "utf8"));
-          controls.accept[0].artifact.answer = [controls.accept[0].artifact.answer];
-          writeFileSync(path, JSON.stringify(controls));
-          expect(fingerprintSlug(workspace)).toMatchObject({
-            agentHash: adoptedHarness.fingerprint.agentHash,
-            correctnessModelHash: adoptedHarness.fingerprint.correctnessModelHash,
-          });
-        }
-        if (kind === "agent" || kind === "mismatch") {
-          writeFileSync(
-            join(workspace, "agent/BUILT_AGENTS.md"),
-            original + "\nRead the complete public input.\n",
-          );
-        }
-        if (kind === "controls") {
-          const path = join(workspace, "correctness-model/controls.json");
-          writeFileSync(path, readFileSync(path, "utf8") + "\n");
-        }
-        if (kind === "unsolvable") {
-          writeFileSync(
-            join(workspace, "correctness-model/reference/index.ts"),
-            'export function solve(task) { return { answer: task.publicInput.input === "w" ? "wrong" : task.publicInput.input.toUpperCase() }; }',
-          );
-        }
+        uppercaseFixture(workspace, row.redesign, row.tool);
+        row.edit?.(workspace);
+        writePlan(row.scope);
       },
-      kind === "schema-scope-revision"
-        ? () =>
-            writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify({ ...proposal, scope: "product" }))
-        : undefined,
+      row.revise ? () => writePlan("product") : undefined,
     );
     const outcome = await runBuilderCampaign(
       {
         ...FRESH,
         campaignDir,
-        maxTurns: kind === "schema-scope-revision" ? 2 : 1,
+        maxTurns: row.revise ? 2 : 1,
         experiment: "build",
         adoptedDir,
-        priorEvidence: {
-          kind: "admitted-packet",
-          digest: "adopted-feedback",
-          feedback:
-            owner === null
-              ? []
-              : [
-                  {
-                    owner,
-                    severity: "blocking",
-                    claim: "Repair the adopted evaluation.",
-                    evidence: "admitted.json",
-                  },
-                ],
-        },
+        priorEvidence: priorEvidence(row.owner),
       },
       {
         tools: [],
-        toolsProbes: makeAgentToolsProbes,
+        toolsProbes: row.unprobed ? () => ({}) : makeAgentToolsProbes,
         open: session.open,
         gates: async (...args) => {
           gateCalls++;
-          if (kind === "tool-mid-gate") {
-            writeFileSync(
-              join(workspace, ".toolchain/bin/uppercase-fixture"),
-              "#!/bin/sh\n# changed after capture\nexit 0\n",
-            );
-          }
+          row.midGate?.(workspace);
           return gates(...args);
         },
       },
     );
-    if (outcome.buildAdmissible !== (actual !== null)) throw new Error(`${kind}: ${session.last.submission}`);
-    expect(gateCalls).toBe(expectedGates);
-    if (refusal !== null) expect(session.last.submission).toContain(refusal);
-    if (kind === "unsolvable") {
-      expect(
-        outcome.iterations
-          .flatMap((row) => row.feedback)
-          .some((row) => row.claim.includes("1 of 4 authored tasks rejected")),
-      ).toBe(true);
+    // An admission refusal still runs the gates once, so one submit reports every stage, and a
+    // revised proposal over the same bytes does not pay for them again.
+    expect(gateCalls).toBe(1);
+    expect(readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8")).toBe(adoptedGuide);
+    if (row.refused !== undefined) {
+      expect(outcome.buildAdmissible).toBe(false);
+      expect(session.last.submission).toContain(row.refused);
+      return;
     }
-    expect(readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8")).toBe(original);
-    if (!outcome.buildAdmissible) return;
-    expect(outcome.experimentScope?.actual).toBe(required(actual, "expected admitted scope"));
-    if (tool) {
-      expect(outcome.harness.publicArtifactSchema.sha256).toBe(adoptedHarness.publicArtifactSchema.sha256);
-    }
-    if (kind === "schema-product") {
-      expect(outcome.harness.publicArtifactSchema.sha256).not.toBe(
-        adoptedHarness.publicArtifactSchema.sha256,
+    if (!outcome.buildAdmissible) throw new Error(session.last.submission);
+    expect(outcome.experimentScope?.actual).toBe(required(row.admitted, "admitted attribution"));
+    expect(outcome.iterations[0]?.experimentScope).toEqual(outcome.experimentScope);
+    expect(session.last.prompt).toContain("Choose the next useful experiment");
+    // Conformance evidence stays beside the iteration, never inside the accepted bytes.
+    expect(existsSync(join(outcome.acceptedSnapshot, "conformance.json"))).toBe(false);
+    expect(existsSync(join(outcome.iterationDir, "conformance.json"))).toBe(!row.unprobed);
+    if (row.unprobed) {
+      expect(outcome.experimentScope?.freeze?.clauses).toContainEqual(
+        expect.stringContaining("submission-schema-unverifiable"),
       );
     }
-    expect(outcome.iterations[0]?.experimentScope).toEqual(outcome.experimentScope);
+    const { sha256 } = outcome.harness.publicArtifactSchema;
+    expect(sha256 !== shared.harness.publicArtifactSchema.sha256).toBe(row.edit === EDITS.schema);
+    if (row.tool) {
+      // The tool edit alone moved the condition: agent and correctness model are the adopted ones.
+      expect(fingerprintSlug(workspace)).toMatchObject({
+        agentHash: shared.harness.fingerprint.agentHash,
+        correctnessModelHash: shared.harness.fingerprint.correctnessModelHash,
+      });
+    }
     // The accepted snapshot is immutable: a later workspace edit does not reach it.
-    const accepted = readFileSync(join(outcome.acceptedSnapshot, "correctness-model/tasks.json"), "utf8");
+    const tasks = join(outcome.acceptedSnapshot, "correctness-model/tasks.json");
+    const accepted = readFileSync(tasks, "utf8");
     writeFileSync(join(workspace, "correctness-model/tasks.json"), "[]");
-    expect(readFileSync(join(outcome.acceptedSnapshot, "correctness-model/tasks.json"), "utf8")).toBe(
-      accepted,
-    );
+    expect(readFileSync(tasks, "utf8")).toBe(accepted);
   } finally {
     await closeVerifierLifetime(lifetime, "clean");
   }

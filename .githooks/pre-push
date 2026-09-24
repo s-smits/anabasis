@@ -52,7 +52,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     0000000000000000000000000000000000000000) documentation_only=0 ;;
     *)
       already_remote="$already_remote $remote_sha"
-      git diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
+      git --no-pager diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
       if changes_source "$remote_sha" "$local_sha"; then
         documentation_only=0
         heads="$heads $local_sha"

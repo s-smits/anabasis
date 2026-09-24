@@ -384,12 +384,12 @@ describe("the wall itself", () => {
       // The report names the tree it ended, with each descendant's pid and command line.
       expect(err).toContain("idle-wall: descendants when the wall fired");
       expect(err).toMatch(new RegExp(`^\\s*${String(pids[0]!)}\\s+[\\d.]+\\s+\\S*bun -e`, "m"));
-      expect(() => runtimeProcess.kill(pids[0]!, 0)).toThrow();
+      expect(() => runtimeProcess.kill(pids[0]!, 0)).toThrow("ESRCH");
       // The one outside the group is ended by pid, and said to be.
       expect(err).toMatch(
         new RegExp(`idle-wall: ended 1 descendant\\(s\\) outside the group: ${String(pids[1]!)}$`, "m"),
       );
-      expect(() => runtimeProcess.kill(pids[1]!, 0)).toThrow();
+      expect(() => runtimeProcess.kill(pids[1]!, 0)).toThrow("ESRCH");
       expect(existsSync(root)).toBe(false);
     } finally {
       run.kill();

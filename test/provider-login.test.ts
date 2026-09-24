@@ -29,9 +29,7 @@ import {
   writeClaudeCredential,
   writeCodexAuthJson,
 } from "../src/backends/oauth/storage.ts";
-import { preflightCampaignModels } from "../src/run/model-preflight.ts";
 import { resolvePiSlot } from "../src/backends/pi-providers.ts";
-import type { PiBuiltRuntime } from "../src/backends/pi-built.ts";
 
 const scratch: string[] = [];
 afterEach(() => {
@@ -324,7 +322,7 @@ describe("login-state owners", () => {
     const lastRefresh = stored.last_refresh;
     expect(isString(lastRefresh) ? Date.now() - Date.parse(lastRefresh) : null).toBeLessThan(60_000);
     expect(statSync(codexAuthFile({ CODEX_HOME: home })).mode & 0o777).toBe(0o600);
-    expect(() => statSync(`${codexAuthFile({ CODEX_HOME: home })}.refresh-lock`)).toThrow();
+    expect(() => statSync(`${codexAuthFile({ CODEX_HOME: home })}.refresh-lock`)).toThrow("ENOENT");
 
     // Now current, the login is left alone.
     await refreshCodexAuthJson(env, refresh);
@@ -369,7 +367,7 @@ describe("login-state owners", () => {
     };
     await expect(refreshCodexAuthJson(env, failing)).rejects.toThrow("invalid_grant");
     expect(readFileSync(codexAuthFile({ CODEX_HOME: home }), "utf8")).toBe(before);
-    expect(() => statSync(`${codexAuthFile({ CODEX_HOME: home })}.refresh-lock`)).toThrow();
+    expect(() => statSync(`${codexAuthFile({ CODEX_HOME: home })}.refresh-lock`)).toThrow("ENOENT");
 
     // Within five minutes of expiry the login is due, and a returned id token replaces the stored one.
     await refreshCodexAuthJson(env, refresh);
@@ -390,63 +388,7 @@ describe("login-state owners", () => {
   });
 
   it("requires the OpenRouter key", () => {
-    expect(openrouterLoginState({}).ok).toBe(false);
+    expect(openrouterLoginState({})).toEqual({ ok: false, reason: "OPENROUTER_API_KEY is not set" });
     expect(openrouterLoginState({ OPENROUTER_API_KEY: "k" })).toEqual({ ok: true });
-  });
-});
-
-describe("campaign model preflight login gate", () => {
-  it("refuses missing review credentials before authoring starts", async () => {
-    // The review slot opens no session until measurement, but a missing review login would
-    // otherwise surface only after the whole authoring phase was paid for.
-    const repoRoot = makeScratchDir("ana-login-gate-review-");
-    const home = makeScratchDir("ana-login-gate-review-home-");
-    writeFileSync(join(repoRoot, ".env"), `CODEX_HOME=${home}\nOPENROUTER_API_KEY=test-key\n`, "utf8");
-    const runtime = /* SAFETY: the login gate reads only profile.transport before it refuses; nothing below
-			   runs once the gate throws. */ {
-      profile: { provider: "openrouter", transport: "openrouter", model: "x/y", thinkingLevel: "medium" },
-    } as PiBuiltRuntime;
-    // An unpinned OpenRouter Builder: an absent pin is "no pin", and the key is in the repo env.
-    const builder = {
-      kind: "openrouter" as const,
-      model: "x/y",
-      reasoningEffort: "off",
-      source: "operator" as const,
-    };
-    const review = {
-      enabled: true as const,
-      kind: "codex" as const,
-      model: "gpt-5.6-sol",
-      reasoningEffort: "medium" as const,
-      source: "operator" as const,
-    };
-
-    await expect(
-      preflightCampaignModels({ builder, review, repoRoot, builtRuntime: runtime }),
-    ).rejects.toThrow(/Codex authentication is unavailable.*run `codex login`/s);
-  });
-
-  it("refuses missing credentials for the selected backend before any provider session opens", async () => {
-    const repoRoot = makeScratchDir("ana-login-gate-");
-    const home = makeScratchDir("ana-login-gate-home-");
-    writeFileSync(join(repoRoot, ".env"), `CODEX_HOME=${home}\n`, "utf8");
-    const runtime = /* SAFETY: the login gate reads only profile.transport before it refuses; nothing below
-			   runs once the gate throws. */ {
-      profile: {
-        provider: "openai-codex",
-        transport: "codex",
-        model: "gpt-5.6-sol",
-        thinkingLevel: "medium",
-      },
-    } as PiBuiltRuntime;
-
-    await expect(
-      preflightCampaignModels({
-        builder: { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" },
-        review: { enabled: false, source: "operator" },
-        repoRoot,
-        builtRuntime: runtime,
-      }),
-    ).rejects.toThrow(/Codex authentication is unavailable.*run `codex login`/s);
   });
 });

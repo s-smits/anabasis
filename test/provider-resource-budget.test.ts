@@ -304,54 +304,42 @@ describe("the full-run provider resource budget", () => {
     expect(loadBudget(other).turnsUsed).toBe(0);
   });
 
-  it("rejects invalid caps and damaged evidence rows", () => {
+  it("rejects a cap that is not a positive safe integer", () => {
     expect(() => new ProviderResourceBudget(0)).toThrow(/positive safe integer/);
     expect(() => new ProviderResourceBudget(Number.POSITIVE_INFINITY)).toThrow(/positive safe integer/);
-    const valid = new ProviderResourceBudget(1).snapshot();
-    const { active: _active, ...missingActive } = valid;
-    expect(() => assertProviderResourceBudgetSnapshot(missingActive, "opening.json")).toThrow(
-      /not a consistent provider-resource-budget/,
+  });
+
+  const valid = new ProviderResourceBudget(1).snapshot();
+  const { active: _active, ...missingActive } = valid;
+  it.each([
+    ["a row missing its active count", missingActive],
+    ["an active count with nothing reserved", { ...valid, active: 1 }],
+    ["a v1 row", { ...valid, schema: "provider-resource-budget/v1" }],
+    ["a v1 row without an active count", { ...missingActive, schema: "provider-resource-budget/v1" }],
+    [
+      "role counts that exceed the used total",
+      {
+        ...valid,
+        cap: 2,
+        used: 1,
+        byRole: { builder: 1, built: 1, review: 0 },
+        usage: { ...valid.usage, unreportedTurns: 1 },
+      },
+    ],
+  ])("refuses %s as budget evidence", (_name, row) => {
+    expect(() => assertProviderResourceBudgetSnapshot(row, "terminal.json")).toThrow(
+      /terminal\.json.*not a consistent provider-resource-budget/,
     );
-    expect(() => assertProviderResourceBudgetSnapshot({ ...valid, active: 1 }, "opening.json")).toThrow(
-      /not a consistent provider-resource-budget/,
-    );
-    const { active: _legacyActive, ...legacy } = { ...valid, schema: "provider-resource-budget/v1" as const };
-    expect(() => assertProviderResourceBudgetSnapshot(legacy, "legacy-opening.json")).toThrow(
-      /not a consistent provider-resource-budget/,
-    );
-    expect(() =>
-      assertProviderResourceBudgetSnapshot(
-        { ...valid, schema: "provider-resource-budget/v1" },
-        "legacy-terminal.json",
-      ),
-    ).toThrow(/not a consistent provider-resource-budget/);
+  });
+
+  it("joins two runs that recorded no provider budget as an absent one", () => {
     expect(
       joinBudgetEvidence({
-        openingPath: "legacy-opening.json",
-        terminalPath: "legacy-terminal.json",
+        openingPath: "opening.json",
+        terminalPath: "terminal.json",
         opening: { budget: idleBudget, providerResourceBudget: null },
         terminal: { budget: idleBudget, providerResourceBudget: null },
       }).providerResourceBudget,
     ).toBeNull();
-    expect(() =>
-      assertProviderResourceBudgetSnapshot(
-        {
-          schema: "provider-resource-budget/v2",
-          cap: 2,
-          used: 1,
-          active: 0,
-          byRole: { builder: 1, built: 1, review: 0 },
-          usage: {
-            inputTokens: null,
-            outputTokens: null,
-            totalTokens: null,
-            costUsd: null,
-            reportedTurns: 0,
-            unreportedTurns: 1,
-          },
-        },
-        "terminal.json",
-      ),
-    ).toThrow(/not a consistent provider-resource-budget/);
   });
 });

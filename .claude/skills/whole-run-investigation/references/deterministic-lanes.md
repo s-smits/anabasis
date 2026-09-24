@@ -18,8 +18,8 @@ skipped with the reason rather than failing the read.
 
 Every lane captures to `<review>/<lane>.txt`, and the command prints one bounded brief instead: the
 run's size and terminal, each lane quoted whole or pointed at, then the digest triggers and scan
-findings the snapshot lane raised. `brief.mjs` owns both halves of that — `scope` sizes the run
-before the lanes so the read can pick them, `show` renders the digest after. With no `--lanes`, the
+findings the snapshot lane raised. `wri.mjs` owns both halves of that — `scope` sizes the run
+before the lanes so the read can pick them, `brief` renders the digest after. With no `--lanes`, the
 size picks the set:
 
 | tier | the run | lanes | semantic lanes to start from |
@@ -77,14 +77,11 @@ Lanes 1 to 4 are the four `collect` runs, because the paid lanes consume their o
 - `run-narrative.mjs` is the embedding reading `timeline --classify` renders. Run it directly to
   read the slots without the observation stream, which an older campaign may not carry in a form
   this reader accepts.
-- `posture-priors.mjs` calibrates the corpus refusal rate per posture across every campaign on the
-  host and writes `classifier/posture-priors.json`. It is a periodic recalibration, not a per-run
-  read; `posture` binds to it by anchor digest and reports `applied` or `stale`.
 - `query-complexity.mjs` is the reading `climb` renders per battery, not a second lane over the same
   campaign: it was one until 2026-09-19, when it printed the check tiers and medians `climb` already
   showed. Run it directly to read an exported query pack, which is not a campaign at all.
 - `archive-scaffold.mjs`, `validate-reports.mjs` and `build-manifest.mjs` belong to `launch` and
   `finish`, not to a read.
-- `brief.mjs` sizes the run and renders the read; it answers no question of its own. Its tier reads
+- `wri.mjs scope` and `wri.mjs brief` size the run and render the read; they answer no question of their own. The tier reads
   the clock, the epochs, the batteries and whether anything scored, none of which is a statement
   about how interesting the run is.

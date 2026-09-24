@@ -1,9 +1,13 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
+import { afterEach, describe, expect, it } from "bun:test";
+import { fingerprintSlug } from "../src/claim/fingerprint.ts";
+import { campaignDir } from "../src/meta/campaign-root.ts";
+import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
+import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import type { NonResultKind } from "../src/claim/record-events.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { buildWalls, renderWalls } from "../.claude/skills/whole-run-investigation/scripts/walls.mjs";
 
 interface Case {
@@ -38,6 +42,8 @@ interface Report {
   batteries: Battery[];
 }
 
+const SLUG = "walls";
+const roots: string[] = [];
 const RUN = "run-20260919T000000000Z-aaaaaa";
 const OTHER = "run-20260919T060000000Z-bbbbbb";
 const CONFIG = ["solver:", "  solve_minutes: 60", "  max_turns: 4", "gate:", "  check_seconds: 600", ""].join(
@@ -51,7 +57,7 @@ interface Spec {
   turns: number | null;
   accepted?: boolean;
   pass?: boolean | null;
-  nonResult?: string | null;
+  nonResult?: NonResultKind | null;
   errors?: string[];
 }
 
@@ -69,16 +75,59 @@ const PRESSED: Spec[] = [
   { taskId: "never", minutes: 0, seconds: 5, turns: 0, nonResult: "provider" },
 ];
 
-/** One campaign holding a battery's bundle, its case rows and the per-case results. */
-function campaign(batteries: { runId: string; config: string | null; cases: Spec[] }[]): string {
-  const dir = mkdtempSync(join(tmpdir(), "ana-walls-"));
+/** The verdict fields in the one shape the case-record writer admits for each outcome. */
+function verdictOf(spec: Spec): Partial<CaseRecordRow> {
+  if (spec.nonResult !== undefined && spec.nonResult !== null) {
+    return {
+      acceptedSubmit: spec.accepted ?? true,
+      truthOk: null,
+      pass: null,
+      runtimeNonResult: spec.nonResult,
+      runtimeNonResultKind: spec.nonResult,
+    };
+  }
+  if (spec.accepted === false) return { acceptedSubmit: false, truthOk: null, pass: false };
+  return { acceptedSubmit: true, truthOk: spec.pass ?? false, pass: spec.pass ?? false };
+}
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+/** A retained product version published the way the controller publishes one, carrying `config`
+ *  as its agent/config.yaml, and returned as the directory a battery measuring it runs under. */
+function publish(root: string, id: string, config: string): string {
+  const snapshot = join(root, "accepted", id);
+  mkdirSync(join(snapshot, "agent"), { recursive: true });
+  mkdirSync(join(snapshot, "correctness-model"));
+  writeFileSync(join(snapshot, "agent", "config.yaml"), config);
+  writeFileSync(join(snapshot, "correctness-model", "evaluator.ts"), "export const rule = 1;\n");
+  writeFileSync(join(snapshot, "correctness-model", "tasks.json"), JSON.stringify([id]));
+  const fingerprint = fingerprintSlug(snapshot, { slug: SLUG });
+  if (!fingerprint.ok) throw new Error(JSON.stringify(fingerprint.findings));
+  return publishProductVersion({ repoRoot: root, slug: SLUG, id, acceptedSnapshot: snapshot, fingerprint });
+}
+
+/** One campaign holding each battery's measured product, its case rows and the per-case results. A
+ *  battery naming `product` measures the version another battery published, as a task probe does. */
+function campaign(
+  batteries: { runId: string; config: string | null; product?: string; cases: Spec[] }[],
+): string {
+  const root = mkdtempSync(join(tmpdir(), "ana-walls-"));
+  roots.push(root);
+  const dir = campaignDir(root, SLUG);
+  mkdirSync(dir, { recursive: true });
+  const products = new Map<string, string>();
   const lines: string[] = [];
   let seq = 0;
   for (const battery of batteries) {
-    if (battery.config !== null) {
-      mkdirSync(join(dir, "versions", battery.runId, "agent"), { recursive: true });
-      writeFileSync(join(dir, "versions", battery.runId, "agent", "config.yaml"), battery.config);
+    const productId = battery.product ?? battery.runId;
+    if (battery.config !== null && !products.has(productId)) {
+      products.set(productId, publish(root, productId, battery.config));
     }
+    const product = products.get(productId);
+    if (product !== undefined) bindProductMeasurement(root, SLUG, battery.runId, product);
+    const runRoot = product ?? dir;
     for (const spec of battery.cases) {
       const start = Date.parse("2026-09-19T10:00:00.000Z");
       const end = start + spec.minutes * 60_000 + (spec.seconds ?? 0) * 1000;
@@ -87,20 +136,14 @@ function campaign(batteries: { runId: string; config: string | null; cases: Spec
         JSON.stringify({
           seq,
           row: {
-            runId: battery.runId,
-            taskId: spec.taskId,
-            family: "one",
-            acceptedSubmit: spec.accepted ?? true,
-            pass: spec.pass ?? null,
-            truthOk: spec.pass ?? null,
-            runtimeNonResult: spec.nonResult ?? null,
+            ...caseRecordRow(spec.taskId, "one", { runId: battery.runId, ...verdictOf(spec) }),
             solverStartedAt: new Date(start).toISOString(),
             solverEndedAt: new Date(end).toISOString(),
           },
         }),
       );
       if (spec.turns !== null) {
-        const caseDir = join(dir, "versions", battery.runId, "runs", battery.runId, "cases", spec.taskId);
+        const caseDir = join(runRoot, "runs", battery.runId, "cases", spec.taskId);
         mkdirSync(caseDir, { recursive: true });
         writeFileSync(
           join(caseDir, "case-result.json"),
@@ -165,9 +208,20 @@ describe("solve budget against the declared walls", () => {
     const report: Report = buildWalls({ campaign: dir });
     const battery = report.batteries[0]!;
     expect(battery.walls.moved).toEqual([]);
-    expect(battery.walls.source).toContain("bundle is absent");
+    expect(battery.walls.source).toContain("binds this battery to no retained product");
     expect(battery.rows[0]!.turnShare).toBe(0.042);
     expect(renderWalls(report)).toContain("no case reached a declared wall");
+  });
+
+  it("reads a task probe's walls from the product the ledger says it measured, not a directory named after it", () => {
+    const dir = campaign([
+      { runId: RUN, config: CONFIG, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
+      { runId: OTHER, config: null, product: RUN, cases: [{ taskId: "probe", minutes: 30, turns: 4 }] },
+    ]);
+    const probe: Battery = buildWalls({ campaign: dir, runId: OTHER }).batteries[0]!;
+    expect(probe.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
+    expect(probe.walls.source).toBe("the measured product's agent/config.yaml");
+    expect(probe.rows.map((row) => [row.taskId, row.bound, row.turns])).toEqual([["probe", "turn-bound", 4]]);
   });
 
   it("selects one battery of several and reports no case row rather than an empty campaign", () => {

@@ -8,11 +8,11 @@
 // `YYYYMMDDTHHMMSSZ` or `YYYYMMDDTHHMMSSmmmZ` stamp, else a `-MMDD` suffix with an optional `runNN` tiebreak). An
 // archive whose run id orders nowhere is listed as unordered and takes no part in the comparison.
 import { existsSync, readdirSync, statSync } from "#src/meta/filesystem.ts";
-import { join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { join } from "#src/meta/path.ts";
+import { CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { emitReport } from "#skills/main/output.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { hasText } from "#src/meta/text.ts";
-import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
+import { readJsonFile } from "#src/meta/completed-json.ts";
 
 const FINDING_STATES = new Set(["fail", "risk"]);
 const VERDICT_STATES = new Set(["fail", "risk", "pass"]);
@@ -198,35 +198,27 @@ export function renderRecurrence(report) {
   return `${lines.join("\n")}\n`;
 }
 
-function arg(name) {
-  const index = runtimeProcess.argv.indexOf(`--${name}`);
-  return index >= 0 ? runtimeProcess.argv[index + 1] : undefined;
-}
-
-function main() {
-  const currentPath = arg("current");
-  const archivesRoot = arg("archives");
-  if (!hasText(currentPath) || !hasText(archivesRoot)) {
-    console.error(
-      "usage: finding-recurrence.mjs --current <archive dir | review.json> --archives <notes/runs> [--lane <key>] [--json] [--out <file>]",
-    );
-    runtimeProcess.exit(2);
-  }
-  const current = readArchive(resolve(currentPath));
+function recurrence(args) {
+  const current = readArchive(args.required("current"));
   if (current.angleStates === null || current.runId === null) {
-    console.error(`finding-recurrence: ${currentPath} carries no angleStates or run id`);
-    runtimeProcess.exit(2);
+    throw new CommandFailure(`${current.path} carries no angleStates or run id`, 2);
   }
-  const key = arg("lane") ?? laneKey(current.runId);
-  const previous = laneArchives(resolve(archivesRoot), key).filter(
+  const key = args.value("lane") ?? laneKey(current.runId);
+  const previous = laneArchives(args.required("archives"), key).filter(
     (archive) => archive.path !== current.path && archive.runId !== current.runId,
   );
   const report = compareArchives(current, previous);
-  const out = arg("out");
-  if (hasText(out)) writeJsonFile(resolve(out), report);
-  console.log(
-    runtimeProcess.argv.includes("--json") ? JSON.stringify(report, null, 2) : renderRecurrence(report),
-  );
+  emitReport(report, { json: args.flag("json"), out: args.value("out"), render: renderRecurrence });
 }
 
-if (import.meta.main) main();
+if (import.meta.main) {
+  await runCommand(
+    {
+      name: "finding-recurrence",
+      usage:
+        "usage: finding-recurrence.mjs --current <abs archive> --archives <abs dir> [--lane <key>] [--out <abs file>] [--json]",
+      options: { current: "abs", archives: "abs", lane: "text", out: "abs", json: "flag" },
+    },
+    recurrence,
+  );
+}

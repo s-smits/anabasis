@@ -15,6 +15,7 @@
 //
 // The pinned model, fp32 weights and digested anchors make one bundle read the same on every host;
 // no provider is called and no task bytes leave this process.
+import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import {
   MODEL,
@@ -26,6 +27,8 @@ import {
 } from "./prose-classify.mjs";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { emitReport } from "#skills/main/output.ts";
 
 export const COMPLEXITY_SCHEMA = "query-complexity/v1";
 
@@ -109,7 +112,7 @@ export const TIERS = {
   ],
 };
 
-export const ANCHOR_SHA256 = new Bun.CryptoHasher("sha256").update(JSON.stringify(TIERS)).digest("hex");
+export const ANCHOR_SHA256 = sha256(JSON.stringify(TIERS));
 /** Ordered weakest to strongest, so an edge can say which way a battery moved. */
 export const TIER_ORDER = Object.keys(TIERS);
 /** The structural row, in report order. Exported so a reader cannot drift from the producer. */
@@ -141,36 +144,28 @@ const median = (values) => {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
 
+const entriesOf = (value) =>
+  Array.isArray(value) ? value.map((entry, index) => [index, entry]) : Object.entries(value);
+const isNode = (value) => value !== null && typeof value === "object";
+const child = (prefix, key) =>
+  Number.isInteger(key) ? `${prefix}[${key}]` : prefix === "" ? key : `${prefix}.${key}`;
+
 /** Every scalar leaf path in a value, as dotted paths with `[]` for an array level. Arrays collapse
  *  to one level: a catalogue of 200 identical rows is one decision, not 200 inputs. */
 export function leafPaths(value, prefix = "") {
   if (Array.isArray(value)) return value.length === 0 ? [] : leafPaths(value[0], `${prefix}[]`);
-  if (value !== null && typeof value === "object") {
-    const paths = [];
-    for (const [key, inner] of Object.entries(value)) {
-      paths.push(...leafPaths(inner, prefix === "" ? key : `${prefix}.${key}`));
-    }
-    return paths;
-  }
+  if (isNode(value)) return entriesOf(value).flatMap(([key, inner]) => leafPaths(inner, child(prefix, key)));
   return prefix === "" ? [] : [prefix];
 }
 
 /** Every numeric leaf the task publishes, by path. An edge reads these to say how far the numbers
  *  moved when nothing structural did; a list index is part of the path so two batteries line up. */
 export function numericLeaves(value, prefix = "") {
-  if (Array.isArray(value)) {
-    const found = {};
-    value.forEach((entry, index) => {
-      Object.assign(found, numericLeaves(entry, `${prefix}[${index}]`));
-    });
-    return found;
-  }
-  if (value !== null && typeof value === "object") {
-    const found = {};
-    for (const [key, inner] of Object.entries(value)) {
-      Object.assign(found, numericLeaves(inner, prefix === "" ? key : `${prefix}.${key}`));
-    }
-    return found;
+  if (isNode(value)) {
+    return Object.assign(
+      {},
+      ...entriesOf(value).map(([key, inner]) => numericLeaves(inner, child(prefix, key))),
+    );
   }
   return isNumber(value) && prefix !== "" ? { [prefix]: value } : {};
 }
@@ -178,17 +173,9 @@ export function numericLeaves(value, prefix = "") {
 /** The largest list the task supplies, element count. A scenario list, a load case list and a
  *  catalogue all land here; which one it is belongs to the tier reading, not to this count. */
 function largestList(value) {
-  if (Array.isArray(value)) {
-    let longest = value.length;
-    for (const entry of value) longest = Math.max(longest, largestList(entry));
-    return longest;
-  }
-  if (value !== null && typeof value === "object") {
-    let longest = 0;
-    for (const inner of Object.values(value)) longest = Math.max(longest, largestList(inner));
-    return longest;
-  }
-  return 0;
+  if (!isNode(value)) return 0;
+  const inner = Object.values(value).map(largestList);
+  return Math.max(Array.isArray(value) ? value.length : 0, ...inner);
 }
 
 /** `families` is the string "all" or a list of family names; both spellings appear in adopted
@@ -258,15 +245,6 @@ export function unitsOf(family, brief) {
  *  of the family is there. One frontier check among ten is a different battery from six, and a
  *  single label would report them the same. */
 function tierOf(units, prototypes) {
-  if (units.length === 0) {
-    return {
-      tier: TIER_ORDER[0],
-      reached: 0,
-      score: 0,
-      margin: 0,
-      histogram: Object.fromEntries(TIER_ORDER.map((name) => [name, 0])),
-    };
-  }
   const histogram = Object.fromEntries(TIER_ORDER.map((name) => [name, 0]));
   let best = { rank: -1, score: 0, margin: 0 };
   for (const unit of units) {
@@ -275,11 +253,14 @@ function tierOf(units, prototypes) {
     const rank = TIER_ORDER.indexOf(call.class);
     if (rank > best.rank) best = { rank, score: call.score, margin: call.margin };
   }
-  const tier = TIER_ORDER[best.rank];
-  return { tier, reached: histogram[tier], score: best.score, margin: best.margin, histogram };
+  const tier = TIER_ORDER[Math.max(0, best.rank)];
+  const reached = best.rank < 0 ? 0 : histogram[tier];
+  return { tier, reached, score: best.score, margin: best.margin, histogram };
 }
 
-/** `embed` maps texts to unit vectors: tests inject one, the CLI loads the pinned model. */
+/** `embed` maps texts to unit vectors: tests inject one, the CLI loads the pinned model.
+ *  @param {{ brief: object, tasks: { taskId: string, family: string, publicInput?: unknown }[] }} bundle
+ *  @param {{ embed?: (texts: string[]) => Promise<number[][]>, batchSize?: number }} [options] */
 export async function readBattery({ brief, tasks }, { embed, batchSize = 16 } = {}) {
   const run = embed ?? (await modelEmbed(batchSize));
   const prototypes = await embedPrototypes(run, TIERS);
@@ -355,10 +336,9 @@ export function renderBattery(reading) {
  *  campaign's batteries and a reference pack compare on the same rows. */
 export function loadBundle(dir) {
   if (existsSync(`${dir}/correctness-model/tasks.json`)) {
-    const tasks = readJsonFile(`${dir}/correctness-model/tasks.json`);
     return {
       brief: readJsonFile(`${dir}/correctness-model/brief.json`),
-      tasks: Array.isArray(tasks) ? tasks : (tasks.tasks ?? []),
+      tasks: readJsonFile(`${dir}/correctness-model/tasks.json`),
     };
   }
   const brief = readJsonFile(`${dir}/brief.json`);
@@ -394,28 +374,21 @@ export function batteryDirs(target) {
 }
 
 if (import.meta.main) {
-  const [target, ...rest] = Bun.argv.slice(2);
-  if (target === undefined) {
-    throw new Error("usage: bun query-complexity.mjs <version-dir | campaign-dir> [--json]");
-  }
+  const { flags, positionals } = parseOrDie(exitWith("query-complexity"), {
+    flags: ["json"],
+    positionals: 1,
+  });
   const readings = [];
-  for (const dir of batteryDirs(target)) readings.push({ dir, reading: await readVersionDir(dir) });
-  if (rest.includes("--json")) {
-    console.log(
-      JSON.stringify(
-        readings.map((row) => ({
-          dir: row.dir,
-          ...row.reading,
-          familyVectors: undefined,
-          model: MODEL_IDENTITY,
-        })),
-        null,
-        1,
-      ),
-    );
-  } else {
-    for (const row of readings) {
-      console.log(`${readings.length > 1 ? `${row.dir}\n` : ""}${renderBattery(row.reading)}`);
-    }
-  }
+  for (const dir of batteryDirs(positionals[0])) readings.push({ dir, reading: await readVersionDir(dir) });
+  const report = readings.map(({ dir, reading }) => ({
+    dir,
+    ...reading,
+    familyVectors: undefined,
+    model: MODEL_IDENTITY,
+  }));
+  const render = () =>
+    readings
+      .map(({ dir, reading }) => `${readings.length > 1 ? `${dir}\n` : ""}${renderBattery(reading)}`)
+      .join("\n");
+  emitReport(report, { json: flags.has("json"), out: null, render });
 }

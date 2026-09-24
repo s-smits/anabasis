@@ -1,14 +1,15 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   ARCHIVE_FILES,
   ArchiveValidationError,
   predictionFrozenHash,
   validateArchiveDirectory,
-  writeArchive,
 } from "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs";
+
 const PREDICTIONS = "#predictions";
 const MAIN_SYNTHESIS_MD = "main_synthesis.md";
 const DIGEST_MD = "digest.md";
@@ -24,6 +25,14 @@ const mainSynthesis =
 const lunaSyntheses = "# Luna syntheses\n\n## sessions\n\n## reports\n";
 const digestText =
   "# Deterministic digest\n\n## snapshot\n\n## manifest\n\n## safeguards-log\n\n## safeguards-t0\n\n## review\n";
+const validator = resolve(
+  import.meta.dirname,
+  "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs",
+);
+
+function runValidator(...args: string[]) {
+  return spawnTextSync(Bun.argv[0]!, [validator, ...args]);
+}
 
 function fileDigest(path: string) {
   const text =
@@ -65,17 +74,6 @@ function sourceFileDigest(relativeFile: string) {
   return new Bun.CryptoHasher("sha256")
     .update(readFileSync(join(activeWorktree, relativeFile)))
     .digest("hex");
-}
-
-function canonicalDigest(value: {
-  predictionId: string;
-  status: string;
-  casualties: string[];
-  survivors: string[];
-  dependents: string[];
-}) {
-  const text = `{"casualties":${JSON.stringify(value.casualties)},"dependents":${JSON.stringify(value.dependents)},"predictionId":${JSON.stringify(value.predictionId)},"status":${JSON.stringify(value.status)},"survivors":${JSON.stringify(value.survivors)}}`;
-  return new Bun.CryptoHasher("sha256").update(text).digest("hex");
 }
 
 function prediction() {
@@ -384,14 +382,12 @@ function fixture() {
   const archive = join(dir, "run-1");
   activeWorktree = join(dir, "source");
   sourceSetup(activeWorktree);
-  const result = writeArchive({
-    archiveDir: archive,
-    mainSynthesis,
-    lunaSyntheses,
-    digest: digestText,
-    review: review(),
-  });
-  expect(result.valid).toBe(true);
+  mkdirSync(archive);
+  writeFileSync(join(archive, MAIN_SYNTHESIS_MD), mainSynthesis);
+  writeFileSync(join(archive, "luna_syntheses.md"), lunaSyntheses);
+  writeFileSync(join(archive, DIGEST_MD), digestText);
+  writeFileSync(join(archive, "review.json"), `${JSON.stringify(review(), null, 2)}\n`);
+  expect(validateArchiveDirectory(archive).valid).toBe(true);
   return { dir, archive };
 }
 
@@ -415,103 +411,41 @@ it("preserves uncapped authoring and separates rounds from submission terminals"
   expect(() => validateArchiveDirectory(archive)).toThrow("authorCalls.budget must be");
 });
 
+// controller-denominator.ts writes absent, recorded or invalid, and never "sealed", so the archive
+// admits exactly those: an invalid denominator with its reason, and no alias spelling of recorded.
+it("admits an invalid terminal denominator with its reason and refuses the sealed alias", () => {
+  const { archive } = fixture();
+  rewriteReview(archive, (value) => {
+    value.terminal.capabilityResult = "inconclusive";
+    value.terminalAccounting.state = "incomplete";
+    value.terminalAccounting.denominator = { state: "invalid", reason: "case-record unreadable" };
+    value.terminalAccounting.reason = "controller denominator invalid — case-record unreadable";
+  });
+  expect(validateArchiveDirectory(archive).valid).toBe(true);
+  rewriteReview(archive, (value) => {
+    value.terminalAccounting.denominator = { state: "invalid" };
+  });
+  expect(() => validateArchiveDirectory(archive)).toThrow("terminalAccounting.denominator.reason");
+  rewriteReview(archive, (value) => {
+    value.terminal.capabilityResult = "recorded";
+    value.terminalAccounting.state = "sealed";
+    value.terminalAccounting.denominator = {
+      state: "sealed",
+      total: 2,
+      verified: 1,
+      unaccepted: 1,
+      nonResult: 0,
+    };
+    delete value.terminalAccounting.reason;
+  });
+  expect(() => validateArchiveDirectory(archive)).toThrow("terminalAccounting.state is unsupported: sealed");
+});
+
 function rewriteReview(archive: string, mutate: (value: any) => void) {
   const path = join(archive, "review.json");
   const value = JSON.parse(readFileSync(path, "utf8"));
   mutate(value);
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function attachEligibleCampaignEvent(
-  f: { dir: string; archive: string },
-  status: "inconclusive" | "untriggered",
-) {
-  const reviewPath = join(f.archive, "review.json");
-  const value = JSON.parse(readFileSync(reviewPath, "utf8"));
-  const row = value.predictions[0];
-  row.status = status;
-  row.eligible = true;
-  row.eligibility.state = "eligible";
-  row.eligibility.nextEligibleRunId = "run-2";
-  row.triggerEvidence.state = status === "untriggered" ? "not-triggered" : "unknown";
-  row.effectEvidence.state = "unknown";
-  row.dependencyWalk.casualties = [];
-  row.dependencyWalk.survivors = [];
-  row.dependencyWalk.dependents = [];
-  row.dependencyWalk.promotions = [];
-
-  const receiptId = `event-${status}`;
-  const ticketCoreSha256 = "e".repeat(64);
-  row.campaignEvent = {
-    authority: "campaign",
-    origin: "campaign-ledger",
-    receiptId,
-    ticketCoreSha256,
-    identity: { sourceRevision, runId: "run-1", epoch: "epoch-1", bundle: "bundle-1", taskSet: "task-set-1" },
-    evidencePointers: [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)],
-  };
-  row.frozenHash = predictionFrozenHash(row);
-  const freeze = {
-    id: row.id,
-    sourceRevision: row.sourceRevision,
-    runId: row.runId,
-    epoch: row.epoch,
-    bundle: row.bundle,
-    taskSet: row.taskSet,
-    claim: row.claim,
-    expectedEffect: row.expectedEffect,
-    trigger: row.trigger,
-    falsifier: row.falsifier,
-    owner: row.owner,
-    frozenHash: row.frozenHash,
-  };
-  const receipt = {
-    schema: "superloop-backtrack-event/v1",
-    producer: "run-improvement-campaign",
-    origin: "campaign-ledger",
-    authoritative: true,
-    ticketCoreSha256,
-    predictionId: row.id,
-    frozenHash: row.frozenHash,
-    freeze,
-    status,
-    consumer: {
-      predictionId: row.id,
-      status,
-      consumerId: "run-2",
-      identity: {
-        sourceRevision,
-        runId: "run-2",
-        epoch: "epoch-2",
-        bundle: "bundle-2",
-        taskSet: "task-set-2",
-      },
-      eligibility: "eligible",
-      eligible: true,
-      trigger: status === "untriggered" ? "absent" : "unknown",
-      effect: status === "untriggered" ? "not-applicable" : "unknown",
-      consumedBy: "run-2",
-      successor: null,
-      evidence: {
-        trigger: "trigger-evidence",
-        effect: "effect-evidence",
-        denominator: "denominator-evidence",
-      },
-    },
-    dependents: [],
-    dependencyWalk: { casualties: [], survivors: [], promotions: [] },
-    safeguardRetirement: null,
-  };
-  const receiptPath = join(f.dir, `${receiptId}.json`);
-  const receiptBytes = `${JSON.stringify(receipt, null, 2)}\n`;
-  writeFileSync(receiptPath, receiptBytes);
-  const projection = { predictionId: row.id, status, casualties: [], survivors: [], dependents: [] };
-  row.campaignEvent.receipt = {
-    file: receiptPath,
-    sha256: new Bun.CryptoHasher("sha256").update(receiptBytes).digest("hex"),
-  };
-  row.campaignEvent.projectionSha256 = canonicalDigest(projection);
-  writeFileSync(reviewPath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function issuesOf(error: unknown): string[] {
@@ -530,10 +464,14 @@ describe("WRI four-file archive contract", () => {
     row.successor = ["prediction-2"];
     row.dependsOn = ["prediction-0"];
     row.backtrackEvent = "event-1";
-    row.campaignEvent = { receiptId: "event-1" };
     expect(predictionFrozenHash(row)).toBe(frozenHash);
     expect(predictionFrozenHash({ ...row, id: "prediction-other" })).not.toBe(frozenHash);
     expect(predictionFrozenHash({ ...row, claim: "changed claim" })).not.toBe(frozenHash);
+    // The archive's own `canonical` joined an array's undefined slot to nothing, so [undefined]
+    // and [] hashed alike; the shared canonicalJson keeps the missing value distinct.
+    expect(predictionFrozenHash({ ...row, claim: [undefined] })).not.toBe(
+      predictionFrozenHash({ ...row, claim: [] }),
+    );
   });
 
   it("writes and validates the identity-bound advisory archive", () => {
@@ -580,40 +518,6 @@ describe("WRI four-file archive contract", () => {
       value.predictions[0].opportunity.state = "absent-before-opening";
     });
     expect(() => validateArchiveDirectory(beforeOpening.archive)).toThrow("only in a preopening archive");
-  });
-
-  it("does not accept a WRI-authored refutation without procedure-owned receipt bytes", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.predictions[0].status = "refuted";
-      value.predictions[0].eligible = true;
-      value.predictions[0].eligibility.state = "eligible";
-      value.predictions[0].effectEvidence.state = "not-observed";
-      value.predictions[0].backtrackEvent = "event-1";
-      value.predictions[0].dependencyWalk.walked = true;
-      value.predictions[0].dependencyWalk.closed = true;
-      value.predictions[0].dependencyWalk.survivors = ["prediction-1 survived independently"];
-      value.predictions[0].dependencyWalk.evidencePointers = [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)];
-      value.predictions[0].campaignEvent = {
-        authority: "campaign",
-        origin: "campaign-ledger",
-        receiptId: "event-1",
-        kind: "refutation",
-        ticketCoreSha256: "e".repeat(64),
-        identity: {
-          sourceRevision,
-          runId: "run-1",
-          epoch: "epoch-1",
-          bundle: "bundle-1",
-          taskSet: "task-set-1",
-        },
-        receipt: { file: join(f.archive, "review.json"), sha256: "e".repeat(64) },
-        projectionSha256: "e".repeat(64),
-        evidencePointers: [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)],
-      };
-      value.predictions[0].frozenHash = predictionFrozenHash(value.predictions[0]);
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("outside the four-file archive");
   });
 
   it("verifies archive pointer bytes, anchors and run-bound safeguard evidence", () => {
@@ -790,55 +694,6 @@ describe("WRI four-file archive contract", () => {
     expect(() => validateArchiveDirectory(f.archive)).toThrow("eligible prediction requires");
   });
 
-  it("accepts an eligible inconclusive prediction with a campaign receipt", () => {
-    const f = fixture();
-    attachEligibleCampaignEvent(f, "inconclusive");
-    expect(validateArchiveDirectory(f.archive).valid).toBe(true);
-  });
-
-  it("rejects overlapping dependency partitions and foreign promotions", () => {
-    const f = fixture();
-    attachEligibleCampaignEvent(f, "inconclusive");
-    const reviewPath = join(f.archive, "review.json");
-    const value = JSON.parse(readFileSync(reviewPath, "utf8"));
-    const row = value.predictions[0];
-    row.dependencyWalk.casualties = ["P-2"];
-    row.dependencyWalk.survivors = ["P-2"];
-    row.dependencyWalk.dependents = ["P-2"];
-    row.dependencyWalk.promotions = ["P-foreign"];
-    const receiptPath = join(f.dir, "event-inconclusive.json");
-    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
-    receipt.dependents = ["P-2"];
-    receipt.dependencyWalk = { casualties: ["P-2"], survivors: ["P-2"], promotions: ["P-foreign"] };
-    const receiptBytes = `${JSON.stringify(receipt, null, 2)}\n`;
-    writeFileSync(receiptPath, receiptBytes);
-    row.campaignEvent.receipt.sha256 = new Bun.CryptoHasher("sha256").update(receiptBytes).digest("hex");
-    row.campaignEvent.projectionSha256 = canonicalDigest({
-      predictionId: row.id,
-      status: row.status,
-      casualties: ["P-2"],
-      survivors: ["P-2"],
-      dependents: ["P-2"],
-    });
-    writeFileSync(reviewPath, `${JSON.stringify(value, null, 2)}\n`);
-    let error: unknown;
-    try {
-      validateArchiveDirectory(f.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(
-      issuesOf(error).some((issue) =>
-        issue.includes("receipt dependency walk casualties and survivors must be disjoint"),
-      ),
-    ).toBe(true);
-    expect(
-      issuesOf(error).some((issue) =>
-        issue.includes("receipt dependency walk promotions must name a dependent in the partition"),
-      ),
-    ).toBe(true);
-  });
-
   it("keeps an opportunity with missing runtime receipts inconclusive", () => {
     const f = fixture();
     rewriteReview(f.archive, (value) => {
@@ -858,5 +713,21 @@ describe("WRI four-file archive contract", () => {
       value.launchIdentity.pointer = pointer(MAIN_SYNTHESIS_MD, PREDICTIONS);
     });
     expect(() => validateArchiveDirectory(f.archive)).toThrow("launchIdentity.ticket must be an object");
+  });
+
+  it("records a valid archive outside it, exits 1 on a refused one and 2 on a misspelled flag", () => {
+    const f = fixture();
+    const out = join(f.dir, "validation.json");
+    const valid = runValidator("--archive", f.archive, "--out", out);
+    expect(valid.status).toBe(0);
+    expect(JSON.parse(readFileSync(out, "utf8")).valid).toBe(true);
+    expect(runValidator("--archive", f.archive, "--out", join(f.archive, "v.json")).status).toBe(2);
+    expect(runValidator("--archve", f.archive).stderr).toContain(`unknown option "--archve"`);
+    rewriteReview(f.archive, (value) => {
+      value.authority = "binding";
+    });
+    const refused = runValidator("--archive", f.archive);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("WRI authority must be exactly advisory");
   });
 });

@@ -1,10 +1,6 @@
 // Report ownership and instructions, separated from the already-full manifest composer.
 import { resolve } from "#src/meta/path.ts";
-// The registry of diagnostic lanes and the deterministic views each one owns.
-export const DIAGNOSTIC_INPUTS = new Map([
-  ["category_and_hook_yield", ["timeline"]],
-  ["diagnostic_follow_through", ["scan", "builder", "review-yield"]],
-]);
+import { DIAGNOSTIC_INPUTS } from "./catalogue-shape.mjs";
 
 export function diagnosticTaskLines(name) {
   const inputs = DIAGNOSTIC_INPUTS.get(name);

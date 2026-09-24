@@ -1,11 +1,15 @@
 ---
 name: whole-run-investigation
-description: "Investigate a live, stalled or completed Anabasis run and turn findings into an evidence-bound fix proposal. Also answers whether a campaign is climbing: how the climb is going, whether the batteries are getting harder, why a difficulty decision keeps repeating, how to climb faster. Reads evidence; does not launch the next experiment."
+description: "Investigate a live, stalled or completed Anabasis run and turn findings into an evidence-bound fix proposal. Also answers whether a campaign is climbing: how the climb is going, whether the batteries are getting harder, why a difficulty decision keeps repeating, how to climb faster, why the controller chose its action. Also the narrow read: reviewing one campaign run or recorded case through its outcomes, whether a live run is still producing useful evidence. Reads evidence; does not launch the next experiment or stop a run."
 ---
 
 # Whole-Run Investigation
 
 Explain what the run produced, where useful work stopped, and which change the evidence supports.
+
+A question about one run or one case — its denominators, a non-result's owner, whether a live run
+is still worth its spend — needs no lane read: [references/outcome-review.md](references/outcome-review.md)
+answers it from the recorded rows. A climb question starts at [references/climb.md](references/climb.md).
 
 ## The order
 
@@ -148,12 +152,12 @@ Read `snapshot-status.json`; require `complete: true` and verified view bytes/ha
 treating the snapshot as complete. Captured errors and unsupported views are unavailable facts.
 The manifest builder checks source and snapshot binding again before delegation.
 
-For a run with a predecessor in its lane, also run the source-delta reader; it prints paths and
+For a run with a predecessor in its lane, also run the delta lane; it prints paths and
 counts only, never source text:
 
 ```text
-bun --no-env-file <review-checkout>/.claude/skills/whole-run-investigation/scripts/source-delta.mjs \
-  --campaign <absolute campaign dir> --run <runId> --repo <measured-source checkout> \
+bun --no-env-file <review-checkout>/.claude/skills/whole-run-investigation/scripts/wri.mjs delta \
+  <absolute campaign dir> --run <runId> --repo <measured-source checkout> \
   [--previous <commit | absolute earlier campaign dir>] [--out <absolute file>]
 ```
 
@@ -221,8 +225,9 @@ separate:
   `category` fields under their own recorded schema; do not silently rename them into current
   concepts. Source declarations with no emitter or consumer remain visible.
 - Execution: group complete, validated observation rows by those dimensions, with hook states
-  separate: registered, activated, suppressed, rejected and unknown where that source supports
-  them. Include distinct runs, epochs, iterations, cases and sessions, not just repeated events.
+  separate — read the states the measured source declares rather than a list here, because a state
+  no emitter writes has been cut from `HookEvent` and `activated` is the one that remains.
+  Include distinct runs, epochs, iterations, cases and sessions, not just repeated events.
   Use source-bound readers and their totals; never derive zero use from a warning-only view,
   a limited UI page, missing files, malformed rows or unsupported telemetry.
 
@@ -260,10 +265,8 @@ reporting-status). A Codex reasoning summary is a run of bold headlines: each he
 labelled and the last one labels the row, with the whole path in `segmentClasses`. Each candidate
 submit then carries the rows since the previous submit, the dominant class, the last five labels
 with a short excerpt each, the reaction (rows and dominant class until the next submit),
-`repeatsRefusedPosture` when a refused submit shows the same dominant posture as the previous
-refused one, and, when `classifier/posture-priors.json` matches the anchor digest, the corpus
-refusal rate for that dominant and last label. Rebuild the priors after any anchor change with
-`bun classifier/posture-priors.mjs <campaigns-root>`; a stale file is reported, never applied.
+and `repeatsRefusedPosture` when a refused submit shows the same dominant posture as the previous
+refused one. No corpus prior is attached.
 
 Schema `run-prose-posture/v5` reads the whole run, not the authoring half alone. Four things the
 earlier views could not say:
@@ -407,7 +410,7 @@ two isolated lanes and blinded pairs; it does not select
 intelligence/reference questions. Read `--help` for current flags; old `--lanes` syntax is retired.
 `--launch` requires existing model-spend authority.
 
-For angle 15, first run `scripts/trace-challenge.mjs --campaign <absolute dir> --run <runId>
+For angle 15, first run `scripts/trace-challenge.ts --campaign <absolute dir> --run <runId>
 --out <absolute snapshot dir>/trace-challenge`. Verify complete status and telemetry digest, read
 the telemetry, and give only that lane the packet. The leaf reads it; it does not rerun the writer.
 
@@ -442,7 +445,7 @@ that did score: on `design-lightweight-steel-trusses-3fd52f9e-28` that produced 
 other channel — the task bytes — when a climb's result is unobservable:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/climb-velocity.mjs <campaign dir> [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.mjs climb <campaign dir> [--json]
 bun .claude/skills/whole-run-investigation/classifier/query-complexity.mjs <version dir | query pack> [--json]
 ```
 
@@ -451,7 +454,7 @@ moment its later candidate is adopted and before a single case of it has been pa
 the version directory appears, not when the claim lands.
 
 Two skills consume this: the campaign loop runs it at every read step once a campaign has two edges,
-and [run-climb-lab](../run-climb-lab/SKILL.md) owns what to do when its verdict and the controller's
+and [the climb reference](references/climb.md) owns what to do when its verdict and the controller's
 `ClimbAction` disagree — which they do whenever a battery scores well on tasks that did not move.
 
 Per battery it reports the check-tier histogram (easy, medium, hard, frontier, from the same pinned
@@ -472,7 +475,7 @@ cannot separate a new requirement from a reformatted comment. It exists because 
 published `minMemberJointClearanceM` in `rules.ts` under an existing check, left `evaluator.ts`
 byte-identical, and the edge read `novelty 0.0000 … rules +0` — which reads as a renumbering.
 
-`climb-velocity.mjs` renders that whole reading per battery, so there is no second lane over the
+`wri.mjs climb` renders that whole reading per battery, so there is no second lane over the
 same campaign. `query-complexity.mjs` reads an exported query pack as well as a campaign version,
 which is what running it directly is for: a battery compares directly against a reference pack. `coupled` reads the granularity its author declared
 at, so compare it within one author's campaign and use the check-tier histogram across authors.
@@ -485,7 +488,7 @@ visible. The tiers are leads for an investigator, never a score input.
 so a battery's outcomes get read against budgets nobody has looked at:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/walls.mjs <campaign dir> [--run <runId>] [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.mjs walls <campaign dir> [--battery <runId>] [--json]
 ```
 
 Per battery it prints the declared solve, turn, shell and concurrency walls, which of them the
@@ -516,7 +519,7 @@ The timeline lane answers where the wall-clock went. With `--classify` it also a
 slot was doing while it went there, using the same pinned BGE-small model `posture` uses:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/timeline.mjs <campaign dir> --run <runId> --classify
+bun .claude/skills/whole-run-investigation/scripts/wri.mjs timeline <campaign dir> --run <runId> --classify
 bun .claude/skills/whole-run-investigation/classifier/run-narrative.mjs <campaign dir> --run <runId> [--drift-run N]
 ```
 

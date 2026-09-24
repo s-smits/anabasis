@@ -1,6 +1,6 @@
 ---
 name: launch-run
-description: "Launch authorised Anabasis runs or model pairs through one Bun TypeScript command, or stop an identified run under existing user authority. Owns preparation, exact condition checks, startup and stop mechanics; run-outcome-review assesses whether stopping is justified."
+description: "Launch authorised Anabasis runs or model pairs through one Bun TypeScript command, or stop an identified run under existing user authority. Owns preparation, exact condition checks, startup and stop mechanics; whole-run-investigation's outcome reference assesses whether stopping is justified."
 ---
 
 # Launch a run
@@ -97,7 +97,7 @@ lives in the ledger its owner holds open, so the listing reports it unknown rath
 
 ## Stop a run
 
-Use [run-outcome-review](../run-outcome-review/SKILL.md#assess-whether-a-live-run-remains-useful)
+Use [the outcome reference](../whole-run-investigation/references/outcome-review.md#whether-a-live-run-is-still-useful)
 when the question is whether a run should stop. This section executes an authorised decision;
 neither a timer nor a stopped run authorises a replacement or changes accounts/credentials.
 

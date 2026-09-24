@@ -3,102 +3,41 @@
 // `verdicts.json`. Everything a script can derive (identities, digests, terminal accounting, lane
 // session rows, safeguard census and firing counts, prediction hashes, pointers) is derived here;
 // the primary writes only states, reasons and prose. `main_synthesis.md` is written once as a
-// skeleton and never overwritten. Re-running is idempotent for the generated files.
-//
-//   bun archive-scaffold.mjs --review <absolute review dir>
-//
-// Review dir layout (as `wri.mjs` lays it out): wri-review.json, snapshot/, lanes/tasks.json,
-// lanes/luna-output/{launch.json,summary.json,<name>.md}, verdicts.json, archive/.
-
+// skeleton and never overwritten. Re-running is idempotent for the generated files. `wri.mjs`
+// calls `scaffoldArchive` with the review dir it laid out: wri-review.json, snapshot/,
+// lanes/tasks.json, lanes/luna-output/{launch.json,summary.json,<name>.md}, verdicts.json, archive/.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { isString } from "#src/meta/json-shape.ts";
-import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { canonical, sourceSafeguardCallers } from "./archive-shape.mjs";
-import { ANGLE_COUNT } from "./catalogue-shape.mjs";
-import { hasText } from "#src/meta/text.ts";
+import { dirname, join } from "#src/meta/path.ts";
+import { canonicalJson } from "#src/meta/stable-json.ts";
+import { sha256, sha256OfFile } from "#src/meta/digest.ts";
+import { gitText } from "#skills/main/git.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
+import { SAFEGUARD_STDERR_PREFIX, parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
+import {
+  ADJUDICATED_ROUTES,
+  ANCHOR,
+  DIGEST,
+  headingSlug,
+  LUNA,
+  MAIN,
+  MAIN_HEADINGS,
+  predictionFrozenHash,
+  FROZEN_PREDICTION_FIELDS,
+  REVIEW,
+  sourceSafeguardCallers,
+} from "./archive-shape.mjs";
+import {
+  ANGLE_COUNT,
+  DETERMINISTIC_ROW_TITLES,
+  DETERMINISTIC_ROWS,
+  DIGEST_VERDICTS,
+} from "./catalogue-shape.mjs";
 
-const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
-const MAIN_HEADINGS = [
-  "## Identity and evidence",
-  "## Recorded result",
-  "## Findings",
-  "## Deterministic rows",
-  "## Independent reviews and limits",
-  "## Climb meaning and continuity",
-  "## CL-F reconciliation",
-  "## Prediction ledger",
-  "## Safeguards",
-  "### Safeguards T0",
-  "### Safeguards T1",
-  "## Terminal accounting",
-  "## Source proof and replacement decision",
-  "## What to do next",
-  "### Patch",
-  "### Consolidate",
-  "### Overhaul",
-];
-/** The three files this script writes. `validate-archive.mjs` reads the same names beside
- *  `review.json`, which the primary authors. */
-const MAIN = "main_synthesis.md";
-const LUNA = "luna_syntheses.md";
-const DIGEST = "digest.md";
-
-/** Anchors into `main_synthesis.md`. Each is the GitHub slug of its `MAIN_HEADINGS` row, so a
- *  pointer names the heading rather than one spelling of it. */
-const ANCHOR = {
-  ledger: "#prediction-ledger",
-  reviews: "#independent-reviews-and-limits",
-  safeguards: "#safeguards",
-  safeguardsT0: "#safeguards-t0",
-  safeguardsT1: "#safeguards-t1",
-  terminal: "#terminal-accounting",
-};
-
-const ROW_TITLES = {
-  A: "campaign identity",
-  B: "claim and promotion state",
-  C: "workspace and Git",
-  D: "static conformance",
-  E: "fingerprint and gate census",
-  F: "F2 solvability",
-  G: "case partition",
-  H: "runtime identity and isolation",
-  I: "served-model attestation",
-};
-const VERDICT_IDS = [
-  "discrimination-inertness",
-  "submit-stall-shape",
-  "evidence-integrity",
-  "solver-process",
-  "saturation-ledger",
-  "check-informativeness",
-  "family-wise-coverage",
-  "role-spend-and-censoring",
-];
 /** Effect evidence per prediction status, in the states `validate-archive.mjs` accepts. */
 const EFFECT_STATES = { sufficed: "observed", refuted: "not-observed", partial: "partial" };
 const LANE_STATES = { completed: "complete", failed: "failed", "not-launched": "inactive" };
-const FROZEN = [
-  "id",
-  "claim",
-  "expectedEffect",
-  "trigger",
-  "falsifier",
-  "owner",
-  "sourceRevision",
-  "runId",
-  "epoch",
-  "bundle",
-  "taskSet",
-];
 
-const ROUTE_STATES = new Set(["routed", "held", "not-routed"]);
-
-const sha = (bytes) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-const shaFile = (path) => sha(readFileSync(path));
 const readJson = (path) => (existsSync(path) ? readJsonFile(path) : null);
 /** The verdicts template: every state starts inconclusive so validation fails until the primary decides. */
 function verdictsTemplate(runId, laneNames) {
@@ -116,8 +55,8 @@ function verdictsTemplate(runId, laneNames) {
     schema: "wri-verdicts/v1",
     runId,
     identity: { epoch: null, taskSet: null, bundle: null },
-    deterministicRows: Object.fromEntries(Object.keys(ROW_TITLES).map((id) => [id, "inconclusive"])),
-    digestVerdicts: Object.fromEntries(VERDICT_IDS.map((id) => [id, "inconclusive"])),
+    deterministicRows: Object.fromEntries(DETERMINISTIC_ROWS.map((id) => [id, "inconclusive"])),
+    digestVerdicts: Object.fromEntries(DIGEST_VERDICTS.map((id) => [id, "inconclusive"])),
     angles,
     session30: {
       applicability: "inconclusive",
@@ -160,7 +99,9 @@ function loadInputs(reviewDir) {
     repo: review.repo,
     reviewCheckout: review.reviewCheckout,
     status,
-    terminal: readJson(join(controllerDir, "terminal.json")),
+    // trace-review read the terminal through the controller's strict reader; a run it could not
+    // stand behind is live or refused, and the archive records no terminal for it.
+    terminal: status.facts?.terminal?.state === "recorded" ? status.facts.terminal : null,
     evolution: readJson(join(snapshotDir, "harness-evolution.json")),
     overview: readJson(join(reviewDir, "overview.json")),
     tasks: readJson(join(lanesDir, "tasks.json")) ?? [],
@@ -190,7 +131,7 @@ function laneRows(inputs) {
       threadId: result?.threadId ?? null,
       durationMs: result?.durationMs ?? null,
       promptSha256: prompts.get(task.name) ?? null,
-      reportSha256: existsSync(reportPath) ? shaFile(reportPath) : null,
+      reportSha256: existsSync(reportPath) ? sha256OfFile(reportPath) : null,
       reportPath,
     };
   });
@@ -255,16 +196,6 @@ function mainSkeleton(inputs) {
   return lines.join("\n");
 }
 
-function firstHeadingAnchor(text) {
-  const heading = /^#{1,6}\s+(.+)$/m.exec(text)?.[1] ?? "";
-  return `#${heading
-    .replace(/[`*_]/g, "")
-    .replace(/[^a-z0-9 -]/gi, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .toLowerCase()}`;
-}
-
 function identityOf(inputs, verdicts) {
   const source = inputs.status.source;
   const versions = Array.isArray(inputs.evolution?.versions) ? inputs.evolution.versions : [];
@@ -287,10 +218,11 @@ function terminalRows(inputs, verdicts, ptr, identity) {
   const terminal = inputs.terminal ?? {};
   const facts = inputs.status.facts?.terminalAccounting ?? {};
   const d = terminal.denominator ?? {};
-  const recorded = d.state === "recorded" || d.state === "sealed";
-  const outcome = ["completed", "held", "aborted"].includes(terminal.outcome)
-    ? terminal.outcome
-    : "incomplete";
+  // controller-denominator.ts writes absent, recorded or invalid, and controller-evidence.ts writes
+  // outcome completed or aborted; an invalid denominator is shown as such, never folded into absent.
+  const recorded = d.state === "recorded";
+  const invalid = d.state === "invalid";
+  const outcome = ["completed", "aborted"].includes(terminal.outcome) ? terminal.outcome : "incomplete";
   const parent = (value) => (isString(value) ? value : identity.bundle);
   // A live review has no controller terminal, so the snapshot carries no completed-round fact;
   // the primary records the count it read from the iteration records in verdicts.json.
@@ -299,8 +231,9 @@ function terminalRows(inputs, verdicts, ptr, identity) {
     terminal: {
       outcome,
       capabilityResult:
-        verdicts.terminal?.capabilityResult ?? (recorded && d.verified > 0 ? "recorded" : "absent"),
-      reason: verdicts.terminal?.reason || terminal.terminalReason || "no terminal reason recorded",
+        verdicts.terminal?.capabilityResult ??
+        (invalid ? "inconclusive" : recorded && d.verified > 0 ? "recorded" : "absent"),
+      reason: verdicts.terminal?.reason || terminal.reason || "no terminal reason recorded",
       evidencePointers: [ptr(ANCHOR.terminal), ptr("#findings")],
     },
     terminalAccounting: {
@@ -313,8 +246,14 @@ function terminalRows(inputs, verdicts, ptr, identity) {
             unaccepted: d.unaccepted,
             nonResult: d.nonResults,
           }
-        : { state: "absent" },
-      reason: recorded ? undefined : "controller denominator is not recorded",
+        : invalid
+          ? { state: "invalid", reason: d.error }
+          : { state: "absent" },
+      reason: recorded
+        ? undefined
+        : invalid
+          ? `controller denominator invalid — ${d.error}`
+          : "controller denominator is not recorded",
       evidencePointer: ptr(ANCHOR.terminal),
       outerCap: facts.outerCap ?? null,
       completedRounds: completed,
@@ -402,7 +341,7 @@ function angleRows(lanes, verdicts, ptr, shortIdentity) {
 function sessionRows(lanes, inputs, verdicts, ptr, identity) {
   const s30 = verdicts.session30;
   const witnessPath = join(inputs.repo, s30.sourceFile);
-  const witnessDigest = existsSync(witnessPath) ? sha(readFileSync(witnessPath, "utf8")) : "0".repeat(64);
+  const witnessDigest = existsSync(witnessPath) ? sha256(readFileSync(witnessPath, "utf8")) : "0".repeat(64);
   const rows = [
     {
       id: "session_30",
@@ -445,11 +384,13 @@ function sessionRows(lanes, inputs, verdicts, ptr, identity) {
 
 function predictionRows(verdicts, ptr, identity, denominator) {
   return (verdicts.predictions ?? []).map((row) => {
-    const frozen = Object.fromEntries(FROZEN.map((key) => [key, row[key] ?? identity[key]]));
+    const frozen = Object.fromEntries(
+      FROZEN_PREDICTION_FIELDS.map((key) => [key, row[key] ?? identity[key]]),
+    );
     const status = row.status ?? "inconclusive";
     return {
       ...frozen,
-      frozenHash: sha(canonical(frozen)),
+      frozenHash: predictionFrozenHash(frozen),
       status,
       eligible: false,
       advisoryReason:
@@ -494,23 +435,15 @@ function predictionRows(verdicts, ptr, identity, denominator) {
 
 /** Count only the logger's own framing. An unavailable log has no count, not an observed zero. */
 function safeguardCounts(path, stderr = false) {
-  const counts = new Map();
   let bytes;
   try {
     bytes = path ? readFileSync(path, "utf8") : null;
   } catch {
     bytes = null;
   }
-  if (bytes === null) return { path: null, sha256: null, counts, malformed: 0 };
-  let malformed = 0;
-  for (const raw of bytes.split("\n")) {
-    if (!raw.trim() || (stderr && !raw.startsWith("[safeguard] "))) continue;
-    const line = stderr ? raw.slice("[safeguard] ".length) : raw;
-    const id = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \| ([^|\r\n]+) \|/.exec(line)?.[1]?.trim();
-    if (hasText(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
-    else malformed += 1;
-  }
-  return { path, sha256: sha(bytes), counts, malformed };
+  if (bytes === null) return { path: null, sha256: null, counts: new Map(), malformed: 0 };
+  const { counts, malformed } = parseSafeguardLog(bytes, stderr ? SAFEGUARD_STDERR_PREFIX : "");
+  return { path, sha256: sha256(bytes), counts, malformed };
 }
 
 function receipt(present, digest, ptr) {
@@ -527,7 +460,7 @@ function safeguardRoute(file, route, coverage, ptr) {
     coverage.complete &&
     route !== null &&
     typeof route === "object" &&
-    ROUTE_STATES.has(route.state) &&
+    ADJUDICATED_ROUTES.has(route.state) &&
     isString(route.reason) &&
     route.reason.trim() !== "";
   return explicit
@@ -610,18 +543,18 @@ function runtimeSafeguardRow({
 
 function safeguardRows(inputs, verdicts, ptr, identity, shortIdentity) {
   const callers = sourceSafeguardCallers(inputs.repo);
-  const log = safeguardCounts(join(inputs.campaign, "safeguards", inputs.runId, "SAFEGUARDS_LOG.txt"));
+  const log = safeguardCounts(safeguardLogFile(inputs.campaign, inputs.runId));
   const stderr = safeguardCounts(verdicts.safeguards?.stderrLog, true);
   const stderrOnly = new Set(verdicts.safeguards?.stderrOnlyIds ?? []);
   const callerFiles = [...callers.keys()].sort().map((file) => ({
     relativeFile: file,
-    sha256: sha(readFileSync(join(inputs.repo, file), "utf8")),
+    sha256: sha256(readFileSync(join(inputs.repo, file), "utf8")),
     ids: [...callers.get(file)].sort(),
   }));
   const evidence = {
     ...shortIdentity,
     sourceDigest: identity.sourceDigest,
-    callersSha256: sha(canonical(callerFiles)),
+    callersSha256: sha256(canonicalJson(callerFiles)),
     logSha256: log.sha256,
     stderrSha256: stderr.sha256,
     stderrOnlyIds: [...stderrOnly].sort(),
@@ -634,7 +567,7 @@ function safeguardRows(inputs, verdicts, ptr, identity, shortIdentity) {
     reviewed !== undefined &&
     isString(reviewed.reason) &&
     reviewed.reason.trim() !== "" &&
-    canonical(reviewed.evidence) === canonical(evidence);
+    canonicalJson(reviewed.evidence) === canonicalJson(evidence);
   const t0 = bytesVerified && reviewed.t0 === true;
   const t1 = bytesVerified && reviewed.t1 === true && log.malformed === 0 && stderr.malformed === 0;
   const coverage = { complete: t0 && t1, t0, t1 };
@@ -685,8 +618,8 @@ function safeguardRows(inputs, verdicts, ptr, identity, shortIdentity) {
 function procedureIdentity(inputs, ptr) {
   const checkout = inputs.reviewCheckout;
   const skillPath = join(checkout, ".claude/skills/whole-run-investigation/SKILL.md");
-  const digest = shaFile(skillPath);
-  const revision = runTextSyncOrThrow(["git", "-C", checkout, "rev-parse", "HEAD"]).trim();
+  const digest = sha256OfFile(skillPath);
+  const revision = gitText(checkout, "rev-parse", "HEAD");
   return {
     name: "whole-run-investigation",
     version: "wri/skill-md",
@@ -702,7 +635,7 @@ function procedureIdentity(inputs, ptr) {
 
 function buildReview(inputs, verdicts, lanes, archiveDir) {
   const digests = Object.fromEntries(
-    [MAIN, LUNA, DIGEST].map((name) => [name, shaFile(join(archiveDir, name))]),
+    [MAIN, LUNA, DIGEST].map((name) => [name, sha256OfFile(join(archiveDir, name))]),
   );
   const ptr = (anchor, path = MAIN) => ({ path, anchor, sha256: digests[path] });
   const identity = identityOf(inputs, verdicts);
@@ -713,6 +646,7 @@ function buildReview(inputs, verdicts, lanes, archiveDir) {
     bundle: identity.bundle,
     taskSet: identity.taskSet,
   };
+  const digestAnchor = `#${headingSlug(/^#{1,6}\s+(.+)$/m.exec(readFileSync(join(archiveDir, DIGEST), "utf8"))?.[1] ?? "")}`;
   const rows = terminalRows(inputs, verdicts, ptr, identity);
   const safeguards = safeguardRows(inputs, verdicts, ptr, identity, shortIdentity);
   const handoff = verdicts.learningHandoff ?? {};
@@ -735,26 +669,23 @@ function buildReview(inputs, verdicts, lanes, archiveDir) {
     digests: {
       snapshot: {
         sha256: digests[DIGEST],
-        pointer: ptr(firstHeadingAnchor(readFileSync(join(archiveDir, DIGEST), "utf8")), DIGEST),
+        pointer: ptr(digestAnchor, DIGEST),
       },
       manifest: { sha256: digests[LUNA], pointer: ptr("#collection", LUNA) },
       sessions: { sha256: digests[LUNA], pointer: ptr("#collection", LUNA) },
       reports: { sha256: digests[LUNA], pointer: ptr("#reports", LUNA) },
     },
     ...rows,
-    deterministicRows: Object.entries(ROW_TITLES).map(([id, title]) => ({
+    deterministicRows: Object.entries(DETERMINISTIC_ROW_TITLES).map(([id, title]) => ({
       id,
       title,
       state: verdicts.deterministicRows?.[id] ?? "inconclusive",
       evidencePointers: [ptr("#deterministic-rows")],
     })),
-    digestVerdicts: VERDICT_IDS.map((id) => ({
+    digestVerdicts: DIGEST_VERDICTS.map((id) => ({
       id,
       state: verdicts.digestVerdicts?.[id] ?? "inconclusive",
-      evidencePointers: [
-        ptr("#deterministic-rows"),
-        ptr(firstHeadingAnchor(readFileSync(join(archiveDir, DIGEST), "utf8")), DIGEST),
-      ],
+      evidencePointers: [ptr("#deterministic-rows"), ptr(digestAnchor, DIGEST)],
     })),
     angleStates: angleRows(lanes, verdicts, ptr, shortIdentity),
     sessionStates: sessionRows(lanes, inputs, verdicts, ptr, identity),
@@ -764,7 +695,7 @@ function buildReview(inputs, verdicts, lanes, archiveDir) {
       identity,
       rows.terminalAccounting.denominator.state === "recorded"
         ? { state: "recorded", counts: { ...rows.terminalAccounting.denominator, state: undefined } }
-        : { state: "absent" },
+        : { state: rows.terminalAccounting.denominator.state === "invalid" ? "unknown" : "absent" },
     ),
     safeguards: safeguards.safeguards,
     safeguardCensus: safeguards.safeguardCensus,
@@ -843,7 +774,7 @@ export function scaffoldArchive(reviewDir) {
   );
   const mainPath = join(archiveDir, MAIN);
   if (!existsSync(mainPath)) writeFileSync(mainPath, mainSkeleton(inputs));
-  writeJsonFile(join(archiveDir, "review.json"), buildReview(inputs, verdicts, lanes, archiveDir));
+  writeJsonFile(join(archiveDir, REVIEW), buildReview(inputs, verdicts, lanes, archiveDir));
   return {
     archiveDir,
     verdictsPath,
@@ -852,17 +783,3 @@ export function scaffoldArchive(reviewDir) {
     mainSkeleton: readFileSync(mainPath, "utf8").includes("\nTODO\n"),
   };
 }
-
-function main() {
-  const index = Bun.argv.indexOf("--review");
-  const reviewDir = index === -1 ? null : Bun.argv[index + 1];
-  if (!reviewDir || !isAbsolute(reviewDir)) {
-    console.error("usage: archive-scaffold.mjs --review <absolute review dir>");
-    runtimeProcess.exit(2);
-  }
-  const result = scaffoldArchive(resolve(reviewDir));
-  console.log(JSON.stringify(result, null, 2));
-}
-
-if (import.meta.main) main();
-export { SCRIPT_DIR as ARCHIVE_SCAFFOLD_DIR };

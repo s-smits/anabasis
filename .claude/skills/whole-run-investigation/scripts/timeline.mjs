@@ -7,47 +7,38 @@
 // stretch of consecutive units where a slot stopped progressing, resolved to the phase the run held
 // at that moment. Without it the lane loads no model and stays deterministic.
 //
-//   bun timeline.mjs <campaign> --run <runId> [--classify] [--json] [--out <file>]
+//   bun wri.mjs timeline <target> [--run <runId>] [--classify] [--json] [--out <abs file>]
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { readObservationFile } from "#tools/outcome/query.ts";
-import {
-  buildNarrative,
-  campaignRunArgs,
-  emitReport,
-  renderNarrative,
-} from "../classifier/run-narrative.mjs";
+import { buildNarrative, renderNarrative } from "../classifier/run-narrative.mjs";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
-import { readJsonFile } from "#src/meta/completed-json.ts";
+import { readControllerEvidence } from "#src/run/controller-evidence.ts";
 
 export const TIMELINE_SCHEMA = "wri-run-timeline/v1";
 const STALLS = 5;
-const VALUE_FLAGS = new Set(["--run", "--out"]);
 
 const minutes = (ms) => Math.round(ms / 600) / 100;
 
-/** Every observation file this run owns: its own, plus each battery the terminal binds to it. */
+/** Every observation file this run owns: its own, plus each battery its recorded terminal binds
+ *  to it. A terminal the controller reader refuses binds nothing, and the scope says why. */
 function streams(campaign, runId) {
   const ids = [runId];
-  const terminal = join(campaign, "controller", runId, "terminal.json");
-  let scope = "live-root-only; battery binding unavailable";
-  if (existsSync(terminal)) {
-    const value = readJsonFile(terminal);
-    const iterations = Array.isArray(value.iterations) ? value.iterations : [];
-    // A measured iteration's battery runs under the iteration's own id.
-    for (const iteration of iterations) {
-      const id = iteration?.runId;
-      if (iteration?.measured !== true || !isString(id) || !isSafePathSegment(id) || ids.includes(id)) {
-        continue;
-      }
-      ids.push(id);
+  let scope;
+  try {
+    const controller = readControllerEvidence(campaign, runId);
+    if (controller.state === "recorded") {
+      for (const id of controller.batteryRunIds) if (!ids.includes(id)) ids.push(id);
+      scope = "terminal-exact";
+    } else {
+      scope = `live-root-only; controller evidence ${controller.state}`;
     }
-    scope = "terminal-exact";
+  } catch (error) {
+    scope = `live-root-only; controller evidence refused: ${errorMessage(error)}`;
   }
   const inputs = [];
   const rows = [];
@@ -214,7 +205,10 @@ export function buildTimeline({ campaign, runId }) {
 
 /** The same clock, read for meaning instead of elapsed time: what each slot was doing and where it
  *  stopped progressing, with every stretch resolved to the phase the run held at that moment. The
- *  embedding model loads here and nowhere else in this lane. */
+ *  embedding model loads here and nowhere else in this lane.
+ *  @template T
+ *  @param {T} timeline
+ *  @param {{ campaign: string, runId: string, embed?: (texts: string[]) => Promise<number[][]>, run?: number }} options */
 export async function classifyTimeline(timeline, { campaign, runId, embed, run }) {
   const narrative = await buildNarrative({
     campaign,
@@ -291,17 +285,3 @@ export function renderTimeline(timeline) {
         ]),
   ].join("\n");
 }
-
-async function main() {
-  const { campaign, runId } = campaignRunArgs(
-    VALUE_FLAGS,
-    "usage: timeline.mjs <campaign dir> --run <runId> [--classify] [--json] [--out <file>]",
-  );
-  const recorded = buildTimeline({ campaign, runId });
-  const timeline = runtimeProcess.argv.includes("--classify")
-    ? await classifyTimeline(recorded, { campaign, runId })
-    : recorded;
-  emitReport(timeline, renderTimeline);
-}
-
-if (import.meta.main) await main();

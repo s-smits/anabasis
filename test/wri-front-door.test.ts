@@ -11,17 +11,17 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { OVERVIEW_SCHEMA, buildOverview, digestTriggers, readOverview } from "../.claude/skills/whole-run-investigation/scripts/run-overview.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { buildSharedInstructions, renderSharedInstructions } from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
+import {
+  OVERVIEW_SCHEMA,
+  buildOverview,
+  digestTriggers,
+  readOverview,
+} from "../.claude/skills/whole-run-investigation/scripts/run-overview.mjs";
+import {
+  buildSharedInstructions,
+  renderSharedInstructions,
+} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.mjs";
 import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
 import { LANES, renderLanes, selectLanes } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -44,25 +44,23 @@ afterEach(() => {
 
 const json = (value: JsonValue) => `${JSON.stringify(value, null, 2)}\n`;
 
-/** A snapshot whose default view failed, with a readable controller terminal beside it. */
+/** Rewrite the terminal trace-review projected into a snapshot, as its strict reader would have. */
+function amendTerminalFacts(
+  snapshot: string,
+  change: (terminal: Record<string, JsonValue>) => Record<string, JsonValue>,
+): void {
+  const path = join(snapshot, "snapshot-status.json");
+  const status = parseJsonAs<{ facts: { terminal: Record<string, JsonValue> } }>(readFileSync(path, "utf8"));
+  status.facts.terminal = change(status.facts.terminal);
+  writeFileSync(path, json(status));
+}
+
+/** A snapshot whose default view failed, carrying the terminal trace-review read strictly. */
 function snapshotFixture() {
   const campaign = temp("ana-wri-campaign-");
   const controller = join(campaign, "controller", RUN);
   mkdirSync(controller, { recursive: true });
   writeFileSync(join(controller, "opening.json"), json({ source: { commit: COMMIT } }));
-  writeFileSync(
-    join(controller, "terminal.json"),
-    json({
-      outcome: "aborted",
-      abortClause: "budget-limited",
-      terminalReason: "aborted: budget-limited",
-      epoch: "epoch-000000000000",
-      lastIteration: `${RUN}-i03`,
-      iterations: [1, 2, 3],
-      denominator: { state: "recorded", total: 75, verified: 70, unaccepted: 2, nonResults: 3 },
-      providerResourceBudget: { cap: 100, used: 100, byRole: { builder: 3, built: 60, review: 37 } },
-    }),
-  );
   const snapshot = temp("ana-wri-snapshot-");
   writeFileSync(
     join(snapshot, "snapshot-status.json"),
@@ -75,6 +73,17 @@ function snapshotFixture() {
       source: { commit: COMMIT, dirty: false, sourceDigest: "b".repeat(64) },
       opening: { path: join(controller, "opening.json"), sha256: "a".repeat(64) },
       facts: {
+        terminal: {
+          state: "recorded",
+          outcome: "aborted",
+          abortClause: "budget-limited",
+          reason: "aborted: budget-limited",
+          epoch: "epoch-000000000000",
+          lastIteration: `${RUN}-i03`,
+          iterations: 3,
+          denominator: { state: "recorded", total: 75, verified: 70, unaccepted: 2, nonResults: 3 },
+          providerBudget: { cap: 100, used: 100, byRole: { builder: 3, built: 60, review: 37 } },
+        },
         terminalAccounting: {
           outerCap: null,
           completedRounds: 3,
@@ -140,16 +149,13 @@ describe("run overview", () => {
     ]);
   });
 
-  it("derives terminal, budget and version facts from bytes even when the default view failed, and renders them", () => {
+  it("carries the strictly read terminal, budget and version facts even when the default view failed, and renders them", () => {
     const { snapshot } = snapshotFixture();
     const overview = buildOverview(snapshot);
     expect(overview.schema).toBe(OVERVIEW_SCHEMA);
-    expect(overview.terminal.denominator).toEqual({
-      state: "recorded",
-      total: 75,
-      verified: 70,
-      unaccepted: 2,
-      nonResults: 3,
+    expect(overview.terminal).toMatchObject({
+      lastIteration: `${RUN}-i03`,
+      denominator: { state: "recorded", total: 75, verified: 70, unaccepted: 2, nonResults: 3 },
     });
     expect(overview.snapshot.views.failed).toEqual([`${RUN}-default`]);
     expect(overview.orientation).toBe("");
@@ -162,12 +168,36 @@ describe("run overview", () => {
     expect(rendered).not.toContain("census");
   });
 
+  // A reader that took the fields one at a time printed a count line of question marks for an
+  // invalid denominator, where the one fact the bytes establish is that they are invalid. A budget
+  // the controller's validator refuses never reaches here: the strict reader refuses the whole
+  // terminal, and the overview says so with its reason.
+  it("says a denominator is invalid, and a refused terminal is unavailable, instead of printing fields", () => {
+    const { snapshot } = snapshotFixture();
+    amendTerminalFacts(snapshot, (terminal) => ({
+      ...terminal,
+      denominator: { state: "invalid", error: "case-record unreadable" },
+    }));
+    const invalid = renderSharedInstructions(buildSharedInstructions(buildOverview(snapshot)));
+    expect(invalid).toContain("- Recorded denominator: INVALID — case-record unreadable.");
+    amendTerminalFacts(snapshot, () => ({
+      state: "unavailable",
+      reason: "terminal budget is not a snapshot",
+    }));
+    const refused = renderSharedInstructions(buildSharedInstructions(buildOverview(snapshot)));
+    expect(refused).toContain("- Terminal: unavailable (terminal budget is not a snapshot).");
+    expect(refused).not.toContain("100 of 100 turns used");
+  });
+
   it("renders the primary's edits to values and template, and refuses a token without a value", () => {
     const { snapshot } = snapshotFixture();
-    const shared = buildSharedInstructions(buildOverview(snapshot));
-    shared.values.terminal = "- Terminal: edited by the primary.";
-    shared.values.hint = "- Read i03 first.";
-    shared.template = ["{terminal}", "{hint}", "{orientation}"];
+    const built = buildSharedInstructions(buildOverview(snapshot));
+    // The primary edits the file it was handed, so a token it adds is one the builder never wrote.
+    const shared = {
+      ...built,
+      values: { ...built.values, terminal: "- Terminal: edited by the primary.", hint: "- Read i03 first." },
+      template: ["{terminal}", "{hint}", "{orientation}"],
+    };
     expect(renderSharedInstructions(shared)).toBe("- Terminal: edited by the primary.\n- Read i03 first.");
     shared.template.push("{missing}");
     expect(() => renderSharedInstructions(shared)).toThrow("{missing}");
@@ -362,12 +392,36 @@ describe("archive scaffold", () => {
     expect(built.terminalAccounting).toMatchObject({ completedRounds: 3, counts: { controller: 3 } });
   });
 
+  // controller-denominator.ts records a case record it could not read as `invalid`. The scaffold
+  // once folded that into `absent`, which reads as "no battery ran" -- the opposite of the fact.
+  it("carries an invalid controller denominator through as invalid with its reason", () => {
+    const review = reviewFixture();
+    amendTerminalFacts(join(review, "snapshot"), (terminal) => ({
+      ...terminal,
+      denominator: { state: "invalid", error: "case-record unreadable" },
+    }));
+    const first = scaffoldArchive(review);
+    scaffoldArchive(review);
+    type Review = {
+      terminal: { capabilityResult: string };
+      terminalAccounting: { state: string; denominator: JsonValue; reason: string };
+    };
+    const built = parseJsonAs<Review>(readFileSync(join(first.archiveDir, "review.json"), "utf8"));
+    expect(built.terminal.capabilityResult).toBe("inconclusive");
+    expect(built.terminalAccounting.state).toBe("incomplete");
+    expect(built.terminalAccounting.denominator).toEqual({
+      state: "invalid",
+      reason: "case-record unreadable",
+    });
+    expect(built.terminalAccounting.reason).toBe("controller denominator invalid — case-record unreadable");
+  });
+
   it("marks a review without a controller terminal live and takes the completed-round count the primary recorded", () => {
     const review = reviewFixture();
-    const { campaign } = parseJsonAs<{ campaign: string }>(
-      readFileSync(join(review, "wri-review.json"), "utf8"),
-    );
-    rmSync(join(campaign, "controller", RUN, "terminal.json"));
+    amendTerminalFacts(join(review, "snapshot"), () => ({
+      state: "unavailable",
+      reason: "controller evidence unfinished",
+    }));
     const statusPath = join(review, "snapshot", "snapshot-status.json");
     const status = parseJsonAs<{ facts: { terminalAccounting: JsonValue } }>(
       readFileSync(statusPath, "utf8"),

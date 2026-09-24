@@ -13,7 +13,8 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["bun"]
+    "types": ["bun"],
+    "allowJs": true
   },
   "include": [
     "src/**/*.ts",

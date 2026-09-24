@@ -3,7 +3,7 @@
 // every case's spent time and turns are recorded, the walls they ran against are not. This joins the
 // two, per battery, so "give the solver more room" is answered from the record rather than assumed.
 //
-//   bun walls.mjs <campaign-dir> [--run <runId>] [--json]
+//   bun wri.mjs walls <target> [--battery <runId>] [--json]
 //
 // The reading that changes a decision is the negative one. On campaign 3fd52f9e-28 the median case
 // spent 10.6 of 120 declared minutes across four batteries and 100 cases: no budget was near
@@ -20,13 +20,13 @@
 // as a submission, or it ended without one. Those two were one `ended-early` label until
 // 2026-09-19, which no recorded field carried and which read as a cut solve on the 23 de8b40-i02
 // cases that had simply finished.
-import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { join } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { classifyCaseOutcome } from "#src/claim/case-record.ts";
-import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "#src/truth/harness-config.ts";
-import { isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { existsSync } from "#src/meta/filesystem.ts";
+import { basename, dirname, join } from "#src/meta/path.ts";
+import { campaignTraceRoots } from "#src/claim/trace-read.ts";
+import { measuredProductDir } from "#src/run/product-versions.ts";
+import { classifyCaseOutcome, readCaseRecord } from "#src/claim/case-record.ts";
+import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE, harnessSettings } from "#src/truth/harness-config.ts";
+import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 
 export const WALLS_SCHEMA = "wri-solve-walls/v2";
@@ -41,14 +41,10 @@ const minutes = (ms) => Math.round(ms / 600) / 100;
 const median = (values) =>
   values.length === 0 ? null : [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
-/** Every case row the campaign recorded, grouped by the battery that ran it. */
+/** Every case row the campaign recorded, grouped by the battery that ran it, through the strict reader. */
 function caseRows(campaign) {
-  const path = join(campaign, "case-record.jsonl");
   const byRun = new Map();
-  if (!existsSync(path)) return byRun;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    if (line.trim() === "") continue;
-    const row = capturedJsonParse(line).row ?? {};
+  for (const { row } of readCaseRecord(join(campaign, "case-record.jsonl"))) {
     const rows = byRun.get(row.runId) ?? [];
     rows.push(row);
     byRun.set(row.runId, rows);
@@ -57,13 +53,15 @@ function caseRows(campaign) {
 }
 
 /** Turns, tool calls and the solver errors the case result recorded, which the case-record row does
- *  not restate. An absent result leaves them null: the case ran, and this reader did not see its
- *  turns. The errors are carried verbatim so a case this reader calls time-bound from its elapsed
- *  share can quote the host's own sentence for it rather than resting on the share alone. */
-function solverOf(campaign, runId, taskId) {
-  const versions = existsSync(join(campaign, "versions")) ? readdirSync(join(campaign, "versions")) : [];
-  for (const version of versions) {
-    const path = join(campaign, "versions", version, "runs", runId, "cases", taskId, "case-result.json");
+ *  not restate. The result is looked for under every trace root the campaign keeps — the default
+ *  product, and each retained, candidate or promoted tree — because a battery's run directory sits
+ *  under whichever tree measured it. An absent result leaves them null: the case ran, and this
+ *  reader did not see its turns. The errors are carried verbatim so a case this reader calls
+ *  time-bound from its elapsed share can quote the host's own sentence for it rather than resting
+ *  on the share alone. */
+function solverOf(roots, runId, taskId) {
+  for (const root of roots) {
+    const path = join(root, "runs", runId, "cases", taskId, "case-result.json");
     if (!existsSync(path)) continue;
     const solver = readJsonFile(path).solver ?? {};
     const errors = Array.isArray(solver.errors) ? solver.errors.filter((value) => isString(value)) : [];
@@ -72,25 +70,24 @@ function solverOf(campaign, runId, taskId) {
   return { turns: null, toolCalls: null, errors: [] };
 }
 
-/** The walls this battery's own bundle declared, and how each compares with the seeded default. A
- *  battery whose bundle is gone reads the defaults and says so, because the host applies them. */
+/** The walls the product this battery measured declared, and how each compares with the seeded
+ *  default. Which product that was is the controller ledger's binding (`measuredProductDir`), not
+ *  a directory named after the battery: a task probe measures the retained version an earlier
+ *  round published under its own id. A battery the ledger binds to no product reads the defaults
+ *  and says so, and a bound product without a config reads them too, because the host applies them. */
 function wallsOf(campaign, runId) {
-  const dir = join(campaign, "versions", runId, "agent");
-  const declared = existsSync(join(dir, "config.yaml"))
-    ? harnessSettings(join(campaign, "versions", runId))
-    : null;
-  const settings = declared ?? DEFAULT_HARNESS_SETTINGS;
+  const product = measuredProductDir(dirname(dirname(campaign)), basename(campaign), runId);
+  const settings = product === null ? DEFAULT_HARNESS_SETTINGS : harnessSettings(product);
   const moved = Object.entries(settings)
     .filter(([key, value]) => value !== DEFAULT_HARNESS_SETTINGS[key])
     .map(([key, value]) => ({ key, declared: value, seeded: DEFAULT_HARNESS_SETTINGS[key] }));
-  return {
-    source:
-      declared === null
-        ? "seeded defaults; this battery's bundle is absent"
-        : "the battery's own agent/config.yaml",
-    settings,
-    moved,
-  };
+  const source =
+    product === null
+      ? "seeded defaults; the ledger binds this battery to no retained product"
+      : existsSync(join(product, HARNESS_CONFIG_FILE))
+        ? "the measured product's agent/config.yaml"
+        : "seeded defaults; the measured product declares no agent/config.yaml";
+  return { source, settings, moved };
 }
 
 /** Which budget the case ended on, and — where none bound it — what the record says the solve did.
@@ -111,15 +108,11 @@ function caseOf(row, solver, settings) {
   const elapsedMs = started === null || ended === null ? null : ended - started;
   const timeShare = elapsedMs === null ? null : share(elapsedMs, settings.solveMs);
   const turnShare = solver.turns === null ? null : share(solver.turns, settings.maxTurns);
-  const acceptedSubmit = isBoolean(row.acceptedSubmit) ? row.acceptedSubmit : true;
-  const outcome = classifyCaseOutcome({
-    acceptedSubmit,
-    pass: row.pass ?? null,
-    runtimeNonResult: row.runtimeNonResult ?? null,
-  });
+  const acceptedSubmit = row.acceptedSubmit;
+  const outcome = classifyCaseOutcome(row);
   return {
-    taskId: row.taskId ?? null,
-    family: row.family ?? null,
+    taskId: row.taskId,
+    family: row.family,
     outcome,
     bound: boundOf({ elapsedMs, timeShare, turnShare, turns: solver.turns, acceptedSubmit }),
     elapsedMinutes: elapsedMs === null ? null : minutes(elapsedMs),
@@ -131,9 +124,9 @@ function caseOf(row, solver, settings) {
   };
 }
 
-function batteryOf(campaign, runId, rows) {
+function batteryOf(campaign, roots, runId, rows) {
   const walls = wallsOf(campaign, runId);
-  const cases = rows.map((row) => caseOf(row, solverOf(campaign, runId, row.taskId), walls.settings));
+  const cases = rows.map((row) => caseOf(row, solverOf(roots, runId, row.taskId), walls.settings));
   const times = cases.flatMap((row) => (row.timeShare === null ? [] : [row.timeShare]));
   const calls = cases.flatMap((row) => (isNumber(row.toolCalls) ? [row.toolCalls] : []));
   const bounds = {};
@@ -163,7 +156,8 @@ export function buildWalls({ campaign, runId = null }) {
   const byRun = caseRows(campaign);
   const selected = [...byRun.entries()].filter(([id]) => runId === null || id === runId);
   selected.sort(([a], [b]) => a.localeCompare(b));
-  const batteries = selected.map(([id, rows]) => batteryOf(campaign, id, rows));
+  const roots = campaignTraceRoots(campaign);
+  const batteries = selected.map(([id, rows]) => batteryOf(campaign, roots, id, rows));
   return {
     schema: WALLS_SCHEMA,
     campaign,
@@ -221,17 +215,3 @@ export function renderWalls(report) {
     ...report.batteries.flatMap(batteryLines),
   ].join("\n");
 }
-
-function main() {
-  const argv = runtimeProcess.argv.slice(2);
-  const index = argv.indexOf("--run");
-  const campaign = argv.find((value, position) => !value.startsWith("--") && argv[position - 1] !== "--run");
-  if (campaign === undefined) {
-    console.error("usage: walls.mjs <campaign-dir> [--run <runId>] [--json]");
-    runtimeProcess.exit(2);
-  }
-  const report = buildWalls({ campaign, runId: index >= 0 ? argv[index + 1] : null });
-  console.log(argv.includes("--json") ? JSON.stringify(report, null, 2) : renderWalls(report));
-}
-
-if (import.meta.main) main();

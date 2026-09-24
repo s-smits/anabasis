@@ -2,25 +2,35 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { ADRIFT, CLASSES, DRIFT_RUN, consecutive, driftRuns } from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { RESTATED_COSINE, buildNarrative, renderNarrative, uuidV7Ms } from "../.claude/skills/whole-run-investigation/classifier/run-narrative.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { buildTimeline, classifyTimeline } from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
+import { CASE_TRACE_SCHEMA } from "../src/backends/trace-capture.ts";
+import { sha256 } from "../src/meta/digest.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { CLASS_NAMES, type ProseRow, anchorVector, axis, writeSession } from "./helpers/prose-session.ts";
+import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
+import {
+  ADRIFT,
+  DRIFT_RUN,
+  consecutive,
+  driftRuns,
+} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
+import {
+  RESTATED_COSINE,
+  buildNarrative,
+  renderNarrative,
+  uuidV7Ms,
+} from "../.claude/skills/whole-run-investigation/classifier/run-narrative.mjs";
+import {
+  buildTimeline,
+  classifyTimeline,
+} from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
 
 const dirs: string[] = [];
-const classEntries: Array<[string, string[]]> = Object.entries(CLASSES);
-const anchorClass = new Map<string, number>();
 const RUN = "r1";
-const EPOCH = "epoch-aaaaaaaaaaaa";
+const KICKOFF = "one line";
+// The key is a digest of the epoch's binding, so every campaign opened with this kickoff shares it.
+const EPOCH = selectCampaignEpoch(temp("hb4-epoch-key-"), { kickoff: KICKOFF }).key;
 const OPENED = "2026-09-19T10:00:00.000Z";
 const SESSION_MS = 60 * 60 * 1000;
-
-type Row = { turn: number; atMs: number; text: string };
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -32,24 +42,18 @@ function temp(prefix: string): string {
   return dir;
 }
 
-const classNames = classEntries.map(([name]) => name);
-for (const [index, [, anchors]] of classEntries.entries()) {
-  for (const text of anchors) anchorClass.set(text, index);
-}
-const axis = (name: string): number[] => classNames.map((candidate) => (candidate === name ? 1 : 0));
-
 /** A stand-in for the model: an anchor lands on its own class axis, and any other text lands on the
  *  axis its own first word names, so a fixture says what it means in the text itself. A first word
  *  that names no class takes a fixed axis of its own, which is what makes two findings that open
  *  the same way read as one restated claim. */
 const fakeEmbed = async (texts: string[]): Promise<number[][]> =>
   texts.map((text) => {
-    const index = anchorClass.get(text);
-    if (index !== undefined) return classNames.map((_, at) => (at === index ? 1 : 0));
+    const anchor = anchorVector(text);
+    if (anchor !== undefined) return anchor;
     const word = text.split(" ")[0] ?? "";
-    if (classNames.includes(word)) return axis(word);
+    if (CLASS_NAMES.includes(word)) return axis(word);
     const sum = word.split("").reduce((total, character) => total + character.charCodeAt(0), 0);
-    return classNames.map((_, at) => (at === sum % classNames.length ? 1 : 0));
+    return CLASS_NAMES.map((_, at) => (at === sum % CLASS_NAMES.length ? 1 : 0));
   });
 
 const STARTED = Date.parse(OPENED);
@@ -60,52 +64,17 @@ function uuidAt(ms: number, tail: string): string {
 }
 
 /** One campaign holding one run, one Builder session and whatever reviews the caller names. */
-function campaignWith(rows: Row[], reviews: Array<{ atMs: number; claims: string[] }>): string {
+function campaignWith(rows: ProseRow[], reviews: Array<{ atMs: number; claims: string[] }>): string {
   const campaign = temp("hb4-narrative-");
   mkdirSync(join(campaign, "controller", RUN), { recursive: true });
   writeFileSync(join(campaign, "controller", RUN, "opening.json"), JSON.stringify({ writtenAt: OPENED }));
 
-  const epoch = join(campaign, EPOCH);
-  mkdirSync(epoch, { recursive: true });
-  const captureId = "6f1d2c3b-4a5e-4f60-8b71-9c0d1e2f3a4b";
-  const header = {
-    schema: "builder-prose-capture/v1",
-    captureId,
-    file: "builder-prose.jsonl",
-    executionFile: "builder-execution.json",
-    rows: rows.length,
-    omitted: 0,
-  };
-  const lines = rows.map((row, index) => ({
-    schema: "builder-prose/v2",
-    sequence: index + 1,
-    kind: "message",
-    ...row,
-    chars: row.text.length,
-    truncated: false,
-  }));
-  writeFileSync(
-    join(epoch, "builder-prose.jsonl"),
-    `${[header, ...lines].map((line) => JSON.stringify(line)).join("\n")}\n`,
-  );
-  writeFileSync(
-    join(epoch, "builder-execution.json"),
-    JSON.stringify({
-      schema: "builder-execution/v6",
-      outcome: "recorded",
-      durationMs: SESSION_MS,
-      writtenAt: new Date(STARTED + SESSION_MS).toISOString(),
-      proseCapture: {
-        schema: "builder-prose-capture/v1",
-        captureId,
-        file: "builder-prose.jsonl",
-        rows: rows.length,
-        omitted: 0,
-      },
-      proseOmitted: 0,
-      submits: [],
-    }),
-  );
+  const { dir: epoch } = selectCampaignEpoch(campaign, { kickoff: KICKOFF });
+  writeSession(epoch, 1, rows, {
+    outcome: "recorded",
+    durationMs: SESSION_MS,
+    writtenAt: new Date(STARTED + SESSION_MS).toISOString(),
+  });
 
   const analysis = join(campaign, "analysis");
   mkdirSync(analysis, { recursive: true });
@@ -132,32 +101,31 @@ function withCase(campaign: string, taskId: string, previews: string[], window: 
   const dir = join(campaign, "versions", "v1", "runs", RUN, "cases", taskId);
   mkdirSync(dir, { recursive: true });
   const trace = JSON.stringify({
-    schema: "trace/v1",
+    schema: CASE_TRACE_SCHEMA,
     turns: previews.map((preview, index) => ({
       turn: index + 1,
       assistantChars: preview.length,
       assistantPreview: preview,
       status: "ended",
     })),
+    toolCalls: [],
   });
   writeFileSync(join(dir, "trace.json"), trace);
-  const row = {
-    schema: "case-record/v1",
+  const row = caseRecordRow(taskId, "f", {
     runId: RUN,
-    taskId,
-    family: "f",
     truthOk: false,
     pass: false,
     solverStartedAt: window[0],
     solverEndedAt: window[1],
-    traces: [
-      {
-        path: `runs/${RUN}/cases/${taskId}/trace.json`,
-        sha256: new Bun.CryptoHasher("sha256").update(trace).digest("hex"),
-      },
-    ],
-  };
+    traces: [{ path: `runs/${RUN}/cases/${taskId}/trace.json`, sha256: sha256(trace) }],
+  });
   writeFileSync(join(campaign, "case-record.jsonl"), `${JSON.stringify({ seq: 1, row })}\n`);
+}
+
+/** A classified narrative's slots. A run that left no prose has none, and here that is a failure. */
+function slotsOf(narrative: Awaited<ReturnType<typeof buildNarrative>>) {
+  if (narrative.slots === null) throw new Error(`expected a classified narrative, got ${narrative.state}`);
+  return narrative.slots;
 }
 
 describe("consecutive stretches", () => {
@@ -173,7 +141,7 @@ describe("consecutive stretches", () => {
     expect(found[0]).toMatchObject({ kind: "adrift", from: 1, to: 5, length: 5 });
     expect(found[1]).toMatchObject({ kind: "unreadable", from: 7, to: 12, length: 6 });
     // A low-margin row is the classifier failing, so it never also counts as an adrift row.
-    expect(found[0].classes.every((name: string) => ADRIFT.has(name))).toBe(true);
+    expect(found[0]?.classes.every((name: string) => ADRIFT.has(name))).toBe(true);
     expect(driftRuns(units.slice(0, 5))).toEqual([]);
     expect(consecutive(units, (unit: { class: string }) => unit.class === "uncertain", 6)).toEqual([]);
     expect(DRIFT_RUN).toBe(5);
@@ -187,7 +155,7 @@ describe("consecutive stretches", () => {
 
 describe("run narrative", () => {
   it("places every slot on the run clock and names the stretch where the Builder stopped progressing", async () => {
-    const rows: Row[] = [
+    const rows: ProseRow[] = [
       { turn: 1, atMs: 0, text: "intro reading the starter" },
       { turn: 1, atMs: 60_000, text: "planning the task families" },
       ...Array.from({ length: 5 }, (_, index) => ({
@@ -215,7 +183,8 @@ describe("run narrative", () => {
     expect(narrative.state).toBe("classified");
     expect(narrative.calibration).toMatchObject({ driftRun: 5, restatedCosine: RESTATED_COSINE });
 
-    const [session] = narrative.slots.builder.sessions;
+    const slots = slotsOf(narrative);
+    const [session] = slots.builder.sessions;
     expect(session).toMatchObject({
       where: `${EPOCH}/s01`,
       anchor: "execution-record",
@@ -233,7 +202,7 @@ describe("run narrative", () => {
     expect(session.units[2].atMs).toBe(STARTED + 120_000);
 
     // The solve turn carries no time of its own, so its unit is placed by the case window alone.
-    const [entry] = narrative.slots.built.cases;
+    const [entry] = slots.built.cases;
     expect(entry).toMatchObject({
       taskId: "t-01",
       outcome: "verified",
@@ -246,7 +215,7 @@ describe("run narrative", () => {
     ]);
 
     expect(
-      narrative.slots.review.reviews.map((review: { where: string; repeats: number }) => [
+      slots.review.reviews.map((review: { where: string; repeats: number }) => [
         review.where,
         review.repeats,
       ]),
@@ -254,7 +223,7 @@ describe("run narrative", () => {
       [`${EPOCH}/s01`, 0],
       [`${EPOCH}/s01`, 1],
     ]);
-    expect(narrative.slots.review.units).toBe(3);
+    expect(slots.review.units).toBe(3);
 
     expect(narrative.drift).toHaveLength(1);
     expect(narrative.drift[0]).toMatchObject({
@@ -265,7 +234,7 @@ describe("run narrative", () => {
       from: { sequence: 3, turn: 2, atMs: STARTED + 120_000 },
       to: { sequence: 7, turn: 2, atMs: STARTED + 360_000 },
     });
-    expect(renderNarrative(narrative)).toContain("builder epoch-aaaaaaaaaaaa/s01 adrift x5");
+    expect(renderNarrative(narrative)).toContain(`builder ${EPOCH}/s01 adrift x5`);
   });
 
   it("names a stretch of restated review findings at the run the operator asks for", async () => {
@@ -278,7 +247,7 @@ describe("run narrative", () => {
       ],
     );
     const narrative = await buildNarrative({ campaign, runId: RUN, embed: fakeEmbed, run: 2 });
-    expect(narrative.slots.review.reviews.map((review: { repeats: number }) => review.repeats)).toEqual([
+    expect(slotsOf(narrative).review.reviews.map((review: { repeats: number }) => review.repeats)).toEqual([
       0, 1, 1,
     ]);
     expect(
@@ -288,7 +257,7 @@ describe("run narrative", () => {
         entry.length,
       ]),
     ).toEqual([["review", "restated", 2]]);
-    expect(narrative.drift[0].from.atMs).toBe(STARTED + 900_000);
+    expect(narrative.drift[0]?.from.atMs).toBe(STARTED + 900_000);
   });
 
   it("returns the classifier's own state when a run left no prose, and reads no model to say so", async () => {
@@ -304,7 +273,7 @@ describe("run narrative", () => {
 
 describe("timeline with the narrative attached", () => {
   it("resolves each stretch to the phase the run held at that moment", async () => {
-    const rows: Row[] = [
+    const rows: ProseRow[] = [
       ...Array.from({ length: 5 }, (_, index) => ({
         turn: 1,
         atMs: 600_000 + index * 60_000,
@@ -349,7 +318,7 @@ describe("timeline with the narrative attached", () => {
     );
 
     const timeline = buildTimeline({ campaign, runId: RUN });
-    expect(timeline.transitions.map((mark: { phase: string }) => mark.phase)).toEqual([
+    expect(timeline.transitions?.map((mark: { phase: string }) => mark.phase)).toEqual([
       "input",
       "build",
       "measure-on",
@@ -371,6 +340,6 @@ describe("timeline with the narrative attached", () => {
     const timeline = buildTimeline({ campaign, runId: RUN });
     expect(timeline.state).toBe("unavailable");
     expect(timeline.reason).toContain("misshapen observation row");
-    expect(timeline.inputs[0].sha256).not.toBeNull();
+    expect(timeline.inputs[0]?.sha256).not.toBeNull();
   });
 });

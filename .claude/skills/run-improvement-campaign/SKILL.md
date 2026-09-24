@@ -341,7 +341,7 @@ again, since the page was never delivered.
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
 | whether a slow solve is the wall | `solver.toolCalls` in `case-result.json` | `max_turns` or the solve wall, which no recorded truss case approached |
 
-Open [run-climb-lab](../run-climb-lab/SKILL.md) on any of these: it owns the attribution, the goal
+Open [the climb reference](../whole-run-investigation/references/climb.md) on any of these: it owns the attribution, the goal
 these rows serve — a battery inside `climb.band`, 5 to 12 verified of 25, on a named changed public
 requirement — and the difference between a harder battery and a differently-labelled one.
 
@@ -543,7 +543,7 @@ or the allowance ended. The product owns its own within-run climb and rebuild de
 The standing goal for that choice, set by the operator on 2026-09-18, is to **optimise the climb
 towards really hard tasks**: prefer the change that shortens the run of `too-easy` placements before
 a battery lands inside the band. A change that raises a score, adds tasks or renames levels without
-moving a placement off `too-easy` has not served it. [run-climb-lab](../run-climb-lab/SKILL.md)
+moving a placement off `too-easy` has not served it. [the climb reference](../whole-run-investigation/references/climb.md)
 holds the two recorded numbers that say whether it moved.
 
 Track the four evidence levels separately — present in source, deterministically proved,
@@ -566,11 +566,11 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to H, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic angles, at most five lanes, when a recorded row stays unexplained; `run-climb-lab` on any climb row the watch printed, and whenever a transition needs attribution |
+| read | `whole-run-investigation` rows A to H, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic angles, at most five lanes, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |
-| launch | `launch-run`, freeze before the opening, detached watch, next wake | `run-outcome-review` assesses a suspected stall; a stop executes only under existing authority |
+| launch | `launch-run`, freeze before the opening, detached watch, next wake | `whole-run-investigation`'s [outcome reference](../whole-run-investigation/references/outcome-review.md) assesses a suspected stall; a stop executes only under existing authority |
 | weekly | the first wake on or after Monday 00:00 UTC runs the `safeguards` removal review and `weekly-run-review`, and writes the date in the snapshot | |
 
 ## What has actually cost time here

@@ -17,8 +17,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { PINNED_BUN_VERSION } from "../src/run/host-runtime-policy.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
 import { ANGLE_FILES } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
@@ -33,6 +31,15 @@ type Status = {
   runtime: { version: string; executable: string };
   complete: boolean;
   views: View[];
+  facts?: { terminalAccounting: TerminalAccounting };
+};
+/** The part of trace-review's `terminalAccounting` projection the manifest renders. */
+type TerminalAccounting = {
+  controller: { state: string; error?: string };
+  outerCap?: number;
+  completedRounds?: number;
+  counts: { raw: number | null; real: number | null; controller: number | null };
+  parents?: { lastCandidate: string | null; adopted: string | null; accepted: string | null };
 };
 type Task = { name: string; task: string };
 
@@ -374,6 +381,44 @@ describe("what a launch composes", () => {
     expect(instructions.indexOf("## Orientation")).toBeLessThan(instructions.indexOf("## Controller facts"));
   });
 
+  it("states terminal accounting as trace-review projected it, and never sums it from the views", () => {
+    const snap = snapshot();
+    const unprojected = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    // The default view's battery holds 25 cases; a sum of it is not the controller's count.
+    expect(unprojected).toContain("raw not recorded; real not recorded; controller-terminal not recorded");
+    expect(unprojected).toContain("last candidate not recorded");
+
+    snap.amend((status) => {
+      status.facts = {
+        terminalAccounting: {
+          controller: { state: "refused", error: "terminal.json is not a recorded terminal" },
+          counts: { raw: null, real: null, controller: null },
+        },
+      };
+    });
+    const refused = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    expect(refused).toContain(
+      "Controller evidence refused by its strict reader: terminal.json is not a recorded terminal.",
+    );
+
+    snap.amend((status) => {
+      status.facts = {
+        terminalAccounting: {
+          controller: { state: "recorded" },
+          outerCap: 6,
+          completedRounds: 4,
+          counts: { raw: 50, real: 47, controller: 4 },
+          parents: { lastCandidate: "abc123", adopted: null, accepted: "def456" },
+        },
+      };
+    });
+    const recorded = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    expect(recorded).toContain("outer-controller cap 6; completed controller rounds 4.");
+    expect(recorded).toContain("raw 50; real 47; controller-terminal 4.");
+    expect(recorded).toContain("last candidate abc123; adopted not recorded; accepted def456.");
+    expect(recorded).not.toContain("strict reader");
+  });
+
   it("keeps outcome context out of public-only prompts across native and launcher transports", () => {
     const result = launch(
       snapshot(),
@@ -594,6 +639,16 @@ describe("what a launch refuses", () => {
     expect(result.stderr).toContain("angle 15 carries the private trace-challenge packet");
     expect(result.stderr).toContain("angle 36 derives its valid-alternative corpus");
     expect(existsSync(result.out)).toBe(false);
+  });
+
+  it("refuses a misspelled flag and a relative --out before reading anything", () => {
+    const misspelled = launch(snapshot(), "--sesions", "4");
+    expect(misspelled.status).toBe(2);
+    expect(misspelled.stderr).toContain('unknown option "--sesions"');
+
+    const relative = launch(null, "--snapshot", "/x", "--worktree", "/x", "--out", "rel", "--sessions", "4");
+    expect(relative.status).toBe(2);
+    expect(relative.stderr).toContain("--out must be an absolute path");
   });
 
   it("rejects an auto review below the four-session independence minimum", () => {

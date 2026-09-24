@@ -42,8 +42,8 @@ Loop inventory, as of 18 September 2026:
 | predict | `run-improvement-campaign` | `prediction.ts` |
 | launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts`; `preflight.mjs` |
 | watch | `run-improvement-campaign` | `campaign.ts` |
-| read | `whole-run-investigation`, `run-outcome-review` | `wri.mjs` and its readers; `bun run outcome` |
-| attribute a climb | `run-climb-lab` | `references/task-difficulty.md` |
+| read | `whole-run-investigation` | `wri.mjs`, `references/outcome-review.md`; `bun run outcome` |
+| attribute a climb | `whole-run-investigation` | `references/climb.md` |
 | independent evaluation | `harness-query` | `harness-query.mts` |
 | close | `run-improvement-campaign` | `campaign.ts`, `prediction.ts adjudicate`, `notes/current-state.md` |
 | weekly | `weekly-run-review`, `safeguards` | `select-best-runs.ts`, `bun run outcome -- --safeguards` |

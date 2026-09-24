@@ -1,21 +1,103 @@
+// The WRI archive's declared shape: its four files, the headings and anchors of the primary's
+// synthesis, the frozen prediction fields, the identity fields and the closed state sets. The
+// scaffold writes against these declarations and the validator checks against the same ones, so
+// the two cannot drift into accepting different archives. The field primitives and the envelope
+// checks (identity, lifecycle, digests, terminal accounting, pointers) live here beside them.
+import { sha256 } from "#src/meta/digest.ts";
 import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { isAbsolute } from "#src/meta/path.ts";
+import { canonicalJson } from "#src/meta/stable-json.ts";
+import { GIT_SHA, SHA256 } from "./catalogue-shape.mjs";
 
-export const SHA256 = /^[0-9a-f]{64}$/;
-export const GIT_SHA = /^[0-9a-f]{40}$/;
-const ARCHIVE_PATHS = new Set(["main_synthesis.md", "luna_syntheses.md", "digest.md", "review.json"]);
+export const ARCHIVE_SCHEMA = "wri-archive/v1";
+export const ARCHIVE_FILES = ["main_synthesis.md", "luna_syntheses.md", "digest.md", "review.json"];
+export const [MAIN, LUNA, DIGEST, REVIEW] = ARCHIVE_FILES;
+export const ARCHIVE_PATHS = new Set(ARCHIVE_FILES);
 
-export function canonical(value) {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
+/** The sections of `main_synthesis.md`, written once as a skeleton for the primary to fill. */
+export const MAIN_HEADINGS = [
+  "## Identity and evidence",
+  "## Recorded result",
+  "## Findings",
+  "## Deterministic rows",
+  "## Independent reviews and limits",
+  "## Climb meaning and continuity",
+  "## CL-F reconciliation",
+  "## Prediction ledger",
+  "## Safeguards",
+  "### Safeguards T0",
+  "### Safeguards T1",
+  "## Terminal accounting",
+  "## Source proof and replacement decision",
+  "## What to do next",
+  "### Patch",
+  "### Consolidate",
+  "### Overhaul",
+];
+/** Anchors into `main_synthesis.md`: each is the GitHub slug of its `MAIN_HEADINGS` row. */
+export const ANCHOR = {
+  ledger: "#prediction-ledger",
+  reviews: "#independent-reviews-and-limits",
+  safeguards: "#safeguards",
+  safeguardsT0: "#safeguards-t0",
+  safeguardsT1: "#safeguards-t1",
+  terminal: "#terminal-accounting",
+};
+
+/** The fields a prediction freezes before launch; `frozenHash` binds exactly these. */
+export const FROZEN_PREDICTION_FIELDS = [
+  "id",
+  "claim",
+  "expectedEffect",
+  "trigger",
+  "falsifier",
+  "owner",
+  "sourceRevision",
+  "runId",
+  "epoch",
+  "bundle",
+  "taskSet",
+];
+/** The five fields that name one measured condition. Every row that binds itself to the archive's
+ *  identity carries the same five. */
+export const IDENTITY_FIELDS = ["sourceRevision", "runId", "epoch", "bundle", "taskSet"];
+const IDENTITY_PATTERNS = { sourceRevision: GIT_SHA, runGitHash: GIT_SHA, sourceDigest: SHA256 };
+
+/** A safeguard route the primary adjudicated; `inconclusive` is what the scaffold writes without one. */
+export const ADJUDICATED_ROUTES = new Set(["routed", "held", "not-routed"]);
+export const ROUTE_STATES = new Set([...ADJUDICATED_ROUTES, "inconclusive"]);
+
+const RECEIPTS = [
+  "ticket",
+  "prompt",
+  "project",
+  "task",
+  "condition",
+  "cap",
+  "preflight",
+  "cas",
+  "opening",
+  "terminal",
+];
+/** A tier reconciliation also binds the source digest, against the measured identity. */
+const MEASURED_IDENTITY_FIELDS = ["runId", "sourceRevision", "sourceDigest", "epoch", "bundle", "taskSet"];
+export function predictionFrozenHash(row) {
+  const frozen = {};
+  for (const key of FROZEN_PREDICTION_FIELDS) frozen[key] = row[key];
+  return sha256(canonicalJson(frozen));
 }
+
+/** The GitHub slug of one heading's text. */
+export function headingSlug(heading) {
+  return heading
+    .replace(/[`*_]/g, "")
+    .replace(/[^a-z0-9 -]/gi, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+}
+
 /** @param {RegExp | null} [pattern] */
 export function requiredString(value, label, issues, pattern = null) {
   if (!isString(value) || value.trim().length === 0) {
@@ -36,6 +118,32 @@ export function requiredArray(value, label, issues) {
     return [];
   }
   return value;
+}
+/** A required string drawn from a closed set; `showValue` names the refused value in the issue. */
+export function oneOf(value, label, states, issues, showValue = false) {
+  const state = requiredString(value, label, issues);
+  if (state && !states.has(state)) issues.push(`${label} is unsupported${showValue ? `: ${state}` : ""}`);
+  return state;
+}
+export function nonNegativeInt(value, label, issues) {
+  if (!isNumber(value) || !Number.isInteger(value) || value < 0) {
+    issues.push(`${label} must be a non-negative integer`);
+  }
+}
+export function requiredStrings(value, label, issues) {
+  const rows = requiredArray(value, label, issues);
+  rows.forEach((item, index) => requiredString(item, `${label}[${index}]`, issues));
+  return rows;
+}
+/** Each named identity field is present, well formed and equal to the archive's own. */
+export function boundIdentity(row, label, identityRow, issues, measured = false) {
+  const against = measured ? "measured" : "archive";
+  for (const key of measured ? MEASURED_IDENTITY_FIELDS : IDENTITY_FIELDS) {
+    requiredString(row[key], `${label}.${key}`, issues, IDENTITY_PATTERNS[key] ?? null);
+    if (identityRow && row[key] !== identityRow[key]) {
+      issues.push(`${label}.${key} differs from ${against} identity`);
+    }
+  }
 }
 export function safeArchivePath(value) {
   return (
@@ -65,24 +173,30 @@ export function pointers(value, label, issues, { atLeastOne = true } = {}) {
 export function stateEvidence(value, label, states, issues) {
   const row = requiredRecord(value, label, issues);
   if (!row) return null;
-  const state = requiredString(row.state, `${label}.state`, issues);
-  if (state && !states.has(state)) issues.push(`${label}.state is unsupported: ${state}`);
+  const state = oneOf(row.state, `${label}.state`, states, issues, true);
   pointers(row.evidencePointers, `${label}.evidencePointers`, issues);
   return { row, state };
 }
+
 export function identity(review, issues) {
   const row = requiredRecord(review.identity, "identity", issues);
   if (!row) return null;
-  const result = {
-    runId: requiredString(row.runId, "identity.runId", issues),
-    sourceRevision: requiredString(row.sourceRevision, "identity.sourceRevision", issues, GIT_SHA),
-    runGitHash: requiredString(row.runGitHash, "identity.runGitHash", issues, GIT_SHA),
-    sourceDigest: requiredString(row.sourceDigest, "identity.sourceDigest", issues, SHA256),
-    worktree: requiredString(row.worktree, "identity.worktree", issues),
-    epoch: requiredString(row.epoch, "identity.epoch", issues),
-    bundle: requiredString(row.bundle, "identity.bundle", issues),
-    taskSet: requiredString(row.taskSet, "identity.taskSet", issues),
-  };
+  const keys = [
+    "runId",
+    "sourceRevision",
+    "runGitHash",
+    "sourceDigest",
+    "worktree",
+    "epoch",
+    "bundle",
+    "taskSet",
+  ];
+  const result = Object.fromEntries(
+    keys.map((key) => [
+      key,
+      requiredString(row[key], `identity.${key}`, issues, IDENTITY_PATTERNS[key] ?? null),
+    ]),
+  );
   if (result.worktree && !isAbsolute(result.worktree)) {
     issues.push("identity.worktree must be an absolute recorded worktree");
   }
@@ -90,48 +204,38 @@ export function identity(review, issues) {
 }
 export function lifecycle(review, issues) {
   const row = requiredRecord(review.lifecycle, "lifecycle", issues);
-  if (!row) return null;
-  const stage = requiredString(row.stage, "lifecycle.stage", issues);
-  if (stage && !new Set(["preopening", "live", "terminal"]).has(stage)) {
-    issues.push("lifecycle.stage is unsupported");
-  }
-  return stage;
+  return row
+    ? oneOf(row.stage, "lifecycle.stage", new Set(["preopening", "live", "terminal"]), issues)
+    : null;
 }
 export function procedureIdentity(review, identityRow, issues) {
   const row = requiredRecord(review.procedureIdentity, "procedureIdentity", issues);
   if (!row) return;
   requiredString(row.name, "procedureIdentity.name", issues);
   requiredString(row.version, "procedureIdentity.version", issues);
-  const revision = requiredString(row.sourceRevision, "procedureIdentity.sourceRevision", issues, GIT_SHA);
-  const sourceDigest = requiredString(row.sourceDigest, "procedureIdentity.sourceDigest", issues, SHA256);
-  const worktree = requiredString(row.worktree, "procedureIdentity.worktree", issues);
-  if (worktree && !isAbsolute(worktree)) issues.push("procedureIdentity.worktree must be absolute");
+  const own = {
+    sourceRevision: requiredString(row.sourceRevision, "procedureIdentity.sourceRevision", issues, GIT_SHA),
+    sourceDigest: requiredString(row.sourceDigest, "procedureIdentity.sourceDigest", issues, SHA256),
+    worktree: requiredString(row.worktree, "procedureIdentity.worktree", issues),
+  };
+  if (own.worktree && !isAbsolute(own.worktree)) issues.push("procedureIdentity.worktree must be absolute");
   if (!isBoolean(row.sameTree)) issues.push("procedureIdentity.sameTree must be boolean");
-  if (
-    identityRow &&
-    row.sameTree === false &&
-    revision === identityRow.sourceRevision &&
-    sourceDigest === identityRow.sourceDigest &&
-    worktree === identityRow.worktree
-  ) {
+  const fields = Object.keys(own);
+  if (identityRow && row.sameTree === false && fields.every((key) => own[key] === identityRow[key])) {
     issues.push("procedureIdentity must differ from product identity when sameTree is false");
   }
   if (row.sameTree === true && identityRow) {
-    if (revision && revision !== identityRow.sourceRevision) {
-      issues.push("procedureIdentity.sourceRevision differs from archive identity while sameTree is true");
-    }
-    if (sourceDigest && sourceDigest !== identityRow.sourceDigest) {
-      issues.push("procedureIdentity.sourceDigest differs from archive identity while sameTree is true");
-    }
-    if (worktree && worktree !== identityRow.worktree) {
-      issues.push("procedureIdentity.worktree differs from archive identity while sameTree is true");
+    for (const key of fields) {
+      if (own[key] && own[key] !== identityRow[key]) {
+        issues.push(`procedureIdentity.${key} differs from archive identity while sameTree is true`);
+      }
     }
   }
   const digest = requiredString(row.sha256, "procedureIdentity.sha256", issues, SHA256);
-  if (digest && sourceDigest && digest !== sourceDigest) {
+  if (digest && own.sourceDigest && digest !== own.sourceDigest) {
     issues.push("procedureIdentity.sha256 must be the single procedure source digest");
   }
-  if (Object.prototype.hasOwnProperty.call(row, "manifestSha256")) {
+  if (Object.hasOwn(row, "manifestSha256")) {
     issues.push("procedureIdentity.manifestSha256 is an unsupported duplicate; use procedureIdentity.sha256");
   }
   if (row.state === "bound") boundReceiptIdentities(row, "procedureIdentity", issues);
@@ -153,32 +257,22 @@ export function ledgerProjection(review, identityRow, issues) {
   pointer(row.pointer, "ledgerProjection.pointer", issues);
 }
 function boundReceiptIdentities(row, label, issues) {
-  for (const name of [
-    "ticket",
-    "prompt",
-    "project",
-    "task",
-    "condition",
-    "cap",
-    "preflight",
-    "cas",
-    "opening",
-    "terminal",
-  ]) {
+  for (const name of RECEIPTS) {
     const receipt = requiredRecord(row[name], `${label}.${name}`, issues);
     if (!receipt) continue;
     requiredString(receipt.id, `${label}.${name}.id`, issues);
     requiredString(receipt.sha256, `${label}.${name}.sha256`, issues, SHA256);
   }
 }
-
 export function launchIdentity(review, stage, issues) {
   const row = requiredRecord(review.launchIdentity, "launchIdentity", issues);
   if (!row) return;
-  const state = requiredString(row.state, "launchIdentity.state", issues);
-  if (state && !new Set(["bound", "incomplete", "unavailable"]).has(state)) {
-    issues.push("launchIdentity.state is unsupported");
-  }
+  const state = oneOf(
+    row.state,
+    "launchIdentity.state",
+    new Set(["bound", "incomplete", "unavailable"]),
+    issues,
+  );
   if (state === "unavailable" && stage !== "preopening") {
     issues.push("launchIdentity.unavailable is valid only before opening");
   }
@@ -201,45 +295,47 @@ export function digestRows(review, issues) {
 export function terminalOutcome(review, accounting, issues) {
   const row = requiredRecord(review.terminal, "terminal", issues);
   if (!row) return;
-  const outcome = requiredString(row.outcome, "terminal.outcome", issues);
-  if (outcome && !new Set(["completed", "held", "aborted", "no-result", "incomplete"]).has(outcome)) {
-    issues.push("terminal.outcome is unsupported");
-  }
-  const storedCapability = requiredString(row.capabilityResult, "terminal.capabilityResult", issues);
-  const capability = storedCapability === "sealed" ? "recorded" : storedCapability;
-  const storedDenominatorState = accounting?.denominator?.state;
-  const denominatorState = storedDenominatorState === "sealed" ? "recorded" : storedDenominatorState;
-  const accountingState = accounting?.state === "sealed" ? "recorded" : accounting?.state;
-  if (capability && !new Set(["recorded", "absent", "inconclusive"]).has(capability)) {
-    issues.push("terminal.capabilityResult is unsupported");
-  }
+  const outcome = oneOf(
+    row.outcome,
+    "terminal.outcome",
+    new Set(["completed", "aborted", "incomplete"]),
+    issues,
+  );
+  const capability = oneOf(
+    row.capabilityResult,
+    "terminal.capabilityResult",
+    new Set(["recorded", "absent", "inconclusive"]),
+    issues,
+  );
+  const denominatorState = accounting?.denominator?.state;
   if (capability === "recorded" && denominatorState !== "recorded") {
     issues.push("terminal.capabilityResult recorded requires a recorded capability denominator");
   }
   if (capability === "absent" && denominatorState === "recorded") {
     issues.push("terminal.capabilityResult absent cannot carry a recorded capability denominator");
   }
-  if (outcome === "completed" && capability === "absent" && accountingState === "recorded") {
+  if (outcome === "completed" && capability === "absent" && accounting?.state === "recorded") {
     issues.push(
       "completed controller outcome with absent capability result cannot have recorded terminal accounting",
     );
   }
 }
+/** A denominator's counts: each a non-negative integer, and a total the three case kinds reconcile. */
+export function denominatorCounts(row, label, issues) {
+  const keys = ["total", "verified", "unaccepted", "nonResult"];
+  for (const key of keys) nonNegativeInt(row[key], `${label}.${key}`, issues);
+  return !(
+    keys.every((key) => isNumber(row[key])) && row.total !== row.verified + row.unaccepted + row.nonResult
+  );
+}
 export function terminalAccounting(review, issues) {
   const row = requiredRecord(review.terminalAccounting, "terminalAccounting", issues);
   if (!row) return;
-  const states = new Set(["recorded", "no-result", "held", "incomplete"]);
-  const storedState = requiredString(row.state, "terminalAccounting.state", issues);
-  const state = storedState === "sealed" ? "recorded" : storedState;
-  if (state && !states.has(state)) issues.push(`terminalAccounting.state is unsupported: ${state}`);
-  const denominator = requiredRecord(row.denominator, "terminalAccounting.denominator", issues);
+  const label = "terminalAccounting";
+  const state = oneOf(row.state, `${label}.state`, new Set(["recorded", "incomplete"]), issues, true);
+  const denominator = requiredRecord(row.denominator, `${label}.denominator`, issues);
   if (!denominator) return;
-  const storedDenominatorState = requiredString(
-    denominator.state,
-    "terminalAccounting.denominator.state",
-    issues,
-  );
-  const denominatorState = storedDenominatorState === "sealed" ? "recorded" : storedDenominatorState;
+  const denominatorState = requiredString(denominator.state, `${label}.denominator.state`, issues);
   if (state === "recorded" && denominatorState !== "recorded") {
     issues.push("recorded terminal accounting requires a recorded denominator");
   }
@@ -247,57 +343,43 @@ export function terminalAccounting(review, issues) {
     issues.push("unfinished terminal accounting cannot claim a recorded denominator");
   }
   if (denominatorState === "recorded") {
-    for (const key of ["total", "verified", "unaccepted", "nonResult"]) {
-      if (!isNumber(denominator[key]) || !Number.isInteger(denominator[key]) || denominator[key] < 0) {
-        issues.push(`terminalAccounting.denominator.${key} must be a non-negative integer`);
-      }
-    }
-    const { total, verified, unaccepted, nonResult } = denominator;
-    if (
-      isNumber(total) &&
-      isNumber(verified) &&
-      isNumber(unaccepted) &&
-      isNumber(nonResult) &&
-      total !== verified + unaccepted + nonResult
-    ) {
+    if (!denominatorCounts(denominator, `${label}.denominator`, issues)) {
       issues.push("terminalAccounting denominator does not reconcile");
     }
-  } else if (denominatorState === "absent") requiredString(row.reason, "terminalAccounting.reason", issues);
-  else if (denominatorState) issues.push("terminalAccounting.denominator.state must be recorded or absent");
-  pointer(row.evidencePointer, "terminalAccounting.evidencePointer", issues);
-  const nonNegative = (value, label) => {
-    if (!isNumber(value) || !Number.isInteger(value) || value < 0) {
-      issues.push(`${label} must be a non-negative integer`);
-    }
+  } else if (denominatorState === "absent") requiredString(row.reason, `${label}.reason`, issues);
+  else if (denominatorState === "invalid") {
+    requiredString(denominator.reason, `${label}.denominator.reason`, issues);
+    requiredString(row.reason, `${label}.reason`, issues);
+  } else if (denominatorState) {
+    issues.push("terminalAccounting.denominator.state must be recorded, absent or invalid");
+  }
+  pointer(row.evidencePointer, `${label}.evidencePointer`, issues);
+  const optional = (value, name) => {
+    if (value !== null) nonNegativeInt(value, `${label}.${name}`, issues);
   };
-  const optional = (value, label) => {
-    if (value !== null) nonNegative(value, label);
-  };
-  optional(row.outerCap, "terminalAccounting.outerCap");
-  nonNegative(row.completedRounds, "terminalAccounting.completedRounds");
+  optional(row.outerCap, "outerCap");
+  nonNegativeInt(row.completedRounds, `${label}.completedRounds`, issues);
   if (isNumber(row.outerCap) && isNumber(row.completedRounds) && row.completedRounds > row.outerCap) {
     issues.push("terminalAccounting.completedRounds cannot exceed outerCap");
   }
-  const calls = requiredRecord(row.authorCalls, "terminalAccounting.authorCalls", issues);
+  const calls = requiredRecord(row.authorCalls, `${label}.authorCalls`, issues);
   if (calls) {
-    if (calls.budget !== "uncapped") nonNegative(calls.budget, "terminalAccounting.authorCalls.budget");
+    if (calls.budget !== "uncapped") nonNegativeInt(calls.budget, `${label}.authorCalls.budget`, issues);
     for (const key of ["opening", "terminal", "delta"]) {
-      nonNegative(calls[key], `terminalAccounting.authorCalls.${key}`);
+      nonNegativeInt(calls[key], `${label}.authorCalls.${key}`, issues);
     }
     if (
-      isNumber(calls.opening) &&
-      isNumber(calls.terminal) &&
-      isNumber(calls.delta) &&
+      [calls.opening, calls.terminal, calls.delta].every(isNumber) &&
       calls.terminal - calls.opening !== calls.delta
     ) {
       issues.push("terminalAccounting.authorCalls.delta does not reconcile opening and terminal");
     }
   }
-  const counts = requiredRecord(row.counts, "terminalAccounting.counts", issues);
+  const counts = requiredRecord(row.counts, `${label}.counts`, issues);
   if (counts) {
-    optional(counts.raw, "terminalAccounting.counts.raw");
-    optional(counts.real, "terminalAccounting.counts.real");
-    nonNegative(counts.controller, "terminalAccounting.counts.controller");
+    optional(counts.raw, "counts.raw");
+    optional(counts.real, "counts.real");
+    nonNegativeInt(counts.controller, `${label}.counts.controller`, issues);
     if (
       isNumber(row.completedRounds) &&
       isNumber(counts.controller) &&
@@ -306,10 +388,10 @@ export function terminalAccounting(review, issues) {
       issues.push("terminalAccounting.completedRounds must equal terminalAccounting.counts.controller");
     }
   }
-  const parents = requiredRecord(row.parents, "terminalAccounting.parents", issues);
+  const parents = requiredRecord(row.parents, `${label}.parents`, issues);
   if (parents) {
     for (const key of ["lastCandidate", "adopted", "accepted"]) {
-      requiredString(parents[key], `terminalAccounting.parents.${key}`, issues);
+      requiredString(parents[key], `${label}.parents.${key}`, issues);
     }
   }
   for (const key of [
@@ -318,7 +400,7 @@ export function terminalAccounting(review, issues) {
     "controllerTerminalRows",
     "recordedSubmitRows",
   ]) {
-    optional(row[key], `terminalAccounting.${key}`);
+    optional(row[key], key);
   }
   if (
     isNumber(row.candidateSubmits) &&
@@ -331,6 +413,7 @@ export function terminalAccounting(review, issues) {
     );
   }
 }
+/** Every literal `safeguardTriggered(...)` id under the worktree's `src`, by source-relative file. */
 export function sourceSafeguardCallers(worktree) {
   const callers = new Map();
   const visit = (directory) => {
@@ -363,22 +446,14 @@ export function scanPathFields(value, label, issues) {
     scanPathFields(item, `${label}.${key}`, issues);
   }
 }
-export function headingAnchor(text, anchor) {
+function headingAnchor(text, anchor) {
   const target = anchor
     .slice(1)
     .toLowerCase()
     .replace(/[^a-z0-9 -]/g, "")
     .trim()
     .replace(/\s+/g, "-");
-  return [...text.matchAll(/^#{1,6}\s+(.+)$/gm)].some(
-    (match) =>
-      match[1]
-        .replace(/[`*_]/g, "")
-        .replace(/[^a-z0-9 -]/gi, "")
-        .trim()
-        .replace(/\s+/g, "-")
-        .toLowerCase() === target,
-  );
+  return [...text.matchAll(/^#{1,6}\s+(.+)$/gm)].some((match) => headingSlug(match[1]) === target);
 }
 export function verifyPointerFiles(value, label, archiveDir, issues) {
   if (Array.isArray(value)) {
@@ -395,9 +470,7 @@ export function verifyPointerFiles(value, label, archiveDir, issues) {
     existsSync(`${archiveDir}/${row.path}`)
   ) {
     const bytes = readFileSync(`${archiveDir}/${row.path}`);
-    if (new Bun.CryptoHasher("sha256").update(bytes).digest("hex") !== row.sha256) {
-      issues.push(`${label}.sha256 does not match ${row.path}`);
-    }
+    if (sha256(bytes) !== row.sha256) issues.push(`${label}.sha256 does not match ${row.path}`);
     if (!headingAnchor(bytes.toString("utf8"), row.anchor)) {
       issues.push(`${label}.anchor is absent from ${row.path}`);
     }
@@ -409,41 +482,22 @@ export function verifyPointerFiles(value, label, archiveDir, issues) {
 export function safeguardReconciliation(review, identityRow, issues) {
   const row = requiredRecord(review.safeguardReconciliation, "safeguardReconciliation", issues);
   if (!row) return;
-  if ((row.bytesVerified ?? row.sealedBytes) !== true) {
-    issues.push("safeguardReconciliation.bytesVerified must be true");
-  }
+  if (row.bytesVerified !== true) issues.push("safeguardReconciliation.bytesVerified must be true");
   pointer(row.t0, "safeguardReconciliation.t0", issues);
   pointer(row.t1, "safeguardReconciliation.t1", issues);
   if (
     asRecord(row.t0) &&
     asRecord(row.t1) &&
-    row.t0.path === row.t1.path &&
-    row.t0.anchor === row.t1.anchor &&
-    row.t0.sha256 === row.t1.sha256
+    ["path", "anchor", "sha256"].every((key) => row.t0[key] === row.t1[key])
   ) {
     issues.push("safeguardReconciliation T0 and T1 must have distinct evidence identities");
   }
   for (const name of ["t0", "t1"]) {
-    const tierIdentity = requiredRecord(
-      row[`${name}Identity`],
-      `safeguardReconciliation.${name}Identity`,
-      issues,
-    );
+    const label = `safeguardReconciliation.${name}Identity`;
+    const tierIdentity = requiredRecord(row[`${name}Identity`], label, issues);
     if (!tierIdentity) continue;
-    if (tierIdentity.complete !== true) {
-      issues.push(`safeguardReconciliation.${name}Identity.complete must be true`);
-    }
-    for (const key of ["runId", "sourceRevision", "sourceDigest", "epoch", "bundle", "taskSet"]) {
-      requiredString(
-        tierIdentity[key],
-        `safeguardReconciliation.${name}Identity.${key}`,
-        issues,
-        key === "sourceRevision" ? GIT_SHA : key === "sourceDigest" ? SHA256 : null,
-      );
-      if (identityRow && tierIdentity[key] !== identityRow[key]) {
-        issues.push(`safeguardReconciliation.${name}Identity.${key} differs from measured identity`);
-      }
-    }
+    if (tierIdentity.complete !== true) issues.push(`${label}.complete must be true`);
+    boundIdentity(tierIdentity, label, identityRow, issues, true);
   }
 }
 export function sectionPointers(review, issues) {

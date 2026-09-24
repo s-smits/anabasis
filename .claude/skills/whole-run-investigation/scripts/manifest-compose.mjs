@@ -1,3 +1,4 @@
+import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import {
   closeSync,
   existsSync,
@@ -9,9 +10,8 @@ import {
 import { join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { DIGEST_VERDICTS } from "./catalogue-shape.mjs";
-
-const LAUNCH_RECORD_WAIT_MS = 30_000;
+import { CommandFailure } from "#skills/main/cli.ts";
+import { DIAGNOSTIC_INPUTS, DIGEST_VERDICTS, leafPrompt, SHA256 as SHA_256 } from "./catalogue-shape.mjs";
 import {
   BLINDED_PAIRS,
   ORIENTATION_HEADING,
@@ -24,17 +24,12 @@ import {
   partitionAngles,
 } from "./manifest-inputs.mjs";
 
-import {
-  DIAGNOSTIC_INPUTS,
-  diagnosticTaskLines,
-  snapshotLines,
-  reportingLines,
-} from "./manifest-reporting.mjs";
+import { diagnosticTaskLines, snapshotLines, reportingLines } from "./manifest-reporting.mjs";
 import { renderSharedInstructions } from "./shared-instructions.mjs";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 
-const SHA_256 = /^[0-9a-f]{64}$/;
+const LAUNCH_RECORD_WAIT_MS = 30_000;
 
 function autoSessions({ autoCount, notesPath, angles, declared }) {
   let orientations = [];
@@ -533,7 +528,7 @@ function verifiedTraceChallenge(challengeDir, expected = null) {
     manifestFail("angle 15 trace-challenge status paths do not name its canonical packet files");
   }
   const telemetry = readFileSync(telemetryPath);
-  const actualTelemetry = new Bun.CryptoHasher("sha256").update(telemetry).digest("hex");
+  const actualTelemetry = sha256(telemetry);
   if (actualTelemetry !== status.telemetrySha256) {
     manifestFail("angle 15 trace-challenge telemetry digest does not match its status record");
   }
@@ -541,7 +536,7 @@ function verifiedTraceChallenge(challengeDir, expected = null) {
     manifestFail("angle 15 trace-challenge packet has no concrete sha256");
   }
   const packet = readFileSync(packetPath);
-  const actualPacket = new Bun.CryptoHasher("sha256").update(packet).digest("hex");
+  const actualPacket = sha256(packet);
   if (actualPacket !== status.packetSha256) {
     manifestFail("angle 15 trace-challenge packet digest does not match its status record");
   }
@@ -650,9 +645,6 @@ function writeCodexTasks(outPath, instructions, tasks) {
   return codexTasksPath;
 }
 
-const leafPrompt = (instructions, task) =>
-  `${instructions.trim()}\n\n${task.trim()}\n\nAuthority: read-only. Do not edit files or change external state.`;
-
 export function writeAndDispatch(input) {
   const outPath = resolve(input.outDir);
   const stress = stressArgs(input.tasks, input.stress === true);
@@ -721,48 +713,38 @@ export function writeAndDispatch(input) {
     console.log(runTextSyncOrThrow(args).trimEnd());
     if (existsSync(join(outputDir, "launch.json"))) writeLaunchInput(identity, input);
   } catch (error) {
-    console.error(`build-manifest: launcher failed: ${error.message}`);
-    if (existsSync(outputDir) && existsSync(join(outputDir, "launch.json"))) {
+    if (existsSync(join(outputDir, "launch.json"))) {
       // The launcher may have opened its immutable record before a provider failure. Keep the
       // source/input identity sidecar for an explicit incomplete collection rather than guessing.
-      writeFileSync(
-        join(outputDir, "wri-launch-input.json"),
-        JSON.stringify({ schema: "wri-luna-launch-input/v1", ...identity }, null, 2),
-      );
+      writeJsonFile(join(outputDir, "wri-launch-input.json"), {
+        schema: "wri-luna-launch-input/v1",
+        ...identity,
+      });
     }
-    runtimeProcess.exit(1);
+    throw new CommandFailure(`launcher failed: ${error.message}`);
   }
 }
 
 /** Bind the launched prompts to the manifest bytes once the launcher has opened its record. */
 function writeLaunchInput({ outputDir, workdir, tasksPath, launcherTasksPath, instructionsPath }, input) {
-  const hash = (bytes) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-  const promptHash = (task) => hash(new TextEncoder().encode(leafPrompt(input.instructions, task)));
-  writeFileSync(
-    join(outputDir, "wri-launch-input.json"),
-    `${JSON.stringify(
-      {
-        schema: "wri-luna-launch-input/v1",
-        outputDir,
-        workdir,
-        tasksPath,
-        launcherTasksPath,
-        tasksSha256: hash(readFileSync(tasksPath)),
-        launcherTasksSha256: hash(readFileSync(launcherTasksPath)),
-        instructionsPath,
-        instructionsSha256: hash(readFileSync(instructionsPath)),
-        tasks: input.tasks.map((task) => ({
-          name: task.name,
-          taskSha256: hash(new TextEncoder().encode(task.task)),
-          admissionSha256: hash(new TextEncoder().encode(JSON.stringify(task.admission))),
-          promptSha256: promptHash(task.task),
-        })),
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
+  const promptHash = (task) => sha256(new TextEncoder().encode(leafPrompt(input.instructions, task)));
+  writeJsonFile(join(outputDir, "wri-launch-input.json"), {
+    schema: "wri-luna-launch-input/v1",
+    outputDir,
+    workdir,
+    tasksPath,
+    launcherTasksPath,
+    tasksSha256: sha256OfFile(tasksPath),
+    launcherTasksSha256: sha256OfFile(launcherTasksPath),
+    instructionsPath,
+    instructionsSha256: sha256OfFile(instructionsPath),
+    tasks: input.tasks.map((task) => ({
+      name: task.name,
+      taskSha256: sha256(new TextEncoder().encode(task.task)),
+      admissionSha256: sha256(new TextEncoder().encode(JSON.stringify(task.admission))),
+      promptSha256: promptHash(task.task),
+    })),
+  });
 }
 
 /** Start the launcher in a process that outlives this command (a Bash tool call ends at 600 s

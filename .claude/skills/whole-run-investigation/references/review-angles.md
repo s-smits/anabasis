@@ -72,9 +72,9 @@ mechanism working, and joins across the boundary belong on recorded bundle or `t
 epoch name. Also read what the claim honestly discloses: `judge: "unvalidated"` inside a created
 claim is correct behaviour under tenet 9, and a disclosed `modelIdentity` limit is a limit, not a
 defect.
-Read the `progress-guard` component of `review-yield.json` before any sentence about the guard or
-promotion. Per iteration it states whether a promotion decision existed, the guard verdict the
-promotion carried, and whether the guard's clause was the only reason a candidate stayed held.
+The guard itself left the loop, and `review-yield.json` no longer carries a component for it, so
+everything in this paragraph applies to an archive recorded while the guard still ran; on a current
+run there is no guard to credit or fault.
 Classify every `promotions/<run>.json` by `experiment`: `promoted/climb` and `promoted/build`
 install an adopted battery or a first harness with `comparison: null` and are not improvement
 claims; only `experiment: "repair"` with `decision: "promoted"` is an improvement, and across the
@@ -83,8 +83,7 @@ twice). The seven recorded paired comparisons were all ties (`wins 0, losses 0`)
 `candidate-not-better` or `no-net-improvement`. A guard `hold` on `review-coverage` says the judge
 review was incomplete; under rule 9 that routes to the auditor and is not a second reason to hold,
 so a promotion held on `progress-guard-hold: review-coverage` alone (run49 i05 and i07, run51 i02)
-is a guard-owned defect to name, not a safety success. Report the guard as `decision-bearing` only
-when the yield row shows the held decision would otherwise have installed the candidate.
+is a guard-owned defect to name, not a safety success.
 On sources with `ana-install-journal/v2`, also inspect every surviving
 `promotions/<run>-install-journal.json`. Recovery may publish or accept an admission pointer only
 when the journal paths and candidate fingerprint match, the promotion row is for the same run and
@@ -191,7 +190,7 @@ recorded a provider spend-limit reply — refusal prose arriving as a *successfu
 four minutes with no typed non-result anywhere. When many iterations share one `findingsHash`,
 grep the observability log for refusal prose before accepting the capability reading.
 For a recorded controller with a recorded denominator, the default outcome view must seed its battery
-map from the terminal's validated `batteryRunIds`, not only from case rows. Thus an admitted
+map from the terminal's iterations marked `measured`, not only from case rows. Thus an admitted
 `skipped-precase` battery appears as a zero-case battery with `rate` and Wilson interval `null`, while
 an absent or unfinished controller with no admitted battery stays battery-free. Zero cases are not a
 zero capability rate. If a later sibling writes campaign case rows, it must not turn the earlier
@@ -211,20 +210,13 @@ field; do not claim it. Where applicable, separately bind custom-origin credenti
 pre-next-prompt compaction with abort/timeout/usage receipts, and Darwin verifier isolation in a
 private temporary subtree with rendered-policy and baseline hashes. These are runtime-boundary
 receipts, not case correctness.
-On sources with admitted candidate engines, keep two facts apart: the recorded registry source and
-the host-attested command/identity/environment. `registrySource: "admitted"` records
-Builder-authored provenance; the claim states it and refuses on none of the sources (operator
-decision 2026-09-02), so a review scopes the capability sentence by that field rather than
-expecting a refusal. Join every declared read root to the host's content digest and report
-`unresolvedSandboxReadRoots` explicitly; a null digest blocks the claim rather than meaning an empty
-root. Angle 5 owns whether the controls discriminate; this deterministic row owns whether their
-engine and host identities are the ones the claim states.
-On sources with installed tools instead of declared engines, `registrySource`, `engines.json` and
-`unresolvedSandboxReadRoots` do not exist. Read `verifierEnvironmentHash` and each tool's `source`
-(`workspace-toolchain` or `host`) from the execution evidence and scope the capability sentence by
-that: a compiler the Builder installed under `.toolchain` is Builder provenance, exactly as
-`registrySource: "admitted"` was. The digest's `groundingSource` column says which shape the run
-carries (`engine-registry:<source>`, `installed-tool:<digest>` or `in-process`).
+Keep two facts apart: who installed the tool and what the host attested it ran. Read
+`verifierEnvironmentHash` and each tool's `source` (`workspace-toolchain` or `host`) from the
+execution evidence and scope the capability sentence by that: a compiler the Builder installed
+under `.toolchain` is Builder provenance, and passing the digest and argument checks does not make
+it independent. The digest's `groundingSource` column carries `installed-tool:<digest>` or
+`in-process`. No current source writes the older `registrySource`, `engines.json` or
+`unresolvedSandboxReadRoots`, so a review does not look for them.
 
 **I. Served-model attestation.** Is the model each case reports the one that actually served it,
 and is that a host-recorded attestation rather than the configured pin echoed back? Decides: M1
@@ -261,7 +253,8 @@ bundle then gives its solver what its tasks need; angle 34 owns the refusal's ow
 
 **2. Judge 1 census.** Is the Judge review recorded as complete, incomplete, off or unavailable,
 and do its disagreements with the verifier hold? Decides: M4. Views: `battery.json` `judge`
-`censusSize`, `verdicts` and `decision`, `analysis/<run>-judges.json`, the judge framing in
+`offered`, `verdicts` and `abstentions` (the decision is `judgeDecision` in `src/claim/judge.ts`,
+derived from those counts), `analysis/<run>-judges.json`, the judge framing in
 `src/truth/judge.ts`. There has been no control census since 2026-09-14, and a record with one
 behind it is refused. Report answered, abstained and disagreeing verdicts with their own
 denominators; an abstention is not a miss, and a disagreement is a reason to inspect the verifier,
@@ -272,7 +265,7 @@ verifier, state the combination plainly: the run then carries no independent che
 Deterministic first (2026-09-08, narrowed 2026-09-19): digest block 2b settles the census
 inventory — census size and disagreement counts. Admit this angle as a model session only on a
 `CENSUS WITH DISAGREEMENT` row. The controls half of the block is gone: there is no Judge control
-census any more, `censusSize.controls` is a constant zero and nothing writes `controlValidity`, so
+census any more, the evidence records no control count and nothing writes `controlValidity`, so
 the old `JUDGE CENSUS WITHOUT CONTROLS` alarm fired on every run while the validated-only trigger
 hid the disagreement de8b40 actually recorded.
 
@@ -289,7 +282,8 @@ Engineer (older trees may say "Judge 2") with `repair-engineer` prompt files and
 `--case <taskId>`, `src/author/rebuild-advice.ts`, `src/analyse/iteration-analysis.ts`. Hint:
 check the packet against the battery it names — the issue ledger ages `active`,
 `tentatively-fixed` after one absence, `confirmed-fixed` after two and `regressed` when an issue
-returns, and a sentinel family is one whose every verified case passed. Establish a zero from the
+returns, but an absence counts only when the family reran on the same public inputs, `scoringHash`
+and Built condition, and otherwise the issue reads `unmeasured`; a sentinel family is one whose every verified case passed. Establish a zero from the
 record, not assumption. Failed cases with no readable trace are an evidence capture or access gap, not a defect in
 the packet. A family, kind or count may cross into the rendered text; a task id, a verifier string,
 a failure location or a reference artifact may not. Then read the same traces yourself: one
@@ -428,7 +422,7 @@ log, legacy `rungPrediction`, climb evidence, `candidates/<run>/ladder.json`, `e
 `--cases --family`, `src/run/climb-readout.ts`, `src/run/climb-history.ts`,
 `src/claim/battery-difficulty.ts`, `src/truth/task-difficulty.ts`. Historical selector contract: a useful prediction names a
 falsifiable target pass-rate band and expected direction or level; the observed Wilson interval
-must agree with the next action — a `difficulty-decision/v5` record carries one of four,
+must agree with the next action — a `difficulty-decision/v6` record carries one of four,
 `placed` with its zone or one of the three set-asides
 `no-difficulty-evidence | repeated-failure-set | family-conflict` (`decideDifficulty`,
 `src/run/climb-readout.ts`); v4 and older records carry the retired selector verbs
@@ -436,16 +430,21 @@ must agree with the next action — a `difficulty-decision/v5` record carries on
 contradicts its own score band is a defect in the climb decision, not noise. The saturation ledger
 that used to be read here is gone with its mechanism: no source carries `saturationMove`,
 `saturatedLevels` or `broadenAfterSaturatedLevels`, and the live equivalent is the `climb` streak
-`watch.mjs` reports. Three joins have traps. A fired rebuild records as experiment `build` in the following
+the run-improvement-campaign watch (`campaign.ts --state`) reports. Three joins have traps. A fired rebuild records as experiment `build` in the following
 iteration (`full-run-round.ts` demotes it by design), so join on the controller decision reason
 and the level-decision, never on the experiment label. The three strike-exempt refusals
 (zero-verified, repeated-failure-set, family-conflict) enter no streak and no strike by
-construction; when the counters moved across an iteration whose decision was strike-exempt,
+construction; when the trailing streak moved across an iteration whose decision was strike-exempt,
 re-derive the trailing same-harness chain from the admitted ledger rows before crediting the
-count. And clear improvement — the newer Wilson floor clearing the older ceiling — must restart
-`infeasibleStrikes`, so check the strike count against the admitted score sequence. The recorded
-thresholds must equal `thresholds.frozen.yaml` (working rule 8: a disagreeing executable
-threshold is a blocking inconsistency, and the digest flags drift between decisions). Every frozen climb/descend-authored task set must expose one recorded
+count. The strike counters those two sentences used to name — `infeasibleStrikes` and the
+`saturated*` family — went with the ledger above, and block 4b stopped printing them on
+2026-09-23; it prints the placement zone instead, which is what a v5 record actually carries. The
+recorded thresholds must equal `thresholds.frozen.yaml` (working rule 8: a disagreeing executable
+threshold is a blocking inconsistency). The digest no longer flags drift between decisions, and
+the reason is worth knowing before you go looking for it: the detector keyed on `climbBand`,
+`limitHoldRounds` and `minLevelN`, and a v5 record carries none of the three, so every record
+contributed the identical `undefined/undefined/undefined` and the set could never hold two
+members. It fired in 0 of 29 recorded campaigns and could not have fired in a thirtieth. Every frozen climb/descend-authored task set must expose one recorded
 one-line difficulty note; initial builds, rebuilds and hold-limit remeasurements carry none by
 contract, so only a climb/descend score or action transition without one is the finding
 `score moved, no note`. Ownership boundary:
@@ -481,7 +480,7 @@ units. `maxIterations` is an invocation's outer-controller cap; `maxBuilderTurns
 Builder wall limit one session; the durable campaign `turnBudget` is charged by summing completed
 authoring/session-call attempts across iterations and epochs. Report the opening/terminal
 `turnsUsed` delta and never relabel any of these as generic rounds. Then separate real candidates
-from controller stops. Current `builder-execution/v5` rows use `kind: "candidate"` or
+from controller stops. Current `builder-execution/v6` rows use `kind: "candidate"` or
 `kind: "controller-terminal"`; legacy v1–v3 use the versioned budget-sentinel compatibility rule. A real
 candidate can itself be terminal, so dropping every `terminal: true` row corrupts the candidate
 denominator. Hint: three
@@ -809,8 +808,8 @@ saturation showed was narrow, never its score.
 
 **22. Fact grounding of Builder-authored domain knowledge.** Trigger: the domain declares factual
 tables — pin maps, bus capabilities, physical constants, standards values — AND either every
-grounding in the recorded claim is Builder-authored (`registrySource` is not `operator`, or on an
-installed-tool source every executed tool's `source` is `workspace-toolchain`) or the
+grounding in the recorded claim is Builder-authored (every executed tool's `source` is
+`workspace-toolchain`, or nothing ran outside the process) or the
 builder view reports `public_source` in `neverUsed`. Question: are the authored domain facts true
 against public documentation the session finds itself? The digest's matrix says who wrote the
 referee; this angle asks whether what was written is real. Check a bounded sample, material facts first: every constant a truth check compares against and
@@ -900,12 +899,12 @@ model action, not an automatic prompt injection: `builderMemorySuffix` feeds the
 while `builder-start-prompt.ts` tells the Builder to use MEMORY.md. Check native tool calls for an
 actual read and say plainly when memory was written but not consumed. Do not credit memory with
 continuity already supplied by a persistent session; it becomes load-bearing across epochs or after
-session loss. Carry-forward has two markers: `carryMemoryForward` copies only an authored
-file, only into a slot the successor has not written, always under
-`<!-- carried forward from <epoch> -->` and, on a climb, a second marker saying that a note calling
-the task set frozen described its own epoch — check both that the marker is present and that the
-lines it warns about were corrected, because an inherited "the task set is frozen" surviving a climb
-epoch is the exact inversion the marker exists for. Isolation runs both ways: memory sits at the
+session loss. Carry-forward reads the epoch record: `carryMemoryForward` copies only an authored
+file, only into a slot the successor has not written, always under a
+`<!-- carried forward from <epoch> … -->` marker. A new pass on the same request carries both
+MEMORY.md and SCRATCHPAD.md; a changed request or Builder condition carries MEMORY.md alone, under a
+marker saying the binding changed — check that the marker is present and that the lines it warns
+about were corrected. Isolation runs both ways: memory sits at the
 workspace root, outside `agent/` and `correctness-model/`, so it enters no fingerprint and no claim, but the
 owner states it may legitimately carry hidden truth because one session authors expectations and
 curates — so adoption must drop both files from the copied domain (`domain-repo.ts`). A hidden

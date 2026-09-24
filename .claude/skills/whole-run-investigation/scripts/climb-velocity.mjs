@@ -5,7 +5,7 @@
 // 2026-09-16 battery. This reads the other channel: whether the tasks moved, by how much, and in
 // which of the two ways a battery can move.
 //
-//   bun climb-velocity.mjs <campaign-dir> [--json]
+//   bun wri.mjs climb <target> [--json]
 //
 // Per battery: the tier histogram and the median structural row from query-complexity.mjs, plus
 // the measured outcome when there is one. Per edge between consecutive batteries:
@@ -36,10 +36,14 @@
 // another correctness-model file moves neither. A third row names which of those files changed
 // digest, without scoring them: a digest cannot tell a new requirement from a reformatted comment,
 // and the verdict deliberately does not read it.
-import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
+import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { sha256OfFile } from "#src/meta/digest.ts";
-import { classifyCaseOutcome } from "#src/claim/case-record.ts";
-import { wilsonInterval } from "#src/claim/estimation.ts";
+import { classifyCaseOutcome, outcomeTally, readCaseRecord } from "#src/claim/case-record.ts";
+import { placeOnBand } from "#src/claim/battery-difficulty.ts";
+import { POLICY } from "#src/critic/policy.ts";
+import { join } from "#src/meta/path.ts";
+import { decidingSample } from "#src/run/climb-history.ts";
+import { readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
 import {
   MODEL_IDENTITY,
   STRUCTURE_KEYS,
@@ -47,7 +51,7 @@ import {
   readVersionDir,
   renderBattery,
 } from "../classifier/query-complexity.mjs";
-import { isBoolean, isNumber } from "#src/meta/json-shape.ts";
+import { isNumber } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 
 export const VELOCITY_SCHEMA = "climb-velocity/v1";
@@ -58,39 +62,51 @@ export const RESTATED_COSINE = 0.98;
 /** The two files the task-side rows already read, and so the two this digest row leaves alone. */
 export const SCORED_BUNDLE_FILES = new Set(["brief.json", "tasks.json"]);
 
-/** The controller's own interval over the verified cases, so this reader and the placement it sets
- *  out to explain cannot disagree. It carried its own copy at a rounded z of 1.96 until 2026-09-18,
- *  which is a second answer to the question this script exists to report on. Null is that owner's
- *  "not a sample": nothing verified, or counts that cannot be one. */
-export function wilson(passes, n) {
-  const interval = wilsonInterval(passes, n);
-  return interval === null ? null : { rate: passes / n, lo: interval.lower, hi: interval.upper };
+/** The controller's own placement of one battery, so this reader and the decision it sets out to
+ *  explain cannot disagree: `decidingSample` picks the changed subset when the host recorded one
+ *  and the whole battery otherwise, and `placeOnBand` reads it. Once any case is verified, an
+ *  unaccepted attempt stays in the denominator as a failure, which is the controller's difficulty
+ *  denominator; reading passed over verified instead put a battery of 5 passes and 20 refused
+ *  submits at a rate of 1 where the controller placed it at 0.2. A battery that verified nothing
+ *  has no placement at all rather than a zero one. */
+export function placementOf(counts, measured = { items: [] }, band = POLICY.climb.band) {
+  if (counts.verified === 0) return null;
+  const sample = decidingSample({ measured, passed: counts.passed, n: counts.verified + counts.unaccepted });
+  const placement = placeOnBand(sample.passes, sample.n, band);
+  return placement === null
+    ? null
+    : { ...placement, rate: placement.passes / placement.n, population: sample.population };
 }
 
-/** Passed, verified, unaccepted and non-result counts per runId, from the campaign's own case rows,
- *  classified by the controller's own reader. An unaccepted attempt is recorded with `pass: false`,
- *  so reading `pass` alone counts every case the solver never submitted as a verified failure and
- *  then places a battery that verified nothing. */
+/** The recorded measured difficulty of the run a version directory holds, or the empty one when
+ *  the version recorded no battery of its own. */
+function measuredOf(battery) {
+  const runDir = join(battery.dir, "runs", battery.runId);
+  return existsSync(join(runDir, "battery.json"))
+    ? readRecordedBatteryRecord(runDir, battery.runId).measured
+    : { items: [] };
+}
+
+/** Passed, verified, unaccepted and non-result counts per runId, from the campaign's own case rows
+ *  through the controller's strict reader, classifier and tally. An unaccepted attempt is recorded
+ *  with `pass: false`, so reading `pass` alone counts every case the solver never submitted as a
+ *  verified failure and then places a battery that verified nothing. */
 export function outcomesOf(campaign) {
-  const path = `${campaign}/case-record.jsonl`;
+  const outcomesByRun = new Map();
+  for (const { row } of readCaseRecord(`${campaign}/case-record.jsonl`)) {
+    const outcomes = outcomesByRun.get(row.runId) ?? [];
+    outcomes.push(classifyCaseOutcome(row));
+    outcomesByRun.set(row.runId, outcomes);
+  }
   const byRun = new Map();
-  if (!existsSync(path)) return byRun;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    if (line.trim() === "") continue;
-    const row = JSON.parse(line).row ?? {};
-    const counts = byRun.get(row.runId) ?? { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 };
-    const outcome = classifyCaseOutcome({
-      // A row that predates the field carries a verdict; this script reads recorded history.
-      // `=== true` instead counted every pre-field case as an attempt nobody submitted.
-      acceptedSubmit: isBoolean(row.acceptedSubmit) ? row.acceptedSubmit : true,
-      pass: row.pass ?? null,
-      runtimeNonResult: row.runtimeNonResult ?? null,
+  for (const [runId, outcomes] of outcomesByRun) {
+    const tally = outcomeTally(outcomes);
+    byRun.set(runId, {
+      passed: tally.passed,
+      verified: tally.verified,
+      unaccepted: tally.unaccepted,
+      nonResult: tally.nonResults,
     });
-    if (outcome === "pass" || outcome === "fail") counts.verified += 1;
-    if (outcome === "pass") counts.passed += 1;
-    if (outcome === "unaccepted") counts.unaccepted += 1;
-    if (outcome === "non-result") counts.nonResult += 1;
-    byRun.set(row.runId, counts);
   }
   return byRun;
 }
@@ -205,7 +221,8 @@ export function numericDriftOf(before, after) {
 
 /** The rank of the highest tier a battery's checks reach. Adding or dropping checks at tiers it
  *  already occupies leaves it where it was, which is the whole point: the count is read by the
- *  structural deltas, and the tier order by this. Null when a battery declares no check. */
+ *  structural deltas, and the tier order by this. Null when a battery declares no check.
+ *  @returns {number | null} */
 export function topTierOf(checkTiers) {
   let top = null;
   TIER_ORDER.forEach((name, rank) => {
@@ -235,9 +252,7 @@ export async function readCampaign(campaign, options = {}) {
   for (const battery of batteriesOf(campaign)) {
     const reading = await readVersionDir(battery.dir, options);
     const counts = outcomes.get(battery.runId) ?? { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 };
-    // Only verified cases enter a rate, so a battery whose solver submitted nothing has no
-    // placement at all rather than a zero one.
-    batteries.push({ ...battery, reading, counts, placement: wilson(counts.passed, counts.verified) });
+    batteries.push({ ...battery, reading, counts, placement: placementOf(counts, measuredOf(battery)) });
   }
   const edges = [];
   for (let at = 1; at < batteries.length; at += 1) {
@@ -269,9 +284,8 @@ export async function readCampaign(campaign, options = {}) {
 /** Batteries still needed to reach the aim, from the measured rate change per edge. Returns a
  *  reason instead of a number whenever two verified batteries do not exist to draw a rate from —
  *  which is the usual case, and saying so is the honest answer. */
-export function velocityOf(report, band = [0.2, 0.5]) {
-  const placed = [];
-  for (const battery of report.batteries) if (battery.counts.verified > 0) placed.push(battery);
+export function velocityOf(report, band = POLICY.climb.band) {
+  const placed = report.batteries.filter((battery) => battery.placement !== null);
   if (placed.length === 0) return { reason: "no battery verified a case" };
   const latest = placed.at(-1);
   if (latest.placement.rate <= band[1]) {
@@ -371,25 +385,4 @@ export function render(report, band) {
   );
   lines.push(latestEdgeLine(report));
   return lines.join("\n");
-}
-
-if (import.meta.main) {
-  const rest = Bun.argv.slice(2);
-  // The campaign is the first argument that is not a flag, so `--campaign <dir>` and `--json <dir>`
-  // reach the same reader as the bare directory. Spelled positionally alone, `--campaign <dir>`
-  // read the flag as the campaign and died inside `readdirSync` with `ENOENT: scandir
-  // '--campaign/versions'`, which names neither the argument nor the usage.
-  const campaign = rest.find((argument) => !argument.startsWith("-"));
-  if (campaign === undefined) throw new Error("usage: bun climb-velocity.mjs <campaign-dir> [--json]");
-  const report = await readCampaign(campaign);
-  if (rest.includes("--json")) {
-    const printable = {
-      ...report,
-      batteries: report.batteries.map((battery) => ({
-        ...battery,
-        reading: { ...battery.reading, familyVectors: undefined },
-      })),
-    };
-    console.log(JSON.stringify({ ...printable, velocity: velocityOf(report) }, null, 1));
-  } else console.log(render(report));
 }

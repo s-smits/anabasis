@@ -1,23 +1,18 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { double } from "./helpers/doubles.ts";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
+import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { writeBuilderExecutionEvidence } from "../src/author/builder-execution-writer.ts";
 import { MAX_PROSE_CHARS, proseSidecarPath } from "../src/author/builder-prose.ts";
 import { PiPromptRecord } from "../src/backends/pi-session.ts";
 import type { AgentTurnEvent, AgentTurnResult } from "../src/backends/backend-types.ts";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { censusProse, publicCensus } from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
+import {
+  censusProse,
+  publicCensus,
+} from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -163,11 +158,35 @@ describe("builder prose log", () => {
     ]);
   });
 
+  it("walks epochs in their recorded order and reads a session numbered past two digits", () => {
+    const campaignDir = mkdtempSync(join(tmpdir(), "ana-prose-campaign-"));
+    dirs.push(campaignDir);
+    // Epoch keys are hashes of their binding, so the recorded order is not the sorted one.
+    const first = selectCampaignEpoch(campaignDir, { kickoff: "one line b" });
+    const second = selectCampaignEpoch(campaignDir, { kickoff: "one line a" });
+    expect(second.key < first.key).toBe(true);
+    for (const epoch of [first, second]) {
+      const recorder = new BuilderExecutionRecorder();
+      recorder.turnCompleted(turnResult(epoch.key));
+      writeBuilderExecutionEvidence(epoch.dir, recorder.finish("recorded"));
+    }
+    writeFileSync(join(second.dir, "builder-execution-100.json"), "{}");
+    const census = publicCensus(censusProse(campaignDir));
+    const sessions = census.captures.map((row: { epoch: string; session: number }) => [
+      row.epoch,
+      row.session,
+    ]);
+    expect(sessions.slice(0, 2)).toEqual([
+      [first.key, 1],
+      [second.key, 1],
+    ]);
+    expect(sessions.at(-1)).toEqual([second.key, 100]);
+  });
+
   it("censuses campaign sessions in order and refuses a mismatched capture receipt", () => {
     const campaignDir = mkdtempSync(join(tmpdir(), "ana-prose-campaign-"));
     dirs.push(campaignDir);
-    const epochDir = join(campaignDir, "epoch-aaaaaaaaaaaa");
-    mkdirSync(epochDir);
+    const { key, dir: epochDir } = selectCampaignEpoch(campaignDir, { kickoff: "one line" });
     for (const text of ["first session", "second session"]) {
       const recorder = new BuilderExecutionRecorder();
       recorder.turnCompleted(turnResult(text));
@@ -182,8 +201,8 @@ describe("builder prose log", () => {
         row.state,
       ]),
     ).toEqual([
-      ["epoch-aaaaaaaaaaaa", 1, "bound"],
-      ["epoch-aaaaaaaaaaaa", 2, "bound"],
+      [key, 1, "bound"],
+      [key, 2, "bound"],
     ]);
 
     const executionPath = join(epochDir, "builder-execution-02.json");

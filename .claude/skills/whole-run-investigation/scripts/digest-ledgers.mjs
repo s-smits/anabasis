@@ -14,14 +14,22 @@ import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/files
 import { basename, join } from "#src/meta/path.ts";
 import { wilsonInterval } from "#src/claim/estimation.ts";
 import { MEMORY_CAP_BYTES, MEMORY_FILE, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
-import { isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
+import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
+import { classifyCaseOutcome, familyTally, outcomeTally } from "#src/claim/case-record.ts";
+import { PROVIDER_ALLOWANCE } from "#src/truth/runtime-blocker.ts";
+import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
+import { openRecordedRun } from "../../main/run.ts";
 
 /** AGENTS.md: explicit credit/allowance exhaustion is a normal operational interruption; a generic
- *  429, timeout or crash is not proof of exhaustion and must be investigated as a failure. */
-export const EXPLICIT_EXHAUSTION =
-  /weekly limit|out of (?:extra )?usage|credit|quota|allowance|exhaust|spend limit|usage limit|session limit|claude code returned an error result: you'?ve hit your limit\b/i;
+ *  429, timeout or crash is not proof of exhaustion and must be investigated as a failure. What
+ *  counts as explicit is `PROVIDER_ALLOWANCE`, the clause the controller itself ends authoring
+ *  retries on, so this lead cannot call a battery censored on wording the controller would have
+ *  investigated. A local copy matched any "credit", "quota" or "exhaust" in a solver's own output. */
 const GENERIC_LIMIT = /\b429\b|rate.?limit|too many requests|overloaded/i;
 
 export function exhaustionClass(message) {
@@ -29,12 +37,12 @@ export function exhaustionClass(message) {
   // The scheduler stops attempting cases after consecutive provider non-results; those rows are
   // marked unattempted. This prefix alone does not establish provider exhaustion.
   if (/^not attempted:/i.test(text)) return "not-attempted";
-  if (EXPLICIT_EXHAUSTION.test(text)) return "explicit-exhaustion";
+  if (PROVIDER_ALLOWANCE.test(text)) return "explicit-exhaustion";
   if (GENERIC_LIMIT.test(text)) return "generic-limit";
   return "other";
 }
 
-function pad(value, width) {
+export function pad(value, width) {
   const text = String(value);
   return text.length >= width ? `${text} ` : text.padEnd(width);
 }
@@ -44,71 +52,91 @@ function interval(passes, n) {
   return bounds === null ? "[-,-]" : `[${bounds.lower.toFixed(2)},${bounds.upper.toFixed(2)}]`;
 }
 
-export function baseRunId(runId) {
-  return String(runId).replace(/-i\d+$/, "");
-}
-
-/** Difficulty decisions in file order; `runId` on each record names the battery the decision
- *  authored, and `evidence[].runId` the batteries it read. */
+/**
+ * Difficulty decisions in file order; `runId` on each record names the battery the decision
+ * authored, and `evidence[].runId` the batteries it read. `refused` carries one line per record
+ * this reader would not open, because the digest is read as an inventory of the run: a battery
+ * whose decision predates the current schema would otherwise be indistinguishable from a battery
+ * that never had a decision recorded at all, which is the more alarming of the two.
+ */
 export function readDifficultyDecisions(campaign) {
-  const decisions = [];
-  for (const directory of ["difficulty-decisions", "rung-decisions"]) {
-    const dir = join(campaign, directory);
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)
-      .filter((file) => file.endsWith(".json"))
-      .sort()) {
-      const record = readJsonFileOrNull(join(dir, name));
-      const counters = record?.difficulty ?? record?.rung ?? null;
-      if (counters === null) continue;
-      decisions.push({
-        runId: isString(record.runId) ? record.runId : name,
-        action: counters.decision?.action ?? null,
-        nextLevel: counters.decision?.nextLevel ?? null,
-        currentLevel: counters.decision?.currentLevel ?? null,
-        evidenceRunIds: (Array.isArray(counters.decision?.evidence) ? counters.decision.evidence : [])
-          .map((row) => row?.runId)
-          .filter((value) => isString(value)),
-      });
+  const rows = [];
+  const refused = [];
+  const dir = join(campaign, "difficulty-decisions");
+  if (!existsSync(dir)) return { rows, refused };
+  for (const name of readdirSync(dir)
+    .filter((file) => file.endsWith(".json"))
+    .sort()) {
+    const record = readJsonFileOrNull(join(dir, name));
+    if (record === null) {
+      refused.push(`${name}: unreadable`);
+      continue;
     }
+    if (record.schema !== DIFFICULTY_DECISION_SCHEMA) {
+      refused.push(`${name}: ${isString(record.schema) ? record.schema : "no schema"}`);
+      continue;
+    }
+    const counters = record.difficulty ?? null;
+    if (counters === null) {
+      refused.push(`${name}: ${DIFFICULTY_DECISION_SCHEMA} without a difficulty reading`);
+      continue;
+    }
+    rows.push({
+      runId: isString(record.runId) ? record.runId : name,
+      action: counters.decision?.action ?? null,
+      // Where the decision placed the battery it read. `too-easy` is the reading that used to be
+      // spelled as the action `climb`, so it is what a climb-shaped trigger asks about now.
+      zone: counters.decision?.placement?.zone ?? null,
+      admitted: counters.admitted ?? null,
+      excluded: Array.isArray(counters.excluded) ? counters.excluded.length : 0,
+      evidenceRunIds: (Array.isArray(counters.decision?.evidence) ? counters.decision.evidence : [])
+        .map((row) => row?.runId)
+        .filter((value) => isString(value)),
+    });
   }
-  return decisions;
+  return { rows, refused };
 }
 
-/** Verified, passed, unaccepted and non-result counts per battery in case-record order. */
+/**
+ * Section 4b: one line per decision this reader opened, then one line per record it refused. The
+ * section used to walk the directory a second time with its own parser, which is how it came to
+ * print records the rest of the digest was already refusing — the two readers of one directory
+ * disagreed about what counted as a decision, and only this one was on screen.
+ */
+export function saturationLedgerLines({ rows, refused }) {
+  const lines = ["", "## 4b saturation ledger (difficulty decisions)"];
+  // Absence proves only that no climb decision was recorded. The selector may still have run and
+  // chosen build or rebuild, so the digest does not say "never ran"; the controller decision
+  // reasons in section 1 say what it chose.
+  if (rows.length === 0 && refused.length === 0) {
+    lines.push(
+      "no recorded difficulty decisions: no climb decision was recorded; read the controller decision reasons for the selected move",
+    );
+  }
+  for (const row of rows) {
+    lines.push(
+      `${row.runId}: action ${row.action ?? "?"}${row.zone === null ? "" : ` ${row.zone}`}` +
+        ` · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`,
+    );
+  }
+  for (const line of refused) lines.push(`refused, not ${DIFFICULTY_DECISION_SCHEMA} — ${line}`);
+  return lines;
+}
+
+/** Verified, passed, unaccepted and non-result counts per battery in case-record order, overall and
+ *  per family, through the case record's own `outcomeTally` and `familyTally`. The provider count
+ *  beside them is the one the censoring lead reads. */
 export function batteryTallies(caseRows) {
   const byRun = new Map();
-  for (const row of caseRows) {
-    const bucket = byRun.get(row.runId) ?? {
-      runId: row.runId,
-      graded: 0,
-      passed: 0,
-      unaccepted: 0,
-      nonResult: 0,
-      providerNonResult: 0,
-      families: new Map(),
-    };
-    const family = isString(row.family) ? row.family : "(no family)";
-    const familyBucket = bucket.families.get(family) ?? { graded: 0, passed: 0, unaccepted: 0, nonResult: 0 };
-    if (row.runtimeNonResultKind !== null && row.runtimeNonResultKind !== undefined) {
-      bucket.nonResult += 1;
-      familyBucket.nonResult += 1;
-      if (row.runtimeNonResultKind === "provider") bucket.providerNonResult += 1;
-    } else if (row.acceptedSubmit === true && isBoolean(row.truthOk)) {
-      bucket.graded += 1;
-      familyBucket.graded += 1;
-      if (row.truthOk) {
-        bucket.passed += 1;
-        familyBucket.passed += 1;
-      }
-    } else {
-      bucket.unaccepted += 1;
-      familyBucket.unaccepted += 1;
-    }
-    bucket.families.set(family, familyBucket);
-    byRun.set(row.runId, bucket);
-  }
-  return [...byRun.values()];
+  for (const row of caseRows) byRun.set(row.runId, [...(byRun.get(row.runId) ?? []), row]);
+  return [...byRun].map(([runId, rows]) => ({
+    runId,
+    ...outcomeTally(rows.map(classifyCaseOutcome)),
+    providerNonResult: rows.filter(
+      (row) => classifyCaseOutcome(row) === "non-result" && row.runtimeNonResultKind === "provider",
+    ).length,
+    families: familyTally(rows),
+  }));
 }
 
 // --- 1c: check informativeness ---------------------------------------------------------------
@@ -149,15 +177,17 @@ export function checkInformativenessLines({
       `REACH-ONLY CHECKS (angle 27 trigger): ${classes["reach-only"]} check(s) fire on controls and never on ${gradedOracleFiles} graded rows`,
     );
   }
+  // The decision that read this battery called it significantly too easy, and the battery still
+  // came out perfect. Until the zones replaced them, the same reading was the action `climb`.
   const climbed = new Set(
-    decisions.filter((decision) => decision.action === "climb").map((decision) => decision.runId),
+    decisions.filter((decision) => decision.zone === "too-easy").map((decision) => decision.runId),
   );
   const perfectAfterClimb = tallies.filter(
-    (tally) => climbed.has(tally.runId) && tally.graded > 0 && tally.passed === tally.graded,
+    (tally) => climbed.has(tally.runId) && tally.verified > 0 && tally.passed === tally.verified,
   );
   if (perfectAfterClimb.length > 0) {
     lines.push(
-      `PERFECT BATTERY AFTER CLIMB (angle 27 trigger): ${perfectAfterClimb.map((tally) => `${tally.runId} ${tally.passed}/${tally.graded}`).join(", ")}`,
+      `PERFECT BATTERY AFTER CLIMB (angle 27 trigger): ${perfectAfterClimb.map((tally) => `${tally.runId} ${tally.passed}/${tally.verified}`).join(", ")}`,
     );
   }
   lines.push(
@@ -167,36 +197,62 @@ export function checkInformativenessLines({
 }
 
 // --- 2b: Judge census -------------------------------------------------------------------------
-/** Judge/verifier disagreement per battery. The controls half of this lane went with the Judge
- *  control census itself: `src/truth/judge.ts` writes `censusSize.controls` as a constant zero and
- *  nothing writes `controlValidity` at all, so the old reader printed a `JUDGE CENSUS WITHOUT
- *  CONTROLS` alarm on every run and gated angle 2's trigger behind a validity that could never be
- *  true. Run de8b40 recorded a real disagreement, 1 of 6, and the lane stayed silent about it. */
-export function judgeCensusLines({ campaign }) {
-  const lines = ["", "## 2b judge census (analysis/*-judges.json)"];
+/**
+ * The run's recorded Judge reviews, one per `analysis/<runId>-judges.json`, in name order. The
+ * writer (`runJudgeReviews`) records `JUDGE_REVIEWS_SCHEMA` and nothing else, so a record under any
+ * other schema is refused by name rather than read field by field: it predates the census and
+ * `contested` shapes both readers of this function take as written.
+ */
+export function readJudgeReviews(campaign) {
+  const rows = [];
+  const refused = [];
   const dir = join(campaign, "analysis");
-  const files = existsSync(dir)
-    ? readdirSync(dir)
-        .filter((name) => name.endsWith("-judges.json"))
-        .sort()
-    : [];
-  if (files.length === 0) {
+  if (!existsSync(dir)) return { rows, refused };
+  for (const name of readdirSync(dir)
+    .filter((file) => file.endsWith("-judges.json"))
+    .sort()) {
+    const record = readJsonFileOrNull(join(dir, name));
+    if (
+      record?.schema !== JUDGE_REVIEWS_SCHEMA ||
+      !isString(record.runId) ||
+      !Array.isArray(record.contested)
+    ) {
+      refused.push(`${name}: ${isString(record?.schema) ? record.schema : "unreadable or no schema"}`);
+      continue;
+    }
+    rows.push(record);
+  }
+  return { rows, refused };
+}
+
+/** Judge/verifier disagreement per battery, from the census each review records. The census holds
+ *  no controls by construction — `src/truth/judge.ts` records no control count — so this lane reads
+ *  the battery subjects offered alone and raises angle 2 on any disagreement. */
+export function judgeCensusLines({ judgeReviews }) {
+  const lines = ["", "## 2b judge census (analysis/*-judges.json)"];
+  const { rows, refused } = judgeReviews;
+  if (rows.length === 0 && refused.length === 0) {
     lines.push("no judge census recorded: angle 2 has no opportunity");
     return lines;
   }
   let withDisagreement = 0;
-  for (const name of files) {
-    const judges = readJsonFileOrNull(join(dir, name));
-    const evidence = judges?.census?.evidence ?? judges?.census ?? {};
-    const battery = isNumber(evidence.censusSize?.battery) ? evidence.censusSize.battery : null;
+  for (const judges of rows) {
+    // `census` is null when the battery recorded none; the review still records its exit.
+    const evidence = judges.census?.evidence ?? null;
+    if (evidence === null) {
+      lines.push(`${judges.runId}: no census recorded · exit ${judges.exit?.kind ?? "?"}`);
+      continue;
+    }
+    const battery = isNumber(evidence.offered) ? evidence.offered : null;
     const disagreements = isNumber(evidence.disagreements) ? evidence.disagreements : null;
     const denominator = isNumber(evidence.disagreementDenominator) ? evidence.disagreementDenominator : null;
     if ((disagreements ?? 0) > 0) withDisagreement += 1;
     lines.push(
-      `${name.replace(/-judges\.json$/, "")}: judge ${evidence.judge ?? "?"} · census battery ${battery ?? "?"}` +
-        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${judges?.exit?.kind ?? "?"}`,
+      `${judges.runId}: judge ${evidence.judge ?? "?"} · census battery ${battery ?? "?"}` +
+        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${judges.exit?.kind ?? "?"}`,
     );
   }
+  for (const line of refused) lines.push(`refused, not ${JUDGE_REVIEWS_SCHEMA} — ${line}`);
   lines.push(
     withDisagreement > 0
       ? `CENSUS WITH DISAGREEMENT (angle 2 trigger): ${withDisagreement} census(es)`
@@ -208,7 +264,7 @@ export function judgeCensusLines({ campaign }) {
 // --- 3b: family-wise coverage -----------------------------------------------------------------
 export function familyCoverageLines({ tallies }) {
   const lines = ["", "## 3b family-wise coverage (case-record.jsonl, Wilson 95%)"];
-  const graded = tallies.filter((tally) => tally.graded > 0);
+  const graded = tallies.filter((tally) => tally.verified > 0);
   if (tallies.length === 0) {
     lines.push("no case rows");
     return lines;
@@ -216,21 +272,21 @@ export function familyCoverageLines({ tallies }) {
   const leads = [];
   let unobserved = 0;
   for (const tally of tallies) {
-    const aggregate = wilsonInterval(tally.passed, tally.graded);
+    const aggregate = wilsonInterval(tally.passed, tally.verified);
     lines.push(
-      `${tally.runId}: ${tally.passed}/${tally.graded} ${interval(tally.passed, tally.graded)} over ${tally.families.size} famil${tally.families.size === 1 ? "y" : "ies"}`,
+      `${tally.runId}: ${tally.passed}/${tally.verified} ${interval(tally.passed, tally.verified)} over ${tally.families.size} famil${tally.families.size === 1 ? "y" : "ies"}`,
     );
     for (const [family, bucket] of [...tally.families.entries()].sort()) {
-      if (bucket.graded === 0) {
+      if (bucket.verified === 0) {
         unobserved += 1;
         lines.push(
-          `  ${pad(family, 24)}no verified evidence · unaccepted ${bucket.unaccepted} · non-results ${bucket.nonResult}`,
+          `  ${pad(family, 24)}no verified evidence · unaccepted ${bucket.unaccepted} · non-results ${bucket.nonResults}`,
         );
         continue;
       }
-      const familyBounds = wilsonInterval(bucket.passed, bucket.graded);
+      const familyBounds = wilsonInterval(bucket.passed, bucket.verified);
       const flags = [];
-      if (bucket.passed === bucket.graded) flags.push("all-pass");
+      if (bucket.passed === bucket.verified) flags.push("all-pass");
       if (bucket.passed === 0) flags.push("all-fail");
       if (
         aggregate !== null &&
@@ -240,11 +296,11 @@ export function familyCoverageLines({ tallies }) {
       ) {
         flags.push("AGGREGATE HIDES FAMILY");
         leads.push(
-          `${tally.runId} ${family} ${bucket.passed}/${bucket.graded} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
+          `${tally.runId} ${family} ${bucket.passed}/${bucket.verified} sits below the aggregate floor ${aggregate.lower.toFixed(2)}`,
         );
       }
       lines.push(
-        `  ${pad(family, 24)}${pad(`${bucket.passed}/${bucket.graded}`, 8)}${pad(interval(bucket.passed, bucket.graded), 14)}${flags.join(" ")}`,
+        `  ${pad(family, 24)}${pad(`${bucket.passed}/${bucket.verified}`, 8)}${pad(interval(bucket.passed, bucket.verified), 14)}${flags.join(" ")}`,
       );
     }
   }
@@ -253,15 +309,15 @@ export function familyCoverageLines({ tallies }) {
     const current = graded[index];
     for (const [family, bucket] of current.families) {
       const before = previous.families.get(family);
-      if (!before || before.graded === 0 || bucket.graded === 0) continue;
+      if (!before || before.verified === 0 || bucket.verified === 0) continue;
       if (before.passed === 0 && bucket.passed === 0) {
         leads.push(
-          `FAMILY UNMOVED all-fail: ${family} ${before.passed}/${before.graded} → ${bucket.passed}/${bucket.graded} (${previous.runId} → ${current.runId})`,
+          `FAMILY UNMOVED all-fail: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
         );
       }
-      if (before.passed === before.graded && bucket.passed === bucket.graded) {
+      if (before.passed === before.verified && bucket.passed === bucket.verified) {
         leads.push(
-          `FAMILY UNMOVED all-pass: ${family} ${before.passed}/${before.graded} → ${bucket.passed}/${bucket.graded} (${previous.runId} → ${current.runId})`,
+          `FAMILY UNMOVED all-pass: ${family} ${before.passed}/${before.verified} → ${bucket.passed}/${bucket.verified} (${previous.runId} → ${current.runId})`,
         );
       }
     }
@@ -282,14 +338,11 @@ export function familyCoverageLines({ tallies }) {
 }
 
 // --- 3c: repeated-condition census ------------------------------------------------------------
-export function repeatedConditionLines({ caseRows, decisions }) {
-  const lines = ["", "## 3c repeated-condition census (buildInputsHash × backendPin × level)"];
-  const levelOf = new Map(decisions.map((decision) => [decision.runId, decision.nextLevel]));
+export function repeatedConditionLines({ caseRows }) {
+  const lines = ["", "## 3c repeated-condition census (buildInputsHash × backendPin)"];
   const conditions = new Map();
   for (const row of caseRows) {
-    const key = [row.buildInputsHash ?? "?", row.backendPin ?? "?", levelOf.get(row.runId) ?? "initial"].join(
-      " · ",
-    );
+    const key = [row.buildInputsHash ?? "?", row.backendPin ?? "?"].join(" · ");
     const runs = conditions.get(key) ?? new Set();
     runs.add(row.runId);
     conditions.set(key, runs);
@@ -300,9 +353,9 @@ export function repeatedConditionLines({ caseRows, decisions }) {
   }
   let repeated = 0;
   for (const [key, runs] of conditions) {
-    const [inputs, pin, level] = key.split(" · ");
+    const [inputs, pin] = key.split(" · ");
     lines.push(
-      `inputs ${String(inputs).slice(0, 9)} · pin ${pin} · level ${level}: ${runs.size} batter${runs.size === 1 ? "y" : "ies"}`,
+      `inputs ${String(inputs).slice(0, 9)} · pin ${pin}: ${runs.size} batter${runs.size === 1 ? "y" : "ies"}`,
     );
     if (runs.size > 1) {
       repeated += 1;
@@ -318,6 +371,39 @@ export function repeatedConditionLines({ caseRows, decisions }) {
 }
 
 // --- 4c: role spend and censoring -------------------------------------------------------------
+/** One run through `openRecordedRun`, or the reason its opening or terminal was refused. */
+function recordedRunOrRefusal(campaign, runId) {
+  try {
+    return { run: openRecordedRun(campaign, runId), refusal: null };
+  } catch (error) {
+    return { run: null, refusal: errorMessage(error) };
+  }
+}
+
+/**
+ * The run's provider spend, from the terminal snapshot the controller reader joined to its
+ * opening. The opening snapshot is taken before the first turn, so standing in for a missing
+ * terminal it would print a live or cut-short run as having spent nothing of its cap.
+ */
+function spendLines(run, controller) {
+  if (controller.state !== "recorded") {
+    return [`${run}: no terminal recorded — provider spend unobservable until the controller settles`];
+  }
+  const budget = controller.providerResourceBudget?.terminal ?? null;
+  if (budget === null) return [`${run}: no provider resource budget recorded`];
+  const { byRole: roles, usage } = budget;
+  const lines = [
+    `${run}: provider turns ${budget.used} of cap ${budget.cap} · builder ${roles.builder} · built ${roles.built} · review ${roles.review}` +
+      ` · reported ${usage.reportedTurns} unreported ${usage.unreportedTurns} · tokens ${usage.totalTokens ?? "null"} · costUsd ${usage.costUsd ?? "null"}`,
+  ];
+  if (roles.review > roles.built) {
+    lines.push(
+      `  REVIEW TURNS EXCEED SOLVER TURNS (angle 28 trigger): review ${roles.review} > built ${roles.built}`,
+    );
+  }
+  return lines;
+}
+
 export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
   const lines = ["", "## 4c role spend and censoring (controller terminal, battery non-results)"];
   const controllerDir = join(campaign, "controller");
@@ -330,25 +416,17 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
   if (runDirs.length === 0) lines.push("no controller records");
   let explicitExhaustion = 0;
   for (const dir of runDirs) {
-    const terminal = readJsonFileOrNull(join(dir, "terminal.json"));
-    const opening = readJsonFileOrNull(join(dir, "opening.json"));
-    const budget = terminal?.providerResourceBudget ?? opening?.providerResourceBudget ?? null;
-    if (budget === null) {
-      lines.push(`${basename(dir)}: no provider resource budget recorded`);
-    } else {
-      const roles = budget.byRole ?? {};
-      const usage = budget.usage ?? {};
-      lines.push(
-        `${basename(dir)}: provider turns ${budget.used ?? "?"} of cap ${budget.cap ?? "?"} · builder ${roles.builder ?? "?"} · built ${roles.built ?? "?"} · review ${roles.review ?? "?"}` +
-          ` · reported ${usage.reportedTurns ?? "?"} unreported ${usage.unreportedTurns ?? "?"} · tokens ${usage.totalTokens ?? "null"} · costUsd ${usage.costUsd ?? "null"}`,
-      );
-      if (isNumber(roles.review) && isNumber(roles.built) && roles.review > roles.built) {
-        lines.push(
-          `  REVIEW TURNS EXCEED SOLVER TURNS (angle 28 trigger): review ${roles.review} > built ${roles.built}`,
-        );
-      }
+    const runId = basename(dir);
+    const { run, refusal } = recordedRunOrRefusal(campaign, runId);
+    const controllerError = refusal ?? run.controllerError;
+    if (controllerError !== null) {
+      lines.push(`${runId}: CONTROLLER EVIDENCE REFUSED — ${controllerError}`);
+      continue;
     }
-    for (const step of Array.isArray(terminal?.absentSteps) ? terminal.absentSteps : []) {
+    const controller = run.controller;
+    lines.push(...spendLines(runId, controller));
+    if (controller.state !== "recorded") continue;
+    for (const step of controller.absentSteps) {
       const cls = exhaustionClass(step);
       const head = String(step).split(/[—:]/)[0].trim().slice(0, 40);
       if (cls === "explicit-exhaustion") {
@@ -362,9 +440,7 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
         );
       } else lines.push(`  absent step "${head}": ${cls}`);
     }
-    if (isString(terminal?.terminalReason)) {
-      lines.push(`  terminal: ${terminal.terminalReason.split(":")[0]}`);
-    }
+    lines.push(`  terminal: ${controller.terminalReason.split(":")[0]}`);
   }
   const censored = [];
   for (const tally of tallies) {
@@ -410,7 +486,7 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
           : "PROVIDER NON-RESULTS UNEXPLAINED — investigate; a generic failure is not proof of exhaustion";
     censored.push(tally.runId);
     lines.push(
-      `${tally.runId}: graded ${tally.graded} · provider non-results ${tally.providerNonResult} (${[...classes.entries()].map(([cls, count]) => `${cls} ${count}`).join(", ") || "battery rows unavailable"})` +
+      `${tally.runId}: graded ${tally.verified} · provider non-results ${tally.providerNonResult} (${[...classes.entries()].map(([cls, count]) => `${cls} ${count}`).join(", ") || "battery rows unavailable"})` +
         ` · first ${starts[0] ?? "?"} last ${ends.at(-1) ?? "?"} · ${label}`,
     );
     const mistyped = provider.filter((row) => row.runtimeNonResultKind !== "provider").length;
@@ -518,16 +594,13 @@ export function builderMemoryLines({ epochDirs }) {
 }
 
 // --- row I: served-model attestation ----------------------------------------------------------
+/** `runtime-model-identity/v2` is the only identity `pi-session.ts` writes, and the claim's own
+ *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same. */
 function identityAttestation(identity) {
-  if (identity?.schema === "runtime-model-identity/v2") {
-    const model = identity.provider?.model ?? null;
-    const resultId = identity.provider?.resultId ?? null;
-    return { attested: isString(model) && isString(resultId), model };
-  }
-  const usage = Array.isArray(identity?.modelUsageModels)
-    ? identity.modelUsageModels.filter((value) => isString(value))
-    : [];
-  return { attested: usage.length > 0, model: usage[0] ?? null };
+  if (identity?.schema !== "runtime-model-identity/v2") return { attested: false, model: null };
+  const model = identity.provider?.model ?? null;
+  const resultId = identity.provider?.resultId ?? null;
+  return { attested: isString(model) && isString(resultId), model };
 }
 
 export function servedModelLines({ campaign, tallies, batteryOf }) {
@@ -537,8 +610,9 @@ export function servedModelLines({ campaign, tallies, batteryOf }) {
     return lines;
   }
   for (const tally of tallies) {
-    const opening = readJsonFileOrNull(join(campaign, "controller", baseRunId(tally.runId), "opening.json"));
-    const configured = opening?.modelSlots?.built?.model ?? null;
+    const { run } = recordedRunOrRefusal(campaign, controllerRunOfBattery(tally.runId));
+    const pinned = run?.opening.modelSlots?.built?.model;
+    const configured = isString(pinned) ? pinned : null;
     const battery = batteryOf(tally.runId);
     const cases = Array.isArray(battery?.cases) ? battery.cases : null;
     if (cases === null) {

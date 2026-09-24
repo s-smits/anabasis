@@ -1,17 +1,15 @@
 #!/usr/bin/env bun
 // One editable run overview for every review lane. `buildOverview` derives it from recorded bytes
-// (snapshot status, controller terminal, harness evolution, digest trigger rows, scan findings and
+// (snapshot status and the terminal trace-review read through the controller's strict reader, harness evolution, digest trigger rows, scan findings and
 // the category/hook census) so the lanes get the same orientation even when the default outcome
 // view refused the run. It is the byte source for `shared-instructions.json` (see
-// shared-instructions.mjs), which is the file the primary edits before launch.
-//
-//   bun run-overview.mjs --snapshot <absolute dir> [--out <absolute file>]
+// shared-instructions.mjs), which is the file the primary edits before launch; `wri.mjs collect`
+// writes both.
 
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { hasText } from "#src/meta/text.ts";
+import { asRecord } from "#src/meta/json-shape.ts";
+import { isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { absoluteOption, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 
 export const OVERVIEW_SCHEMA = "wri-run-overview/v1";
@@ -31,33 +29,6 @@ export function digestTriggers(digest) {
     groups.set(name, group);
   }
   return [...groups.values()];
-}
-
-function terminalFacts(terminal) {
-  if (!terminal) return { state: "unavailable", reason: "controller terminal.json is absent or unreadable" };
-  const budget = asRecord(terminal.providerResourceBudget);
-  const denominator = asRecord(terminal.denominator);
-  return {
-    state: "recorded",
-    outcome: terminal.outcome ?? null,
-    abortClause: terminal.abortClause ?? null,
-    reason: terminal.terminalReason ?? null,
-    epoch: terminal.epoch ?? null,
-    lastIteration: terminal.lastIteration ?? null,
-    iterations: Array.isArray(terminal.iterations) ? terminal.iterations.length : null,
-    denominator: denominator
-      ? {
-          state: denominator.state ?? null,
-          total: denominator.total ?? null,
-          verified: denominator.verified ?? null,
-          unaccepted: denominator.unaccepted ?? null,
-          nonResults: denominator.nonResults ?? null,
-        }
-      : null,
-    providerBudget: budget
-      ? { cap: budget.cap ?? null, used: budget.used ?? null, byRole: budget.byRole ?? null }
-      : null,
-  };
 }
 
 function evolutionFacts(evolution) {
@@ -89,6 +60,7 @@ function evolutionFacts(evolution) {
 
 function viewStates(status) {
   const views = Array.isArray(status?.views) ? status.views : [];
+  /** @type {{ ok: string[], failed: string[], unsupported: string[] }} */
   const byState = { ok: [], failed: [], unsupported: [] };
   for (const view of views) {
     const bucket = view.status === "ok" ? "ok" : view.status === "unsupported" ? "unsupported" : "failed";
@@ -102,9 +74,6 @@ export function buildOverview(snapshotDir) {
   const dir = resolve(snapshotDir);
   const status = readJsonFileOrNull(join(dir, "snapshot-status.json"));
   if (status === null) throw new Error(`no readable snapshot-status.json under ${dir}`);
-  const openingPath = asRecord(status.opening)?.path;
-  const controllerDir = isString(openingPath) ? dirname(openingPath) : null;
-  const terminal = hasText(controllerDir) ? readJsonFileOrNull(join(controllerDir, "terminal.json")) : null;
   const scan = readJsonFileOrNull(join(dir, `${status.runIds?.[0]}-scan.txt`));
   const timeline = readJsonFileOrNull(join(dir, "timeline.json"));
   const facts = asRecord(status.facts) ?? {};
@@ -127,7 +96,7 @@ export function buildOverview(snapshotDir) {
       complete: status.complete === true,
       views: viewStates(status),
     },
-    terminal: terminalFacts(terminal),
+    terminal: facts.terminal ?? { state: "unavailable", reason: "the snapshot recorded no terminal facts" },
     terminalAccounting: facts.terminalAccounting ?? null,
     evolution: evolutionFacts(readJsonFileOrNull(join(dir, "harness-evolution.json"))),
     digestTriggers: digestTriggers(existsSync(digestPath) ? readFileSync(digestPath, "utf8") : ""),
@@ -154,37 +123,20 @@ export function readOverview(path) {
 }
 
 /**
- * A one-input script's command line: the absolute path after `--<input>`, or `usage` and exit 2;
- * then the JSON `build` makes of it, written to the absolute `--out` path and announced as
- * `<label> written to <path>`, or printed when `--out` is absent.
+ * A one-input script's command line: the absolute path after `--<input>`, then the JSON `build`
+ * makes of it, written to the absolute `--out` path and announced as `<label> written to <path>`,
+ * or printed when `--out` is absent.
  */
-export function runJsonScript(input, usage, build, label) {
-  const argv = Bun.argv.slice(2);
-  const value = (name) => {
-    const index = argv.indexOf(`--${name}`);
-    return index === -1 ? null : (argv[index + 1] ?? null);
-  };
-  const path = value(input);
-  if (!path || !isAbsolute(path)) {
-    console.error(usage);
-    runtimeProcess.exit(2);
-  }
-  const result = build(path);
-  const out = value("out");
-  if (!out) {
+export function runJsonScript(script, input, build, label) {
+  const die = exitWith(script);
+  const { single } = parseOrDie(die, { values: [input, "out"] });
+  const absolute = absoluteOption(die);
+  const result = build(absolute(input, requiredOption(die, single)(input)));
+  const out = single.get("out");
+  if (out === undefined) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
-  if (!isAbsolute(out)) throw new Error("--out must be an absolute path");
-  writeJsonFile(out, result);
+  writeJsonFile(absolute("out", out), result);
   console.log(`${label} written to ${out}`);
-}
-
-if (import.meta.main) {
-  runJsonScript(
-    "snapshot",
-    "usage: run-overview.mjs --snapshot <absolute dir> [--out <absolute file>]",
-    buildOverview,
-    "overview",
-  );
 }

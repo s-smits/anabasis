@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   buildSourceDelta,
   renderSourceDelta,
-  // @ts-expect-error plain-JS skill script without type declarations
 } from "../.claude/skills/whole-run-investigation/scripts/source-delta.mjs";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -74,9 +73,9 @@ describe("source-delta reach", () => {
     dirs.push(root);
     campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
-    mkdirSync(join(current, "safeguards", "run-b-i01"), { recursive: true });
+    mkdirSync(join(current, "safeguards", "run-b-i02"), { recursive: true });
     writeFileSync(
-      join(current, "safeguards", "run-b-i01", "SAFEGUARDS_LOG.txt"),
+      join(current, "safeguards", "run-b-i02", "SAFEGUARDS_LOG.txt"),
       "2026-09-02T01:00:00.000Z | old-one | detail\n2026-09-02T01:00:01.000Z | elsewhere | detail\n",
     );
 
@@ -89,7 +88,7 @@ describe("source-delta reach", () => {
       "starters/card.md",
     ]);
     const loop = delta.changed.find((entry: { path: string }) => entry.path === "src/run/loop.ts");
-    expect(loop.newSafeguardIds).toEqual(["new-one"]);
+    expect(loop?.newSafeguardIds).toEqual(["new-one"]);
     expect(delta.safeguards).toEqual([
       { id: "new-one", state: "unreached", firings: 0 },
       { id: "old-one", state: "fired", firings: 1 },
@@ -101,6 +100,37 @@ describe("source-delta reach", () => {
     expect(text).toContain("UNREACHED CHANGED SAFEGUARDS (angle 31 trigger): new-one");
     expect(text).toContain("MODEL-VISIBLE SURFACE CHANGED (angle 12 trigger): starters/card.md");
     expect(text).not.toContain("safeguardTriggered(");
+  });
+
+  it("reads a sibling campaign's latest run by its opening instant, not its directory name", () => {
+    const { repo, older, newer } = repoWithTwoCommits();
+    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
+    dirs.push(root);
+    const previous = campaign(root, "lane-1", "run-10", older, "2026-09-02T00:00:00.000Z");
+    campaign(root, "lane-1", "run-9", newer, "2026-09-01T00:00:00.000Z");
+    const current = campaign(root, "lane-2", "run-b", newer, "2026-09-03T00:00:00.000Z");
+    // By name `run-9` is last, and it was opened first; its commit equals the current one, so the
+    // old name order reported an identical source where the recorded latest run differs.
+    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo, previous });
+    expect(delta.previousCommit).toBe(older);
+    expect(delta.state).toBe("resolved");
+  });
+
+  it("counts a safeguard log only for this run's canonical iterations", () => {
+    const { repo, older, newer } = repoWithTwoCommits();
+    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
+    dirs.push(root);
+    campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
+    const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
+    for (const name of ["run-b-i02", "run-b-ix"]) {
+      mkdirSync(join(current, "safeguards", name), { recursive: true });
+      writeFileSync(
+        join(current, "safeguards", name, "SAFEGUARDS_LOG.txt"),
+        "2026-09-02T01:00:00.000Z | old-one | detail\n",
+      );
+    }
+    const delta = buildSourceDelta({ campaign: current, runId: "run-b", repo });
+    expect(delta.safeguards).toContainEqual({ id: "old-one", state: "fired", firings: 1 });
   });
 
   it("reports unresolved sources instead of guessing and identical sources as no delta", () => {

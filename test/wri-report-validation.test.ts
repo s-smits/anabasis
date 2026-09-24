@@ -111,7 +111,7 @@ describe("WRI report validation", () => {
     });
   });
 
-  it("binds a current Luna collection and matching legacy names but rejects a mixed pair", () => {
+  it("binds a current Luna collection and refuses the retired luna_lanes record names", () => {
     const f = fixture();
     const instructions = join(f.dir, "instructions.md");
     writeFileSync(instructions, "shared instructions\n");
@@ -209,17 +209,18 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
 
     const launch = JSON.parse(readFileSync(launchPath, "utf8"));
     const summary = JSON.parse(readFileSync(f.summary, "utf8"));
+    // No launcher writes the luna_lanes names any more, so neither record type is read.
     launch.type = "luna_lanes.launch";
-    summary.type = "luna_lanes.completed";
     writeFileSync(launchPath, JSON.stringify(launch));
-    writeFileSync(f.summary, JSON.stringify(summary));
-    expect(run(f.tasks, f.summary).status).toBe(0);
-
-    launch.type = "luna_sessions.launch";
-    writeFileSync(launchPath, JSON.stringify(launch));
-    const mixed = run(f.tasks, f.summary);
-    expect(mixed.status).toBe(1);
+    const retiredLaunch = run(f.tasks, f.summary);
+    expect(retiredLaunch.status).toBe(1);
     expect(JSON.parse(readFileSync(f.result, "utf8")).launchBinding.state).toBe("invalid");
+
+    summary.type = "luna_lanes.completed";
+    writeFileSync(f.summary, JSON.stringify(summary));
+    const retiredSummary = run(f.tasks, f.summary);
+    expect(retiredSummary.status).toBe(2);
+    expect(retiredSummary.stderr).toContain("summary.json is not a completed Luna summary");
   });
 
   it("rejects a present but stale Luna launch record", () => {
@@ -227,7 +228,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     writeFileSync(
       join(f.output, "launch.json"),
       JSON.stringify({
-        type: "luna_lanes.launch",
+        type: "luna_sessions.launch",
         outputDir: f.output,
         sessions: [{ name: "wrong", promptSha256: "a".repeat(64) }],
       }),
@@ -259,7 +260,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
       f.summary,
       JSON.stringify({
         schemaVersion: 1,
-        type: "luna_lanes.completed",
+        type: "luna_sessions.completed",
         outputDir: f.output,
         sessions: [{ name: "angle_05", status: "failed", exitCode: 1, reportPath: outside }],
       }),
@@ -278,7 +279,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
       f.summary,
       JSON.stringify({
         schemaVersion: 1,
-        type: "luna_lanes.completed",
+        type: "luna_sessions.completed",
         outputDir: f.output,
         sessions: [{ name: "angle_06", status: "completed", exitCode: 0, reportPath: f.report }],
       }),
@@ -349,6 +350,13 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     expect(missing.stderr).toContain("cover every active angle exactly once");
   });
 
+  it("refuses a misspelled flag before reading anything", () => {
+    const f = fixture();
+    const result = spawnTextSync(Bun.argv[0]!, [script, "--tasks", f.tasks, "--sumary", f.summary]);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`unknown option "--sumary"`);
+  });
+
   it("writes a structured refusal receipt when the summary is missing", () => {
     const f = fixture();
     rmSync(f.summary);
@@ -375,7 +383,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
       f.summary,
       JSON.stringify({
         schemaVersion: 1,
-        type: "luna_lanes.completed",
+        type: "luna_sessions.completed",
         outputDir: f.output,
         sessions: [{ name: "devil", status: "completed", exitCode: 0, reportPath: f.report }],
       }),
@@ -428,7 +436,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
       f.summary,
       JSON.stringify({
         schemaVersion: 1,
-        type: "luna_lanes.completed",
+        type: "luna_sessions.completed",
         outputDir: f.output,
         sessions: [
           { name: "angle_05", status: "completed", exitCode: 0, reportPath: f.report },

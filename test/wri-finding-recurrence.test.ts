@@ -5,9 +5,8 @@ import {
   laneKey,
   orderKey,
   renderRecurrence,
-  // @ts-expect-error plain-JS skill script without type declarations
 } from "../.claude/skills/whole-run-investigation/scripts/finding-recurrence.mjs";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -135,5 +134,37 @@ describe("finding recurrence across archives", () => {
     const report = compareArchives(current, [only]);
     expect(report.angles[0]).toMatchObject({ classification: "recurring", streak: 2, sourceChanged: true });
     expect(renderRecurrence(report)).toContain("angle 25: no trigger");
+  });
+  /**
+   * The command line used to be read by `indexOf`, so `--out --json` wrote the report to a file
+   * called `--json` and a misspelled `--lnae` was ignored while the default lane ran. Both now
+   * refuse before anything is read or written.
+   */
+  it("refuses a misspelled option and an option taken as the previous one's value", () => {
+    const root = mkdtempSync(join(tmpdir(), "ana-recurrence-"));
+    dirs.push(root);
+    archive(root, "now", "truss-sol-20260908T100000000Z-eeeeee", "rev1", { 5: "risk" });
+    const script = join(
+      import.meta.dir,
+      "..",
+      ".claude/skills/whole-run-investigation/scripts/finding-recurrence.mjs",
+    );
+    const run = (...extra: string[]) =>
+      Bun.spawnSync(
+        [Bun.argv[0] ?? "bun", script, "--current", join(root, "now"), "--archives", root, ...extra],
+        {
+          cwd: root,
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+    const swallowed = run("--out", "--json");
+    expect(swallowed.exitCode).toBe(2);
+    expect(swallowed.stderr.toString()).toContain('finding-recurrence: option "--out" needs a value');
+    expect(existsSync(join(root, "--json"))).toBe(false);
+    const misspelled = run("--lnae", "truss-sol");
+    expect(misspelled.exitCode).toBe(2);
+    expect(misspelled.stderr.toString()).toContain('unknown option "--lnae"');
+    expect(run("--json").exitCode).toBe(0);
   });
 });

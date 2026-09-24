@@ -29,8 +29,9 @@ Angles 15 and 36 are always alone. The script refuses incompatible groups instea
 and the three model slots from `opening.json`, and prove every projection describes that same run.
 
 **B. Claim, replacement and promotion.** Say whether each claim could be created and whether
-anything actually replaced the adopted harness; classify each promotion by its experiment and read
-the `progress-guard` yield row before crediting the guard.
+anything actually replaced the adopted harness, and classify each promotion by its experiment. The
+guard that once gated a promotion is not part of this loop, so a run recorded under it is read from
+its own archive rather than from a yield row.
 
 **C. Workspace starter package, change evidence and Git ancestry.** Check a fresh workspace
 committed the starter package and that the change evidence describes the tree it really produced.

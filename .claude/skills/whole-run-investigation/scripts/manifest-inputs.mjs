@@ -1,10 +1,17 @@
+import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readFileSync, realpathSync } from "#src/meta/filesystem.ts";
 import { isBoolean, isString } from "#src/meta/json-shape.ts";
 import { homedir } from "#src/meta/os.ts";
 import { isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { ANGLE_COUNT, DETERMINISTIC_ROWS, ISOLATED_ANGLES } from "./catalogue-shape.mjs";
+import { exitWith } from "#skills/main/cli.ts";
+import { gitText } from "#skills/main/git.ts";
+import {
+  ANGLE_COUNT,
+  DETERMINISTIC_ROWS,
+  GIT_SHA,
+  ISOLATED_ANGLES,
+  SHA256 as SHA_256,
+} from "./catalogue-shape.mjs";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 
 export const ORIENTATION_HEADING = "orientation";
@@ -13,8 +20,6 @@ const ORIENTATION_MAX_LINES = 20;
 const ANGLE_HEADING = /^\*\*(\d+)\.\s+(.+?)\*\*/;
 const DETERMINISTIC_ROW_HEADING = /^\*\*([A-I])\.\s+(.+?)\*\*/;
 const DETERMINISTIC_SESSION_HEADING = /^\*\*session\s+\d+\b.*\*\*/i;
-const SHA_256 = /^[0-9a-f]{64}$/;
-const GIT_SHA = /^[0-9a-f]{40}$/;
 const REQUIRED_SHARED_VIEWS = ["digest", "review-yield", "builder"];
 const REQUIRED_RUN_VIEWS = [
   "default",
@@ -32,10 +37,7 @@ export const BLINDED_PAIRS = [
   ["angle_19", "angle_20"],
 ];
 
-export function manifestFail(message) {
-  console.error(`build-manifest: ${message}`);
-  runtimeProcess.exit(2);
-}
+export const manifestFail = exitWith("build-manifest");
 
 function slug(title) {
   return title
@@ -374,7 +376,7 @@ export function referenceIdentity(root) {
   if (!existsSync(root)) manifestFail(`--consumer-hardware: no reference tree at ${root}`);
   const git = (...args) => {
     try {
-      return runTextSyncOrThrow(["git", "-C", root, ...args]).trim();
+      return gitText(root, ...args);
     } catch (error) {
       manifestFail(`--consumer-hardware: git ${args.join(" ")} failed under ${root}: ${error.message}`);
     }
@@ -396,14 +398,6 @@ export function retiredAngles(skill) {
   return retired;
 }
 
-function readJson(path, label) {
-  try {
-    return readJsonFile(path);
-  } catch (error) {
-    manifestFail(`could not read ${label} at ${path}: ${error.message}`);
-  }
-}
-
 function snapshotLabels(runIds) {
   return [
     ...REQUIRED_SHARED_VIEWS,
@@ -422,7 +416,7 @@ function snapshotViewFile(dir, view) {
   if (!existsSync(path)) manifestFail(`snapshot view ${view.label} names a missing file: ${path}`);
   const bytes = readFileSync(path);
   const actualBytes = bytes.byteLength;
-  const actualSha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  const actualSha256 = sha256(bytes);
   if (actualBytes !== view.bytes) {
     manifestFail(
       `snapshot view ${view.label} byte count drifted: expected ${view.bytes}, received ${actualBytes}`,
@@ -491,22 +485,14 @@ function verifyWorktree(status, expectedWorktree = null) {
   }
   let head;
   try {
-    head = runTextSyncOrThrow(["git", "-C", status.worktree.path, "rev-parse", "HEAD"]).trim();
+    head = gitText(status.worktree.path, "rev-parse", "HEAD");
   } catch (error) {
     manifestFail(`could not resolve snapshot worktree HEAD: ${error.message}`);
   }
   if (head !== status.worktree.head) {
     manifestFail(`worktree HEAD drifted: expected ${status.worktree.head}, received ${head}`);
   }
-  const dirty =
-    runTextSyncOrThrow([
-      "git",
-      "-C",
-      status.worktree.path,
-      "status",
-      "--porcelain",
-      "--untracked-files=no",
-    ]).trim().length > 0;
+  const dirty = gitText(status.worktree.path, "status", "--porcelain", "--untracked-files=no").length > 0;
   if (dirty !== status.worktree.dirty) {
     manifestFail(
       `snapshot worktree dirty flag drifted: expected ${status.worktree.dirty}, received ${dirty}`,
@@ -518,11 +504,11 @@ function verifyWorktree(status, expectedWorktree = null) {
 /** The Bun release the measured worktree pins in package.json `engines.bun`. Reading the pin from
  *  the tree keeps a Bun upgrade to one edit; a snapshot taken with another Bun ran the outcome
  *  readers on a runtime the run never used. */
-export function measuredBunPin(worktreePath) {
+function measuredBunPin(worktreePath) {
   if (!isString(worktreePath)) manifestFail("snapshot worktree path must be a string");
   const manifestPath = join(worktreePath, "package.json");
   if (!existsSync(manifestPath)) manifestFail(`measured worktree has no package.json at ${manifestPath}`);
-  const pin = readJson(manifestPath, "package.json")?.engines?.bun;
+  const pin = readJsonFile(manifestPath)?.engines?.bun;
   if (!isString(pin) || !/^\d+\.\d+\.\d+$/.test(pin)) {
     manifestFail(
       `measured worktree package.json must pin engines.bun as x.y.z; received ${pin ?? "missing"}`,
@@ -538,7 +524,7 @@ export function loadSnapshot(dir, expectedWorktree = null) {
   if (!existsSync(statusPath)) {
     manifestFail(`no snapshot-status.json under ${dir}; run trace-review.mjs first`);
   }
-  const status = readJson(statusPath, "snapshot-status.json");
+  const status = readJsonFile(statusPath);
   if (status.schema !== "outcome-snapshot-status/v2") {
     manifestFail(
       `snapshot schema must be outcome-snapshot-status/v2; received ${status.schema ?? "missing"}`,
@@ -582,7 +568,7 @@ export function loadSnapshot(dir, expectedWorktree = null) {
   const runId = status.runIds?.[0] ?? null;
   const view = (mode) => {
     const label = runId ? `${runId}-${mode}` : mode;
-    return byLabel.has(label) ? readJson(byLabel.get(label), label) : null;
+    return byLabel.has(label) ? readJsonFile(byLabel.get(label)) : null;
   };
   return {
     dir,
@@ -640,55 +626,26 @@ function factValue(value, fallback = "not recorded") {
   return isString(value) ? value : String(value);
 }
 
-function batteryCounts(report) {
-  return Object.values(report.batteries ?? {}).reduce(
-    (counts, battery) => ({
-      raw: counts.raw + (Number.isInteger(battery.cases?.total) ? battery.cases.total : 0),
-      real:
-        counts.real +
-        (Number.isInteger(battery.cases?.total) ? battery.cases.total : 0) -
-        (Number.isInteger(battery.cases?.nonResults?.total) ? battery.cases.nonResults.total : 0),
-    }),
-    { raw: 0, real: 0 },
-  );
-}
-
 /**
- * The controller report predates the WRI terminal-accounting contract. Keep the labels in every
- * prompt, and prefer the trace-review projection when it is present; an absent value is stated as
- * unavailable rather than quietly turning a case count or a campaign charge into a candidate
- * count. This is deliberately a presentation helper, not a second ledger.
+ * The terminal accounting trace-review projected from the controller's strict reader, stated as it
+ * was recorded. Nothing is re-derived here: when that reader refused the run the refusal is the
+ * fact, and an absent value reads as not recorded rather than as a count summed from the views.
  */
-function terminalAccountingLines(snapshot, report, scorecard) {
+function terminalAccountingLines(snapshot) {
   const projected = snapshot.status.facts?.terminalAccounting ?? {};
-  const controller = report.controller ?? {};
-  const scorecardController = scorecard?.reach?.controller ?? {};
-  const batteries = batteryCounts(report);
-  const completed =
-    projected.completedRounds ??
-    (Array.isArray(controller.iterations) ? controller.iterations.length : undefined);
-  const cap =
-    projected.outerCap ??
-    (isString(controller.terminalReason)
-      ? controller.terminalReason.match(/round cap (\d+)/)?.[1]
-      : undefined);
   const calls = projected.authorCalls ?? {};
   const counts = projected.counts ?? {};
   const parents = projected.parents ?? {};
-  const lastAuthoring = scorecard?.reach?.lastAuthoring;
-  const lastParent = parents.lastCandidate ?? lastAuthoring?.workspaceCommit ?? controller.lastIteration;
-  const adoptedParent = parents.adopted;
-  const acceptedParent = parents.accepted;
-  const raw = counts.raw ?? (batteries.raw > 0 ? batteries.raw : undefined);
-  const real = counts.real ?? (batteries.raw > 0 ? batteries.real : undefined);
-  const controllerEvents =
-    counts.controller ??
-    (Array.isArray(scorecardController.iterations) ? scorecardController.iterations.length : undefined);
+  const refused =
+    projected.controller?.state === "refused"
+      ? [`- Controller evidence refused by its strict reader: ${factValue(projected.controller.error)}.`]
+      : [];
   return [
-    `- Terminal accounting: outer-controller cap ${factValue(cap, "uncapped or not recorded")}; completed controller rounds ${factValue(completed)}.`,
+    ...refused,
+    `- Terminal accounting: outer-controller cap ${factValue(projected.outerCap, "uncapped or not recorded")}; completed controller rounds ${factValue(projected.completedRounds)}.`,
     `- Durable campaign budget / author-call charge: budget ${factValue(calls.budget, "not recorded")}, opening ${factValue(calls.opening)}, terminal ${factValue(calls.terminal)}, delta ${factValue(calls.delta)}; charge unit ${factValue(calls.unit, "completed authoring/session-call attempts")}.`,
-    `- Event counts (keep these meanings separate): raw ${factValue(raw)}; real ${factValue(real)}; controller-terminal ${factValue(controllerEvents)}.`,
-    `- Parent identities: last candidate ${factValue(lastParent)}; adopted ${factValue(adoptedParent)}; accepted ${factValue(acceptedParent)}.`,
+    `- Event counts (keep these meanings separate): raw ${factValue(counts.raw)}; real ${factValue(counts.real)}; controller-terminal ${factValue(counts.controller)}.`,
+    `- Parent identities: last candidate ${factValue(parents.lastCandidate)}; adopted ${factValue(parents.adopted)}; accepted ${factValue(parents.accepted)}.`,
   ];
 }
 
@@ -699,7 +656,7 @@ function reportFactLines(report, scorecard, snapshot) {
     `- Terminal: \`${controller.state ?? "unknown"} (${controller.terminalReason ?? "no reason recorded"})\`${controller.abortClause ? `, abort clause \`${controller.abortClause}\`.` : "."}`,
     `- Recorded denominator (${denominator.state ?? "state unknown"}): ${denominator.total ?? "?"} total = ${denominator.verified ?? "?"} verified + ${denominator.unaccepted ?? "?"} unaccepted + ${denominator.nonResults ?? "?"} non-results. Case record: ${report.caseRecord ?? "unknown"}.`,
   ];
-  lines.push(...terminalAccountingLines(snapshot, report, scorecard));
+  lines.push(...terminalAccountingLines(snapshot));
   const authoring = scorecard?.reach?.lastAuthoring;
   if (authoring) {
     lines.push(

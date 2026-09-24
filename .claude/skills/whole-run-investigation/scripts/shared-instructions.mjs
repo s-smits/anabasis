@@ -11,15 +11,15 @@
 
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import { isAbsolute } from "#src/meta/path.ts";
-import { OVERVIEW_SCHEMA, readOverview, runJsonScript } from "./run-overview.mjs";
+import { OVERVIEW_SCHEMA } from "./run-overview.mjs";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 
-export const SHARED_SCHEMA = "wri-shared-instructions/v1";
-export const AUTHORED_VALUES = ["orientation", "movedVariable"];
+const SHARED_SCHEMA = "wri-shared-instructions/v1";
+const AUTHORED_VALUES = ["orientation", "movedVariable"];
 const TOKEN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
 
 /** The default template: one recorded-fact line per placeholder, in reading order. */
-export const DEFAULT_TEMPLATE = [
+const DEFAULT_TEMPLATE = [
   "{snapshot}",
   "{terminal}",
   "{denominator}",
@@ -56,20 +56,22 @@ function terminalValues(terminal) {
   }
   const d = terminal.denominator;
   const b = terminal.providerBudget;
-  const roles = b?.byRole
-    ? Object.entries(b.byRole)
-        .map(([role, used]) => `${role} ${used}`)
-        .join(", ")
-    : "no per-role split";
+  const budget =
+    b === null
+      ? ""
+      : `- Provider resource budget: ${b.used} of ${b.cap} turns used (${Object.entries(b.byRole)
+          .map(([role, used]) => `${role} ${used}`)
+          .join(", ")}).`;
   return {
     terminal: `- Terminal: ${code(terminal.outcome ?? "unknown")}${terminal.abortClause ? `, abort clause ${code(terminal.abortClause)}` : ""}; reason: ${terminal.reason ?? "none recorded"}.`,
-    denominator: d
-      ? `- Recorded denominator (${d.state ?? "state unknown"}): ${d.total ?? "?"} total = ${d.verified ?? "?"} verified + ${d.unaccepted ?? "?"} unaccepted + ${d.nonResults ?? "?"} non-results.`
-      : "",
+    denominator:
+      d === null
+        ? ""
+        : d.state === "invalid"
+          ? `- Recorded denominator: INVALID — ${d.error}.`
+          : `- Recorded denominator (${d.state ?? "state unknown"}): ${d.total ?? "?"} total = ${d.verified ?? "?"} verified + ${d.unaccepted ?? "?"} unaccepted + ${d.nonResults ?? "?"} non-results.`,
     iterations: `- Controller iterations: ${terminal.iterations ?? "?"}; last iteration ${code(terminal.lastIteration ?? "unknown")}; epoch ${code(terminal.epoch ?? "unknown")}.`,
-    budget: b
-      ? `- Provider resource budget: ${b.used ?? "?"} of ${b.cap ?? "uncapped"} turns used (${roles}).`
-      : "",
+    budget,
   };
 }
 
@@ -117,7 +119,7 @@ function scanValue(scan) {
 }
 
 /** Every placeholder value derived from the overview, plus the empty authored values. */
-export function overviewValues(overview) {
+function overviewValues(overview) {
   if (overview?.schema !== OVERVIEW_SCHEMA) throw new Error(`overview schema must be ${OVERVIEW_SCHEMA}`);
   const views = overview.snapshot?.views ?? { ok: [], failed: [], unsupported: [] };
   return {
@@ -182,13 +184,4 @@ export function readSharedInstructions(path) {
   }
   renderSharedInstructions(config);
   return config;
-}
-
-if (import.meta.main) {
-  runJsonScript(
-    "overview",
-    "usage: shared-instructions.mjs --overview <absolute overview.json> [--out <absolute file>]",
-    (path) => buildSharedInstructions(readOverview(path)),
-    "shared instructions",
-  );
 }

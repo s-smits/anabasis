@@ -47,6 +47,14 @@ describe("Bun-owned CI and Git hooks", () => {
     expect(worktreeScript).not.toMatch(/bun install(?! --frozen-lockfile)/);
   });
 
+  // The pre-push hook owns the per-push gate, so CI reads main once a day and skips an unchanged head.
+  it("runs CI on a daily schedule of main rather than on every push or pull request", () => {
+    expect(workflow).toMatch(/schedule:\n\s+(#.*\n\s+)*- cron: "\d+ \d+ \* \* \*"/u);
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toMatch(/^\s+(push|pull_request):/mu);
+    expect(workflow.match(/if: needs\.changed\.outputs\.run == 'true'/g)).toHaveLength(2);
+  });
+
   it("runs both repository hooks through the pinned Bun command family", () => {
     const hooks = `${preCommit}\n${prePush}`;
     expect(hooks).toContain("bun");

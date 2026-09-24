@@ -1,7 +1,13 @@
 # The composed gate on GitHub Actions: the same deterministic runtime, typecheck, lint and test
-# boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this runs
-# once a day on main, and on demand, to catch what only a clean runner shows. It is not a required
-# check, so a pull request merges without it.
+# boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this is not
+# a required check, so a pull request merges without it.
+#
+# It runs once a day against main rather than on every push or pull request, because the pre-push
+# hook already runs this gate on every source push, which catches nearly everything first. What only
+# CI shows is the Linux isolation (below) and a clean-runner install, and a daily reading of main
+# covers both. A day with no new commits on main costs nothing: the `changed` job compares main's
+# head with the last completed run's and skips both runners when they match. A manual dispatch
+# always runs, which is how to re-check a head whose daily run failed without a new commit.
 #
 # Both jobs use the stable release in .bun-version, shared with local setup and launch.
 #
@@ -16,14 +22,52 @@
 name: gate
 on:
   schedule:
-    # A scheduled run always checks out the default branch, so this is main as it stands that day.
+    # 03:17 UTC, off the top of the hour, where scheduled runs queue longest. A scheduled run always
+    # checks out the default branch, so this is main as it stands that day.
     - cron: "17 3 * * *"
   workflow_dispatch:
 concurrency:
   group: gate-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
 jobs:
+  changed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.compare.outputs.run }}
+    steps:
+      - id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        # The last completed run on main, failed or passed: a failed head is not retried daily,
+        # since nothing about it changed. A cancelled run read nothing, so it is passed over, and
+        # the run in progress is not completed, so it is never its own comparison.
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(gh run list --repo "$REPO" --workflow gate.yml --branch main --status completed \
+            --limit 20 --json headSha,conclusion \
+            --jq '[.[] | select(.conclusion != "cancelled")][0].headSha // ""')
+          if [ "$last" = "$HEAD_SHA" ]; then
+            echo "main is still at $HEAD_SHA, which the last completed run already read"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved from ${last:-no earlier run} to $HEAD_SHA"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   darwin:
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
     runs-on: macos-14
     timeout-minutes: 45
     steps:
@@ -45,6 +89,8 @@ jobs:
     # ordinary container withholds: measured 2026-08-07 on Docker 28.2.2, the baseline argv fails
     # with "Can't mount proc on /newroot/proc" without seccomp and CAP_SYS_ADMIN. A `container:`
     # job here would report an unavailable mechanism for every confined test.
+    needs: changed
+    if: needs.changed.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

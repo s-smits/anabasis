@@ -1087,12 +1087,7 @@ made multi-line. Also available: `bun run outcome` for read-only reports over re
 
 Run one gate at a time: two overlapping gates each took twice as long as one alone. When typecheck,
 lint, source-policy or complexity fails, the pre-push hook lists each finding as
-`<rule> <location> <message>`, and `prepare-commit-msg` appends them to the next commit on top of
-the failing one as `Gate-Fix` and `Gate-Finding` trailers. To see which rules agents keep breaking:
-
-```text
-git log origin/main --format='%(trailers:key=Gate-Finding,valueonly)' | awk 'NF {print $1}' | sort | uniq -c | sort -rn
-```
+`<rule> <location> <message>` and names the commit it failed on.
 
 | Changed files | While editing | Delivery proof |
 | --- | --- | --- |
@@ -1113,13 +1108,20 @@ the case that is missing. Batch small fixes under one owner. The normal pre-push
 lint, so run either separately only when it is the boundary that changed. Neither substitutes for
 behavioural proof.
 
-**A static gate failure is fixed forward** (operator decision 2026-09-21). Commit the work as it
-was written, and do not run lint or the policy steps first to clean it up. When the push gate fails
-on typecheck, lint, source-policy or complexity, nothing was pushed: leave the failing commit
-exactly as it is, make the fix the next commit directly on top, and push both together. Never
-amend, squash or rebase the failing commit away — the pair is the record of what the author got
-wrong, and merge commits carry both to main. A rule agents keep breaking is fixed at its owner,
-whether that is a prompt, a skill or the lint rule's own message, rather than in more fix commits.
+**Every published commit passes the gate on its own** (operator decision 2026-09-24, replacing the
+fix-forward rule of 2026-09-21). The history is read as well as run: an agent looking through it
+for how work is done here copies what it finds, and a red commit followed by its repair teaches it
+that pushing red is the way. So the pre-push hook checks out every earlier source-changing commit
+the push publishes and runs `bun run gate --static` over it — runtime, format, typecheck, lint,
+source-policy, complexity, and the test files near what that commit changed — then runs the whole
+gate once, on the tip. "Near" is `tools/runtime/affected-tests.ts`: a test within three imports
+of a changed file. Over the seventeen commits of one pull request that selected 26% of the suite at
+the median and 49% at p90; it bounds the cost, it has not been measured against the bugs it
+catches, and the tip's full suite is what backs it. A failure names the commit, and its fix goes into that commit rather than on
+top of it: `git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash
+<sha>~1`, or `git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no
+one anything. A rule agents keep breaking is fixed at its owner, whether that is a prompt, a skill
+or the lint rule's own message.
 
 **Shell commands and the guard.** Before sending a Bash command, scan every `$` in it: a `$VAR`,
 `$(…)` or `${…}` alongside `git`, after a `>`, or inside a heredoc triggers the `dcg` guard,

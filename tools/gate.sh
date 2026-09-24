@@ -2,7 +2,6 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd -P)
-cd "$root"
 
 # One failure spelling for every step, whatever its tool prints: tsc says `error TS2322`, oxlint
 # `Found 3 errors`, a refusing script Bun's lowercase `error:`. The pre-push hook repeats this line,
@@ -15,6 +14,21 @@ step() {
   echo "gate: step $name failed (exit $status)" >&2
   exit "$status"
 }
+
+# `--static <dir>` runs over a checkout of an earlier commit in a push: the steps that read its own
+# bytes, then only the test files near what it changed (`tools/runtime/affected-tests.ts` owns how
+# near), and not the ui build.
+# The pre-push hook gives every commit it publishes this pass and runs the whole gate once, on the
+# tip. The dependencies and the test selector come from this tree, because an older commit may not
+# carry the current ones.
+static=0
+tip=$root
+if [ "${1:-}" = --static ]; then
+  static=1
+  step setup sh "$tip/scripts/worktree.sh" setup "$2" >/dev/null
+  root=$2
+fi
+cd "$root"
 step runtime bun tools/runtime/check.ts
 # First, because it is the cheapest step and the one whose failure has a one-command fix:
 # `bun run format`. It reads the repository ignore list, so a run worktree's campaigns and
@@ -25,13 +39,23 @@ step format bun run format:check
 # below reports type-aware findings that are not there while hiding real ones — it used to
 # run after `ui`, which is where this install lived. It is a no-op once the tree is prepared.
 step ui-deps bun run ui:deps
-# One line per error with or without a terminal: the pre-push hook lifts these lines into
-# Gate-Finding trailers, and under a terminal tsc otherwise prints coloured frames.
+# One line per error with or without a terminal: the pre-push hook lifts these lines into its
+# findings, and under a terminal tsc otherwise prints coloured frames.
 step typecheck bun node_modules/typescript/bin/tsc --noEmit --pretty false
 step lint bun run lint
 step source-policy bun tools/loc/source-policy.ts
 # Cyclomatic ceiling with a shrink-only baseline; a failure names file:line, function and count.
 step complexity bun tools/loc/complexity-policy.ts
+if [ "$static" -eq 1 ]; then
+  parent=$(git rev-parse -q --verify HEAD^1 || git hash-object -t tree /dev/null)
+  affected=$(bun "$tip/tools/runtime/affected-tests.ts" --base "$parent")
+  if [ -n "$affected" ]; then
+    # Word splitting is the point: one test path per line, and no path in test/ holds a space.
+    # shellcheck disable=SC2086
+    step affected-tests bun run test -- $affected
+  fi
+  exit 0
+fi
 step ui bun run ui:gate
 # One owner for the test invocation: the `test` script runs the whole suite as one `bun test`
 # under its own output-idle wall, with two workers fewer than the cores and the slowest files

@@ -21,7 +21,6 @@ import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const repositoryRoot = join(import.meta.dir, "..");
 const hook = join(repositoryRoot, ".githooks", "pre-push");
-const prepareHook = join(repositoryRoot, ".githooks", "prepare-commit-msg");
 const fixture = mkdtempSync(join(tmpdir(), "ana-pre-push-routing-"));
 const fakeBin = join(fixture, "bin");
 
@@ -136,8 +135,7 @@ describe("pre-push proof routing", () => {
     expect(existsSync(result.marker)).toBe(false);
   });
 
-  // A static failure names every finding to the pusher and parks them for the fix commit on top,
-  // so the history pairs the failing commit with a repair that records what was wrong.
+  // A static failure names every finding to the pusher, and the fix goes into the commit it names.
   const lint = [
     "src/a.ts:2:10: error anti-slop(require-safety-comment-for-type-assertion): no SAFETY",
     "src/a.ts:1:30: error ana(unproven-unknown-parameter): never proved",
@@ -150,13 +148,6 @@ describe("pre-push proof routing", () => {
     "ana(unproven-unknown-parameter) src/a.ts:1:30 never proved",
     "oxlint(unused-directive) src/c.ts:1:1 Unused oxlint-disable directive (no problems were reported).",
   ];
-
-  function prepareMessage(text: string): string {
-    const file = join(fixture, "COMMIT_EDITMSG_TEST");
-    writeFileSync(file, text);
-    expect(spawnTextSync("sh", [prepareHook, file, "message"], { cwd: fixture }).status).toBe(0);
-    return readFileSync(file, "utf8");
-  }
 
   it("lists each static finding and says how to publish the fix", () => {
     const result = runHook(source, docs, "lint-failure-marker", lint);
@@ -176,26 +167,43 @@ describe("pre-push proof routing", () => {
     expect(terminal.stderr).toContain("\nsource-policy(file-size) src/b.ts 915 nonblank lines exceeds 888\n");
   });
 
-  it("appends the findings to the commit made on top of the failing one, and to no other", () => {
-    expect(runHook(source, docs, "lint-fix-marker", lint).status).toBe(1);
-    const fixed = prepareMessage("Fix the lint\n\nCo-Authored-By: A <a@localhost>\n");
-    const trailers = execTextSync("git", ["interpret-trailers", "--parse"], { cwd: fixture, stdin: fixed });
-    expect(trailers.trim().split("\n")).toEqual([
-      "Co-Authored-By: A <a@localhost>",
-      `Gate-Fix: lint ${source.slice(0, 9)}`,
-      ...findings.map((finding) => `Gate-Finding: ${finding}`),
-    ]);
-
-    const pending = join(fixture, ".git", "ana-gate", "fix-forward");
-    writeFileSync(pending, readFileSync(pending, "utf8").replace(source, base));
-    expect(prepareMessage("Unrelated work\n")).toBe("Unrelated work\n");
-  });
-
   it("asks for no fix commit when the failure is a test", () => {
     const tests = ["(fail) owner > counts [4.00ms]", " 1 fail", 'error: script "test" exited with code 1'];
     const result = runHook(source, docs, "test-failure-marker", tests.join("\n"));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("THE GATE FAILED");
     expect(result.stderr).not.toContain("DID NOT GO THROUGH");
+  });
+
+  // Last, because it moves HEAD: the tests above name `source` as the checked-out tree.
+  it("gates every earlier commit on its own and stops at the first that fails", () => {
+    writeFileSync(join(fixture, "src", "owner.ts"), "export const owner = 3;\n");
+    git("add", "src/owner.ts");
+    git("commit", "-qm", "second");
+    const second = git("rev-parse", "HEAD");
+    const calls = (marker: string): string[][] =>
+      readFileSync(marker, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => line.split("\t"));
+
+    const pass = runHook(second, docs, "per-commit-marker");
+    expect(pass.status).toBe(0);
+    expect(
+      calls(pass.marker).map(([, args, commit]) => [
+        args?.startsWith("run gate --static /") === true ? "static" : args,
+        commit,
+      ]),
+    ).toEqual([
+      ["static", source],
+      ["run gate", second],
+    ]);
+
+    const fail = runHook(second, docs, "per-commit-failure-marker", lint);
+    expect(fail.status).toBe(1);
+    expect(fail.stderr).toContain(`${source.slice(0, 9)} FAILS lint ON ITS OWN`);
+    for (const finding of findings) expect(fail.stderr).toContain(`\n${finding}\n`);
+    expect(fail.stderr).toContain(`git commit --fixup=${source.slice(0, 9)}`);
+    expect(calls(fail.marker)).toHaveLength(1);
   });
 });

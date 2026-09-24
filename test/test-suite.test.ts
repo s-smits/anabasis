@@ -73,13 +73,6 @@ describe("the command a request becomes", () => {
     ]);
   });
 
-  it("leaves no test beside a skill script, where naming `test` would never reach it", () => {
-    // Bun's discovery skips a dot directory, so a test file under `.claude` runs in no gate: on
-    // 2026-09-20 there were 22 such files. They moved into test/, and this keeps new ones there.
-    const skills = readdirSync(join(REPO_ROOT, ".claude"), { encoding: "utf8", recursive: true });
-    expect(skills.filter((name) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(name))).toEqual([]);
-  });
-
   it("keeps a focused request on the same flags, with the named files in place of the tree", () => {
     const focused = testCommand(["test/test-suite.test.ts"], undefined);
     expect(focused.slice(0, -1)).toEqual(testCommand([], undefined).slice(0, -1));

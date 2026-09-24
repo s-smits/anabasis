@@ -28,75 +28,49 @@ function writer(parameters: TSchema): AgentTool<never> {
   return double<AgentTool<never>>({ name: "write_report", description: "", parameters });
 }
 
-const loose = writer(
-  Type.Object({
-    findings: Type.Array(
-      Type.Object({
-        code: Type.String(),
-        tableId: Type.Union([Type.String(), Type.Null()]),
-      }),
-    ),
-  }),
-);
+const nullable = () => Type.Union([Type.String(), Type.Null()]);
+const findings = (tableId: TSchema) =>
+  Type.Object({ findings: Type.Array(Type.Object({ code: Type.String(), tableId })) });
 
+// The probe pairs every artifact-writer with the WHOLE artifact, and a non-strict Check ignores
+// undeclared properties, so the subset row keeps a writer from being charged with every null root it
+// never typed — a refusal whose only repair would be a writer schema rejecting the whole artifact.
 describe("absenceSpellingAdmitted", () => {
-  it("names the path where a writer allows two forms of absence, as in run w6", () => {
-    expect(absenceSpellingAdmitted(loose, artifact)?.path).toBe("findings[].tableId");
-  });
-
-  it("a narrowed string branch is clean — null stays the only way to state absence", () => {
-    const tight = writer(
-      Type.Object({
-        findings: Type.Array(
-          Type.Object({
-            code: Type.String(),
-            tableId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
-          }),
-        ),
-      }),
-    );
-    expect(absenceSpellingAdmitted(tight, artifact)).toBeNull();
-  });
-
-  it("an artifact with no null writes nothing to confuse — the check is silent", () => {
-    expect(
-      absenceSpellingAdmitted(loose, { findings: [{ code: "seat-conflict", tableId: "t3" }] }),
-    ).toBeNull();
-  });
-
-  it("a path the writer types as null-only is unambiguous, whatever the vocabulary says", () => {
-    const nullOnly = writer(Type.Object({ note: Type.Null() }));
-    expect(absenceSpellingAdmitted(nullOnly, { note: null })).toBeNull();
-  });
-
-  it("a top-level nullable root is probed like any other position", () => {
-    const root = writer(Type.Object({ note: Type.Union([Type.String(), Type.Null()]) }));
-    expect(absenceSpellingAdmitted(root, { note: null })?.path).toBe("note");
-  });
-
-  it("a tuple types its positions separately, so a clean first element cannot clear a loose second", () => {
-    const tuple = writer(
-      Type.Object({ rows: Type.Tuple([Type.Null(), Type.Union([Type.String(), Type.Null()])]) }),
-    );
-    expect(absenceSpellingAdmitted(tuple, { rows: [null, null] })?.path).toBe("rows[]");
-  });
-
-  // The probe pairs every artifact-writer with the WHOLE artifact, and a non-strict Check ignores
-  // undeclared properties, so without this a subset writer is charged with every null root it
-  // never typed and the only repair that clears the refusal is a writer schema that rejects the
-  // whole artifact.
-  it("does not charge a subset writer with a null root its schema never declares", () => {
-    const subset = writer(Type.Object({ summary: Type.String() }));
-    expect(absenceSpellingAdmitted(subset, { summary: "ok", tableId: null })).toBeNull();
-  });
-
-  it("walks past a clean null to the ambiguous one deeper in the artifact", () => {
-    const mixed = writer(
-      Type.Object({
-        head: Type.Null(),
-        body: Type.Object({ tail: Type.Union([Type.String(), Type.Null()]) }),
-      }),
-    );
-    expect(absenceSpellingAdmitted(mixed, { head: null, body: { tail: null } })?.path).toBe("body.tail");
+  it.each([
+    ["a writer allowing two forms of absence", findings(nullable()), artifact, "findings[].tableId"],
+    [
+      "a narrowed string branch",
+      findings(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+      artifact,
+      null,
+    ],
+    [
+      "an artifact with no null",
+      findings(nullable()),
+      { findings: [{ code: "seat-conflict", tableId: "t3" }] },
+      null,
+    ],
+    ["a null-only path", Type.Object({ note: Type.Null() }), { note: null }, null],
+    ["a top-level nullable root", Type.Object({ note: nullable() }), { note: null }, "note"],
+    [
+      "a loose second tuple position behind a clean first",
+      Type.Object({ rows: Type.Tuple([Type.Null(), nullable()]) }),
+      { rows: [null, null] },
+      "rows[]",
+    ],
+    [
+      "a subset writer beside a null root it never declares",
+      Type.Object({ summary: Type.String() }),
+      { summary: "ok", tableId: null },
+      null,
+    ],
+    [
+      "an ambiguous null deeper than a clean one",
+      Type.Object({ head: Type.Null(), body: Type.Object({ tail: nullable() }) }),
+      { head: null, body: { tail: null } },
+      "body.tail",
+    ],
+  ] as const)("%s names %p", (_name, parameters, written, path) => {
+    expect(absenceSpellingAdmitted(writer(parameters), written)?.path ?? null).toBe(path);
   });
 });

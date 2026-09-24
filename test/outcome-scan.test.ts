@@ -151,14 +151,15 @@ describe("the anomaly scan", () => {
     expect(scan.findings[0]?.statement).toMatch(/25\/25 = 1\.00 is a ceiling effect/);
   });
 
-  it("a rate inside the band is not a finding", () => {
-    expect(rules(scanOutcome(report(battery({ runId: "b", passed: 8, n: 25 })), THRESHOLDS))).toEqual([]);
-  });
-
-  it("a point rate above the band whose Wilson interval still overlaps it is not a finding", () => {
-    // 20/25 = 0.80 sits above the 0.75 ceiling, but [0.61, 0.91] overlaps the band and the
-    // difficulty selector holds. The scan reads the bounds the selector reads.
-    expect(rules(scanOutcome(report(battery({ runId: "b", passed: 20, n: 25 })), THRESHOLDS))).toEqual([]);
+  // 20/25 = 0.80 sits above the 0.75 ceiling, but [0.61, 0.91] overlaps the band; 1/5 = 0.20 sits
+  // on the floor with [0.04, 0.62] covering most of it. The scan reads the bounds the selector reads,
+  // and no second size threshold decides a thin battery: the interval widening is the whole rule.
+  it.each([
+    ["inside the band", 8, 25],
+    ["above the band whose interval still overlaps it", 20, 25],
+    ["too thin to separate", 1, 5],
+  ])("a rate %s is not a finding", (_name, passed, n) => {
+    expect(rules(scanOutcome(report(battery({ runId: "b", passed, n })), THRESHOLDS))).toEqual([]);
   });
 
   it("a Wilson floor clearing the band ceiling is reported with its interval", () => {
@@ -173,12 +174,6 @@ describe("the anomaly scan", () => {
     const scan = scanOutcome(report(battery({ runId: "b", passed: 1, n: 25 })), THRESHOLDS);
     const finding = scan.findings.find((f) => f.rule === "pass-rate-outside-band");
     expect(finding?.statement).toMatch(/sits below the target pass-rate range \[0\.20, 0\.75\]/);
-  });
-
-  it("a battery too thin to separate reports nothing, because its interval spans the band", () => {
-    // 1/5 = 0.20 sits on the band floor, and [0.04, 0.62] covers most of the band as well. No
-    // second size threshold decides this: the interval widening with the sample is the whole rule.
-    expect(rules(scanOutcome(report(battery({ runId: "b", passed: 1, n: 5 })), THRESHOLDS))).toEqual([]);
   });
 
   it("a constant telemetry dimension is named as carrying no signal", () => {
@@ -303,8 +298,7 @@ describe("the anomaly scan", () => {
   });
 
   it("a refused name the spec never declared stays with undeclared-tool-calls only", () => {
-    // Run 68 captioned two hallucinated names ("PushNotification", "read") as harness defects;
-    // the isolation refusing an undeclared name is the isolation working, not an authored-tool defect.
+    // The isolation refusing an undeclared name is the isolation working, not an authored-tool defect.
     const scan = scanOutcome(
       report(
         battery({
@@ -321,11 +315,10 @@ describe("the anomaly scan", () => {
     expect(rules(scan)).not.toContain("tool-refusal-concentration");
   });
 
-  it("leaves tool ownership unknown when tools-spec cannot be read, as in run w7", () => {
-    // With no bundle the census returns an EMPTY undeclaredCalls, so the run-68 guard above reads
-    // "declared" for every hallucinated name. Run w7 scanned five batteries that way and captioned
-    // `Monitor`, `write` and `bash` — none of them among the bundle's twelve declared tools — as
-    // harness defects, six of its nineteen findings. Absence of a spec is not evidence of one.
+  it("leaves tool ownership unknown when tools-spec cannot be read", () => {
+    // With no bundle the census returns an EMPTY undeclaredCalls, so the undeclared-name guard above
+    // would read every hallucinated name as declared and caption it a harness defect. Absence of a
+    // spec is not evidence of one.
     const scan = scanOutcome(
       report(
         battery({
@@ -406,8 +399,7 @@ describe("the anomaly scan", () => {
   });
 
   it("orders the pair by the claims' createdAt, not by run id", () => {
-    // Lexical run-id order is i02 then i03; the recorded claims say i03 was measured first. Run 51
-    // published the reverse and called the run's first battery its last.
+    // Lexical run-id order is i02 then i03; the recorded claims say i03 was measured first.
     const scan = scanOutcome(
       report(
         battery({
@@ -433,7 +425,27 @@ describe("the anomaly scan", () => {
     expect(finding?.statement).toMatch(/8\.04 → 14\.40 from r-i03-on to r-i02-on/);
   });
 
-  it("refuses a difficulty reading when the task set moved between the two batteries", () => {
+  it.each([
+    [
+      "the task set moved",
+      { taskSetHash: "aaaaaaaaaaaa1111" },
+      { taskSetHash: "bbbbbbbbbbbb2222" },
+      /task set moved \(taskSetHash aaaaaaaaaaaa → bbbbbbbbbbbb\)/,
+    ],
+    [
+      "the agent bundle moved under a held task set",
+      { agentHash: "aaaaaaaaaaaa1111" },
+      { agentHash: "bbbbbbbbbbbb2222" },
+      /harness moved \(agentHash aaaaaaaaaaaa → bbbbbbbbbbbb\)/,
+    ],
+    ["a battery states no claim agentHash", {}, { agentHash: null }, /do not both state agentHash/],
+    [
+      "a battery states no claim taskSetHash",
+      {},
+      { taskSetHash: null },
+      /r-i02-on states no claim taskSetHash/,
+    ],
+  ] as const)("refuses a difficulty reading when %s", (_name, before, after, statement) => {
     const scan = scanOutcome(
       report(
         battery({
@@ -442,89 +454,14 @@ describe("the anomaly scan", () => {
           n: 25,
           variant: "repair-on",
           meanToolCalls: 8.04,
-          taskSetHash: "aaaaaaaaaaaa1111",
+          ...before,
         }),
-        battery({
-          runId: "r-i02-on",
-          passed: 9,
-          n: 25,
-          variant: "repair-on",
-          meanToolCalls: 14.4,
-          taskSetHash: "bbbbbbbbbbbb2222",
-        }),
+        battery({ runId: "r-i02-on", passed: 9, n: 25, variant: "repair-on", meanToolCalls: 14.4, ...after }),
       ),
       THRESHOLDS,
     );
     expect(rules(scan)).not.toContain("effort-without-difficulty");
-    const finding = scan.findings.find((f) => f.rule === "effort-level-unproven");
-    expect(finding?.statement).toMatch(/task set moved \(taskSetHash aaaaaaaaaaaa → bbbbbbbbbbbb\)/);
-  });
-
-  it("refuses a difficulty reading when the task set held but the agent bundle moved", () => {
-    const scan = scanOutcome(
-      report(
-        battery({
-          runId: "r-i01-on",
-          passed: 8,
-          n: 25,
-          variant: "repair-on",
-          meanToolCalls: 8.04,
-          agentHash: "aaaaaaaaaaaa1111",
-        }),
-        battery({
-          runId: "r-i02-on",
-          passed: 9,
-          n: 25,
-          variant: "repair-on",
-          meanToolCalls: 14.4,
-          agentHash: "bbbbbbbbbbbb2222",
-        }),
-      ),
-      THRESHOLDS,
-    );
-    expect(rules(scan)).not.toContain("effort-without-difficulty");
-    const finding = scan.findings.find((f) => f.rule === "effort-level-unproven");
-    expect(finding?.statement).toMatch(/harness moved \(agentHash aaaaaaaaaaaa → bbbbbbbbbbbb\)/);
-  });
-
-  it("refuses a difficulty reading when a battery states no claim agentHash", () => {
-    const scan = scanOutcome(
-      report(
-        battery({ runId: "r-i01-on", passed: 8, n: 25, variant: "repair-on", meanToolCalls: 8.04 }),
-        battery({
-          runId: "r-i02-on",
-          passed: 9,
-          n: 25,
-          variant: "repair-on",
-          meanToolCalls: 14.4,
-          agentHash: null,
-        }),
-      ),
-      THRESHOLDS,
-    );
-    expect(rules(scan)).not.toContain("effort-without-difficulty");
-    const finding = scan.findings.find((f) => f.rule === "effort-level-unproven");
-    expect(finding?.statement).toMatch(/do not both state agentHash/);
-  });
-
-  it("refuses a difficulty reading when a battery states no claim taskSetHash", () => {
-    const scan = scanOutcome(
-      report(
-        battery({ runId: "r-i01-on", passed: 8, n: 25, variant: "repair-on", meanToolCalls: 8.04 }),
-        battery({
-          runId: "r-i02-on",
-          passed: 9,
-          n: 25,
-          variant: "repair-on",
-          meanToolCalls: 14.4,
-          taskSetHash: null,
-        }),
-      ),
-      THRESHOLDS,
-    );
-    expect(rules(scan)).not.toContain("effort-without-difficulty");
-    const finding = scan.findings.find((f) => f.rule === "effort-level-unproven");
-    expect(finding?.statement).toMatch(/r-i02-on states no claim taskSetHash/);
+    expect(scan.findings.find((f) => f.rule === "effort-level-unproven")?.statement).toMatch(statement);
   });
 
   it("states no before/after reading when a battery carries no claim chronology", () => {

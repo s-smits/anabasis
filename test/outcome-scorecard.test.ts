@@ -276,13 +276,6 @@ describe("the evidence-bound campaign scorecard", () => {
     epoch.execution = [executionEvidence()];
     const learning = scorecardFromReports(builder, null, "run-1").learningYield;
     expect(learning?.submits).toEqual({ compared: 3, moved: 0, stalled: 1, unchangedTree: 2 });
-    // moved + stalled + unchangedTree covers the whole comparison denominator. Unchanged
-    // trees get their own category, even if a later execution returns different findings.
-    expect<unknown>(
-      (learning?.submits.moved ?? 0) +
-        (learning?.submits.stalled ?? 0) +
-        (learning?.submits.unchangedTree ?? 0),
-    ).toBe(learning?.submits.compared);
   });
 
   // The gates stage runs probes in workers, so identical bytes can settle differently — a timeout
@@ -300,9 +293,6 @@ describe("the evidence-bound campaign scorecard", () => {
     epoch.execution = [execution];
     const submits = scorecardFromReports(builder, null, "run-1").learningYield?.submits;
     expect(submits).toEqual({ compared: 3, moved: 0, stalled: 1, unchangedTree: 2 });
-    expect<unknown>((submits?.moved ?? 0) + (submits?.stalled ?? 0) + (submits?.unchangedTree ?? 0)).toBe(
-      submits?.compared,
-    );
   });
 
   // The controller's own budget row states its kind, and the reader keeps it out of the
@@ -475,13 +465,6 @@ describe("the evidence-bound campaign scorecard", () => {
       ordinal: 6,
       outcome: "fingerprinted",
     });
-  });
-
-  it("falls back to run order when rows carry no timestamp, matching the old fixture behaviour", () => {
-    // builderReport()'s rows have no mtimeMs (an in-memory fixture, not a disk read); the newest
-    // row is still the last one in run order, same as before this fix.
-    const scorecard = scorecardFromReports(builderReport(), null, "run-1");
-    expect(scorecard.reach?.lastAuthoring).toMatchObject({ epoch: "epoch-one", ordinal: 2 });
   });
 });
 

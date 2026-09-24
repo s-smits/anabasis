@@ -57,9 +57,9 @@ function candidateFiles(): string[] {
     .filter((path) => path !== "" && existsSync(join(repoRoot, path)));
 }
 
-/** The suites among `paths` that no gate step would run. Exported for the two cases below, which
- *  state the rule on named paths rather than on whatever this checkout happens to contain. */
-export function undiscovered(paths: readonly string[]): string[] {
+/** The suites among `paths` that no gate step would run. The first two cases state the rule on
+ *  named paths rather than on whatever this checkout happens to contain. */
+function undiscovered(paths: readonly string[]): string[] {
   return paths.filter((path) => SUITE.test(path) && !DISCOVERED_ROOTS.some((root) => path.startsWith(root)));
 }
 

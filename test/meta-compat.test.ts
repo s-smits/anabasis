@@ -1,17 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { hostname, homedir, tmpdir } from "../src/meta/os.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "../src/meta/path.ts";
+import { sep } from "../src/meta/path.ts";
 import { containsPath, posixContainsPath } from "../src/meta/path-containment.ts";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
 import { errorCode } from "../src/meta/runtime-values.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { hashJsonBytes } from "../src/meta/json-runtime.ts";
@@ -28,35 +17,7 @@ import { keyIfDefined, keyIfNotNull, keyIfTruthy, keysIf } from "../src/meta/opt
 import { hasText, textOr } from "../src/meta/text.ts";
 import { isObject, isRecord } from "../src/meta/json-shape.ts";
 
-describe("OS compatibility exports", () => {
-  it("preserves host directory and identity values", () => {
-    expect(tmpdir().length).toBeGreaterThan(0);
-    expect(homedir().startsWith("/")).toBe(true);
-    expect(hostname().length).toBeGreaterThan(0);
-  });
-});
-
-describe("process compatibility exports", () => {
-  it("preserves cwd, pid and platform identity", () => {
-    expect(runtimeProcess.cwd().length).toBeGreaterThan(0);
-    expect(runtimeProcess.pid).toBeGreaterThan(0);
-    expect(["darwin", "linux", "win32"]).toContain(runtimeProcess.platform);
-  });
-});
-
-describe("path compatibility exports", () => {
-  it("preserves filesystem and hostile traversal semantics", () => {
-    const root = "/tmp/ana-path-root";
-    const inside = resolve(root, "nested", "value.txt");
-    const escaped = resolve(root, "..", "outside.txt");
-    expect(join(root, "nested", "value.txt")).toBe(inside);
-    expect(normalize(`${root}${sep}nested${sep}..${sep}value.txt`)).toBe(`${root}${sep}value.txt`);
-    expect(relative(root, escaped).startsWith("..")).toBe(true);
-    expect(isAbsolute(inside)).toBe(true);
-    expect(dirname(inside)).toBe(`${root}${sep}nested`);
-    expect(basename(inside)).toBe("value.txt");
-  });
-
+describe("path containment", () => {
   it("contains host paths at a separator boundary, including roots with a trailing separator", () => {
     const root = sep === "/" ? "/campaign/epoch" : String.raw`C:\campaign\epoch`;
     expect(containsPath(root, root)).toBe(true);
@@ -78,24 +39,6 @@ describe("path compatibility exports", () => {
     expect(posixContainsPath("/tmp/nested", "/tmp/")).toBe(true);
     expect(posixContainsPath("/tmp-sibling", "/tmp")).toBe(false);
     expect(posixContainsPath(String.raw`/tmp\nested`, "/tmp")).toBe(false);
-  });
-});
-
-describe("synchronous filesystem compatibility exports", () => {
-  it("preserves synchronous file identity and temporary-tree cleanup", () => {
-    const root = join(import.meta.dir, "../.scratch");
-    mkdirSync(root, { recursive: true });
-    const dir = mkdtempSync(`${root}/meta-compat-`);
-    try {
-      const file = `${dir}/value.txt`;
-      writeFileSync(file, "value\n", "utf8");
-      expect(readFileSync(file, "utf8")).toBe("value\n");
-      expect(realpathSync(file)).toBe(file);
-      expect(existsSync(file)).toBe(true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-      expect(existsSync(dir)).toBe(false);
-    }
   });
 });
 

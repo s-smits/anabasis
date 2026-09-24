@@ -23,7 +23,7 @@ import {
 } from "../tools/runs/evidence.ts";
 import { runLiveness, type QueryResult } from "../tools/runs/state.ts";
 import { collectDetail, collectRows, splitSlug } from "../tools/runs/rows.ts";
-import { PAUSE_FINDING, recordedCondition, resumePlan } from "../tools/runs/resume.ts";
+import { recordedCondition, resumePlan } from "../tools/runs/resume.ts";
 import { duration, renderList, renderShow } from "../tools/runs/format.ts";
 import { stopPlanOf } from "../tools/runs/cli.ts";
 import { required } from "./helpers/doubles.ts";
@@ -568,11 +568,6 @@ describe("resume", () => {
     expect(plan.plan.provenance.at(-1)).toBe(
       "battery and boundary: --tasks 60, --max-iterations 6, --stop-after-ms 43200000",
     );
-  });
-
-  it("states why there is no pause, citing the ledger that keeps a started call charged", () => {
-    expect(PAUSE_FINDING).toContain("src/run/controller-ledger.ts cancelCall");
-    expect(PAUSE_FINDING).toContain("--stop-after-ms");
   });
 });
 

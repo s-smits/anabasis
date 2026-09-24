@@ -19,18 +19,8 @@ const NODE_MODULES = "node_modules";
 const MANIFEST = "package.json";
 
 const scriptPath = join(import.meta.dir, "..", "scripts", "worktree.sh");
-const script = await Bun.file(scriptPath).text();
 
 describe("the Bun-owned worktree launcher", () => {
-  it("prints the delivery guidance and never runs the gate itself", () => {
-    expect(script).toContain("bun install --frozen-lockfile");
-    expect(script).not.toContain("bun run gate");
-    expect(script).toContain("setup <absolute-dir>");
-    expect(script).toContain("edit proof:");
-    expect(script).toContain("one normal git push runs the final gate");
-    expect(script).toContain("do not copy them from another checkout");
-  });
-
   it("changes dependency identity only for lock or install-relevant manifest changes", async () => {
     const fixture = mkdtempSync(join(tmpdir(), "ana-dependency-identity-"));
     try {

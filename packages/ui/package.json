@@ -2,7 +2,7 @@
   "name": "@ana/ui",
   "private": true,
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "packageManager": "bun@1.4.2",
   "engines": {
     "bun": "1.4.2"

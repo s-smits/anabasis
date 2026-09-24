@@ -345,11 +345,13 @@ function truthCheckFindings(brief: Brief) {
     }
     for (const [index, path] of check.execution.artifactPaths.entries()) {
       const fieldPath = `truthChecks[${i}].execution.artifactPaths[${index}]`;
-      if (jsonPathTokens(path) === null) {
+      const tokens = jsonPathTokens(path);
+      if (tokens === null) {
         findings.push(...jsonPathFinding(path, fieldPath, "artifact path"));
         continue;
       }
-      const root = /^\$\.([^.[\]]+)/.exec(path)?.[1] ?? null;
+      const first = tokens[0];
+      const root = first?.startsWith(".") === true ? first.slice(1) : null;
       if (path !== "$" && (root === null || !artifactRoots.has(root))) {
         findings.push(
           finding(

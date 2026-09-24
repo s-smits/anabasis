@@ -30,7 +30,8 @@ Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
 
 - `families` is `"all"` or a non-empty list. Prefer `"all"` and read the family's condition from
   the public task: a check bound to names cannot follow a later broadening of the family set.
-- Paths are rooted JSON paths; artifact paths are non-empty. A function receives `{publicTask,
+- Paths are rooted JSON paths; artifact paths are non-empty. A key that is not a plain name,
+  such as a file name with a dot, is quoted: `$.files['main.cpp']`. A function receives `{publicTask,
   artifact, hidden, runtime}` projected to its declared paths and its own hidden row; `runtime`
   is also its second argument.
 - `hidden: "required"` demands exactly one `{checkId, expectation}` row on every applicable task;

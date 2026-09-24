@@ -60,6 +60,8 @@ export interface SpecimenSpec {
   checks?: JsonValue[];
   /** Declared after the default `answer` check. */
   extraChecks?: JsonValue[];
+  /** The default `answer` check's artifact path, when it is not spelled `$.answer`. */
+  answerPath?: string;
   /** Replaces the two default tasks. */
   tasks?: FixtureTask[];
   /** Each default task's expected value, in task order. */
@@ -267,7 +269,7 @@ export function specimen(spec: SpecimenSpec): Fixture {
 
   const answer = check({
     id: "answer",
-    roots: ["$.answer"],
+    roots: [spec.answerPath ?? "$.answer"],
     inputs: ["$.expected"],
     ...keyIfDefined("tool", spec.tool),
   });

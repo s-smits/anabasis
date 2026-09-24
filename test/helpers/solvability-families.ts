@@ -17,6 +17,7 @@
  * dropping tb's required hidden operand must refuse, rather than quietly making the check
  * inapplicable and leaving the sibling pair uncovered.
  */
+import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import type { ToolInventory } from "../../src/verify/verifier-port.ts";
 import {
   ACCEPTING_TOOL,
@@ -37,6 +38,8 @@ interface FamilySpec {
   nonResultOnMismatch?: boolean;
   /** Drop tb's required hidden operand, which must refuse rather than change applicability. */
   dropSiblingHidden?: boolean;
+  /** The answer check's declared artifact path, when it is not spelled `$.answer`. */
+  answerPath?: string;
 }
 
 const REPORT_ROOT = { name: "report", "shape": "string" };
@@ -88,6 +91,7 @@ export function familyFixture(spec: FamilySpec): Fixture {
   return specimen({
     verifier: countingVerifier(spec.nonResultOnMismatch === true),
     schema: [spec.material === false ? { name: "answer", "shape": "string" } : MARKED_ANSWER, REPORT_ROOT],
+    ...keyIfDefined("answerPath", spec.answerPath),
     extraChecks: [REPORT_CHECK],
     tasks,
     accepts: familyAccepts(tasks),

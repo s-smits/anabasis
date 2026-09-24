@@ -5,6 +5,8 @@ import { loadFailureFinding } from "../src/truth/load-fault.ts";
 import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.ts";
 import { validateTasks } from "../src/truth/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
+import { resolveJsonPath } from "../src/meta/json-evidence.ts";
+import { projectJsonPaths } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 
 function greenBrief(overrides: Partial<Brief> = {}): Brief {
   return {
@@ -131,6 +133,31 @@ describe("brief and task contract", () => {
     check.execution.evidence = { kind: "external", requiredToolIds: ["python3"] };
     expect(detail("truthChecks[0].execution.evidence")).toBe("");
   });
+  it("lets a check declare one file of a file map through a quoted key, and projects only that file", () => {
+    const brief = greenBrief();
+    const check = required(brief.truthChecks[0], "first check");
+    check.execution.artifactPaths = ["$.good['main.cpp']"];
+    expect(validateBrief(brief).ok).toBe(true);
+    check.execution.artifactPaths = ['$["good"]'];
+    expect(validateBrief(brief).ok).toBe(true);
+    const artifact = { good: { "main.cpp": "loop", "other.h": "secret" } };
+    expect(projectJsonPaths(artifact, ["$.good['main.cpp']"])).toEqual({ good: { "main.cpp": "loop" } });
+    expect(resolveJsonPath(artifact, '$.good["main.cpp"]')).toEqual({ found: true, value: "loop" });
+    // The quoted step is one key: it never splits into `.main` then `.cpp`.
+    expect(resolveJsonPath(artifact, "$.good.main.cpp").found).toBe(false);
+    check.execution.artifactPaths = ["$['missing.x']"];
+    expect(codes(validateBrief(brief))).toContain("brief-check-artifact-root-undeclared");
+    for (const malformed of [
+      "$.good['']",
+      String.raw`$.good['a\'b']`,
+      "$.good['main.cpp'",
+      "$.good[main.cpp]",
+    ]) {
+      check.execution.artifactPaths = [malformed];
+      expect(codes(validateBrief(brief))).toContain("brief-check-path-invalid");
+    }
+  });
+
   it("binds numeric witnesses, artifact roots and joins to their exact declarations", () => {
     const brief = greenBrief();
     const check = required(brief.truthChecks[0], "first check");

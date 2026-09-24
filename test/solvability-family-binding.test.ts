@@ -56,6 +56,18 @@ describe("the within-family binding census", () => {
     expect(log.calls).toBe(3);
   });
 
+  it.concurrent("reads a bracketed root spelling as the same task-conditioned root", async () => {
+    // The brief validator accepts `$['answer']` as the root `answer`, so the census has to count the
+    // check reading it. Missing it, a hybrid the answer check rejects still reads as unseparated,
+    // and a family whose tasks each take only their own answer is named a universal witness.
+    const result = await witness(familyFixture({ answers: ["A", "B"], answerPath: "$['answer']" }), {
+      createVerifier: () => countingHost(evaluateLog()),
+    });
+
+    expect(statuses(result)).toEqual(["passed", "passed", "passed"]);
+    expect(familyFindings(result)).toEqual([]);
+  });
+
   it.concurrent("clears the same family once each task takes only its own deliverable", async () => {
     const log = evaluateLog();
     const fixture = familyFixture({ answers: ["A", "B"] });

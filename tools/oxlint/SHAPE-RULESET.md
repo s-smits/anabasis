@@ -2161,3 +2161,46 @@ silenced two findings.
 The step never refuses a commit, and a scan that fails prints one line. That follows the refusal
 above: `--no-verify` is refused by the command guard, so a false positive at commit time must not
 strand a checkpoint. A heuristic at 0.72 may report and must not block.
+
+### Census precision per shape, judged blind — 2026-09-24
+
+Measured with the `simplify-precision` skill. The current scans were replayed over 31 revisions of
+this repository and 9 of anabasis, and seeded samples went to blind Opus 5.5 judges, 10 sites to a
+packet, asked whether they would make the change the census proposes.
+
+The first round was judged under a stale AGENTS.md. It read "historical evidence stays readable",
+not the no-backwards-compatibility decision, and gave 40 of 145 (0.28). Re-judged on the same sites
+with origin/main's rules and each shape's census argument in the packet (round 1b), it gave 94 of
+144 (0.65, 95% Wilson 0.57–0.73). The instrument moved that figure, not the scans.
+
+Three narrowings came from the round-1b no answers, each with a fixture on both sides:
+
+| scan | condition | round-1b sites dropped |
+| --- | --- | --- |
+| single-reader-export | the reader stays under 560 nonblank lines after absorbing the helper | 11 (yes 3, no 5) |
+| test-only-module | a script run through `"$ROOT/…"` or an absolute path is read | 4 (yes 0, no 4) |
+| copied-block | a place in a file its name marks as legacy goes with that file | 7 (yes 0, no 3) |
+
+The one test-only-module yes it also dropped (prose-classify.mjs at c4ac6003f) was a judging error:
+SKILL.md ran it through `$CLASSIFIER/` at that revision. The test-only-export argument now names
+the form all 7 of its no answers asked for: drop the wrapper and point its tests at the live
+function.
+
+**Holdout, rule frozen at 8721d4ecc, 58 sites no judge had read: 46 yes (0.79, 0.67–0.88).** The
+prediction written beforehand was 0.65 to 0.75.
+
+| shape | yes/n |
+| --- | --- |
+| compatibility-path | 11/12 |
+| superseded-schema-tag | 11/12 |
+| copied-block | 9/12 |
+| identity-without-owner | 9/12 |
+| single-reader-export | 3/7 |
+| test-only-export | 2/2 |
+| unproduced-set-member | 1/1 |
+
+Still open: single-reader-export. Three of its four no answers call the file a cohesive module
+with private helpers of its own, and the fourth is a five-line policy function. A condition on
+private top-level declarations would separate them. It was shaped on this holdout, so it needs new
+sites before it counts. The unread-field, orphan-module, test-only-module and rule-without-fixture
+scans had no unjudged sites left in the replay.

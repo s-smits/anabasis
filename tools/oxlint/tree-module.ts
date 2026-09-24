@@ -78,11 +78,18 @@ function modulesOnLine(
   const imported = [...line.matchAll(RELATIVE_IMPORT)]
     .flatMap((match) => resolutions(reader, match[1] ?? ""))
     .filter((candidate) => modules.has(candidate));
-  // A spelling names the module when it is the path or a suffix of it on a segment boundary.
-  const spelled = (line.match(SPELLED_PATH) ?? []).flatMap((one) => {
-    const path = one.replace(/^(?:\.\.?\/|\/)+/u, "");
+  // A spelling names the module when one is a suffix of the other on a segment boundary: a
+  // relative `scripts/x.mjs` is a suffix of the module, and an absolute `/Users/…/.claude/…/x.mjs`
+  // ends in it. A leading shell variable is a root the line resolves at run time, so
+  // `"$ROOT/scripts/x.mjs"` names `scripts/x.mjs`. Judged on 2026-09-24, four of the five
+  // test-only-module rows answered no were skill scripts a SKILL.md or its wrapper ran through
+  // one of those two spellings.
+  const spelled = [...line.matchAll(SPELLED_PATH)].flatMap((match) => {
+    const variable = line[(match.index ?? 0) - 1] === "$";
+    const bare = match[0].replace(/^(?:\.\.?\/|\/)+/u, "");
+    const path = variable ? bare.slice(bare.indexOf("/") + 1) : bare;
     return (byBasename.get(path.slice(path.lastIndexOf("/") + 1)) ?? []).filter(
-      (module) => module === path || module.endsWith(`/${path}`),
+      (module) => module === path || module.endsWith(`/${path}`) || path.endsWith(`/${module}`),
     );
   });
   return [...imported, ...spelled];

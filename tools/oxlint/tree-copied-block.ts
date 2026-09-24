@@ -66,6 +66,12 @@ const TEST_PATH =
 const FROZEN_PATH =
   /(?:^|\/)(?:vendor|vendored|third[-_]party|[\w-]*codemods?|migrations?|examples?|template-[\w.-]+)\//iu;
 
+/** A file its own name marks as a legacy reader, such as `builder-execution-legacy.ts`. The tree
+ *  keeps no backwards compatibility, so the copy goes with the file rather than into an owner both
+ *  call, and compatibility-path already reports it. Judged on 2026-09-24, 3 of the 8 copies
+ *  answered no were a validator in that file beside its successor. */
+const SUPERSEDED_READER = /(?:^|[/._-])legacy[._-][^/]*$/iu;
+
 /** Source the parser reads. A declaration file holds no statements. */
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/u;
 const DECLARATION_FILE = /\.d\.[cm]?ts$/u;
@@ -526,7 +532,10 @@ export function copiedBlocks(files: ReadonlyMap<string, string>, roots: readonly
   const manifests = new Set([...files.keys()].filter((path) => /(?:^|\/)package\.json$/u.test(path)));
   const inRoots = (path: string): boolean => roots.some((root) => path.startsWith(`${root}/`));
   for (const places of copyClasses(files)) {
-    const authored = places.filter((place) => !TEST_PATH.test(place.path) && !FROZEN_PATH.test(place.path));
+    const authored = places.filter(
+      (place) =>
+        !TEST_PATH.test(place.path) && !FROZEN_PATH.test(place.path) && !SUPERSEDED_READER.test(place.path),
+    );
     // The places in the package holding most of them; a copy across packages has no owner both call.
     const kept = [...Map.groupBy(authored, (place) => packageOf(place.path, manifests)).values()]
       .reduce<Place[]>((best, group) => (group.length > best.length ? group : best), [])

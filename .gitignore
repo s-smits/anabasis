@@ -56,3 +56,4 @@ SAFEGUARDS_LOG.txt
 tools/test-remote.sh
 .harness/backends/bb28.json
 .harness/backends/consumer-hw.json
+.accounts/

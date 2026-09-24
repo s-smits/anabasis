@@ -71,7 +71,8 @@ budget and three model slots, rejects an immediate terminal, and checks that the
 still running. Startup proves neither useful model work nor an outcome.
 
 Claude uses `CLAUDE_CODE_OAUTH_TOKEN` from the main checkout's `.env`, or explicit `--env-file`,
-and carries it into the run's frozen env. Codex conditions use the selected `CODEX_HOME/auth.json`, defaulting to the current account.
+and carries it into the run's frozen env. `--account claude1..claude4` reads `CLAUDE_CODE_OAUTH_TOKEN<N>` from that
+file instead and records `.env#CLAUDE_CODE_OAUTH_TOKEN<N>` as the credential source. Codex conditions use the selected `CODEX_HOME/auth.json`, defaulting to the current account.
 Capture each selected credential once per batch; keep snapshots private and secrets out of
 arguments and reports. Report a missing credential; do not search other accounts or substitute keys.
 

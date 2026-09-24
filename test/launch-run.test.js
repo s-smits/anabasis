@@ -414,6 +414,16 @@ describe("one-command run launcher", () => {
     // A numbered token alone is not the one the run reads.
     writeFileSync(join(root, ".env"), "CLAUDE_CODE_OAUTH_TOKEN3=fixture-other\n");
     expect(() => readCredentials(parseOptions(["truss"]), root, {})).toThrow("no API-key or shell fallback");
+    // --account selects that numbered token, carries it under the name the run reads, and records which.
+    const account = readCredentials(parseOptions(["truss", "--account", "claude3"]), root, {});
+    expect(account.bytes).toBe("CLAUDE_CODE_OAUTH_TOKEN=fixture-other\n");
+    expect(account.origin).toBe(`${join(root, ".env")}#CLAUDE_CODE_OAUTH_TOKEN3`);
+    expect(() => readCredentials(parseOptions(["truss", "--account", "claude2"]), root, {})).toThrow(
+      "a single-line CLAUDE_CODE_OAUTH_TOKEN2 is required",
+    );
+    for (const bad of ["claude5", "claude0", "2", "claude"]) {
+      expect(() => parseOptions(["truss", "--account", bad])).toThrow("--account must be one of");
+    }
     writeFileSync(join(root, ".env"), "ANTHROPIC_API_KEY=fixture-api\n");
     expect(() =>
       readCredentials(parseOptions(["truss"]), root, { CLAUDE_CODE_OAUTH_TOKEN: "fixture-stale" }),

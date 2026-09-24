@@ -1133,8 +1133,9 @@ the case that is missing. Batch small fixes under one owner. The normal pre-push
 lint, so run either separately only when it is the boundary that changed. Neither substitutes for
 behavioural proof.
 
-**Every published commit passes the gate on its own** (operator decision 2026-09-24, replacing the
-fix-forward rule of 2026-09-21). The history is read as well as run: an agent looking through it
+**One commit policy covers every push, fix and stack: each commit a push publishes passes the gate
+on its own, and a defect is fixed inside the commit that introduced it** (operator decisions
+2026-09-24, replacing the fix-forward rule of 2026-09-21 and the compose merges of 2026-09-05). The history is read as well as run: an agent looking through it
 for how work is done here copies what it finds, and a red commit followed by its repair teaches it
 that pushing red is the way. So the pre-push hook checks out every earlier source-changing commit
 the push publishes and runs `bun run gate --static` over it — runtime, format, typecheck, lint,
@@ -1147,11 +1148,19 @@ rule landed, and the first push to pay for that showed why not: the slow end-to-
 or three imports from anything near the root of the graph, so three commits of 11 to 17 files each
 selected 62% to 70% of the suite's recorded test time at depth 3, and 14% to 19% at depth 1. The
 tip then ran all of it again. Depth 1 bounds the cost; it has not been measured against the bugs
-it catches, and the tip's full suite is what backs it. A failure names the commit, and its fix goes into that commit rather than on
-top of it: `git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash
-<sha>~1`, or `git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no
-one anything. A rule agents keep breaking is fixed at its owner, whether that is a prompt, a skill
-or the lint rule's own message.
+it catches, and the tip's full suite is what backs it.
+
+A failure names the commit, and its fix goes into that commit rather than on top of it:
+`git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`, or
+`git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no one anything.
+The same holds for a defect found after publication, as long as the commit sits on an open pull
+request rather than on main: fold the fix into the commit it corrects, replay the commits above it,
+and publish every moved head with an explicit lease, as the stack paragraph under "Where changes
+go" describes. That costs a force-push, and it buys a history in which every commit reads as the
+finished version of its own change. A working commit that could never pass alone, such as
+commit-R's `R:` removals, is squashed into the commit that completes it before anything is pushed.
+Main is the one history nothing rewrites. A rule agents keep breaking is fixed at its owner,
+whether that is a prompt, a skill or the lint rule's own message.
 
 **Shell commands and the guard.** Before sending a Bash command, scan every `$` in it: a `$VAR`,
 `$(…)` or `${…}` alongside `git`, after a `>`, or inside a heredoc triggers the `dcg` guard,
@@ -1261,23 +1270,30 @@ rather than editing that worktree: `scripts/worktree.sh pr <number> <absolute-di
 head and puts it on a unique branch, leaving the other session's tree alone. Once the upstream PR
 settles, refresh, rebase onto it, prove containment and push to the PR's actual source branch.
 
-For a stack, write down `parent head → child head` for every edge, compose from the first stale
+For a stack, write down `parent head → child head` for every edge, restack from the first stale
 edge, and propagate through the later children in order. If the bottom PR lacks current main, every
 descendant is behind main through inherited ancestry even when the internal edges pass — though
 surrounding-only main changes do not require a source restack. Name the first stale edge and the
-full affected suffix. Once its required checks pass, push a small isolated fix directly to the open
-PR whose source it corrects; do not open another PR to repair an unmerged one. When a review finds
-defects across several stacked PRs, append each fix to the PR it corrects, then recompose the
-children bottom-up with one `Compose PR #<child> on repaired PR #<parent>` merge per edge (operator
-decision 2026-09-05). Compose on a detached HEAD so branches checked out elsewhere are undisturbed,
-then push the composed heads in one atomic push. `stack-hop`'s
-[publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns delivery:
-run the affected focused checks, then publish the related heads through one push and one full gate
-from the clean top. Land a stack on main through GitHub, merging each PR into its own base
-bottom-up, so that every PR ends Merged rather than closed — a local `--no-ff` merge pushed to
-`main` leaves the PR open (2026-09-21, 98 PRs). A passing top proves that checkpoint; an
-intermediate head needs its own gate before independent merge, adoption or a paid launch. Keep the
-hooks and the required CI enabled.
+full affected suffix.
+
+A stack is linear. Each pull request's branch is its parent's head followed by its own commits,
+with no merge commit in it, so its range reads as exactly the work it proposes, in the order it
+was done, and every commit in that range has passed the gate alone. A fix goes into the commit it
+corrects on the pull request that carries it, never into a new pull request that repairs an
+unmerged one, and each child above it is replayed onto the repaired parent with
+`git rebase --onto <new-parent-head> <old-parent-head> <child-head>`, bottom-up. That replaces the
+`Compose PR #<child> on repaired PR #<parent>` merge per edge of 2026-09-05. Those merges kept
+every publication a fast-forward, which is what they were for, and they cost a pull request whose
+range interleaved its parent's repairs with its own work: PR #8 carried five of them between eight
+commits of its own. Replay on a detached HEAD so branches checked out elsewhere are undisturbed,
+compare each replayed range with its saved one through `git range-diff`, then push every moved head
+in one atomic push with an explicit lease per ref, from a checkout of the top. `stack-hop`'s
+[publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns delivery.
+That push gates every commit it publishes and runs the whole gate on every branch head it moves,
+so each pull request head is proved as it lands. Land a stack on main through GitHub, merging each
+PR into its own base bottom-up, so that every PR ends Merged rather than closed — a local `--no-ff`
+merge pushed to `main` leaves the PR open (2026-09-21, 98 PRs). Those merges into main are the only
+merge commits the policy makes. Keep the hooks enabled.
 
 "At PR48 state" or "at stacked PR45" means the newest improvement level including later fixes,
 while "the diff of PR #48" selects that PR alone. When two branches carry the named work, ask which

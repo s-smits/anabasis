@@ -1,6 +1,6 @@
 ---
 name: stack-hop
-description: "Move safely to the current stack head, append a stacked PR, or repair an authorised PR chain. Preserve local work, compose each child on its actual parent, publish batches through one gate, and isolate a failed checkpoint. A context hop alone does not authorise remote stack repair."
+description: "Move safely to the current stack head, append a stacked PR, or repair an authorised PR chain. Preserve local work, replay each child onto its actual parent as a linear range, publish batches through one push that gates every commit, and isolate a failed checkpoint. A context hop alone does not authorise remote stack repair."
 ---
 
 # Stack hop
@@ -31,11 +31,11 @@ not thereby own stack repair. Inspect that task's actual instructions before ass
 rewritten ancestry.
 
 - **Land on main (explicit only):** merge reviewed PRs so each ends Merged on GitHub.
-  GitHub performs every merge into the PR's own base, bottom-up, after one local gate per five
-  on the composed tree.
+  GitHub performs every merge into the PR's own base, bottom-up, once the push that published
+  each head has gated it.
 
 For remote repair, read [stack publication](references/stack-publication.md). It owns the edge
-inventory, merge/rebase choice, coordinated push, checkpoint proof and backtracking. A failed edge
+inventory, replay, coordinated push, checkpoint proof and backtracking. A failed edge
 starts the repair; it does not justify discarding the later PRs. Keep the active checkout and live
 run trees outside that maintenance operation.
 

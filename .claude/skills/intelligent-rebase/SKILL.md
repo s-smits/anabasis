@@ -117,16 +117,17 @@ rebase_synthesis:
 ```
 
 Exercise the smallest real combined path that could expose the contact; add only its missing
-regression. The normal source push supplies one composed gate under `AGENTS.md`. Route a proved
+regression. The normal source push gates every commit it publishes under `AGENTS.md`. Route a proved
 interference to its owning PR and continue authorised work; ask only when the remaining decision
 needs unavailable intent or would change a frozen run. Preserve unrelated work and stage named files.
 
 For stack delivery, follow `stack-hop` and its
-[publication procedure](../stack-hop/references/stack-publication.md). Keep owner corrections in
-their PRs and compose the affected suffix once. The default checkpoint is up to five new owner
-changes, with one full gate from the normal multi-ref push at the clean top. Unchanged descendants
-do not each need a full gate. A failing checkpoint uses suspect-guided checks and saved-head
-bisection there; neither a predicted culprit nor a green descendant proves an intermediate PR.
+[publication procedure](../stack-hop/references/stack-publication.md). Fold each owner correction
+into the commit it corrects, on its PR, and replay the affected suffix once, so the stack stays
+linear. The default checkpoint is up to five new owner changes, published by one multi-ref push
+from the clean top, which gates every commit alone and every moved head in full. A failing
+checkpoint uses suspect-guided checks and saved-head bisection there; neither a predicted culprit
+nor a green descendant proves an intermediate PR.
 Retarget/reorder safety belongs to that same procedure. Root adoption remains separate from
 publication, and live run trees retain their source and runtime.
 

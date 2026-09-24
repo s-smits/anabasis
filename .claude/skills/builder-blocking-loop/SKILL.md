@@ -62,7 +62,7 @@ A row is a lead, not a verdict. Change a limit only with a new survey of recorde
      run would measure. Examples: an environment wall that will cut every preview again, a gate
      defect the Builder cannot work around, or refusals that keep repeating a defect the system
      owns. Stop only this run, with `launch-run`'s immediate-stop procedure, and keep every
-     receipt. Land the fix, recompose the stack and relaunch fresh from the new head through
+     receipt. Land the fix, restack and relaunch fresh from the new head through
      `launch-run`, with the same model and prompt.
    - **Keep running** when the session can still reach acceptance, the owner is Builder
      behaviour inside one session, or the fix would not change the remaining work. More

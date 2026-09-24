@@ -149,7 +149,7 @@ worker, gates the shared source once and verifies startup. Do not run a gate fir
 script or prepare dependencies again.
 
 Before the command: resolve the latest published stack and prove every child contains its latest
-published parent; compose stale edges. Surrounding-only main commits do **not** require a source
+published parent; restack stale edges. Surrounding-only main commits do **not** require a source
 restack — check with a name-only diff rather than assuming. Pass the resolved full SHA through
 `--source`; the omitted default is `origin/main` and does not resolve a stack. Check free disk
 against the floor and that no controller already owns the slot; a loaded launchd service with no

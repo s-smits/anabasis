@@ -2,7 +2,7 @@
 
 Independent lenses for one question: **does the Super Loop close?** The loop is the campaign cycle
 this skill owns — choose an experiment, prove the changed path, freeze a prediction, launch, watch,
-read the recorded bytes, adjudicate, patch the owner, recompose, launch again. A stage that runs but
+read the recorded bytes, adjudicate, patch the owner, restack, launch again. A stage that runs but
 whose output reaches no next stage is an open edge: work that costs money and changes nothing.
 
 Completeness is not "does the code exist". An edge is **closed** only when all four hold:

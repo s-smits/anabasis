@@ -64,22 +64,26 @@ launch, a write outside scratch, a live-model condition, an hour without a resol
    before applying anything.
 2. Apply the patch in the owning PR worktree and run its focused tests through
    `scripts/worktree.sh run <wt> bun run test -- <owning tests>`. Check the wrapper receipt
-   identifies the intended working tree, then commit the named files. The older remote-runner
-   workaround used in the September batch is not the current test command.
-3. Compose the repaired head through every child with one merge per edge, recording each new head
-   as a local ref `sim/pr-<n>` and one ledger line. The script shape:
+   identifies the intended working tree, then fold the named files into the commit the finding
+   corrects: `git commit --fixup=<sha>`, then `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash
+   <sha>~1` on that PR's range. A finding no existing commit owns becomes its own commit there.
+   The older remote-runner workaround used in the September batch is not the current test command.
+3. Replay every child onto the repaired head, bottom-up, recording each new head as a local ref
+   `sim/pr-<n>` and one ledger line. The script shape:
 
    ```sh
-   # compose.sh <repaired-pr> <repaired-sha>: for each later PR in the chain, start from
-   # refs/heads/sim/pr-<n> if present else origin/<branch>, git switch --detach, skip when
-   # merge-base --is-ancestor <parent-sha> HEAD, else merge --no-ff -m "Compose PR #<n> on
-   # repaired PR #<parent>", then update-ref refs/heads/sim/pr-<n> and append to the ledger.
+   # replay.sh <repaired-pr> <old-sha> <repaired-sha>: for each later PR in the chain, take its
+   # head from refs/heads/sim/pr-<n> if present else origin/<branch>, then
+   # git -c rebase.updateRefs=false rebase --onto <new-parent-sha> <old-parent-sha> <head>
+   # on a detached HEAD, update-ref refs/heads/sim/pr-<n>, and append to the ledger.
    ```
 
-   A conflict stops the script at that child; resolve it in the compose tree, commit with a
-   message naming both sides, `update-ref` that child and rerun the script from it. Prove the
-   resolved merge with the owning test on its sha.
-4. Fast-forward the trees of groups not yet started to their new `sim/pr-<n>` heads. Leave a
+   A conflict stops the replay at that commit; resolve it inside the commit that conflicts, continue
+   the rebase, `update-ref` that child and rerun the script from it. Prove the resolved commit with
+   the owning test on its sha, and compare the child's range with its saved one through
+   `git range-diff`.
+4. Move the clean trees of groups not yet started to their new `sim/pr-<n>` heads, which a replay
+   has made new commits rather than descendants of the old ones. Leave a
    running steward's tree where it started; its patch applies to the owning PR head, not to the
    tree it read.
 5. Record in the ledger: group, result, finding, commit and owning PR, children carried through,
@@ -89,11 +93,12 @@ launch, a write outside scratch, a live-model condition, an hour without a resol
 ## 4. Close the stack
 
 1. `git fetch origin` and compare every origin head with the base its `sim/pr-<n>` ref was
-   composed on; a head a peer moved during the simulation is recomposed from the fresh head before
-   anything is pushed (2026-09-06: #573 moved twice).
-2. Batch-push every repaired branch once from a prepared tree at the final head, `git push origin
-   sim/pr-<n>:<branch>` per PR, so the composed gate runs once. Use `--force-with-lease` only where
-   a recompose replaced a head the parent itself had pushed.
+   replayed onto; a head a peer moved during the simulation is replayed again from the fresh head
+   before anything is pushed (2026-09-06: #573 moved twice).
+2. Batch-push every repaired branch once, atomically, from a prepared tree at the final head, with
+   `sim/pr-<n>:<branch>` and an explicit `--force-with-lease=refs/heads/<branch>:<old-sha>` per PR:
+   a replayed head does not descend from the one it replaces. The hook gates every replayed commit
+   and every moved head.
 3. A prefix a peer integrated into main during the simulation carries the pre-fix bytes; state
    that in the ledger and let the operator choose between the next stack integration and a direct
    main delivery for those fixes.
@@ -105,5 +110,5 @@ launch, a write outside scratch, a live-model condition, an hour without a resol
 It attributes a deterministic finding to one PR; it does not exercise the stack live. A row only a
 paid run can decide stays `accepted-risk` with its exact live condition written down, and a
 transport that cannot run before a provider allowance returns is reported as such rather than
-replayed against doubles. The composed gate on the batch push is the delivery proof, not a
-capability claim.
+replayed against doubles. The gate the batch push runs over every commit is the delivery proof,
+not a capability claim.

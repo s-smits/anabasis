@@ -1,7 +1,6 @@
 /** Generated evaluation never shares the controller event loop, globals or filesystem grants. */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { attachJsonlLineReader } from "../../vendor/pi-built/jsonl.ts";
-import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { capturedJsonParse, capturedJsonStringify, hashJsonBytes } from "../meta/json-runtime.ts";
 import { isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { sha256OfFile } from "../meta/digest.ts";
@@ -22,12 +21,11 @@ import {
   type EvaluatorParentMessage,
 } from "./evaluator-process-wire.ts";
 import {
-  settleUnspawned,
   superviseVerifierProcess,
   VerifierOperationalStop,
   type VerifierLifetime,
 } from "../verify/verifier-lifetime.ts";
-import { errorMessage } from "../meta/runtime-values.ts";
+import { launchConfinedChild } from "../verify/verifier-lifetime-process.ts";
 
 type Request =
   | { mode: "probe"; checkIds: readonly string[] }
@@ -279,23 +277,15 @@ function openEvaluator(bundle: EvaluatorBundle, request: Request, lifetime: Veri
     cell: bundle.dir,
     requestDigest: hashJsonBytes(request),
   });
-  try {
-    const child = Bun.spawn({
-      cmd: [policy.executable, ...policy.launchArgs, bundle.file],
-      cwd: bundle.dir,
-      env: policy.runtimeEnvironment,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      detached: true,
-    });
-    children.add(child);
-    return { child, policy, lease };
-  } catch (error) {
-    settleUnspawned(lease);
-    // The host could not start the child: an environment non-result, never a module-load verdict.
-    throw new EvaluatorProcessFailure("sandbox", `could not start: ${errorMessage(error)}`);
-  }
+  // The host could not start the child: an environment non-result, never a module-load verdict.
+  const launched = launchConfinedChild(
+    lease,
+    policy,
+    bundle,
+    (message) => new EvaluatorProcessFailure("sandbox", `could not start: ${message}`),
+  );
+  children.add(launched.child);
+  return { ...launched, policy, lease };
 }
 
 async function invoke(
@@ -305,9 +295,7 @@ async function invoke(
 ): Promise<Response> {
   const { runtime, timeoutMs, lifetime, signal } = host;
   signal?.throwIfAborted();
-  const { child, policy, lease } = openEvaluator(bundle, request, lifetime);
-  const output = cancellableByteStream(child.stdout);
-  const errors = cancellableByteStream(child.stderr);
+  const { child, output, errors, policy, lease } = openEvaluator(bundle, request, lifetime);
   const result = Promise.withResolvers<Response>();
   void result.promise.catch(() => {});
   let settled = false;

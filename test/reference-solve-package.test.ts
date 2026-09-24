@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import * as processRuntime from "../src/meta/process.ts";
 import { bundleEvaluator, bundleReferenceSolve } from "../src/truth/evaluator-process-bundle.ts";
 import { makeProbeSolvability } from "../src/truth/solvability.ts";
 import { executeIsolatedReferenceSolve } from "../src/truth/reference-solve.ts";
@@ -119,7 +120,7 @@ export function createDomainHarness() { return { tools: [defineDraftTool({ name:
 describe("public reference package", () => {
   it("throws a host spawn failure instead of recording a module-load finding", async () => {
     const { dir, lifetime } = completeFixture();
-    const failing = spyOn(Bun, "spawn").mockImplementation(() => {
+    const failing = spyOn(processRuntime, "capturedSpawn").mockImplementation(() => {
       throw new Error("spawn EAGAIN");
     });
     try {

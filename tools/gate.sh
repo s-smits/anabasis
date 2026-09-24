@@ -17,17 +17,20 @@ step() {
 
 # `--static <dir>` runs over a checkout of an earlier commit in a push: the steps that read its own
 # bytes, then only the test files near what it changed (`tools/runtime/affected-tests.ts` owns how
-# near), and not the ui build.
-# The pre-push hook gives every commit it publishes this pass and runs the whole gate once, on the
-# tip. The dependencies and the test selector come from this tree, because an older commit may not
-# carry the current ones.
+# near), and not the ui build. `--at <dir>` runs the whole gate over such a checkout, for the head
+# of a pushed branch that is not the tip.
+# The pre-push hook gives every commit it publishes one of these and runs the whole gate once more,
+# on the tip. The dependencies and the test selector come from this tree, because an older commit
+# may not carry the current ones.
 static=0
 tip=$root
-if [ "${1:-}" = --static ]; then
-  static=1
+case "${1:-}" in
+--static | --at)
+  [ "$1" = --at ] || static=1
   step setup sh "$tip/scripts/worktree.sh" setup "$2" >/dev/null
   root=$2
-fi
+  ;;
+esac
 cd "$root"
 step runtime bun tools/runtime/check.ts
 # First, because it is the cheapest step and the one whose failure has a one-command fix:

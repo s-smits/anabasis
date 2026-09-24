@@ -206,4 +206,32 @@ describe("pre-push proof routing", () => {
     expect(fail.stderr).toContain(`git commit --fixup=${source.slice(0, 9)}`);
     expect(calls(fail.marker)).toHaveLength(1);
   });
+
+  // A stacked push moves a pull request's head beneath the tip, and that head is where the pull
+  // request ends, so it gets the whole gate rather than the per-commit pass.
+  it("gives the head of every pushed branch the whole gate", () => {
+    const tip = git("rev-parse", "HEAD");
+    const parent = git("rev-parse", "HEAD^1");
+    const result = runHookWithRefs(
+      [
+        `refs/heads/parent ${parent} refs/heads/parent ${docs}`,
+        `refs/heads/main ${tip} refs/heads/main ${docs}`,
+      ],
+      "branch-head-marker",
+    );
+    expect(result.status).toBe(0);
+    const calls = readFileSync(result.marker, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split("\t"));
+    expect(
+      calls.map(([, args, commit]) => [
+        args?.startsWith("run gate --at /") === true ? "whole" : args,
+        commit,
+      ]),
+    ).toEqual([
+      ["whole", parent],
+      ["run gate", tip],
+    ]);
+  });
 });

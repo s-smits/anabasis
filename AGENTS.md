@@ -1114,7 +1114,9 @@ for how work is done here copies what it finds, and a red commit followed by its
 that pushing red is the way. So the pre-push hook checks out every earlier source-changing commit
 the push publishes and runs `bun run gate --static` over it — runtime, format, typecheck, lint,
 source-policy, complexity, and the test files near what that commit changed — then runs the whole
-gate once, on the tip. "Near" is `tools/runtime/affected-tests.ts`: a test within three imports
+gate on the tip, and on the head of every other branch the push moves, since that is where a
+stacked pull request ends. GitHub Actions is off for this repository, so that local run is the only
+full gate a pull request head gets. "Near" is `tools/runtime/affected-tests.ts`: a test within three imports
 of a changed file. Over the seventeen commits of one pull request that selected 26% of the suite at
 the median and 49% at p90; it bounds the cost, it has not been measured against the bugs it
 catches, and the tip's full suite is what backs it. A failure names the commit, and its fix goes into that commit rather than on

@@ -27,6 +27,7 @@ changes_source() {
 # without a remote tree there is no stable documentation-only baseline.
 publishes=0
 published=""
+heads=""
 already_remote=""
 documentation_only=1
 documentation_diff_ok=1
@@ -52,9 +53,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     *)
       already_remote="$already_remote $remote_sha"
       git diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
-      if changes_source "$remote_sha" "$local_sha"; then documentation_only=0; fi
+      if changes_source "$remote_sha" "$local_sha"; then
+        documentation_only=0
+        heads="$heads $local_sha"
+      fi
       ;;
     esac
+    [ "$remote_sha" != 0000000000000000000000000000000000000000 ] || heads="$heads $local_sha"
     ;;
   esac
 done
@@ -117,16 +122,21 @@ static_findings() {
 }
 
 # Every commit a push publishes has to pass on its own: an earlier one gets the static steps and the
-# tests near what it changed over a checkout of its own bytes, and the tip gets the whole gate below. A commit already on a remote was
-# held to whatever applied when it went up, and one that changes documentation alone has nothing
-# for those steps to read. The tip is left to the full gate, which runs the same steps first.
+# tests near what it changed over a checkout of its own bytes, and the tip gets the whole gate below.
+# The head of any other branch the push moves is where a pull request ends, so it gets the whole
+# gate too, even when it changes documentation alone. A commit already on a remote was held to
+# whatever applied when it went up, and an earlier one that changes documentation alone has nothing
+# for the static steps to read.
 earlier=$(git rev-list --reverse --topo-order $published --not $already_remote --remotes)
 checked=""
 for commit in $earlier; do
   [ "$commit" != "$tested_commit" ] || continue
-  if parent=$(git rev-parse -q --verify "$commit^1"); then
-    changes_source "$parent" "$commit" || continue
-  fi
+  case " $heads " in *" $commit "*) ;; *)
+    if parent=$(git rev-parse -q --verify "$commit^1"); then
+      changes_source "$parent" "$commit" || continue
+    fi
+    ;;
+  esac
   checked="$checked $commit"
 done
 if [ -n "$checked" ]; then
@@ -138,10 +148,14 @@ if [ -n "$checked" ]; then
   for commit in $checked; do
     index=$((index + 1))
     short=$(git rev-parse --short=9 "$commit")
-    echo "pre-push: commit $index of $count, $short: the static steps and its nearby tests." >&2
+    case " $heads " in
+    *" $commit "*) mode=--at what="the whole gate, as the head of a pushed branch" ;;
+    *) mode=--static what="the static steps and its nearby tests" ;;
+    esac
+    echo "pre-push: commit $index of $count, $short: $what." >&2
     git -C "$tree" checkout -q --detach "$commit"
     commit_log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$-$short.log"
-    if ANA_TESTED_COMMIT="$commit" bun run gate --static "$tree" >"$commit_log" 2>&1; then continue; fi
+    if ANA_TESTED_COMMIT="$commit" bun run gate "$mode" "$tree" >"$commit_log" 2>&1; then continue; fi
     failed_step=$(sed -n 's/^gate: step \([a-z-]*\) failed .*/\1/p' "$commit_log" | tail -1)
     findings=$(static_findings "$failed_step" "$commit_log" | head -50)
     {

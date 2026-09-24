@@ -27,7 +27,7 @@ tip=$root
 case "${1:-}" in
 --static | --at)
   [ "$1" = --at ] || static=1
-  step setup sh "$tip/scripts/worktree.sh" setup "$2" >/dev/null
+  step setup bash "$tip/scripts/worktree.sh" setup "$2" >/dev/null
   root=$2
   ;;
 esac

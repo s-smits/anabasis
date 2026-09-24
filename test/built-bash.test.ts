@@ -55,6 +55,8 @@ const REFUSED = onLinux
   ? /Operation not permitted|No such file or directory|Read-only file system|Permission denied/
   : /Operation not permitted/;
 
+type BuiltBashTool = ReturnType<typeof createBuiltBashTool>;
+
 /** A canary planted outside every tree the command owns, and the command that tries to read it. */
 interface Closed {
   name: string;
@@ -92,21 +94,12 @@ function port(initial: Record<string, string>, root = ".") {
   return { state, wired };
 }
 
-/** `guard: false` asks no destructive-command guard, for the tests that prove the wall itself:
- *  the host's guard refuses a truncating redirect into the operator's home before the wall sees
- *  it, and those tests assert the wall's refusal. Every other test runs as production does. */
-async function run(
-  wired: BuiltFilePort,
+/** One command through the tool, as the worker calls it: its text, whether it threw, its details. */
+async function execute(
+  tool: BuiltBashTool,
   command: string,
   timeout?: number,
-  guard = true,
 ): Promise<{ text: string; threw: boolean; details: unknown }> {
-  const tool = createBuiltBashTool({
-    policy: session,
-    port: wired,
-    home: sessionHome,
-    guardEnv: guard ? Bun.env : { PATH: "" },
-  });
   try {
     const result = await tool.execute(
       "call-1",
@@ -124,6 +117,19 @@ async function run(
   }
 }
 
+/** `guard: false` asks no destructive-command guard, for the tests that prove the wall itself:
+ *  the host's guard refuses a truncating redirect into the operator's home before the wall sees
+ *  it, and those tests assert the wall's refusal. Every other test runs as production does. */
+function run(wired: BuiltFilePort, command: string, timeout?: number, guard = true) {
+  const tool = createBuiltBashTool({
+    policy: session,
+    port: wired,
+    home: sessionHome,
+    guardEnv: guard ? Bun.env : { PATH: "" },
+  });
+  return execute(tool, command, timeout);
+}
+
 describe("the shell the solver is given", () => {
   it.concurrent("carries the name the registration uses", () => {
     expect(createBuiltBashTool({ policy: session, port: port({}).wired, home: sessionHome }).name).toBe(
@@ -135,12 +141,12 @@ describe("the shell the solver is given", () => {
   // this shell has no draft files. Work survives in the session home; the work tree returns nothing.
   it.concurrent("keeps work in the session home and returns no draft files under the shell preset", async () => {
     const tool = createBuiltBashTool({ policy: session, port: null, home: sessionHome });
-    const text = async (command: string): Promise<string> =>
-      (await tool.execute("call-1", double({ command }), undefined, undefined)).content
-        .flatMap((part) => (part.type === "text" ? [part.text] : []))
-        .join("\n");
-    await text('echo gone > shell-preset-here.txt && cd "$HOME" && echo kept > shell-preset-kept.txt');
-    const second = await text('ls && cd "$HOME" && cat shell-preset-kept.txt');
+    const first = await execute(
+      tool,
+      'echo gone > shell-preset-here.txt && cd "$HOME" && echo kept > shell-preset-kept.txt',
+    );
+    expect(first.threw).toBe(false);
+    const { text: second } = await execute(tool, 'ls && cd "$HOME" && cat shell-preset-kept.txt');
     expect(second).toContain("kept");
     expect(second).not.toContain("shell-preset-here.txt");
     expect(second).not.toContain("Draft files now");
@@ -641,11 +647,9 @@ describe("what a command cannot reach", () => {
       home: sessionHome,
       timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellDefaultSeconds: 2, shellMaxSeconds: 2 },
     });
-    const text = await tool.execute("call-1", double({ command: "sleep 60" }), undefined, undefined).then(
-      () => "",
-      (error: unknown) => errorMessage(error),
-    );
-    expect(text).toContain("timed out");
+    const result = await execute(tool, "sleep 60");
+    expect(result.threw).toBe(true);
+    expect(result.text).toContain("timed out");
   }, 180_000);
 });
 
@@ -947,13 +951,10 @@ describe("the public inputs a command finds on disk", () => {
       expect(tool.description).toContain("public/task.json");
       expect(tool.description).toContain("public/resources/ (2 files)");
 
-      const result = await tool.execute(
-        "call-1",
-        double({ command: 'cat "$HOME/public/task.json"; cat "$HOME/public/resources/design-rules.json"' }),
-        undefined,
-        undefined,
+      const { text } = await execute(
+        tool,
+        'cat "$HOME/public/task.json"; cat "$HOME/public/resources/design-rules.json"',
       );
-      const text = result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
       expect(text).toContain('"spanMm": 4200');
       expect(text).toContain('"deflectionLimit": 250');
     } finally {
@@ -983,19 +984,8 @@ describe("a command its own wall cut", () => {
       home: sessionHome,
       timeouts: { ...DEFAULT_HARNESS_SETTINGS, shellDefaultSeconds, shellMaxSeconds },
     });
-  const failing = async (tool: ReturnType<typeof bounded>, command: string, timeout?: number) => {
-    try {
-      const result = await tool.execute(
-        "call-1",
-        double(timeout === undefined ? { command } : { command, timeout }),
-        undefined,
-        undefined,
-      );
-      return result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
-    } catch (error) {
-      return errorMessage(error);
-    }
-  };
+  const failing = async (tool: BuiltBashTool, command: string, timeout?: number) =>
+    (await execute(tool, command, timeout)).text;
 
   // Three states, and a command must land in exactly one. c1d2a7 passed timeout: 120 on 42 of the
   // 74 calls its traces record and was cut 21 times in 18 solves, under a bundle granting 300 s by
@@ -1064,15 +1054,8 @@ describe("a command whose output the shell cut", () => {
     mkdirSync(BUILT_COMMAND_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
     const own = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
     const other = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
-    const say = async (home: string, command: string): Promise<string> => {
-      const tool = createBuiltBashTool({ policy: session, port: null, home });
-      try {
-        const result = await tool.execute("call-1", double({ command }), undefined, undefined);
-        return result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
-      } catch (error) {
-        return errorMessage(error);
-      }
-    };
+    const say = async (home: string, command: string): Promise<string> =>
+      (await execute(createBuiltBashTool({ policy: session, port: null, home }), command)).text;
     try {
       expect(await say(own, "echo small")).not.toContain("Full output");
       const long = await say(own, "seq 1 5000");

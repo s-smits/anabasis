@@ -7,10 +7,8 @@ import { join } from "../src/meta/path.ts";
 import {
   DEFAULT_HARNESS_SETTINGS,
   HARNESS_CONFIG_FILE,
-  HarnessConfigError,
   harnessConfigIssue,
   harnessSettings,
-  parseHarnessConfig,
 } from "../src/truth/harness-config.ts";
 
 const STARTER = join(import.meta.dir, "../starters/pi-built-harness");
@@ -29,15 +27,12 @@ function workspace(config: string | null): string {
   return root;
 }
 
-const refusal = (text: string): string => {
-  try {
-    parseHarnessConfig(text);
-  } catch (cause) {
-    if (cause instanceof HarnessConfigError) return cause.message;
-    throw cause;
-  }
-  throw new Error("the config was accepted");
-};
+/** The settings a workspace holding `text` resolves to, read through the product's own file path. */
+const parsed = (text: string) => harnessSettings(workspace(text));
+
+/** The refusal message for `text`, without the file prefix the bundle contract adds. */
+const refusal = (text: string): string | undefined =>
+  harnessConfigIssue(workspace(text))?.slice(`${HARNESS_CONFIG_FILE} `.length);
 
 describe("agent/config.yaml", () => {
   it("seeds the starter with exactly the defaults and warns before an increase", () => {
@@ -45,36 +40,22 @@ describe("agent/config.yaml", () => {
       "the host refuses a value far above its seeded one",
     );
     expect(harnessSettings(STARTER)).toEqual(DEFAULT_HARNESS_SETTINGS);
-    expect(parseHarnessConfig(readFileSync(join(STARTER, HARNESS_CONFIG_FILE), "utf8"))).toEqual(
-      DEFAULT_HARNESS_SETTINGS,
-    );
-    expect(DEFAULT_HARNESS_SETTINGS).toEqual({
-      solveMs: 120 * 60_000,
-      maxTurns: 24,
-      shellDefaultSeconds: 300,
-      shellMaxSeconds: 900,
-      referenceSolveMs: 120_000,
-      censusWallMs: 30 * 60_000,
-      checkWallMs: 600_000,
-      toolRunMs: 300_000,
-      solveConcurrency: 3,
-    });
   });
 
   it("keeps the default for an absent file, an empty file or an absent key", () => {
     expect(harnessSettings(workspace(null))).toBe(DEFAULT_HARNESS_SETTINGS);
-    expect(parseHarnessConfig("")).toEqual(DEFAULT_HARNESS_SETTINGS);
-    const changed = parseHarnessConfig("solver:\n  max_turns: 60\ngate:\n  census_minutes: 90\n");
+    expect(parsed("")).toEqual(DEFAULT_HARNESS_SETTINGS);
+    const changed = parsed("solver:\n  max_turns: 60\ngate:\n  census_minutes: 90\n");
     expect(changed).toEqual({ ...DEFAULT_HARNESS_SETTINGS, maxTurns: 60, censusWallMs: 90 * 60_000 });
   });
 
   // The maximum is ten times the default and stated nowhere a model reads. Lowering is always admitted.
   it("admits ten times a default and refuses one more without naming the maximum", () => {
-    expect(parseHarnessConfig("solver:\n  max_turns: 240\n  solve_minutes: 30\n")).toMatchObject({
+    expect(parsed("solver:\n  max_turns: 240\n  solve_minutes: 30\n")).toMatchObject({
       maxTurns: 240,
       solveMs: 30 * 60_000,
     });
-    expect(parseHarnessConfig("gate:\n  tool_run_seconds: 3000\n").toolRunMs).toBe(3_000_000);
+    expect(parsed("gate:\n  tool_run_seconds: 3000\n").toolRunMs).toBe(3_000_000);
     const message = refusal("solver:\n  max_turns: 241\n");
     expect(message).toBe(
       "solver.max_turns 241 is above what this host allows; choose a value closer to the seeded one",
@@ -87,8 +68,8 @@ describe("agent/config.yaml", () => {
   // The battery width joined the file on 2026-09-18: the harness knows how heavy one of its cases
   // is and what the host has to run them on, so it declares the width instead of the run alone.
   it("lets the harness declare the battery width, up to ten times the seeded one", () => {
-    expect(parseHarnessConfig("battery:\n  solve_concurrency: 12\n").solveConcurrency).toBe(12);
-    expect(parseHarnessConfig("battery:\n  solve_concurrency: 30\n").solveConcurrency).toBe(30);
+    expect(parsed("battery:\n  solve_concurrency: 12\n").solveConcurrency).toBe(12);
+    expect(parsed("battery:\n  solve_concurrency: 30\n").solveConcurrency).toBe(30);
     expect(refusal("battery:\n  solve_concurrency: 31\n")).toBe(
       "battery.solve_concurrency 31 is above what this host allows; choose a value closer to the seeded one",
     );

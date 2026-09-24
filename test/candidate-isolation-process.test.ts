@@ -43,10 +43,10 @@ it("drains output while writing input and reaps a child that rejects its stdin",
       Bun.env,
       { stdin: payload },
     ),
-  ).rejects.toThrow();
+  ).rejects.toThrow(/EPIPE/);
   const pid = Number(await Bun.file(marker).text());
   expect(pid).toBeGreaterThan(1);
-  expect(() => runtimeProcess.kill(pid, 0)).toThrow();
+  expect(() => runtimeProcess.kill(pid, 0)).toThrow(/ESRCH/);
 });
 
 it("stops a live isolated command when the controller closes", async () => {

@@ -86,7 +86,7 @@ function checkedSection(section: Section, value: unknown): Record<string, number
 }
 
 /** Parse the file's text; an absent file or key keeps the default. */
-export function parseHarnessConfig(text: string): HarnessSettings {
+function parseHarnessConfig(text: string): HarnessSettings {
   let parsed: unknown;
   try {
     parsed = Bun.YAML.parse(text);

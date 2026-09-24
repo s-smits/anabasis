@@ -26,6 +26,7 @@ import type { RuntimeSignal } from "../meta/runtime-values.ts";
 import {
   CandidateIsolationRefusal,
   CandidateIsolationUnavailable,
+  ISOLATED_OUTPUT_MAX,
   type PathRecord,
   type IsolatedOutcome,
   type IsolatedRequest,
@@ -34,6 +35,8 @@ import {
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import { type PublicSourceBroker, PublicSourceFailure, acquirePublicSource } from "./public-source.ts";
 import { readWindow } from "./read-window.ts";
+import { truncateTail } from "./pi-coding/truncate.ts";
+import { cutOutputNotice } from "./tool-write.ts";
 import {
   VerifierWorkshopRequestRefusal,
   actionRequestDigest,
@@ -54,9 +57,18 @@ import { exportWorkshopFile, type WorkshopExportBinding } from "./verifier-works
 import { errorMessage } from "../meta/runtime-values.ts";
 import { VERIFIER_WORKSHOP } from "./capability-modes.ts";
 
-const MAX_READ = 256 * 1024;
+/** The most text a write or a run's stdin may carry. A read is bounded by the capture instead,
+ *  since it pages what it returns. */
+const MAX_TEXT_INPUT = 256 * 1024;
 const MAX_COMMAND = 32 * 1024;
 const PUBLIC_OUTPUT = 16 * 1024;
+/** Where a cut run's whole captured output is kept: inside the workshop, because the ordinary
+ *  workspace tools cannot read `.oss` and the workshop read can, and dot-prefixed to keep it apart
+ *  from the unpacked sources. */
+const RUN_OUTPUT_DIR = ".run-output";
+const RUN_OUTPUT_PAGER = "page it with verifier_workshop read, offset and limit";
+let runOutputSeq = 0;
+const OUTCOME_WORD = { failed: "FAILED", "non-result": "NON-RESULT" } as const;
 
 export type VerifierWorkshopRunner = (
   policy: CandidateAccessPolicy,
@@ -135,25 +147,26 @@ class WorkshopIssue extends Error {
   }
 }
 
-function processSummary(outcome: IsolatedOutcome): WorkshopProcess {
+/** The process facts and the public tail of one command, whole lines where a line fits. `notice`
+ *  is the cut line the caller composed once it knew whether the whole output was stored. */
+function processSummary(
+  outcome: IsolatedOutcome,
+  tail: ReturnType<typeof truncateTail>,
+  notice: string,
+): WorkshopProcess {
   const encoder = new TextEncoder();
-  const stdout = encoder.encode(outcome.stdout);
-  const stderr = encoder.encode(outcome.stderr);
-  const combined = new Uint8Array(Bun.concatArrayBuffers([stdout, stderr]));
-  const publicTail = combined.subarray(Math.max(0, combined.length - PUBLIC_OUTPUT));
   const captureTruncated = outcome.stdoutTruncated || outcome.stderrTruncated;
-  const publicTailTruncated = combined.length > publicTail.length;
   return {
     exitCode: outcome.status,
     signal: outcome.signal,
     timedOut: outcome.timedOut,
-    capturedStdoutBytes: stdout.length,
-    capturedStderrBytes: stderr.length,
-    capturedOutputBytes: combined.length,
+    capturedStdoutBytes: encoder.encode(outcome.stdout).byteLength,
+    capturedStderrBytes: encoder.encode(outcome.stderr).byteLength,
+    capturedOutputBytes: tail.totalBytes,
     captureTruncated,
-    outputTruncated: captureTruncated || publicTailTruncated,
-    outputMode: captureTruncated ? "captured-tail" : publicTailTruncated ? "tail" : "complete",
-    output: new TextDecoder().decode(publicTail),
+    outputTruncated: captureTruncated || tail.truncated,
+    outputMode: captureTruncated ? "captured-tail" : tail.truncated ? "tail" : "complete",
+    output: notice === "" ? tail.content : `${tail.content}\n\n${notice}`,
   };
 }
 
@@ -175,11 +188,14 @@ class Workshop implements VerifierWorkshop {
       : 0;
   }
 
+  /** One command through the cell. `spill` is set by `run` alone: its output is the Builder's own
+   *  build and smoke-test log, and a cut one is stored whole where the workshop read can page it. */
   private async execute(
     request: IsolatedRequest,
     accepted: readonly (number | null)[] = [0],
     policy = this.options.policy,
     runner = this.runner,
+    spill = false,
   ) {
     let outcome: Awaited<ReturnType<VerifierWorkshopRunner>>;
     try {
@@ -193,7 +209,18 @@ class Workshop implements VerifierWorkshop {
       }
       throw new WorkshopIssue("non-result", "mechanism-unavailable", errorMessage(error));
     }
-    const process = processSummary(outcome);
+    const whole = `${outcome.stdout}${outcome.stderr}`;
+    const tail = truncateTail(whole, { maxBytes: PUBLIC_OUTPUT });
+    const stored = spill && tail.truncated ? await this.storeWholeOutput(whole) : null;
+    const caveat =
+      stored !== null && (outcome.stdoutTruncated || outcome.stderrTruncated)
+        ? ` The command wrote more than the workshop captures, so the stored file stops where the ${ISOLATED_OUTPUT_MAX / (1024 * 1024)} MiB capture did.`
+        : "";
+    const process = processSummary(
+      outcome,
+      tail,
+      cutOutputNotice(whole, tail, stored, RUN_OUTPUT_PAGER, caveat),
+    );
     if (outcome.timedOut) throw new WorkshopIssue("non-result", "timeout", process.output, process);
     if (outcome.status === null) {
       throw new WorkshopIssue(
@@ -243,6 +270,37 @@ class Workshop implements VerifierWorkshop {
       path: relative(this.root, target) || ".",
       ...surveyVerifierSource(outcome.stdout, this.root, outcome.stdoutTruncated || outcome.stderrTruncated),
     };
+  }
+
+  /** Write text through the cell, so the host's staging buys no authority the workshop's own
+   *  commands do not have. */
+  private async writeText(target: string, content: string): Promise<void> {
+    await this.execute({
+      capability: VERIFIER_WORKSHOP,
+      mode: "write",
+      command: "/bin/sh",
+      args: ["-c", 'umask 077; /bin/cat > "$1"', "workshop-write", target],
+      cwd: this.root,
+      paths: [target],
+      env: this.env,
+      stdin: content,
+    });
+  }
+
+  /** Keep a cut run's whole output under `RUN_OUTPUT_DIR` and return its workshop path. A store
+   *  that fails returns null rather than failing the run: the tail and its exit facts are still the
+   *  result, and the notice then names no file. */
+  private async storeWholeOutput(whole: string): Promise<string | null> {
+    try {
+      const dir = await this.ensureDirectory(RUN_OUTPUT_DIR);
+      runOutputSeq += 1;
+      const target = join(dir, `run-${Date.now().toString(36)}-${runOutputSeq.toString(36)}.txt`);
+      if (existsSync(target)) return null;
+      await this.writeText(target, whole);
+      return relative(this.root, target);
+    } catch {
+      return null;
+    }
   }
 
   private async copyControllerFile(staged: string, target: string): Promise<void> {
@@ -307,8 +365,11 @@ class Workshop implements VerifierWorkshop {
     action: VerifierWorkshopAction,
     request: VerifierWorkshopRequest,
     run: () => Promise<T>,
-    subjectDigest: (result: T) => string | null = () => null,
-    processOf: (result: T) => WorkshopProcess | null = () => null,
+    readers: {
+      subject?: (result: T) => string | null;
+      process?: (result: T) => WorkshopProcess | null;
+      origin?: (result: T) => VerifierWorkshopActionEvidence["origin"];
+    } = {},
   ): Promise<VerifierWorkshopResult> {
     let body:
       | { status: "completed"; action: VerifierWorkshopAction; message: string; result: T }
@@ -335,7 +396,7 @@ class Workshop implements VerifierWorkshop {
           status: error.outcome,
           action,
           reason: error.reason,
-          message: `${error.outcome === "failed" ? "FAILED" : "NON-RESULT"} — ${action} did not complete. No checker verdict or truth was established.${error.message === "" ? "" : ` ${error.message}`}`,
+          message: `${OUTCOME_WORD[error.outcome]} — ${action} did not complete. No checker verdict or truth was established.${error.message === "" ? "" : ` ${error.message}`}`,
           ...keyIfDefined("process", error.process),
         };
         body = issueBody;
@@ -351,7 +412,7 @@ class Workshop implements VerifierWorkshop {
           status: error.outcome,
           action,
           reason: error.reason,
-          message: `${error.outcome === "failed" ? "FAILED" : "NON-RESULT"} — ${action} did not complete. No checker verdict or truth was established. ${error.message}`,
+          message: `${OUTCOME_WORD[error.outcome]} — ${action} did not complete. No checker verdict or truth was established. ${error.message}`,
         };
       } else {
         body = {
@@ -362,7 +423,17 @@ class Workshop implements VerifierWorkshop {
         };
       }
     }
-    const process = body.status === "completed" ? processOf(body.result) : body.process;
+    // What a completed result says about its own process, subject and origin; an issue carries only
+    // its process.
+    const read =
+      body.status === "completed"
+        ? {
+            process: readers.process?.(body.result) ?? null,
+            subject: readers.subject?.(body.result) ?? null,
+            origin: readers.origin?.(body.result),
+          }
+        : { process: body.process ?? null, subject: null, origin: undefined };
+    const { process } = read;
     const evidence: VerifierWorkshopActionEvidence = {
       schema: "verifier-workshop-action/v2",
       sequence: ++this.sequence,
@@ -376,9 +447,10 @@ class Workshop implements VerifierWorkshop {
           : this.options.policy.digest,
       requestDigest: actionRequestDigest(action, request),
       resultDigest: hashJsonBytes(body),
-      subjectDigest: body.status === "completed" ? subjectDigest(body.result) : null,
+      subjectDigest: read.subject,
+      ...keyIfDefined("origin", read.origin),
       process:
-        process === null || process === undefined
+        process === null
           ? null
           : { exitCode: process.exitCode, signal: process.signal, timedOut: process.timedOut },
     };
@@ -440,17 +512,17 @@ class Workshop implements VerifierWorkshop {
           source.cleanup();
         }
       },
-      (result) => result.sha256,
+      {
+        subject: (result) => result.sha256,
+        origin: ({ initialUrl, finalUrl }) => ({ initialUrl, finalUrl }),
+      },
     );
   }
 
   inspect(path = "."): Promise<VerifierWorkshopResult> {
-    return this.settle(
-      "inspect",
-      { path },
-      () => this.inspectTree(path),
-      (result) => (result.truncated ? null : result.pathDigest),
-    );
+    return this.settle("inspect", { path }, () => this.inspectTree(path), {
+      subject: (result) => (result.truncated ? null : result.pathDigest),
+    });
   }
 
   export(path: string, destination: string): Promise<VerifierWorkshopResult> {
@@ -468,7 +540,7 @@ class Workshop implements VerifierWorkshop {
           await this.execute(request, [0], policy, runIsolated);
         });
       },
-      (result) => result.sha256,
+      { subject: (result) => result.sha256 },
     );
   }
 
@@ -488,12 +560,13 @@ class Workshop implements VerifierWorkshop {
           paths: [target],
           env: this.env,
         });
-        const bytes = new TextEncoder().encode(outcome.stdout).byteLength;
-        if (bytes > MAX_READ) {
+        // The window pages what the capture holds, so only a file past the capture is refused.
+        if (outcome.stdoutTruncated) {
           throw new VerifierWorkshopRequestRefusal(
-            `workshop file is ${bytes} bytes and the whole-file read limit is ${MAX_READ}`,
+            `workshop file is larger than the ${ISOLATED_OUTPUT_MAX / (1024 * 1024)} MiB a read captures`,
           );
         }
+        const bytes = new TextEncoder().encode(outcome.stdout).byteLength;
         if (outcome.stdout.includes("\0")) {
           throw new VerifierWorkshopRequestRefusal("workshop read admits text files only");
         }
@@ -502,7 +575,7 @@ class Workshop implements VerifierWorkshop {
         const window = readWindow(outcome.stdout, offset, limit);
         return { path: relative(this.root, target), bytes, sha256: sha256(outcome.stdout), ...window };
       },
-      (result) => result.sha256,
+      { subject: (result) => result.sha256 },
     );
   }
 
@@ -513,7 +586,7 @@ class Workshop implements VerifierWorkshop {
       "write",
       { path, contentBytes, contentSha256 },
       async () => {
-        const content = verifierWorkshopContent(contentValue, MAX_READ);
+        const content = verifierWorkshopContent(contentValue, MAX_TEXT_INPUT);
         const lexicalTarget = workshopPath(this.root, path);
         const physicalParent = await this.ensureDirectory(relative(this.root, dirname(lexicalTarget)));
         const target = existsSync(lexicalTarget)
@@ -522,16 +595,7 @@ class Workshop implements VerifierWorkshop {
         if (existsSync(target) && !statSync(target).isFile()) {
           throw new VerifierWorkshopRequestRefusal("write path is not a file");
         }
-        await this.execute({
-          capability: VERIFIER_WORKSHOP,
-          mode: "write",
-          command: "/bin/sh",
-          args: ["-c", 'umask 077; /bin/cat > "$1"', "workshop-write", target],
-          cwd: this.root,
-          paths: [target],
-          env: this.env,
-          stdin: content,
-        });
+        await this.writeText(target, content);
         const written = readFileSync(existingWorkshopPath(this.root, relative(this.root, target)));
         const writtenSha256 = sha256(written);
         if (writtenSha256 !== contentSha256) {
@@ -539,7 +603,7 @@ class Workshop implements VerifierWorkshop {
         }
         return { path: relative(this.root, target), bytes: written.length, sha256: writtenSha256 };
       },
-      (result) => result.sha256,
+      { subject: (result) => result.sha256 },
     );
   }
 
@@ -552,7 +616,9 @@ class Workshop implements VerifierWorkshop {
       async () => {
         const command = verifierWorkshopCommand(commandValue, MAX_COMMAND);
         const stdin =
-          stdinValue === undefined ? undefined : verifierWorkshopContent(stdinValue, MAX_READ, "run stdin");
+          stdinValue === undefined
+            ? undefined
+            : verifierWorkshopContent(stdinValue, MAX_TEXT_INPUT, "run stdin");
         const cwd = await this.ensureDirectory(cwdValue);
         const request: IsolatedRequest = {
           capability: VERIFIER_WORKSHOP,
@@ -565,14 +631,13 @@ class Workshop implements VerifierWorkshop {
           osRefusalIsOutcome: true,
           ...keyIfDefined("stdin", stdin),
         };
-        const { process } = await this.execute(request);
+        const { process } = await this.execute(request, [0], this.options.policy, this.runner, true);
         return {
           note: "Process execution only; this does not establish a checker verdict or truth.",
           ...process,
         };
       },
-      () => null,
-      (result) => result,
+      { process: (result) => result },
     );
   }
 }

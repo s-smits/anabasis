@@ -17,6 +17,7 @@ import {
   workspaceSolverBudgetNotice,
 } from "./bash-install-env.ts";
 import { type PathRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import { moreRowsNote } from "./read-window.ts";
 import { type CandidateAccessPolicy, guardPath } from "./candidate-isolation.ts";
 import {
   applyEditsToNormalizedContent,
@@ -29,8 +30,8 @@ import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 export { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
 import { withFileMutationQueue } from "./pi-coding/file-mutation-queue.ts";
-import { GREP_MAX_LINE_LENGTH, formatSize, truncateHead, truncateTail } from "./pi-coding/truncate.ts";
-import { spillWholeOutput, stageAndCopy } from "./tool-write.ts";
+import { GREP_MAX_LINE_LENGTH, truncateHead, truncateTail } from "./pi-coding/truncate.ts";
+import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";
 import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 
 type ToolResultDetails =
@@ -252,7 +253,8 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           const line = `${rel(pathOf(row))}${row.slice(row.indexOf("\0")).replace("\0", ":")}`;
           return line.length > GREP_MAX_LINE_LENGTH ? `${line.slice(0, GREP_MAX_LINE_LENGTH)}...` : line;
         });
-        const found = kept.length > 0 ? kept.join("\n") : "No matches";
+        const more = moreRowsNote(guarded.length, kept.length, "row", "rows");
+        const found = kept.length > 0 ? `${kept.join("\n")}${more}` : "No matches";
         const text = asText ? `[Not a regular expression; searched as literal text.]\n${found}` : found;
         return result(text, { matches: guarded.length, limit });
       },
@@ -272,11 +274,12 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         throwIfTraversalError("find", outcome);
         const limit = Math.max(1, params.limit ?? 1000);
         const rows = outcome.stdout.split("\n").filter((line) => line !== "");
-        const kept = guardReturnedPaths("find", rows, (row) => row, "drop").slice(0, limit);
-        return result(kept.length > 0 ? kept.map(rel).join("\n") : "No files found matching pattern", {
-          count: kept.length,
-          limit,
-        });
+        const allowed = guardReturnedPaths("find", rows, (row) => row, "drop");
+        const kept = allowed.slice(0, limit);
+        const more = moreRowsNote(allowed.length, kept.length, "file", "files");
+        const listed =
+          kept.length > 0 ? `${kept.map(rel).join("\n")}${more}` : "No files found matching pattern";
+        return result(listed, { count: kept.length, limit });
       },
     }),
     makeTool({
@@ -299,10 +302,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
           "drop",
         );
         const rows = kept.slice(0, limit);
-        const notice =
-          kept.length > rows.length
-            ? `\n\n[${kept.length - rows.length} more entries. Use a larger limit.]`
-            : "";
+        const notice = moreRowsNote(kept.length, rows.length, "entry", "entries");
         return result(`${rows.length > 0 ? rows.join("\n") : "(empty directory)"}${notice}`, {
           count: rows.length,
           total: kept.length,
@@ -342,7 +342,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         // A call that outran the solver's own per-command budget says so, whatever its exit was;
         // the wall itself stays BASH_TIMEOUT_MAX_MS, since searching a domain is not solving a task.
         const budget = workspaceSolverBudgetNotice(workDir, Date.now() - startedMs);
-        const body = `${tail.content}${spilled === null ? "" : `\n\n[Output truncated: showing the tail of ${formatSize(tail.totalBytes)}. The whole output is at ${spilled}; read it with offset and limit.]`}${budget === null ? "" : `\n\n${budget}`}`;
+        const body = `${tail.content}${tail.truncated ? `\n\n${cutOutputNotice(whole, tail, spilled, "read it with offset and limit")}` : ""}${budget === null ? "" : `\n\n${budget}`}`;
         if (outcome.timedOut) throw new Error(`${body}\n\n${bashKilledNotice(timeoutMs)}`);
         if (outcome.status !== null && outcome.status !== 0) {
           throw new Error(`${body}\n\nCommand exited with code ${outcome.status}`);

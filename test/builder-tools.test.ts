@@ -225,9 +225,10 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(existsSync(join(binding.iterationDir, ".bash-output"))).toBe(false);
 
     const long = await run("bash", { command: "awk 'BEGIN { for (i = 0; i < 60000; i++) print i }'" });
-    const named = /at (\.bash-output\/bash-[a-z0-9]+-[a-z0-9]+\.txt); read it with offset and limit/.exec(
-      long,
-    );
+    const named =
+      /\[Showing lines 58001-60000 of 60000\. Full output: (\.bash-output\/bash-[a-z0-9]+-[a-z0-9]+\.txt) — read it with offset and limit\.\]/.exec(
+        long,
+      );
     const wholePath = named?.[1];
     if (wholePath === undefined) {
       throw new Error(`truncated bash result named no whole-output file: ${long.slice(-400)}`);
@@ -295,7 +296,11 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(rows).toContain(`${poem}:1-line one`);
     expect(rows).toContain(`${poem}:3-line three`);
     expect(rows).not.toContain("\0");
-    expect(await run("grep", { pattern: "line", path: poem, limit: 1 })).toBe(`${poem}:1:line one`);
+    // A limit that cuts the rows says so, as ls does, rather than reading as a complete search.
+    expect(await run("grep", { pattern: "line", path: poem, limit: 1 })).toBe(
+      `${poem}:1:line one\n\n[2 more rows. Use a larger limit.]`,
+    );
+    expect(await run("grep", { pattern: "line", path: poem, limit: 3 })).not.toContain("more rows");
   });
 
   it("grep: a pattern that begins with a dash is searched for, not read as a flag", async () => {
@@ -318,6 +323,9 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     const found = await run("find", { pattern: "*.json", path: binding.iterationDir });
     expect(found).toContain(workspacePath("slug", "correctness-model", "brief.json"));
     expect(found).not.toContain("census.json");
+    expect(found).not.toContain("more files");
+    const first = await run("find", { pattern: "*", path: binding.iterationDir, limit: 1 });
+    expect(first).toMatch(/^[^\n]+\n\n\[\d+ more files?\. Use a larger limit\.\]$/);
     const listed = await run("ls", { path: binding.iterationDir });
     expect(listed).toContain("slug/");
     expect(listed).not.toContain("census.json");

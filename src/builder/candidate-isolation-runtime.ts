@@ -72,7 +72,7 @@ export interface IsolatedRequest {
   signal?: AbortSignal | undefined;
 }
 
-const ISOLATED_OUTPUT_MAX = 4 * 1024 * 1024;
+export const ISOLATED_OUTPUT_MAX = 4 * 1024 * 1024;
 export const ISOLATED_TIMEOUT_MS = 10 * 60_000;
 
 export interface IsolatedOutcome {

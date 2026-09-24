@@ -310,6 +310,11 @@ describe("the correctness-model workshop authority boundary", () => {
     expect(evidence[1].subjectDigest).toBe(
       new Bun.CryptoHasher("sha256").update(checkerSource).digest("hex"),
     );
+    expect(evidence[0].origin).toEqual({
+      initialUrl: "https://example.com/verifier.tar.gz",
+      finalUrl: "https://example.com/verifier.tar.gz",
+    });
+    expect(evidence.slice(1).some((row) => "origin" in row)).toBe(false);
     expect(readFileSync(f.evidencePath, "utf8")).not.toContain("not-executed");
   });
 
@@ -375,6 +380,10 @@ describe("the correctness-model workshop authority boundary", () => {
     });
     expect(failed.process.output).not.toContain("discarded-prefix");
     expect(failed.process.output).toContain("visible-tail");
+    // This runner fails every command, the spill's own writes included, so nothing was stored and
+    // the cut is still stated without advertising a file that does not exist.
+    expect(failed.process.output).toContain("[Showing last");
+    expect(failed.process.output).not.toContain("Full output");
     // The recorded row keeps the exit facts apart from the output: a chosen exit code here, the
     // signal for the simulated killed run, and null when isolation refused before launch.
     const recordedProcess = (path: string) =>
@@ -386,6 +395,64 @@ describe("the correctness-model workshop authority boundary", () => {
     expect(recordedProcess(signalled.evidencePath)).toEqual([
       { exitCode: null, signal: "SIGKILL", timedOut: false },
     ]);
+  });
+
+  // The positive case and its nearest hostile neighbours: a long compiler failure keeps every line
+  // where the workshop's own read can page it, output that fits stores nothing, and output past the
+  // capture says the stored file stops where the capture did.
+  it.concurrent("stores the whole output of a cut run where the workshop read can page it", async () => {
+    const f = fixture("spilled-output");
+    const calls: WorkshopCall[] = [];
+    const files = fakeRunner(calls);
+    let printed = outcome("");
+    const runner: VerifierWorkshopRunner = async (policy, record, request) =>
+      request.command === "/bin/sh" && request.args.at(-2) !== "workshop-write"
+        ? printed
+        : files(policy, record, request);
+    const mounted = tools(f, { runner });
+    const lines = Array.from({ length: 30_000 }, (_, index) => `line ${index + 1} of the build log`);
+    printed = outcome(`first-error: undefined reference\n${lines.join("\n")}\n`, "", 2);
+    const failed = JSON.parse(
+      text(await mounted.workshop.execute("run", { action: "run", command: "make" })),
+    );
+    expect(failed).toMatchObject({
+      status: "failed",
+      process: { outputMode: "tail", outputTruncated: true },
+    });
+    const output: string = failed.process.output;
+    expect(output).not.toContain("first-error");
+    expect(output).toContain("line 30000 of the build log");
+    const named =
+      /\[Showing lines \d+-30001 of 30001 \(16\.0KB limit\)\. Full output: (\.run-output\/[^ ]+\.txt)/.exec(
+        output,
+      );
+    const stored = named?.[1];
+    if (stored === undefined) throw new Error(`cut run output named no stored file: ${output.slice(-400)}`);
+    expect(output).toContain("verifier_workshop read");
+    expect(failed.message).toContain(stored);
+    expect(readFileSync(join(f.ossRoot, stored), "utf8")).toStartWith("first-error: undefined reference\n");
+
+    // The stored file is larger than a whole-file read admits, and the window still reaches its head.
+    const head = JSON.parse(
+      text(await mounted.workshop.execute("read", { action: "read", path: stored, offset: 1, limit: 2 })),
+    );
+    expect(head).toMatchObject({ status: "completed", result: { from: 1, to: 2, more: true } });
+    expect(head.result.text).toContain("first-error: undefined reference");
+
+    printed = outcome("smoke ok\n");
+    const small = JSON.parse(
+      text(await mounted.workshop.execute("run", { action: "run", command: "./smoke" })),
+    );
+    expect(small.result.output).toBe("smoke ok\n");
+    expect(readdirSync(join(f.ossRoot, ".run-output"))).toHaveLength(1);
+
+    printed = { ...outcome(`${lines.join("\n")}\n`), stdoutTruncated: true };
+    const capped = JSON.parse(
+      text(await mounted.workshop.execute("run", { action: "run", command: "make" })),
+    );
+    expect(capped.result).toMatchObject({ outputMode: "captured-tail", captureTruncated: true });
+    expect(capped.result.output).toContain("Full output: .run-output/");
+    expect(capped.result.output).toContain("stops where the 4 MiB capture did");
   });
 
   it.concurrent("rejects lexical, physical, controller-staging, and non-public address escapes", async () => {

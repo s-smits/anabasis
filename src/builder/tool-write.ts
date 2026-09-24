@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { basename, dirname, join, relative } from "../meta/path.ts";
 import { runIsolated } from "./candidate-isolation-runtime.ts";
+import { formatSize, type truncateTail } from "./pi-coding/truncate.ts";
 import type { BuilderIsolation } from "./tools.ts";
 
 export async function stageAndCopy(
@@ -57,10 +58,42 @@ let wholeOutputSeq = 0;
 /** Keep the bytes a truncated result dropped, where the read tool can page them. A draft is
  *  windowed in place because it can be read again; a command's output cannot, so recovering it
  *  needs the bytes stored somewhere first. Nothing prunes these: they are written only where output
- *  was truncated, and the workspace they sit in is disposable. */
-export async function spillWholeOutput(isolation: BuilderIsolation, content: string): Promise<string> {
+ *  was truncated, and the workspace they sit in is disposable. A store that fails returns null: it
+ *  costs the pointer, never the command's result. */
+export async function spillWholeOutput(isolation: BuilderIsolation, content: string): Promise<string | null> {
   wholeOutputSeq += 1;
   const name = `bash-${Date.now().toString(36)}-${wholeOutputSeq.toString(36)}.txt`;
-  await stageAndCopy(isolation, "bash", join(isolation.workDir, WHOLE_OUTPUT_DIR, name), content);
+  try {
+    await stageAndCopy(isolation, "bash", join(isolation.workDir, WHOLE_OUTPUT_DIR, name), content);
+  } catch {
+    return null;
+  }
   return join(WHOLE_OUTPUT_DIR, name);
+}
+
+/**
+ * The line a cut command result ends with, shared by every tool that shows a tail of unstructured
+ * output: which lines the result holds, why it stopped there, and where the whole output was
+ * stored with how to page it. It is prime-agent's shell notice with the pager added, because the
+ * tool that pages the stored file differs by wall. A spill that could not be written passes
+ * `stored` as null, and the line then states the cut without advertising a file that is not there.
+ * `caveat` carries anything the tool knows about the stored file itself.
+ */
+export function cutOutputNotice(
+  whole: string,
+  tail: ReturnType<typeof truncateTail>,
+  stored: string | null,
+  pager: string,
+  caveat = "",
+): string {
+  if (!tail.truncated) return "";
+  const end = tail.totalLines;
+  const location = stored === null ? "" : ` Full output: ${stored} — ${pager}.`;
+  if (tail.lastLinePartial) {
+    const body = whole.endsWith("\n") ? whole.slice(0, -1) : whole;
+    const line = new TextEncoder().encode(body.slice(body.lastIndexOf("\n") + 1)).byteLength;
+    return `[Showing last ${formatSize(tail.outputBytes)} of line ${end} (line is ${formatSize(line)}).${location}${caveat}]`;
+  }
+  const limit = tail.truncatedBy === "bytes" ? ` (${formatSize(tail.maxBytes)} limit)` : "";
+  return `[Showing lines ${end - tail.outputLines + 1}-${end} of ${end}${limit}.${location}${caveat}]`;
 }

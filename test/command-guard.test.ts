@@ -343,6 +343,9 @@ EOF`,
     );
     // The walls are each harness's own settings, so the shared line names no number.
     expect(BUILT_SHELL_RULES.join(" ")).toContain("A command has a default time limit;");
+    // The Built system prompt offers a bounded search as a way to meet a limit, so no rule may
+    // withhold the timeout that search needs.
+    expect(BUILT_SHELL_RULES.join(" ")).not.toContain("never for a search");
     expect(BUILT_SHELL_RULES.join(" ")).not.toMatch(/\d+ s\b/);
   });
 

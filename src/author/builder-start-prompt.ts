@@ -35,47 +35,51 @@ export const BUILDER_WORKSPACE_CARD = [
   "Every file under agent/ and correctness-model/ is submitted; keep scratch files, seed projects and experiments elsewhere in the workspace, not in /tmp.",
 ].join(" ");
 
-/** The requested work stays whole: scope and answer shape.
+/** The requested work stays whole, and so does its difficulty.
  *
- *  Difficulty has no sentence here. The counts belong to the battery contract, which knows this
- *  run's battery size; the duty to measure rather than estimate belongs to `harness_trial`, whose
- *  description states what a rehearsal returns; and what makes a harder battery belongs to
- *  starter-pack/difficulty-ladder.md, whose three shared traits are the stacking and coupling this
- *  clause used to restate. A third copy in the system prompt told the Builder the same thing in
- *  different words, which is how two surfaces drift. */
+ *  The last sentence is here because the difficulty text elsewhere — the frontier tier, the
+ *  above-the-aim checklist — reads, to a Builder whose field has no numeric limits, as a list of
+ *  things to supply. Asked for a finite shared resource, a set of degraded states and a report duty,
+ *  such a Builder invents all three: tick deadlines, scaled supply budgets, dwell rules nobody in the
+ *  field would recognise. Each invented rule has the Builder as its only authority, so a solver that
+ *  read it another way fails on the wording, and the battery measures the rule instead of the work.
+ *  So the clause says where demand is found — inside the field, and in more of the requested
+ *  capabilities at once — and the ladder carries the method. */
 export const SCOPE_CLAUSE = [
   "Treat every broadly sensible request as workable and build a real candidate, even in a new domain; choose the representation, tools, verification method and experiment from the request and the evidence.",
-  "Keep every capability in the request in the verified tasks. A short request names a whole field: map the families a practitioner would recognise, let the tasks span them, and record in the brief which families the harness covers and leaves out. For one named build, vary its stated conditions; for a named site or dataset, use its facts and the jobs a user would do there. Evaluate the work in use and under its stated conditions, and evaluate values the solver must derive, never copying, reordering or relabelling public input. Let the request choose the answer shape: files for source code and configuration, a declared structured artifact for records, calculations and plans.",
+  "A short request names a whole field. Map the families a practitioner would recognise, let the tasks span them, and record in the brief which families the harness covers and which it leaves out; for one named build, vary its stated conditions, and for a named site or dataset, use its facts and the jobs a user would do there. Evaluate values the solver must derive, never copying, reordering or relabelling public input. Let the request choose the answer shape: files for source code and configuration, a declared structured artifact for records, calculations and plans.",
+  "Find the difficulty inside that field: the finite resources its practitioners share, the ways its parts fail and its inputs arrive, the classes its standards define, and more of the requested capabilities working together in each task. A limit, state or duty the field does not hold measures your wording rather than the solver, so add none, and measure how hard the tasks are before you believe it.",
 ] as const;
 
-/** What the solver may read, and what it must never read.
+/** What the solver may read, what it must never read, and what its tools may do for it.
  *
  *  A proposer tool that is the reference solve passes every task in one call each while proving
- *  nothing about the harness behind it, which — given hard tasks and neither a sizer nor a search —
- *  solves none of them. So decisions sit in the withheld list beside controls, and "in any wording"
- *  attaches to the whole duty rather than to one item: a Builder can declare a reference recipe
- *  private, "sizes members by repeated greedy downsizing against the full requirement set", and then
- *  write that same recipe into BUILT_AGENTS.md as guidance, in its own words. No literal comparison
- *  of the two texts would see it, which is why the duty is stated over the decision rather than over
- *  its wording, and why no n-gram census was built to catch it.
+ *  nothing about the harness behind it. So decisions sit in the withheld list beside controls, and
+ *  "in any wording" attaches to the whole duty rather than to one item: a Builder can declare a
+ *  reference recipe private and then write that same recipe into BUILT_AGENTS.md as guidance, in its
+ *  own words, where no literal comparison of the two texts would see it.
  *
- *  The last sentence makes computing the check's own rule the duty. An adviser returning a
- *  first-order response under second-order limits that the same public input fully specifies changes
- *  no answer by putting a plain disclaimer beside it, because the solver optimises against the
- *  number the tool returns rather than against the caveat. The worked case is in contract.md. */
+ *  The tools sentence replaced one asking for "an analysis showing each requirement's value, limit
+ *  and margin". Builders read it as a duty to port the verifier into the agent, and a verifier-exact
+ *  adviser over every listed state turns any feasible task into iterate-until-clear, so batteries
+ *  passed whole however long their state lists grew. The analysis stays — a solver without one fails
+ *  on arithmetic, which measures nothing — and the sentence now says where difficulty must then
+ *  live. The program sentence answers harnesses that published an exact call sequence and graded a
+ *  call trace, which turned writing the program into transcribing it. */
 export const PUBLICATION_CLAUSE = [
   "Publish everything the verifier requires of an answer wherever the solver reads it: constants with their authority, units, precision and rounding, comparison direction and tolerance, canonical form, required paths and entry points, and the assumptions an installed tool applies. A solver that follows every published rule must never fail on a rule it could not read; where a practitioner could read a rule two ways, the brief states the verified reading.",
-  "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. Leave the construction method to the solver: a tool may compute and return candidates from public inputs, but not the remaining decision the task asks for. Never ship the reference solve as a solver tool.",
-  "Give the solver batch tools: an analysis showing each requirement's value, limit and margin, and under a design limit a sizer or bounded search. Name a failed state in words, and compute each quantity by the rule its check applies whenever the public task fixes that rule.",
+  "Withhold hidden expectations, private controls and decisions, reference answers and protected verifier information from everything the solver reads, in any wording, tool results included. For a program, publish the behaviour it must show, not the calls or steps that produce it: a published sequence turns writing the program into transcribing it.",
+  "Give the solver a practitioner's tools — the real toolchain, an analysis of a candidate computed by the rule its check applies, a bounded search — and leave it the decision the task asks for. An adviser that reports every margin across every state the task lists turns the task into trial and error, so the difficulty must then lie where it cannot reach; a tool that returns the value a check compares against is the reference solve.",
 ] as const;
 
-/** Verification that means something, and the real installed tools it rests on. The reached-program
- *  duty answers a harness that checked a host helper unit and a compile alone; the install duty
+/** Verification that means something, and the real installed tools it rests on. The first sentence
+ *  answers harnesses that graded a self-reported design record against their own arithmetic, and
+ *  program behaviour through a call trace into a host stand-in the Builder wrote; the install duty
  *  answers one that repeated a rendered "not found" back as its reason for a stand-in, and one that
  *  then compiled against a header it had written itself; the last sentence answers one that pasted
  *  the agent's own analysis into the evaluator. */
 export const VERIFICATION_CLAUSE = [
-  "Every advertised capability maps to a check that can fail on real tasks; declare a capability no route can check as an explicit omission in the brief. Decide what the delivered program does by running or computing it on the supplied inputs, not by recognising how it is written, and accept every implementation the brief permits: compiling it, finding its files or exercising a helper it need not call proves nothing. Agreement among check, reference solve and controls is circular when they share an omission.",
+  "Every advertised capability maps to a check that can fail on real tasks; declare a capability no route can check as an explicit omission in the brief. Decide what the delivered work does by building, running or recomputing it on the supplied inputs, and accept every implementation the brief permits: a check that reads the answer's own report, recognises how its source is written or replays its calls into a stand-in you wrote grades your model of the work, not the work. Agreement among check, reference solve and controls is circular when they share an omission.",
   "Acquire the tool before writing around it. The domain's practitioners already have established open-source tooling with a published interface: find it from public sources and install it; Bash has network access. A tool you have not searched for and tried to install is not an unavailable tool.",
   "A stand-in for the target is the last route and proves conformance to the stand-in alone: name it and what you tried in the brief, and do not describe its result as compiling, building or simulating for that target. Never replace a failing verifier tool with the agent's own analysis.",
 ] as const;

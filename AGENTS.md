@@ -489,7 +489,13 @@ live evidence.
    about "a perfect or near-perfect battery", which left the whole `over-aim` zone, the zone whose
    name says no limit was measured, with no stated reason to inspect anything. The placement opens
    a question; the finding is still owed to whatever the request demands and the tasks leave
-   undemanded.
+   undemanded. Since 2026-09-24, "nothing demonstrated" no longer answers that question at or
+   above the aim, after a review of a full pass recorded nothing and the round moved on. The
+   reviewer either records one advisory curriculum-defect naming the undemanded obligation, or
+   says family by family which obligation each family demands and why none is left. The shapes it
+   is pointed at are sibling tasks differing only in published values, limits the first candidate
+   clears widely, a solver tool reporting every margin a check reads, and a rule no practitioner
+   of the request would hold.
 
    The orientation also carries the round's own `EXPERIMENT.json` — the gap, the change, the
    expected result, the target and the per-task predictions — because a reviewer asked whether a
@@ -610,6 +616,23 @@ live evidence.
     and the reasoning interaction it adds. Stronger checks and broader coverage can be worth having
     without making the requested solution any more complex, and a repaired evaluator is a new
     condition rather than proof of a difficulty advance.
+
+    The demand comes from the request's own field, never from a rule the Builder adds to it. Five
+    runs read together on 2026-09-24 showed three ways of looking harder while measuring less:
+    - The firmware Builders invented duty and report rules the request never held, so a failing
+      battery measured the solver's reading of the author's wording.
+    - The truss Builders lengthened a listed set of load cases and called that a tier.
+    - Both shipped solver tools that reported every margin a check reads. That turns any task into
+      propose, read the failing state, adjust, and a tool returning the value a check compares
+      against is the reference solve under another name.
+
+    So the prompts now say it once each: `starter-pack/difficulty-ladder.md` owns the argument,
+    `STARTER.md` owns the six-line entry, and the Builder system prompt owns the clauses. Above the
+    aim, the one move left once the tasks carry all three things of a hard row is to take the set
+    out of the task statement and out of the tools, because adding members to a listed set is
+    coverage. The same pass tied submit to the rehearsals: a Builder submits once a clear preview
+    and its own `harness_trial` results agree with the aim, and a target every outcome meets
+    predicts nothing.
 
     Battery size has one owner, and it is not the file named after it: the numbers sit in
     `POLICY.battery` in `src/critic/policy.ts`, beside the loop ceilings, as `floor 5`,
@@ -779,7 +802,10 @@ live evidence.
     `shell_timeout_max_seconds 900`; and for the gate, `reference_solve_seconds 120`,
     `census_minutes 30`, `check_seconds 600` and `tool_run_seconds 300`. A harness may raise any of
     them to **ten times** its default, and above that the host refuses. The Built Harness prompt
-    derives and names its exact closed tool roster.
+    derives and names its exact closed tool roster. It asks the solver to spend remaining time
+    widening the worst margin only where a requirement is a numeric limit. A requirement that is
+    simply met or not is finished once a run has shown it met, because the unconditional version of
+    that sentence sent solvers on long searches that changed no outcome.
 
     Every fresh `tools-spec.json` is to give the solver a shell through the `presets` field:
     `"files"` for a file-shaped answer, or `"shell"` beside an artifact-writer, and never both,
@@ -1066,6 +1092,15 @@ repository source belongs inside the worktree it reads: Bun resolves `@ana/*` an
 specifiers from the importing file, so the same script sitting under a job scratch directory fails
 with `Cannot find module` however absolute its paths are. A clean Git status proves the tracked
 source, not that ignored dependencies match a rebased head.
+
+**Look further back in `harness-builder-v4`.** This repository's history starts at one squashed
+`initial commit` (d21f1a2, 2026-09-22), so `git log` and `git blame` here stop there and cannot say
+when or why a line was written. The same code's full history lives in the local clone at
+`/Users/air/Developer/harness-builder-v4` (GitHub `s-smits/harness-builder-v4`): about 4,900
+commits from July 2026 on, and the pull requests that numbers like `#978` in older notes refer to.
+It is messy — reverts, retunings and parallel branches — so read it for provenance, and use
+`git log --all --follow` or `-S '<sentence>'` there to date a line. Never build, run or deliver from
+it; its tree is not this one's.
 
 **Install only when dependency identity moved.** Do not add or maintain dependency patches,
 including `patchedDependencies` or edits to installed dependency source. `worktree.sh` owns root

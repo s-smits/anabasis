@@ -139,7 +139,7 @@ describe("placeOnBand — one count, one zone", () => {
     expect(continuation(25)).not.toContain("verified cases to pass");
     expect(continuation(25)).not.toContain("the first battery above");
     expect(renderBatteryContract(25)).toContain("Expect about 3 of 25 verified cases to pass");
-    expect(continuation(25)).toContain("it does not by itself answer a battery that found no limit");
+    expect(continuation(25)).toContain("does not by itself answer a battery that found no limit");
     // 3fd52f9e-28 moved only published magnitudes for four batteries and stayed too easy, which
     // the exclusion list allowed: it named identifiers, labels, names and wording, not numbers.
     expect(continuation(25)).toContain("longer wording or a re-tuned published number establishes neither");

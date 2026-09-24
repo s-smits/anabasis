@@ -66,7 +66,7 @@ describe("the admission a repair earns", () => {
             expect(prompt).toContain("extra cases on the same rule establish coverage, and a new identifier");
             expect(prompt).toContain("Move one part per experiment");
             expect(prompt).toContain("recorded as a build, and their result credits neither");
-            expect(prompt).toContain("Fix a known evaluator defect before claiming a task-only challenge");
+            expect(prompt).toContain("fix a known evaluator defect before claiming a task-only challenge");
             expect(prompt).not.toContain("Keep the previous battery's family composition");
             const file = join(workspace, "correctness-model/tasks.json");
             writeFileSync(file, `${readFileSync(file, "utf8")}\n`);

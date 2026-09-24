@@ -51,6 +51,12 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(EPOCH_REVIEW_PROMPT).toContain("protected answers or verifier material exposed to the solver");
     expect(EPOCH_REVIEW_PROMPT).toContain("analysis that silently omits required public scenarios");
     expect(EPOCH_REVIEW_PROMPT).toContain("Before alleging answer leakage");
+    // At or above the aim, silence is not an answer: a finding, or a family-by-family account.
+    expect(EPOCH_REVIEW_PROMPT).toContain('"nothing demonstrated" does not answer it');
+    expect(EPOCH_REVIEW_PROMPT).toContain("a solver tool that reports every margin a declared check reads");
+    expect(EPOCH_REVIEW_PROMPT).toContain(
+      "a rule the author invented that no practitioner of the request would hold",
+    );
     expect(EPOCH_REVIEW_PROMPT).toContain(
       "If the evidence only shows easy or repetitive tasks, record a curriculum concern",
     );
@@ -294,7 +300,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
     expect(projected).toContain("$.limits.maxMemberLengthMm");
     // A curriculum finding names a task input to vary, rather than a correctness check to repair.
-    expect(projected).toContain("let this input differ between the fresh battery's tasks");
+    expect(projected).toContain("not only in the values published in it");
     expect(projected).not.toContain("inspect and repair that contract");
     // Which way to vary. c1d2a7's third author read this sentence against `$.limits.massLimitKg`;
     // moving a published limit between batteries is the move 846c029d-3 made six times on a

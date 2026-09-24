@@ -259,10 +259,12 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     // A bound the model cannot observe cannot steer it, so an operator cap is stated rather than
     // merely enforced. A Claude session can run as a single turn, which makes a turn reserve
     // meaningless as a pace signal; left with one, a session authors for hours past its first clear
-    // preview without submitting. So the pace is stated as an action instead.
-    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build and check the candidate, and submit once you are confident` +
-      ` that a clear preview and your own checks are sufficient evidence that it works; further polish belongs to the` +
-      ` next round.`,
+    // preview without submitting. So the pace is stated as an action instead. Readiness names the
+    // rehearsals as well as the preview: judged by validity alone, a Builder whose rehearsals all
+    // passed submitted anyway, declared a target below what they implied, and measured a full pass.
+    `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build, check and rehearse the candidate, and submit` +
+      ` once a clear preview says it works and your rehearsals agree with the aim; further polish belongs to the next` +
+      ` round.`,
     HANDOVER,
   ];
   const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]

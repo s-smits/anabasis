@@ -134,7 +134,7 @@ describe("turn-budget steering", () => {
     await runBuilderSession(INPUT(tempRoot(), 8), { open, tools: [], submit: NO_SUBMIT_THROWER });
     expect(opened.prompts[0]).toContain("Round limit: 8 assistant turns");
     expect(opened.prompts[0]).toContain(
-      "submit once you are confident that a clear preview and your own checks are sufficient evidence",
+      "submit once a clear preview says it works and your rehearsals agree with the aim",
     );
     // Scope-neutral: the opening text never names a file a task-fixed repair may not edit.
     expect(opened.prompts[0]).not.toContain("tasks.json");

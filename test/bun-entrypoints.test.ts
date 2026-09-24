@@ -11,6 +11,7 @@ const manifest = await Bun.file(new URL("package.json", root)).json();
 const bunfig = Bun.TOML.parse(await Bun.file(new URL("bunfig.toml", root)).text()) as { env?: boolean };
 const envBaseline = await Bun.file(new URL("test/env-baseline.ts", root)).text();
 const gate = await Bun.file(new URL("tools/gate.sh", root)).text();
+const worktreeScript = await Bun.file(new URL("scripts/worktree.sh", root)).text();
 const testSuite = await Bun.file(new URL("tools/runtime/test-suite.ts", root)).text();
 const testImpactScripts = await Promise.all(
   ["coverage-harvest.mjs", "impact-rank.mjs", "mutation-adjudicate.mjs"].map((file) =>
@@ -39,7 +40,11 @@ describe("Bun-owned CI and Git hooks", () => {
     expect(workflow).toContain("oven-sh/setup-bun");
     expect(workflow.match(/bun-version-file: \.bun-version/g)).toHaveLength(2);
     expect(workflow).not.toContain("bun-version: canary");
-    expect(workflow.match(/bun install --frozen-lockfile/g)).toHaveLength(2);
+    // Both jobs prepare through the script every worktree uses, and it installs only from the lock.
+    expect(workflow.match(/bash scripts\/worktree\.sh setup "\$GITHUB_WORKSPACE"/g)).toHaveLength(2);
+    expect(workflow).not.toMatch(/bun install(?! --frozen-lockfile)/);
+    expect(worktreeScript).toContain("bun install --frozen-lockfile");
+    expect(worktreeScript).not.toMatch(/bun install(?! --frozen-lockfile)/);
   });
 
   it("runs both repository hooks through the pinned Bun command family", () => {

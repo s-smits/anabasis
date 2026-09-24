@@ -22,7 +22,7 @@ concurrency:
 jobs:
   darwin:
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -31,7 +31,10 @@ jobs:
       - name: Install ripgrep
         # Three builder-tools tests read rg output and fail without naming the missing binary.
         run: brew install ripgrep
-      - run: bun install --frozen-lockfile
+      - name: Prepare dependencies
+        # Through the script every worktree uses, so the checkout carries the dependency marker and
+        # the trees tests stage clone its node_modules instead of installing their own.
+        run: bash scripts/worktree.sh setup "$GITHUB_WORKSPACE"
       - run: bun run gate
 
   linux:
@@ -40,7 +43,7 @@ jobs:
     # with "Can't mount proc on /newroot/proc" without seccomp and CAP_SYS_ADMIN. A `container:`
     # job here would report an unavailable mechanism for every confined test.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -76,5 +79,8 @@ jobs:
                 --bind / / --proc /proc --dev /dev /bin/true
           echo "bubblewrap $installed confines on this runner"
 
-      - run: bun install --frozen-lockfile
+      - name: Prepare dependencies
+        # Through the script every worktree uses, so the checkout carries the dependency marker and
+        # the trees tests stage clone its node_modules instead of installing their own.
+        run: bash scripts/worktree.sh setup "$GITHUB_WORKSPACE"
       - run: bun run gate

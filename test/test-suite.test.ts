@@ -507,6 +507,7 @@ it("passes once the first process has wedged", async () => {
         ANA_TEST_TMPDIR: host,
         ANA_TEST_WORKERS: "1",
         ANA_TEST_IDLE_SECONDS: "3",
+        ANA_TEST_HOST_LOAD: "0",
       },
       stdout: "ignore",
       stderr: "pipe",

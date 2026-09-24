@@ -97,7 +97,7 @@ export ANA_TESTED_COMMIT="$tested_commit"
 # past the kept window, and the pipeline reports tail's status, so an exit of 0 reads as a green
 # push. The hook cannot change the caller's pipe, so it keeps the whole run in a file and repeats
 # the failing lines at the very end, where the smallest tail still shows them.
-gate_dir=$(git rev-parse --git-path ana-gate)
+gate_dir=$(git rev-parse --path-format=absolute --git-path ana-gate)
 mkdir -p "$gate_dir"
 log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
 status_file="$gate_dir/status.$$"
@@ -119,6 +119,31 @@ static_findings() {
   source-policy) sed -nE 's/^([a-z]+(-[a-z]+)*): ([^ :]+): (.*)/source-policy(\1) \3 \4/p' ;;
   complexity) sed -nE 's/^  ([^ ]+) — (.*)/complexity(cyclomatic) \1 \2/p' ;;
   esac
+}
+
+# A pass that keeps its output in a log prints nothing for minutes, which reads exactly like a hung
+# push, so each interval says how far the tests in that log have got. A failure the test wrapper has
+# sent back for a rerun on a crowded host is not yet a verdict, so the pulse says when that rerun is
+# under way. Killing the pulse's sleep ends its loop; the kill after it only covers a pulse caught
+# between two sleeps.
+pulse_seconds=${ANA_PUSH_PULSE_SECONDS:-60}
+pulse() {
+  started=$(date +%s)
+  while sleep "$pulse_seconds"; do
+    passed=$(grep -c '(pass)' "$2" 2>/dev/null) || true
+    failed=$(grep -c '(fail)' "$2" 2>/dev/null) || true
+    rerun=
+    if grep -q 'host-wall:' "$2" 2>/dev/null; then
+      rerun="; the host was crowded, so the failed files are running again alone and that run decides"
+    fi
+    minutes=$(( ($(date +%s) - started) / 60 ))
+    echo "pre-push: $1 still running after $minutes min: ${passed:-0} tests passed, ${failed:-0} failed so far$rerun." >&2
+  done
+}
+stop_pulse() {
+  pkill -P "$1" 2>/dev/null || true
+  kill "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
 }
 
 # Every commit a push publishes has to pass on its own: an earlier one gets the static steps and the
@@ -152,10 +177,16 @@ if [ -n "$checked" ]; then
     *" $commit "*) mode=--at what="the whole gate, as the head of a pushed branch" ;;
     *) mode=--static what="the static steps and its nearby tests" ;;
     esac
-    echo "pre-push: commit $index of $count, $short: $what." >&2
-    git -C "$tree" checkout -q --detach "$commit"
     commit_log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$-$short.log"
-    if ANA_TESTED_COMMIT="$commit" bun run gate "$mode" "$tree" >"$commit_log" 2>&1; then continue; fi
+    echo "pre-push: commit $index of $count, $short: $what. Log: $commit_log" >&2
+    git -C "$tree" checkout -q --detach "$commit"
+    pulse "$short" "$commit_log" &
+    pulse_pid=$!
+    if ANA_TESTED_COMMIT="$commit" bun run gate "$mode" "$tree" >"$commit_log" 2>&1; then
+      stop_pulse "$pulse_pid"
+      continue
+    fi
+    stop_pulse "$pulse_pid"
     failed_step=$(sed -n 's/^gate: step \([a-z-]*\) failed .*/\1/p' "$commit_log" | tail -1)
     findings=$(static_findings "$failed_step" "$commit_log" | head -50)
     {

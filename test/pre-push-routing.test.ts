@@ -91,6 +91,10 @@ function runHookWithRefs(lines: readonly string[], markerName: string) {
   return { ...result, marker };
 }
 
+// The hook remembers each earlier commit that passed in the fixture's common Git directory, so a
+// case about how one pass runs starts with none remembered.
+const forgetPasses = (): void => rmSync(join(fixture, ".git", "ana-gate-passed"), { force: true });
+
 describe("pre-push proof routing", () => {
   it("checks a documentation-only update without starting Bun or the full gate", () => {
     const result = runHook(docs, base, "docs-marker");
@@ -190,6 +194,13 @@ describe("pre-push proof routing", () => {
         .split("\n")
         .map((line) => line.split("\t"));
 
+    const fail = runHook(second, docs, "per-commit-failure-marker", lint);
+    expect(fail.status).toBe(1);
+    expect(fail.stderr).toContain(`${source.slice(0, 9)} FAILS lint ON ITS OWN`);
+    for (const finding of findings) expect(fail.stderr).toContain(`\n${finding}\n`);
+    expect(fail.stderr).toContain(`git commit --fixup=${source.slice(0, 9)}`);
+    expect(calls(fail.marker)).toHaveLength(1);
+
     const pass = runHook(second, docs, "per-commit-marker");
     expect(pass.status).toBe(0);
     expect(
@@ -202,12 +213,11 @@ describe("pre-push proof routing", () => {
       ["run gate", second],
     ]);
 
-    const fail = runHook(second, docs, "per-commit-failure-marker", lint);
-    expect(fail.status).toBe(1);
-    expect(fail.stderr).toContain(`${source.slice(0, 9)} FAILS lint ON ITS OWN`);
-    for (const finding of findings) expect(fail.stderr).toContain(`\n${finding}\n`);
-    expect(fail.stderr).toContain(`git commit --fixup=${source.slice(0, 9)}`);
-    expect(calls(fail.marker)).toHaveLength(1);
+    // The pass is remembered by commit id, so pushing the same commits again runs only the tip.
+    const again = runHook(second, docs, "per-commit-again-marker");
+    expect(again.status).toBe(0);
+    expect(again.stderr).toContain("1 earlier commits already passed on these exact bytes");
+    expect(calls(again.marker).map(([, args, commit]) => [args, commit])).toEqual([["run gate", second]]);
   });
 
   // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
@@ -219,6 +229,7 @@ describe("pre-push proof routing", () => {
   // gate starting. The wrapper lines here are the shapes tools/runtime/test-suite.ts prints.
   it("names each earlier commit's log and pulses only while its pass runs", () => {
     const wall = `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`;
+    forgetPasses();
     const result = runHook(git("rev-parse", "HEAD"), docs, "pulse-marker", "", wall);
     expect(result.status).toBe(0);
     const log = /Log: (\/\S+-[0-9a-f]{9}\.log)/.exec(result.stderr)?.[1] ?? "";
@@ -249,13 +260,15 @@ describe("pre-push proof routing", () => {
   ];
   for (const [name, wall, pulse] of said) {
     it(`pulses what the wrapper said after ${name}`, () => {
+      forgetPasses();
       const result = runHook(git("rev-parse", "HEAD"), docs, `pulse-${name.replaceAll(" ", "-")}`, "", wall);
       expect(result.stderr).toContain(pulse);
     }, 20_000);
   }
 
   // A stacked push moves a pull request's head beneath the tip, and that head is where the pull
-  // request ends, so it gets the whole gate rather than the per-commit pass.
+  // request ends, so it gets the whole gate rather than the per-commit pass, even though the tests
+  // above already recorded that commit passing the per-commit pass.
   it("gives the head of every pushed branch the whole gate", () => {
     const tip = git("rev-parse", "HEAD");
     const parent = git("rev-parse", "HEAD^1");

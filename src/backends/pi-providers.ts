@@ -35,7 +35,7 @@ import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
-import type { BackendKind, BackendSlot } from "./backend-kinds.ts";
+import type { BackendKind, BackendSlot } from "./resolve.ts";
 import { COMPACTION_MODES, CONTEXT_COMPACT_WINDOW, type CompactionMode } from "./backend-types.ts";
 import { loadRepoEnv } from "./env.ts";
 import { EnvironmentRefusal } from "./environment-refusal.ts";
@@ -81,14 +81,13 @@ export type PiCredential = Credential | { type: "bearer"; token: string };
 export interface PiSlotChoice {
   kind: BackendKind;
   model: string | null;
-  reasoningEffort?: string | undefined;
+  reasoningEffort: string;
   providerPin?: readonly string[] | undefined;
 }
 
-/** The effort a slot opens at when it pins none, and whether it asks for server-side search. Each
- *  harness owns its own: the Builder searches and the review slot does not. */
+/** Whether a slot asks for server-side search. Each harness owns its own: the Builder searches and
+ *  the review slot does not. The effort an unpinned slot serves is resolved with the slot. */
 export interface PiSlotDefaults {
-  effort: string;
   webSearch: boolean;
 }
 
@@ -127,6 +126,8 @@ export interface ClaudeCli {
 export interface PiModelHooks {
   /** Claude under `claude-ss`: the CLI compacted its own context at CONTEXT_COMPACT_WINDOW. */
   onCompaction?: (tokensBefore: number) => void;
+  /** Claude under `claude-ss`: the summary that compaction wrote, read before the transcript goes. */
+  onCompactionSummary?: (summary: string) => void;
   /** Claude: the CLI answered a builtin (WebSearch) inside its own loop. */
   onBuiltinTool?: (call: { name: string; id: string; input: unknown }) => void;
 }
@@ -148,7 +149,7 @@ function piProfile(
   defaults: PiSlotDefaults,
 ): PiProfile {
   if (!hasText(choice.model?.trim())) throw new Error(`${slot} model is unresolved`);
-  const effort = choice.reasoningEffort ?? defaults.effort;
+  const effort = choice.reasoningEffort;
   const thinkingLevel = THINKING_LEVELS.find((known) => known === effort);
   if (thinkingLevel === undefined) throw new Error(`${slot} reasoning effort "${effort}" is unsupported`);
   const openrouter = choice.kind === "openrouter";
@@ -403,6 +404,7 @@ function claudeModel(profile: PiProfile, auth: PiCredential, cli: ClaudeCli, hoo
     ...keysIf(claudeCompacts(profile), () => ({ autoCompactWindow: CONTEXT_COMPACT_WINDOW })),
     ...keyIfDefined("claudeCodePreset", cli.claudeCodePreset),
     ...keyIfDefined("onCompaction", hooks.onCompaction),
+    ...keyIfDefined("onCompactionSummary", hooks.onCompactionSummary),
     ...keysIf(profile.webSearch === true, () => ({
       builtinTools: ["WebSearch"],
       ...keyIfDefined("onBuiltinTool", hooks.onBuiltinTool),

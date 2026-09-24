@@ -124,7 +124,7 @@ describe("the diagnosis advicePacket follows the recorded issue", () => {
       repoRoot: root,
       analysis,
       advice: advicePacket([issue()]),
-      review: { enabled: true as const, kind: "claude" as const, model: null, source: "operator" as const },
+      review: { enabled: true as const, kind: "claude" as const, model: null, reasoningEffort: "medium", source: "operator" as const },
     };
     const reading = await readDiagnoses({
       ...base,
@@ -629,7 +629,7 @@ describe("the diagnosis advicePacket follows the recorded issue", () => {
     if (dropped === undefined) throw new Error("unreachable");
     const result = await readDiagnoses({
       repoRoot: root,
-      review: { enabled: true, kind: "claude", model: null, source: "operator" },
+      review: { enabled: true, kind: "claude", model: null, reasoningEffort: "medium", source: "operator" },
       analysis: { ...ANALYSIS, cases },
       advice: advicePacket(issues),
       readerTurn: async () => ({ pin: "review/pin", text: "", error: null }),
@@ -645,7 +645,7 @@ describe("the diagnosis advicePacket follows the recorded issue", () => {
     const read = (turn: ReaderTurn) =>
       readDiagnoses({
         repoRoot: root,
-        review: { enabled: true, kind: "claude", model: null, source: "operator" },
+        review: { enabled: true, kind: "claude", model: null, reasoningEffort: "medium", source: "operator" },
         analysis: { ...ANALYSIS, cases },
         advice: advicePacket([issue()]),
         readerTurn: async (input) => {

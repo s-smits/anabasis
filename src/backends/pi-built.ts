@@ -163,14 +163,7 @@ export function resolvePiBuiltRuntime(
   policy: SolveIsolationPolicy,
   env: OptionalEnvValues = Bun.env,
 ): PiBuiltRuntime {
-  // The effort an unpinned Built slot serves. A run that pins nothing must still be one condition:
-  // the Builder slot opens at "medium" and the review slot at "high", so a Built slot silently
-  // opening at "off" measured the solve path with thinking disabled and recorded it as the same
-  // claude or codex condition the other two slots named. OpenRouter keeps "off" because its
-  // descriptor declares no effort default and its own preflight opens there, and a level that
-  // transport never requests would clear a model the run cannot reach.
-  const effort = slots.built.kind === "openrouter" ? "off" : "medium";
-  const { profile, auth } = resolvePiSlot("built", slots.built, { effort, webSearch: true }, repoRoot, env);
+  const { profile, auth } = resolvePiSlot("built", slots.built, { webSearch: true }, repoRoot, env);
   return { profile, auth, policy };
 }
 

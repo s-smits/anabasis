@@ -4,7 +4,7 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { sha256 } from "../meta/digest.ts";
 import type { OpenSession } from "../author/builder-conversation.ts";
-import type { BackendKind } from "../backends/backend-kinds.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import {
   type PiSlotChoice,
   type PiSlotDefaults,
@@ -16,9 +16,8 @@ import { builderHostAccess } from "../builder/builder-agent-access.ts";
 import type { ProjectedReadGrant } from "../builder/candidate-isolation.ts";
 
 /** The Builder searches the public web wherever its transport can: Claude through the CLI's
- *  WebSearch builtin, Codex through the Responses search tool. The condition always pins its own
- *  effort, so the default level only names what an unpinned slot would open at. */
-const BUILDER_DEFAULTS: PiSlotDefaults = { effort: "high", webSearch: true };
+ *  WebSearch builtin, Codex through the Responses search tool. */
+const BUILDER_DEFAULTS: PiSlotDefaults = { webSearch: true };
 
 /** The host tool policy projection, retained under the existing shellWall evidence key so a
  *  refused call can be traced to the rule that refused it: run

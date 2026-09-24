@@ -27,7 +27,7 @@ import {
 } from "../src/run/full-run.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { fullRunExitStatus, loopTerminalCode } from "../src/run/loop-terminal.ts";
-import { operatorBackendsPath } from "../src/backends/project-backends.ts";
+import { operatorBackendsPath } from "../src/backends/resolve.ts";
 import {
   selectedProductDir,
   publishProductVersion,

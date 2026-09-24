@@ -41,9 +41,16 @@ const ROUTED: EnabledReview = {
   enabled: true,
   kind: "openrouter",
   model: "openai/gpt-4o-mini",
+  reasoningEffort: "high",
   source: "operator",
 };
-const CLAUDE: EnabledReview = { enabled: true, kind: "claude", model: "claude-opus-5", source: "env" };
+const CLAUDE: EnabledReview = {
+  enabled: true,
+  kind: "claude",
+  model: "claude-opus-5",
+  reasoningEffort: "high",
+  source: "env",
+};
 
 afterAll(cleanupScratch);
 
@@ -146,7 +153,7 @@ describe("reader continuation limits", () => {
           async runTurn({ turnTimeoutMs }) {
             timeouts.push(required(turnTimeoutMs, "turn timeout"));
             now += READER_DEADLINE_MS / 2;
-            return { status: "completed", assistantText: "partial" };
+            return { status: "completed", finalText: "partial" };
           },
         }),
       });

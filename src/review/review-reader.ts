@@ -128,7 +128,7 @@ async function readInSession(
       input.providerBudget,
       "review",
     );
-    text = result.assistantText?.trim() ?? "";
+    text = result.finalText ?? "";
     if (result.status !== "completed") {
       error = `${role} turn ${result.status}: ${result.errorMessages?.join("; ") ?? "no error recorded"}`;
       break;

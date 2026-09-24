@@ -23,7 +23,6 @@ import type {
 import { makeAgentToolsProbes } from "../author/agent-tools-session.ts";
 import type { ProbeControlsOptions } from "../truth/probes.ts";
 import { loadRepoEnv } from "../backends/env.ts";
-import { requireSlotSupport } from "../backends/project-backends.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { PreparedUserContext } from "../builder/user-context.ts";
 import type { HarnessAuthoring } from "../critic/types.ts";
@@ -145,21 +144,13 @@ type EpochBuildContext = {
   };
 };
 
-/** Resolve builder slot; refuse a kind whose transport cannot host the author tool contract. */
+/** Resolve the slots a build records. */
 export function resolveBuilderSlots(
   repoRoot: string,
   slug: string,
   processEnv: OptionalEnvValues = Bun.env,
 ): ResolvedSlots {
-  const slots = resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
-  requireSlotSupport(
-    "builder",
-    slots.builder.kind,
-    slots.builder.source,
-    slug,
-    "that transport has no complete Builder contract",
-  );
-  return slots;
+  return resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
 }
 
 /** Add the Builder's effort and optional operator model override to the slots recorded in

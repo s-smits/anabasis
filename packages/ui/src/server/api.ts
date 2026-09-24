@@ -1,9 +1,9 @@
 import { readEvidencePage } from "./evidence.js";
-import {
-  type ProjectBackendSelection,
-  type ProjectBackendSlot,
-  setProjectBackendSelection,
-} from "../../../../src/backends/project-backends.ts";
+import { setProjectBackendSelection } from "../../../../src/backends/project-backends.ts";
+import type {
+  BackendSlot as ProjectBackendSlot,
+  ProjectBackendSelection,
+} from "../../../../src/backends/resolve.ts";
 import {
   PROJECT_BACKEND_ROUTE,
   type EvidencePage,

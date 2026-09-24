@@ -114,6 +114,18 @@ function previewText(text: string, limit: number): string {
 }
 
 /**
+ * The last assistant message's text, as pi coding-agent's `getLastAssistantText` reads it for
+ * `/copy`: an aborted message that wrote nothing is skipped, and an empty text is no text.
+ */
+function lastAssistantText(messages: readonly AgentMessage[]): string | undefined {
+  const last = messages.findLast(
+    (m): m is AssistantMessage =>
+      m.role === "assistant" && !(m.stopReason === "aborted" && m.content.length === 0),
+  );
+  return (last && contentText(last.content, "").trim()) || undefined;
+}
+
+/**
  * The retry and compaction policy for one slot. Every slot compacts at the shared window: through
  * this session, unless a Claude slot left it to the CLI (`claude-ss`, the default).
  */
@@ -261,6 +273,7 @@ export class PiPromptRecord {
       this.compactions.push({
         tokensBefore: event.result?.tokensBefore ?? this.compactionEstimate,
         compacted: event.result !== undefined,
+        ...keyIfDefined("summary", event.result?.summary),
       });
       if (event.result?.usage !== undefined) this.usage.push(event.result.usage);
     }
@@ -269,6 +282,13 @@ export class PiPromptRecord {
   /** The Claude CLI compacted its own context at the shared window. */
   readonly cliCompaction = (tokensBefore: number): void => {
     this.compactions.push({ tokensBefore, compacted: true });
+  };
+
+  /** The summary the CLI wrote, read from its transcript at the end of the query that compacted:
+   *  it belongs to the earliest compaction still without one. */
+  readonly cliCompactionSummary = (summary: string): void => {
+    const open = this.compactions.find((compaction) => compaction.summary === undefined);
+    if (open !== undefined) open.summary = summary;
   };
 
   /** A CLI-owned builtin answers inside the CLI's own loop, so it never reaches pi's tool events
@@ -382,6 +402,7 @@ export async function openHostSession(input: HostSessionInput): Promise<HostSess
   let active: PiPromptRecord | null = null;
   const served = await hostModel(input, {
     onCompaction: (tokensBefore) => active?.cliCompaction(tokensBefore),
+    onCompactionSummary: (summary) => active?.cliCompactionSummary(summary),
     onBuiltinTool: (call) => active?.builtinTool(call),
   });
   const sessionId = `pi-${crypto.randomUUID()}`;
@@ -432,7 +453,9 @@ export async function openHostSession(input: HostSessionInput): Promise<HostSess
       unsubscribe();
       active = null;
     }
-    return finishTurn(record, { interrupt, thrown, emit, sessionId, provider: profile.provider });
+    // A turn that wrote nothing has no last message of its own; the session's would be an earlier turn's.
+    const finalText = record.texts.length > 0 ? lastAssistantText(session.messages) : undefined;
+    return finishTurn(record, { interrupt, thrown, emit, sessionId, provider: profile.provider, finalText });
   }
 
   return {
@@ -465,6 +488,7 @@ function finishTurn(
     emit: (event: AgentTurnEvent) => void;
     sessionId: string;
     provider: PiProfile["provider"];
+    finalText: string | undefined;
   },
 ): AgentTurnResult {
   const { last } = record;
@@ -492,6 +516,7 @@ function finishTurn(
     status,
     stopReason: last?.stopReason ?? null,
     ...keyIfDefined("assistantText", record.texts.length > 0 ? record.texts.join("\n") : undefined),
+    ...keyIfDefined("finalText", end.finalText),
     ...keysIf(errors.length > 0, () => ({ errorMessages: errors })),
     toolCalls: record.toolCalls(),
     ...keysIf(record.compactions.length > 0, () => ({ compactions: [...record.compactions] })),

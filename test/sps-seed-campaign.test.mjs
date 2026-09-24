@@ -26,12 +26,12 @@ import {
   selectedProductDir,
 } from "../src/run/product-versions.ts";
 import { uppercaseFixture } from "./helpers/uppercase-fixture.ts";
-import { backendDescriptor } from "../src/backends/backend-kinds.ts";
+import { defaultModelOf } from "../src/backends/resolve.ts";
 import { REPO_ROOT, runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.mjs";
 
 /** The pin both sides of a fair pairing carry, from the one model owner rather than a literal:
- *  change a defaultModel in backend-kinds.ts and this follows. */
-const SHARED_PIN = `claude/${backendDescriptor("claude").defaultModel ?? "unresolved"}`;
+ *  change a defaultModel in resolve.ts and this follows. */
+const SHARED_PIN = `claude/${defaultModelOf("claude")}`;
 
 const SLUG = "uppercase";
 const ADMISSION = JSON.stringify({

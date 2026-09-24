@@ -3,10 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { BACKEND_KINDS } from "../src/backends/backend-kinds.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import type { OptionalEnvValues } from "../src/backends/scrub-env.ts";
-import { backendPinOf, resolveSlots } from "../src/backends/resolve.ts";
+import {
+  BACKEND_KINDS,
+  backendPinOf,
+  defaultEffortOf,
+  defaultModelOf,
+  resolveSlots,
+} from "../src/backends/resolve.ts";
 
 const dirs: string[] = [];
 /** Builder and Built slots set to Claude so these tests can vary review selection alone. */
@@ -74,11 +79,13 @@ describe("slot resolution", () => {
     expect(slots.builder).toEqual({
       kind: "claude",
       model: "claude-opus-5",
+      reasoningEffort: "medium",
       source: "default",
     });
     expect(slots.built).toEqual({
       kind: "claude",
       model: "claude-opus-5",
+      reasoningEffort: "medium",
       source: "default",
     });
     expect(backendPinOf(slots)).toBe("claude/claude-opus-5");
@@ -218,11 +225,12 @@ describe("slot resolution", () => {
       model: "claude-opus-5",
       reasoningEffort: "xhigh",
     });
-    // With no explicit Claude effort, resolution leaves the field absent. Each slot
-    // consumer then applies its own default; this test checks only the absent override.
+    // With no explicit Claude effort, resolution records the declared default rather than leaving
+    // each consumer to pick its own, so the condition a slot reports is the one it serves.
     const bare = resolveSlots(root, "s1", loadRepoEnv(root, { ...claudeKinds }));
-    expect("reasoningEffort" in bare.builder).toBe(false);
-    expect("reasoningEffort" in bare.built).toBe(false);
+    expect(bare.builder.reasoningEffort).toBe("medium");
+    expect(bare.built.reasoningEffort).toBe("medium");
+    expect(bare.review).toMatchObject({ enabled: true, reasoningEffort: "high" });
   });
 
   it("resolves Claude Builder, Codex Built, and Claude review independently", () => {
@@ -282,7 +290,12 @@ describe("slot resolution", () => {
       HARNESS_BUILT_BACKEND: "claude",
     });
     const slots = resolveSlots(root, "s1", env);
-    expect(slots.built).toEqual({ kind: "claude", model: "claude-opus-5", source: "env" });
+    expect(slots.built).toEqual({
+      kind: "claude",
+      model: "claude-opus-5",
+      reasoningEffort: "medium",
+      source: "env",
+    });
     expect(backendPinOf(slots)).toBe("claude/claude-opus-5");
   });
 
@@ -347,6 +360,7 @@ describe("the review slot never silently inherits", () => {
       enabled: true,
       kind: "claude",
       model: "claude-opus-5",
+      reasoningEffort: "medium",
       source: "inherited-explicit",
     });
   });
@@ -359,6 +373,31 @@ describe("the review slot never silently inherits", () => {
       loadRepoEnv(root, { ...RUNNABLE_SIDES, HARNESS_REVIEW_BACKEND: "inherit" }),
     );
     expect(slots.review).toMatchObject({ enabled: true, source: "inherited-explicit" });
+  });
+
+  it("inherits the Built provider route whether the file or the environment asks", () => {
+    // The environment spelling once copied kind, model and effort but dropped providerPin, so an
+    // inherited review of a pinned OpenRouter battery ran on an unconstrained route while the file
+    // spelling of the same choice kept it.
+    const pinned = {
+      HARNESS_BUILDER_BACKEND: "claude",
+      HARNESS_BUILT_BACKEND: "openrouter",
+      OPENROUTER_PROVIDER: "hostA,hostB",
+    };
+    const viaFile = repo(operatorFile("s1", { review: { inherit: true } }));
+    const viaEnv = repo();
+    const fromFile = resolveSlots(viaFile, "s1", loadRepoEnv(viaFile, pinned)).review;
+    const fromEnv = resolveSlots(
+      viaEnv,
+      "s1",
+      loadRepoEnv(viaEnv, { ...pinned, HARNESS_REVIEW_BACKEND: "inherit" }),
+    ).review;
+    expect(fromEnv).toMatchObject({
+      kind: "openrouter",
+      providerPin: ["hostA", "hostB"],
+      reasoningEffort: "off",
+    });
+    expect(fromEnv).toEqual(fromFile);
   });
 
   it("rejects a misspelled review backend", () => {
@@ -557,5 +596,56 @@ describe("the former slot name is gone", () => {
     const root = repo(operatorFile("s1", { review: { kind: "claude" } }));
     const slots = resolveSlots(root, "s1", loadRepoEnv(root, { ...RUNNABLE_SIDES }));
     expect(slots.review.enabled).toBe(true);
+  });
+});
+
+// An unpinned codex slot silently chooses what the run measures, and until this block nothing
+// asserted which model that is. The equality against the descriptor is the real guard: a second
+// table layered over the registry would satisfy the literals below while making the registry's
+// own declared default unreachable, which is what these three assertions exist to refuse.
+describe("the unpinned codex default has one owner", () => {
+  const CODEX_SIDES = {
+    HARNESS_BUILDER_BACKEND: "codex",
+    HARNESS_BUILT_BACKEND: "codex",
+    HARNESS_REVIEW_BACKEND: "codex",
+  };
+
+  const codexDefaults = () => ({ model: defaultModelOf("codex"), effort: defaultEffortOf("codex", "built") });
+
+  it("resolves the descriptor's declared model and effort on all three slots", () => {
+    const root = repo();
+    const slots = resolveSlots(root, "s1", loadRepoEnv(root, { ...CODEX_SIDES }));
+    const declared = codexDefaults();
+    for (const slot of [slots.builder, slots.built] as const) {
+      expect(slot.model).toBe(declared.model);
+      expect(slot.reasoningEffort).toBe(declared.effort);
+    }
+    expect(slots.review.enabled).toBe(true);
+    if (!slots.review.enabled) throw new Error("review slot resolved disabled under an explicit pin");
+    expect(slots.review.model).toBe(declared.model);
+    expect(slots.review.reasoningEffort).toBe(declared.effort);
+  });
+
+  it("names that default as the measured condition, so a change to it is a change to every unpinned run", () => {
+    expect(defaultModelOf("codex")).toBe("gpt-5.6-luna");
+    for (const slot of ["builder", "built", "review"] as const) {
+      expect(defaultEffortOf("codex", slot)).toBe("xhigh");
+    }
+  });
+
+  it("still lets a per-slot env pin beat the default", () => {
+    const root = repo();
+    const slots = resolveSlots(
+      root,
+      "s1",
+      loadRepoEnv(root, {
+        ...CODEX_SIDES,
+        CODEX_BUILT_MODEL: "gpt-5.6-sol",
+        CODEX_BUILT_REASONING_EFFORT: "high",
+      }),
+    );
+    expect(slots.built.model).toBe("gpt-5.6-sol");
+    expect(slots.built.reasoningEffort).toBe("high");
+    expect(slots.builder.model).toBe(codexDefaults().model);
   });
 });

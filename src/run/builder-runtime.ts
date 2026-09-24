@@ -6,20 +6,14 @@ import { toToolDeclaration } from "@earendil-works/pi-ai";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
 import { BUILDER_WORKSPACE_CARD } from "../author/builder-start-prompt.ts";
 import type { CampaignBuilderCondition } from "../author/campaign-epoch.ts";
-import type { BackendKind } from "../backends/backend-kinds.ts";
 import { piBuiltReadAllowRoots, piBuiltSolver, resolvePiBuiltRuntime } from "../backends/pi-built.ts";
 import type { PiTool } from "../backends/pi-session.ts";
-import type { ResolvedSlots } from "../backends/resolve.ts";
+import type { BackendKind, ResolvedSlots } from "../backends/resolve.ts";
 import { openPathRecord } from "../builder/candidate-isolation-runtime.ts";
 import { deriveCandidateIsolation, policyReadGrant } from "../builder/candidate-isolation.ts";
 import { createPublicSourceTool } from "../builder/public-source-tool.ts";
 import { writeBuilderSessionEvidence } from "../builder/session-evidence.ts";
 import { createBuilderTools } from "../builder/tools.ts";
-import {
-  EMPTY_USER_CONTEXT,
-  type PreparedUserContext,
-  createUserContextTool,
-} from "../builder/user-context.ts";
 import { createVerifierWorkshopTool } from "../builder/verifier-workshop-tool.ts";
 import { createVerifierWorkshop } from "../builder/verifier-workshop.ts";
 import { WORKSHOP_ACTION_FILE } from "../builder/verifier-workshop-evidence.ts";
@@ -68,7 +62,7 @@ interface BuilderRuntimeCondition {
  *  backend: `--builder-backend` admits only the three pi transports. */
 export type BuilderRuntimeFactory = (
   manifest: AskManifest,
-  options: { userContext?: PreparedUserContext; safeguardContext?: SafeguardContext },
+  options: { safeguardContext?: SafeguardContext },
   repoRoot: string,
   campaignDir: string,
   condition: BuilderRuntimeCondition,
@@ -80,7 +74,6 @@ export function campaignBuilderMount(
   repoRoot: string,
   slug: string,
   campaignDir: string,
-  userContext: PreparedUserContext = EMPTY_USER_CONTEXT,
   safeguardContext?: SafeguardContext,
 ) {
   assertSupportedHostRuntime();
@@ -125,11 +118,7 @@ export function campaignBuilderMount(
       ),
     })),
   });
-  const custom = [
-    createUserContextTool(userContext),
-    createPublicSourceTool(workshop),
-    createVerifierWorkshopTool(workshop),
-  ];
+  const custom = [createPublicSourceTool(workshop), createVerifierWorkshopTool(workshop)];
   const fileTools = createBuilderTools({
     policy: authorPolicy,
     record,
@@ -158,10 +147,7 @@ export function campaignBuilderMount(
  *  the same condition it stops. */
 export function composeBuilderRuntime(
   manifest: AskManifest,
-  options: {
-    userContext?: PreparedUserContext;
-    safeguardContext?: SafeguardContext;
-  },
+  options: { safeguardContext?: SafeguardContext },
   repoRoot: string,
   campaignDir: string,
   condition: BuilderRuntimeCondition,
@@ -171,13 +157,7 @@ export function composeBuilderRuntime(
   builtSolver: NonNullable<BuilderRuntime["builtSolver"]>;
 } {
   const { slots, builder } = condition;
-  const mount = campaignBuilderMount(
-    repoRoot,
-    manifest.slug,
-    campaignDir,
-    options.userContext,
-    options.safeguardContext,
-  );
+  const mount = campaignBuilderMount(repoRoot, manifest.slug, campaignDir, options.safeguardContext);
   const workspace = join(campaignDir, WORKSPACE_DIR);
   const trialIsolation = builtSolveIsolation(repoRoot, piBuiltReadAllowRoots(slots));
   const slot = builderSlot(builder, repoRoot);
@@ -214,10 +194,7 @@ export function composeBuilderRuntime(
 
 export async function productionBuilderRuntime(
   manifest: AskManifest,
-  options: {
-    userContext?: PreparedUserContext;
-    safeguardContext?: SafeguardContext;
-  },
+  options: { safeguardContext?: SafeguardContext },
   repoRoot: string,
   campaignDir: string,
   condition: BuilderRuntimeCondition,

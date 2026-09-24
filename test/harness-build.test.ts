@@ -55,7 +55,12 @@ describe("backend slot resolution for the campaign", () => {
       JSON.stringify({ builder: { kind: "claude" } }),
     );
     const slots = resolveBuilderSlots(repoRoot, "bridge-truss", {});
-    expect(slots.builder).toEqual({ kind: "claude", model: "claude-opus-5", source: "operator" });
+    expect(slots.builder).toEqual({
+      kind: "claude",
+      model: "claude-opus-5",
+      reasoningEffort: "medium",
+      source: "operator",
+    });
     // bridge-truss.json pins only the builder, so the built slot takes the declared default, which is now
     // claude for every slot instead of codex-by-first-position.
     expect(slots.built.kind).toBe("claude");
@@ -70,6 +75,7 @@ describe("backend slot resolution for the campaign", () => {
     expect(resolveBuilderSlots(repoRoot, "bridge-truss", {}).builder).toEqual({
       kind: "claude",
       model: "claude-opus-5",
+      reasoningEffort: "medium",
       source: "default",
     });
     // A codex builder pin resolves: every kind opens the one pi host session on the mounted roster
@@ -106,11 +112,11 @@ describe("backend slot resolution for the campaign", () => {
     expect(slots.builder.source).toBe("operator");
   });
 
-  it.concurrent("records the entrypoint's builder effort when the resolver leaves it unset", () => {
+  it.concurrent("records the declared builder effort, and an entrypoint effort replaces it", () => {
     const repoRoot = join(import.meta.dir, "..");
     const slots = resolveBuilderSlots(repoRoot, "bridge-truss", {});
-    expect(slots.builder.reasoningEffort).toBeUndefined();
-    const denominated = withBuilderPin(slots, { effort: "medium" });
-    expect(denominated.builder).toMatchObject({ kind: "claude", reasoningEffort: "medium" });
+    expect(slots.builder).toMatchObject({ kind: "claude", reasoningEffort: "medium" });
+    const denominated = withBuilderPin(slots, { effort: "high" });
+    expect(denominated.builder).toMatchObject({ kind: "claude", reasoningEffort: "high" });
   });
 });

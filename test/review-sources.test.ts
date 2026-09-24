@@ -87,6 +87,10 @@ function recordedTool(root: string, source = "#!/bin/sh\nexit 0\n", kind = "scri
   return { path, log, battery };
 }
 
+/** A closing synthesis longer than the 4,000 characters the report used to keep, so a cap
+ *  reintroduced anywhere between the turn and the record cuts its end off and fails the case. */
+const LONG_SYNTHESIS = `Final synthesis.${" The closing sentence must survive whole.".repeat(120)}`;
+
 /** The review slot every case here starts from: pinned by the operator to one codex model. */
 const REVIEW = {
   enabled: true,
@@ -181,7 +185,7 @@ describe("review coverage tied to recorded execution", () => {
                   }
                   return {
                     status: "completed",
-                    assistantText: turns === 1 ? "Premature finish" : "Final synthesis",
+                    finalText: turns === 1 ? "Premature finish" : LONG_SYNTHESIS,
                   };
                 },
               };
@@ -193,7 +197,7 @@ describe("review coverage tied to recorded execution", () => {
         mode === "complete" ? "completed" : mode === "stalled" ? "incomplete" : "failed",
       );
       expect(result.coverage.complete).toBe(mode === "complete");
-      expect(result.report).toBe(mode === "failed" ? null : "Final synthesis");
+      expect(result.report).toBe(mode === "failed" ? null : LONG_SYNTHESIS);
       expect(publicEpochReview(result).findings).toHaveLength(mode === "complete" ? 2 : 0);
       if (mode === "failed") expect(result.findings).toEqual([]);
       expect(result.admission).toEqual({

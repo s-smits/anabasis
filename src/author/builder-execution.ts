@@ -14,7 +14,8 @@
  * instead of appearing to have run for free.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { AgentTurnEvent, AgentTurnResult, BackendId, TurnUsage } from "../backends/backend-types.ts";
+import type { AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/backend-types.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BuilderExecutionInvocation } from "../run/builder-execution-closure.ts";
 import type { ExperimentSubmission } from "./experiment-proposal.ts";
@@ -118,7 +119,7 @@ export interface BuilderSubmitCounts {
 
 export interface BuilderExecutionEvidence {
   schema: typeof BUILDER_EXECUTION_SCHEMA;
-  backend: BackendId | null;
+  backend: BackendKind | null;
   /** What the provider reported about itself; null when the transport reported nothing. */
   runtimeIdentity: RuntimeModelIdentity | null;
   turns: number;
@@ -339,7 +340,7 @@ export class BuilderExecutionRecorder {
   private outputTokens: number | null = null;
   private costUsd: number | null = null;
   private firstToolMs: number | null = null;
-  private backend: BackendId | null = null;
+  private backend: BackendKind | null = null;
   private runtimeIdentity: RuntimeModelIdentity | null = null;
   private previous: { bytes: string; findingsDigest: string | null } | null = null;
   private readonly customCalls: BuilderCustomToolCall[] = [];
@@ -366,7 +367,7 @@ export class BuilderExecutionRecorder {
   }
 
   /** The transport that actually opened, read once the session exists. */
-  openedOn(backend: BackendId): void {
+  openedOn(backend: BackendKind): void {
     this.backend = backend;
   }
 

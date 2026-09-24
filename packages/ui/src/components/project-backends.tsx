@@ -33,9 +33,8 @@ export function ProjectBackends({
                 }
               >
                 {slot.choices.map((choice) => (
-                  <option key={choice.value} value={choice.value} disabled={!choice.supported}>
+                  <option key={choice.value} value={choice.value}>
                     {choice.label}
-                    {choice.supported ? "" : " · unavailable"}
                   </option>
                 ))}
               </select>

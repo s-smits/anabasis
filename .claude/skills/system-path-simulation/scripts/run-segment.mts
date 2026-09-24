@@ -82,10 +82,9 @@ import {
   type SegmentStep,
   type TrailRow,
 } from "./segment-loop.mts";
-import type { AgentTurnResult, BackendId, TurnUsage } from "#src/backends/backend-types.ts";
+import type { AgentTurnResult, TurnUsage } from "#src/backends/backend-types.ts";
 import type { CampaignBuilderCondition } from "#src/author/campaign-epoch.ts";
-import { backendDescriptor } from "#src/backends/backend-kinds.ts";
-import { slotModelDefault } from "#src/backends/slot-defaults.ts";
+import { type BackendKind, defaultModelOf } from "#src/backends/resolve.ts";
 import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
@@ -99,7 +98,7 @@ const die: ExitWith = exitWith("run-segment");
 /** The tree this script was read from — the same tree whose `src/` it just imported, so a copy in a
  *  scratch worktree measures that worktree instead of the primary checkout. */
 const REPO_ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "../../../..");
-const BACKENDS: BackendId[] = ["claude", "codex", "openrouter"];
+const BACKENDS: BackendKind[] = ["claude", "codex", "openrouter"];
 
 /** What `--handover` must export. The host can prove the module exports a function; that it takes a
  *  handover context is the operator's claim, and this predicate is where that claim is named. */
@@ -349,8 +348,7 @@ const systemPrompt =
 const slug = single.get("slug") ?? "segment";
 /** An unstated model is the Builder slot's own default, named here so the recorded condition says
  *  which model served it: the slot resolves no model of its own. */
-const model =
-  single.get("model") ?? slotModelDefault(backend, "builder", backendDescriptor(backend).defaultModel);
+const model = single.get("model") ?? defaultModelOf(backend);
 const condition: CampaignBuilderCondition = {
   kind: backend,
   model: model ?? null,

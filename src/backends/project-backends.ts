@@ -16,22 +16,12 @@ import { dirname } from "../meta/path.ts";
 import { recordedProjects } from "../run/project-registry.ts";
 import { type JsonValue, isRecord } from "../meta/json-shape.ts";
 import {
+  type BackendSlot,
   type ProjectBackendSelection,
-  type ProjectBackendSlot,
   assertProjectBackendSelection,
   operatorBackendsPath,
-} from "./project-backend-policy.ts";
+} from "./resolve.ts";
 import { readJsonFile, writeAtomic } from "../meta/completed-json.ts";
-export {
-  type ProjectBackendChoice,
-  type ProjectBackendSelection,
-  type ProjectBackendSlot,
-  backendSupportsSlot,
-  defaultBackendFor,
-  operatorBackendsPath,
-  projectBackendChoices,
-  requireSlotSupport,
-} from "./project-backend-policy.ts";
 
 type JsonObject = Record<string, JsonValue>;
 
@@ -44,7 +34,7 @@ function readOperatorObject(path: string): JsonObject {
   return parsed;
 }
 
-function nextOperatorObject(prior: JsonObject, slot: ProjectBackendSlot, selection: ProjectBackendSelection) {
+function nextOperatorObject(prior: JsonObject, slot: BackendSlot, selection: ProjectBackendSelection) {
   // Write an explicit disabled marker. The resolver layers default.json under a project file per
   // slot, so an absent review slot means "nobody chose" and takes the standing default; only this
   // marker carries an operator's off decision through a later write to some other slot, and it is
@@ -59,11 +49,10 @@ function nextOperatorObject(prior: JsonObject, slot: ProjectBackendSlot, selecti
   return next;
 }
 
-/** The flag-side admission for one slot selection: the same vocabulary and support rows the write
- *  side enforces, exported so a CLI refuses a typo before a run acquires any state. The vocabulary
+/** The flag-side admission for one slot selection: the same vocabulary the write side enforces, exported so a CLI refuses a typo before a run acquires any state. The vocabulary
  *  is kind-level -- "codex", never "codex/gpt-5.5" -- because models are resolver-owned per kind,
  *  and a model inside a pin would be a second owner for that fact. */
-export function admitBackendSelection(slot: ProjectBackendSlot, value: string): ProjectBackendSelection {
+export function admitBackendSelection(slot: BackendSlot, value: string): ProjectBackendSelection {
   const selection =
     /* SAFETY: the assertion on the next line throws unless the value is one of the admitted
      *  selections, so this function returns only admitted ones. */
@@ -75,7 +64,7 @@ export function admitBackendSelection(slot: ProjectBackendSlot, value: string): 
 export function setProjectBackendSelection(
   repoRoot: string,
   projectId: string,
-  slot: ProjectBackendSlot,
+  slot: BackendSlot,
   selection: ProjectBackendSelection,
 ): string {
   const path = operatorBackendsPath(repoRoot, projectId);

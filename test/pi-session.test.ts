@@ -65,6 +65,25 @@ async function turn(fakeResponses: AssistantMessage[], tools: readonly PiTool[] 
 }
 
 describe("openHostSession events", () => {
+  it("hands back only this turn's last message, never an earlier turn's", async () => {
+    const session = await openHostSession({
+      slot: SLOT,
+      tools: [probe(async () => "probe result")],
+      systemPrompt: "framing",
+      fakeResponses: [
+        fauxAssistantMessage("first answer"),
+        fauxAssistantMessage([fauxToolCall("probe", { q: "x" }, { id: "c2" })], { stopReason: "toolUse" }),
+        fauxAssistantMessage([]),
+      ],
+    });
+    const first = await session.runTurn({ prompt: "one" });
+    const second = await session.runTurn({ prompt: "two" });
+    await session.dispose();
+    expect(first.finalText).toBe("first answer");
+    expect(second.status).toBe("completed");
+    expect(second.finalText).toBeUndefined();
+  });
+
   it("forwards text, reasoning and tool calls as shared turn events and counts the calls", async () => {
     const { result, events } = await turn(
       [
@@ -104,6 +123,7 @@ describe("openHostSession events", () => {
     expect(streamed.join("")).toBe("calling probedone");
     expect(result.status).toBe("completed");
     expect(result.assistantText).toBe("calling probe\ndone");
+    expect(result.finalText).toBe("done");
     expect(result.toolCalls).toEqual({ byName: { probe: 1 }, failedByName: {}, failed: 0, total: 1 });
     expect(result.runtimeIdentity?.schema).toBe("runtime-model-identity/v2");
     const identity = result.runtimeIdentity;

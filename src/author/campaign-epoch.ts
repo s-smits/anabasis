@@ -13,7 +13,7 @@
  */
 import { mkdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import type { BackendKind } from "../backends/backend-kinds.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import { readCompleted, writeCompleted } from "../meta/completed-json.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -49,6 +49,11 @@ export interface CampaignEpochEvidence {
   /** The epoch this one superseded: a prior epoch key, or null for a fresh campaign. */
   supersedes: string | null;
 }
+
+/** What changed between an epoch and the one it superseded: only the authoring `pass`, on the same
+ *  request and Builder condition, or the `binding` itself. Null for a first epoch, or when either
+ *  epoch is missing from the record, since then nothing says what the two had in common. */
+export type EpochSuccession = "pass" | "binding";
 
 type EpochRecordEntry = {
   key: string;
@@ -113,6 +118,15 @@ function sameCondition(entry: EpochRecordEntry, binding: EpochRecordEntry["bindi
 
 function evidenceOf(campaignRoot: string, entry: EpochRecordEntry): CampaignEpochEvidence {
   return { key: entry.key, dir: join(campaignRoot, entry.key), supersedes: entry.supersedes };
+}
+
+/** Which succession `epoch` is, read from the record; see EpochSuccession. */
+export function epochSuccession(campaignRoot: string, epoch: CampaignEpochEvidence): EpochSuccession | null {
+  const epochs = readEpochRecord(campaignRoot)?.epochs ?? [];
+  const entry = epochs.find(({ key }) => key === epoch.key);
+  const prior = epochs.find(({ key }) => key === epoch.supersedes);
+  if (entry === undefined || prior === undefined) return null;
+  return sameCondition(prior, entry.binding) ? "pass" : "binding";
 }
 
 /** The epoch a reopening pass would supersede: its own when it has already opened, otherwise the

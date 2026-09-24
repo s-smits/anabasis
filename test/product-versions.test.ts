@@ -140,9 +140,9 @@ test("source edits leave captured bytes unchanged; altered or missing selected b
   );
   rmSync(join(version, "agent", "index.ts"));
   writeFileSync(join(version, "agent", "index.ts"), "export const agent = 3;\n");
-  expect(() => selectedProductDir(root, slug)).toThrow();
+  expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
   rmSync(join(version, "agent", "index.ts"));
-  expect(() => selectedProductDir(root, slug)).toThrow();
+  expect(() => selectedProductDir(root, slug)).toThrow("retained product version agent bundle hashes");
 });
 
 test("an unregistered publication or lost database cannot become a fresh selected product", () => {
@@ -187,7 +187,7 @@ test("publication preserves accepted file bytes and tool reference without impor
   );
   expect(() =>
     publishProductVersion({ ...input, fingerprint: { ...fingerprint, agentHash: "wrong" } }),
-  ).toThrow();
+  ).toThrow("accepted product agent bundle hashes");
   // The toolchain an operator reclaimed is not a changed product. A tree that resolves elsewhere is.
   rmSync(join(input.acceptedSnapshot, ".toolchain"), { recursive: true });
   expect(readProductVersion(root, slug, "first")).toBe(version);
@@ -202,14 +202,18 @@ test("changed file sets and linked product directories are refused even when lin
   const input = source("first");
   const version = publishProductVersion(input);
   writeFileSync(join(version, "agent", "extra.ts"), "extra");
-  expect(() => readProductVersion(root, slug, "first")).toThrow();
+  expect(() => readProductVersion(root, slug, "first")).toThrow(
+    "retained product version agent bundle hashes",
+  );
   rmSync(join(version, "agent", "extra.ts"));
   const retained = join(root, "moved-agent");
   renameSync(join(version, "agent"), retained);
   symlinkSync(retained, join(version, "agent"));
   expect(() => readProductVersion(root, slug, "first")).toThrow("direct directory");
   const second = source("second");
-  expect(() => publishProductVersion({ ...second, fingerprint: input.fingerprint })).toThrow();
+  expect(() => publishProductVersion({ ...second, fingerprint: input.fingerprint })).toThrow(
+    "task identity drifted",
+  );
   expect(existsSync(productVersionDir(root, slug, "second"))).toBe(false);
 });
 

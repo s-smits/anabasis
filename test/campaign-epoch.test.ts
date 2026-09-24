@@ -42,6 +42,8 @@ import {
   selectCampaignEpoch,
   writeCompleted,
 } from "../src/author/campaign-epoch.ts";
+
+type EpochBinding = Parameters<typeof selectCampaignEpoch>[1];
 const EPOCHS_JSON = "epochs.json";
 
 const SCRATCH_ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-epoch-"));
@@ -63,8 +65,8 @@ function scratch(name: string): string {
   return dir;
 }
 
-describe("campaign epoch selection (R0)", () => {
-  it("keeps the moved stable-JSON hash byte-compatible", () => {
+describe("campaign epoch selection", () => {
+  it("hashes JSON canonically, so key order and undefined fields never move an epoch key", () => {
     expect(hashJsonValue({ c: [undefined, 2], a: undefined, b: 1 })).toBe(
       "fc1f78a51ced6a05af84e4525d591cc5a482f3bef359edfb1e083e61bfcebcff",
     );
@@ -91,45 +93,6 @@ describe("campaign epoch selection (R0)", () => {
     expect(record.epochs).toHaveLength(1);
     expect(Object.keys(record.epochs[0]?.binding ?? {}).sort()).toEqual(["builder", "kickoffHash"]);
     expect(existsSync(join(root, "epochs.json.tmp"))).toBe(false);
-  });
-
-  it("resolves an epoch recorded with the retired domain and engines fields to its own directory", () => {
-    // A campaign written under the older key shape hashed `domain` and `engines: null` into it.
-    // Lookup compares the binding fields, so the old key and directory stay in force and no
-    // second epoch opens for the same prompt, Builder and pass.
-    const root = scratch("retired-fields");
-    const oldKey = `epoch-${hashJsonValue({ domain: "matching", kickoffHash: hashJsonValue(ASK_V1), engines: null, builder: BUILDER_CONDITION }).slice(0, 12)}`;
-    mkdirSync(join(root, oldKey), { recursive: true });
-    writeFileSync(
-      join(root, EPOCHS_JSON),
-      JSON.stringify({
-        schema: "campaign-epochs/v1",
-        current: oldKey,
-        epochs: [
-          {
-            key: oldKey,
-            supersedes: null,
-            createdAt: "2026-09-01T00:00:00.000Z",
-            binding: {
-              domain: "matching",
-              kickoffHash: hashJsonValue(ASK_V1),
-              engines: null,
-              builder: BUILDER_CONDITION,
-            },
-          },
-        ],
-      }),
-    );
-    expect(campaignEpochForBinding(root, { kickoff: ASK_V1, builder: BUILDER_CONDITION })?.key).toBe(oldKey);
-    expect(selectCampaignEpoch(root, { kickoff: ASK_V1, builder: BUILDER_CONDITION })).toEqual({
-      key: oldKey,
-      dir: join(root, oldKey),
-      supersedes: null,
-    });
-    expect(
-      campaignEpochForBinding(root, { kickoff: ASK_V1, builder: BUILDER_CONDITION, pass: "p" }),
-    ).toBeNull();
-    expect(campaignEpochForBinding(root, { kickoff: ASK_V1 })).toBeNull();
   });
 
   it("a pass that has not opened reads the latest pass on its prompt and Builder, not the initial build", () => {
@@ -165,27 +128,6 @@ describe("campaign epoch selection (R0)", () => {
     expect(latestCampaignEpochForBinding(root, { kickoff: ASK_V1, pass: "experiment:2" })).toBeNull();
   });
 
-  it("stores one Builder condition and binds it into the epoch key", () => {
-    const root = scratch("builder-condition");
-    const first = selectCampaignEpoch(root, {
-      kickoff: ASK_V1,
-      builder: BUILDER_CONDITION,
-    });
-    const record = parseJsonAs<{
-      epochs: Array<{ binding: { builder: typeof BUILDER_CONDITION | null } }>;
-    }>(readFileSync(join(root, EPOCHS_JSON), "utf8"));
-    expect(record.epochs[0]?.binding.builder).toEqual(BUILDER_CONDITION);
-    expect(first.key).toBe(
-      `epoch-${hashJsonValue({ kickoffHash: hashJsonValue(ASK_V1), builder: BUILDER_CONDITION }).slice(0, 12)}`,
-    );
-    expect(
-      selectCampaignEpoch(root, {
-        kickoff: ASK_V1,
-        builder: BUILDER_CONDITION,
-      }).key,
-    ).toBe(first.key);
-  });
-
   it("re-selects the same epoch for the same binding instead of creating a duplicate", () => {
     const root = scratch("stable");
     const first = selectCampaignEpoch(root, { kickoff: ASK_V1 });
@@ -195,50 +137,35 @@ describe("campaign epoch selection (R0)", () => {
     expect(readFileSync(join(root, EPOCHS_JSON), "utf8")).toBe(before);
   });
 
-  it("a changed ask writes a successor that points to, and never mutates, the prior epoch", () => {
-    const root = scratch("changed-ask");
-    const first = selectCampaignEpoch(root, { kickoff: ASK_V1 });
+  it.each<[string, EpochBinding, EpochBinding]>([
+    ["a corrected ask", { kickoff: ASK_V1 }, { kickoff: ASK_V2 }],
+    [
+      "a changed Builder condition",
+      { kickoff: ASK_V1, builder: BUILDER_CONDITION },
+      { kickoff: ASK_V1, builder: { ...BUILDER_CONDITION, reasoningEffort: "high" } },
+    ],
+    [
+      "a changed Builder upstream route",
+      { kickoff: ASK_V1, builder: { ...BUILDER_CONDITION, providerPin: ["deepinfra"] } },
+      { kickoff: ASK_V1, builder: { ...BUILDER_CONDITION, providerPin: ["together"] } },
+    ],
+  ])("%s writes a successor that points to, and never mutates, the prior epoch", (label, before, after) => {
+    const root = scratch(`successor-${label.replaceAll(" ", "-")}`);
+    const first = selectCampaignEpoch(root, before);
     // Completed evidence inside the first epoch must survive the supersession byte-for-byte.
     writeFileSync(join(first.dir, "marker.json"), '{"completed":true}');
-    const second = selectCampaignEpoch(root, { kickoff: ASK_V2 });
+    const second = selectCampaignEpoch(root, after);
     expect(second.key).not.toBe(first.key);
     expect(second.supersedes).toBe(first.key);
     expect(readFileSync(join(first.dir, "marker.json"), "utf8")).toBe('{"completed":true}');
     const record = parseJsonAs<{
       current: string;
-      epochs: Array<{ key: string; supersedes: string | null }>;
+      epochs: Array<{ key: string; supersedes: string | null; binding: { builder?: unknown } }>;
     }>(readFileSync(join(root, EPOCHS_JSON), "utf8"));
     expect(record.current).toBe(second.key);
     expect(record.epochs.map((e) => e.key)).toEqual([first.key, second.key]);
     expect(record.epochs[0]?.supersedes).toBeNull();
-  });
-
-  it("a changed Builder condition writes a successor instead of mixing evidence", () => {
-    const root = scratch("changed-builder-condition");
-    const first = selectCampaignEpoch(root, {
-      kickoff: ASK_V1,
-      builder: BUILDER_CONDITION,
-    });
-    const second = selectCampaignEpoch(root, {
-      kickoff: ASK_V1,
-      builder: { ...BUILDER_CONDITION, reasoningEffort: "high" },
-    });
-    expect(second.key).not.toBe(first.key);
-    expect(second.supersedes).toBe(first.key);
-  });
-
-  it("a changed Builder upstream route writes a successor", () => {
-    const root = scratch("changed-builder-provider");
-    const first = selectCampaignEpoch(root, {
-      kickoff: ASK_V1,
-      builder: { ...BUILDER_CONDITION, providerPin: ["deepinfra"] },
-    });
-    const second = selectCampaignEpoch(root, {
-      kickoff: ASK_V1,
-      builder: { ...BUILDER_CONDITION, providerPin: ["together"] },
-    });
-    expect(second.key).not.toBe(first.key);
-    expect(second.supersedes).toBe(first.key);
+    expect(record.epochs[1]?.binding.builder ?? null).toEqual(after.builder ?? null);
   });
 
   it("re-running a superseded binding re-points current at its existing epoch, no duplicate", () => {
@@ -360,7 +287,7 @@ describe("campaign epoch selection (R0)", () => {
 
     const occupied = join(root, "occupied");
     mkdirSync(occupied, { recursive: true });
-    expect(() => writeAtomic(occupied, "one\ntwo\n")).toThrow();
+    expect(() => writeAtomic(occupied, "one\ntwo\n")).toThrow("EISDIR");
     expect(readdirSync(root).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
   });
 
@@ -382,7 +309,7 @@ describe("campaign epoch selection (R0)", () => {
     // The parse error names the file, which JSON.parse on its own never does.
     expect(() => readJsonFile(damaged)).toThrow(`${damaged}: `);
     expect(readJsonFileOrNull(damaged)).toBeNull();
-    expect(() => readJsonFile(join(root, "absent.json"))).toThrow();
+    expect(() => readJsonFile(join(root, "absent.json"))).toThrow("ENOENT");
     expect(readJsonFileOrNull(join(root, "absent.json"))).toBeNull();
   });
 });

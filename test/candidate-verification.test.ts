@@ -25,71 +25,57 @@ const UNPROVEN: ExperimentFreeze = {
   clauses: ["evaluation-harness-unverifiable: agent: slug has no agent/ bundle"],
 };
 
+type PointerInput = Parameters<typeof publishesAdmissionPointer>[0];
+const heldAs = (experiment: "build" | "climb" | "evaluation" | null) =>
+  ({ build: "candidate", decision: "held", experiment }) as const;
+
 describe("publishesAdmissionPointer", () => {
-  it("publishes whenever the packet already describes the adopted tree", () => {
-    // A measured adopted tree (no candidate at all) and a promoted candidate are the same case: the
-    // findings were measured on what is now installed.
-    expect(publishesAdmissionPointer({ build: "adopted", decision: null, experiment: null })).toBe(true);
-    expect(publishesAdmissionPointer({ build: "candidate", decision: "promoted", experiment: "build" })).toBe(
-      true,
-    );
-  });
-
-  it("records a held build candidate: its findings describe a tree that was never adopted", () => {
-    expect(publishesAdmissionPointer({ build: "candidate", decision: "held", experiment: "build" })).toBe(
+  // Each published row is paired with the nearest input whose findings stay recorded only under
+  // the round's analysis directory.
+  it.each<[string, PointerInput, boolean]>([
+    ["a measured adopted tree", { build: "adopted", decision: null, experiment: null }, true],
+    ["a promoted candidate", { build: "candidate", decision: "promoted", experiment: "build" }, true],
+    ["a held build candidate, whose tree was never adopted", heldAs("build"), false],
+    ["a held candidate naming no experiment", heldAs(null), false],
+    // A climb froze the harness, so its packet describes the adopted agent and evaluator.
+    ["a held climb carrying a blocking row", { ...heldAs("climb"), blockingFeedback: true }, true],
+    ["a held climb with no blocking row", { ...heldAs("climb"), blockingFeedback: false }, false],
+    ["a held climb whose admission is unstated", heldAs("climb"), false],
+    // The freeze is what says the packet describes the adopted agent and battery.
+    ["a held evaluation on a proved freeze", { ...heldAs("evaluation"), freeze: HELD }, true],
+    ["a held evaluation on an unproven freeze", { ...heldAs("evaluation"), freeze: UNPROVEN }, false],
+    ["a held evaluation with a null freeze", { ...heldAs("evaluation"), freeze: null }, false],
+    ["a held evaluation with no freeze", heldAs("evaluation"), false],
+    // readAdmission reads a packet whose evaluation identity moved as lineage.
+    [
+      "a proved evaluation hold whose identity moved",
+      { ...heldAs("evaluation"), freeze: HELD, observedOnAdopted: false },
       false,
-    );
-    // No experiment named at all falls through the two exceptions to the same record.
-    expect(publishesAdmissionPointer({ build: "candidate", decision: "held", experiment: null })).toBe(false);
-  });
-
-  it("publishes a held climb only when an admitted row blocks the fixed harness", () => {
-    // A climb froze the harness, so its packet describes the adopted agent and evaluator. It is
-    // worth publishing exactly when it carries a blocking row the next decision reads as the
-    // evaluation correction.
-    const climb = { build: "candidate", decision: "held", experiment: "climb" } as const;
-    expect(publishesAdmissionPointer({ ...climb, blockingFeedback: true })).toBe(true);
-    expect(publishesAdmissionPointer({ ...climb, blockingFeedback: false })).toBe(false);
-    // Absent is not true: an unstated admission publishes nothing.
-    expect(publishesAdmissionPointer(climb)).toBe(false);
-  });
-
-  it("publishes a held evaluation candidate only on a proved freeze", () => {
-    // The freeze is what says the packet describes the adopted agent and battery. Unproved, the
-    // candidate may have moved either, so the packet stays recorded under analysis/.
-    const evaluation = { build: "candidate", decision: "held", experiment: "evaluation" } as const;
-    expect(publishesAdmissionPointer({ ...evaluation, freeze: HELD })).toBe(true);
-    expect(publishesAdmissionPointer({ ...evaluation, freeze: UNPROVEN })).toBe(false);
-    expect(publishesAdmissionPointer({ ...evaluation, freeze: null })).toBe(false);
-    expect(publishesAdmissionPointer(evaluation)).toBe(false);
-  });
-
-  it("keeps the adopted admission when a held packet's evaluation identity moved", () => {
-    // readAdmission reads such a packet as lineage; publishing it would leave no admission at all.
-    const held = { build: "candidate", decision: "held", observedOnAdopted: false } as const;
-    expect(publishesAdmissionPointer({ ...held, experiment: "evaluation", freeze: HELD })).toBe(false);
-    expect(publishesAdmissionPointer({ ...held, experiment: "climb", blockingFeedback: true })).toBe(false);
-    expect(
-      publishesAdmissionPointer({ ...held, experiment: "evaluation", freeze: HELD, observedOnAdopted: true }),
-    ).toBe(true);
-    // A promoted candidate becomes the adopted tree, so its packet still publishes.
-    expect(publishesAdmissionPointer({ ...held, decision: "promoted", experiment: "evaluation" })).toBe(true);
-  });
-
-  it("does not cross the two exceptions: a climb's blocking row cannot publish an evaluation hold", () => {
-    // Each exception reads its own field. A held evaluation candidate with a blocking row and
-    // no proved freeze still records, and a held climb with a proved freeze still records.
-    expect(
-      publishesAdmissionPointer({
-        build: "candidate",
-        decision: "held",
-        experiment: "evaluation",
-        blockingFeedback: true,
-      }),
-    ).toBe(false);
-    expect(
-      publishesAdmissionPointer({ build: "candidate", decision: "held", experiment: "climb", freeze: HELD }),
-    ).toBe(false);
+    ],
+    [
+      "a blocking climb hold whose identity moved",
+      { ...heldAs("climb"), blockingFeedback: true, observedOnAdopted: false },
+      false,
+    ],
+    [
+      "a proved evaluation hold observed on the adopted tree",
+      { ...heldAs("evaluation"), freeze: HELD, observedOnAdopted: true },
+      true,
+    ],
+    [
+      "a promoted candidate whose identity moved",
+      { ...heldAs("evaluation"), decision: "promoted", observedOnAdopted: false },
+      true,
+    ],
+    // Each exception reads its own field and never the other's.
+    [
+      "an evaluation hold carrying only a blocking row",
+      { ...heldAs("evaluation"), blockingFeedback: true },
+      false,
+    ],
+    ["a climb hold carrying only a proved freeze", { ...heldAs("climb"), freeze: HELD }, false],
+  ])("%s publishes: %p", (_label, input, publishes) => {
+    expect(publishesAdmissionPointer(input)).toBe(publishes);
   });
 });
 
@@ -143,8 +129,9 @@ describe("shippingBundleFor", () => {
 
   it("holds a recorded battery whose bundle cannot be read", () => {
     const claim = double<WrittenRunClaim>({ batteryRecorded: true });
-    const shipping = shippingBundleFor({ measureDir }, { runId: "r1", claim });
-    expect(shipping.expected).toBeNull();
-    expect(shipping.error).not.toBeNull();
+    expect(shippingBundleFor({ measureDir }, { runId: "r1", claim })).toEqual({
+      expected: null,
+      error: expect.stringContaining(measureDir),
+    });
   });
 });

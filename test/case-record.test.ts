@@ -126,18 +126,7 @@ describe("one writer, serialized appends", () => {
     expect(() => CaseRecord.open(path)).toThrow(/last line is unterminated/);
   });
 });
-describe("strict parser — B-1 cannot hide malformed rows behind a tolerant reader", () => {
-  it("throws on a malformed line instead of skipping it", async () => {
-    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
-    const record = CaseRecord.open(path);
-    await record.append(verifiedRow("t1", true));
-    await record.append(verifiedRow("t2", true));
-    await record.close();
-    const lines = readFileSync(path, "utf8").trim().split("\n");
-    writeFileSync(path, `${lines[0]}\n{"seq":2,"half`.concat("\n"));
-    expect(() => readCaseRecord(path)).toThrow(/malformed record line/);
-  });
-
+describe("strict parser — a tolerant reader cannot hide malformed rows", () => {
   it("reads an unfinished last line as not yet written, and still refuses a damaged middle line", async () => {
     const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
@@ -263,7 +252,7 @@ describe("row discipline", () => {
   });
 });
 
-describe("denominator from the task set (B-1 fix 3)", () => {
+describe("denominator from the task set", () => {
   it("passes exactly when rows are a bijection with the task ids", async () => {
     const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);

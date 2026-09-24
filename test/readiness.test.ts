@@ -117,12 +117,6 @@ describe("assessReadiness — readiness assessed separately from the score claim
     expect(verdict.clauses.map((clause) => clause.clause)).toContain("paid-agent-zero-pass");
   });
 
-  it("missing solvability evidence blocks readiness", () => {
-    const verdict = assessReadiness(input({ solvability: null }));
-    expect(verdict.ready).toBe(false);
-    expect(verdict.clauses.map((c) => c.clause)).toContain("no-solvability-witness");
-  });
-
   it("solvability evidence for another task set blocks readiness", () => {
     const mismatch = assessReadiness(input({ solvability: { ...SOLVABILITY, taskSetHash: "x".repeat(64) } }));
     expect(mismatch.clauses.map((c) => c.clause)).toContain("solvability-evidence-mismatch");
@@ -162,17 +156,18 @@ describe("assessReadiness — readiness assessed separately from the score claim
     expect(verdict.clauses[0]?.detail).toContain("1 passed witness case(s)");
   });
 
-  it("missing conformance evidence blocks readiness", () => {
-    // The old Boolean check treated the presence of a probe function as success, while its
-    // test double always returned true. Readiness now requires the conformance probe record.
-    const verdict = assessReadiness(input({ conformance: null }));
+  it.each<[string, Partial<ReadinessInput>, string[]]>([
+    ["solvability", { solvability: null }, ["no-solvability-witness"]],
+    ["conformance", { conformance: null }, ["conformance-unprobed"]],
+    [
+      "solvability and conformance",
+      { solvability: null, conformance: null },
+      ["no-solvability-witness", "conformance-unprobed"],
+    ],
+  ])("missing %s evidence blocks readiness with one finding each", (_label, overrides, clauses) => {
+    const verdict = assessReadiness(input(overrides));
     expect(verdict.ready).toBe(false);
-    expect(verdict.clauses.map((c) => c.clause)).toContain("conformance-unprobed");
-  });
-
-  it("missing solvability and conformance evidence produce separate findings", () => {
-    const verdict = assessReadiness(input({ solvability: null, conformance: null }));
-    expect(verdict.clauses).toHaveLength(2);
+    expect(verdict.clauses.map((c) => c.clause).sort()).toEqual([...clauses].sort());
   });
 
   it("changed evidence bytes block readiness and identify the affected file", () => {
@@ -201,9 +196,8 @@ describe("assessReadiness — readiness assessed separately from the score claim
   });
 });
 
-// Coverage follows executed tools (2026-09-06): a declared external check whose tool ran on
-// no verified case of the battery is named by readiness through the same grounding-coverage
-// finding used by admission.
+// Coverage follows executed tools: a declared external check whose tool ran on no verified case of
+// the battery is named by readiness through the same grounding-coverage finding used by admission.
 describe("declared-but-unlaunched external checks", () => {
   const launched = {
     checkId: "firmware-builds",

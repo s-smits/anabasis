@@ -5,9 +5,11 @@ import type { Api, Message, Model } from "@earendil-works/pi-ai";
 import type { Options } from "claude-agent-sdk-bridge";
 import type { BridgeProviderSettings } from "../vendor/pi-claude-bridge/provider.ts";
 import { QueryContext } from "../vendor/pi-claude-bridge/query-state.ts";
-import { mkdtempSync } from "../src/meta/filesystem.ts";
+import { getSessionPath } from "cc-session-io";
+import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { type QueryTally, compactSummaries } from "../vendor/pi-claude-bridge/compact-summary.ts";
 import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
+import { dirname, join } from "../src/meta/path.ts";
 import { double, required } from "./helpers/doubles.ts";
 const STREAM_EVENT = "stream_event";
 const CONTENT_BLOCK_STOP = "content_block_stop";
@@ -144,8 +146,8 @@ async function drive(
     options.settings ?? {},
     double(stream()),
     { toPi: options.toPi ?? registered(), model: double(options.model ?? testModel()) },
-    () => false,
     turn.context,
+    { aborted: false, compactions: 0, sessionId: undefined },
   );
   return turn;
 }
@@ -299,6 +301,44 @@ describe("the Pi Claude bridge compaction", () => {
     );
     expect(seen).toEqual([12]);
   });
+
+  it("counts the boundaries a query saw, so the summaries can be read before the transcript goes", async () => {
+    const boundary = {
+      type: "system",
+      subtype: "compact_boundary",
+      compact_metadata: { trigger: "auto", pre_tokens: 1 },
+    };
+    const tally: QueryTally = { aborted: false, compactions: 0, sessionId: undefined };
+    await consumeQueryForTest(
+      {},
+      double(
+        (async function* () {
+          yield boundary;
+          yield boundary;
+        })(),
+      ),
+      { toPi: registered(), model: double(testModel()) },
+      new QueryContext(),
+      tally,
+    );
+    expect(tally.compactions).toBe(2);
+  });
+
+  it("reads the newest compaction summaries from the CLI transcript, and nothing from a missing one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "compact-summary-"));
+    const transcript = join(dir, "s.jsonl");
+    const summary = (text: string) =>
+      JSON.stringify({ type: "user", isCompactSummary: true, message: { role: "user", content: text } });
+    const blocks = JSON.stringify({
+      type: "user",
+      isCompactSummary: true,
+      message: { role: "user", content: [{ type: "text", text: "third" }] },
+    });
+    const plain = JSON.stringify({ type: "user", message: { role: "user", content: "not a summary" } });
+    writeFileSync(transcript, [summary("first"), plain, summary("second"), blocks, "{broken"].join("\n"));
+    expect(compactSummaries(transcript, 2)).toEqual(["second", "third"]);
+    expect(compactSummaries(join(dir, "absent.jsonl"), 1)).toEqual([]);
+  });
 });
 
 describe("the Pi Claude bridge after a stopped query", () => {
@@ -401,6 +441,49 @@ describe("the Pi Claude bridge after a stopped query", () => {
       expect(options.resume).toBe("session-1");
       expect(options.forkSession).toBe(true);
       expect((await next.result()).content).toEqual([{ type: "text", text: "ok" }]);
+    } finally {
+      cliMessages = ANSWERED;
+      holdOpen = false;
+    }
+  });
+
+  // An accepted submit ends the Builder's turn by aborting its query, which is the path a round
+  // most often ends on. The summary the CLI wrote when it compacted is still in its transcript
+  // then, and it has to be handed over before the turn record that owns it closes.
+  it("hands over the compaction summary of a query that is stopped rather than settled", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ana-bridge-abort-summary-"));
+    const summaries: string[] = [];
+    const bridge = createClaudeBridge({
+      env: { CLAUDE_CONFIG_DIR: dir },
+      cwd: dir,
+      onCompactionSummary: (summary) => summaries.push(summary),
+    });
+    const transcript = getSessionPath("session-1", dir, dir);
+    mkdirSync(dirname(transcript), { recursive: true });
+    writeFileSync(
+      transcript,
+      JSON.stringify({
+        type: "user",
+        isCompactSummary: true,
+        message: { role: "user", content: "what came before" },
+      }),
+    );
+    const stop = new AbortController();
+    cliMessages = [
+      { type: "system", subtype: "init", session_id: "session-1" },
+      { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 9 } },
+      ...toolUse,
+    ];
+    holdOpen = true;
+    try {
+      const turn = bridge(
+        testModel(),
+        { messages: [tools, { role: "user", content: "go", timestamp: 0 }] },
+        { signal: stop.signal },
+      );
+      expect((await turn.result()).stopReason).toBe("toolUse");
+      stop.abort();
+      expect(summaries).toEqual(["what came before"]);
     } finally {
       cliMessages = ANSWERED;
       holdOpen = false;
@@ -561,14 +644,9 @@ describe("the Pi Claude bridge result identity", () => {
     async function* init() {
       yield { type: "system", subtype: "init", session_id: "session-7" };
     }
-    const result = await consumeQueryForTest(
-      {},
-      double(init()),
-      { toPi: new Map(), model: testModel() },
-      () => false,
-      context,
-    );
-    expect(result.capturedSessionId).toBe("session-7");
+    const tally: QueryTally = { aborted: false, compactions: 0, sessionId: undefined };
+    await consumeQueryForTest({}, double(init()), { toPi: new Map(), model: testModel() }, context, tally);
+    expect(tally.sessionId).toBe("session-7");
   });
 });
 

@@ -20,19 +20,18 @@
  */
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderAuthorFeedback } from "../builder/author-feedback.ts";
-import { SessionTranscriptSink } from "../builder/session-transcript.ts";
 import { authoringIdentity, PRIMARY_AUTHOR_PATHS } from "./author-first.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ContractFinding } from "../truth/brief.ts";
 import { BuildAgentTurnNonResult, openBuildSession } from "./build-agent.ts";
-import { CampaignBudgetExhausted } from "../run/campaign-budget.ts";
+import { CampaignBudgetExhausted } from "../run/controller-ledger.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { type BuilderExecutionEvidence, BuilderExecutionRecorder } from "./builder-execution.ts";
 import { sessionClock, withCustomToolReceipts } from "./builder-tool-receipts.ts";
 import { STALLED_TURNS } from "./builder-continuation.ts";
-import { builderMemoryBlock } from "./builder-memory.ts";
+import { MEMORY_FILE, SCRATCHPAD_FILE, SCRATCH_DIR, builderMemoryBlock } from "./builder-memory.ts";
 import { builderSystemPrompt } from "./builder-start-prompt.ts";
 import {
   BuilderConversation,
@@ -59,6 +58,15 @@ interface BuilderSessionInput {
   workspace: string;
   /** Controller-admitted repair evidence, already projected for the Builder. */
   advisory?: string;
+  /** What a fresh session is told and a continued conversation already holds: the campaign's
+   *  earlier attempts and the refusals still standing from them. A continued conversation received
+   *  each of those refusals as the submit result that ended its round, so repeating them in the next
+   *  opening would state them twice; after compaction the context tool's round source still has
+   *  them. */
+  freshContext?: string;
+  /** The round plan's compact view, which every continuation carries; absent when the round asks
+   *  for no plan. */
+  planView?: () => string;
   /** The operator's cap on session work (`--max-builder-turns`), which model turns and refused
    *  submits share. A turn is one prompt and the tool iterations inside it are free, so a session
    *  can author everything within turn 1 and make a dozen refused submits that all record
@@ -91,11 +99,22 @@ const ENDED: Record<RoundEnding, string> = {
     "The last round ended when a model turn failed on the provider's side, after its retries.",
 };
 
+/** How a new workspace was prepared. None of them says what else crossed, because the carried notes
+ *  land in every successor workspace whatever its seed, and the notes block shows them. */
 const SEEDED: Record<WorkspaceSeed, string> = {
   adopted: "a new workspace seeded from the adopted product",
-  starter: "a new workspace from the starter, with nothing from the previous workspace in it",
+  starter: "a new workspace from the starter",
   resumed: "a workspace an earlier pass worked in, with its in-flight edits kept",
 };
+
+/** What the next round receives from this one. Every measured round reopens in a new workspace, and
+ *  the Builder's own notes cross only through these files; acceptance ends the round at the
+ *  boundary of the turn that submitted, and the model never answers that result, so a note meant
+ *  for after a clear submit is never written. */
+const HANDOVER =
+  `The next round opens in a new workspace, and what you learned reaches it only through ${MEMORY_FILE}, ` +
+  `${SCRATCHPAD_FILE} and ${SCRATCH_DIR}/. An accepted submit ends this round at that turn, so bring them up ` +
+  "to date before you submit.";
 
 export interface BuilderSessionDeps {
   /** The campaign's review of the authoring tree, asked after every completed host tool call while
@@ -129,11 +148,6 @@ export interface BuilderSessionDeps {
   /** Shared with harness_inspect in production, so the latest bounded submit refusal stays
    *  navigable there without giving inspection any authority over acceptance. */
   feedback?: BuilderAuthorFeedback;
-  /** Directory for the controller-event transcript (`builder-transcript-pointer/v2`). Its pointer
-   *  is written as the session opens, because `onExecution` needs the loop to settle first and a
-   *  host killed mid-authoring never gets that far. Undefined disables the writer; the production
-   *  caller passes the campaign directory. */
-  transcriptDir?: string;
   /** One shared token per ordinary Builder provider and model call. */
   attemptGate?: ModelAttemptGate;
   /** Joined to `attemptGate` at the same outer Builder turn boundary. */
@@ -155,11 +169,10 @@ interface BuilderSessionOutcome {
   findings: ContractFinding[];
 }
 
-/** One closing round: its hold on the conversation, the two sinks its evidence lands in, the deps
+/** One closing round: its hold on the conversation, the recorder its evidence lands in, the deps
  *  it ran under, its accumulated state and what the turn loop threw, if it threw. */
 type SessionClosing = {
   readonly round: ConversationRound;
-  readonly transcriptSink: SessionTranscriptSink;
   readonly recorder: BuilderExecutionRecorder;
   readonly deps: BuilderSessionDeps;
   readonly state: SessionState;
@@ -184,7 +197,6 @@ interface RoundContext {
   readonly deps: BuilderSessionDeps;
   readonly state: SessionState;
   readonly recorder: BuilderExecutionRecorder;
-  readonly transcriptSink: SessionTranscriptSink;
   readonly checkpoint: () => void;
   /** The operator's turn cap; absent, the round has none. */
   readonly maxTurns: number | undefined;
@@ -224,18 +236,18 @@ function workspaceSentence(input: BuilderSessionInput, previous: PreviousRound |
 }
 
 function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null): string {
-  // Read-back of the Builder's own notes, once per fresh session. The Builder writes MEMORY.md and
-  // SCRATCHPAD.md itself, and without this read-back nothing delivers them, so a fresh session
-  // opens on notes that were written and never read. It is unconditional on how the previous round
-  // ended, and empty until a pass has written something; builder-memory.ts owns the byte bound and
-  // the stale-notes header. A continued conversation already holds everything the notes would
-  // repeat, so it reads none.
+  // The Builder's own notes, read back whenever the round opens in a workspace the conversation has
+  // not worked in. A fresh session has never seen them. A continued one saw its last workspace's
+  // notes, but every measured round moves it to a new workspace holding the carried copy, and pi
+  // compacts the opening turn first, so what it once read cannot be assumed still held. Only a
+  // round that stays in the same workspace reads none. builder-memory.ts owns the byte bound and
+  // the stale-notes header.
   //
-  // The block goes FIRST, not last. It is model-authored prose that may predate the current
-  // binding, and appended after the request, the workspace, the round limit and the previous
-  // attempt it would occupy the most recent and most authoritative position in the kickoff.
-  // Everything the controller states for THIS round now follows it.
-  const memory = previous === null ? builderMemoryBlock(input.workspace) : "";
+  // The block goes before the request, not last. It is model-authored prose that may predate the
+  // current binding, and appended after the request, the workspace, the round limit and the
+  // previous attempt it would occupy the most recent and most authoritative position in the prompt.
+  const moved = previous === null || previous.workspace !== input.workspace;
+  const memory = moved ? builderMemoryBlock(input.workspace) : "";
   const rows = [
     ...(previous === null ? [] : [`A new round opens in this conversation. ${ENDED[previous.ending]}`]),
     ...(memory === "" ? [] : [memory]),
@@ -248,10 +260,12 @@ function roundPrompt(input: BuilderSessionInput, previous: PreviousRound | null)
     `${input.maxTurns === undefined ? "" : `Round limit: ${input.maxTurns} assistant turns. `}Build and check the candidate, and submit once you are confident` +
       ` that a clear preview and your own checks are sufficient evidence that it works; further polish belongs to the` +
       ` next round.`,
+    HANDOVER,
   ];
-  if (input.advisory !== undefined && input.advisory.trim() !== "") {
-    rows.push(`Authoring context:\n${input.advisory}`);
-  }
+  const context = [input.advisory ?? "", previous === null ? (input.freshContext ?? "") : ""]
+    .filter((part) => part.trim() !== "")
+    .join("\n\n");
+  if (context !== "") rows.push(`Authoring context:\n${context}`);
   return rows.join("\n\n");
 }
 
@@ -310,8 +324,7 @@ function classifyExit(
 async function finishBuilderSession(
   closing: SessionClosing,
 ): Promise<BuilderSessionLifecycleError | undefined> {
-  const { round, transcriptSink, recorder, deps, state, failure } = closing;
-  transcriptSink.settle();
+  const { round, recorder, deps, state, failure } = closing;
   try {
     // A round with no run conversation closes its own session.
     await round.end(deps.conversation === undefined ? null : conversationEnding(state, failure));
@@ -354,7 +367,7 @@ function sessionOutcome(state: SessionState, turns: number): BuilderSessionOutco
 /** The round's hosted tools: the toolkit and the submit tool, every call receipted, and the round
  *  clock riding the open results. */
 function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): PiTool[] {
-  const { deps, state, recorder, transcriptSink, checkpoint, maxTurns } = context;
+  const { deps, state, recorder, checkpoint, maxTurns } = context;
   // A settled round gets no review: acceptance froze its bytes and the round ends with this turn,
   // so advice from the reviewer would reach nobody who could still act on it.
   const { afterTool } = deps;
@@ -370,7 +383,6 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
     activeTurn: () => state.activeTurn,
     checkpoint,
     closed: () => settledClosure(state),
-    events: transcriptSink.toolEvents(),
     clock: sessionClock(() => state.attempts > 0),
     afterTool:
       afterTool === undefined
@@ -387,7 +399,7 @@ async function runRoundTurns(
   input: BuilderSessionInput,
   firstPrompt: string,
 ): Promise<number> {
-  const { deps, state, recorder, transcriptSink, checkpoint, maxTurns } = context;
+  const { deps, state, recorder, checkpoint, maxTurns } = context;
   // The session's own start, read once. The continuation states elapsed time because a turn count
   // measures none: a session that reads and installs for a night crosses no turn count at all.
   const openedAtMs = Date.now();
@@ -412,9 +424,8 @@ async function runRoundTurns(
       checkpoint,
       kickoff: input.kickoff,
       ...keyIfDefined("maxTurns", maxTurns),
+      ...keyIfDefined("planView", input.planView),
       openedAtMs,
-      // The session driver owns this projection, and the turn loop calls it before it can throw.
-      onTurnCompleted: (turn, result) => transcriptSink.turnCompleted(turn, result),
       ...keyIfDefined("observer", deps.observer),
       // The operator's cap applies across the whole session, so each new turn receives only what
       // is left of it rather than a fresh copy.
@@ -428,7 +439,7 @@ async function runRoundTurns(
     if (next === null) break;
     turns += 1;
     prompt = next.prompt;
-    transcriptSink.prompt(state.activeTurn + 1, prompt);
+    recorder.prompt(prompt);
   }
   return turns;
 }
@@ -442,9 +453,8 @@ export async function runBuilderSession(
 ): Promise<BuilderSessionOutcome> {
   const state = freshSessionState();
   const recorder = new BuilderExecutionRecorder();
-  const transcriptSink = new SessionTranscriptSink();
   const checkpoint = (): void => deps.onCheckpoint?.(recorder.finish("in-flight"));
-  const context = { deps, state, recorder, transcriptSink, checkpoint, maxTurns: input.maxTurns };
+  const context = { deps, state, recorder, checkpoint, maxTurns: input.maxTurns };
   const roster = roundRoster(context, deps.feedback ?? new BuilderAuthorFeedback());
   const systemPrompt = builderSystemPrompt(input.webSearch === true);
   deps.recordSession?.(roster, systemPrompt);
@@ -454,19 +464,22 @@ export async function runBuilderSession(
   );
   const { session } = round;
   recorder.openedOn(session.backend);
+  recorder.handoversIn(input.workspace);
   let turns = 0;
   let failure: { error: unknown } | null = null;
   let lifecycleError: BuilderSessionLifecycleError | undefined;
   try {
     const prompt = roundPrompt(input, round.previous);
-    transcriptSink.prompt(1, prompt);
-    transcriptSink.open(session.sessionId, session.backend, deps.transcriptDir, round.openedIn);
+    recorder.prompt(prompt);
+    // Checkpointed as the session opens, so a host killed inside the first turn still leaves the
+    // execution record and the prompt that turn was sent.
+    checkpoint();
     turns = await runRoundTurns(context, session, input, prompt);
   } catch (error) {
     failure = { error };
     throw error;
   } finally {
-    lifecycleError = await finishBuilderSession({ round, transcriptSink, recorder, deps, state, failure });
+    lifecycleError = await finishBuilderSession({ round, recorder, deps, state, failure });
   }
   if (lifecycleError !== undefined) throw lifecycleError;
   return sessionOutcome(state, turns);

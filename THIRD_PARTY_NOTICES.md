@@ -40,8 +40,7 @@ SOFTWARE.
 ## pi-claude-bridge
 
 - Source: https://github.com/elidickinson/pi-claude-bridge, v0.6.3 at commit 2bc9a7e
-- Copies: `vendor/pi-claude-bridge/`, and `verifyWrittenTranscript` in
-  `src/builder/session-transcript.ts`
+- Copies: `vendor/pi-claude-bridge/`
 
 ```text
 MIT License

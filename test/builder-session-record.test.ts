@@ -7,13 +7,9 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import type { BuilderExecutionEvidence } from "../src/author/builder-execution.ts";
+import { type BuilderExecutionEvidence, submitProjection } from "../src/author/builder-execution.ts";
 import { runBuilderSession } from "../src/author/builder-session.ts";
-import { BUILDER_TRANSCRIPT_POINTER_FILE } from "../src/builder/session-transcript.ts";
-import { mkdtempSync, readFileSync, readdirSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
-import { join } from "../src/meta/path.ts";
-import { SCRIPTED_SESSION_ID, required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
+import { required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import {
   ACCEPTED,
   INPUT,
@@ -47,13 +43,13 @@ describe("the Builder execution record", () => {
         settled = evidence;
       },
     });
-    // Three turn checkpoints and two submit checkpoints, in event order.
-    expect(checkpoints).toHaveLength(5);
+    // The opening checkpoint, three turn checkpoints and two submit checkpoints, in event order.
+    expect(checkpoints).toHaveLength(6);
     expect(checkpoints.every((c) => c.outcome === "in-flight")).toBe(true);
     // The submit checkpoint lands while its turn is still running: the refusal reaches disk
     // before the turn settles, so a kill mid-turn keeps every completed submission.
-    expect(checkpoints[1]?.submits).toHaveLength(1);
-    expect(checkpoints[1]?.turns).toBe(1);
+    expect(checkpoints[2]?.submits).toHaveLength(1);
+    expect(checkpoints[2]?.turns).toBe(1);
     expect(settled?.outcome).toBe("recorded");
     expect(settled?.submits).toHaveLength(2);
   });
@@ -72,11 +68,11 @@ describe("the Builder execution record", () => {
       { ...INPUT, maxTurns: 1 },
       { ...deps(open, () => ACCEPTED), onCheckpoint: (evidence) => checkpoints.push(evidence) },
     );
-    // One liveness checkpoint inside the turn, then the turn's own.
-    expect(checkpoints).toHaveLength(2);
-    expect(checkpoints[0]).toMatchObject({ outcome: "in-flight", turns: 0 });
-    expect(checkpoints[0]?.firstToolMs).toEqual(expect.any(Number));
-    expect(checkpoints[1]).toMatchObject({ outcome: "in-flight", turns: 1 });
+    // The opening checkpoint, one liveness checkpoint inside the turn, then the turn's own.
+    expect(checkpoints).toHaveLength(3);
+    expect(checkpoints[1]).toMatchObject({ outcome: "in-flight", turns: 0 });
+    expect(checkpoints[1]?.firstToolMs).toEqual(expect.any(Number));
+    expect(checkpoints[2]).toMatchObject({ outcome: "in-flight", turns: 1 });
   });
 
   it("checkpoints after every hosted tool return inside one turn that never ends", async () => {
@@ -109,10 +105,10 @@ describe("the Builder execution record", () => {
       ...deps(open, () => ACCEPTED, [checkTool]),
       onCheckpoint: (evidence) => checkpoints.push(evidence),
     });
-    // One checkpoint per hosted call, written while the turn is still open.
-    expect(seen).toEqual([1, 2, 3]);
-    expect(checkpoints[2]?.customCalls).toHaveLength(3);
-    expect(checkpoints[2]?.turns).toBe(0);
+    // One checkpoint per hosted call after the opening one, written while the turn is still open.
+    expect(seen).toEqual([2, 3, 4]);
+    expect(checkpoints[3]?.customCalls).toHaveLength(3);
+    expect(checkpoints[3]?.turns).toBe(0);
   });
 
   // The pr179 run failed on a provider limit after 121.8 minutes of authoring; the transcript
@@ -164,10 +160,12 @@ describe("the Builder execution record", () => {
     const evidence = completed[0];
     expect(completed).toHaveLength(1);
     expect(evidence).toMatchObject({
-      schema: "builder-execution/v5",
+      schema: "builder-execution/v6",
       backend: "claude",
       turns: 3,
       outcome: "turn-bound",
+    });
+    expect(submitProjection(evidence?.submits ?? [])).toMatchObject({
       repeatedFindingSubmits: 1,
       unchangedTreeSubmits: 1,
     });
@@ -311,19 +309,69 @@ describe("the Builder execution record", () => {
     expect(completed[0]).toMatchObject({ outcome: "turn-non-result", turns: 4, submits: [] });
   });
 
-  it("names the transcript as the session opens, once, before its first turn throws", async () => {
-    const transcriptDir = mkdtempSync(join(tmpdir(), "ana-session-pointer-"));
+  it("checkpoints the opening prompt before the first turn, so a kill inside it leaves a record", async () => {
     const failing: TurnScript = () => ({ status: "failed", errorMessages: ["boom"] });
     const { open } = scriptedOpener([failing, failing, failing, failing]);
-    await expect(runBuilderSession(INPUT, { ...deps(open, () => REFUSED), transcriptDir })).rejects.toThrow(
-      /turn failed/,
-    );
-    // One pointer for the one session, written before any turn attested an identity.
-    expect(readdirSync(transcriptDir).filter((name) => name.startsWith("builder-transcript"))).toEqual([
-      BUILDER_TRANSCRIPT_POINTER_FILE,
+    const checkpoints: BuilderExecutionEvidence[] = [];
+    await expect(
+      runBuilderSession(INPUT, {
+        ...deps(open, () => REFUSED),
+        onCheckpoint: (evidence) => checkpoints.push(evidence),
+      }),
+    ).rejects.toThrow(/turn failed/);
+    expect(checkpoints[0]).toMatchObject({ outcome: "in-flight", turns: 0 });
+    expect(checkpoints[0]?.prose?.map((row) => [row.kind, row.turn])).toEqual([["prompt", 1]]);
+  });
+
+  it("records each turn's prompt and compactions beside the Builder's own words", async () => {
+    const { open } = scriptedOpener([
+      () => ({
+        status: "completed",
+        assistantText: "reading",
+        compactions: [{ tokensBefore: 90_000, compacted: true }],
+      }),
+      async (submit) => {
+        await submit.execute("t1", {});
+        return undefined;
+      },
     ]);
-    const pointer = JSON.parse(readFileSync(join(transcriptDir, BUILDER_TRANSCRIPT_POINTER_FILE), "utf8"));
-    expect(pointer).toMatchObject({ sessionId: SCRIPTED_SESSION_ID, transport: "claude", warnings: [] });
-    expect(readFileSync(pointer.path, "utf8")).toContain('"kind":"prompt"');
+    let settled: BuilderExecutionEvidence | undefined;
+    await runBuilderSession(INPUT, {
+      ...deps(open, () => ACCEPTED),
+      onExecution: (evidence) => {
+        settled = evidence;
+      },
+    });
+    const rows = settled?.prose?.map((row) => [row.kind, row.turn]);
+    expect(rows?.slice(0, 4)).toEqual([
+      ["prompt", 1],
+      ["message", 1],
+      ["compaction", 1],
+      ["prompt", 2],
+    ]);
+    expect(settled?.prose?.[2]?.text).toBe("tokensBefore=90000 compacted=true");
+  });
+
+  it("keeps the summary a compaction wrote, under its token count", async () => {
+    const { open } = scriptedOpener([
+      () => ({
+        status: "completed",
+        assistantText: "reading",
+        compactions: [{ tokensBefore: 90_000, compacted: true, summary: "Summary: the checks pass." }],
+      }),
+      async (submit) => {
+        await submit.execute("t1", {});
+        return undefined;
+      },
+    ]);
+    let settled: BuilderExecutionEvidence | undefined;
+    await runBuilderSession(INPUT, {
+      ...deps(open, () => ACCEPTED),
+      onExecution: (evidence) => {
+        settled = evidence;
+      },
+    });
+    const row = settled?.prose?.find((entry) => entry.kind === "compaction");
+    expect(row?.text).toBe("tokensBefore=90000 compacted=true\n\nSummary: the checks pass.");
   });
 });

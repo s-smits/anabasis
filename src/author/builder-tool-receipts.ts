@@ -1,16 +1,11 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { type JsonValue, asRecord } from "../meta/json-shape.ts";
+import { asRecord } from "../meta/json-shape.ts";
 import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { hasText } from "../meta/text.ts";
 import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS } from "./builder-continuation.ts";
-
-interface BuilderToolEvents {
-  started(turn: number, tool: string, args: Record<string, JsonValue> | undefined): void;
-  ended(turn: number, tool: string, threw: boolean): void;
-}
 
 /** The session the receipts are written against: who records, which turn is open, how a checkpoint
  *  is taken, whether the session has closed, and the optional hooks. */
@@ -19,7 +14,6 @@ type BuilderToolReceiptSession = {
   readonly activeTurn: () => number;
   readonly checkpoint: () => void;
   readonly closed: () => "accepted" | "terminal-refusal" | null;
-  readonly events?: BuilderToolEvents | undefined;
   readonly afterTool?: (() => Promise<string | null>) | undefined;
   readonly clock?: (() => string | null) | undefined;
 };
@@ -98,7 +92,7 @@ export function withCustomToolReceipts(
   tools: readonly PiTool[],
   session: BuilderToolReceiptSession,
 ): PiTool[] {
-  const { recorder, activeTurn, checkpoint, closed, events, afterTool } = session;
+  const { recorder, activeTurn, checkpoint, closed, afterTool } = session;
   const clock = session.clock ?? sessionClock();
   let active = 0;
   let reviewing: Promise<string | null> | null = null;
@@ -152,7 +146,6 @@ export function withCustomToolReceipts(
         // Pi hands every tool an object its parameters admitted; the record keeps it as JSON.
         const recorded = asRecord(args) ?? undefined;
         const sequence = recorder.customToolStarted(name, recorded, turn);
-        events?.started(turn, name, recorded);
         let result: AgentToolResult<unknown>;
         const closure = closed();
         try {
@@ -162,7 +155,6 @@ export function withCustomToolReceipts(
               : await execute(toolCallId, args, signal);
         } catch (error) {
           recorder.customToolFinished(sequence, "threw");
-          events?.ended(turn, name, true);
           const advice = await settle(name, turn, closure === null);
           checkpoint();
           if (hasText(advice)) throw new Error(`${errorMessage(error)}\n${advice}`, { cause: error });
@@ -172,7 +164,6 @@ export function withCustomToolReceipts(
         // minutes to the tool, which can be most of a long call's recorded duration. The receipt is
         // in `details`.
         recorder.customToolFinished(sequence, "returned", result);
-        events?.ended(turn, name, false);
         const advice = await settle(name, turn, closure === null);
         // Public advice rides the completed result as one more text block.
         if (hasText(advice)) {

@@ -1,20 +1,13 @@
 /** The campaign quota is a projection of the same ledger that admits provider calls. */
-import { existsSync, mkdirSync, realpathSync } from "../meta/filesystem.ts";
-import { join } from "../meta/path.ts";
+import { mkdirSync, realpathSync } from "../meta/filesystem.ts";
 import { isFunction } from "../meta/json-shape.ts";
 import type { TurnUsage } from "../backends/backend-types.ts";
 import {
   ControllerLedger,
   CampaignBudgetExhausted,
-  assertCampaignBudget,
-  controllerLedgerPath,
   type CampaignBudget,
   type BudgetStatus,
 } from "./controller-ledger.ts";
-import { readJsonFile } from "../meta/completed-json.ts";
-
-export { CampaignBudgetExhausted, assertCampaignBudget } from "./controller-ledger.ts";
-export type { CampaignBudget, BudgetStatus } from "./controller-ledger.ts";
 
 interface ModelAttemptToken {
   beginProviderTurn(): void;
@@ -29,18 +22,6 @@ export interface CampaignBudgetGate {
   status(): BudgetStatus;
 }
 export interface SavedCampaignBudgetGate extends CampaignBudgetGate, ModelAttemptGate {}
-/** Historical reports remain readable without creating or changing controller state. */
-export function loadBudget(root: string): CampaignBudget {
-  if (existsSync(controllerLedgerPath(root))) {
-    using ledger = ControllerLedger.open(root);
-    return ledger.campaignBudget();
-  }
-  const path = join(root, "budget.json");
-  return existsSync(path)
-    ? assertCampaignBudget(readJsonFile(path), path)
-    : { turnBudget: null, turnsUsed: 0, status: "active" };
-}
-
 export function setTurnBudget(root: string, cap: number | null): CampaignBudget {
   if (cap !== null && (!Number.isSafeInteger(cap) || cap < 1)) {
     throw new TypeError("turnBudget must be a positive safe integer or null");

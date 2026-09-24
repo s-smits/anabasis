@@ -1,29 +1,22 @@
 /**
- * The two Markdown files the Builder writes in its workspace, and what a later epoch inherits from
- * them. They sit outside the accepted bundle and carry no correctness authority, so nothing here is
- * about whether the notes are right; it is about whether they arrive, bounded and attributed,
- * without disturbing a prompt that has to stay byte-identical.
+ * What one authoring pass leaves the next. The Builder writes two Markdown files in its workspace,
+ * MEMORY.md for what the next build would otherwise learn again and SCRATCHPAD.md for the open
+ * questions and next steps, and neither carries correctness authority. What matters is whether they
+ * arrive, bounded and attributed, without disturbing a prompt that has to stay byte-identical.
  *
- * That last part is why the empty case is the load-bearing one. An untouched starter must render
- * nothing at all — not an empty block, not a bare heading — because a prompt digest is a recorded
- * condition identity, which means a stray newline out of this module does not make the prompt
- * slightly different, it makes every run after it a different measured condition from every run
- * before it.
+ * Every measured round reopens the product under a new authoring pass, which opens a new epoch and
+ * a new workspace, so the carry between epochs is the ordinary way a round hands over, not a rare
+ * one. It has two cases, and the epoch record says which. A new pass on the same request and
+ * Builder carries both files, because the open questions were written for exactly this next build.
+ * A changed request or Builder condition carries MEMORY.md alone: under another binding the old
+ * questions are neither answered nor open, only unattributable.
  *
- * The rest is inheritance and its ceiling, and the ceiling is where the interesting failures live.
- * `src/author/builder-memory.ts` caps MEMORY.md at 8,000 bytes and SCRATCHPAD.md at 2,000, applying
- * each on the inherited write and again on the prompt read, so four separate paths can meet a
- * ceiling: the inherited block, a file the Builder hand-wrote, a carried
- * file, and a carried file the Builder then edited back over it. The fourth is the one that really
- * needs its own case, because truncating it must not take the carry marker with it — a carried file
- * that loses its marker reads as the successor's own work, and the next Builder then treats a
- * predecessor's conclusions as notes it wrote itself. For the same reason a file carried across
- * several epochs names only its immediate predecessor, so the header cannot grow into a chain.
- *
- * Around that sit the ordinary rules: scratch is carried selectively, small top-level helpers but
- * not output directories, an epoch that already has memory of its own is never overwritten by an
- * inherited one, and a missing predecessor leaves the successor with no inherited notes rather than
- * failing the campaign, since a first epoch has no predecessor by definition.
+ * The empty case is load-bearing. An untouched starter renders nothing at all, because a prompt
+ * digest is a recorded condition identity, and a stray newline out of this module would make every
+ * later run a different measured condition from every earlier one. The ceilings are the other
+ * place failures live: each file is capped on the carry and again on the read, and neither cut may
+ * take the carry marker with it, since a carried file that loses its marker reads as the
+ * successor's own work.
  */
 import {
   appendFileSync,
@@ -31,6 +24,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -40,12 +34,18 @@ import {
   MEMORY_CAP_BYTES,
   MEMORY_FILE,
   SCRATCHPAD_FILE,
+  STARTER_MEMORY,
   WORKSPACE_DIR,
   builderMemoryBlock,
-  withoutRepeatedSections,
   carryMemoryForward,
 } from "../src/author/builder-memory.ts";
+import { type CampaignEpochEvidence, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { initWorkspace } from "../src/author/domain-repo.ts";
+
+const ASK = "design steel roof trusses to Eurocode 3";
+const CORRECTED_ASK = "design steel roof trusses to Eurocode 3, including connections";
+const BYTES = (text: string) => new TextEncoder().encode(text).byteLength;
+const count = (text: string, part: string) => text.split(part).length - 1;
 
 /** A real seeded workspace: the starter bytes come from the one owner that writes them. */
 function workspace(): string {
@@ -54,21 +54,40 @@ function workspace(): string {
   return dir;
 }
 
-const read = (dir: string, file: string): string => readFileSync(join(dir, file), "utf8");
+const workspaceOf = (epoch: CampaignEpochEvidence) => join(epoch.dir, WORKSPACE_DIR);
+const read = (epoch: CampaignEpochEvidence, file: string) =>
+  readFileSync(join(workspaceOf(epoch), file), "utf8");
 
-/** The successor epoch every case carries memory into, under whichever root it was given. */
-function successor(root: string) {
-  return { key: "epoch-bbbb", dir: join(root, "epoch-bbbb"), supersedes: "epoch-aaaa" };
+/** A campaign whose first epoch is seeded and holds the given notes. Successors are selected
+ *  through the real epoch record, so the carry reads the binding it was actually written under. */
+function campaign(memory: string, scratchpad?: string) {
+  const root = mkdtempSync(join(tmpdir(), "ana-epochs-"));
+  const first = selectCampaignEpoch(root, { kickoff: ASK });
+  initWorkspace(workspaceOf(first));
+  writeFileSync(join(workspaceOf(first), MEMORY_FILE), memory);
+  if (scratchpad !== undefined) writeFileSync(join(workspaceOf(first), SCRATCHPAD_FILE), scratchpad);
+  /** The next measured round: same request and Builder, a new authoring pass. */
+  const nextPass = (pass: string) => {
+    const epoch = selectCampaignEpoch(root, { kickoff: ASK, pass });
+    carryMemoryForward(root, epoch);
+    return epoch;
+  };
+  /** A corrected request: the binding itself changed. */
+  const nextAsk = () => {
+    const epoch = selectCampaignEpoch(root, { kickoff: CORRECTED_ASK });
+    carryMemoryForward(root, epoch);
+    return epoch;
+  };
+  return { root, first, nextPass, nextAsk };
 }
 
-describe("Builder memory", () => {
+describe("the notes block a fresh session opens on", () => {
   it("renders nothing until a pass has written something", () => {
     const dir = workspace();
     expect(builderMemoryBlock(dir)).toBe("");
     expect(builderMemoryBlock(join(dir, "absent"))).toBe("");
-    writeFileSync(join(dir, MEMORY_FILE), "# Builder memory\n\n## Engine and verifier\n\nOpenSees 3.5\n");
+    writeFileSync(join(dir, MEMORY_FILE), "# Builder memory\n\n## Tools and verifier\n\nOpenSees 3.5\n");
     const block = builderMemoryBlock(dir);
-    expect(block).toContain("Historical notes, model-authored and possibly stale");
     expect(block).toContain(`--- ${MEMORY_FILE} ---`);
     expect(block).toContain("OpenSees 3.5");
     // The scratchpad is still the untouched starter, so it stays out of the block entirely.
@@ -76,25 +95,19 @@ describe("Builder memory", () => {
   });
 
   it("heads the block with its origin, its authorship and what overrides it", () => {
-    // The block is the stalest text in a prompt and used to sit in its most authoritative
-    // position. It now leads, so the header must carry the three facts the position carried.
     const dir = workspace();
     writeFileSync(join(dir, MEMORY_FILE), "# Builder memory\n\nthe engine is pinned\n");
     const block = builderMemoryBlock(dir);
     expect(block.startsWith("Historical notes, model-authored and possibly stale.")).toBe(true);
-    // Origin: the workspace the notes were written in, and the epoch marker a carried file keeps.
     expect(block).toContain(dir);
     expect(block).toContain('"carried forward from <epoch>"');
-    expect(block).toContain("before the current binding");
     expect(block).toContain("Everything below this\nblock is current and overrides it");
-    // The header precedes the bodies it describes.
     expect(block.indexOf("Historical notes")).toBeLessThan(block.indexOf(`--- ${MEMORY_FILE} ---`));
+    // A carry within one request is no longer a binding change, so the header claims none.
+    expect(block).not.toContain("binding");
   });
 
-  it("bounds a hand-written memory file when it is read back into a prompt", () => {
-    // Carry-forward caps inherited notes. The Builder also edits MEMORY.md itself with
-    // its file tools, so the bytes on disk can still be any size; the read-back must not carry a
-    // transcript into the next pass's kickoff, and must keep the end the Builder last wrote.
+  it("bounds a hand-written file on the read and keeps the end the Builder wrote last", () => {
     const dir = workspace();
     const line = "a lesson the Builder wrote by hand\n";
     const newest = "the last thing the Builder wrote by hand";
@@ -103,152 +116,160 @@ describe("Builder memory", () => {
       `${line.repeat(Math.ceil((MEMORY_CAP_BYTES * 3) / line.length))}${newest}\n`,
     );
     const block = builderMemoryBlock(dir);
-    // The slack covers the cut marker plus the stale-notes header and its workspace path.
-    expect(new TextEncoder().encode(block).byteLength).toBeLessThanOrEqual(MEMORY_CAP_BYTES + 600);
+    // The slack covers the cut marker plus the header and its workspace path.
+    expect(BYTES(block)).toBeLessThanOrEqual(MEMORY_CAP_BYTES + 600);
     expect(block).toContain(`memory cut to ${MEMORY_CAP_BYTES} bytes`);
     expect(block).toContain(newest);
-    expect(block).toContain(line.trim());
   });
 
-  it("opens a successor epoch on its predecessor's memory, marked as predating the new binding", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-"));
-    const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
-    initWorkspace(prior);
-    writeFileSync(join(prior, MEMORY_FILE), "# Builder memory\n\nunits are kN\n");
-    writeFileSync(join(prior, SCRATCHPAD_FILE), "# Scratchpad\n\n- open: L3\n");
-    const epoch = successor(root);
-    carryMemoryForward(root, epoch);
-    const carried = read(join(root, "epoch-bbbb", WORKSPACE_DIR), MEMORY_FILE);
-    expect(carried).toContain("units are kN");
-    expect(carried).toContain("carried forward from epoch-aaaa");
-    // The scratchpad is one binding's open-question list and is dropped, not migrated.
-    expect(existsSync(join(root, "epoch-bbbb", WORKSPACE_DIR, SCRATCHPAD_FILE))).toBe(false);
-    // Initialisation finds the inherited file already present, so it enters the successor's root commit.
-    initWorkspace(join(root, "epoch-bbbb", WORKSPACE_DIR));
-    expect(read(join(root, "epoch-bbbb", WORKSPACE_DIR), MEMORY_FILE)).toContain("units are kN");
+  it("keeps one copy of an exact repeated section and drops a heading with nothing under it", () => {
+    const dir = workspace();
+    writeFileSync(
+      join(dir, MEMORY_FILE),
+      "# Notes\n\n## Status\nsubmitted once\n\n## Status\nsubmitted once\n\n## Open\n\n## Status\nsubmitted twice\n",
+    );
+    const block = builderMemoryBlock(dir);
+    expect(count(block, "submitted once")).toBe(1);
+    // A section that differs by one word is not a repeat.
+    expect(block).toContain("submitted twice");
+    expect(block).not.toContain("## Open");
   });
 
-  it("carries small top-level scratch helpers and leaves output directories and large files behind", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-scratch-"));
-    const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
-    initWorkspace(prior);
-    writeFileSync(join(prior, MEMORY_FILE), "# Builder memory\n\nunits are kN\n");
+  it("seeds a memory starter whose every heading is distinct", () => {
+    // Two headings for one subject split the notes between them, and the next pass finds half.
+    const headings = STARTER_MEMORY.split("\n").filter((line) => line.startsWith("## "));
+    expect(new Set(headings).size).toBe(headings.length);
+    expect(headings.filter((heading) => heading.includes("Tools"))).toHaveLength(1);
+  });
+});
+
+describe("the handover between measured rounds", () => {
+  it("carries both notes to the next pass on the same request, marked as an earlier pass", () => {
+    const { first, nextPass } = campaign(
+      "# Builder memory\n\nunits are kN\n",
+      "# Scratchpad\n\n- open: L3 span family\n",
+    );
+    const next = nextPass("experiment:1");
+    expect(next.supersedes).toBe(first.key);
+    expect(read(next, MEMORY_FILE)).toContain("units are kN");
+    expect(read(next, SCRATCHPAD_FILE)).toContain("open: L3 span family");
+    for (const file of [MEMORY_FILE, SCRATCHPAD_FILE]) {
+      expect(read(next, file)).toContain(`carried forward from ${first.key}`);
+      // Nothing about the request or the Builder changed, so nothing says it did.
+      expect(read(next, file)).not.toContain("the binding changed");
+    }
+    // The next pass's fresh-session read delivers the carried scratchpad too.
+    expect(builderMemoryBlock(workspaceOf(next))).toContain("open: L3 span family");
+  });
+
+  it("carries memory alone across a changed request, marked as predating the new binding", () => {
+    const { first, nextAsk } = campaign("# Builder memory\n\nunits are kN\n", "# Scratchpad\n\n- open: L3\n");
+    const next = nextAsk();
+    expect(read(next, MEMORY_FILE)).toContain("units are kN");
+    expect(read(next, MEMORY_FILE)).toContain(`carried forward from ${first.key}: the binding changed`);
+    expect(existsSync(join(workspaceOf(next), SCRATCHPAD_FILE))).toBe(false);
+    // Initialisation finds the inherited file present, so it enters the successor's root commit.
+    initWorkspace(workspaceOf(next));
+    expect(read(next, MEMORY_FILE)).toContain("units are kN");
+  });
+
+  it("caps a carried scratchpad to its own ceiling and keeps the marker and newest line", () => {
+    const newest = "- open: does the verifier accept bare floats";
+    const { nextPass } = campaign(
+      "# Builder memory\n\nunits are kN\n",
+      `${"- an old question\n".repeat(400)}${newest}\n`,
+    );
+    const carried = read(nextPass("experiment:1"), SCRATCHPAD_FILE);
+    expect(BYTES(carried)).toBeLessThanOrEqual(2_000);
+    expect(carried).toContain("carried forward from");
+    expect(carried).toContain(newest);
+  });
+
+  it("carries small top-level scratch helpers and leaves output directories and large files", () => {
+    const { first, nextPass } = campaign("# Builder memory\n\nunits are kN\n");
+    const prior = workspaceOf(first);
     mkdirSync(join(prior, "scratch", "run"), { recursive: true });
     writeFileSync(join(prior, "scratch", "gen.ts"), "export const gen = 1;\n");
     writeFileSync(join(prior, "scratch", "run", "out.json"), "{}");
     writeFileSync(join(prior, "scratch", "trace.bin"), new Uint8Array(512 * 1024));
-    carryMemoryForward(root, successor(root));
-    const next = join(root, "epoch-bbbb", WORKSPACE_DIR);
-    expect(read(join(next, "scratch"), "gen.ts")).toBe("export const gen = 1;\n");
-    expect(existsSync(join(next, "scratch", "run"))).toBe(false);
-    expect(existsSync(join(next, "scratch", "trace.bin"))).toBe(false);
-    expect(read(next, MEMORY_FILE)).toContain(
-      "scratch/ holds epoch-aaaa's helper files, written for its binding: gen.ts.",
+    const next = nextPass("experiment:1");
+    expect(readFileSync(join(workspaceOf(next), "scratch", "gen.ts"), "utf8")).toBe(
+      "export const gen = 1;\n",
     );
-    // A second carry names only its own predecessor's helpers, one line.
-    carryMemoryForward(root, { key: "epoch-cccc", dir: join(root, "epoch-cccc"), supersedes: "epoch-bbbb" });
-    const third = read(join(root, "epoch-cccc", WORKSPACE_DIR), MEMORY_FILE);
-    expect(third.split("scratch/ holds").length - 1).toBe(1);
-    expect(third).toContain("scratch/ holds epoch-bbbb's helper files");
+    expect(existsSync(join(workspaceOf(next), "scratch", "run"))).toBe(false);
+    expect(existsSync(join(workspaceOf(next), "scratch", "trace.bin"))).toBe(false);
+    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s helper files`);
+    expect(read(next, MEMORY_FILE)).toContain("gen.ts");
+    // A second carry names only its own predecessor's helpers, in one line.
+    const third = read(nextPass("experiment:2"), MEMORY_FILE);
+    expect(count(third, "scratch/ holds")).toBe(1);
+    expect(third).toContain(`scratch/ holds ${next.key}'s helper files`);
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
-    // Without this, a fourth epoch opens on three stacked markers.
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-chain-"));
-    const first = join(root, "epoch-aaaa", WORKSPACE_DIR);
-    initWorkspace(first);
-    writeFileSync(join(first, MEMORY_FILE), "# Builder memory\n\nunits are kN\n");
-    carryMemoryForward(root, successor(root));
-    carryMemoryForward(root, { key: "epoch-cccc", dir: join(root, "epoch-cccc"), supersedes: "epoch-bbbb" });
-    const carried = read(join(root, "epoch-cccc", WORKSPACE_DIR), MEMORY_FILE);
-    expect(carried.split("carried forward from").length - 1).toBe(1);
-    expect(carried).toContain("carried forward from epoch-bbbb");
-    expect(carried).toContain("units are kN");
+    const { nextPass } = campaign("# Builder memory\n\nunits are kN\n", "# Scratchpad\n\n- open: L3\n");
+    const second = nextPass("experiment:1");
+    const third = nextPass("experiment:2");
+    for (const file of [MEMORY_FILE, SCRATCHPAD_FILE]) {
+      expect(count(read(third, file), "carried forward from")).toBe(1);
+      expect(read(third, file)).toContain(`carried forward from ${second.key}`);
+    }
+    expect(read(third, MEMORY_FILE)).toContain("units are kN");
   });
 
-  it("caps a carried file and keeps the carry marker inside the ceiling", () => {
-    // An over-ceiling MEMORY.md carried three epochs deep gains a marker each time. The carry
-    // marker must survive the cut, and the file must arrive under the ceiling.
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-cap-"));
-    const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
-    initWorkspace(prior);
+  it("caps a carried memory file and keeps the carry marker inside the ceiling", () => {
     const newest = "units are kN and the verifier rejects bare floats";
-    writeFileSync(
-      join(prior, MEMORY_FILE),
+    const { first, nextPass } = campaign(
       `${"an early lesson\n".repeat(Math.ceil((MEMORY_CAP_BYTES * 2) / 16))}${newest}\n`,
     );
-    const epoch = successor(root);
-    carryMemoryForward(root, epoch);
-    const carried = read(join(root, "epoch-bbbb", WORKSPACE_DIR), MEMORY_FILE);
-    expect(new TextEncoder().encode(carried).byteLength).toBeLessThanOrEqual(MEMORY_CAP_BYTES);
-    expect(carried).toContain("carried forward from epoch-aaaa");
+    const next = nextPass("experiment:1");
+    const carried = read(next, MEMORY_FILE);
+    expect(BYTES(carried)).toBeLessThanOrEqual(MEMORY_CAP_BYTES);
+    expect(carried).toContain(`carried forward from ${first.key}`);
     expect(carried).toContain(newest);
-    expect(carried.split("memory cut to").length - 1).toBe(1);
-    // The read path passes a capped carried file through whole: no second cut on the way in.
-    expect(builderMemoryBlock(join(root, "epoch-bbbb", WORKSPACE_DIR))).toContain(newest);
+    expect(count(carried, "memory cut to")).toBe(1);
+    // The read path passes a capped carried file through whole.
+    expect(builderMemoryBlock(workspaceOf(next))).toContain(newest);
   });
 
   it("keeps the carry marker when the Builder edits a carried file back over the ceiling", () => {
-    // The successor arrives under the ceiling, then the Builder appends to it with its own file
-    // tools. A newest-first cut takes the head, which is exactly where the marker sits: without
-    // pinning it, the read-back would hand the author a predecessor's notes with nothing saying
-    // the binding changed.
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-carry-cut-"));
-    const prior = join(root, "epoch-aaaa", WORKSPACE_DIR);
-    initWorkspace(prior);
-    writeFileSync(join(prior, MEMORY_FILE), "units are kN\n");
-    const epoch = successor(root);
-    carryMemoryForward(root, epoch);
-    const next = join(root, "epoch-bbbb", WORKSPACE_DIR);
+    // A newest-first cut takes the head, which is where the marker sits.
+    const { first, nextPass } = campaign("units are kN\n");
+    const next = nextPass("experiment:1");
     const newest = "the newest hand-written lesson";
     appendFileSync(
-      join(next, MEMORY_FILE),
+      join(workspaceOf(next), MEMORY_FILE),
       `${"a lesson the Builder wrote by hand\n".repeat(400)}${newest}\n`,
     );
-
-    const block = builderMemoryBlock(next);
-
-    expect(block).toContain("carried forward from epoch-aaaa");
+    expect(BYTES(read(next, MEMORY_FILE))).toBeGreaterThan(MEMORY_CAP_BYTES);
+    const block = builderMemoryBlock(workspaceOf(next));
+    expect(block).toContain(`carried forward from ${first.key}`);
     expect(block).toContain(newest);
     expect(block).toContain("memory cut to");
-    // The marker is inside the ceiling, not extra room granted on top of it.
-    const stored = read(next, MEMORY_FILE);
-    expect(new TextEncoder().encode(stored).byteLength).toBeGreaterThan(MEMORY_CAP_BYTES);
   });
 
-  it("never overwrites an epoch that has its own memory, and never fails on a missing predecessor", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-epochs-resume-"));
-    const dir = join(root, "epoch-bbbb");
-    const next = join(dir, WORKSPACE_DIR);
-    initWorkspace(join(root, "epoch-aaaa", WORKSPACE_DIR));
-    writeFileSync(
-      join(root, "epoch-aaaa", WORKSPACE_DIR, MEMORY_FILE),
-      "# Builder memory\n\nthe predecessor's text",
+  it("never overwrites notes an epoch already has, and never fails on a missing predecessor", () => {
+    const { root, nextPass } = campaign(
+      "# Builder memory\n\nthe predecessor's text\n",
+      "# Scratchpad\n\n- theirs\n",
     );
-    initWorkspace(next);
-    writeFileSync(join(next, MEMORY_FILE), "# Builder memory\n\nthis epoch's own text");
-    // Resume re-runs the carry every invocation; the successor's own memory outranks its parent's.
-    carryMemoryForward(root, { key: "epoch-bbbb", dir, supersedes: "epoch-aaaa" });
-    expect(read(next, MEMORY_FILE)).toContain("this epoch's own text");
-    expect(read(next, MEMORY_FILE)).not.toContain("carried forward");
-    // A first epoch and an absent predecessor are both silent no-ops.
-    for (const supersedes of [null, "epoch-gone"]) {
-      expect(() =>
-        carryMemoryForward(root, { key: "epoch-cccc", dir: join(root, "c"), supersedes }),
-      ).not.toThrow();
-    }
-    expect(existsSync(join(root, "c", WORKSPACE_DIR, MEMORY_FILE))).toBe(false);
-  });
-});
-
-describe("repeated memory sections", () => {
-  it("keeps one copy of an exact repeated section and drops an empty heading", () => {
-    const text =
-      "# Notes\n\n## Status\nsubmitted once\n\n## Status\nsubmitted once\n\n## Open\n\n## Status\nsubmitted twice\n";
-    expect(withoutRepeatedSections(text)).toBe(
-      "# Notes\n\n## Status\nsubmitted once\n\n## Status\nsubmitted twice\n",
-    );
-    // A section that differs by one word is not a repeat.
-    expect(withoutRepeatedSections("## A\nx\n## A\ny\n")).toBe("## A\nx\n## A\ny\n");
+    const own = selectCampaignEpoch(root, { kickoff: ASK, pass: "experiment:1" });
+    initWorkspace(workspaceOf(own));
+    writeFileSync(join(workspaceOf(own), MEMORY_FILE), "# Builder memory\n\nthis epoch's own text\n");
+    writeFileSync(join(workspaceOf(own), SCRATCHPAD_FILE), "# Scratchpad\n\n- mine\n");
+    // Resume re-runs the carry on every invocation; the epoch's own notes outrank its parent's.
+    const resumed = nextPass("experiment:1");
+    expect(read(resumed, MEMORY_FILE)).not.toContain("carried forward");
+    expect(read(resumed, SCRATCHPAD_FILE)).toContain("mine");
+    rmSync(workspaceOf(resumed), { recursive: true, force: true });
+    const orphan = nextPass("experiment:2");
+    expect(existsSync(join(workspaceOf(orphan), MEMORY_FILE))).toBe(false);
+    // A first epoch has no predecessor, and an unrecorded epoch has no binding to compare.
+    const fresh = mkdtempSync(join(tmpdir(), "ana-epochs-fresh-"));
+    expect(() => carryMemoryForward(fresh, selectCampaignEpoch(fresh, { kickoff: ASK }))).not.toThrow();
+    expect(() =>
+      carryMemoryForward(fresh, { key: "epoch-x", dir: join(fresh, "x"), supersedes: "epoch-gone" }),
+    ).not.toThrow();
+    expect(existsSync(join(fresh, "x", WORKSPACE_DIR, MEMORY_FILE))).toBe(false);
   });
 });

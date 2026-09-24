@@ -1,9 +1,11 @@
 /**
  * The Builder's own words, recorded beside its execution record.
  *
- * Two kinds of row: the assistant text a turn returned (`message`) and a reasoning summary the
- * transport surfaced while the turn ran (`reasoning`). Nothing here is model-visible and nothing
- * here decides a pass, a claim or a promotion. The rows exist so an investigation can read how a
+ * Four kinds of row: the assistant text a turn returned (`message`), a reasoning summary the
+ * transport surfaced while the turn ran (`reasoning`), the prompt the controller sent to open a
+ * turn (`prompt`), and a context compaction inside a turn (`compaction`), whose text names the
+ * tokens it started from. Nothing here is model-visible and nothing here decides a pass, a claim
+ * or a promotion. The rows exist so an investigation can read how a
  * session was reasoning at each submit instead of inferring it from tool counts. Without these
  * rows the only copy of that prose is the provider's own rollout, under a private Codex home, with
  * nothing in the campaign pointing at it.
@@ -14,13 +16,16 @@ import { basename, join } from "../meta/path.ts";
 import { writeAtomic } from "../meta/completed-json.ts";
 
 const BUILDER_PROSE_FILE = "builder-prose.jsonl";
-const BUILDER_PROSE_SCHEMA = "builder-prose/v1";
+const BUILDER_PROSE_SCHEMA = "builder-prose/v2";
 const BUILDER_PROSE_CAPTURE_SCHEMA = "builder-prose-capture/v1";
 
 /** Rows beyond this are counted in `proseOmitted` and dropped; the count stays exact. */
 const MAX_PROSE_ROWS = 4000;
 /** Characters kept per row, about 1024 tokens. A longer row is cut and marked, not dropped. */
 export const MAX_PROSE_CHARS = 4000;
+/** A compaction row carries the summary the model wrote of everything before it, and the summary is
+ *  the reason the row exists, so it keeps far more than a message row before it is cut. */
+const MAX_COMPACTION_CHARS = 64_000;
 
 export interface BuilderProseRow {
   schema: typeof BUILDER_PROSE_SCHEMA;
@@ -28,7 +33,7 @@ export interface BuilderProseRow {
   turn: number;
   /** Milliseconds from session start, the execution record's clock. */
   atMs: number;
-  kind: "message" | "reasoning";
+  kind: "message" | "reasoning" | "prompt" | "compaction";
   /** The text's full length before truncation, retained even when only its start is stored. */
   chars: number;
   truncated: boolean;
@@ -67,6 +72,7 @@ export class BuilderProseLog {
       this.omitted += 1;
       return;
     }
+    const cap = kind === "compaction" ? MAX_COMPACTION_CHARS : MAX_PROSE_CHARS;
     this.rows.push({
       schema: BUILDER_PROSE_SCHEMA,
       sequence: this.rows.length + 1,
@@ -74,8 +80,8 @@ export class BuilderProseLog {
       atMs: this.since(),
       kind,
       chars: trimmed.length,
-      truncated: trimmed.length > MAX_PROSE_CHARS,
-      text: trimmed.slice(0, MAX_PROSE_CHARS),
+      truncated: trimmed.length > cap,
+      text: trimmed.slice(0, cap),
     });
   }
 

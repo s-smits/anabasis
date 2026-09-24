@@ -37,7 +37,7 @@
  * the whole correctness model, the battery, or a capability rate.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "#src/meta/bundle-layout.ts";
@@ -60,7 +60,8 @@ import { closeVerifierLifetime, createVerifierLifetime } from "#src/verify/verif
 import { fingerprintSlug } from "#src/claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "#src/claim/bundle-snapshot.ts";
 import { captureSourceIdentity } from "#src/run/source-identity.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
+import { readJsonFile } from "#src/meta/completed-json.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
 const die: ExitWith = exitWith("host-panel");
@@ -98,25 +99,12 @@ interface ResolvedArtifact {
 }
 
 const corpus: ControlCorpus = { accept: [], reject: [] };
-function readJsonFile(path: string, what: string): JsonValue {
-  let text: string;
+function readJson(path: string, what: string): JsonValue {
   try {
-    text = readFileSync(path, "utf8");
+    return readJsonFile(path);
   } catch (cause) {
-    die(`could not read ${what} ${path}: ${errorMessage(cause)}`);
+    die(`could not read ${what}: ${errorMessage(cause)}`);
   }
-  try {
-    return parseJsonAs<JsonValue>(text);
-  } catch {
-    die(`${what} ${path} is not JSON`);
-  }
-}
-
-function absoluteOption(single: ReadonlyMap<string, string>, option: string): string {
-  const value = single.get(option);
-  if (value === undefined || value === "") die(`--${option} is required`);
-  if (!isAbsolute(value)) die(`--${option} must be an absolute path, got ${JSON.stringify(value)}`);
-  return resolve(value);
 }
 
 /** Apply one `{ path, replace, with }` mutation to a string leaf of a cloned artifact. */
@@ -223,9 +211,11 @@ function outcomeOf(receipt: ControlReceipt | null, accepted: boolean): Outcome {
 }
 
 const parsed = parseOrDie(die, { values: ["candidate", "task", "panel", "out"], flags: ["json"] });
-const candidate = absoluteOption(parsed.single, "candidate");
-const panelPath = absoluteOption(parsed.single, "panel");
-const outDir = absoluteOption(parsed.single, "out");
+const absolute = absoluteOption(die);
+const required = requiredOption(die, parsed.single);
+const candidate = absolute("candidate", required("candidate"));
+const panelPath = absolute("panel", required("panel"));
+const outDir = absolute("out", required("out"));
 const taskId = parsed.single.get("task");
 if (taskId === undefined || taskId === "") die("--task is required");
 const asJson = parsed.flags.has("json");
@@ -240,9 +230,9 @@ const brief = parseJsonAs<Brief>(readFileSync(join(candidate, BRIEF_FILE), "utf8
 const tasks = loadRecordedTasks(candidate);
 const task = tasks.find((row) => row.taskId === taskId);
 if (task === undefined) die(`task ${taskId} is not in the candidate's tasks.json (${tasks.length} tasks)`);
-const controlsValue = readJsonFile(join(candidate, CONTROLS_FILE), "controls");
+const controlsValue = readJson(join(candidate, CONTROLS_FILE), "controls");
 if (!isControlCorpus(controlsValue)) die("controls.json does not carry accept and reject lists");
-const rows = parsePanel(readJsonFile(panelPath, "panel"), controlsValue, taskId);
+const rows = parsePanel(readJson(panelPath, "panel"), controlsValue, taskId);
 
 /** Public schema acceptance is the first production gate an artifact meets; an unaccepted row
  *  never reaches the verifier, exactly as an unaccepted submission never does. */

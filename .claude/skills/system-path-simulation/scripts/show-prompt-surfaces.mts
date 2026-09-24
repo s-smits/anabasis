@@ -42,7 +42,7 @@ import {
 } from "#src/solve/built-starter.ts";
 import { createBuiltBashTool } from "#src/solve/built-bash.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "#src/truth/harness-config.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 
 const die: ExitWith = exitWith("show-prompt-surfaces");
 

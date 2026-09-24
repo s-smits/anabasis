@@ -14,7 +14,7 @@ import { dirname, join } from "../src/meta/path.ts";
 
 import { test } from "bun:test";
 
-const { normalizeReasoningEffort, parseArgs } = await import(
+const { normalizeReasoningEffort } = await import(
   "../.claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs"
 );
 const launcherPath = join(import.meta.dir, "../.claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs");
@@ -54,7 +54,17 @@ test("accepts high, xhigh, and max while defaulting to max", () => {
     () => normalizeReasoningEffort("medium"),
     /--reasoning-effort must be one of high, xhigh, or max/,
   );
-  assert.equal(parseArgs(["--reasoning-effort", "high"]).reasoning_effort, "high");
+});
+
+test("refuses an unknown or valueless option with exit 2 before launching anything", () => {
+  for (const [args, message] of [
+    [["--reasoning-effrot", "high"], /luna-sessions: unknown option "--reasoning-effrot"/],
+    [["--drain"], /luna-sessions: option "--drain" needs a value/],
+  ]) {
+    const result = runText([Bun.argv[0], launcherPath, ...args]);
+    assert.equal(result.exitCode, 2, result.stderr);
+    assert.match(result.stderr, message);
+  }
 });
 
 test("emits Markdown task names accepted by the launcher manifest", () => {

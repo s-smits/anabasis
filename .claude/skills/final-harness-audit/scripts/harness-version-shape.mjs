@@ -1,3 +1,4 @@
+import { gitOutput } from "#skills/main/git.ts";
 import { taskSetFacts, taskTransitionFacts } from "./harness-task-facts.mjs";
 import { isString } from "#src/meta/json-shape.ts";
 
@@ -33,14 +34,14 @@ function emptyKinds() {
   return { code: 0, data: 0, prose: 0, other: 0 };
 }
 
-function fileRows(git, workspace, commit) {
-  const listed = git(workspace, ["ls-tree", "-r", "-z", "--name-only", commit, "--", ...PRODUCT_ROOTS]);
+function fileRows(workspace, commit) {
+  const listed = gitOutput(workspace, "ls-tree", "-r", "-z", "--name-only", commit, "--", ...PRODUCT_ROOTS);
   return listed
     .split("\0")
     .filter(Boolean)
     .sort()
     .map((path) => {
-      const text = git(workspace, ["show", `${commit}:${path}`]);
+      const text = gitOutput(workspace, "show", `${commit}:${path}`);
       return {
         path,
         kind: kindOf(path),
@@ -62,8 +63,8 @@ function byRoot(rows) {
   return Object.fromEntries(Object.entries(roots).sort(([a], [b]) => compareText(a, b)));
 }
 
-export function productTreeFacts(git, workspace, commit) {
-  const rows = fileRows(git, workspace, commit);
+export function productTreeFacts(workspace, commit) {
+  const rows = fileRows(workspace, commit);
   const byKind = emptyKinds();
   for (const row of rows) byKind[row.kind] += row.nonBlankLines;
   const bySize = [...rows].sort((a, b) => b.nonBlankLines - a.nonBlankLines || compareText(a.path, b.path));
@@ -78,9 +79,10 @@ export function productTreeFacts(git, workspace, commit) {
   };
 }
 
-function numstatRows(git, workspace, base, commit) {
+function numstatRows(workspace, base, commit) {
   if (!isString(base) || base === "" || base === commit) return [];
-  const output = git(workspace, [
+  const output = gitOutput(
+    workspace,
     "diff",
     "--numstat",
     "--no-renames",
@@ -88,7 +90,7 @@ function numstatRows(git, workspace, base, commit) {
     commit,
     "--",
     ...PRODUCT_ROOTS,
-  ]).trim();
+  ).trim();
   if (output === "") return [];
   return output.split("\n").map((line) => {
     const [added, deleted, path] = line.split("\t");
@@ -103,8 +105,8 @@ function numstatRows(git, workspace, base, commit) {
   });
 }
 
-export function productDiffFacts(git, workspace, base, commit) {
-  const rows = numstatRows(git, workspace, base, commit);
+export function productDiffFacts(workspace, base, commit) {
+  const rows = numstatRows(workspace, base, commit);
   const addedByKind = emptyKinds();
   const deletedByKind = emptyKinds();
   for (const row of rows) {
@@ -127,26 +129,24 @@ export function productDiffFacts(git, workspace, base, commit) {
   };
 }
 
-export function taskTextAt(git, workspace, commit) {
+export function taskTextAt(workspace, commit) {
   try {
-    return git(workspace, ["show", `${commit}:correctness-model/tasks.json`]);
+    return gitOutput(workspace, "show", `${commit}:correctness-model/tasks.json`);
   } catch {
     return null;
   }
 }
 
-export function checkpointFacts(git, workspace, row, starterCommit, previousCheckpoint) {
-  const taskText = taskTextAt(git, workspace, row.commit);
+export function checkpointFacts(workspace, row, starterCommit, previousCheckpoint) {
+  const taskText = taskTextAt(workspace, row.commit);
   const previousTaskText =
-    previousCheckpoint === null ? null : taskTextAt(git, workspace, previousCheckpoint.commit);
+    previousCheckpoint === null ? null : taskTextAt(workspace, previousCheckpoint.commit);
   return {
-    productTree: productTreeFacts(git, workspace, row.commit),
-    fromWorkspaceBase: productDiffFacts(git, workspace, row.baseCommit, row.commit),
-    fromStarter: productDiffFacts(git, workspace, starterCommit, row.commit),
+    productTree: productTreeFacts(workspace, row.commit),
+    fromWorkspaceBase: productDiffFacts(workspace, row.baseCommit, row.commit),
+    fromStarter: productDiffFacts(workspace, starterCommit, row.commit),
     fromPreviousCheckpoint:
-      previousCheckpoint === null
-        ? null
-        : productDiffFacts(git, workspace, previousCheckpoint.commit, row.commit),
+      previousCheckpoint === null ? null : productDiffFacts(workspace, previousCheckpoint.commit, row.commit),
     taskSet:
       taskText === null ? { state: "unobservable", reason: "tasks.json is absent" } : taskSetFacts(taskText),
     taskTransition:

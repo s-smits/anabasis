@@ -31,8 +31,8 @@ a scripted turn: it is the smallest complete round.
 ## Procedure
 
 1. **Choose the position from a recorded run** (`past-run-replay`), and state the delta to it in
-   one line. Seed with `seed-campaign.mts`. Mode 1 (`--into-root`) keeps the slug and is the
-   input to `stage-run.mts`; mode 2 (`--as-slug`) puts the product into this tree under a fresh
+   one line. Seed with `seed-campaign.mts`. Mode 1 (`--into-root`) keeps the slug and seeds a
+   fresh tree for a whole-run condition; mode 2 (`--as-slug`) puts the product into this tree under a fresh
    slug so the controller can continue it here. Read `seed.json`: an escaping symlink or an
    absolute reference to the source root is a refusal, not a warning; `--relocate` changes
    candidate bytes and records both fingerprints, so a relocated seed is a different candidate.

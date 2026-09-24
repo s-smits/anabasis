@@ -1,39 +1,37 @@
 #!/usr/bin/env bun
 
+import { sha256 } from "#src/meta/digest.ts";
 import fs from "#src/meta/filesystem.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { hasText } from "#src/meta/text.ts";
 
 const usedNames = new Set();
-function fail(message) {
-  console.error(`${message}`);
-  runtimeProcess.exit(1);
-}
+/** Every refusal here is the input's fault, so it exits 1 as the script always has. */
+const die = exitWith("parse-markdown-tasks");
+const fail = (message) => die(message, 1);
 
 function parseArgs(argv) {
-  const options = { inspect: false, keepSeparators: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === "--inspect") {
-      options.inspect = true;
-    } else if (argument === "--keep-separators") {
-      options.keepSeparators = true;
-    } else if (argument === "--input") {
-      options.input = argv[++index];
-    } else if (argument === "--output") {
-      options.output = argv[++index];
-    } else if (argument === "--instructions-output") {
-      options.instructionsOutput = argv[++index];
-    } else if (argument === "--expected-count") {
-      options.expectedCount = Number(argv[++index]);
-    } else if (argument === "--heading-level") {
-      options.headingLevel = Number(argv[++index]);
-    } else {
-      fail(`Unknown argument: ${argument}`);
-    }
-  }
-  if (!options.input) fail("--input is required");
-  if (!options.inspect && !options.output) fail("--output is required unless --inspect is used");
+  const { single, flags } = parseOrDie(
+    fail,
+    {
+      values: ["input", "output", "instructions-output", "expected-count", "heading-level"],
+      flags: ["inspect", "keep-separators"],
+    },
+    argv,
+  );
+  const numeric = (name) => (single.has(name) ? Number(single.get(name)) : undefined);
+  const options = {
+    inspect: flags.has("inspect"),
+    keepSeparators: flags.has("keep-separators"),
+    input: single.get("input"),
+    output: single.get("output"),
+    instructionsOutput: single.get("instructions-output"),
+    expectedCount: numeric("expected-count"),
+    headingLevel: numeric("heading-level"),
+  };
+  if (!hasText(options.input)) fail("--input is required");
+  if (!options.inspect && !hasText(options.output)) fail("--output is required unless --inspect is used");
   if (options.expectedCount !== undefined && !Number.isInteger(options.expectedCount)) {
     fail("--expected-count must be an integer");
   }
@@ -41,10 +39,6 @@ function parseArgs(argv) {
     fail("--heading-level must be an integer from 1 to 6");
   }
   return options;
-}
-
-function digest(value) {
-  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
 }
 
 function headingsOutsideFences(markdown) {
@@ -169,7 +163,7 @@ if (options.inspect) {
     JSON.stringify(
       {
         input: options.input,
-        sourceSha256: digest(sourceBytes),
+        sourceSha256: sha256(sourceBytes),
         lineCount: markdown.split("\n").length,
         headings,
         candidateGroups: groups,
@@ -212,7 +206,7 @@ if (decoded.length !== tasks.length || decoded.some((row, index) => row.task !==
 fs.writeFileSync(options.output, encoded);
 
 const preamble = markdown.slice(0, taskHeadings[0].offset).trim();
-if (options.instructionsOutput) {
+if (hasText(options.instructionsOutput)) {
   fs.writeFileSync(options.instructionsOutput, preamble ? `${preamble}\n` : "");
 }
 
@@ -221,14 +215,14 @@ console.log(
     {
       input: options.input,
       output: options.output,
-      sourceSha256: digest(sourceBytes),
+      sourceSha256: sha256(sourceBytes),
       taskHeadingLevel: taskHeadings[0].level,
       taskCount: tasks.length,
       preambleChars: preamble.length,
       tasks: tasks.map((task, index) => ({
         number: taskHeadings[index].number,
         name: task.name,
-        sha256: digest(task.task),
+        sha256: sha256(task.task),
         chars: task.task.length,
       })),
     },

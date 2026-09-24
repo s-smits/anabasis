@@ -1,6 +1,7 @@
-// Read retained products without opening or migrating the controller's writable ledger.
-import { Database, constants as sqlite } from "bun:sqlite";
-import { existsSync, readdirSync, realpathSync } from "#src/meta/filesystem.ts";
+// Read retained products through the controller's own ledger reader. The ledger is opened only once
+// it exists, so an audit never creates one, and nothing here writes to it.
+import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
+import { ControllerLedger, controllerLedgerExists } from "#src/run/controller-ledger.ts";
 import { join } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
@@ -18,11 +19,7 @@ function readSavedProduct(row, slug, ledger, batteries, snapshotId) {
   ) {
     throw new Error("invalid product manifest");
   }
-  if (
-    ledger === null ||
-    ledger.query("SELECT manifest_digest FROM product_versions WHERE id=?").get(row.id)?.manifest_digest !==
-      hashJsonValue(manifest)
-  ) {
+  if (ledger === null || ledger.productDigest(row.id) !== hashJsonValue(manifest)) {
     throw new Error("product manifest unregistered or altered");
   }
   verifyTree(row.path, manifest.fingerprint, "audit retained product");
@@ -37,7 +34,7 @@ function versionIds(versions, ledger) {
     ...directories
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".incoming-"))
       .map((entry) => entry.name),
-    ...(ledger?.query("SELECT id FROM product_versions").all() ?? []).map((row) => row.id),
+    ...(ledger?.registeredProducts() ?? []),
   ]);
 }
 
@@ -48,30 +45,13 @@ export function savedProductFacts(campaign, slug, batteries, snapshotId) {
   let selected = null;
   let ledger = null;
   try {
-    if (existsSync(join(campaign, "controller.sqlite"))) {
-      ledger = new Database(
-        join(realpathSync(campaign), "controller.sqlite"),
-        sqlite.SQLITE_OPEN_READONLY | sqlite.SQLITE_OPEN_NOFOLLOW,
-      );
-      const descriptor = readJsonFile(join(campaign, "budget.json"));
-      if (
-        descriptor.schema !== "controller-ledger/v1" ||
-        descriptor.id !== ledger.query("SELECT id FROM identity").get()?.id
-      ) {
-        throw new Error("controller ledger identity mismatch");
-      }
-      selected =
-        ledger
-          .query(
-            "SELECT version_id FROM product_decisions JOIN selected_product ON product_decisions.id=selected_product.decision_id WHERE singleton=1",
-          )
-          .get()?.version_id ?? null;
-    } else if (existsSync(versions)) {
-      throw new Error("retained products exist but the controller ledger is missing");
+    if (controllerLedgerExists(campaign)) {
+      ledger = ControllerLedger.open(campaign);
+      selected = ledger.selectedProduct();
     }
   } catch (error) {
     gaps.push(errorMessage(error));
-    ledger?.close();
+    ledger?.[Symbol.dispose]();
     ledger = null;
   }
   try {
@@ -94,7 +74,7 @@ export function savedProductFacts(campaign, slug, batteries, snapshotId) {
   } catch (error) {
     gaps.push(errorMessage(error));
   } finally {
-    ledger?.close();
+    ledger?.[Symbol.dispose]();
   }
   return { rows, gaps, current: selectedProductFacts(rows, selected, gaps) };
 }

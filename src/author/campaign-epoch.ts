@@ -11,7 +11,8 @@
  * that distinction the pointer follows the binding rather than the work, and a run that opened four
  * later epochs still finishes with `current` naming its initial build.
  */
-import { mkdirSync } from "../meta/filesystem.ts";
+import { existsSync, mkdirSync, readdirSync, statSync } from "../meta/filesystem.ts";
+import { listIterationDirs } from "../builder/campaign-iterations.ts";
 import { join } from "../meta/path.ts";
 import type { BackendKind } from "../backends/resolve.ts";
 import { readCompleted, writeCompleted } from "../meta/completed-json.ts";
@@ -76,6 +77,13 @@ interface EpochRecord {
   epochs: EpochRecordEntry[];
 }
 
+/** One authoring iteration's directory, `<epoch>/NN-<stage>`. */
+interface CampaignIteration {
+  epoch: string;
+  name: string;
+  dir: string;
+}
+
 /** The supersession record, or null before the first epoch. A damaged record refuses rather than
  *  reading as absent, because a guessed-at lineage would let two epochs both believe they are
  *  current and the repair is to fix the record, not to delete epochs. */
@@ -91,6 +99,35 @@ function readEpochRecord(campaignRoot: string): EpochRecord | null {
 /** Epoch chronology is the append order of the controller-owned record. */
 export function campaignEpochOrder(campaignRoot: string): string[] {
   return readEpochRecord(campaignRoot)?.epochs.map(({ key }) => key) ?? [];
+}
+
+/**
+ * Every epoch directory on disk: the recorded ones in their recorded order, then any `epoch-*`
+ * directory the record does not name, by name, so an unrecorded epoch stays a fact rather than
+ * disappearing. An epoch's name is a hash of its binding, so a sorted listing is no chronology.
+ */
+export function campaignEpochs(campaignRoot: string): string[] {
+  if (!existsSync(campaignRoot)) return [];
+  const isEpochDir = (name: string): boolean =>
+    statSync(join(campaignRoot, name), { throwIfNoEntry: false })?.isDirectory() === true;
+  const recorded = campaignEpochOrder(campaignRoot).filter(isEpochDir);
+  const named = new Set(recorded);
+  const unrecorded = readdirSync(campaignRoot)
+    .filter((name) => name.startsWith("epoch-") && !named.has(name) && isEpochDir(name))
+    .sort();
+  return [...recorded, ...unrecorded];
+}
+
+/** Every iteration of a campaign, oldest first: epochs as `campaignEpochs` orders them, and each
+ *  epoch's iterations by ordinal. */
+export function campaignIterations(campaignRoot: string): CampaignIteration[] {
+  return campaignEpochs(campaignRoot).flatMap((epoch) =>
+    listIterationDirs(join(campaignRoot, epoch)).map((name) => ({
+      epoch,
+      name,
+      dir: join(campaignRoot, epoch, name),
+    })),
+  );
 }
 
 function bindingOf(input: CampaignBindingInput): EpochRecordEntry["binding"] {

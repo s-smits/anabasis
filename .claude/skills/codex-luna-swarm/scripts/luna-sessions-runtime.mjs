@@ -1,3 +1,4 @@
+import { sha256 } from "#src/meta/digest.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import {
   accessSync,
@@ -32,7 +33,7 @@ import {
   launchPolicy,
   absoluteExistingDirectory,
 } from "./luna-sessions-manifest.mjs";
-import { asError, errorMessage } from "#src/meta/runtime-values.ts";
+import { asError } from "#src/meta/runtime-values.ts";
 import { isFunction, isString } from "#src/meta/json-shape.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
@@ -47,7 +48,9 @@ function resolveCodexBinary(override) {
 }
 
 function createOutputDirectory(explicit) {
-  if (!explicit) return realpathSync(mkdtempSync(join(tmpdir(), "luna-sessions-")));
+  // The product prefix puts an abandoned output directory under the temp-root census and the
+  // launch-time cleaner, which move only `ana-` directories untouched for two days.
+  if (!explicit) return realpathSync(mkdtempSync(join(tmpdir(), "ana-luna-sessions-")));
   if (!isAbsolute(explicit)) throw new Error("--output-dir must be absolute");
   const target = resolve(explicit);
   if (existsSync(target)) throw new Error("--output-dir must not already exist");
@@ -132,7 +135,7 @@ function registerParentLaunch(launch) {
   const path = launchRegistryPath();
   if (!hasText(path)) return null;
   if (regularFileExists(path)) {
-    const previous = readJson(path, "Luna launch registry");
+    const previous = readJsonFile(path);
     if (processIsAlive(previous?.pid)) {
       throw new Error(`another Luna launcher is already active for this Codex task: ${previous.outputDir}`);
     }
@@ -356,7 +359,7 @@ async function runLunaSessions(rawManifest, options = {}) {
       workdir: session.workdir,
       sandbox: session.sandbox,
       ownedPaths: session.ownedPaths,
-      promptSha256: new Bun.CryptoHasher("sha256").update(sessionPrompt(session)).digest("hex"),
+      promptSha256: sha256(sessionPrompt(session)),
     })),
   };
   atomicJson(join(outputDir, "launch.json"), launch);
@@ -408,19 +411,11 @@ async function runLunaSessions(rawManifest, options = {}) {
   return summary;
 }
 
-function readJson(path, label) {
-  try {
-    return readJsonFile(path);
-  } catch (error) {
-    throw new Error(`cannot read ${label} at ${path}: ${errorMessage(error)}`, { cause: error });
-  }
-}
-
 function readLaunch(outputDirectory) {
   const outputDir = absoluteExistingDirectory(outputDirectory, "--drain");
   const path = join(outputDir, "launch.json");
   if (!regularFileExists(path)) throw new Error(`not a Luna session output directory: ${outputDir}`);
-  const launch = readJson(path, "launch record");
+  const launch = readJsonFile(path);
   let recordedOutputDir = null;
   try {
     if (isString(launch?.outputDir)) {
@@ -471,7 +466,7 @@ function stopHook() {
   if (!hasText(path) || !regularFileExists(path) || lstatSync(path).isSymbolicLink()) return {};
   let record;
   try {
-    record = readJson(path, "Luna launch registry");
+    record = readJsonFile(path);
   } catch {
     unlinkSync(path);
     return block("The Luna launcher registry is unreadable. Inspect its terminal.");
@@ -517,7 +512,7 @@ function acquireDrainLock(outputDir) {
     if (error?.code !== "EEXIST") throw error;
     let owner;
     try {
-      owner = readJson(path, "drain lock");
+      owner = readJsonFile(path);
     } catch {
       throw new Error(`another drain owns ${path}; its lock record is unreadable`);
     }
@@ -554,7 +549,7 @@ function readSeen(outputDir, validNames) {
   const path = join(outputDir, ".seen-reports.json");
   if (!existsSync(path)) return { path, names: new Set() };
   if (!regularFileExists(path)) throw new Error(`invalid seen-report state: ${path}`);
-  const state = readJson(path, "seen-report state");
+  const state = readJsonFile(path);
   if (state?.schemaVersion !== SEEN_SCHEMA_VERSION || !Array.isArray(state?.shown)) {
     throw new Error(`invalid seen-report state: ${path}`);
   }
@@ -578,7 +573,7 @@ async function drainReports(outputDirectory, emit = writeStdout) {
       if (seen.names.has(session.name)) continue;
       const artifacts = sessionArtifacts(outputDir, session.name);
       if (!regularFileExists(artifacts.resultPath)) continue;
-      const result = readJson(artifacts.resultPath, `${session.name} result`);
+      const result = readJsonFile(artifacts.resultPath);
       if (
         result?.name !== session.name ||
         !new Set(["completed", "failed", "spawn-error"]).has(result?.status)

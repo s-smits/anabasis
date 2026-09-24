@@ -10,9 +10,9 @@
  * Read-only. Nothing here writes, signals a process or opens the controller ledger.
  */
 import { campaignRoot } from "../../src/meta/campaign-root.ts";
-import { controllerEvidenceDir } from "../../src/run/controller-lineage.ts";
+import { controllerEvidenceDir, OPENING_FILE, TERMINAL_FILE } from "../../src/run/controller-lineage.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
-import { dirname, join } from "../../src/meta/path.ts";
+import { basename, dirname, join, resolve } from "../../src/meta/path.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { isString } from "../../src/meta/json-shape.ts";
 import { decodeOutput, runSync } from "../../src/meta/subprocess.ts";
@@ -54,6 +54,22 @@ type RawLaunch = {
   argv?: unknown;
 };
 
+/** The run one operator-named folder selects, and how it was chosen. */
+export interface RunSelection {
+  campaign: string;
+  runId: string;
+  chosen: string;
+}
+
+/** One registered worktree as `git worktree list --porcelain` names it. */
+interface WorktreeEntry {
+  path: string;
+  /** Null for a bare entry, which has no checked-out commit. */
+  head: string | null;
+  /** The full ref (`refs/heads/...`), or null for a detached head. */
+  branch: string | null;
+}
+
 /**
  * The checkout that owns the campaign tree. Run worktrees symlink `campaigns` into it, so every
  * subcommand resolves the same root from wherever the operator happens to stand — the launcher
@@ -80,23 +96,95 @@ function isDirectory(path: string): boolean {
   }
 }
 
+/** Every run one campaign recorded an opening for, in no particular order. */
+export function campaignRuns(campaignDir: string): RunLocation[] {
+  const controller = join(campaignDir, "controller");
+  if (!isDirectory(controller)) return [];
+  const runs: RunLocation[] = [];
+  for (const runId of readdirSync(controller)) {
+    const dir = controllerEvidenceDir(campaignDir, runId);
+    const openingPath = join(dir, OPENING_FILE);
+    if (!existsSync(openingPath)) continue;
+    runs.push({
+      runId,
+      slug: basename(campaignDir),
+      campaignDir,
+      openingPath,
+      terminalPath: join(dir, TERMINAL_FILE),
+    });
+  }
+  return runs;
+}
+
 /** Every run the campaign tree recorded an opening for, in no particular order. */
 export function recordedRuns(repoRoot: string): RunLocation[] {
   const root = campaignRoot(repoRoot);
   if (!isDirectory(root)) return [];
   const runs: RunLocation[] = [];
-  for (const slug of readdirSync(root)) {
-    const campaignDir = join(root, slug);
-    const controller = join(campaignDir, "controller");
-    if (!isDirectory(controller)) continue;
-    for (const runId of readdirSync(controller)) {
-      const dir = controllerEvidenceDir(campaignDir, runId);
-      const openingPath = join(dir, "opening.json");
-      if (!existsSync(openingPath)) continue;
-      runs.push({ runId, slug, campaignDir, openingPath, terminalPath: join(dir, "terminal.json") });
-    }
-  }
+  for (const slug of readdirSync(root)) runs.push(...campaignRuns(join(root, slug)));
   return runs;
+}
+
+/** The instant an opening says it was written, or null when the file holds no such record. */
+export function openedAt(location: RunLocation): string | null {
+  try {
+    const opening = parseJsonAs<{ writtenAt?: unknown }>(readFileSync(location.openingPath, "utf8"));
+    return isString(opening.writtenAt) ? opening.writtenAt : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A campaign's runs newest first by the instant each opening recorded, the run id breaking a tie.
+ * Directory order is not chronology: `run-9` sorts after `run-10` by name, and a relaunch suffix
+ * sorts after the id it continued whichever was opened first. An opening with no readable
+ * `writtenAt` has no place in the order and is left out rather than guessed at.
+ */
+function runsByOpening(campaignDir: string): RunLocation[] {
+  const dated: Array<{ run: RunLocation; at: string }> = [];
+  for (const run of campaignRuns(campaignDir)) {
+    const at = openedAt(run);
+    if (at !== null) dated.push({ run, at });
+  }
+  dated.sort(
+    (left, right) => right.at.localeCompare(left.at) || right.run.runId.localeCompare(left.run.runId),
+  );
+  return dated.map(({ run }) => run);
+}
+
+/** The campaign's most recently opened run, or null when none recorded a readable opening. */
+export function latestRun(campaignDir: string): RunLocation | null {
+  return runsByOpening(campaignDir)[0] ?? null;
+}
+
+/**
+ * Campaign and run from one folder: `<campaign>`, `<campaign>/controller` or
+ * `<campaign>/controller/<runId>`. An explicit run must agree with a folder that already names one,
+ * and a campaign folder alone selects its latest run by opening instant.
+ */
+export function resolveRunSelector(folder: string, explicitRun: string | null = null): RunSelection {
+  const target = resolve(folder);
+  if (!existsSync(target)) throw new Error(`no such folder: ${target}`);
+  if (basename(dirname(target)) === "controller" && existsSync(join(target, OPENING_FILE))) {
+    const runId = basename(target);
+    if (explicitRun !== null && explicitRun !== runId) {
+      throw new Error(`folder names run ${runId} but --run says ${explicitRun}`);
+    }
+    return { campaign: dirname(dirname(target)), runId, chosen: "folder" };
+  }
+  const campaign = basename(target) === "controller" ? dirname(target) : target;
+  const controller = join(campaign, "controller");
+  if (!isDirectory(controller)) throw new Error(`no controller directory under ${campaign}`);
+  if (explicitRun !== null) return { campaign, runId: explicitRun, chosen: "--run" };
+  const runs = runsByOpening(campaign);
+  const latest = runs[0];
+  if (latest === undefined) throw new Error(`no run with a dated opening.json under ${controller}`);
+  return {
+    campaign,
+    runId: latest.runId,
+    chosen: runs.length === 1 ? "only run" : `latest of ${runs.length} runs by opening writtenAt`,
+  };
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -128,17 +216,27 @@ export function readLaunchRecord(dir: string): LaunchRecord | null {
   };
 }
 
-function worktreeDirs(repoRoot: string): string[] {
+/** The porcelain listing, parsed once for every reader that needs the fleet. */
+export function parseWorktreeList(porcelain: string): WorktreeEntry[] {
+  const rows: WorktreeEntry[] = [];
+  let current: WorktreeEntry | null = null;
+  for (const line of porcelain.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      current = { path: line.slice("worktree ".length), head: null, branch: null };
+      rows.push(current);
+    } else if (current !== null && line.startsWith("HEAD ")) current.head = line.slice("HEAD ".length);
+    else if (current !== null && line.startsWith("branch ")) current.branch = line.slice("branch ".length);
+  }
+  return rows;
+}
+
+/** Every worktree registered to the repository at `repoRoot`; none when Git cannot list them. */
+export function listWorktrees(repoRoot: string): WorktreeEntry[] {
   const result = runSync(["git", "worktree", "list", "--porcelain"], {
     cwd: repoRoot,
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.exitCode !== 0) return [];
-  const dirs: string[] = [];
-  for (const line of decodeOutput(result.stdout).split("\n")) {
-    if (line.startsWith("worktree ")) dirs.push(line.slice("worktree ".length));
-  }
-  return dirs;
+  return result.exitCode === 0 ? parseWorktreeList(decodeOutput(result.stdout)) : [];
 }
 
 /**
@@ -160,7 +258,7 @@ export function launchRecords(repoRoot: string): LaunchRecord[] {
   }
   const records: LaunchRecord[] = [];
   const seen = new Set<string>();
-  for (const dir of [...worktreeDirs(repoRoot), ...siblings]) {
+  for (const dir of [...listWorktrees(repoRoot).map((tree) => tree.path), ...siblings]) {
     if (seen.has(dir)) continue;
     seen.add(dir);
     const record = readLaunchRecord(dir);

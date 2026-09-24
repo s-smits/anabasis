@@ -73,4 +73,13 @@ describe("the installed-tool probe", () => {
     expect(receipt.resolved).toBe(false);
     expect(receipt.executed).toBe(undefined);
   }, 120_000);
+
+  it("refuses an unknown option, or a missing spec, with exit 2 before resolving anything", () => {
+    for (const args of [["--tool", "bun"], []]) {
+      const result = spawnTextSync(bun, ["--no-env-file", script, ...args], { timeout: 120_000 });
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^run-tool: (unknown option "--tool"|expected 1 positional argument)\n$/);
+    }
+  }, 120_000);
 });

@@ -23,9 +23,15 @@
 
 import { readdir } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 
-const root = path.resolve(Bun.argv[2] ?? "test-impact");
+const ARGS = parseOrDie(exitWith("impact-rank"), {
+  values: ["containment", "review-containment"],
+  flags: ["json"],
+  positionals: [0, 1],
+});
+const root = path.resolve(ARGS.positionals[0] ?? "test-impact");
 const covRoot = path.join(root, "cov");
 const OVERHEAD_LINES = 14;
 const WIDE_REACH = 5000;
@@ -44,13 +50,10 @@ const FLAG_RULES = [
 
 const rows = [];
 const owners = new Map();
-const flagArg = (name, dflt) => {
-  const i = Bun.argv.indexOf(name);
-  return i >= 0 ? Number(Bun.argv[i + 1]) : dflt;
-};
-const CONTAINMENT = flagArg("--containment", 0.85);
-const REVIEW_CONTAINMENT = flagArg("--review-containment", 0.6);
-const asJson = Bun.argv.includes("--json");
+const flagArg = (name, dflt) => (ARGS.single.has(name) ? Number(ARGS.single.get(name)) : dflt);
+const CONTAINMENT = flagArg("containment", 0.85);
+const REVIEW_CONTAINMENT = flagArg("review-containment", 0.6);
+const asJson = ARGS.flags.has("json");
 const repo = Bun.env.REPO ?? "";
 
 let runs;

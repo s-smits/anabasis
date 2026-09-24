@@ -21,12 +21,10 @@
  *     /abs/epoch/workspace
  */
 
-import { runSyncOrThrow } from "#src/meta/subprocess.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
-
 import { lstatSync, readFileSync, readlinkSync } from "#src/meta/filesystem.ts";
 import { resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { gitOutput } from "#skills/main/git.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { BUILT_AGENTS_FILE } from "#src/solve/built-starter.ts";
 
@@ -46,7 +44,7 @@ export interface WorkspaceChanges {
 }
 
 interface PorcelainStatus {
-  raw: Uint8Array;
+  raw: string;
   paths: string[];
 }
 
@@ -54,10 +52,8 @@ interface PorcelainStatus {
  * copy Git emits the destination first and the source as the next NUL field; only the destination
  * is part of the current workspace, while the raw bytes below bind both names into the digest. */
 function porcelainStatus(workspace: string): PorcelainStatus {
-  const raw = runSyncOrThrow([hostTool("git"), "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
-    cwd: workspace,
-  });
-  const fields = new TextDecoder().decode(raw).split("\0");
+  const raw = gitOutput(workspace, "status", "--porcelain=v1", "-z", "--untracked-files=all");
+  const fields = raw.split("\0");
   const paths: string[] = [];
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index];
@@ -81,7 +77,7 @@ function hashField(hash: Bun.CryptoHasher, label: string, value: string | Uint8A
 function workspaceChangeDigest(workspace: string, status: PorcelainStatus): string {
   const hash = new Bun.CryptoHasher("sha256");
   hashField(hash, "format", "workspace-change/v2");
-  hashField(hash, "head", runSyncOrThrow([hostTool("git"), "rev-parse", "HEAD"], { cwd: workspace }));
+  hashField(hash, "head", gitOutput(workspace, "rev-parse", "HEAD"));
   hashField(hash, "status", status.raw);
   for (const path of [...new Set(status.paths)].sort()) {
     hashField(hash, "path", path);
@@ -127,12 +123,7 @@ export function changedPaths(
   };
 }
 
-if (Bun.argv[1] !== undefined && resolve(Bun.argv[1]) === Bun.fileURLToPath(import.meta.url)) {
-  const workspace = Bun.argv[2];
-  if (workspace === undefined) {
-    console.error("workspace-changes: pass the workspace path");
-    runtimeProcess.exit(2);
-    throw new Error("process exit returned unexpectedly");
-  }
+if (import.meta.main) {
+  const [workspace = ""] = parseOrDie(exitWith("workspace-changes"), { positionals: 1 }).positionals;
   console.log(JSON.stringify(changedPaths(workspace), null, 2));
 }

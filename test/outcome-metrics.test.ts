@@ -103,9 +103,11 @@ function campaign(prefix: string = "outcome-") {
         epoch: EPOCH,
         openingDigest: hashJsonValue(opening),
         iterations: [{ runId: RUN, terminal: null, buildClauses: [], measured: wasMeasured }],
+        absentSteps: [],
         outcome: "completed",
         abortClause: null,
         terminalReason: "completed",
+        writtenAt: "2026-09-18T12:00:00.000Z",
         runEnd: { climb: null, provenance: [] },
         lock: { token: "recorded-lock", ownedAtRecord: true },
       });

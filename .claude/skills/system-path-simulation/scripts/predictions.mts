@@ -26,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts
 import { sha256 } from "#src/meta/digest.ts";
 import { isAbsolute, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 
 const die: ExitWith = exitWith("predictions");
 

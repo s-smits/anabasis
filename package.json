@@ -5,7 +5,8 @@
   "type": "module",
   "imports": {
     "#src/*": "./src/*",
-    "#tools/*": "./tools/*"
+    "#tools/*": "./tools/*",
+    "#skills/*": "./.claude/skills/*"
   },
   "packageManager": "bun@1.4.2",
   "workspaces": [

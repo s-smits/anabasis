@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -13,10 +14,13 @@ const TERMINAL_TURN_STATES = new Set([
   "aborted",
 ]);
 
-function usage(message) {
-  if (message) {
-    console.error(`${message}\n`);
-  }
+const COMMANDS = {
+  summary: { values: ["last"], flags: ["json", "help"], positionals: 1 },
+  history: { values: ["last"], flags: ["json", "all", "help"], positionals: 1 },
+  diff: { values: ["last"], flags: ["json", "help"], positionals: 2 },
+};
+
+function usage() {
   console.error(
     [
       "Usage:",
@@ -27,7 +31,7 @@ function usage(message) {
       "Snapshots are raw JSON returned by a Codex thread-read tool.",
     ].join("\n") + "\n",
   );
-  runtimeProcess.exit(message ? 2 : 0);
+  runtimeProcess.exit(0);
 }
 
 async function readPayload(path) {
@@ -240,46 +244,25 @@ function withItems(lines, items) {
   return `${[...lines, ...itemLines].join("\n")}\n`;
 }
 
-const args = Bun.argv.slice(2);
-if (args.includes("--help") || args.includes("-h")) {
-  usage();
-}
-
-const jsonOutput = args.includes("--json");
-const allItems = args.includes("--all");
-const lastIndex = args.indexOf("--last");
-const lastCount = lastIndex >= 0 ? Number.parseInt(args[lastIndex + 1] ?? "", 10) : 8;
+const die = exitWith("thread-state");
+const { command, single, flags, positionals } = parseCommandOrDie(die, COMMANDS);
+if (flags.has("help")) usage();
+const jsonOutput = flags.has("json");
+const lastCount = single.has("last") ? Number(single.get("last")) : 8;
 if (!Number.isInteger(lastCount) || lastCount < 1 || lastCount > 1000) {
-  usage("--last must be an integer from 1 to 1000");
+  die("--last must be an integer from 1 to 1000");
 }
-const positional = args.filter(
-  (arg, index) =>
-    arg !== "--json" && arg !== "--all" && arg !== "--last" && (lastIndex < 0 || index !== lastIndex + 1),
-);
 
 try {
-  const command = positional[0];
-  if (allItems && command !== "history") {
-    usage("--all is available only for history");
-  }
-  if (command === "summary" && positional.length === 2) {
-    const result = summarise(await readPayload(positional[1]), lastCount);
-    console.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : markdownSummary(result));
-  } else if (command === "history" && positional.length === 2) {
-    const result = summariseHistory(
-      await readPayload(positional[1]),
-      allItems ? Number.MAX_SAFE_INTEGER : lastCount,
-    );
-    console.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : markdownSummary(result));
-  } else if (command === "diff" && positional.length === 3) {
-    const result = diffSnapshots(
-      await readPayload(positional[1]),
-      await readPayload(positional[2]),
-      lastCount,
-    );
+  const payloads = await Promise.all(positionals.map(readPayload));
+  const count = flags.has("all") ? Number.MAX_SAFE_INTEGER : lastCount;
+  if (command === "diff") {
+    const result = diffSnapshots(payloads[0], payloads[1], count);
     console.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : markdownDiff(result));
   } else {
-    usage("Invalid command or arguments");
+    const result =
+      command === "history" ? summariseHistory(payloads[0], count) : summarise(payloads[0], count);
+    console.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : markdownSummary(result));
   }
 } catch (error) {
   console.error(`thread-state: ${errorMessage(error)}`);

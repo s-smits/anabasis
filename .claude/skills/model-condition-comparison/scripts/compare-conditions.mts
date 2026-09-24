@@ -23,20 +23,20 @@
  */
 
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { type CaseOutcome, classifyCaseOutcome } from "#src/claim/case-record.ts";
+import { basename, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { type CaseOutcome, classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
+import { defaultProductDir } from "#src/meta/campaign-root.ts";
 import { BATTERY_FILE, batteryPath } from "#src/truth/battery-record.ts";
-import { wilsonInterval } from "#src/claim/estimation.ts";
-import { type ExitWith, exitWith, parseOrDie } from "../../system-path-simulation/scripts/cli-args.mts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { REPORTING_Z, wilsonInterval } from "#src/claim/estimation.ts";
+import { type ExitWith, exitWith, runCommand } from "#skills/main/cli.ts";
 import { asRecord, isBoolean, isNumber, isString } from "#src/meta/json-shape.ts";
-import type { JsonObject } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 
 const die: ExitWith = exitWith("compare-conditions");
 
-/** The sign-test threshold this reading uses. Advisory only: no controller gate consumes it. */
-const SIGN_TEST_Z = 1.96;
+/** The sign-test threshold is the controller's two-sided 0.95 quantile. Advisory only: no controller
+ *  gate consumes the result. */
+const SIGN_TEST_Z = REPORTING_Z;
 /** How many task ids a bucket prints before it truncates; the JSON form carries them all. */
 const LISTED_TASKS = 12;
 
@@ -105,21 +105,8 @@ function num(value: unknown): number | null {
   return isNumber(value) && Number.isFinite(value) ? value : null;
 }
 
-function readJson(path: string): JsonObject {
-  let value: unknown;
-  try {
-    value = readJsonFile(path);
-  } catch (cause) {
-    die(`${path}: ${errorMessage(cause)}`);
-  }
-  const record = asRecord(value);
-  if (record === null) die(`${path}: not a JSON object`);
-  return record;
-}
-
 /** The three roots a recorded battery may live under, in the order a reviewer usually finds them. */
 function locateBattery(campaignDir: string, runId: string): string {
-  const slug = campaignDir.split("/").findLast((part) => part.length > 0) ?? "";
   const candidatesDir = join(campaignDir, "candidates");
   const candidateRuns = existsSync(candidatesDir)
     ? readdirSync(candidatesDir).map((iteration) => batteryPath(join(candidatesDir, iteration), runId))
@@ -128,7 +115,7 @@ function locateBattery(campaignDir: string, runId: string): string {
     ...candidateRuns,
     // Only campaigns measured before 2026-09-04 wrote a contest battery; kept so those stay readable.
     join(campaignDir, "contest", runId, BATTERY_FILE),
-    batteryPath(join(campaignDir, "..", "..", "domains", slug), runId),
+    batteryPath(defaultProductDir(dirname(dirname(campaignDir)), basename(campaignDir)), runId),
   ].filter((path) => existsSync(path));
   if (found.length === 0) {
     die(`${campaignDir}::${runId}: no battery.json under candidates, contest or domains`);
@@ -171,7 +158,8 @@ function readCondition(label: string, spec: string): Condition {
       ? resolve(spec)
       : locateBattery(resolve(spec.slice(0, separator)), spec.slice(separator + 2));
   if (!existsSync(path)) die(`${label}: ${path} does not exist`);
-  const battery = readJson(path);
+  const battery = asRecord(readJsonFile(path));
+  if (battery === null) die(`${path}: not a JSON object`);
   const runId = str(battery.runId);
   const slug = str(battery.slug);
   const backendPin = str(battery.backendPin);
@@ -202,9 +190,7 @@ function mean(values: ReadonlyArray<number | null>): number | null {
 }
 
 function census(cases: readonly ConditionCase[]): Census {
-  const by = (outcome: CaseOutcome) => cases.filter((row) => row.outcome === outcome).length;
-  const passed = by("pass");
-  const verified = passed + by("fail");
+  const { verified, passed, unaccepted, nonResults } = outcomeTally(cases.map((row) => row.outcome));
   const nonResultKinds: Record<string, number> = {};
   for (const row of cases) {
     if (row.outcome !== "non-result") continue;
@@ -215,8 +201,8 @@ function census(cases: readonly ConditionCase[]): Census {
     cases: cases.length,
     verified,
     passed,
-    unaccepted: by("unaccepted"),
-    nonResult: by("non-result"),
+    unaccepted,
+    nonResult: nonResults,
     rate: verified === 0 ? null : passed / verified,
     wilson: wilsonInterval(passed, verified),
     turnsMean: mean(cases.map((row) => row.turns)),
@@ -391,7 +377,7 @@ function pairLines(pair: PairedBuckets): string[] {
     `- only ${pair.reference} passes (${losses}): ${listed(pair.referencePasses)}`,
     `- both pass (${pair.bothPass.length}), both fail (${pair.bothFail.length}): ${listed(pair.bothFail)}`,
     `- unresolved, a non-result or an absent task on either side (${pair.unresolved.length}): ${listed(pair.unresolved)}`,
-    `- sign test z = ${z}; ${clears} ${SIGN_TEST_Z} (advice only: the controller runs no contest and adopts a candidate on its own admitted battery)`,
+    `- sign test z = ${z}; ${clears} ${SIGN_TEST_Z.toFixed(2)} (advice only: the controller runs no contest and adopts a candidate on its own admitted battery)`,
   ];
 }
 
@@ -479,26 +465,33 @@ function jsonReport(conditions: readonly Condition[]): string {
   );
 }
 
-function main(): void {
-  const parsed = parseOrDie(die, { repeatable: ["condition"], flags: ["json"] });
-  const specs = parsed.repeated.get("condition") ?? [];
-  if (specs.length < 2) {
-    die("name at least two --condition label=<battery.json | campaignDir::runId> options");
-  }
-  const labels = new Set<string>();
-  const conditions = specs.map((spec) => {
-    const equalsAt = spec.indexOf("=");
-    const label = equalsAt === -1 ? "" : spec.slice(0, equalsAt);
-    const target = spec.slice(equalsAt + 1);
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(label)) {
-      die(`--condition ${spec}: the label before = must be a lowercase slug`);
-    }
-    if (labels.has(label)) die(`--condition ${spec}: label ${label} is used twice`);
-    labels.add(label);
-    if (!isAbsolute(target)) die(`--condition ${spec}: the path must be absolute`);
-    return readCondition(label, target);
-  });
-  console.log(parsed.flags.has("json") ? jsonReport(conditions) : report(conditions).trimEnd());
+if (import.meta.main) {
+  await runCommand(
+    {
+      name: "compare-conditions",
+      usage:
+        "usage: compare-conditions.mts --condition <label>=<battery.json | campaignDir::runId> --condition ... [--json]",
+      options: { condition: "list", json: "flag" },
+    },
+    (args) => {
+      const specs = args.list("condition");
+      if (specs.length < 2) {
+        die("name at least two --condition label=<battery.json | campaignDir::runId> options");
+      }
+      const labels = new Set<string>();
+      const conditions = specs.map((spec) => {
+        const equalsAt = spec.indexOf("=");
+        const label = equalsAt === -1 ? "" : spec.slice(0, equalsAt);
+        const target = spec.slice(equalsAt + 1);
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(label)) {
+          die(`--condition ${spec}: the label before = must be a lowercase slug`);
+        }
+        if (labels.has(label)) die(`--condition ${spec}: label ${label} is used twice`);
+        labels.add(label);
+        if (!isAbsolute(target)) die(`--condition ${spec}: the path must be absolute`);
+        return readCondition(label, target);
+      });
+      console.log(args.flag("json") ? jsonReport(conditions) : report(conditions).trimEnd());
+    },
+  );
 }
-
-main();

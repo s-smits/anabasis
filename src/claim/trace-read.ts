@@ -116,6 +116,13 @@ function directDirectory(path: string, parent: string): boolean {
   }
 }
 
+/** The campaign subtrees a trace may be discovered under. Nothing writes `contest/` any more --
+ *  the paired repair contest is gone, and `measurePair`, `pairedContestApplies` and
+ *  `withheldContest` all sit on the refused-calls list in `tools/loc/source-policy.json`, so it
+ *  cannot return without that list moving first. It stays here as a read-only surface because one
+ *  recorded campaign still has the directory, and dropping the name would not make that archive
+ *  refuse to load: it would make its traces silently read as missing, which is the failure this
+ *  reader's own header says it exists to prevent. */
 const CAMPAIGN_TREE_CONTAINERS = ["candidates", "contest", "promotions", "versions"] as const;
 
 /** The configured campaigns/domains collections may be linked by a run worktree. Their

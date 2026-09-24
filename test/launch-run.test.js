@@ -181,13 +181,45 @@ describe("one-command run launcher", () => {
     expect(launch).not.toContain("--wall-deadline-ms");
     expect(Number(timer[timer.indexOf("--deadline") + 1])).toBeGreaterThan(Date.now());
     // The timer runs a copy inside the run worktree, so removing the launcher's tree cannot break it.
+    // The copy keeps the skills layout, so the parser it imports is the launcher's own.
+    const staged = join(fixture.plans[0].dir, ".scratch/quick-run/stop-timer");
     const script = timer[timer.indexOf("--no-env-file") + 1];
-    expect(script).toBe(join(fixture.plans[0].dir, ".scratch/quick-run/stop-timer/stop.ts"));
-    for (const name of ["stop.ts", "service.ts"]) {
-      expect(readFileSync(join(fixture.plans[0].dir, ".scratch/quick-run/stop-timer", name), "utf8")).toBe(
-        readFileSync(join(import.meta.dir, "../.claude/skills/launch-run/scripts", name), "utf8"),
+    expect(script).toBe(join(staged, "launch-run/scripts/stop.ts"));
+    for (const name of ["launch-run/scripts/stop.ts", "launch-run/scripts/service.ts", "main/cli.ts"]) {
+      expect(readFileSync(join(staged, name), "utf8")).toBe(
+        readFileSync(join(import.meta.dir, "../.claude/skills", name), "utf8"),
       );
     }
+  });
+
+  it("refuses a misspelled or relative stop-timer argument with exit 2 before scheduling anything", () => {
+    const stop = join(import.meta.dir, "../.claude/skills/launch-run/scripts/stop.ts");
+    const dir = temp();
+    const run = (...args) => Bun.spawnSync([process.execPath, "--no-env-file", stop, ...args], { cwd: dir });
+    const misspelled = run(
+      "--worktree",
+      dir,
+      "--run",
+      "r",
+      "--servcie",
+      "s",
+      "--deadline",
+      "1",
+      "--grace",
+      "1",
+    );
+    expect(misspelled.exitCode).toBe(2);
+    expect(misspelled.stderr.toString()).toContain('unknown option "--servcie"');
+    expect(run("--worktree", "relative", "--run", "r").exitCode).toBe(2);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("refuses a misspelled launch option with exit 2 and plans nothing", () => {
+    const launch = join(import.meta.dir, "../.claude/skills/launch-run/scripts/launch.ts");
+    const result = Bun.spawnSync([process.execPath, "--no-env-file", launch, "truss", "--dry-rnu"]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr.toString()).toBe('launch-run: unknown option "--dry-rnu"\n');
+    expect(result.stdout.toString()).toBe("");
   });
 
   it.each([
@@ -485,7 +517,7 @@ describe("one-command run launcher", () => {
       ["--wall-deadline-ms", "10"],
       ["--termination-grace-ms", "10"],
     ]) {
-      expect(() => parseOptions(["truss", "--condition", "sol,opus", ...flags])).toThrow("Unknown option");
+      expect(() => parseOptions(["truss", "--condition", "sol,opus", ...flags])).toThrow("unknown option");
     }
   });
 
@@ -616,7 +648,9 @@ describe("one-command run launcher", () => {
     expect(uncertain.calls.some((args) => args.includes("kill") || args.includes("bootout"))).toBe(false);
   });
 
-  it("reports a terminal written just after the opening as a failed startup", async () => {
+  // The terminal is read only through the controller's strict reader, so one it refuses still ends
+  // the startup, naming the refusal rather than a reason read leniently from the file.
+  it("reports a terminal written just after the opening as a startup the reader refuses", async () => {
     const options = parseOptions(["truss"]);
     const [plan] = planRuns(options, temp(), "early-abort");
     Object.assign(plan, { source, budget: "1320", ...requestIdentity(fullrunArgs(plan, options, source)) });
@@ -631,7 +665,9 @@ describe("one-command run launcher", () => {
             JSON.stringify({ terminalReason: "worker could not load" }),
           ),
       }),
-    ).rejects.toThrow("startup closed: worker could not load");
+    ).rejects.toThrow(
+      `${plan.runId}: startup not confirmed; the controller's reader refuses this run's evidence`,
+    );
   });
 
   it("refuses a changed source, prompt, budget or slot and reports absent openings as uncertain", async () => {
@@ -648,6 +684,15 @@ describe("one-command run launcher", () => {
     ]) {
       expect(openingProblems(changed, plan).length).toBeGreaterThan(0);
     }
+    // An opening whose source is not a concrete identity is refused by the reader before any field.
+    const controller = join(plan.dir, "campaigns", "truss-project", "controller", plan.runId);
+    mkdirSync(controller, { recursive: true });
+    writeFileSync(join(controller, "opening.json"), JSON.stringify({ ...valid, source: { commit: "a" } }));
+    const live = async () => ({ code: 0, out: liveState("/fixture", "") });
+    await expect(checkOpening(plan, live, { attempts: 1, sleep: async () => {} })).rejects.toThrow(
+      "opening mismatch: opening source identity is not concrete",
+    );
+    rmSync(join(plan.dir, "campaigns"), { recursive: true });
     mkdirSync(join(plan.dir, "campaigns"), { recursive: true });
     await expect(
       checkOpening(plan, async () => ({ code: 0, out: liveState("/fixture", "") }), {

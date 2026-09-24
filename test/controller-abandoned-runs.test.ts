@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { type JsonObject, type JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -62,9 +62,11 @@ function controllerFixture(
       epoch,
       lock: { token: "recorded-token", ownedAtRecord: true },
       iterations: [],
+      absentSteps: [],
       outcome: "completed",
       abortClause: null,
       terminalReason: "completed",
+      writtenAt: "2026-09-18T12:00:00.000Z",
       runEnd: RUN_END,
       ...keyIfDefined("verifierCleanup", verifierCleanup),
     }),
@@ -109,6 +111,15 @@ describe("controller abandoned-run evidence", () => {
       state: "recorded",
       abandonedRuns: ["run-a", "run-b"],
     });
+  });
+
+  it("carries the recorded absent steps and refuses a terminal that omits them", () => {
+    const campaign = controllerFixture([]);
+    expect(readControllerEvidence(campaign, RUN)).toMatchObject({ state: "recorded", absentSteps: [] });
+    const terminalPath = join(campaign, "controller", RUN, "terminal.json");
+    const { absentSteps: _dropped, ...rest } = JSON.parse(readFileSync(terminalPath, "utf8"));
+    writeFileSync(terminalPath, JSON.stringify(rest));
+    expect(() => readControllerEvidence(campaign, RUN)).toThrow(/absentSteps/);
   });
 
   for (const [name, value] of MALFORMED_CASES) {

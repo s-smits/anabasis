@@ -47,7 +47,7 @@ import {
   type ScriptedTurn,
   scriptedBuilderRuntime,
 } from "../../../../test/helpers/scripted-builder-runtime.ts";
-import { absoluteOption, exitWith, type ExitWith, parseOrDie, requiredOption } from "./cli-args.mts";
+import { absoluteOption, exitWith, type ExitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { type ProcessCensusSnapshot, startProcessCensus } from "./process-census.mts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isFunction } from "#src/meta/json-shape.ts";

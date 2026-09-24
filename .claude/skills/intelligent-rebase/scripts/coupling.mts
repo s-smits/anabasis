@@ -47,8 +47,9 @@
  * Parsing uses the Bun-compatible TypeScript 5 compiler API. Historical blobs overlay the checked
  * out tree, so a past revision is parsed without being checked out.
  */
-import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { gitMaybe, gitText } from "#skills/main/git.ts";
+import { listWorktrees } from "#tools/runs/discover.ts";
 import { readFileSync, readdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
@@ -84,7 +85,7 @@ type Checkout = {
 };
 type Finding = { severity: number; kind: string; detail: string; hub: boolean };
 
-const REPO = runTextSyncOrThrow([hostTool("git"), "rev-parse", "--show-toplevel"]).trim();
+const REPO = gitText(runtimeProcess.cwd(), "rev-parse", "--show-toplevel");
 const HUB_PERCENTILE = 0.9;
 
 const EXTENSIONS = [
@@ -139,21 +140,26 @@ function emitJson(value: JsonValue): never {
   throw new Error("process exit returned unexpectedly");
 }
 
+const ARGS = parseOrDie(exitWith("coupling"), {
+  values: ["a", "b", "base", "commits", "review", "root", "scan-dir"],
+  flags: ["all", "json", "worktrees", "scan"],
+});
+
+/** Whether `--<name>` was passed, as a flag or as a value option. */
 function flag(name: string): boolean {
-  return Bun.argv.includes(`--${name}`);
+  return ARGS.flags.has(name) || ARGS.single.has(name);
 }
 
 function arg(name: string, fallback?: string): string {
-  const i = Bun.argv.indexOf(`--${name}`);
-  const next = i === -1 ? undefined : Bun.argv[i + 1];
-  if (next !== undefined && next !== "") return next;
+  const value = ARGS.single.get(name);
+  if (value !== undefined && value !== "") return value;
   if (fallback !== undefined) return fallback;
   throw new Error(`missing --${name}`);
 }
 
 function git(args: string[]): string {
   // a path missing at a ref is an answer, not an error, so the caller reads the throw
-  return runTextSyncOrThrow([hostTool("git"), ...args], { cwd: REPO, maxBuffer: CAPTURE_MAX_BYTES });
+  return gitText(REPO, ...args);
 }
 
 /** `a..b` and `a...b` are read verbatim; a bare ref becomes `<base>...<ref>`. */
@@ -563,21 +569,9 @@ const asJson = flag("json");
  * origin URL or by a shared root commit, since path and directory name prove nothing.
  */
 function scanForCheckouts(roots: string[], depth = 3): CheckoutScan {
-  const ourOrigin = (() => {
-    try {
-      return git(["remote", "get-url", "origin"]).trim();
-    } catch {
-      return "";
-    }
-  })();
+  const ourOrigin = gitMaybe(REPO, "remote", "get-url", "origin") ?? "";
   const ourRoots = new Set(git(["rev-list", "--max-parents=0", "HEAD"]).split("\n").filter(Boolean));
-  const at = (dir: string, args: string[]): string => {
-    try {
-      return runTextSyncOrThrow([hostTool("git"), ...args], { cwd: dir }).trim();
-    } catch {
-      return "";
-    }
-  };
+  const at = (dir: string, args: string[]): string => gitMaybe(dir, ...args) ?? "";
 
   const found: Checkout[] = [];
   let scanned = 0;
@@ -621,27 +615,14 @@ if (flag("worktrees")) {
   // What is actually in flight. Committed history says what landed; the other agents' trees say
   // what is being written right now, which is the population this skill is really about.
   const base = arg("base", "HEAD");
-  const entries: { path: string; head: string; branch: string }[] = [];
-  let cur: { path: string; head: string; branch: string } | null = null;
-  for (const line of git(["worktree", "list", "--porcelain"]).split("\n")) {
-    if (line.startsWith("worktree ")) cur = { path: line.slice(9), head: "", branch: "detached" };
-    else if (line.startsWith("HEAD ") && cur) cur.head = line.slice(5).trim();
-    else if (line.startsWith("branch ") && cur) cur.branch = line.slice(7).replace("refs/heads/", "").trim();
-    else if (line === "" && cur) {
-      entries.push(cur);
-      cur = null;
-    }
-  }
-  if (cur) entries.push(cur);
+  const entries = listWorktrees(REPO).map((entry) => ({
+    path: entry.path,
+    head: entry.head ?? "",
+    branch: entry.branch?.replace("refs/heads/", "") ?? "detached",
+  }));
 
   const rows = entries.map((e) => {
-    const at = (args: string[]): string => {
-      try {
-        return runTextSyncOrThrow([hostTool("git"), ...args], { cwd: e.path }).trim();
-      } catch {
-        return "";
-      }
-    };
+    const at = (args: string[]): string => gitMaybe(e.path, ...args) ?? "";
     const dirty = at(["status", "--porcelain"]).split("\n").filter(Boolean);
     const [ahead = "0", behind = "0"] = at([
       "rev-list",

@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { ITERATION_FILE, listIterationDirs } from "../builder/campaign-iterations.ts";
+import { ITERATION_FILE, iterationOrdinal, listIterationDirs } from "../builder/campaign-iterations.ts";
 import { type CampaignEpochEvidence, writeCompleted } from "./campaign-epoch.ts";
 import type { CampaignClause, CampaignFeedback, IterationEvidence } from "./campaign-types.ts";
 import { type ToolNonResultCounts, chargedTrialRunDirs, replayNonResultRefusals } from "./tool-non-result.ts";
@@ -47,15 +47,10 @@ export interface CampaignMemory {
   carried: CampaignFeedback[];
 }
 
-function ordinalOf(name: string): number | null {
-  const ordinal = Number(/^(\d+)-/.exec(name)?.[1]);
-  return Number.isFinite(ordinal) ? ordinal : null;
-}
-
 /** Next free ordinal from the on-disk campaign history; no scheduler state exists anywhere
  *  else. */
 export function nextOrdinal(campaignDir: string): number {
-  return Math.max(0, ...listIterationDirs(campaignDir).map((name) => ordinalOf(name) ?? 0)) + 1;
+  return Math.max(0, ...listIterationDirs(campaignDir).map((name) => iterationOrdinal(name) ?? 0)) + 1;
 }
 
 /** A trailing findings run over one outcome, extended by a matching iteration and reset by any
@@ -106,8 +101,6 @@ export function unchangedCandidateSubmissions(
  *  gate's no-verdict record beside it. */
 function completedIterationDirs(campaignDir: string): string[] {
   return listIterationDirs(campaignDir)
-    .filter((name) => ordinalOf(name) !== null)
-    .sort((a, b) => (ordinalOf(a) ?? 0) - (ordinalOf(b) ?? 0))
     .map((name) => join(campaignDir, name))
     .filter((dir) => existsSync(join(dir, ITERATION_FILE)));
 }

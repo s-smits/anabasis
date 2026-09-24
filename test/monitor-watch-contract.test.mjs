@@ -1,4 +1,6 @@
 import assert from "../src/meta/assert.ts";
+import { join } from "../src/meta/path.ts";
+import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 import { test } from "bun:test";
 
 import {
@@ -110,4 +112,20 @@ test("report exposes all three open-ledger counts", () => {
     materialUnverifiedClaims: 1,
     pendingInterventions: 1,
   });
+});
+
+test("the script refuses an unknown option or command with exit 2 before reading its input", () => {
+  const script = join(
+    import.meta.dir,
+    "../.claude/skills/monitor-session-until-idle/scripts/watch-contract.mjs",
+  );
+  for (const [args, message] of [
+    [["init", "-", "--json"], /watch-contract: unknown option "--json"/],
+    [["check", "-"], /watch-contract: expected 2 positional arguments/],
+    [["--help"], /watch-contract: expected one of init, check/],
+  ]) {
+    const result = runSync([Bun.argv[0], script, ...args]);
+    assert.equal(result.exitCode, 2, args.join(" "));
+    assert.match(decodeOutput(result.stderr), message);
+  }
 });

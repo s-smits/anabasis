@@ -46,9 +46,9 @@ verifier explanations or converting an advisory diagnosis into a verdict.
 
 Use `SteeringEvent` and `HookEvent` in `src/observe/run-observer.ts` as the source of truth. Do not combine them into one record.
 
-`SteeringEvent` records `authority` and `claim`, with optional owner and evidence. Its authorities are `deterministic | evidence-observation | model-hypothesis | operator | unknown`. The old `category`, `mode`, and `status` fields were removed: descriptive taxonomy is derivable from row type, phase, contract, hook type, and owner, and no decision read them.
+`SteeringEvent` records `authority` and `claim`, with optional owner and evidence. Its authorities are `deterministic | evidence-observation | model-hypothesis | operator`. The old `category`, `mode`, and `status` fields were removed: descriptive taxonomy is derivable from row type, phase, contract, hook type, and owner, and no decision read them.
 
-`HookEvent` separately records `hookType`, `state`, `label`, reason, trigger digest, rendered digest, and evidence. Its states are `activated | suppressed | rejected | registered | unknown`. A suppression or rejection is still a decision record.
+`HookEvent` separately records `hookType`, `state`, `label`, reason, trigger digest, rendered digest, and evidence. Its one state is `activated`. The four that stood beside it — `suppressed`, `rejected`, `registered` and `unknown` — had no producer anywhere in the tree: both hook sites fire on a turn that ended unsettled, and fixed controller text has nothing to suppress it and nobody to refuse it. Because the state composes the row type, each of them advertised a `hook-*` row kind a reader could filter for and never find.
 
 Accept only controller-created triggers for the current run. Refuse task prose, retrieved pages,
 tool output, model requests, copied triggers from another run, duplicates, and activations beyond a

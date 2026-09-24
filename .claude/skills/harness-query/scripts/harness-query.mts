@@ -29,18 +29,20 @@ import {
   statSync,
   writeFileSync,
 } from "#src/meta/filesystem.ts";
-import { basename, isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { basename, join, resolve } from "#src/meta/path.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "#src/meta/bundle-layout.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { type CommandArgs, type CommandSpec, runCommand } from "#skills/main/cli.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
   EARLIER_BUNDLE_SNAPSHOT_DIRECTORY,
   bundleSnapshotToolTree,
 } from "#src/claim/bundle-snapshot.ts";
 import { resolveToolInventory } from "#src/verify/tool-inventory.ts";
-import { batteryPath } from "#src/truth/battery-record.ts";
+import { batteryPath, readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
+import { classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
 import { JUDGE_FLAG_DEFAULTS, type JudgeFlags, judgeProfileFor } from "../judge/judge-option.mts";
-import { asRecord, isBoolean, isRecord, isString, jsonKind } from "#src/meta/json-shape.ts";
+import { asRecord, isRecord, isString, jsonKind } from "#src/meta/json-shape.ts";
 import type { JsonObject, JsonValue } from "#src/meta/json-shape.ts";
 import { keyIfNotNull } from "#src/meta/optional-key.ts";
 import { CONFORMANCE_FILE } from "#src/claim/conformance-evidence.ts";
@@ -67,10 +69,10 @@ interface Controls {
 interface Options {
   repoRoot: string;
   harnessDir: string;
-  taskIds: string[];
-  families: string[];
+  taskIds: readonly string[];
+  families: readonly string[];
   all: boolean;
-  queries: string[];
+  queries: readonly string[];
   queryFile: string | null;
   fit: string;
   list: boolean;
@@ -82,77 +84,67 @@ interface Options {
   judge: JudgeFlags;
 }
 
-/** One recorded case as this script counts it. A case is a non-result when either typed channel
- *  says so: the solver's `nonResult` object or the verifier-side `runtimeNonResult` string (for
- *  example an oracle-throw in an older record). */
-interface CaseRow {
-  taskId: string;
-  truthOk: boolean | null;
-  pass: boolean | null;
-  nonResult: boolean;
-  nonResultKind: string;
-}
+const USAGE = [
+  "bun harness-query.mts --harness <dir> [--repo <dir>] [--list]",
+  "  [--task <id>]... [--family <name>]... [--all] [--query <text or json>]... [--queries <file>]",
+  "  [--fit template|strict|raw] [--model <m>] [--effort <e>] [--max-built-turns <n>] [--json]",
+  "  [--judge off|configured] [--judge-model <m>] [--judge-effort <e>]",
+].join("\n");
 
-/** The two fields of a recorded battery this script prints; an unwritten battery reads as empty. */
-interface BatteryRecord {
-  terminalReason: string | null;
-  cases: CaseRow[];
-}
+const COMMAND: CommandSpec = {
+  name: "harness-query",
+  usage: USAGE,
+  options: {
+    repo: "text",
+    harness: "text",
+    task: "list",
+    family: "list",
+    all: "flag",
+    query: "list",
+    queries: "text",
+    fit: "text",
+    list: "flag",
+    model: "text",
+    effort: "text",
+    "max-built-turns": "int",
+    json: "flag",
+    judge: "text",
+    "judge-model": "text",
+    "judge-effort": "text",
+  },
+};
 
-function parseArgs(argv: string[]): Options {
-  const options: Options = {
-    repoRoot: runtimeProcess.cwd(),
-    harnessDir: "",
-    taskIds: [],
-    families: [],
-    all: false,
-    queries: [],
-    queryFile: null,
-    fit: "template",
-    list: false,
-    model: null,
-    effort: null,
-    maxTurns: null,
-    json: false,
-    judge: { ...JUDGE_FLAG_DEFAULTS },
-  };
-  for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
-    const value = () => {
-      const next = argv[index + 1];
-      if (next === undefined) throw new Error(`${flag} needs a value`);
-      index += 1;
-      return next;
-    };
-    if (flag === "--repo") options.repoRoot = resolve(value());
-    else if (flag === "--harness") options.harnessDir = value();
-    else if (flag === "--task") options.taskIds.push(value());
-    else if (flag === "--family") options.families.push(value());
-    else if (flag === "--all") options.all = true;
-    else if (flag === "--query") options.queries.push(value());
-    else if (flag === "--queries" || flag === "--input") options.queryFile = resolve(value());
-    else if (flag === "--fit") options.fit = value();
-    else if (flag === "--list") options.list = true;
-    else if (flag === "--model") options.model = value();
-    else if (flag === "--effort") options.effort = value();
-    else if (flag === "--max-built-turns") options.maxTurns = Number(value());
-    else if (flag === "--json") options.json = true;
-    else if (flag === "--judge") options.judge.profile = value();
-    else if (flag === "--judge-model") options.judge.model = value();
-    else if (flag === "--judge-effort") options.judge.effort = value();
-    else throw new Error(`unknown flag ${flag}`);
-  }
-  if (options.harnessDir === "") throw new Error("--harness <dir> is required");
-  if (!isAbsolute(options.harnessDir)) options.harnessDir = resolve(options.repoRoot, options.harnessDir);
-  if (
-    !existsSync(join(options.harnessDir, "agent")) ||
-    !existsSync(join(options.harnessDir, modelDir(options.harnessDir)))
-  ) {
+function optionsFrom(args: CommandArgs): Options {
+  const repoRoot = resolve(args.value("repo") ?? runtimeProcess.cwd());
+  const harnessDir = resolve(repoRoot, args.required("harness"));
+  // Read before the bundle check, so a malformed count refuses as an argument (exit 2).
+  const maxTurns = args.int("max-built-turns");
+  if (!existsSync(join(harnessDir, "agent")) || !existsSync(join(harnessDir, modelDir(harnessDir)))) {
     throw new Error(
-      `${options.harnessDir}: not a Built Harness bundle (needs agent/ and correctness-model/ or grader/)`,
+      `${harnessDir}: not a Built Harness bundle (needs agent/ and correctness-model/ or grader/)`,
     );
   }
-  return options;
+  const queryFile = args.value("queries");
+  return {
+    repoRoot,
+    harnessDir,
+    taskIds: args.list("task"),
+    families: args.list("family"),
+    all: args.flag("all"),
+    queries: args.list("query"),
+    queryFile: queryFile === null ? null : resolve(queryFile),
+    fit: args.value("fit") ?? "template",
+    list: args.flag("list"),
+    model: args.value("model"),
+    effort: args.value("effort"),
+    maxTurns,
+    json: args.flag("json"),
+    judge: {
+      profile: args.value("judge") ?? JUDGE_FLAG_DEFAULTS.profile,
+      model: args.value("judge-model"),
+      effort: args.value("judge-effort"),
+    },
+  };
 }
 
 /** The bundle's correctness-model directory name: `grader` only for a bundle that has that
@@ -460,33 +452,12 @@ function deriveProbeBundle(
   return { dir, narrowed, digest: bundleDigest(dir) };
 }
 
-/** The recorded rows, read field by field so a row from an older battery reads as absent rather
- *  than as a wrong count. */
-function caseRows(value: JsonValue | undefined): CaseRow[] {
-  return (Array.isArray(value) ? value : []).flatMap((entry) => {
-    const row = asRecord(entry);
-    if (row === null) return [];
-    const nonResult = asRecord(row.nonResult);
-    const kind = [row.runtimeNonResultKind, nonResult?.kind].find(isString);
-    return [
-      {
-        taskId: isString(row.taskId) ? row.taskId : "",
-        truthOk: isBoolean(row.truthOk) ? row.truthOk : null,
-        pass: isBoolean(row.pass) ? row.pass : null,
-        nonResult: nonResult !== null || isString(row.runtimeNonResult),
-        nonResultKind: kind ?? "typed",
-      },
-    ];
-  });
-}
-
-function readBattery(dir: string, runId: string): BatteryRecord {
-  const file = batteryPath(dir, runId);
-  const record = existsSync(file) ? asRecord(readJsonFile(file)) : null;
-  return {
-    terminalReason: isString(record?.terminalReason) ? record.terminalReason : null,
-    cases: caseRows(record?.cases),
-  };
+/** The probe's battery through the controller's own recorded-evidence reader, or null when the
+ *  battery refused before it wrote one. */
+function readBattery(dir: string, runId: string) {
+  return existsSync(batteryPath(dir, runId))
+    ? readRecordedBatteryRecord(join(dir, "runs", runId), runId)
+    : null;
 }
 
 function printTaskList(recordedTasks: Task[]): void {
@@ -501,8 +472,8 @@ function printTaskList(recordedTasks: Task[]): void {
   }
 }
 
-async function main(): Promise<void> {
-  const options = parseArgs(Bun.argv.slice(2));
+async function main(args: CommandArgs): Promise<void> {
+  const options = optionsFrom(args);
   const recordedTasks: Task[] = JSON.parse(readFileSync(modelFile(options.harnessDir, TASKS_FILE), "utf8"));
   if (options.list) return printTaskList(recordedTasks);
 
@@ -555,20 +526,24 @@ async function main(): Promise<void> {
     // A refused battery states its reason in its own record; print it, because the thrown
     // message alone reads as a script fault when it is usually the product declining to spend.
     const record = readBattery(probe.dir, runId);
-    if (record.terminalReason !== null) console.log(`\nbattery: ${record.terminalReason}`);
+    if (record !== null) console.log(`\nbattery: ${record.terminalReason}`);
     throw error;
   }
 
-  const rows = readBattery(probe.dir, runId).cases;
-  const graded = rows.filter((row) => row.truthOk !== null).length;
-  const passed = rows.filter((row) => row.pass === true).length;
-  const nonResults = rows.filter((row) => row.nonResult).length;
+  // The controller's classifier and tally, so this probe and the battery it rehearses count one
+  // case the same way.
+  const rows = (readBattery(probe.dir, runId)?.cases ?? []).map((row) => ({
+    taskId: row.taskId,
+    outcome: classifyCaseOutcome(row),
+    nonResultKind: row.runtimeNonResultKind,
+  }));
+  const tally = outcomeTally(rows.map((row) => row.outcome));
   console.log(
-    `\n${passed}/${graded} verified cases passed; ${rows.length - graded - nonResults} unaccepted; ${nonResults} non-results`,
+    `\n${tally.passed}/${tally.verified} verified cases passed; ${tally.unaccepted} unaccepted; ${tally.nonResults} non-results`,
   );
   for (const row of rows) {
-    const unscored = row.nonResult ? `non-result (${row.nonResultKind})` : "unaccepted";
-    const verdict = row.truthOk === null ? unscored : row.pass === true ? "pass" : "fail";
+    const verdict =
+      row.outcome === "non-result" ? `non-result (${row.nonResultKind ?? "typed"})` : row.outcome;
     console.log(
       `  ${row.taskId}: ${verdict}\n    artifact ${join(probe.dir, "runs", runId, "cases", row.taskId)}`,
     );
@@ -582,4 +557,4 @@ async function main(): Promise<void> {
   if (options.json) console.log(JSON.stringify(report, null, 2));
 }
 
-await main();
+if (import.meta.main) await runCommand(COMMAND, main);

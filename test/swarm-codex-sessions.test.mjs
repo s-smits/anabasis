@@ -14,7 +14,7 @@ import { decodeOutput, runSync } from "../src/meta/subprocess.ts";
 
 import { afterEach, test } from "bun:test";
 
-const { batchPolicy, parseArgs, planSessions } = await import(
+const { batchPolicy, planSessions } = await import(
   "../.claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs"
 );
 const script = join(import.meta.dir, "../.claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs");
@@ -123,10 +123,24 @@ test("planSessions applies the policy, keeps explicit choices and refuses bad ro
   assert.throws(() => planSessions([], {}), /non-empty array/);
 });
 
-test("parseArgs reads flags, booleans and positionals", () => {
-  const options = parseArgs(["launch", "--out-dir", "/x", "--plan-only", "--write"]);
-  assert.deepEqual(options, { _: ["launch"], out_dir: "/x", plan_only: true, write: true });
-  assert.throws(() => parseArgs(["--out-dir"]), /needs a value/);
+test("each command parses its own options and refuses what it does not take with exit 2", () => {
+  const dir = scratch();
+  // A misspelled flag used to be stored as an option nothing read; now it refuses before running.
+  const refusals = [
+    [["launch", "--out-dri", "/x"], /unknown option "--out-dri"/],
+    [["status", "--plan-only"], /unknown option "--plan-only"/],
+    [["launch", "--out-dir"], /needs a value/],
+    [["lunch"], /expected one of launch, run-one, status, drain, got "lunch"/],
+    [["status"], /--out-dir is required/],
+  ];
+  for (const [args, message] of refusals) {
+    const result = run(args, dir);
+    assert.equal(result.code, 2, args.join(" "));
+    assert.match(result.stderr, message);
+  }
+  const help = run(["status", "--help"], dir);
+  assert.equal(help.code, 0);
+  assert.match(help.stdout, /codex-sessions.mjs launch --tasks-file/);
 });
 
 test("launch refuses a relative --out-dir and an unknown effort before spawning", () => {
@@ -137,7 +151,7 @@ test("launch refuses a relative --out-dir and an unknown effort before spawning"
     ["launch", "--tasks-file", tasks, "--out-dir", "relative/dir", "--companion", fakeCompanion(dir)],
     dir,
   );
-  assert.equal(relative.code, 1);
+  assert.equal(relative.code, 2);
   assert.match(relative.stderr, /--out-dir must be an absolute path/);
   const effort = run(
     [

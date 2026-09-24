@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 
-import { resolve } from "#src/meta/path.ts";
+import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
+import { readJsonFile } from "#src/meta/completed-json.ts";
+import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isBoolean, isString } from "#src/meta/json-shape.ts";
 
@@ -20,8 +22,7 @@ const TERMINAL_TURN_STATES = new Set([
   "aborted",
 ]);
 
-function usage(message) {
-  if (message) console.error(`${message}\n`);
+function usage() {
   console.error(
     [
       "Usage:",
@@ -31,14 +32,12 @@ function usage(message) {
       "Input is the JSON output of thread-state.mjs summary --json.",
     ].join("\n") + "\n",
   );
-  runtimeProcess.exit(message ? 2 : 0);
+  runtimeProcess.exit(0);
 }
 
+/** A JSON file, or stdin for `-`: the thread-state summary is usually piped in. */
 async function readJson(path) {
-  const raw = path === "-" ? await Bun.stdin.text() : await Bun.file(path).text();
-  let value = JSON.parse(raw);
-  while (isString(value)) value = JSON.parse(value);
-  return value;
+  return path === "-" ? capturedJsonParse(await Bun.stdin.text()) : readJsonFile(path);
 }
 
 function requireState(state) {
@@ -196,24 +195,22 @@ function report(state, contract) {
 }
 
 async function main() {
-  const args = Bun.argv.slice(2);
-  if (args.includes("--help") || args.includes("-h")) usage();
-  const command = args[0];
-  if (command === "init" && args.length === 2) {
-    console.log(JSON.stringify(buildTemplate(await readJson(args[1])), null, 2));
+  const { command, flags, positionals } = parseCommandOrDie(exitWith("watch-contract"), {
+    init: { flags: ["help"], positionals: 1 },
+    check: { flags: ["help"], positionals: 2 },
+  });
+  if (flags.has("help")) usage();
+  const [statePath, contractPath] = positionals;
+  if (command === "init") {
+    console.log(JSON.stringify(buildTemplate(await readJson(statePath)), null, 2));
     return;
   }
-  if (command === "check" && args.length === 3) {
-    const state = await readJson(args[1]);
-    const contract = await readJson(args[2]);
-    console.log(JSON.stringify(report(state, contract), null, 2));
-    return;
-  }
-  usage("Invalid command or arguments");
+  const state = await readJson(statePath);
+  const contract = await readJson(contractPath);
+  console.log(JSON.stringify(report(state, contract), null, 2));
 }
 
-const isMain = Bun.argv[1] && resolve(Bun.argv[1]) === Bun.fileURLToPath(import.meta.url);
-if (isMain) {
+if (import.meta.main) {
   main().catch((error) => {
     console.error(`watch-contract: ${errorMessage(error)}`);
     runtimeProcess.exit(1);

@@ -281,6 +281,15 @@ describe("harness evolution facts", () => {
     const unmatched = new EvidenceLog(join(campaign, "candidates", "unmatched", "runs", "unmatched"));
     unmatched.write("battery.json", { runId: "unmatched", bundleSnapshot: fingerprint("e"), cases: [] });
     unmatched.record();
+    // The controller files a snapshot with no task set as "no-tasks"; the audit has to spell it the same
+    // way, or the battery that measured such a snapshot can never join it.
+    const taskless = new EvidenceLog(join(campaign, "candidates", "taskless", "runs", "taskless"));
+    taskless.write("battery.json", {
+      runId: "taskless",
+      bundleSnapshot: { ...fingerprint("f"), taskSetHash: null },
+      cases: [],
+    });
+    taskless.record();
     const ledgerBefore = readFileSync(join(campaign, "controller.sqlite"));
     const result = spawnSync(
       bunExecutable,
@@ -289,7 +298,7 @@ describe("harness evolution facts", () => {
     );
     expect(result.status).toBe(0);
     const audit = JSON.parse(result.stdout);
-    expect(audit.summary).toMatchObject({ savedVersions: 4, measuredSavedVersions: 2, measuredBatteries: 4 });
+    expect(audit.summary).toMatchObject({ savedVersions: 4, measuredSavedVersions: 2, measuredBatteries: 5 });
     expect(
       audit.savedVersions.find((row: { id: string }) => row.id === "saved-first").measuredBy[0],
     ).toMatchObject({ verified: 25, unaccepted: 0 });
@@ -309,6 +318,12 @@ describe("harness evolution facts", () => {
       expect.objectContaining({ runId: "measure-first", reason: "conflicting copies of battery" }),
     );
     expect(audit.unmatchedBatteries).toContainEqual(expect.objectContaining({ runId: "unmatched" }));
+    expect(audit.unmatchedBatteries).toContainEqual(
+      expect.objectContaining({
+        runId: "taskless",
+        bundleSnapshotId: `${"f".repeat(16)}-${"fb".repeat(8)}-no-tasks`,
+      }),
+    );
     expect(audit.current.bundleSnapshotId).toBe(
       audit.savedVersions.find((row: { id: string }) => row.id === "saved-first").bundleSnapshotId,
     );
@@ -322,7 +337,9 @@ describe("harness evolution facts", () => {
     const incomplete = JSON.parse(corrupted.stdout);
     expect(incomplete.savedVersions).toHaveLength(3);
     expect(incomplete.current).toMatchObject({ state: "unobservable", bundleSnapshotId: null });
-    expect(incomplete.evidenceGaps).toContain("controller ledger identity mismatch");
+    expect(incomplete.evidenceGaps).toContainEqual(
+      expect.stringContaining("the controller ledger identity does not match"),
+    );
   });
 
   it("refuses changed battery bytes instead of reporting their counts as measured evidence", () => {
@@ -411,8 +428,8 @@ describe("harness evolution facts", () => {
     const singleton = taskSetFacts(JSON.stringify([{ taskId: "one", family: "only", publicInput: {} }]));
     expect(singleton.state).toBe("recorded");
     if (singleton.state !== "recorded") throw new Error("expected recorded task facts");
-    expect(singleton.lexical.medianSameFamilyCosine).toBeNull();
-    expect(singleton.lexical.p90SameFamilyCosine).toBeNull();
+    expect(singleton.lexical?.medianSameFamilyCosine).toBeNull();
+    expect(singleton.lexical?.p90SameFamilyCosine).toBeNull();
   });
 
   it("keeps the latest product and task summary in quickRead when no battery measured any checkpoint", () => {

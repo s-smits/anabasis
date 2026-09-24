@@ -60,6 +60,7 @@
  *   }
  */
 
+import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import {
   cpSync,
   existsSync,
@@ -69,8 +70,7 @@ import {
   realpathSync,
 } from "#src/meta/filesystem.ts";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
-import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { gitText } from "#skills/main/git.ts";
 import { BUILDER_TURN_SETTLE_MS } from "#src/author/builder-turn-loop.ts";
 
 import {
@@ -85,7 +85,7 @@ import {
 import type { AgentTurnResult, TurnUsage } from "#src/backends/backend-types.ts";
 import type { CampaignBuilderCondition } from "#src/author/campaign-epoch.ts";
 import { type BackendKind, defaultModelOf } from "#src/backends/resolve.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { asRecord, isFunction, isString } from "#src/meta/json-shape.ts";
@@ -306,7 +306,7 @@ const predictions =
           const detail = errorMessage(error);
           die(`could not read --predictions ${path}: ${detail}`);
         }
-        return { path, sha256: new Bun.CryptoHasher("sha256").update(text).digest("hex"), text };
+        return { path, sha256: sha256(text), text };
       })();
 
 /** Controller-owned gates. A segment mounts the authoring roster alone, so an actor that looks for
@@ -342,7 +342,7 @@ const systemPrompt =
           die(`could not read --system-file ${systemPath}`);
         }
         if (text.trim() === "") die("--system-file must not be empty");
-        return { path: systemPath, text, sha256: new Bun.CryptoHasher("sha256").update(text).digest("hex") };
+        return { path: systemPath, text, sha256: sha256(text) };
       })();
 
 const slug = single.get("slug") ?? "segment";
@@ -496,16 +496,14 @@ function regularFileDigests(root: string): Map<string, string> {
       continue;
     }
     if (lstatSync(join(root, name)).isSymbolicLink()) continue;
-    out.set(name, new Bun.CryptoHasher("sha256").update(readFileSync(join(root, name))).digest("hex"));
+    out.set(name, sha256OfFile(join(root, name)));
   }
   return out;
 }
 
 function gitInWorkspace(dir: string, args: readonly string[]): void {
   try {
-    runTextSyncOrThrow([hostTool("git"), "-C", dir, ...SEGMENT_IDENTITY, ...args], {
-      maxBuffer: CAPTURE_MAX_BYTES,
-    });
+    gitText(dir, ...SEGMENT_IDENTITY, ...args);
   } catch (error) {
     die(`git ${args[0]} on the seeded workspace failed: ${errorMessage(error)}`);
   }

@@ -22,7 +22,13 @@ beforeEach(() => {
   scratch = mkdtempSync(join(REPO_ROOT, ".scratch", "difficulty-watch-test-"));
   campaign = join(scratch, "campaigns", "demo");
   writeJson(join(campaign, "controller", "fullrun-1", "opening.json"), {
-    source: { commit: "bf06e8856966f660499c880c9d47a4d6832053e2", dirty: false },
+    runId: "fullrun-1",
+    writtenAt: "2026-08-23T14:00:00.000Z",
+    source: {
+      commit: "bf06e8856966f660499c880c9d47a4d6832053e2",
+      dirty: false,
+      sourceDigest: "a".repeat(64),
+    },
     epoch: { key: "epoch-b77b", supersedes: null },
     modelSlots: { builder: { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" } },
   });
@@ -121,6 +127,22 @@ describe("difficulty-watch", () => {
       "correctness_check",
       "submit",
     ]);
+  });
+
+  it("names the strict reader's refusal of an opening instead of reading around it", () => {
+    writeJson(join(campaign, "controller", "fullrun-2", "opening.json"), {
+      runId: "fullrun-2",
+      writtenAt: "2026-08-23T15:00:00.000Z",
+      source: { commit: "bf06e8856966f660499c880c9d47a4d6832053e2", dirty: false },
+      epoch: { key: "epoch-b77b", supersedes: null },
+    });
+    const result = run();
+    expect(result.exitCode).toBe(0);
+    const lines = result.stdout.split("\n");
+    expect(lines[2]).toBe("run fullrun-2: source ? epoch ? supersedes null");
+    expect(lines[4]).toContain("refused by the strict reader: opening source identity is not concrete");
+    const row = JSON.parse(run("--json").stdout).controller[1];
+    expect(row.refused).toContain("opening source identity is not concrete");
   });
 
   it("refuses a relative or missing campaign path and an unknown option", () => {

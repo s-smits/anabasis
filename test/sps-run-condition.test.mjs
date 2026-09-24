@@ -16,8 +16,10 @@ import {
 } from "../.claude/skills/system-path-simulation/scripts/process-census.mts";
 import { REPO_ROOT, runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.mjs";
 
-/** The controller needs the frozen thresholds beside its campaigns; the fixture battery sits at the
- *  selector's floor, `max(policy floor, minLevelN)`, which is six on the repository manifest. */
+/** The controller needs the frozen thresholds beside its campaigns. Six is a valid
+ *  `--expected-tasks`: above `POLICY.battery.floor` of five, so `batterySize` admits it, and at or
+ *  under the probe ceiling of ten, where `batterySizingGate` returns the requested count exactly.
+ *  The run therefore measures six cases rather than a range the Builder sizes for itself. */
 const TASKS = 6;
 const SLUG = "sim-run-condition";
 

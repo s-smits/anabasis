@@ -65,6 +65,7 @@ const ARGUMENTS = {
   prompt: { type: "string" },
   project: { type: "string" },
   "env-file": { type: "string" },
+  account: { type: "string" },
   "codex-home": { type: "string" },
   "output-dir": { type: "string" },
   help: { type: "boolean" },
@@ -83,6 +84,7 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${P
   --project ID                   Continue this existing project; one preset and condition only
   --prompt TEXT                  Verbatim prompt of one or two lines, with custom only
   --env-file /path                Claude token; default main checkout/.env
+  --account claude1..claude4      Read CLAUDE_CODE_OAUTH_TOKEN<N> from that file instead
   --codex-home /path              Codex auth; default current CODEX_HOME or ~/.codex
   --output-dir /path              Parent of fresh worktrees; default beside main checkout
   --dry-run                      Plan only: no setup, secrets or launch
@@ -155,6 +157,9 @@ export function parseOptions(argv: string[]) {
     throw new Error("--prompt must be one or two non-empty lines without CR or NUL");
   }
   validateOptionValues(values);
+  if (values.account !== undefined && !/^claude[1-4]$/.test(values.account)) {
+    throw new Error("--account must be one of claude1, claude2, claude3, claude4");
+  }
   if (
     values.run !== undefined &&
     (names.length !== 1 || conditions.length !== 1 || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,85}$/.test(values.run))

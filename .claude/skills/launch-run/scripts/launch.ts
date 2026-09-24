@@ -150,13 +150,15 @@ export function readCredentials(
         `cannot read Claude credentials from ${path}; supply --env-file with the intended file`,
       );
     }
-    const token = file.CLAUDE_CODE_OAUTH_TOKEN ?? "";
+    // `--account claudeN` selects the numbered token, so several accounts can sit in one file and
+    // each run records which one it spends; the run itself always reads the unnumbered name.
+    const key = `CLAUDE_CODE_OAUTH_TOKEN${options.account?.slice("claude".length) ?? ""}`;
+    const token = file[key] ?? "";
     if (token === "" || /\s|["'`#$\\]/.test(token)) {
-      throw new Error(
-        `${path}: a single-line CLAUDE_CODE_OAUTH_TOKEN is required; no API-key or shell fallback`,
-      );
+      throw new Error(`${path}: a single-line ${key} is required; no API-key or shell fallback`);
     }
-    return { kind: "claude", origin: path, bytes: `CLAUDE_CODE_OAUTH_TOKEN=${token}\n` };
+    const origin = options.account === undefined ? path : `${path}#${key}`;
+    return { kind: "claude", origin, bytes: `CLAUDE_CODE_OAUTH_TOKEN=${token}\n` };
   }
   const codexHome = options["codex-home"] ?? environment.CODEX_HOME ?? join(homedir(), ".codex");
   if (!isAbsolute(codexHome)) throw new Error("the selected CODEX_HOME must be absolute");

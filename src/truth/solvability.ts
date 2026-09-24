@@ -21,6 +21,9 @@
  * 6. snapshot drift, then evidence.
  */
 
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
+import { readFileSync } from "../meta/filesystem.ts";
+import { join } from "../meta/path.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import { harnessSettings } from "./harness-config.ts";
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
@@ -76,12 +79,6 @@ import {
 import { type CommittedPublicTask, commitPublicTask } from "./task-split.ts";
 import { CENSUS_LANES, inLanes } from "./run-controls.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "./tasks.ts";
-import {
-  trustedJoin as join,
-  trustedReadFileSync as readFileSync,
-  trustedJsonParse,
-  trustedJsonStringify,
-} from "./trusted-runtime.ts";
 import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
@@ -163,16 +160,16 @@ function blockingFailure(result: CorrectnessModelResult): boolean {
 
 function parseBattery(dir: string): Loaded<{ brief: Brief; tasks: BuildTask[] }> {
   try {
-    const briefUnknown = trustedJsonParse(readFileSync(join(dir, BRIEF_FILE), "utf8"));
+    const briefUnknown = capturedJsonParse(readFileSync(join(dir, BRIEF_FILE), "utf8"));
     const briefValidation = validateBrief(briefUnknown);
     if (!briefValidation.ok) {
       throw new Error(briefValidation.findings.map((finding) => finding.detail).join("; "));
     }
     const brief =
       /* SAFETY: `validateBrief` returned ok directly above, which is the only proof of this shape. */ briefUnknown as Brief;
-    // Held at `unknown` on purpose: `trustedJsonParse` proves these bytes are JSON and nothing
+    // Held at `unknown` on purpose: `capturedJsonParse` proves these bytes are JSON and nothing
     // more, and `validateTasks` below is the only thing that proves they are a battery.
-    const tasksUnknown: unknown = trustedJsonParse(readFileSync(join(dir, TASKS_FILE), "utf8"));
+    const tasksUnknown: unknown = capturedJsonParse(readFileSync(join(dir, TASKS_FILE), "utf8"));
     const batteryUnknown = { tasks: tasksUnknown };
     const tasksValidation = validateTasks(brief, batteryUnknown, {});
     if (!tasksValidation.ok) {
@@ -434,7 +431,7 @@ async function runSolvabilityCase(
     fullTaskDigest: sha256(fullTaskJson),
     publicTaskDigest: committed.publicTaskDigest,
     artifactDigest: accepted === null ? null : sha256(accepted),
-    artifact: accepted === null ? null : trustedJsonParse(accepted),
+    artifact: accepted === null ? null : capturedJsonParse(accepted),
     status: passed ? "passed" : attempt.nonResultKind === null ? "failed" : "non-result",
     nonResultKind: attempt.nonResultKind,
     failureOwner: passed ? null : (attempt.failureOwner ?? "product"),
@@ -451,7 +448,7 @@ async function runSolvabilityCase(
       witness:
         accepted === null
           ? null
-          : { taskId: task.taskId, family: task.family, artifact: trustedJsonParse(accepted) },
+          : { taskId: task.taskId, family: task.family, artifact: capturedJsonParse(accepted) },
       finding: null,
     };
   }
@@ -500,11 +497,11 @@ async function solveInLanes(
     [...tasks].sort((a, b) => compareCodeUnits(a.taskId, b.taskId)),
     CENSUS_LANES,
     async (task) => {
-      const fullTaskJson = trustedJsonStringify(task);
+      const fullTaskJson = capturedJsonStringify(task);
       taskJson.set(task.taskId, fullTaskJson);
       // One commit for the whole case: `view()` re-parses its own bytes on each call, so every
       // reader gets an independent object and no stage can hand the next one a mutated task.
-      const roundTripped: unknown = trustedJsonParse(fullTaskJson);
+      const roundTripped: unknown = capturedJsonParse(fullTaskJson);
       const committed = commitPublicTask(
         /* SAFETY: this loop's own serialisation of a battery member. */ roundTripped as BuildTask,
       );

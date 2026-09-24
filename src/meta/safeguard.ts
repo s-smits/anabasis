@@ -27,6 +27,27 @@ import { join } from "./path.ts";
 
 export const SAFEGUARDS_LOG_FILE = "SAFEGUARDS_LOG.txt";
 
+/** What `safeguardTriggered` puts in front of the same line on stderr, so a captured stderr can be
+ *  read by the log parser once the prefix is stripped. */
+export const SAFEGUARD_STDERR_PREFIX = "[safeguard] ";
+
+/** The exact line shape `safeguardTriggered` writes: `<iso timestamp> | <name> | <detail>`. */
+const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+) \| (\S+) \| /;
+
+interface SafeguardFiring {
+  readonly at: string;
+  readonly name: string;
+}
+
+interface SafeguardLogReading {
+  readonly firings: readonly SafeguardFiring[];
+  /** Firings per name, in first-seen order. */
+  readonly counts: ReadonlyMap<string, number>;
+  /** Non-blank lines that did not match the writer's shape. They are counted rather than skipped,
+   *  so a change to the writer shows up as malformed lines instead of as sensors that went quiet. */
+  readonly malformed: number;
+}
+
 /**
  * Every live safeguard name with the date its emission entered source. The name is what joins a
  * log line back to its one emit site, and test/safeguard.test.ts pins this list equal to the names
@@ -38,14 +59,13 @@ export const SAFEGUARDS_LOG_FILE = "SAFEGUARDS_LOG.txt";
  * records the same thing. Safeguards 24 and 25 fired in their first live runs and became the
  * claim's recorded `blockingByCheck` and `executedByCheck` counts. Safeguards 42 to 47 went once epoch
  * review and Builder execution evidence recorded continuations, severity adjustments, citation
- * refusals and failed reviews as fields of their own. The other reason a sensor goes is that it
- * turned out to be watching correct behaviour: 35 reported the diagnosis roster being cut to
- * MAX_DIAGNOSED_ISSUES, which is the declared six-issue cap doing its job, while 31 still watches
- * the case it was meant to catch, an issue omitted from the roster the packet was actually given.
+ * refusals and failed reviews as fields of their own, and 31 went when the diagnosis reading
+ * recorded the issues its packet withheld as a count. The other reason a sensor goes is that it
+ * turned out to be watching correct behaviour: 35 reported the diagnosis roster being cut to its
+ * declared six-issue cap, which is the cap doing its job.
  */
 export const SAFEGUARD_INVENTORY: ReadonlyArray<{ readonly name: string; readonly introduced: string }> = [
   { name: "21-tempdir-spawn-hazard", introduced: "2026-08-31" },
-  { name: "31-diagnosis-packet-budget", introduced: "2026-09-05" },
   { name: "32-command-guard-unanswered", introduced: "2026-09-06" },
   { name: "33-preview-clear-submit-refused", introduced: "2026-09-06" },
   { name: "40-refused-submit-repeated-code", introduced: "2026-09-07" },
@@ -88,6 +108,34 @@ export function safeguardLogDir(campaignDir: string, runId: string): string {
   return join(campaignDir, "safeguards", runId);
 }
 
+/** The log file itself, for readers that start from a campaign and a run id. */
+export function safeguardLogFile(campaignDir: string, runId: string): string {
+  return join(safeguardLogDir(campaignDir, runId), SAFEGUARDS_LOG_FILE);
+}
+
+/**
+ * Read log text back through the one line shape the writer above produces. Only lines beginning
+ * with `prefix` are read, with the prefix stripped: the empty default reads a SAFEGUARDS_LOG file
+ * whole, and `SAFEGUARD_STDERR_PREFIX` picks the safeguard lines out of a captured stderr that
+ * also carries everything else the process printed.
+ */
+export function parseSafeguardLog(text: string, prefix = ""): SafeguardLogReading {
+  const firings: SafeguardFiring[] = [];
+  const counts = new Map<string, number>();
+  let malformed = 0;
+  for (const raw of text.split("\n")) {
+    if (raw.trim() === "" || !raw.startsWith(prefix)) continue;
+    const match = LOG_LINE.exec(raw.slice(prefix.length));
+    if (match?.[1] === undefined || match[2] === undefined) {
+      malformed += 1;
+      continue;
+    }
+    firings.push({ at: match[1], name: match[2] });
+    counts.set(match[2], (counts.get(match[2]) ?? 0) + 1);
+  }
+  return { firings, counts, malformed };
+}
+
 export function createSafeguardContext(logDir: string): SafeguardContext {
   return { logDir };
 }
@@ -99,7 +147,7 @@ export function safeguardTriggered(name: string, detail: string, context?: Safeg
   const flat = detail.replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX_CHARS);
   const line = `${new Date().toISOString()} | ${name} | ${flat}`;
   try {
-    console.error(`[safeguard] ${line}`);
+    console.error(`${SAFEGUARD_STDERR_PREFIX}${line}`);
   } catch {
     // A replaced or closed stderr must not change the watched controller path.
   }

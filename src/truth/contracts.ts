@@ -1,6 +1,6 @@
 // Structural import-order gate: capture controller primitives before any loader below can import
 // generated source, including direct contracts.ts callers that do not enter through falsify.ts.
-import { trustedJsonParse as nativeParse } from "./trusted-runtime.ts";
+import { capturedJsonParse as nativeParse } from "../meta/json-runtime.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { isFunction, type OpenRecord } from "../meta/json-shape.ts";
 import { harnessSettings } from "./harness-config.ts";

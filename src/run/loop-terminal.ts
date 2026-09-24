@@ -18,7 +18,6 @@ export const LOOP_TERMINAL_CODES = [
   "candidate-held",
   "budget-limited",
   "environment-blocked",
-  "measurement-stalled",
   "operator-interrupted",
 ] as const;
 

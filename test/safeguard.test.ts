@@ -15,8 +15,11 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import {
   SAFEGUARDS_LOG_FILE,
   SAFEGUARD_INVENTORY,
+  SAFEGUARD_STDERR_PREFIX,
   createSafeguardContext,
+  parseSafeguardLog,
   safeguardLogDir,
+  safeguardLogFile,
   safeguardTempRootPressure,
   safeguardTriggered,
   scanTempRootScratch,
@@ -98,6 +101,33 @@ describe("safeguard log", () => {
     expect(readFileSync(join(first.logDir, SAFEGUARDS_LOG_FILE), "utf8")).toContain("| first-run |");
     expect(readFileSync(join(second.logDir, SAFEGUARDS_LOG_FILE), "utf8")).toContain("| second-run |");
     expect(readFileSync(join(first.logDir, SAFEGUARDS_LOG_FILE), "utf8")).not.toContain("second-run");
+  });
+
+  // The writer and the parser live side by side so that every reader counts what the writer wrote;
+  // a writer change that the parser does not follow shows up here, and as malformed lines elsewhere.
+  test("the parser reads back exactly what the writer wrote, on both channels", () => {
+    const campaign = mkdtempSync(`${tmpdir()}/safeguard-parse-`);
+    const context = createSafeguardContext(safeguardLogDir(campaign, "run-a"));
+    const printed: string[] = [];
+    const original = console.error;
+    try {
+      console.error = (line: string) => printed.push(line);
+      safeguardTriggered("40-refused-submit-repeated-code", "a | detail with a pipe", context);
+      safeguardTriggered("40-refused-submit-repeated-code", "", context);
+      safeguardTriggered("45-case-grading-skipped", "second", context);
+    } finally {
+      console.error = original;
+    }
+    const log = parseSafeguardLog(`${readFileSync(safeguardLogFile(campaign, "run-a"), "utf8")}torn line\n`);
+    expect([...log.counts]).toEqual([
+      ["40-refused-submit-repeated-code", 2],
+      ["45-case-grading-skipped", 1],
+    ]);
+    expect(log.malformed).toBe(1);
+    expect(log.firings[0]?.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    const stderr = parseSafeguardLog(["unrelated output", ...printed].join("\n"), SAFEGUARD_STDERR_PREFIX);
+    expect(stderr.counts).toEqual(log.counts);
+    expect(stderr.malformed).toBe(0);
   });
 });
 

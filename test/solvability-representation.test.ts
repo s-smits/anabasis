@@ -10,8 +10,6 @@ import {
   type BuiltStarterNonResult,
   type GeneratedToolWorkerEvidence,
 } from "../src/solve/built-starter.ts";
-import { publicArtifactSchemaDegeneracies } from "../src/solve/public-artifact-schema-degeneracy.ts";
-import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { double } from "./helpers/doubles.ts";
 import {
   GOOD_VERIFIER,
@@ -88,12 +86,6 @@ describe("the representation the submission path must express", () => {
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(failure(result)).toContain("reference artifact violates the compiled public submission schema");
     expect(failure(result)).toContain("$.design");
-    // The same corpus is refused at record time by the degeneracy audit, so both paths cover it.
-    const compiled = compilePublicArtifactSchema(
-      [{ name: "answer" }, { name: "design" }],
-      [{ answer: "A", design: {} }],
-    );
-    expect(publicArtifactSchemaDegeneracies(compiled.root)).toEqual(["$.design"]);
   });
 
   it.concurrent("types a public-valid nullable branch omitted by the writer schema as a representation defect", async () => {

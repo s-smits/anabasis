@@ -19,7 +19,7 @@ import type { JudgeEvidence } from "../claim/judge.ts";
 import { ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { sha256 } from "../meta/digest.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
+import { parseJsonAs, capturedJsonParse } from "../meta/json-runtime.ts";
 import { requireJsonValue } from "../meta/stable-json.ts";
 import { BACKENDS_FILE, type BackendStartupEvidence } from "../run/model-preflight.ts";
 import { builtSolveConcurrency } from "../run/session-pool.ts";
@@ -45,7 +45,6 @@ import type { BuildDeps } from "./build-deps.ts";
 import { type Toolset, loadBuiltStarterFactory, loadCorrectnessModel } from "./contracts.ts";
 import type { ControlCorpus } from "./controls.ts";
 import { executionEvidence } from "./tool-runs.ts";
-import { CASE_TRACE_POINTER_FILE, recordCaseTracePointer } from "./case-trace-pointer.ts";
 import { blockingFailedCheckIds } from "./verdict-binding.ts";
 import type { JudgePublicDomain } from "./judge-contract.ts";
 import {
@@ -68,7 +67,6 @@ import { gradeCase, solveCase, type GradedCase, type SolveCaseEvidence } from ".
 import type { JudgeCensusSubject } from "./judge-census.ts";
 import { type Solver, builtStarterFactoryForSolver } from "./solve.ts";
 import { SAFE_TASK_ID } from "./tasks.ts";
-import { trustedJsonParse } from "./trusted-runtime.ts";
 import { resolveVerifier } from "./verification-registry.ts";
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
@@ -126,13 +124,12 @@ interface BatteryContext {
   externalChecks: Array<{ checkId: string; adapterId: string }>;
   checkIdsByTask: Map<string, string[]>;
   evidence: EvidenceLog;
-  runDir: string;
 }
 
 /** Execute through the immutable, content-addressed bundle snapshot rather than the repairable live
  *  tree, and validate the recorded brief before anything reads it as a contract. */
 async function loadRecordedContract(bundleSnapshotDir: string, verifierLifetime: VerifierLifetime) {
-  const briefUnknown = trustedJsonParse(await Bun.file(join(bundleSnapshotDir, BRIEF_FILE)).text());
+  const briefUnknown = capturedJsonParse(await Bun.file(join(bundleSnapshotDir, BRIEF_FILE)).text());
   throwIfInvalid(validateBrief(briefUnknown), "bundle snapshot brief failed validation");
   const brief =
     /* SAFETY: throwIfInvalid above returns only when `validateBrief` reported ok, the only proof of this shape. */ briefUnknown as Brief;
@@ -209,7 +206,6 @@ async function prepareBattery(
     // judge session included, goes through the ordinary manifest-bound evidence writer, and `live/`
     // stays telemetry-only.
     evidence: new EvidenceLog(runDir),
-    runDir,
   };
 }
 
@@ -370,10 +366,6 @@ async function recordSolvedCase(
   }
   if (graded.verdict !== null) ctx.evidence.write(`cases/${task.taskId}/verifier.json`, graded.verdict);
   ctx.evidence.write(`cases/${task.taskId}/case-result.json`, graded.record);
-  ctx.evidence.write(
-    `cases/${task.taskId}/${CASE_TRACE_POINTER_FILE}`,
-    recordCaseTracePointer(ctx.runDir, task.taskId),
-  );
   gradedCases.push(graded);
   return verifierStillUsable(ctx);
 }

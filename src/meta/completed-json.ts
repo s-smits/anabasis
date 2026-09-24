@@ -33,12 +33,22 @@ export function writeAtomic(path: string, bytes: string): void {
 }
 
 /**
- * The JSON in `path`. A missing or damaged file throws, exactly as reading and parsing it by hand
- * would. It is the one owner of the `capturedJsonParse(readFileSync(path, "utf8"))` that call sites
- * and skill scripts otherwise each write out for themselves.
+ * The JSON in `path`. A missing or damaged file throws. It is the one owner of the
+ * `capturedJsonParse(readFileSync(path, "utf8"))` that call sites and skill scripts otherwise each
+ * write out for themselves.
+ *
+ * A missing file's error already names the path, and a parse error does not: `JSON.parse` reports a
+ * position in text it never says the origin of. So the parse error is rethrown with the path in
+ * front, which is what every skill script that wrapped this call in its own `readJson(path, label)`
+ * was adding by hand.
  */
 export function readJsonFile(path: string): JsonValue {
-  return capturedJsonParse(readFileSync(path, "utf8"));
+  const text = readFileSync(path, "utf8");
+  try {
+    return capturedJsonParse(text);
+  } catch (error) {
+    throw new Error(`${path}: ${errorMessage(error)}`, { cause: error });
+  }
 }
 
 /**

@@ -6,8 +6,17 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type { ClimbReadout } from "./climb-readout.ts";
 import { FRAME_REVISION } from "./climb-readout-frame.ts";
 
+/**
+ * The one schema `recordDifficultyDecision` writes, and so the only one a reader opens. The climb
+ * vocabulary was replaced without every word changing — `placed` and `repeated-failure-set`
+ * belong to both the retired set and the current one — so a record written under an earlier schema
+ * can carry a current action word and have meant something else by it. Nothing inside the record
+ * separates those two cases, which leaves the declared version as the whole of the evidence.
+ */
+export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v6";
+
 export type DifficultyDecisionEvidence = {
-  schema: "difficulty-decision/v5";
+  schema: typeof DIFFICULTY_DECISION_SCHEMA;
   runId: string;
   slug: string;
   digest: string;
@@ -37,7 +46,7 @@ export function recordDifficultyDecision(input: {
 }): RecordedDifficultyDecision {
   const digest = hashJsonValue(input.difficulty);
   const persisted: DifficultyDecisionEvidence = {
-    schema: "difficulty-decision/v5",
+    schema: DIFFICULTY_DECISION_SCHEMA,
     runId: input.runId,
     slug: input.slug,
     digest,

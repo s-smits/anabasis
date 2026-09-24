@@ -9,6 +9,11 @@
  * The Judge receives the schema in its own field and applicable assertions with each task;
  * check ids, private implementations, hidden operands and verifier code stay excluded.
  */
+import {
+  capturedJsonParse as nativeParse,
+  capturedJsonStringify as nativeStringify,
+  capturedStructuredClone,
+} from "../meta/json-runtime.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -27,14 +32,9 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import type { BriefRuleDecision } from "./rule-decisions.ts";
 import type { JudgePublicDomain, JudgePublicTask } from "./judge.ts";
 import type { GeneratedTask } from "./task-split.ts";
-import {
-  trustedJsonParse as nativeParse,
-  trustedJsonStringify as nativeStringify,
-  trustedStructuredClone,
-} from "./trusted-runtime.ts";
 import { BRIEF_FILE } from "../meta/bundle-layout.ts";
 
-// Keep these built-ins before generated code can run. contracts.ts imports trusted-runtime first.
+// Keep these built-ins before generated code can run.
 const nativeFreeze = Object.freeze.bind(Object);
 
 export const PUBLIC_RESOURCES_TOOL = "read_public_resources";
@@ -169,7 +169,7 @@ export function judgePublicDomainOf(
     slug: brief.slug,
     domain: brief.domain,
     publicRequest: context.publicRequest,
-    artifactSchema: trustedStructuredClone(publicArtifactSchemaRows(brief)),
+    artifactSchema: capturedStructuredClone(publicArtifactSchemaRows(brief)),
     publicResources: briefPublicResources(brief).filter(
       // The card already carries the schema as its own field, and public rules enter per task.
       ({ name }) => name !== "public-validity-rules" && name !== "artifact-schema",
@@ -182,8 +182,8 @@ export function judgePublicDomainOf(
     // have met. Both cards use truthChecks, designRuleConstants, designRuleSets and the public
     // ruleDecisions rows, which reach this card through `briefPublicResources` precisely because
     // the solver receives them too.
-    toolContract: trustedStructuredClone(context.toolContract),
-    runtimeFacts: trustedStructuredClone(context.runtimeFacts),
+    toolContract: capturedStructuredClone(context.toolContract),
+    runtimeFacts: capturedStructuredClone(context.runtimeFacts),
   };
 }
 
@@ -202,7 +202,7 @@ export function judgePublicTaskOf(
     publicInput: task.publicInput,
   };
   if (publicValidityRules.length > 0) publicTask.publicValidityRules = publicValidityRules;
-  return trustedStructuredClone(publicTask);
+  return capturedStructuredClone(publicTask);
 }
 
 /** Read the public rules from a saved, valid brief. Missing and unfinished briefs return null.

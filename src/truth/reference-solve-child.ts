@@ -4,8 +4,12 @@
  * Generated diagnostics go to stderr for bounded operator evidence and never enter the response.
  */
 
-import { lockJsonGlobals, parseJsonAs } from "../meta/json-runtime.ts";
-import { trustedJsonParse, trustedJsonStringify } from "./trusted-runtime.ts";
+import {
+  lockJsonGlobals,
+  parseJsonAs,
+  capturedJsonParse,
+  capturedJsonStringify,
+} from "../meta/json-runtime.ts";
 import {
   REFERENCE_SOLVE_PROTOCOL as PROTOCOL,
   REFERENCE_SOLVE_READY as READY,
@@ -34,7 +38,7 @@ type Response =
     };
 
 async function write(response: Response): Promise<void> {
-  await nativeWrite(nativeStdout, trustedJsonStringify(response));
+  await nativeWrite(nativeStdout, capturedJsonStringify(response));
 }
 
 async function diagnostic(cause: unknown): Promise<void> {
@@ -65,9 +69,9 @@ export async function runReferenceSolveProcess(load: () => Promise<OpenRecord>):
       return;
     }
     try {
-      const serialised = trustedJsonStringify(produced);
+      const serialised = capturedJsonStringify(produced);
       if (!isString(serialised)) throw new Error("solve(task) returned an unserialisable value");
-      const artifact = trustedJsonParse(serialised);
+      const artifact = capturedJsonParse(serialised);
       await write({ protocol: PROTOCOL, outcome: "artifact", artifact });
     } catch (error) {
       await diagnostic(error);

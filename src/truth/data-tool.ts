@@ -1,3 +1,4 @@
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { runSync, decodeOutput } from "../meta/subprocess.ts";
@@ -7,7 +8,6 @@ import { requireJsonValue } from "../meta/stable-json.ts";
 import { DATA_READER_TOOL } from "./data-session.ts";
 import type { PublicBriefResource } from "./public-resources.ts";
 import type { PublicTask } from "./task-split.ts";
-import { trustedJsonParse, trustedJsonStringify } from "./trusted-runtime.ts";
 
 const bunExecutable = runtimeProcess.execPath;
 const nativeFreeze = Object.freeze.bind(Object);
@@ -45,7 +45,7 @@ export function dataTool(
   task: PublicTask<unknown>,
   resources: readonly PublicBriefResource[],
 ): AgentTool<never> {
-  const snapshot = trustedJsonStringify({
+  const snapshot = capturedJsonStringify({
     task: { taskId: task.taskId, family: task.family, publicInput: task.publicInput },
     resources,
   });
@@ -69,7 +69,7 @@ export function dataTool(
         details = { ok: false, error: "sql must contain 1–16000 characters" };
       } else {
         const result = runSync([bunExecutable, "--no-env-file", "-e", QUERY_WORKER], {
-          input: snapshot.slice(0, -1) + ',"sql":' + trustedJsonStringify(sql) + "}",
+          input: snapshot.slice(0, -1) + ',"sql":' + capturedJsonStringify(sql) + "}",
           env: {},
           timeout: 2500,
           maxBuffer: 32768,
@@ -77,13 +77,13 @@ export function dataTool(
         try {
           details =
             result.exitCode === 0 && result.cappedAt === null
-              ? requireJsonValue(trustedJsonParse(decodeOutput(result.stdout)))
+              ? requireJsonValue(capturedJsonParse(decodeOutput(result.stdout)))
               : { ok: false, error: "query exceeded its resource limit or the SQLite process failed" };
         } catch {
           details = { ok: false, error: "SQLite returned an invalid result" };
         }
       }
-      return { content: [{ type: "text", text: trustedJsonStringify(details) }], details };
+      return { content: [{ type: "text", text: capturedJsonStringify(details) }], details };
     },
   };
   nativeFreeze(tool);

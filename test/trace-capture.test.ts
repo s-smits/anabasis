@@ -1,339 +1,444 @@
 /**
- * The case trace: what a solve leaves behind for a reader, and what it must never leave behind.
+ * The case-trace recorder's contract, read out of `src/backends/trace-capture.ts` and tested as the
+ * two halves the file itself states: every field the record declares has an event path that fills
+ * it, and nothing of a withheld class reaches the serialised trace.
  *
- * The recorder sees the backend's whole stream — reasoning, messages, raw native payloads and
- * every tool argument. The persisted trace is a projection of that: turn and tool-call structure,
- * timings from a monotonic clock, redacted previews, and arguments reduced to a run-keyed digest.
- * A value that reaches `trace()` reaches every reader of the run directory, so each case below
- * asserts on the serialised snapshot rather than on the field it expects to be clean.
+ * The second half is the one that is easy to write wrongly. A hand-enumerated list of marker
+ * strings asserted absent is free to add to and nobody is ever prompted to argue an entry out, so
+ * it cannot fail in the direction that matters: an entry whose only qualification is that its name
+ * looks alarming reads exactly like one that guards a real secret, and the assertion is green
+ * either way. So nothing here is withheld by name. Each class plants a nonce in the position of the
+ * event stream that carries the class, and asserts the nonce reaches no string of the trace, while
+ * the identical nonce planted in the declared channel beside it must arrive. Identical bytes in two
+ * channels is what makes the pair falsifiable: a recorder that captured nothing at all fails the
+ * positive half, and a recorder that captured everything fails the negative half. A field whose
+ * name merely sounds private is asserted about not at all, and a new field of a withheld class
+ * fails without anyone remembering to list it, because the walk is over every string of the output.
+ *
+ * The event shapes are the ones `pi-session.ts` emits and `pi-built.ts` forwards, and the tool
+ * names, the composite `call_…|fc_…` call ids, the `{}` arguments and the `completed` stop reason
+ * are taken from recorded case traces under the campaign trees rather than invented, because a
+ * fixture richer than its producer proves a capability the producer does not have.
  */
-
 import { describe, expect, it } from "bun:test";
-import type { JsonValue } from "../src/meta/json-shape.ts";
-import { createTraceRecorder } from "../src/backends/trace-capture.ts";
-const TOOL_ENDED = "tool_ended";
-const TOOL_STARTED = "tool_started";
+import type { AgentTurnEvent } from "../src/backends/backend-types.ts";
+import { redactProviderDiagnostic } from "../src/backends/diagnostic-redaction.ts";
+import { CASE_TRACE_SCHEMA, type CaseTrace, createTraceRecorder } from "../src/backends/trace-capture.ts";
+import { isObject, isString, type JsonValue } from "../src/meta/json-shape.ts";
 
-describe("what the trace withholds", () => {
-  it("drops raw native payloads entirely and stores args as digest and length only", () => {
-    const recorder = createTraceRecorder({ backend: "claude" });
-    recorder.beginTurn(1);
-    recorder.onEvent({
-      type: "raw",
-      backend: "claude",
-      native: { secret: "RAW-NATIVE-MARKER", nested: { k: "v" } },
-    });
-    const args = { password: "ARG-VALUE-MARKER", n: 7 };
-    recorder.onEvent({ type: "reasoning_text", text: "BUILDER-REASONING-MARKER" });
-    recorder.onEvent({ type: "message_text", text: "BUILDER-MESSAGE-MARKER" });
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "query", toolCallId: "c1", args });
-    recorder.onEvent({
-      type: TOOL_ENDED,
-      toolName: "query",
-      toolCallId: "c1",
-      isError: false,
-      resultPreview: "3 rows",
-    });
-    recorder.onEvent({ type: "turn_ended", stopReason: "end_turn" });
+/** A path shape the redaction owner provably rewrites, so that a leak of it is a statement about
+ *  the recorder rather than about how far `redactProviderDiagnostic` reaches. The core is what must
+ *  disappear; the test proves the owner removes it before relying on that. */
+const SECRET_CORE = "trace-probe-account";
+const SECRET_PROBE = `/Users/${SECRET_CORE}/api-key.txt`;
+/** Longer than anything the recorder is declared to retain, so that a field with no bound of its
+ *  own shows up as one. */
+const OVERSIZE = "z".repeat(50_000);
+/** Enough to ask the redaction owner for the whole string back, so that a comparison is about what
+ *  it removed and never about where it cut. */
+const NO_CAP = 1_000_000;
+const OK_TOOL = "read_public_resources";
+const FAIL_TOOL = "bash";
+/** The composite id codex sends through pi, as the recorded traces spell it. */
+const CALL_ID = "call_5eFYv2i7MOTZIFLblUb0l9cc|fc_0f54a8de13195ce2016ab2edec4a5887d2805165166c0b5a05";
+const RESULT_PREVIEW = '{ "resources": [ { "name": "public-validity-rules" } ] }';
+/** What `pi-built.ts` puts in `stopReason` for a turn that settled. */
+const STOP_COMPLETED = "completed";
 
-    const trace = recorder.trace();
-    const serialized = JSON.stringify(trace);
-    for (const marker of [
-      "RAW-NATIVE-MARKER",
-      "ARG-VALUE-MARKER",
-      "BUILDER-REASONING-MARKER",
-      "BUILDER-MESSAGE-MARKER",
-    ]) {
-      expect(serialized).not.toContain(marker);
+/** Whatever the recorder hands back: the trace or one of its rows. The reachability check reads
+ *  the keys off the value instead of listing them, so the owner it accepts is the whole family and
+ *  nothing narrower — a row type that grew a field yesterday is still one of these. */
+type TraceRecord = CaseTrace | CaseTrace["turns"][number] | CaseTrace["toolCalls"][number];
+
+/** A structure no JSON serialiser can take. The event union states what a backend is contracted to
+ *  send, and pi hands the recorder live in-process objects rather than parsed wire bytes, so a
+ *  cycle is reachable and the digest has to survive one. */
+type Looping = { name: string; self: JsonValue };
+
+/** One class the recorder withholds, named by why it is withheld rather than by the field it would
+ *  land in. `withheld` plants the nonce where that class enters the recorder; `declared` plants the
+ *  same bytes in a channel the recorder says it keeps. */
+interface WithheldClass {
+  why: string;
+  withheld: (nonce: string) => AgentTurnEvent[];
+  declared: (nonce: string) => AgentTurnEvent[];
+}
+
+const started = (toolName: string, toolCallId: string, args: Record<string, JsonValue>): AgentTurnEvent => ({
+  type: "tool_started",
+  toolName,
+  toolCallId,
+  args,
+});
+
+const ended = (
+  toolName: string,
+  toolCallId: string,
+  isError: boolean,
+  resultPreview: string,
+): AgentTurnEvent => ({
+  type: "tool_ended",
+  toolName,
+  toolCallId,
+  isError,
+  resultPreview,
+});
+
+const WITHHELD_CLASSES: WithheldClass[] = [
+  {
+    why: "a raw provider payload the shared event contract does not model, at any depth inside it",
+    withheld: (nonce) => [{ type: "raw", backend: "codex", native: { outer: { inner: [nonce] } } }],
+    declared: (nonce) => [started(OK_TOOL, CALL_ID, {}), ended(OK_TOOL, CALL_ID, false, nonce)],
+  },
+  {
+    why: "the arguments of a tool call that did not fail, which the digest and the length stand for",
+    withheld: (nonce) => [
+      started(OK_TOOL, CALL_ID, { payload: nonce }),
+      ended(OK_TOOL, CALL_ID, false, RESULT_PREVIEW),
+    ],
+    declared: (nonce) => [
+      started(FAIL_TOOL, CALL_ID, { payload: nonce }),
+      ended(FAIL_TOOL, CALL_ID, true, RESULT_PREVIEW),
+    ],
+  },
+  {
+    why: "the model's own draft thinking, which it did not choose to say",
+    withheld: (nonce) => [{ type: "reasoning_text", text: nonce }],
+    declared: (nonce) => [{ type: "message_text", text: nonce }],
+  },
+];
+
+/** Every string anywhere in the trace, however deeply nested, so that a field added tomorrow is
+ *  walked without being named today. */
+function stringLeaves(value: unknown): string[] {
+  if (isString(value)) return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (isObject(value)) return Object.values(value).flatMap(stringLeaves);
+  return [];
+}
+
+/** A field carries a value when it is neither absent nor the empty or falsy shape a record starts
+ *  life holding. `false` and `0` count as unpopulated on purpose: a bound that never trips and a
+ *  counter that never rises are the two ways a declared field can look present and mean nothing. */
+function carriesValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === "" || value === false || value === 0) return false;
+  return !(Array.isArray(value) && value.length === 0);
+}
+
+function keysCarrying(row: TraceRecord, into: Set<string>): void {
+  for (const [key, value] of Object.entries(row)) if (carriesValue(value)) into.add(key);
+}
+
+function keysDeclared(row: TraceRecord, into: Set<string>): void {
+  for (const key of Object.keys(row)) into.add(key);
+}
+
+/** The keys a record declares that no scenario ever filled. Both sets are read off the objects the
+ *  recorder produced, so a newly declared field that nothing populates arrives here by itself. */
+function unreachable(rows: readonly TraceRecord[]): string[] {
+  const declared = new Set<string>();
+  const carrying = new Set<string>();
+  for (const row of rows) {
+    keysDeclared(row, declared);
+    keysCarrying(row, carrying);
+  }
+  return [...declared].filter((key) => !carrying.has(key)).sort();
+}
+
+/** A codex-shaped turn, one failing call and one succeeding one, then the whole-message prose that
+ *  transport sends in place of deltas; a claude-shaped streaming turn left open over an open call;
+ *  and a failed turn. Between them every path the record declares is exercised once. */
+function exercised(clock: { ms: number }) {
+  const recorder = createTraceRecorder({ backend: "codex", now: () => clock.ms });
+  recorder.beginTurn(1);
+  recorder.onEvent({ type: "turn_started" });
+  recorder.onEvent({ type: "message_text", text: "I sized the members and submitted the design." });
+  recorder.onEvent(started(FAIL_TOOL, CALL_ID, { command: "truss-python -" }));
+  clock.ms += 25;
+  recorder.onEvent(ended(FAIL_TOOL, CALL_ID, true, "Traceback (most recent call last)"));
+  recorder.onEvent(started(OK_TOOL, "call_B", {}));
+  clock.ms += 5;
+  recorder.onEvent(ended(OK_TOOL, "call_B", false, RESULT_PREVIEW));
+  recorder.onEvent({ type: "raw", backend: "codex", native: { items: 3 } });
+  clock.ms += 100;
+  recorder.onEvent({
+    type: "turn_ended",
+    stopReason: STOP_COMPLETED,
+    usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30, costUsd: 0.5 },
+    compactions: [{ tokensBefore: 240_000, compacted: true }],
+  });
+  recorder.beginTurn(2);
+  recorder.onEvent({ type: "assistant_text", delta: "still " });
+  recorder.onEvent({ type: "assistant_text", delta: "working" });
+  recorder.onEvent(started("record_design", "call_C", { members: 9 }));
+  clock.ms += 40;
+  recorder.beginTurn(3);
+  recorder.onEvent({ type: "turn_failed", errorMessage: "the prompt ended without an assistant message" });
+  return recorder;
+}
+
+/** The longest string the recorder itself is willing to retain, measured rather than copied from
+ *  its constants: a failed call's result excerpt is the record's largest declared field, so feeding
+ *  it an oversize result asks the recorder what its own ceiling is. */
+function declaredRetention(): number {
+  const recorder = createTraceRecorder({ now: () => 0 });
+  recorder.beginTurn(1);
+  recorder.onEvent(started(FAIL_TOOL, CALL_ID, {}));
+  recorder.onEvent(ended(FAIL_TOOL, CALL_ID, true, OVERSIZE));
+  const excerpt = recorder.trace().toolCalls[0]?.resultExcerpt ?? "";
+  return excerpt.length;
+}
+
+describe("case trace: what the recorder declares it captures", () => {
+  it("fills every field the record declares", () => {
+    const clock = { ms: 1_000 };
+    const trace = exercised(clock).trace();
+    const bounded = createTraceRecorder({ now: () => 0 });
+    for (let turn = 1; turn <= 200; turn += 1) {
+      bounded.beginTurn(turn);
+      bounded.onEvent({ type: "message_text", text: "prose" });
     }
-    expect(trace.droppedRawEvents).toBe(1);
+    const truncatedTrace = bounded.trace();
 
-    const call = trace.toolCalls[0];
-    // Run-keyed digest (steering 2026-07-12 §2): a well-formed hash, but NOT the plain sha256 of
-    // the args — that would be a commitment anyone holding the trace could dictionary-attack.
-    expect(call?.argsDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(call?.argsDigest).not.toBe(
-      new Bun.CryptoHasher("sha256").update(JSON.stringify(args)).digest("hex"),
-    );
-    expect(call?.argsChars).toBe(JSON.stringify(args).length);
-    expect(call?.isError).toBe(false);
-    expect(call?.resultPreview).toBe("3 rows");
+    expect(trace.schema).toBe(CASE_TRACE_SCHEMA);
+    expect(unreachable([trace, truncatedTrace])).toEqual([]);
+    expect(unreachable(trace.turns)).toEqual([]);
+    expect(unreachable(trace.toolCalls)).toEqual([]);
   });
 
-  it("makes the args digest an equality classifier inside one solve and unlinkable across solves", () => {
-    const args = { q: "select 1" };
-    const one = createTraceRecorder();
-    one.beginTurn(1);
-    one.onEvent({ type: TOOL_STARTED, toolName: "a", toolCallId: "x", args });
-    one.onEvent({ type: TOOL_STARTED, toolName: "b", toolCallId: "y", args });
-    const [first, second] = one.trace().toolCalls;
-    expect(first?.argsDigest).toBe(second?.argsDigest);
-
-    const other = createTraceRecorder();
-    other.beginTurn(1);
-    other.onEvent({ type: TOOL_STARTED, toolName: "a", toolCallId: "x", args });
-    // A different recorder holds a different random key: equal args are not linkable across runs.
-    expect(other.trace().toolCalls[0]?.argsDigest).not.toBe(first?.argsDigest);
-  });
-
-  it("scrubs tokens, addresses and host paths from every preview it keeps", () => {
-    const recorder = createTraceRecorder();
-    recorder.beginTurn(1);
-    recorder.onEvent({
-      type: "assistant_text",
-      delta: "wrote key sk-abc12345678901234 for someone@example.com ",
-    });
-    recorder.onEvent({ type: "assistant_text", delta: "under /Users/someone/secret/place", final: true });
-    recorder.onEvent({
-      type: TOOL_ENDED,
-      toolName: "sh",
-      isError: true,
-      resultPreview: `boom token ghp_${"a".repeat(20)} at /Users/someone/x`,
-    });
-    recorder.onEvent({ type: "turn_failed", errorMessage: "provider said sk-zzz99999999999999 died" });
-
-    const trace = recorder.trace();
-    const serialized = JSON.stringify(trace);
-    for (const secret of [
-      "sk-abc12345678901234",
-      "someone@example.com",
-      "ghp_",
-      "sk-zzz99999999999999",
-      "/Users/someone",
-    ]) {
-      expect(serialized).not.toContain(secret);
-    }
-    // The preview still carries usable signal after redaction.
-    expect(trace.turns[0]?.assistantPreview).toContain("wrote key");
-    expect(trace.turns[0]?.status).toBe("failed");
-    expect(trace.toolCalls[0]?.resultPreview).toContain("boom token");
-  });
-
-  it("keeps redacted args and result excerpts for a failed call and neither for a successful one", () => {
-    const recorder = createTraceRecorder();
-    recorder.beginTurn(1);
-    recorder.onEvent({
-      type: TOOL_STARTED,
-      toolName: "record_design",
-      toolCallId: "ok",
-      args: { password: "ARG-VALUE-MARKER" },
-    });
-    recorder.onEvent({
-      type: TOOL_ENDED,
-      toolName: "record_design",
-      toolCallId: "ok",
-      isError: false,
-      resultPreview: "saved",
-    });
-    recorder.onEvent({
-      type: TOOL_STARTED,
-      toolName: "record_design",
-      toolCallId: "bad",
-      args: { members: "deficient", token: `ghp_${"b".repeat(20)}` },
-    });
-    recorder.onEvent({
-      type: TOOL_ENDED,
-      toolName: "record_design",
-      toolCallId: "bad",
-      isError: true,
-      resultPreview: `Validation failed: missing deficientBaselineMembers ${"x".repeat(400)}`,
-    });
-
-    const trace = recorder.trace();
-    const [ok, bad] = trace.toolCalls;
-    // Success: digest and preview only — the args value must not survive anywhere.
-    expect(ok?.argsExcerpt).toBeNull();
-    expect(ok?.resultExcerpt).toBeNull();
-    expect(JSON.stringify(trace)).not.toContain("ARG-VALUE-MARKER");
-    // Failure: the bytes a diagnosis needs survive, redacted, past the 240-char preview cap.
-    expect(bad?.argsExcerpt).toContain("deficient");
-    expect(bad?.argsExcerpt).not.toContain("ghp_");
-    expect(bad?.resultExcerpt).toContain("Validation failed");
-    expect((bad?.resultExcerpt ?? "").length).toBeGreaterThan(300);
-    expect(bad?.resultPreview?.length).toBeLessThanOrEqual(240);
-  });
-
-  it("degrades unserialisable args to a null digest instead of throwing", () => {
-    const recorder = createTraceRecorder();
-    recorder.beginTurn(1);
-    const loop: Record<string, JsonValue> = {};
-    loop.self = loop;
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "t", args: loop });
-    const call = recorder.trace().toolCalls[0];
-    expect(call?.argsDigest).toBeNull();
-    expect(call?.argsChars).toBeNull();
+  it("orders tool calls across the whole solve and binds each to a recorded turn", () => {
+    const trace = exercised({ ms: 1_000 }).trace();
+    expect(trace.toolCalls.map((call) => call.seq)).toEqual([1, 2, 3]);
+    const recordedTurns = new Set(trace.turns.map((turn) => turn.turn));
+    // A call whose turn has no row is a dangling reference, and the only thing that may produce one
+    // is the turn bound, which announces itself as `truncated`.
+    expect(trace.truncated).toBe(false);
+    expect(trace.toolCalls.filter((call) => !recordedTurns.has(call.turn))).toEqual([]);
   });
 });
 
-describe("the structure the trace records", () => {
-  it("projects a whole turn, its compactions and its tool call into the redacted snapshot", () => {
-    const recorder = createTraceRecorder({ backend: "claude" });
-    recorder.beginTurn(1);
-    recorder.onEvent({ type: "assistant_text", delta: "working on it" });
-    recorder.onEvent({
-      type: TOOL_STARTED,
-      toolName: "bind_slot",
-      toolCallId: "c1",
-      args: { part: "alpha" },
+describe("case trace: what the recorder withholds", () => {
+  for (const withheldClass of WITHHELD_CLASSES) {
+    it(`withholds ${withheldClass.why}`, () => {
+      const nonce = `nonce-${crypto.randomUUID()}`;
+      const hidden = createTraceRecorder({ now: () => 0 });
+      hidden.beginTurn(1);
+      for (const event of withheldClass.withheld(nonce)) hidden.onEvent(event);
+      const shown = createTraceRecorder({ now: () => 0 });
+      shown.beginTurn(1);
+      for (const event of withheldClass.declared(nonce)) shown.onEvent(event);
+
+      // The hostile half. Without it a recorder that dropped every event would pass the negative
+      // assertion, and the class would be proved by the recorder doing nothing at all.
+      expect(stringLeaves(shown.trace()).some((leaf) => leaf.includes(nonce))).toBe(true);
+      expect(stringLeaves(hidden.trace()).filter((leaf) => leaf.includes(nonce))).toEqual([]);
     });
-    recorder.onEvent({
-      type: TOOL_ENDED,
-      toolName: "bind_slot",
-      toolCallId: "c1",
-      isError: false,
-      resultPreview: "bound",
-    });
-    recorder.onEvent({
-      type: "turn_ended",
-      stopReason: "end_turn",
-      compactions: [{ tokensBefore: 301_000, compacted: true }],
-    });
-    const trace = recorder.trace();
-    expect(trace.schema).toBe("case-trace/v4");
-    expect(trace.turns[0]?.status).toBe("ended");
-    expect(trace.turns[0]?.compactions).toEqual([{ tokensBefore: 301_000, compacted: true }]);
-    expect(JSON.stringify(trace)).not.toContain("alpha");
-    expect(trace.toolCalls[0]?.argsDigest).toMatch(/^[0-9a-f]{64}$/);
+  }
+
+  it("counts the raw provider payloads it dropped, and counts none when none arrived", () => {
+    const quiet = createTraceRecorder({ now: () => 0 });
+    quiet.beginTurn(1);
+    quiet.onEvent({ type: "message_text", text: "no native events here" });
+    expect(quiet.trace().droppedRawEvents).toBe(0);
+
+    const noisy = createTraceRecorder({ now: () => 0 });
+    noisy.beginTurn(1);
+    for (let i = 0; i < 3; i += 1) noisy.onEvent({ type: "raw", backend: "claude", native: { i } });
+    expect(noisy.trace().droppedRawEvents).toBe(3);
   });
 
-  it("orders calls solve-wide, attributes them to the caller-owned turn and matches ended-only backends", () => {
-    const recorder = createTraceRecorder();
+  it("passes provider text through the redaction owner wherever it reaches the trace", () => {
+    // Proved first, so that a failure below is about the recorder and not about the owner's reach.
+    expect(redactProviderDiagnostic(SECRET_PROBE, NO_CAP)).not.toContain(SECRET_CORE);
+
+    const recorder = createTraceRecorder({ backend: "claude", now: () => 0 });
     recorder.beginTurn(1);
-    recorder.onEvent({ type: "turn_started" }); // stream turn events do NOT fork turn numbering
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "a", toolCallId: "x" });
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "a", toolCallId: "x", isError: false });
-    recorder.onEvent({ type: "turn_ended", stopReason: "tool_use" });
+    recorder.onEvent({ type: "assistant_text", delta: SECRET_PROBE });
+    recorder.onEvent({ type: "reasoning_text", text: SECRET_PROBE });
+    recorder.onEvent(started(SECRET_PROBE, SECRET_PROBE, { path: SECRET_PROBE }));
+    recorder.onEvent(ended(SECRET_PROBE, SECRET_PROBE, true, SECRET_PROBE));
+    recorder.onEvent({ type: "turn_ended", stopReason: SECRET_PROBE, errorMessage: SECRET_PROBE });
     recorder.beginTurn(2);
-    // A backend that never emits tool_started still yields a completed call record.
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "b", isError: true, resultPreview: "err" });
-    // Started but never ended: visible as unknown outcome, not as success.
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "c", toolCallId: "y" });
-
+    recorder.onEvent({ type: "message_text", text: SECRET_PROBE });
+    recorder.onEvent({ type: "turn_failed", errorMessage: SECRET_PROBE });
     const trace = recorder.trace();
-    expect(trace.turns.map((turn) => turn.turn)).toEqual([1, 2]);
-    expect(trace.turns.map((turn) => turn.status)).toEqual(["ended", "open"]);
-    expect(trace.toolCalls.map((call) => [call.seq, call.turn, call.toolName])).toEqual([
-      [1, 1, "a"],
-      [2, 2, "b"],
-      [3, 2, "c"],
-    ]);
-    expect(trace.toolCalls[2]?.isError).toBeNull();
-    expect(trace.truncated).toBe(false);
+
+    // The hostile half: the failing call's excerpts are declared to survive, so this case only
+    // means something if the row is still here while the secret inside it is not.
+    expect(trace.toolCalls[0]?.resultExcerpt).not.toBeNull();
+    expect(trace.toolCalls[0]?.argsExcerpt).not.toBeNull();
+    expect(stringLeaves(trace).filter((leaf) => leaf.includes(SECRET_CORE))).toEqual([]);
   });
 
-  it("lets an id-less tool_ended close only an open same-name call from the current turn", () => {
-    const recorder = createTraceRecorder();
+  it("keeps no string longer than the longest it declares it retains", () => {
+    const ceiling = declaredRetention();
+    expect(ceiling).toBeGreaterThan(0);
+
+    const recorder = createTraceRecorder({ backend: "codex", now: () => 0 });
     recorder.beginTurn(1);
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "sh", toolCallId: "dangling" });
-    recorder.onEvent({ type: "turn_ended", stopReason: "tool_use" });
-    recorder.beginTurn(2);
-    // Same tool name, no id: a fresh turn-2 record, not turn 1's dangling call.
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "sh", isError: false, resultPreview: "ok" });
-
-    const recorded = recorder.trace();
-    expect(recorded.toolCalls.map((call) => [call.turn, call.isError])).toEqual([
-      [1, null], // the interrupted turn-1 call stays visibly open
-      [2, false],
-    ]);
-    // An id match still closes across turns: the id is the stronger identity.
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "sh", toolCallId: "dangling", isError: true });
-    expect(recorder.trace().toolCalls[0]?.isError).toBe(true);
+    recorder.onEvent({ type: "message_text", text: OVERSIZE });
+    recorder.onEvent(started(OVERSIZE, OVERSIZE, { blob: OVERSIZE }));
+    recorder.onEvent(ended(OVERSIZE, OVERSIZE, false, OVERSIZE));
+    recorder.onEvent({ type: "turn_ended", stopReason: OVERSIZE, errorMessage: OVERSIZE });
+    const overlong = stringLeaves(recorder.trace())
+      .filter((leaf) => leaf.length > ceiling)
+      .map((leaf) => leaf.length);
+    expect(overlong).toEqual([]);
   });
+});
 
-  it("measures turn and tool-call duration off a monotonic clock", () => {
-    let clock = 1_000;
-    const recorder = createTraceRecorder({ now: () => clock });
-    recorder.beginTurn(1); // the turn clock starts here — what the solver waited, setup included
-    clock = 1_050;
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "query", toolCallId: "c1" });
-    clock = 1_320;
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "query", toolCallId: "c1", isError: false });
-    clock = 1_400;
-    recorder.onEvent({ type: "turn_ended", stopReason: "end_turn" });
-
-    const trace = recorder.trace();
-    expect(trace.turns[0]?.timingMs).toBe(400);
-    expect(trace.toolCalls[0]?.timingMs).toBe(270);
-  });
-
-  it("leaves a span that never closed unmeasured instead of timing it to the reader", () => {
-    let clock = 0;
-    const recorder = createTraceRecorder({ now: () => clock });
+describe("case trace: honest accounting", () => {
+  it("marks the trace truncated exactly when a bound refused a row, and never before", () => {
+    const recorder = createTraceRecorder({ now: () => 0 });
     recorder.beginTurn(1);
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "hangs", toolCallId: "c1" });
-    // A backend that reports only completions has no start to measure from.
-    recorder.onEvent({ type: TOOL_ENDED, toolName: "ended-only", isError: false });
-    clock = 9_999;
-
-    const trace = recorder.trace();
-    expect(trace.turns[0]?.status).toBe("open");
-    expect(trace.turns[0]?.timingMs).toBeNull();
-    expect(trace.toolCalls.map((call) => [call.toolName, call.timingMs])).toEqual([
-      ["hangs", null],
-      ["ended-only", null],
-    ]);
-    // The different fact, stated separately: how long each open span had been running when the
-    // trace was taken. The call the backend created at its end has no start to measure from.
-    expect(trace.turns[0]?.observedMs).toBe(9_999);
-    expect(trace.toolCalls.map((call) => [call.toolName, call.observedMs])).toEqual([
-      ["hangs", 9_999],
-      ["ended-only", null],
-    ]);
-  });
-
-  /** A whole-solve wall stops the turn in flight, and `timingMs` stays null because the turn
-   *  reached no terminal event. One recorded truss turn ran 6 h 27 m and its case carried no
-   *  elapsed time at all, which is the fact this separates out. A span that did end keeps its
-   *  duration and states no observed time, so no reader can add the two together. */
-  it("times a closed span once and an open one as elapsed, never both", () => {
-    let clock = 0;
-    const recorder = createTraceRecorder({ now: () => clock });
-    recorder.beginTurn(1);
-    clock = 500;
-    recorder.onEvent({ type: "turn_ended", stopReason: "end_turn" });
-    recorder.beginTurn(2);
-    clock = 700;
-    recorder.onEvent({ type: TOOL_STARTED, toolName: "bash", toolCallId: "c1" });
-    clock = 23_220_000; // the wall arrives mid-call
-
-    const trace = recorder.trace();
-    expect(trace.turns.map((turn) => [turn.timingMs, turn.observedMs])).toEqual([
-      [500, null],
-      // Turn 2's clock starts at its own beginTurn, not at the trace, so the elapsed time is
-      // measured from 500; the call inside it started 200 ms later still.
-      [null, 23_219_500],
-    ]);
-    expect(trace.toolCalls[0]?.observedMs).toBe(23_219_300);
-  });
-
-  it("keeps unknown telemetry null and carries reported usage on the turn", () => {
-    const recorder = createTraceRecorder();
-    recorder.beginTurn(1);
-    recorder.onEvent({ type: "turn_ended" });
-    recorder.beginTurn(2);
-    recorder.onEvent({
-      type: "turn_ended",
-      usage: { inputTokens: 160, outputTokens: 40, totalTokens: 200, costUsd: 0.42 },
-    });
-    const [unreported, reported] = recorder.trace().turns;
-    expect(unreported).toMatchObject({
-      inputTokens: null,
-      outputTokens: null,
-      tokensUsed: null,
-      costUsd: null,
-      stopReason: null, // an absent stop reason is unknown, not ""
-    });
-    expect(reported).toMatchObject({ inputTokens: 160, outputTokens: 40, tokensUsed: 200, costUsd: 0.42 });
-  });
-
-  it("marks itself a truncated prefix past the call cap", () => {
-    const recorder = createTraceRecorder();
-    recorder.beginTurn(1);
-    for (let index = 0; index < 500; index++) {
-      recorder.onEvent({ type: TOOL_ENDED, toolName: `t${index}`, isError: false });
+    let pushed = 0;
+    while (!recorder.trace().truncated && pushed < 2_000) {
+      pushed += 1;
+      recorder.onEvent(started(OK_TOOL, `call_${pushed}`, {}));
     }
     const trace = recorder.trace();
-    expect(trace.toolCalls.length).toBe(400);
     expect(trace.truncated).toBe(true);
+    // Every call up to the refused one is here, and exactly one was refused: a bound that dropped
+    // rows silently, or announced itself early, would move one of these two numbers.
+    expect(trace.toolCalls.length).toBe(pushed - 1);
+    expect(trace.toolCalls.at(-1)?.seq).toBe(pushed - 1);
+  });
+
+  it("leaves telemetry the transport did not report as unknown rather than as a plausible zero", () => {
+    const recorder = createTraceRecorder({ now: () => 0 });
+    recorder.beginTurn(1);
+    recorder.onEvent({ type: "turn_ended", stopReason: STOP_COMPLETED });
+    const turn = recorder.trace().turns[0];
+    expect([turn?.inputTokens, turn?.outputTokens, turn?.tokensUsed, turn?.costUsd]).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+    // A turn that compacted nothing says so with an empty list, which is a different statement
+    // from a turn whose spend nobody reported.
+    expect(turn?.compactions).toEqual([]);
+  });
+
+  it("closes the call whose id the completion carries and gives every other completion its own row", () => {
+    const recorder = createTraceRecorder({ now: () => 0 });
+    recorder.beginTurn(1);
+    recorder.onEvent(started(FAIL_TOOL, "call_open", {}));
+    // The same turn and the same tool name, a different id. The open call is not this completion's,
+    // so a recorder falling back to the name would close it here with another call's result.
+    recorder.onEvent(ended(FAIL_TOOL, "call_other", false, RESULT_PREVIEW));
+    recorder.beginTurn(2);
+    recorder.onEvent({
+      type: "tool_ended",
+      toolName: FAIL_TOOL,
+      isError: false,
+      resultPreview: RESULT_PREVIEW,
+    });
+    const trace = recorder.trace();
+    // The started call stays open and unknown, and the two completions that matched nothing are
+    // each recorded where they arrived rather than dropped.
+    expect(trace.toolCalls.map((call) => [call.turn, call.toolCallId, call.isError])).toEqual([
+      [1, "call_open", null],
+      [1, "call_other", false],
+      [2, null, false],
+    ]);
+    // A row the recorder first saw at its completion has no start to measure from, so it reports
+    // neither a duration nor an elapsed reading, and the arguments went past before it was
+    // watching, so it claims no digest of them either.
+    expect(trace.toolCalls[2]?.timingMs).toBeNull();
+    expect(trace.toolCalls[2]?.observedMs).toBeNull();
+    expect(trace.toolCalls[2]?.argsDigest).toBeNull();
+    expect(trace.toolCalls[2]?.argsChars).toBeNull();
+  });
+
+  it("counts the prose that arrived however the transport sent it, and counts it once", () => {
+    const prose = "I sized the members and submitted the design.";
+    // Codex sends the completed message and no deltas, which is the shape that records nothing at
+    // all when the recorder prefers deltas and has no fallback.
+    const whole = createTraceRecorder({ backend: "codex", now: () => 0 });
+    whole.beginTurn(1);
+    whole.onEvent({ type: "message_text", text: prose });
+    const wholeTurn = whole.trace().turns[0];
+    expect(wholeTurn?.assistantChars).toBe(prose.length);
+    expect(wholeTurn?.assistantPreview).toBe(prose);
+
+    // Claude streams the same words as deltas and then sends the completed message too, so taking
+    // both would count every streaming turn's prose twice.
+    const streamed = createTraceRecorder({ backend: "claude", now: () => 0 });
+    streamed.beginTurn(1);
+    streamed.onEvent({ type: "assistant_text", delta: prose.slice(0, 10) });
+    streamed.onEvent({ type: "assistant_text", delta: prose.slice(10) });
+    streamed.onEvent({ type: "message_text", text: prose });
+    const streamedTurn = streamed.trace().turns[0];
+    expect(streamedTurn?.assistantChars).toBe(prose.length);
+    expect(streamedTurn?.assistantPreview).toBe(prose);
+
+    // The choice is the turn's own. A transport that streamed one turn and sent the next whole
+    // would otherwise go silent from the first delta onwards.
+    streamed.beginTurn(2);
+    streamed.onEvent({ type: "message_text", text: prose });
+    expect(streamed.trace().turns[1]?.assistantChars).toBe(prose.length);
+  });
+
+  it("reports whole milliseconds, and an unclosed span as elapsed rather than as a duration", () => {
+    // A fractional clock, because production reads `performance.now()`, whose readings carry a
+    // fraction, and a subtraction left unrounded publishes nanoseconds the recorder cannot know.
+    const clock = { ms: 1_000.4444 };
+    const recorder = createTraceRecorder({ now: () => clock.ms });
+    recorder.beginTurn(1);
+    recorder.onEvent(started(OK_TOOL, CALL_ID, {}));
+    clock.ms += 25.5555;
+    recorder.onEvent(ended(OK_TOOL, CALL_ID, false, RESULT_PREVIEW));
+    recorder.onEvent({ type: "turn_ended", stopReason: STOP_COMPLETED });
+    recorder.beginTurn(2);
+    recorder.onEvent(started(FAIL_TOOL, "call_open", {}));
+    clock.ms += 40.7777;
+    const trace = recorder.trace();
+
+    const durations = [
+      ...trace.turns.flatMap((turn) => [turn.timingMs, turn.observedMs]),
+      ...trace.toolCalls.flatMap((call) => [call.timingMs, call.observedMs]),
+    ].filter((value): value is number => value !== null);
+    expect(durations.filter((value) => !Number.isInteger(value) || value < 0)).toEqual([]);
+
+    // A span that closed has a duration and no elapsed reading; a span that never closed has the
+    // elapsed reading and refuses to call it a duration.
+    const [closed, open] = trace.turns;
+    expect(closed?.timingMs).not.toBeNull();
+    expect(closed?.observedMs).toBeNull();
+    expect(open?.timingMs).toBeNull();
+    expect(open?.observedMs).not.toBeNull();
+  });
+
+  it("classifies equal arguments inside one solve without publishing a hash to guess against", () => {
+    const args = { command: "truss-python -" };
+    const first = createTraceRecorder({ now: () => 0 });
+    first.beginTurn(1);
+    first.onEvent(started(FAIL_TOOL, "call_1", args));
+    first.onEvent(started(FAIL_TOOL, "call_2", args));
+    first.onEvent(started(FAIL_TOOL, "call_3", { command: "ls" }));
+    const [one, two, three] = first.trace().toolCalls;
+    expect(one?.argsDigest).toBe(two?.argsDigest ?? "");
+    expect(one?.argsDigest).not.toBe(three?.argsDigest ?? "");
+    expect(one?.argsChars).toBe(JSON.stringify(args).length);
+
+    // The hostile half: a plain digest of the arguments would be the same string in every trace on
+    // disk, and a reader holding one could confirm a guessed value against it.
+    const second = createTraceRecorder({ now: () => 0 });
+    second.beginTurn(1);
+    second.onEvent(started(FAIL_TOOL, "call_1", args));
+    expect(second.trace().toolCalls[0]?.argsDigest).not.toBe(one?.argsDigest ?? "");
+  });
+
+  it("records a null digest for arguments that do not serialise rather than losing the call", () => {
+    const circular: Looping = { name: "loop", self: null };
+    circular.self = circular;
+    const recorder = createTraceRecorder({ now: () => 0 });
+    recorder.beginTurn(1);
+    recorder.onEvent(started(FAIL_TOOL, "call_1", circular));
+    const [call] = recorder.trace().toolCalls;
+    expect(call?.toolName).toBe(FAIL_TOOL);
+    expect(call?.argsDigest).toBeNull();
+    expect(call?.argsChars).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { sha256 } from "../src/meta/digest.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { stableJson } from "../src/meta/stable-json.ts";
@@ -27,8 +28,8 @@ export function dependencyIdentityFromBytes(lock: Uint8Array, manifestText: stri
     const value = manifest[field];
     if (value !== undefined) installManifest[field] = value;
   }
-  const lockDigest = new Bun.CryptoHasher("sha256").update(lock).digest("hex");
-  return new Bun.CryptoHasher("sha256").update(`${lockDigest}\n${stableJson(installManifest)}`).digest("hex");
+  const lockDigest = sha256(lock);
+  return sha256(`${lockDigest}\n${stableJson(installManifest)}`);
 }
 
 /** The lock plus only package.json fields which can change the installed dependencies. */

@@ -32,7 +32,7 @@
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { POLICY } from "../critic/policy.ts";
-import { wilsonInterval } from "../claim/estimation.ts";
+import { placeOnBand } from "../claim/battery-difficulty.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
@@ -71,8 +71,8 @@ export function batterySize(requested: number | undefined): number {
 }
 
 /**
- * The smallest battery whose interval still excludes the band on the easy side at the rate just
- * measured, or `requested` when no smaller one does. A battery read significantly too easy spends
+ * The smallest battery `placeOnBand` still reads as too easy at the rate just measured, or
+ * `requested` when no smaller one does. A battery read significantly too easy spends
  * its whole size to say one thing, and a gate that reads no landing past the probe makes the
  * adopted size the state, so one weak probe commits the product to the requested size for every
  * later round.
@@ -93,8 +93,7 @@ function smallestSizeHoldingTooEasy(landed: ProbeLanding, requested: number, ban
   if (landed.n === 0) return requested;
   const rate = landed.passes / landed.n;
   for (let n = BATTERY_SIZE.probe.max + 1; n < requested; n += 1) {
-    const interval = wilsonInterval(Math.floor(rate * n), n);
-    if (interval !== null && interval.lower > band[1]) return n;
+    if (placeOnBand(Math.floor(rate * n), n, band)?.zone === "too-easy") return n;
   }
   return requested;
 }

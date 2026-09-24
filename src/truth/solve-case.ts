@@ -17,6 +17,7 @@
  * place by whichever branch got there, so the ordered reasons a case scores nothing read in one
  * function instead of across three.
  */
+import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import type { ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { sha256 } from "../meta/digest.ts";
 import {
@@ -47,7 +48,6 @@ import {
   evaluationPublicTask,
 } from "./task-split.ts";
 import type { BuildTask } from "./tasks.ts";
-import { trustedJsonParse, trustedJsonStringify, trustedStructuredClone } from "./trusted-runtime.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
 import type { NonResultKind } from "../claim/record-events.ts";
@@ -191,7 +191,7 @@ const nonResult = (reason: string, nonResultKind: NonResultKind): CaseOutcome =>
  */
 function finalSubmissionDefect(final: FinalSubmission | null): string | null {
   try {
-    trustedJsonStringify(final);
+    capturedJsonStringify(final);
   } catch {
     return "the final-submission fact itself does not serialize (BigInt/circular field)";
   }
@@ -199,7 +199,7 @@ function finalSubmissionDefect(final: FinalSubmission | null): string | null {
   if (!isString(final.artifactJson)) return "accepted with no captured bytes";
   if (sha256(final.artifactJson) !== final.artifactDigest) return "artifactDigest != sha256(artifactJson)";
   try {
-    trustedJsonParse(final.artifactJson);
+    capturedJsonParse(final.artifactJson);
   } catch {
     return "captured bytes are not valid JSON";
   }
@@ -217,7 +217,7 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
     taskId: task.taskId,
     family: task.family,
     publicTaskDigest: committed.publicTaskDigest,
-    publicTask: trustedJsonParse(committed.publicTaskJson),
+    publicTask: capturedJsonParse(committed.publicTaskJson),
   });
   const publicTask = committed.view();
   // The controller keeps the submission authority itself and hands generated code only its narrow
@@ -232,7 +232,7 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
     deps.publicArtifactSchema,
   );
   const toolset = deps.projectToolset?.(createdToolset) ?? createdToolset;
-  const registration = trustedStructuredClone(toolset.registration);
+  const registration = capturedStructuredClone(toolset.registration);
   deps.write(`cases/${task.taskId}/built-registration.json`, registration);
   const refusal = workerBindingRefusal(deps.conformance, deps.publicArtifactSchema.sha256, toolset);
   if (refusal !== null) {
@@ -320,7 +320,7 @@ async function runCaseScope(
     phase: "battery",
     subjectId: task.taskId,
     attempt: 1,
-    artifact: trustedJsonParse(artifactJson),
+    artifact: capturedJsonParse(artifactJson),
     publicTask: evaluateTask,
     hidden: task.hidden,
   });
@@ -340,9 +340,9 @@ async function runCaseScope(
     // evaluate input can alter neither the engine's input nor the record, and a toolset mutating
     // the solve view or post-accept draft state cannot reach any evaluate-side fact.
     verdict = await deps.evaluate(
-      trustedStructuredClone({
+      capturedStructuredClone({
         publicTask: evaluateTask,
-        artifact: trustedJsonParse(artifactJson),
+        artifact: capturedJsonParse(artifactJson),
         hidden: task.hidden,
       }),
       { tools: scope.port },
@@ -590,8 +590,8 @@ function caseRecord(solvedCase: SolvedCase, outcome: CaseOutcome): CaseRecord {
       toolCalls: solved.toolCalls ?? null,
       startedToolCalls: solved.startedToolCalls ?? null,
       errors: solved.errors,
-      nonResult: trustedStructuredClone(solved.nonResult ?? null),
-      runtimeIdentities: trustedStructuredClone(solved.runtimeIdentities ?? []),
+      nonResult: capturedStructuredClone(solved.nonResult ?? null),
+      runtimeIdentities: capturedStructuredClone(solved.runtimeIdentities ?? []),
       startedAt: instants.startedAt,
       endedAt: instants.endedAt,
     },
@@ -633,7 +633,7 @@ export async function gradeCase(deps: GradeCaseDeps, solvedCase: SolvedCase): Pr
     // neither an evaluator mutation nor a later draft edit can change what this case submitted.
     submittedArtifact:
       acceptedSubmit && final?.kind === "artifact" && isString(final.artifactJson)
-        ? trustedJsonParse(final.artifactJson)
+        ? capturedJsonParse(final.artifactJson)
         : null,
     unboundFindings: graded.unbound.map((message) => ({ code: "EXTERNAL_RESULT_UNBOUND", message })),
     solverOrigin: graded.solverOrigin,

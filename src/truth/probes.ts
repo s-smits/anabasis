@@ -23,7 +23,7 @@ import {
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { createVerifierHost } from "../verify/host.ts";
 import { VerifierContractError } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import { type VerifierHostHandle } from "../verify/verifier-port.ts";
+import { type ToolInventory, type VerifierHostHandle } from "../verify/verifier-port.ts";
 import { verifierEnvironmentHashOfTools } from "./verifier-environment.ts";
 import { probeTaskInterpreters } from "./task-interpreter-probe.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
@@ -41,7 +41,6 @@ import {
 import {
   type Brief,
   externalChecksOf,
-  requiredToolsOf,
   type ContractFinding,
   controllerValidatedFinding,
   controllerValidatedFindings,
@@ -62,7 +61,7 @@ import {
 } from "./contracts.ts";
 import type { ControlCorpus } from "./controls.ts";
 import { boundedDraftSummary } from "./draft-summary.ts";
-import { SUBMIT_MAX_ATTEMPTS, type PublicControlReceipt, publicControlReceipt } from "./battery-record.ts";
+import { SUBMIT_MAX_ATTEMPTS, type ControlReceipt } from "./battery-record.ts";
 import { runControls } from "./run-controls.ts";
 import { discriminationDisclosure } from "./discrimination-author-detail.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
@@ -79,7 +78,7 @@ export type ProbeControlsResult = {
   verifierEnvironmentHash?: string | null;
   executionEvidence?: import("../verify/verifier-port.ts").VerifierExecutionEvidence[];
   findings: ContractFinding[];
-  controlReceipts?: PublicControlReceipt[];
+  controlReceipts?: ControlReceipt[];
   /** Host tool runs and rejects blocked per declared check: the inert-tool refusal inputs. */
   toolCheckCoverage?: ToolCheckCoverage[];
   /** What each check cost the census, dearest first. Absent when the census never ran a check. */
@@ -114,6 +113,8 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
     let evaluate: EvaluatorFn;
     let verifier: VerifierHostHandle | undefined;
     let externalChecks: Array<{ checkId: string; adapterId: string }>;
+    // Resolved once: every entry hashes its executable, and the host and the identity read one map.
+    let inventory: ToolInventory = {};
     try {
       // Typecheck before controls so type-erased API misuse becomes a repairable authoring finding.
       options.verifierLifetime?.assertUsable();
@@ -151,6 +152,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
           toolIds: externalChecks.map((check) => check.adapterId),
           toolTree,
         });
+        inventory = resolved.inventory;
         const unresolved = [...resolved.missing, ...resolved.invalid];
         if (options.createVerifier === undefined && unresolved.length > 0) {
           return {
@@ -167,7 +169,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
           options.createVerifier ??
           (() =>
             createVerifierHost({
-              inventory: resolved.inventory,
+              inventory,
               toolTree,
               toolRunMs: harnessSettings(slugDir).toolRunMs,
               ...keyIfDefined("lifetime", options.verifierLifetime),
@@ -222,19 +224,14 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
       }
       return {
         findings,
-        controlReceipts: execution.controlReceipts.map(publicControlReceipt),
+        controlReceipts: execution.controlReceipts,
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),
         executionEvidence: hostEvidence,
-        // The declared tool set as resolved now, which is the identity submit hashed. Hashing only
-        // the tools some control happened to run refused every candidate whose controls left one
-        // declared tool unrun.
-        verifierEnvironmentHash: verifierEnvironmentHashOfTools(
-          resolveToolInventory({
-            toolIds: [...new Set(brief.truthChecks.flatMap((check) => requiredToolsOf(check.execution)))],
-            toolTree: bundleSnapshotToolTree(slugDir),
-          }).inventory,
-        ),
+        // The declared tool set as resolved above, which is the identity submit hashed: `externalChecksOf`
+        // lists every required tool of every check. Hashing only the tools some control happened to
+        // run refused every candidate whose controls left one declared tool unrun.
+        verifierEnvironmentHash: verifierEnvironmentHashOfTools(inventory),
       };
     } catch (error) {
       if (error instanceof VerifierExecutionNonResult || error instanceof VerifierOperationalStop) {

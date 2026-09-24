@@ -193,16 +193,18 @@ type ToolRunWall = {
 
 /** What moved in an inventory tool since its snapshot, or null when nothing did. A script's
  *  interpreter is part of the measured condition as much as the script is, because the same script
- *  under another python3 is a different tool and may well give a different answer. */
+ *  under another python3 is a different tool and may well give a different answer. That covers an
+ *  interpreter unresolvable when the snapshot was taken and resolvable now: it decides the grade and
+ *  no run ever hashed it, which is drift in the one direction the snapshot cannot see. Both sides
+ *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. */
 function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: string | null): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
-  if (
-    entry.interpreterDigest === undefined ||
-    interpreterDigest(entry.path, toolTree) === entry.interpreterDigest
-  ) {
-    return null;
-  }
-  return `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  if (entry.kind === "binary") return null;
+  const live = interpreterDigest(entry.path, toolTree);
+  if (live === entry.interpreterDigest) return null;
+  return entry.interpreterDigest === undefined
+    ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
+    : `resolves a different ${entry.interpreter ?? "interpreter"}`;
 }
 
 /** The tool timeout: what the evaluator asked for, at least one millisecond and at most the

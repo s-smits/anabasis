@@ -19,7 +19,7 @@ import { tracePointerPath } from "../../src/claim/case-record.ts";
 import { recordedEvidence, verifyRunDir } from "../../src/claim/evidence-log.ts";
 import { campaignTraceRoots } from "../../src/claim/trace-read.ts";
 import { existsSync, readFileSync } from "../../src/meta/filesystem.ts";
-import { parseJsonAs } from "../../src/meta/json-runtime.ts";
+import { parseJsonAs, capturedJsonParse } from "../../src/meta/json-runtime.ts";
 import { isString } from "../../src/meta/json-shape.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../../src/meta/bundle-layout.ts";
@@ -40,7 +40,6 @@ import { campaignVerifierLifetime } from "../../src/run/verifier-lifetime.ts";
 import { applicableCheckIds } from "../../src/truth/run-controls.ts";
 import { commitPublicTask } from "../../src/truth/task-split.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "../../src/truth/tasks.ts";
-import { trustedJsonParse } from "../../src/truth/trusted-runtime.ts";
 import { blockingFailedCheckIds, publicTaskVerdict } from "../../src/truth/verdict-binding.ts";
 import { resolveVerifier } from "../../src/truth/verification-registry.ts";
 import type { CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
@@ -227,7 +226,7 @@ export function recordedCases(recorded: RecordedCandidate): RecordedCases {
 }
 
 function loadContract(candidateDir: string): CandidateContract {
-  const briefUnknown = trustedJsonParse(readFileSync(join(candidateDir, BRIEF_FILE), "utf8"));
+  const briefUnknown = capturedJsonParse(readFileSync(join(candidateDir, BRIEF_FILE), "utf8"));
   const briefValidation = validateBrief(briefUnknown);
   if (!briefValidation.ok) {
     throw new Error(`brief.json: ${briefValidation.findings.map((finding) => finding.detail).join("; ")}`);
@@ -235,7 +234,7 @@ function loadContract(candidateDir: string): CandidateContract {
   const brief =
     /* SAFETY: validateBrief returned ok directly above, the only proof of this shape. */ briefUnknown as Brief;
   // Held at `unknown` on purpose: validateTasks below is the only proof these bytes are a battery.
-  const tasksUnknown: unknown = trustedJsonParse(readFileSync(join(candidateDir, TASKS_FILE), "utf8"));
+  const tasksUnknown: unknown = capturedJsonParse(readFileSync(join(candidateDir, TASKS_FILE), "utf8"));
   const battery = { tasks: tasksUnknown };
   const tasksValidation = validateTasks(brief, battery, {});
   if (!tasksValidation.ok) {

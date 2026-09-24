@@ -1,4 +1,6 @@
 /** Submission-schema checks shared by every reference artifact in the F2 census. */
+import { join } from "../meta/path.ts";
+import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import {
   type PublicArtifactSchema,
   compilePublicArtifactSchema,
@@ -6,11 +8,6 @@ import {
 } from "../solve/public-artifact-schema.ts";
 import type { Brief, ContractFinding } from "./brief.ts";
 import { validateAcceptControls } from "./controls.ts";
-import {
-  trustedExistsSync as existsSync,
-  trustedJoin as join,
-  trustedReadFileSync as readFileSync,
-} from "./trusted-runtime.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { type JsonValue, isObject } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";

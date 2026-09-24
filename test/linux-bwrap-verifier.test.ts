@@ -263,7 +263,7 @@ describe("the runtime prefix a baseline bind set exposes", () => {
       value: join(tmpdir(), "ana-absent-runtime", "bin", "bun"),
     });
     try {
-      // The controller launches `trustedExecPath`, captured before any generated module ran. Read
+      // The controller launches `capturedExecPath`, captured before any generated module ran. Read
       // from the live global instead, the bind set loses the runtime's own prefix and bubblewrap
       // refuses the launch with "execvp <the real bun>: No such file or directory" — the
       // substitution test/trusted-runtime.test.ts exists to refuse.

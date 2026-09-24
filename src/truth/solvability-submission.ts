@@ -1,4 +1,5 @@
 /** Execute an F2 reference artifact through the production Built Harness submission path. */
+import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Value } from "typebox/value";
 import type { SolvabilityCaseEvidence, SolvabilitySubmissionPathEvidence } from "../claim/readiness.ts";
@@ -25,7 +26,6 @@ import type { Brief, GeneratedExecutionClassification } from "./brief.ts";
 import { loadBuiltControllerInterface } from "./contracts.ts";
 import { referenceArtifactSchemaError } from "./solvability-artifact-schema.ts";
 import type { PublicTask } from "./task-split.ts";
-import { trustedJsonParse, trustedJsonStringify } from "./trusted-runtime.ts";
 import { isFunction, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
 type SolvabilitySubmissionResult =
@@ -305,7 +305,7 @@ async function executePath(
     const final = authority.finalSubmission();
     if (final === null) throw new Error("submit produced no accepted artifact bytes");
     if (final.artifactJson === null) throw new Error("submit produced no accepted artifact bytes");
-    const accepted = trustedJsonParse(final.artifactJson);
+    const accepted = capturedJsonParse(final.artifactJson);
     if (!sameJsonValue(artifact, accepted)) {
       throw new Error("the writer cannot materialise the reference artifact without changing its value");
     }
@@ -466,11 +466,11 @@ async function traverseReferenceArtifact(options: Traversal): Promise<Solvabilit
 export async function submitSolvabilityReferenceArtifact(
   options: SolvabilitySubmissionRequest,
 ): Promise<SolvabilitySubmissionOutcome> {
-  const serialized = trustedJsonStringify(options.artifact);
+  const serialized = capturedJsonStringify(options.artifact);
   if (!isString(serialized)) {
     return refusal("solve(task) returned an unserialisable value", "generated-solve-result");
   }
-  const artifact = trustedJsonParse(serialized);
+  const artifact = capturedJsonParse(serialized);
   const schemaError = referenceArtifactSchemaError(
     options.publicArtifactSchema,
     options.artifactSchema,

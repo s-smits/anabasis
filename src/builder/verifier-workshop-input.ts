@@ -53,6 +53,12 @@ export function existingWorkshopPath(root: string, requested = "."): string {
   return physicalTarget;
 }
 
+/** The cell's private HOME, cache and TMPDIR names. They are created here and granted through
+ *  `cellRuntimeRoots`, which re-opens them after the config-name denies. A name spelled in only one of
+ *  those two places is created and then denied, and the cell's write fails at the OS rather than at a
+ *  check, so both sides read them from here. */
+export const CELL_RUNTIME_ROOT_NAMES = { home: ".home", cache: ".cache", tmp: ".tmp" } as const;
+
 export function workshopEnvironment(root: string): OptionalEnvValues {
   const safeDir = (name: string) => {
     const path = join(root, name);
@@ -63,9 +69,9 @@ export function workshopEnvironment(root: string): OptionalEnvValues {
     }
     return physical;
   };
-  const home = safeDir(".home");
-  const cache = safeDir(".cache");
-  const tmp = safeDir(".tmp");
+  const home = safeDir(CELL_RUNTIME_ROOT_NAMES.home);
+  const cache = safeDir(CELL_RUNTIME_ROOT_NAMES.cache);
+  const tmp = safeDir(CELL_RUNTIME_ROOT_NAMES.tmp);
   const commandLineTools = "/Library/Developer/CommandLineTools";
   const directDarwinToolchain =
     runtimeProcess.platform === "darwin" && existsSync(join(commandLineTools, "SDKs", "MacOSX.sdk"));

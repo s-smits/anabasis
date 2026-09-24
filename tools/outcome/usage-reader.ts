@@ -11,15 +11,10 @@
  */
 import type { BuilderToolsReport, EpochToolCensus } from "./builder-tools.ts";
 import { builderFailureFindings } from "./builder-failed-calls.ts";
-import type { BuilderExecutionEvidence } from "../../src/author/builder-execution.ts";
+import { type BuilderExecutionEvidence, submitProjection } from "../../src/author/builder-execution.ts";
 import { existsSync, readFileSync, readdirSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { SAFEGUARDS_LOG_FILE, SAFEGUARD_INVENTORY } from "../../src/meta/safeguard.ts";
-
-/** The exact line shape `safeguardTriggered` writes: `<iso timestamp> | <name> | <detail>`. A line
- *  that does not match is counted as malformed rather than skipped, so a change to that writer
- *  shows up here as a malformed count instead of as a tree of safeguards that suddenly went quiet. */
-const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+) \| (\S+) \| /;
+import { SAFEGUARD_INVENTORY, parseSafeguardLog, safeguardLogFile } from "../../src/meta/safeguard.ts";
 
 interface SafeguardUsageRow {
   readonly name: string;
@@ -47,18 +42,19 @@ interface SafeguardUsageReport {
  */
 function executionFindings(epoch: string, execution: BuilderExecutionEvidence, recordRows: number): string[] {
   const out: string[] = [];
-  const submits = execution.submitCounts.raw;
-  const candidateSubmits = execution.submitCounts.candidates;
+  const { submitCounts, unchangedTreeSubmits, repeatedFindingSubmits } = submitProjection(execution.submits);
+  const submits = submitCounts.raw;
+  const candidateSubmits = submitCounts.candidates;
   const comparisonDenominator =
-    execution.submitCounts.controllerTerminals > 0 ? "candidate submissions" : "submissions";
-  if (execution.unchangedTreeSubmits > 0) {
+    submitCounts.controllerTerminals > 0 ? "candidate submissions" : "submissions";
+  if (unchangedTreeSubmits > 0) {
     out.push(
-      `${epoch}: ${execution.unchangedTreeSubmits} of ${candidateSubmits} ${comparisonDenominator} completed at the commit the submission before them had already completed — the tree did not move`,
+      `${epoch}: ${unchangedTreeSubmits} of ${candidateSubmits} ${comparisonDenominator} completed at the commit the submission before them had already completed — the tree did not move`,
     );
   }
-  if (execution.repeatedFindingSubmits > 0) {
+  if (repeatedFindingSubmits > 0) {
     out.push(
-      `${epoch}: ${execution.repeatedFindingSubmits} of ${candidateSubmits} ${comparisonDenominator} were refused with the findings the submission before them had already returned`,
+      `${epoch}: ${repeatedFindingSubmits} of ${candidateSubmits} ${comparisonDenominator} were refused with the findings the submission before them had already returned`,
     );
   }
   if (execution.toolCalls.native > 0) {
@@ -66,9 +62,9 @@ function executionFindings(epoch: string, execution: BuilderExecutionEvidence, r
       `${epoch}: ${execution.toolCalls.native} of ${execution.toolCalls.total} tool calls ran on the backend's native contract, which the path record's ${recordRows} rows do not cover`,
     );
   }
-  if (execution.submitCounts.controllerTerminals > 0) {
+  if (submitCounts.controllerTerminals > 0) {
     out.push(
-      `${epoch}: ${execution.submitCounts.candidates} candidate submissions and ${execution.submitCounts.controllerTerminals} controller-terminal event(s) among ${submits} raw submit rows`,
+      `${epoch}: ${submitCounts.candidates} candidate submissions and ${submitCounts.controllerTerminals} controller-terminal event(s) among ${submits} raw submit rows`,
     );
   }
   return out;
@@ -180,7 +176,7 @@ function logFilesUnder(campaignDir: string): string[] {
   if (!existsSync(root)) return [];
   const files: string[] = [];
   for (const runId of readdirSync(root)) {
-    const file = join(root, runId, SAFEGUARDS_LOG_FILE);
+    const file = safeguardLogFile(campaignDir, runId);
     if (existsSync(file)) files.push(file);
   }
   return files;
@@ -196,8 +192,14 @@ export function safeguardUsageReport(campaignDirs: readonly string[]): Safeguard
   const unknown = new Set<string>();
   let logsRead = 0;
   let malformedLines = 0;
-  /** One recorded firing: its time widens the row's window and its campaign joins the list. */
-  const count = (row: SafeguardUsageRow, at: string, campaignDir: string): void => {
+  /** One recorded firing: its time widens the row's window and its campaign joins the list. A name
+   *  outside the inventory is collected rather than counted. */
+  const count = (name: string, at: string, campaignDir: string): void => {
+    const row = rows.get(name);
+    if (row === undefined) {
+      unknown.add(name);
+      return;
+    }
     row.fired += 1;
     if (row.firstFired === null || at < row.firstFired) row.firstFired = at;
     if (row.lastFired === null || at > row.lastFired) row.lastFired = at;
@@ -206,20 +208,9 @@ export function safeguardUsageReport(campaignDirs: readonly string[]): Safeguard
   for (const campaignDir of campaignDirs) {
     for (const file of logFilesUnder(campaignDir)) {
       logsRead += 1;
-      for (const line of readFileSync(file, "utf8").split("\n")) {
-        if (line === "") continue;
-        const match = LOG_LINE.exec(line);
-        if (match?.[1] === undefined || match[2] === undefined) {
-          malformedLines += 1;
-          continue;
-        }
-        const row = rows.get(match[2]);
-        if (row === undefined) {
-          unknown.add(match[2]);
-          continue;
-        }
-        count(row, match[1], campaignDir);
-      }
+      const log = parseSafeguardLog(readFileSync(file, "utf8"));
+      malformedLines += log.malformed;
+      for (const firing of log.firings) count(firing.name, firing.at, campaignDir);
     }
   }
   const ordered = [...rows.values()];

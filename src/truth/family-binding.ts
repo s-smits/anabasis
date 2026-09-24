@@ -1,5 +1,7 @@
+import { capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
 import { sha256 } from "../meta/digest.ts";
+import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import type { ToolInventory } from "../verify/verifier-port.ts";
@@ -19,7 +21,6 @@ import {
 } from "./solvability-stages.ts";
 import { type WitnessCensus, evaluateWitness } from "./solvability-witness.ts";
 import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
-import { trustedJsonStringify, trustedStructuredClone } from "./trusted-runtime.ts";
 import { EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 /** One accepted reference artifact, kept for the family census below. */
@@ -81,24 +82,20 @@ function rootValue(artifact: JsonValue, root: string): JsonValue {
   return isRecord(artifact) && Object.hasOwn(artifact, root) ? (artifact[root] ?? null) : null;
 }
 
-/** "$" reads every root; "$.root" reads it exactly when the next character ends the segment. */
-function pathReadsRoot(path: string, root: string): boolean {
-  if (path === "$") return true;
-  const prefix = `$.${root}`;
-  if (!path.startsWith(prefix)) return false;
-  const next = path.charAt(prefix.length);
-  return next === "" || next === "." || next === "[";
-}
-
 /** The checks whose declared artifact paths read a task-conditioned root. Only these can tell a
  *  transplanted deliverable apart: every other check receives the same projected bytes the target's
- *  accepted artifact gave it, so the census evaluates hybrids against these checks alone. */
+ *  accepted artifact gave it, so the census evaluates hybrids against these checks alone. "$" reads
+ *  every root; any other path reads the root its first segment names, in whichever spelling the
+ *  brief validator accepted, so `$['files']` reads `files` as `$.files` does. */
 function familyMaterialCheckIds(brief: Brief): Set<string> {
   const roots = taskConditionedRoots(brief);
   return new Set(
     brief.truthChecks
       .filter((check) =>
-        check.execution.artifactPaths.some((path) => roots.some((root) => pathReadsRoot(path, root))),
+        check.execution.artifactPaths.some((path) => {
+          const tokens = jsonPathTokens(path);
+          return tokens !== null && (tokens.length === 0 || roots.some((root) => tokens[0] === `.${root}`));
+        }),
       )
       .map((check) => check.id),
   );
@@ -176,7 +173,7 @@ function familyDonors(witnesses: readonly FamilyWitness[], roots: readonly strin
       if (members.length < 2) return [];
       const slices = new Map<string, FamilyWitness>();
       for (const member of members) {
-        const key = trustedJsonStringify(roots.map((root) => rootValue(member.artifact, root)));
+        const key = capturedJsonStringify(roots.map((root) => rootValue(member.artifact, root)));
         if (!slices.has(key)) slices.set(key, member);
       }
       return [{ family, members, donors: [...slices.values()] }];
@@ -267,7 +264,7 @@ export async function familyBindingFindings(
  *  purpose: a Builder-authored root name such as `__proto__` must become an own property of the
  *  artifact instead of reaching a prototype. */
 function hybridArtifact(target: JsonValue, donor: JsonValue, roots: readonly string[]): JsonValue {
-  const hybrid = trustedStructuredClone(target);
+  const hybrid = capturedStructuredClone(target);
   if (!isRecord(hybrid)) return hybrid;
   for (const root of roots) {
     Object.defineProperty(hybrid, root, {
@@ -352,7 +349,7 @@ export async function familyBindingStage(
           const verified = await evaluateWitness(
             census,
             targetJson,
-            trustedJsonStringify(artifact),
+            capturedJsonStringify(artifact),
             `family:${donor.taskId}>${target.taskId}`,
           );
           const { result } = verified;

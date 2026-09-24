@@ -1,5 +1,5 @@
+import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { ACTIVE_JUDGE_PROMPTS } from "./judge-prompt-policy.ts";
-import { trustedJsonStringify } from "./trusted-runtime.ts";
 /**
  * Assemble the public context and shared instructions for each Judge subject. The policy module
  * owns the base prompt, judge-drivers.ts owns the output instructions, and judge.ts records the
@@ -25,5 +25,5 @@ const TASK_SENTENCE = "This input contains a public task. Decide whether the out
 
 /** Both output methods receive the same instructions. Only their final output sentence differs. */
 export function judgeTurnPrompt(input: JudgeInput, checkSentence: string): string {
-  return `${ACTIVE_JUDGE_PROMPTS.census} ${TASK_SENTENCE} ${checkSentence}\n\nPublic context:\n${trustedJsonStringify(input.publicContext, null, 2)}\n\nSubmitted artifact:\n${trustedJsonStringify(input.submittedArtifact, null, 2)}`;
+  return `${ACTIVE_JUDGE_PROMPTS.census} ${TASK_SENTENCE} ${checkSentence}\n\nPublic context:\n${capturedJsonStringify(input.publicContext, null, 2)}\n\nSubmitted artifact:\n${capturedJsonStringify(input.submittedArtifact, null, 2)}`;
 }

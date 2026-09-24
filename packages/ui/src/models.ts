@@ -96,8 +96,7 @@ export interface RunRequest {
 
 export interface DifficultyDecision {
   action: string | null;
-  /** Where the battery stood: the band zone of a placed record, or `L<n>` for an earlier record
-   *  that carried levels. Null for a set-aside. */
+  /** Where the battery stood: the band zone of a placed decision. Null for a set-aside. */
   standing: string | null;
   rationale: string | null;
   admitted: number | null;
@@ -133,7 +132,6 @@ export type ProjectBackendSelection = "codex" | "openrouter" | "claude" | "disab
 interface ProjectBackendChoiceView {
   value: ProjectBackendSelection;
   label: string;
-  supported: boolean;
 }
 
 export interface ProjectBackendSlotView {

@@ -110,7 +110,8 @@ function distances(graph: Graph, changed: readonly string[]): Map<string, number
     frontier = next;
   }
   const reached = new Map<string, number>();
-  for (const [file, hop] of seen) if (TEST.test(file)) reached.set(file, hop);
+  // A test the commit deleted is among the changed files but not in its tree, so nothing runs it.
+  for (const [file, hop] of seen) if (graph.testSource.has(file)) reached.set(file, hop);
   // A file outside the graph is read by path at runtime; a test naming it is one hop away.
   for (const file of changed) {
     if (MODULE.test(file) && graph.importers.has(file)) continue;

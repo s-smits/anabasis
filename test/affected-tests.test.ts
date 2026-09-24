@@ -54,6 +54,10 @@ describe("affected test selection", () => {
     expect(distances(graph, ["test/far.test.ts"]).get("test/far.test.ts")).toBe(0);
   });
 
+  it("selects no test the commit deleted, since its tree holds nothing to run", () => {
+    expect(Object.fromEntries(distances(graph, ["test/removed.test.ts"]))).toEqual({});
+  });
+
   // The gate calls the script with `--base` alone, so the default is the depth every earlier commit
   // in a push is tested at.
   it("selects by default only the tests that import a changed file directly", () => {

@@ -432,6 +432,50 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
     }
   }, 60_000);
 
+  it("runs a file a clock failed again when launched by an agent, which tells Bun to hide passes", async () => {
+    // Bun prints no `(pass)` line when `CLAUDECODE` or `AGENT` is set, and the suite counts a file
+    // as reported only from its result lines. Inherited from an agent's shell, every passing file
+    // then read as unreported and the clock-only rerun never ran. The baseline strips both
+    // variables from this process, so the case sets them again for the suite it spawns.
+    const host = scratchDir("ana-suite-parallel-");
+    const fixture = join(host, "fixture"),
+      marker = join(host, "first-run");
+    mkdirSync(fixture);
+    writeFileSync(
+      join(fixture, "clock.test.ts"),
+      `import { it } from "bun:test";
+it("times out once, then passes", async () => {
+  if (await Bun.file(${JSON.stringify(marker)}).exists()) return;
+  await Bun.write(${JSON.stringify(marker)}, "timed out");
+  await Bun.sleep(5_000);
+}, 300);
+`,
+    );
+    writeFileSync(join(fixture, "fine.test.ts"), `import { it } from "bun:test";\nit("passes", () => {});\n`);
+    const run = Bun.spawn(["bun", SUITE, join(fixture, "clock.test.ts"), join(fixture, "fine.test.ts")], {
+      cwd: REPO_ROOT,
+      env: {
+        ...Bun.env,
+        TMPDIR: host,
+        ANA_TEST_TMPDIR: host,
+        ANA_TEST_WORKERS: "2",
+        ANA_TEST_HOST_LOAD: "0",
+        CLAUDECODE: "1",
+        AGENT: "1",
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    try {
+      const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
+      expect(err).toContain("failed on time alone, none on an assertion; running their 1 file(s) again");
+      expect(err).not.toContain("printed no result at all");
+      expect(code).toBe(0);
+    } finally {
+      run.kill("SIGKILL");
+    }
+  }, 60_000);
+
   it("fails a rerun that printed no result for a file it was given, rather than taking its zero", async () => {
     // The rerun is the one process whose verdict becomes the suite's, and it was taken unread. One
     // file wedges the first process and passes alone; the other prints nothing in either process,

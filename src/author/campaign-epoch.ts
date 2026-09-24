@@ -87,7 +87,7 @@ interface CampaignIteration {
 /** The supersession record, or null before the first epoch. A damaged record refuses rather than
  *  reading as absent, because a guessed-at lineage would let two epochs both believe they are
  *  current and the repair is to fix the record, not to delete epochs. */
-function readEpochRecord(campaignRoot: string): EpochRecord | null {
+export function readEpochRecord(campaignRoot: string): EpochRecord | null {
   return readCompleted<EpochRecord>(
     join(campaignRoot, "epochs.json"),
     "campaign-epochs/v1",

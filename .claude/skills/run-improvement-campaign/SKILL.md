@@ -118,14 +118,14 @@ launcher does not capture is inert in exactly the runs it was written for.
 One row per moved mechanism, frozen **before** the opening:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/prediction.mjs freeze \
+bun .claude/skills/run-improvement-campaign/scripts/prediction.ts freeze \
   --run <runId> --source <full-sha> \
   --claim "<expected observation>" --moved-variable "<change>" \
   --direction up|down|none --falsifier "<recorded observation that refutes it>"
 ```
 
-`--run` names the ledger: `notes/predictions/<runId>.jsonl`, the one file `status.mjs` and
-`close-advisories.mjs` read back. Pass `--ledger <path>` only to point somewhere else on purpose.
+`--run` names the ledger: `notes/predictions/<runId>.jsonl`, the one file `campaign.ts` reads back,
+and whose open rows hold a closure. Pass `--ledger <path>` only to point somewhere else on purpose.
 Until 2026-09-18 the two sides used different paths, so a run could close reporting no open
 predictions while its frozen rows sat unadjudicated; freeze and closure now resolve one location.
 Runs before that date left 79 rows, 20 of them unadjudicated, in `campaigns/<slug>/predictions.jsonl`
@@ -177,8 +177,8 @@ call costs nothing but time.
 One watcher covers all live runs:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/watch.mjs \
-  --campaigns /absolute/campaigns --runs <runId>,<runId> \
+bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
+  --campaigns /absolute/campaigns --run <runId> --run <runId> \
   --state /private/tmp/ana-watch-<wave>.json \
   --every 290 --stall-minutes 120 --disk-min-gib 20 --max-seconds 21600
 ```
@@ -191,19 +191,20 @@ Add `--completion-only` when the operator wants nothing until a terminal exists.
 **When a reader is attending, drop `--every` and run one pass per reply**, started as the last
 action of each message so the next tick lands about 270 s later — inside the 300 s prompt cache, and
 longer whenever the reading itself takes longer, which is the intended cost. A single pass is an
-attended tick: one line of live counters per watched run, then every row it holds, info included,
-and exit 0. The detached `--every` watcher stays deviation-only and holds info rows for the next
+attended tick: each watched run's status, then every row it holds, info included, and exit 0.
+Without `--state` the same command is the status report alone, with the per-file table when it
+names one run and `--json` for the whole reading. The detached `--every` watcher stays deviation-only and holds info rows for the next
 stop row, because nobody is reading it.
 
 A watch is a process, so check for the process. On 2026-09-18 the last state file was written at
-08:31 and `pgrep -f watch.mjs` was empty from then until 18:50: the i03 claim and the i04 climb
+08:31 and `pgrep -f` for the watcher was empty from then until 18:50: the i03 claim and the i04 climb
 decision both landed inside that window and neither was watched. A state file's mtime tells you when
 a watcher last ran, never that one is running now.
 
 Run the watch, and every other reader here, from `origin/main`. They are operator tooling and belong
 to the current tree, not to the run's frozen source and not to an open stack that has not been
 rebased. The same 18 September evening, the watch run from the stack top printed no climb row at all
-for a campaign holding three `climb` decisions, because `status.mjs` only grew the `difficulty` field
+for a campaign holding three `climb` decisions, because the status reader of the day only grew the `difficulty` field
 in `df7a28ee0` that morning and the stack was 92 commits behind it. Run from main against the same
 campaign it fired at once, naming three climbs in a row. **A reader that returns `null` or an empty
 list for a field is a missing producer in the tree you ran it from, not an absent signal**; re-run
@@ -223,7 +224,7 @@ Every `stop` row carries the move it implies, printed in brackets before the run
 | `reserved` | something is wrong but the evidence names no owner | hold the product bytes, read the evidence, decide |
 | `overhaul` | the measurement failed, not a detail inside it | rebuild the product or the battery; there is nothing inside to patch |
 
-`overhaul` fires on `measurement-stalled`, on a battery whose scored cases are all unaccepted
+`overhaul` fires on a battery whose scored cases are all unaccepted
 (AGENTS.md's `no-difficulty-evidence`: no capability rate, no difficulty strike, nothing to patch
 against), and on five typed non-results in a row — rule 6's threshold for stopping the schedule.
 A completed run that verified cases carries no act at all.
@@ -238,21 +239,30 @@ per case under the retained version — against the harness's own `solve_minutes
 `agent/config.yaml`. Under that wall the silence is work and no row fires; past it the host stopped
 enforcing its own ceiling and the stall row is right.
 
-`status.mjs` prints the same count, and beside it what the bundle is made of: files, nonblank lines,
-named functions, tasks, families, checks, accept and reject controls, tools and presets, from the
-frozen version once the gate accepted it and from the live epoch workspace before that. Size is not
+The status prints the same count, and beside it what the bundle is made of: files, nonblank lines,
+tasks, families, checks, accept and reject controls, tools and presets, from the frozen version once
+the gate accepted it and from the live epoch workspace before that. The counts come from the gate's
+own bundle validator, so a file it refuses prints `?` beside the finding code — a wrapped
+`{tasks: [...]}` reads as `? tasks` and `tasks-shape`, never as zero tasks. Size is not
 quality — a long evaluator with two checks is weaker than a short one with six — so read the
 declared counts, and read `presets` first: a bundle shipping `[]` beside an artifact-writer gave its
 solver no shell, and no gate catches it.
 
-Beside it, `authoring N commits: R rehearsal(s), S submit attempt(s), P repair round(s)`. The
-Builder never commits; the host commits at each tool boundary, so that line reads the epoch
-workspace's reflog. Of the 210 recorded epoch workspaces, the 167 whose submit was accepted rehearse
-with `correctness_check` a median of 2 times against 0 for the 31 that never got a candidate in, and
-the 113 accepted on their first submit rehearsed 2 times to the 54 later ones' 3. More rehearsal
-than that has not bought acceptance: the worst session spent 89 commits on 24 rehearsals, 12 submits
-and 53 repair rounds without settling. So the count worth watching is not commits but repair rounds,
-and the shape to catch early is rehearsals climbing while submits do not.
+Beside it, `authoring N commits: R rehearsal(s), S submit attempt(s)`. The commits are the epoch
+workspace's reflog, because the Builder never commits and the host commits at each tool boundary.
+The rehearsals and submits are not, and they used to be: the host commits only when the tree
+changed, so a `correctness_check` or a resubmit over unchanged bytes wrote no reflog line and the
+count came out short. They now come from the Builder's own execution records, the
+`correctness_check` calls each session counted and the candidate submits the controller recorded,
+with a controller stop left out because it closes a session rather than submitting to the gate.
+The reflog reading once also counted "repair rounds" from the host's `(repair …)` commit messages,
+and that count is gone with the rest of that reading: a repair round over unchanged bytes wrote no
+line either, so it came out short for the same reason. Of the 210 epoch workspaces read that older way, the 167 whose submit was
+accepted rehearsed a median of 2 times against 0 for the 31 that never got a candidate in, so the
+shape to catch early is still rehearsals climbing while submits do not. An execution record under
+an older schema is refused by name rather than read as zero: the line says `rehearsals and submits
+unknown:` with the refusal, `--json` carries `session: null` beside it, and the watch stops once
+per epoch on it, because none of the Builder limits can be read.
 
 The watch names a bundle file **only on the tick that wrote it** — `wrote agent/tools.ts, 224 lines
 (was 220)` — never on a first reading, where everything present is older than the watch, and never
@@ -262,21 +272,25 @@ are the only visible sign of what the Builder is doing.
 ### Read the climb, not only the score
 
 The watch also reads `difficulty-decisions/`, the controller's own `ClimbAction` per battery, and
-prints one row as each lands: `battery run-i02: climb, 24/25 too-easy`. This is the half a score
+prints one row as each lands: `battery run-i02: placed, 24/25 too-easy`. This is the half a score
 cannot show. A high score says the battery was easy; only the decision says whether the next one
 asks for more, and only a run of them says whether asking worked.
 
-- **three `climb` decisions in a row** is one `overhaul` row: the level moved and no battery found
-  the limit. Campaign `3fd52f9e-28` recorded seven, all from `too-easy` placements, while its
-  Builder moved only published magnitudes. Rebuild what the tasks demand, not their numbers.
-- **`hold-limit`** and **`ease`** are `reserved`, **`repeated-failure-set`** and **`family-conflict`** are `surgical`, and
-  **`no-difficulty-evidence`** is `overhaul`.
+- **three batteries in a row placed `too-easy`** is one `overhaul` row: the level moved and no
+  battery found the limit. The streak reads the zone the band recorded, counted in batteries, since a
+  `--run` continuation can decide one battery twice. Campaign `3fd52f9e-28` recorded seven such
+  placements while its Builder moved only published magnitudes. Rebuild what the tasks demand, not
+  their numbers.
+- a `placed` decision moves by its zone: `too-hard` is `reserved`, and the other four zones are the
+  band reading its own score, printed as `info`. Of the other three actions,
+  **`repeated-failure-set`** and **`family-conflict`** are `surgical` and **`no-difficulty-evidence`**
+  is `overhaul`.
 
-The decision reads the score. `climb-velocity.mjs` reads the other side of the same question — the
+The decision reads the score. `wri.mjs climb` reads the other side of the same question — the
 task bytes — and unlike the decision it works on a battery that has not scored yet:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/climb-velocity.mjs <campaign dir> [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.mjs climb <campaign dir> [--json]
 ```
 
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
@@ -321,7 +335,7 @@ again, since the page was never delivered.
 | you want to know | read | not |
 | --- | --- | --- |
 | whether the next battery will be asked for more | `difficulty-decisions/`, the `ClimbAction` the watch prints | the score |
-| whether the tasks actually got harder | `climb-velocity.mjs` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
+| whether the tasks actually got harder | `wri.mjs climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
 | whether the Builder read a starter file | the authored `EXPERIMENT.json` and the bundle bytes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
@@ -375,7 +389,7 @@ On 18 September those fixture lines read as a provider outage on a run that was 
 
 ### Read the edge before you pay for the battery
 
-`climb-velocity.mjs` reads its tier histogram and its structural row from the authored bytes under
+`wri.mjs climb` reads its tier histogram and its structural row from the authored bytes under
 `versions/<battery>/`. Neither needs a case. So the newest edge verdict exists the moment a
 candidate is adopted, hours before the battery it describes has been measured, and the reader says
 so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
@@ -439,7 +453,7 @@ decision: `c1d2a7` took 85 with zero refusals, exposed 15 tools and used 7, and 
 `agent/config.yaml` at its seeded default though each is raisable tenfold. A thin bundle from a
 session like that is a choice the prompt shaped, not a session the host boxed in.
 
-On a deviation read `status.mjs --campaigns <dir> --run <id> --json`, then the named evidence. The
+On a deviation read `campaign.ts --campaigns <dir> --run <id> --json`, then the named evidence. The
 case ledger can be legitimately empty during a real battery. A live pid alone proves nothing, a
 stale timestamp is a lead, and unknown usage is `null`, never zero. The watch names a blocked
 Builder session once per epoch; [builder-blocking-loop](../builder-blocking-loop/SKILL.md) owns it.
@@ -457,11 +471,11 @@ could only fire after the run it was meant to interrupt.
 Every terminal gets closure, including a short or zero-case run:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/close-advisories.mjs \
-  --campaign /absolute/campaigns/<slug> --run <runId> --json
-bun .claude/skills/run-improvement-campaign/scripts/prediction.mjs adjudicate \
+bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
+  --campaigns /absolute/campaigns --run <runId> [--json]
+bun .claude/skills/run-improvement-campaign/scripts/prediction.ts adjudicate \
   --run <runId> --id <prediction-id> \
-  --outcome sufficed|partial|refuted|untriggered|inconclusive --evidence "<path and finding>"
+  --outcome sufficed|partial|refuted|untriggered --evidence "<path and finding>"
 ```
 
 Read in this order: terminal, case denominators, claims, promotion decisions, review spend,
@@ -510,7 +524,7 @@ a response to this one misreads both.
 
 So on the second one: stop opening pull requests against any authoring surface, and write the
 operator one message holding both batteries' verified counts, each case's turn count and margin to
-its governing limit, what the Builder changed between them as `climb-velocity.mjs` reads it, and one
+its governing limit, what the Builder changed between them as `wri.mjs climb` reads it, and one
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
@@ -552,8 +566,8 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to H, then the safeguard census, then a diff of the campaign's adopted versions, then `climb-velocity.mjs` once the campaign has two edges | its semantic angles, at most five lanes, when a recorded row stays unexplained; `run-climb-lab` on any climb row the watch printed, and whenever a transition needs attribution |
-| adjudicate | `prediction.mjs adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
+| read | `whole-run-investigation` rows A to H, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic angles, at most five lanes, when a recorded row stays unexplained; `run-climb-lab` on any climb row the watch printed, and whenever a transition needs attribution |
+| adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |
 | launch | `launch-run`, freeze before the opening, detached watch, next wake | `run-outcome-review` assesses a suspected stall; a stop executes only under existing authority |

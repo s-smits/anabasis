@@ -38,15 +38,15 @@ Loop inventory, as of 18 September 2026:
 | stage | owner | scripts |
 | --- | --- | --- |
 | choose, patch, compose | `run-improvement-campaign/SKILL.md`, `simplify`, `stack-hop` | — |
-| prove the changed path | `system-path-simulation` | `stage-run.mts`, `run-condition.mts`, `judge-replay.mts`, `review-settle.mts`, `seed-campaign.mts` |
-| predict | `run-improvement-campaign` | `prediction.mjs` |
+| prove the changed path | `system-path-simulation` | `run-condition.mts`, `judge-replay.mts`, `review-settle.mts`, `seed-campaign.mts` |
+| predict | `run-improvement-campaign` | `prediction.ts` |
 | launch | `launch-run` | `launch.ts`, `probe.ts`, `options.ts`, `service.ts`, `stop.ts`; `preflight.mjs` |
-| watch | `run-improvement-campaign` | `watch.mjs`, `status.mjs` |
+| watch | `run-improvement-campaign` | `campaign.ts` |
 | read | `whole-run-investigation`, `run-outcome-review` | `wri.mjs` and its readers; `bun run outcome` |
 | attribute a climb | `run-climb-lab` | `references/task-difficulty.md` |
 | independent evaluation | `harness-query` | `harness-query.mts` |
-| close | `run-improvement-campaign` | `close-advisories.mjs`, `prediction.mjs adjudicate`, `notes/current-state.md` |
-| weekly | `weekly-run-review`, `safeguards` | `select-best-runs.mjs`, `bun run outcome -- --safeguards` |
+| close | `run-improvement-campaign` | `campaign.ts`, `prediction.ts adjudicate`, `notes/current-state.md` |
+| weekly | `weekly-run-review`, `safeguards` | `select-best-runs.ts`, `bun run outcome -- --safeguards` |
 
 Required output, one table plus the notes below it:
 
@@ -68,7 +68,7 @@ fifth, and a finding that fits none of the four is not a finding — drop it rat
    row names one owner, the missing evidence and the decision it will change; the snapshot holds at
    most five, so a sixth finding must displace a staler one or wait.
 3. **A frozen prediction row.** Closing the edge *is* the next experiment's moved variable. Freeze
-   it with `prediction.mjs freeze` before that run's opening, with the falsifier the lens returned.
+   it with `prediction.ts freeze` before that run's opening, with the falsifier the lens returned.
 4. **A deletion.** The census found a mechanism with no live consumer. Route it to the weekly
    removal review, which already owns removals, with its last real use dated.
 
@@ -80,7 +80,7 @@ the reviewer, performs the outcome, because a read-only lens changes no file.
 
 ## 1. prediction_to_opening
 
-Own the edge from a frozen prediction to the run it constrains. Read `prediction.mjs`, the ledger
+Own the edge from a frozen prediction to the run it constrains. Read `prediction.ts`, the ledger
 layout under `notes/predictions/`, and the launch path. Decide whether a frozen row is bound to the
 run id and source sha before the opening exists, whether `adjudicate` can be reached for every
 frozen row, and what happens to a row whose mechanism a later PR retired. Test the failure the
@@ -91,7 +91,7 @@ whether that is the right answer here.
 
 ## 2. watch_to_assessment
 
-Own the edge from `watch.mjs` and `status.mjs` to a decision. Determine what a deviation actually
+Own the edge from `campaign.ts` to a decision. Determine what a deviation actually
 emits, who reads it, and which of its signals — stall minutes, disk floor, blocked Builder session,
 completion — leads to a different action rather than a line in a log. Check the detached-watcher
 contract against the 600-second Bash wall and the 290-second polling rule. Distinguish a sensor
@@ -101,7 +101,7 @@ that changes the next move from one whose only consumer is a human reading a ter
 
 Own the edge from the run's recorded bytes to a patched owner. Trace terminal, case kinds, claims,
 promotion decisions and the safeguard census into the choice of the next change. Decide whether the
-loop names an owner from evidence or from prose, whether the eleven-member `FeedbackOwner` closure
+loop names an owner from evidence or from prose, whether the nine-member `FeedbackOwner` closure
 is the one actually used, and whether a finding can complete the cycle without ever reaching source.
 Name every point where a recorded row is read by a human step with no script and no artifact.
 
@@ -110,8 +110,8 @@ Name every point where a recorded row is read by a human step with no script and
 Own the edge from `system-path-simulation` to the launched condition. Decide whether the proof is
 required, recorded and read, or optional and skipped in practice; whether a proof over a test double
 is distinguished from one over the real consumer; and whether the recorded proof choice reaches the
-prediction and handover as the skill's table says. Check that `stage-run.mts` genuinely cannot
-launch and that the launch envelope is the only authority. Return what a changed condition can
+prediction and handover as the skill's table says. Check that the launch envelope is the only
+authority that can start a paid run. Return what a changed condition can
 reach a paid opening without.
 
 ## 5. independent_evaluation_to_next_experiment
@@ -127,8 +127,8 @@ records (`label.py` `CYCLE_SURFACES`) is read by every later consumer or re-deci
 
 ## 6. closure_and_handover
 
-Own the edge from a terminal back to the next launch. Read `close-advisories.mjs`, the adjudication
-path, `notes/current-state.md` and its handover. Decide whether every terminal — including short and
+Own the edge from a terminal back to the next launch. Read the advisories `campaign.ts` prints, the
+adjudication path, `notes/current-state.md` and its handover. Decide whether every terminal — including short and
 zero-case runs — reaches closure, whether the append-only ledger's refusal of a second adjudication
 is handled when two sessions close the same run, and whether the snapshot's 150-line and five-decision
 limits are enforced by anything. State what a next agent would be unable to continue without

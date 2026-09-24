@@ -125,11 +125,6 @@ The two lint plugins, `anti-slop` (copied from dmmulroy/anti-slop) and the repos
 simplify catchers, are optional: their findings are counted on every run and fail only
 `bun run lint -- --strict` or a run with `ANA_LINT_STRICT=1` in the environment.
 
-`bun run gate` additionally needs `zsh` on Linux: `test/run-triage.test.ts` syntax-checks the launch
-guidance with `/bin/zsh -n`, and `test/sps-stage-run.test.mjs` runs a staged `launch.sh` through it.
-macOS ships zsh and the GitHub Ubuntu runners preinstall it, so a local Linux checkout is the only
-place its absence shows, and there both suites fail rather than skip.
-
 ## Licence
 
 MIT; see [LICENSE](LICENSE). Code copied or ported from other projects keeps its notices in

@@ -209,8 +209,8 @@ describe("CLI launch guidance", () => {
     expect(map).toBeDefined();
     if (map === undefined) return;
     const command = map.slice(1, -1);
-    // The guidance is quoted for zsh, which the Darwin launcher runs; Linux launches through bash.
-    // Double-quoted escapes read the same in both, so bash is checked everywhere and zsh where it ships.
+    // Linux runs it through bash alone and Darwin's launcher through zsh; the double-quoted escapes
+    // read the same in both, so bash is checked everywhere and zsh where it ships.
     for (const shell of process.platform === "darwin" ? ["bash", "zsh"] : ["bash"]) {
       expect([shell, spawnSync(shell, ["-n", "-c", `: ${command}`]).status]).toEqual([shell, 0]);
     }

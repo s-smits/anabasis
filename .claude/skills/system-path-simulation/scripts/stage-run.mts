@@ -605,7 +605,7 @@ function stage(conditionDir: string): void {
   }
   const pins = { ...condition.pins, ...keyIfDefined("HARNESS_BUILDER_SESSION_CAP_MS", sessionCapMs) };
   const launch = [
-    "#!/bin/zsh",
+    "#!/bin/bash",
     `# prepared by stage-run.mts: ${conditionName} condition on ${commit.slice(0, 9)}; every pin explicit, none inherited.`,
     `cd ${shellQuote(conditionDir)} || exit 2`,
     ...Object.entries(pins).map(([name, value]) => `export ${name}=${shellQuote(value)}`),

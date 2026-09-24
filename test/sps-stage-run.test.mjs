@@ -132,11 +132,11 @@ describe("stage-run", () => {
     const captured = join(scratch, "captured-argv");
     mkdirSync(fakeBin);
     const fakeBun = join(fakeBin, "bun");
-    writeFileSync(fakeBun, `#!/bin/zsh\nprintf '%s\\0' "$@" > '${captured}'\n`, { mode: 0o755 });
+    writeFileSync(fakeBun, `#!/bin/sh\nprintf '%s\\0' "$@" > '${captured}'\n`, { mode: 0o755 });
     writeFileSync(join(dir, "launch.sh"), launch.replace("\nexec bun ", `\nexec '${fakeBun}' `), {
       mode: 0o755,
     });
-    const launchResult = runSync(["zsh", join(dir, "launch.sh")], {
+    const launchResult = runSync(["bash", join(dir, "launch.sh")], {
       cwd: dir,
       env: Bun.env,
     });

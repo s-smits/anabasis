@@ -75,7 +75,7 @@ export type RunSummary = {
   discrimination: "no-signal" | "all-pass" | "all-fail" | "informative";
 };
 
-export interface DriveBatteryResult {
+interface DriveBatteryResult {
   report: VerificationReport;
   summary: RunSummary;
 }

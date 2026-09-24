@@ -10,7 +10,7 @@
  * Only `completed` says the run settled the question it was launched to
  * answer; `stopped` preserves the deciding reason but still stopped short of success.
  */
-export const LOOP_TERMINAL_CODES = [
+const LOOP_TERMINAL_CODES = [
   "completed",
   "stopped",
   "fixed-product-boundary",

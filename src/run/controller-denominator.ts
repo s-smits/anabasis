@@ -1,7 +1,6 @@
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { CASE_RECORD_FILE, classifyCaseOutcome, outcomeTally, readCaseRecord } from "../claim/case-record.ts";
-import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
 export type Denominator =
   | { state: "absent" }
@@ -39,18 +38,4 @@ export function controllerDenominator(campaignDir: string, batteryRunIds: readon
 /** The run ids of the measured iterations; each iteration measures under its own id. */
 export function measuredRunIds(iterations: readonly { runId: string; measured: boolean }[]): string[] {
   return iterations.flatMap(({ runId, measured }) => (measured ? [runId] : []));
-}
-
-/** A saved terminal's case counts, for readers that load `terminal.json` themselves. Rows that are
- *  not well-formed iterations contribute nothing, because the strict reader in
- *  controller-evidence.ts owns refusing them. */
-export function savedTerminalDenominator(
-  campaignDir: string,
-  iterations: JsonValue | undefined,
-): Denominator {
-  const rows = Array.isArray(iterations) ? iterations : [];
-  return controllerDenominator(
-    campaignDir,
-    rows.flatMap((row) => (isRecord(row) && row.measured === true && isString(row.runId) ? [row.runId] : [])),
-  );
 }

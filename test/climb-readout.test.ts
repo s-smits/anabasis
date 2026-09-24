@@ -258,20 +258,17 @@ describe("the declared target", () => {
   const read = (target: NonNullable<Spec["target"]>) =>
     readoutOf(row("r1", 0, { passed: 4, n: 8, slots: 10, target })).rows[0]?.target;
 
-  it("counts every non-result in the prediction's favour before calling it missed", () => {
-    // Four of eight verified passed and two slots ended as non-results: either could have passed.
-    expect(read({ comparator: "at-least", verifiedPasses: 5 })).toMatchObject({ result: "undetermined" });
-    expect(read({ comparator: "at-least", verifiedPasses: 7 })).toMatchObject({
-      result: "missed",
-      missedBy: 1,
-    });
-    expect(read({ comparator: "at-least", verifiedPasses: 4 })).toMatchObject({ result: "met" });
-    expect(read({ comparator: "at-most", verifiedPasses: 5 })).toMatchObject({ result: "undetermined" });
-    expect(read({ comparator: "at-most", verifiedPasses: 6 })).toMatchObject({ result: "met" });
-    expect(read({ comparator: "at-most", verifiedPasses: 3 })).toMatchObject({
-      result: "missed",
-      missedBy: 1,
-    });
+  // Four of eight verified passed and two slots ended as non-results: either could have passed, so
+  // each counts in the prediction's favour before it is called missed.
+  it.each<["at-least" | "at-most", number, Partial<NonNullable<ReturnType<typeof read>>>]>([
+    ["at-least", 5, { result: "undetermined" }],
+    ["at-least", 7, { result: "missed", missedBy: 1 }],
+    ["at-least", 4, { result: "met" }],
+    ["at-most", 5, { result: "undetermined" }],
+    ["at-most", 6, { result: "met" }],
+    ["at-most", 3, { result: "missed", missedBy: 1 }],
+  ])("reads %s %s over 4 of 8 verified in 10 slots", (comparator, verifiedPasses, result) => {
+    expect(read({ comparator, verifiedPasses })).toMatchObject(result);
   });
 
   it("says when the target itself lies outside the aim", () => {
@@ -307,34 +304,37 @@ describe("rendering", () => {
     expect(text).toContain("| r4 |");
   });
 
-  it('gives every row\'s table line what the solver spent, and a measure no case recorded as "?"', () => {
-    const effort: ClimbEffort = { cases: 6, turns: 1, minutes: 14.8, toolCalls: null };
-    const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })));
-
-    expect(text).toContain("| 1t 14.8m —c over 6 |");
-  });
-
-  it("states each family's effort against the solve wall as a fact, never as difficulty", () => {
-    const familyEffort: FamilyEffort[] = [
-      { family: "span", cases: 3, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 },
-      { family: "joint", cases: 2, medianMinutes: null, maxMinutes: null, medianToolCalls: 6 },
-    ];
-    const text = render(readoutOf(row("r1", 0, { passed: 2, n: 5, familyEffort })));
-    expect(text).toContain(
+  // Each recorded fact renders when the battery carries it and not otherwise, and none reads what
+  // the solver spent as nearness to a limit, in either direction.
+  it.each<[string, Partial<Spec>, string, string]>([
+    [
+      'every row\'s spend, with a measure no case recorded as "—"',
+      { effort: { cases: 6, turns: 1, minutes: 14.8, toolCalls: null } },
+      "| 1t 14.8m —c over 6 |",
+      "m —c over",
+    ],
+    [
+      "each family's effort against the solve wall, as a fact and never as difficulty",
+      {
+        familyEffort: [
+          { family: "span", cases: 3, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 },
+          { family: "joint", cases: 2, medianMinutes: null, maxMinutes: null, medianToolCalls: 6 },
+        ],
+      },
       "Solve effort by family in the latest admitted battery, against its 120-minute solve wall: span 9 median and 20 most minutes, 14 median tool calls over 3 case(s); joint unrecorded median and unrecorded most minutes, 6 median tool calls over 2 case(s). Effort is what the solver spent and says nothing about difficulty",
-    );
-    // No sentence reads effort as nearness to a limit, in either direction.
-    expect(text).not.toMatch(/near the wall|under a quarter|too fast|too slow/);
-    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 5 })))).not.toContain("Solve effort by family");
-  });
-
-  it("scores the latest plan's predictions against its verdicts", () => {
-    const calibration = { scored: 5, brier: 0.21, expected: 1.4, observed: 3 };
-    const text = render(readoutOf(row("r1", 0, { passed: 3, n: 5, calibration })));
-    expect(text).toContain(
+      "Solve effort by family",
+    ],
+    [
+      "the latest plan's predictions scored against its verdicts",
+      { calibration: { scored: 5, brier: 0.21, expected: 1.4, observed: 3 } },
       "Predictions bound to r1: 5 scored task(s), 1.4 passes expected and 3 observed, Brier score 0.21",
-    );
-    expect(render(readoutOf(row("r1", 0, { passed: 3, n: 5 })))).not.toContain("Predictions bound to");
+      "Predictions bound to",
+    ],
+  ])("states %s", (_name, extra, sentence, marker) => {
+    const text = render(readoutOf(row("r1", 0, { passed: 2, n: 5, ...extra })));
+    expect(text).toContain(sentence);
+    expect(text).not.toMatch(/near the wall|under a quarter|too fast|too slow/);
+    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 5 })))).not.toContain(marker);
   });
 
   it("says a battery passing every verified case found no limit and asks for a new move", () => {

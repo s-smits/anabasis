@@ -30,6 +30,7 @@ import { readRecordedBatteryRecord } from "../src/truth/battery-record.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { type ScriptedTurn, scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
+import { required } from "./helpers/doubles.ts";
 import { scriptedUppercaseSolver, uppercaseFixture } from "./helpers/uppercase-fixture.ts";
 
 const PROMPT = "Build a harness that uppercases one public input.";
@@ -109,35 +110,62 @@ function args(root: string, runId: string, maxIterations: number, maxBuilderTurn
   };
 }
 
-/** Author the smallest admissible bundle and submit it, the way a model would on its first turn. */
-const authorAndSubmit: ScriptedTurn = async (ctx) => {
-  uppercaseFixture(ctx.workspace, false, false, TASKS);
-  await ctx.call("submit", {});
-  return "submitted the uppercase bundle";
-};
-
 describe("the whole loop through the Builder runtime interface, with no provider", () => {
-  it("builds, adopts, measures, analyses and records one round from a scripted session and solver", async () => {
+  it("builds, adopts, measures and records a round, then reopens the adopted product with a working harness_reset", async () => {
     const root = scratchRepo();
+    const starterTools = readFileSync(
+      join(import.meta.dir, "../starters/pi-built-harness/agent/tools.ts"),
+      "utf8",
+    );
+    const toolsNow = (workspace: string) => readFileSync(join(workspace, "agent/tools.ts"), "utf8");
+    const outcomeOf = (result: { details?: unknown }) =>
+      /* SAFETY: harness_reset returns this detail shape on every call. */
+      (result.details as { receipt: { outcome: string } }).receipt.outcome;
+    const seen: Record<string, string | boolean | number> = {};
+    let round = -1;
+    const turn: ScriptedTurn = async (ctx) => {
+      if (ctx.turn === 1) round += 1;
+      if (ctx.turn !== 1) return "nothing further this round";
+      if (round === 0) {
+        // The smallest admissible bundle, submitted the way a model would on its first turn; a
+        // reset outside a reopen is refused and leaves the authored tooling alone.
+        uppercaseFixture(ctx.workspace, false, false, TASKS);
+        seen.buildReset = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+        seen.buildKeptTools = toolsNow(ctx.workspace) !== starterTools;
+        await ctx.call("submit", {});
+        return "submitted the uppercase bundle";
+      }
+      // The reopen opens on the adopted bytes; nothing is reset until the Builder asks, and once only.
+      seen.seededTools = toolsNow(ctx.workspace) !== starterTools;
+      seen.first = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+      seen.resetTools = toolsNow(ctx.workspace) === starterTools;
+      const tasks: unknown = JSON.parse(
+        readFileSync(join(ctx.workspace, "correctness-model/tasks.json"), "utf8"),
+      );
+      seen.keptTasks = Array.isArray(tasks) ? tasks.length : -1;
+      seen.second = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+      return "reset the tooling and stopped";
+    };
     const drives: string[] = [];
-    const { repoRoot, ...runArgs } = args(root, "loop", 1);
+    const { repoRoot, ...runArgs } = args(root, "loop", 2, 1);
     const outcome = await runFullRun(
       runArgs,
       repoRoot,
-      scriptedDeps(authorAndSubmit, async (manifest, options) => {
+      scriptedDeps(turn, async (manifest, options) => {
         drives.push(options.runId);
         return measureUppercase(manifest, options);
       }),
     );
 
-    // The round: a first build that the real gates admitted, measured under its own iteration id.
-    expect(outcome.rounds.map((round) => [round.move, round.build])).toEqual([["build", "adopted"]]);
-    expect(outcome.terminal).toMatch(/^operator-interrupted: round cap 1 reached/);
-    const round = outcome.rounds[0];
-    if (round === undefined) throw new Error("the loop recorded no round");
-    expect(round.measured).toBe(true);
-    expect(drives).toEqual([round.runId]);
-    const batteryRunId = round.runId;
+    // Round one: a first build the real gates admitted, measured under its own iteration id.
+    expect(outcome.rounds.map((row) => [row.move, row.build, row.measured])).toEqual([
+      ["build", "adopted", true],
+      ["rebuild", "build-failed", false],
+    ]);
+    expect(outcome.terminal).toStartWith("operator-interrupted: round cap 2 reached");
+    const first = required(outcome.rounds[0], "first round");
+    expect(drives).toEqual([first.runId]);
+    const batteryRunId = first.runId;
 
     // The adopted product is a retained immutable version holding the scripted bytes.
     const product = selectedProductDir(root, SLUG);
@@ -146,7 +174,7 @@ describe("the whole loop through the Builder runtime interface, with no provider
       TASKS,
     );
 
-    // The battery: four verified cases, all passed, read through the recorded-evidence reader.
+    // The battery: every case verified and passed, read through the recorded-evidence reader.
     const battery = readRecordedBatteryRecord(join(product, "runs", batteryRunId), batteryRunId);
     expect(
       battery.cases.map((row) => [
@@ -158,7 +186,6 @@ describe("the whole loop through the Builder runtime interface, with no provider
       ]),
     ).toEqual(Array.from({ length: TASKS }, (_, i) => [`t${i}`, true, true, true, null]));
     expect(battery.backendPin).toBe("codex/gpt-5.5");
-    expect(outcome.measure?.verdicts).toMatchObject({ measured: true, claimCreated: true });
 
     // The claim and the analysis are on disk, and the controller evidence names the battery.
     expect(existsSync(join(claimsDirFor(root, SLUG), `${batteryRunId}.json`))).toBe(true);
@@ -173,6 +200,17 @@ describe("the whole loop through the Builder runtime interface, with no provider
       verified: TASKS,
       unaccepted: 0,
       nonResults: 0,
+    });
+
+    // Round two reopened the adopted product, where harness_reset works once and then refuses.
+    expect(seen).toEqual({
+      buildReset: "refused",
+      buildKeptTools: true,
+      seededTools: true,
+      first: "completed",
+      resetTools: true,
+      keptTasks: TASKS,
+      second: "refused",
     });
   }, 120_000);
 
@@ -200,51 +238,4 @@ describe("the whole loop through the Builder runtime interface, with no provider
     const claims = claimsDirFor(root, SLUG);
     expect(existsSync(claims) ? readdirSync(claims) : []).toEqual([]);
   }, 60_000);
-
-  it("mounts a working harness_reset on a reopen of the adopted product, and a refusing one elsewhere", async () => {
-    const root = scratchRepo();
-    const starterTools = readFileSync(
-      join(import.meta.dir, "../starters/pi-built-harness/agent/tools.ts"),
-      "utf8",
-    );
-    const toolsNow = (workspace: string) => readFileSync(join(workspace, "agent/tools.ts"), "utf8");
-    const outcomeOf = (result: { details?: unknown }) =>
-      /* SAFETY: harness_reset returns this detail shape on every call. */
-      (result.details as { receipt: { outcome: string } }).receipt.outcome;
-    const seen: Record<string, string | boolean | number> = {};
-    let round = -1;
-    const turn: ScriptedTurn = async (ctx) => {
-      if (ctx.turn === 1) round += 1;
-      if (ctx.turn !== 1) return "nothing further this round";
-      if (round === 0) {
-        uppercaseFixture(ctx.workspace, false, false, TASKS);
-        seen.buildReset = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
-        seen.buildKeptTools = toolsNow(ctx.workspace) !== starterTools;
-        await ctx.call("submit", {});
-        return "submitted the uppercase bundle";
-      }
-      // The reopen opens on the adopted bytes; nothing is reset until the Builder asks.
-      seen.seededTools = toolsNow(ctx.workspace) !== starterTools;
-      seen.first = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
-      seen.resetTools = toolsNow(ctx.workspace) === starterTools;
-      const tasks: unknown = JSON.parse(
-        readFileSync(join(ctx.workspace, "correctness-model/tasks.json"), "utf8"),
-      );
-      seen.keptTasks = Array.isArray(tasks) ? tasks.length : -1;
-      seen.second = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
-      return "reset the tooling and stopped";
-    };
-    const { repoRoot, ...runArgs } = args(root, "reset", 2, 1);
-    const outcome = await runFullRun(runArgs, repoRoot, scriptedDeps(turn));
-    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild"]);
-    expect(seen).toEqual({
-      buildReset: "refused",
-      buildKeptTools: true,
-      seededTools: true,
-      first: "completed",
-      resetTools: true,
-      keptTasks: TASKS,
-      second: "refused",
-    });
-  }, 120_000);
 });

@@ -10,17 +10,14 @@ import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 import { isString } from "../src/meta/json-shape.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {
   CaseRecord as CaseRecordStore,
+  type CaseRecordRow,
   readCaseRecord,
   verifyTracePointers,
 } from "../src/claim/case-record.ts";
-import {
-  type DriveBatteryResult,
-  batteryCondition,
-  driveBattery,
-  summarizeRun,
-} from "../src/run/run-driver.ts";
+import { batteryCondition, driveBattery, summarizeRun } from "../src/run/run-driver.ts";
 import { type BuiltRuntimeBoundaryEvidence, type Solver, nonResultOutcome } from "../src/truth/solve.ts";
 import type { GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
 import {
@@ -41,9 +38,11 @@ import {
 import type { ControlCorpus } from "../src/truth/controls.ts";
 import { batteryClaimInput, batteryRunEvidence } from "../src/claim/battery-run-evidence.ts";
 import { NEVER_ATTEMPTED_PREFIX } from "../src/truth/battery-provider-stop.ts";
-import { double } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { JudgeSession } from "../src/truth/judge-contract.ts";
 import { ProviderResourceBudgetExhausted } from "../src/run/provider-resource-budget.ts";
+
 const SCRIPTED_NONE = "scripted/none";
 /** A solver block for a case that started no tool call. */
 const NO_CALL = { startedToolCalls: 0 };
@@ -55,6 +54,20 @@ const NO_FIRING = {
   applicableByCheck: {},
   verifierVerifiedCount: 0,
 };
+
+const SCRATCH_ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-rundriver-"));
+afterAll(() => {
+  rmSync(SCRATCH_ROOT, { recursive: true, force: true });
+});
+
+const provedProbe = (): GeneratedToolBoundaryProbe => ({
+  outsideReadRefused: { status: "proved", code: "EPERM" },
+  outsideWriteRefused: { status: "proved", code: "EPERM" },
+  credentialEnvironmentAbsent: { status: "proved", code: "no credential-shaped environment name" },
+  networkRefused: { status: "proved", code: "EACCES" },
+  subprocessRefused: { status: "proved", code: "EACCES" },
+  runtimeReExecRefused: { status: "proved", code: "namespace-locked" },
+});
 
 /** Attach a runtime boundary fixture in the format returned by the Pi Built solver.
  *  This exercises the driver's recorded built-runtime.json pointer. */
@@ -105,40 +118,52 @@ function boundarySolver(base: Solver): Solver {
   });
 }
 
-function writeSlug(slugDir: string): void {
+/** A fresh matching slug under the scratch root, with its record path beside it. */
+function slug(name: string) {
+  const slugDir = join(SCRATCH_ROOT, name);
   writeMatchingSlug(slugDir);
   writeFileSync(join(slugDir, "agent/tools-spec.json"), JSON.stringify(MATCHING_TOOLS_SPEC));
+  return { slugDir, recordPath: join(SCRATCH_ROOT, `cases-${name}.jsonl`) };
 }
 
-const SCRATCH_ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-rundriver-"));
-afterAll(() => {
-  rmSync(SCRATCH_ROOT, { recursive: true, force: true });
-});
+/** One battery over the matching tasks; `extra` names the solver and anything else the case moves. */
+function drive(
+  where: { slugDir: string; recordPath: string },
+  runId: string,
+  solver: Solver,
+  extra: Partial<Parameters<typeof driveBattery>[0]> & { judge?: JudgeSession } = {},
+) {
+  const { judge, ...rest } = extra;
+  return driveBattery({
+    slug: "matching",
+    ...where,
+    runId,
+    builderId: "ana-run-driver-test",
+    verification: {
+      solver,
+      backendPin: SCRIPTED_NONE,
+      condition: SCRIPTED_CONDITION,
+      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
+      capabilities: [],
+      ...keyIfDefined("judge", judge),
+    },
+    isolation: null,
+    tasks: TASKS,
+    ...rest,
+  });
+}
 
-const provedProbe = (): GeneratedToolBoundaryProbe => ({
-  outsideReadRefused: { status: "proved", code: "EPERM" },
-  outsideWriteRefused: { status: "proved", code: "EPERM" },
-  credentialEnvironmentAbsent: { status: "proved", code: "no credential-shaped environment name" },
-  networkRefused: { status: "proved", code: "EACCES" },
-  subprocessRefused: { status: "proved", code: "EACCES" },
-  runtimeReExecRefused: { status: "proved", code: "namespace-locked" },
-});
+const intact = (row: CaseRecordRow, slugDir: string) =>
+  verifyTracePointers(row, slugDir).every((verdict) => verdict.state === "intact");
 
 describe("the battery driver", () => {
   it("binds selected preset tools into the offered tool-interface identity", () => {
-    const slugDir = join(SCRATCH_ROOT, "preset-condition");
-    writeSlug(slugDir);
+    const { slugDir } = slug("preset-condition");
     const specFile = join(slugDir, "agent/tools-spec.json");
     const base = {
       presets: [],
       declined: { files: "fixture without a shell" },
-      tools: [
-        {
-          name: "write_domain",
-          kind: "artifact-writer",
-          description: "Prepare the domain answer.",
-        },
-      ],
+      tools: [{ name: "write_domain", kind: "artifact-writer", description: "Prepare the domain answer." }],
     };
     writeFileSync(specFile, JSON.stringify(base));
     const withoutPreset = batteryCondition(slugDir).toolInterfaceHash;
@@ -149,26 +174,9 @@ describe("the battery driver", () => {
     expect(withPreset).not.toBe(withoutPreset);
   });
 
-  it("records one case row per task with checked evidence pointers and separate outcome counts", async () => {
-    const slugDir = join(SCRATCH_ROOT, "drive");
-    writeSlug(slugDir);
-    const recordPath = join(SCRATCH_ROOT, "cases-drive.jsonl");
-    const { summary } = await driveBattery({
-      slug: "matching",
-      slugDir,
-      runId: "run-drive-1",
-      builderId: "ana-run-driver-test",
-      recordPath,
-      verification: {
-        solver: boundarySolver(scriptedSolver(new Set(["t2"]))),
-        backendPin: SCRIPTED_NONE,
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: ["web-search:off"],
-      },
-      isolation: null,
-      tasks: TASKS,
-    });
+  it("records one case row per task with checked pointers, and reads rows only from their own bytes", async () => {
+    const where = slug("drive");
+    const { summary } = await drive(where, "run-drive-1", boundarySolver(scriptedSolver(new Set(["t2"]))));
     expect(summary).toMatchObject({
       runId: "run-drive-1",
       total: 4,
@@ -176,191 +184,65 @@ describe("the battery driver", () => {
       unaccepted: 0,
       nonResults: 0,
       passed: 3,
+      discrimination: "informative",
     });
-    expect(summary.passRate).toBeCloseTo(0.75);
-    expect(summary.discrimination).toBe("informative");
-    const rows = readCaseRecord(recordPath).map((entry) => entry.row);
+    const rows = readCaseRecord(where.recordPath).map((entry) => entry.row);
     expect(rows).toHaveLength(4);
     for (const row of rows) {
       expect(row.builderId).toBe("ana-run-driver-test");
       expect(row.isolation).toBeNull();
       expect(row.buildInputsHash).toMatch(/^[0-9a-f]{16,}$/);
       // Recompute each pointer digest against the recorded bytes immediately after the run.
-      const verdicts = verifyTracePointers(row, slugDir);
-      expect(verdicts.length).toBeGreaterThan(0);
-      expect(verdicts.every((v) => v.state === "intact")).toBe(true);
-      // The solver disclosed a runtime boundary, so the row must point at the recorded evidence
-      // that carries the exact solve condition for this case.
+      expect(verifyTracePointers(row, where.slugDir).length).toBeGreaterThan(0);
+      expect(intact(row, where.slugDir)).toBe(true);
+      // The solver disclosed a runtime boundary, so the row points at the recorded evidence that
+      // carries the exact solve condition for this case.
       expect(row.traces.map((pointer) => pointer.path)).toContain(
         `runs/run-drive-1/cases/${row.taskId}/built-runtime.json`,
       );
-      // Each case row includes the solver start and end times, so duration comparisons
-      // across runs do not need to open each battery.json.
-      expect(isString(row.solverStartedAt)).toBe(true);
-      expect(isString(row.solverEndedAt)).toBe(true);
+      // Each row carries its solve's start and end, so a duration comparison opens no battery.json.
+      expect([isString(row.solverStartedAt), isString(row.solverEndedAt)]).toEqual([true, true]);
     }
-    const flubbed = rows.find((row) => row.taskId === "t2");
-    expect(flubbed).toMatchObject({
+    expect(rows.find((row) => row.taskId === "t2")).toMatchObject({
       acceptedSubmit: true,
       truthOk: false,
       pass: false,
       runtimeNonResult: null,
     });
+
+    // The recorded battery binds its own run id, and bytes changed after publication are refused.
+    const runDir = join(where.slugDir, "runs/run-drive-1");
+    expect(() => readRecordedBatteryRecord(runDir, "run-relabeled")).toThrow(/does not bind runId/);
+    const batteryFile = join(runDir, "battery.json");
+    // SAFETY: this test created the recorded fixture through driveBattery immediately above.
+    const battery = JSON.parse(readFileSync(batteryFile, "utf8")) as { cases: { pass: boolean }[] };
+    const first = required(battery.cases[0], "the first recorded case");
+    first.pass = !first.pass;
+    writeFileSync(batteryFile, JSON.stringify(battery));
+    expect(() => readRecordedBatteryRecord(runDir, "run-drive-1")).toThrow(/tampered|changed|ownership/);
   }, 120_000);
 
-  it("summarizes each run of one shared record separately and refuses a duplicated run id", async () => {
-    const slugDir = join(SCRATCH_ROOT, "delta");
-    writeSlug(slugDir);
-    const recordPath = join(SCRATCH_ROOT, "cases-delta.jsonl");
-    const base = {
-      slug: "matching",
-      slugDir,
-      builderId: "ana-run-driver-test",
-      recordPath,
-      isolation: null,
-      tasks: TASKS,
-    } as const;
-    await driveBattery({
-      ...base,
-      runId: "run-all-fail",
-      verification: {
-        solver: scriptedSolver(new Set(TASKS.map((t) => t.taskId))),
-        backendPin: SCRIPTED_NONE,
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: [],
-      },
-    });
-    await driveBattery({
-      ...base,
-      runId: "run-all-pass",
-      verification: {
-        solver: scriptedSolver(),
-        backendPin: SCRIPTED_NONE,
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: [],
-      },
-    });
-    // One record holds both runs; each run id summarizes only its own rows.
-    const shared = readCaseRecord(recordPath).map((entry) => entry.row);
-    const failing = summarizeRun("run-all-fail", shared);
-    const passing = summarizeRun("run-all-pass", shared);
-    expect(failing.passRate).toBe(0);
-    expect(passing.passRate).toBe(1);
-    // Uniform results receive explicit all-fail or all-pass labels. Those labels describe
-    // the observed battery; they do not by themselves establish a defect or a limit.
-    expect(failing.discrimination).toBe("all-fail");
-    expect(passing.discrimination).toBe("all-pass");
-    // Same runId again would rewrite the run directory and duplicate rows the append-only record
-    // could never drop: refused before the battery runs, with the record and its pointers intact.
-    const before = readFileSync(join(slugDir, "runs/run-all-pass/battery.json"), "utf8");
-    await expect(
-      driveBattery({
-        ...base,
-        runId: "run-all-pass",
-        verification: {
-          solver: scriptedSolver(new Set(TASKS.map((t) => t.taskId))),
-          backendPin: SCRIPTED_NONE,
-          condition: SCRIPTED_CONDITION,
-          thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-          capabilities: [],
-        },
-      }),
-    ).rejects.toThrow(/already holds rows/);
-    expect(readCaseRecord(recordPath)).toHaveLength(shared.length);
-    expect(readFileSync(join(slugDir, "runs/run-all-pass/battery.json"), "utf8")).toBe(before);
-  }, 120_000);
-
-  /** Two passes, one verified failure (t2) and one typed provider non-result (t2b). */
-  const mixedSolver: Solver = (task, toolset, submitted) =>
-    task.taskId === "t2b"
-      ? Promise.resolve(nonResultOutcome({ kind: "provider", message: "WebSocket closed 1006" }))
-      : scriptedSolver(new Set(["t2"]))(task, toolset, submitted);
-
-  it("appends the published verdicts when the Judge phase throws after publication, once", async () => {
-    // Astra 0912 i19: 25 verdicts published, the Judge turn exhausted the provider budget, the
-    // throw skipped the append and the evidence reader refused the whole run over a record
-    // with zero rows. The record must hold the published rows and the original error must
-    // reach the caller unchanged.
-    const slugDir = join(SCRATCH_ROOT, "unwind");
-    writeSlug(slugDir);
-    const recordPath = join(SCRATCH_ROOT, "cases-unwind.jsonl");
+  it("appends the published verdicts once when the Judge throws after publication, whoever holds the record", async () => {
+    // Verdicts published, then the Judge turn exhausted the provider budget: the throw must not
+    // skip the append, or the evidence reader refuses the whole run over a record with zero rows.
+    const where = slug("unwind");
     const exhausted: JudgeSession = {
       pin: "codex/exhausted-judge",
       invoke: async () => {
         throw new ProviderResourceBudgetExhausted("review", 3, 3);
       },
     };
-    const drive = (): Promise<DriveBatteryResult> =>
-      driveBattery({
-        slug: "matching",
-        slugDir,
-        runId: "run-unwind-1",
-        builderId: "ana-run-driver-test",
-        recordPath,
-        verification: {
-          solver: mixedSolver,
-          backendPin: SCRIPTED_NONE,
-          condition: SCRIPTED_CONDITION,
-          thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-          capabilities: [],
-          judge: exhausted,
-        },
-        isolation: null,
-        tasks: TASKS,
-      });
-    await expect(drive()).rejects.toBeInstanceOf(ProviderResourceBudgetExhausted);
-    const rows = readCaseRecord(recordPath).map((entry) => entry.row);
-    expect(rows).toHaveLength(4);
-    // Every published kind reaches the record: two passes, one verified failure, one provider non-result.
-    expect(summarizeRun("run-unwind-1", rows)).toMatchObject({ verified: 3, passed: 2, nonResults: 1 });
-    expect(rows.find((row) => row.taskId === "t2b")).toMatchObject({
-      truthOk: null,
-      pass: null,
-      runtimeNonResultKind: "provider",
-    });
-    // The recorded run id is refused before the battery could run again, so the rows' digest
-    // pointers still name the published bytes.
-    await expect(drive()).rejects.toThrow(/already holds rows/);
-    expect(readCaseRecord(recordPath)).toHaveLength(4);
-    for (const row of rows) {
-      expect(verifyTracePointers(row, slugDir).every((verdict) => verdict.state === "intact")).toBe(true);
-    }
-  }, 120_000);
+    /** Two passes, one verified failure (t2) and one typed provider non-result (t2b). */
+    const mixed: Solver = (task, toolset, submitted) =>
+      task.taskId === "t2b"
+        ? Promise.resolve(nonResultOutcome({ kind: "provider", message: "WebSocket closed 1006" }))
+        : scriptedSolver(new Set(["t2"]))(task, toolset, submitted);
+    const run = () => drive(where, "run-unwind-1", mixed, { judge: exhausted });
 
-  it("keeps the runner's failure and the record's when the unwind append fails", async () => {
-    const slugDir = join(SCRATCH_ROOT, "unwind-held");
-    writeSlug(slugDir);
-    const recordPath = join(SCRATCH_ROOT, "cases-unwind-held.jsonl");
-    const exhausted: JudgeSession = {
-      pin: "codex/exhausted-judge",
-      invoke: async () => {
-        throw new ProviderResourceBudgetExhausted("review", 3, 3);
-      },
-    };
-    const drive = (): Promise<DriveBatteryResult> =>
-      driveBattery({
-        slug: "matching",
-        slugDir,
-        runId: "run-unwind-held-1",
-        builderId: "ana-run-driver-test",
-        recordPath,
-        verification: {
-          solver: mixedSolver,
-          backendPin: SCRIPTED_NONE,
-          condition: SCRIPTED_CONDITION,
-          thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-          capabilities: [],
-          judge: exhausted,
-        },
-        isolation: null,
-        tasks: TASKS,
-      });
     // Another writer holds the record, so the unwind cannot append; neither failure may hide the other.
-    const held = CaseRecordStore.open(recordPath);
+    const held = CaseRecordStore.open(where.recordPath);
     try {
-      const failure = await drive().catch((cause: unknown) => cause);
+      const failure = await run().catch((cause: unknown) => cause);
       if (!(failure instanceof AggregateError)) {
         throw new Error(`expected both failures, got ${String(failure)}`);
       }
@@ -369,78 +251,77 @@ describe("the battery driver", () => {
     } finally {
       await held.close();
     }
-    expect(readCaseRecord(recordPath)).toHaveLength(0);
-    // With the record released, the same unwind records the published rows.
-    await expect(drive()).rejects.toBeInstanceOf(ProviderResourceBudgetExhausted);
-    expect(readCaseRecord(recordPath)).toHaveLength(4);
+    expect(readCaseRecord(where.recordPath)).toHaveLength(0);
+
+    // Released, the same unwind records every published kind and the caller still gets the error.
+    await expect(run()).rejects.toBeInstanceOf(ProviderResourceBudgetExhausted);
+    const rows = readCaseRecord(where.recordPath).map((entry) => entry.row);
+    expect(rows).toHaveLength(4);
+    expect(summarizeRun("run-unwind-1", rows)).toMatchObject({ verified: 3, passed: 2, nonResults: 1 });
+    expect(rows.find((row) => row.taskId === "t2b")).toMatchObject({
+      truthOk: null,
+      pass: null,
+      runtimeNonResultKind: "provider",
+    });
+
+    // The same run id again would rewrite the run directory and duplicate rows the append-only
+    // record could never drop: refused before the battery runs, record and pointers intact.
+    const before = readFileSync(join(where.slugDir, "runs/run-unwind-1/battery.json"), "utf8");
+    await expect(run()).rejects.toThrow(/already holds rows/);
+    expect(readCaseRecord(where.recordPath)).toHaveLength(4);
+    expect(readFileSync(join(where.slugDir, "runs/run-unwind-1/battery.json"), "utf8")).toBe(before);
+    for (const row of rows) expect(intact(row, where.slugDir)).toBe(true);
   }, 120_000);
 
   it("appends nothing when the runner throws before it published a record", async () => {
-    const slugDir = join(SCRATCH_ROOT, "unpublished");
-    writeSlug(slugDir);
-    const recordPath = join(SCRATCH_ROOT, "cases-unpublished.jsonl");
-    await expect(
-      driveBattery({
-        slug: "matching",
-        slugDir,
-        runId: "run-unpublished-1",
-        builderId: "ana-run-driver-test",
-        recordPath,
-        verification: {
-          solver: scriptedSolver(),
-          backendPin: SCRIPTED_NONE,
-          condition: SCRIPTED_CONDITION,
-          thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-          capabilities: [],
-        },
-        isolation: null,
-        tasks: [{ ...TASKS[0]!, taskId: "../escape" }],
-      }),
-    ).rejects.toThrow();
-    expect(existsSync(recordPath)).toBe(false);
-  }, 120_000);
-
-  it("reads battery rows only from the recorded, correctly labelled bytes", async () => {
-    const slugDir = join(SCRATCH_ROOT, "tamper");
-    writeSlug(slugDir);
-    await driveBattery({
-      slug: "matching",
-      slugDir,
-      runId: "run-tamper-1",
-      builderId: "ana-run-driver-test",
-      recordPath: join(SCRATCH_ROOT, "cases-tamper.jsonl"),
-      verification: {
-        solver: scriptedSolver(),
-        backendPin: SCRIPTED_NONE,
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: [],
-      },
-      isolation: null,
-      tasks: TASKS,
-    });
-    const runDir = join(slugDir, "runs/run-tamper-1");
-    expect(() => readRecordedBatteryRecord(runDir, "run-relabeled")).toThrow(/does not bind runId/);
-
-    const batteryFile = join(runDir, "battery.json");
-    // SAFETY: this test created the recorded fixture through driveBattery immediately above.
-    const battery = JSON.parse(readFileSync(batteryFile, "utf8")) as { cases: { pass: boolean }[] };
-    battery.cases[0]!.pass = !battery.cases[0]!.pass;
-    writeFileSync(batteryFile, JSON.stringify(battery));
-    expect(() => readRecordedBatteryRecord(runDir, "run-tamper-1")).toThrow(/tampered|changed|ownership/);
+    // A task set that is not the saved one is refused before any case runs.
+    const where = slug("unpublished");
+    const foreign = { ...required(TASKS[0], "the first matching task"), taskId: "t-foreign" };
+    await expect(drive(where, "run-unpublished-1", scriptedSolver(), { tasks: [foreign] })).rejects.toThrow(
+      /the supplied tasks differ from correctness-model\/tasks\.json/,
+    );
+    expect(existsSync(where.recordPath)).toBe(false);
   }, 120_000);
 });
 
-describe("the censored discrimination flag", () => {
-  it("reads no-signal when nothing was scored — never a 0/N claim from non-results alone", () => {
-    const summary = summarizeRun("run-empty", []);
-    expect(summary.passRate).toBeNull();
-    expect(summary.discrimination).toBe("no-signal");
+describe("summarizeRun — one run's rows out of a shared record", () => {
+  const OUTCOMES = {
+    pass: {},
+    fail: { truthOk: false, pass: false },
+    unaccepted: { acceptedSubmit: false, truthOk: null, pass: false },
+    "non-result": {
+      acceptedSubmit: false,
+      truthOk: null,
+      pass: null,
+      runtimeNonResult: "provider unavailable",
+      runtimeNonResultKind: "solver" as const,
+    },
+  };
+  type Outcome = keyof typeof OUTCOMES;
+  const rowsOf = (runId: string, outcomes: Outcome[]) =>
+    outcomes.map((outcome, i) => caseRecordRow(`t${String(i)}`, "f", { runId, ...OUTCOMES[outcome] }));
+
+  // The labels describe the observed battery; they do not by themselves establish a defect or a
+  // limit. Non-results alone never read as a 0/N claim.
+  it.each<[string, Outcome[], [number, number, number, number, number | null, string]]>([
+    ["all-pass", ["pass", "pass"], [2, 0, 0, 2, 1, "all-pass"]],
+    ["all-fail", ["fail", "fail"], [2, 0, 0, 0, 0, "all-fail"]],
+    ["an unaccepted attempt in the denominator", ["pass", "unaccepted"], [1, 1, 0, 1, 0.5, "informative"]],
+    ["a non-result outside it", ["pass", "fail", "non-result"], [2, 0, 1, 1, 0.5, "informative"]],
+    ["non-results alone", ["non-result", "non-result"], [0, 0, 2, 0, null, "no-signal"]],
+    ["nothing recorded", [], [0, 0, 0, 0, null, "no-signal"]],
+  ])("reads %s", (_name, outcomes, expected) => {
+    // A second run in the same record is never counted.
+    const shared = [...rowsOf("other-run", ["fail", "pass", "non-result"]), ...rowsOf("run-07", outcomes)];
+    const { total, verified, unaccepted, nonResults, passed, passRate, discrimination } = summarizeRun(
+      "run-07",
+      shared,
+    );
+    const read: unknown[] = [verified, unaccepted, nonResults, passed, passRate, discrimination];
+    expect(total).toBe(outcomes.length);
+    expect(read).toEqual(expected);
   });
 });
-
-// Absorbed from test/battery-run-evidence.test.ts
-// ---------------------------------------------------------------------------
 
 const cases = [
   { taskId: "pass", runtimeNonResult: null, runtimeNonResultKind: null },
@@ -588,7 +469,7 @@ describe("battery run evidence", () => {
     ]);
   });
 
-  it("revalidates recorded receipts and derives claim attribution instead of trusting aggregates", () => {
+  describe("the control receipts, revalidated rather than trusted", () => {
     const corpus: ControlCorpus = {
       accept: [{ id: "a", taskId: "task", artifact: {} }],
       reject: [
@@ -596,116 +477,59 @@ describe("battery run evidence", () => {
       ],
     };
     const receipts = [receipt("a", "task", "accept", null), receipt("r", "task", "reject", "intrinsic")];
-    const context = corpus;
-    const green = batteryClaimInput(
-      claimBattery(corpus, receipts, {
-        acceptsPassed: 1,
-        rejectsFailed: 1,
-        rejectsAttributed: 1,
-        attributedCheckIds: { intrinsic: 1 },
-      }),
-      new Map(),
-      context,
-    );
-    expect(green.evidence.discrimination).toMatchObject({
-      claimable: true,
-      attributedCheckIds: { intrinsic: 1 },
-    });
-
-    const omitted = batteryClaimInput(
-      claimBattery(corpus, [receipts[0]!], {
-        acceptsPassed: 1,
-        rejectsFailed: 1,
-        rejectsAttributed: 1,
-        attributedCheckIds: { intrinsic: 1 },
-      }),
-      new Map(),
-      context,
-    );
-    expect(omitted.evidence.discrimination).toMatchObject({ claimable: false });
-    expect(omitted.evidence.discrimination.findings.map((finding) => finding.code)).toContain(
-      "DISCRIMINATION_CONTROL_RECEIPT_INVALID",
-    );
-
-    const legacy = claimBattery(corpus, receipts, {
+    const attributed = {
       acceptsPassed: 1,
       rejectsFailed: 1,
       rejectsAttributed: 1,
       attributedCheckIds: { intrinsic: 1 },
-    });
-    // SAFETY: This fixture deliberately models a legacy saved row that predates controlReceipts.
-    delete (legacy.discrimination as { controlReceipts?: unknown }).controlReceipts;
-    const legacyProjection = batteryClaimInput(legacy, new Map(), context);
-    expect(legacyProjection.evidence.discrimination).toMatchObject({ claimable: false });
-    expect(legacyProjection.evidence.discrimination.findings).toContainEqual(
-      expect.objectContaining({
-        code: "DISCRIMINATION_CONTROL_RECEIPT_INVALID",
-        message: expect.stringContaining("saved control receipts are missing"),
-      }),
-    );
-
-    const duplicate = batteryClaimInput(
-      claimBattery(corpus, [...receipts, receipts[1]!], {
-        acceptsPassed: 1,
-        rejectsFailed: 1,
-        rejectsAttributed: 1,
-        attributedCheckIds: { intrinsic: 1 },
-      }),
-      new Map(),
-      context,
-    );
-    expect(duplicate.evidence.discrimination.claimable).toBe(false);
-
-    const mismatched = batteryClaimInput(
-      claimBattery(corpus, receipts, {
-        acceptsPassed: 1,
-        rejectsFailed: 1,
-        rejectsAttributed: 0,
-        attributedCheckIds: {},
-      }),
-      new Map(),
-      context,
-    );
-    expect(mismatched.evidence.discrimination.claimable).toBe(false);
-    expect(mismatched.evidence.discrimination.findings.map((finding) => finding.code)).toContain(
-      "DISCRIMINATION_CONTROL_RECEIPT_INVALID",
-    );
-  });
-
-  it("attributes a reject to its named check from the control receipt", () => {
-    // The receipt no longer copies which tool ran: the host's own evidence rows carry that under
-    // the control's subjectId, and grounding-coverage.ts reads them there. What the receipt still
-    // establishes is the isolated control failure: this reject failed only the check it names.
-    // This fixture does not prove that an external tool executed.
-    const corpus: ControlCorpus = {
-      accept: [{ id: "a", taskId: "task", artifact: {} }],
-      reject: [
-        {
-          id: "external-reject",
-          taskId: "task",
-          artifact: {},
-          mutationClass: "wrong",
-          expectedCheckId: "external",
-        },
-      ],
     };
-    const receipts = [
-      receipt("a", "task", "accept", null),
-      receipt("external-reject", "task", "reject", "external"),
-    ];
-    const projected = batteryClaimInput(
-      claimBattery(corpus, receipts, {
-        acceptsPassed: 1,
-        rejectsFailed: 1,
-        rejectsAttributed: 1,
-        attributedCheckIds: { external: 1 },
-      }),
-      new Map(),
-      corpus,
-    );
-    expect(projected.evidence.discrimination).toMatchObject({
-      claimable: true,
-      attributedCheckIds: { external: 1 },
+    const discrimination = (battery: BatteryRecord) =>
+      batteryClaimInput(battery, new Map(), corpus).evidence.discrimination;
+
+    it("attributes a reject to the check its receipt names", () => {
+      // The receipt establishes the isolated control failure: this reject failed only the check it
+      // names. Which tool ran is the host's own evidence rows, read by grounding coverage.
+      expect(discrimination(claimBattery(corpus, receipts, attributed))).toMatchObject({
+        claimable: true,
+        attributedCheckIds: { intrinsic: 1 },
+      });
+    });
+
+    it.each<[string, () => BatteryRecord, string]>([
+      [
+        "an omitted receipt",
+        () => claimBattery(corpus, [required(receipts[0], "the accept receipt")], attributed),
+        "",
+      ],
+      [
+        "a saved row that predates receipts",
+        () => {
+          const legacy = claimBattery(corpus, receipts, attributed);
+          // SAFETY: This fixture deliberately models a saved row that predates controlReceipts.
+          delete (legacy.discrimination as { controlReceipts?: unknown }).controlReceipts;
+          return legacy;
+        },
+        "saved control receipts are missing",
+      ],
+      [
+        "a duplicated receipt",
+        () => claimBattery(corpus, [...receipts, required(receipts[1], "the reject receipt")], attributed),
+        "",
+      ],
+      [
+        "aggregates the receipts contradict",
+        () => claimBattery(corpus, receipts, { ...attributed, rejectsAttributed: 0, attributedCheckIds: {} }),
+        "",
+      ],
+    ])("is not claimable on %s", (_name, battery, message) => {
+      const read = discrimination(battery());
+      expect(read.claimable).toBe(false);
+      expect(read.findings).toContainEqual(
+        expect.objectContaining({
+          code: "DISCRIMINATION_CONTROL_RECEIPT_INVALID",
+          message: expect.stringContaining(message),
+        }),
+      );
     });
   });
 });
@@ -719,8 +543,8 @@ describe("battery disposition", () => {
   });
 
   it("names a battery the provider-stop rule cut short", () => {
-    // Without this the provider-stop rule's own battery records "complete", and a comparison reads
-    // it beside one that ran every task it was given.
+    // Otherwise the provider-stop rule's own battery records "complete", and a comparison reads it
+    // beside one that ran every task it was given.
     const rows = [
       { runtimeNonResult: null },
       { runtimeNonResult: "provider error 429" },
@@ -732,43 +556,46 @@ describe("battery disposition", () => {
     expect(batteryDisposition("scheduled", rows.slice(0, 2))).toBe("completed");
   });
 
-  it("records an all-non-result battery as all-non-results instead of complete", () => {
-    // A battery whose every case is a typed non-result otherwise reports "complete", which reads as
-    // a measured zero rather than as no measurement at all.
-    const dead = [
-      { runtimeNonResult: "provider error 429", solver: NO_CALL },
-      { runtimeNonResult: "spawn timeout", solver: NO_CALL },
-    ];
-    expect(batteryTerminalReason("completed", dead)).toBe(
-      "all-non-results: none of the 2 cases produced a result",
-    );
-    // One produced result whose solver started a tool call keeps the battery complete.
-    expect(
-      batteryTerminalReason("completed", [
-        ...dead,
-        { runtimeNonResult: null, solver: { startedToolCalls: 1 } },
-      ]),
-    ).toBe("complete");
-    // The other two shapes that carry no evidence: a completed record with no case row, and one
-    // where no case started a tool call.
-    expect(batteryTerminalReason("completed", [])).toBe("no-cases: the battery recorded no case row");
-    expect(
-      batteryTerminalReason("completed", [
+  const dead = [
+    { runtimeNonResult: "provider error 429", solver: NO_CALL },
+    { runtimeNonResult: "spawn timeout", solver: NO_CALL },
+  ];
+  // Every shape that carries no evidence names itself instead of reading "complete", which would
+  // read as a measured zero rather than as no measurement at all.
+  it.each<
+    [string, Parameters<typeof batteryTerminalReason>[0], Parameters<typeof batteryTerminalReason>[1], string]
+  >([
+    ["every case a non-result", "completed", dead, "all-non-results: none of the 2 cases produced a result"],
+    [
+      "one produced result that started a tool call",
+      "completed",
+      [...dead, { runtimeNonResult: null, solver: { startedToolCalls: 1 } }],
+      "complete",
+    ],
+    ["no case row", "completed", [], "no-cases: the battery recorded no case row"],
+    [
+      "no case starting a tool call",
+      "completed",
+      [
         { runtimeNonResult: null, solver: { startedToolCalls: 0 } },
         { runtimeNonResult: null, solver: { startedToolCalls: null } },
-      ]),
-    ).toBe("no-tool-calls: none of the 2 cases started a tool call");
-    expect(batteryTerminalReason("skipped-precase", dead)).toBe(
-      "battery skipped: discrimination not claimable",
-    );
-    expect(
-      batteryTerminalReason("provider-stopped", [
+      ],
+      "no-tool-calls: none of the 2 cases started a tool call",
+    ],
+    ["a skipped battery", "skipped-precase", dead, "battery skipped: discrimination not claimable"],
+    [
+      "a provider stop",
+      "provider-stopped",
+      [
         {
           runtimeNonResult: `${NEVER_ATTEMPTED_PREFIX} after 5 consecutive provider non-results`,
           solver: NO_CALL,
         },
         { runtimeNonResult: "provider error 429", solver: NO_CALL },
-      ]),
-    ).toBe("provider-stopped: 1 of 2 cases were never attempted");
+      ],
+      "provider-stopped: 1 of 2 cases were never attempted",
+    ],
+  ])("states the terminal reason of %s", (_name, disposition, rows, reason) => {
+    expect(batteryTerminalReason(disposition, rows)).toBe(reason);
   });
 });

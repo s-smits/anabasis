@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { Api, Message, Model } from "@earendil-works/pi-ai";
+import type { Api, Message, Model, StopReason } from "@earendil-works/pi-ai";
 import type { Options } from "claude-agent-sdk-bridge";
 import type { BridgeProviderSettings } from "../vendor/pi-claude-bridge/provider.ts";
 import { QueryContext } from "../vendor/pi-claude-bridge/query-state.ts";
@@ -11,7 +11,6 @@ import { type QueryTally, compactSummaries } from "../vendor/pi-claude-bridge/co
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { double, required } from "./helpers/doubles.ts";
-const STREAM_EVENT = "stream_event";
 const CONTENT_BLOCK_STOP = "content_block_stop";
 const CONTENT_BLOCK_START = "content_block_start";
 const CONTENT_BLOCK_DELTA = "content_block_delta";
@@ -153,7 +152,7 @@ async function drive(
 }
 
 /** One SDK partial-assistant message carrying a single stream event. */
-const streamed = (event: SdkStreamEvent) => ({ type: STREAM_EVENT, event });
+const streamed = (event: SdkStreamEvent) => ({ type: "stream_event", event });
 
 it("keeps the confined SDK settings and every explicitly registered tool", async () => {
   const client = new Client({ name: "bridge-test", version: "1" });
@@ -386,8 +385,8 @@ describe("the Pi Claude bridge after a stopped query", () => {
     timestamp: 0,
   });
 
-  // live120-pi5: with the query left running, each tool result went to the CLI's uncompacted
-  // history, and pi compacted 10 times in one turn while the CLI grew to 151k.
+  // With the query left running, each tool result would go to the CLI's uncompacted history, and
+  // pi would keep compacting while the CLI's own context grew unchecked.
   it("stops the live query, and opens the next one on the compacted history", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-bridge-restart-"));
     const bridge = createClaudeBridge({ env: { CLAUDE_CONFIG_DIR: dir } });
@@ -568,72 +567,52 @@ describe("the Pi Claude bridge after a stopped query", () => {
 });
 
 describe("the Pi Claude bridge result identity", () => {
-  it("records the served model after a tool-use response has already closed the Pi stream", async () => {
-    const context = new QueryContext();
-    const output: TurnOutput = { responseId: "provider-message-after-tool-use" };
-    context.turnOutput = double(output);
-    context.currentPiStream = null;
-
-    await drive(
-      [
-        {
-          type: "result",
-          uuid: "result-after-tool-use",
-          modelUsage: { "claude-opus-4-8": { inputTokens: 10, outputTokens: 2 } },
-        },
-      ],
-      { context, model: {} },
-    );
-
-    expect(output.responseId).toBe("provider-message-after-tool-use");
-    expect(output.responseModel).toBe("claude-opus-4-8");
-  });
-
-  it("normalizes the CLI long-context spelling to the registered id", async () => {
-    // Run 68: the CLI is invoked with --model claude-opus-5[1m], so modelUsage carries the CLI
-    // spelling while the identity pin holds the API id. Exact-string identity then refused the
-    // repair-on claim over three turns of one case. A different model keeps its distinct identity.
-    const fold = async (servedKey: string, requestedModel = "claude-opus-5") => {
-      const context = new QueryContext();
-      const output: TurnOutput = { responseId: "r" };
-      context.turnOutput = double(output);
-      context.currentPiStream = null;
-      await drive(
-        [
-          {
-            type: "result",
-            uuid: "long-context-result",
-            modelUsage: { [servedKey]: { inputTokens: 10, outputTokens: 2 } },
-          },
-        ],
-        { context, model: { id: requestedModel } },
-      );
-      return output.responseModel;
-    };
-    expect(await fold("claude-opus-5[1m]")).toBe("claude-opus-5");
-    expect(await fold("claude-opus-5")).toBe("claude-opus-5");
-    expect(await fold("claude-fable-5-1[1m]", "claude-fable-5-1")).toBe("claude-fable-5-1");
-    expect(await fold("claude-fable-5-1[1m]")).toBe("claude-fable-5-1[1m]");
-    expect(await fold("claude-haiku-4-5")).toBe("claude-haiku-4-5");
-  });
-
-  it("does not invent a served model when the SDK result has no unambiguous model table", async () => {
+  /** Fold one SDK result into a turn whose Pi stream a tool call already closed. */
+  type Usage = { inputTokens?: number; outputTokens?: number };
+  const served = async (modelUsage: Record<string, Usage>, requested?: string) => {
     const context = new QueryContext();
     const output: TurnOutput = { responseId: "provider-message" };
     context.turnOutput = double(output);
     context.currentPiStream = null;
+    await drive([{ type: "result", uuid: "result", modelUsage }], {
+      context,
+      model: requested === undefined ? {} : { id: requested },
+    });
+    return output;
+  };
+  const used = { inputTokens: 10, outputTokens: 2 };
 
-    await drive(
-      [
-        {
-          type: "result",
-          uuid: "ambiguous-result",
-          modelUsage: { "claude-opus-4-8": {}, "claude-sonnet-4-6": {} },
-        },
-      ],
-      { context, model: {} },
-    );
+  it.each([
+    [
+      "the only model in the table, after a tool call closed the stream",
+      "claude-opus-4-8",
+      undefined,
+      "claude-opus-4-8",
+    ],
+    // The CLI runs under `--model claude-opus-5[1m]`, so its table carries that spelling while the
+    // identity pin holds the API id; a different model keeps its distinct identity.
+    [
+      "the registered id for the CLI's long-context spelling",
+      "claude-opus-5[1m]",
+      "claude-opus-5",
+      "claude-opus-5",
+    ],
+    ["the registered id unchanged", "claude-opus-5", "claude-opus-5", "claude-opus-5"],
+    ["another registered long-context model", "claude-fable-5-1[1m]", "claude-fable-5-1", "claude-fable-5-1"],
+    [
+      "a long-context model other than the one requested",
+      "claude-fable-5-1[1m]",
+      "claude-opus-5",
+      "claude-fable-5-1[1m]",
+    ],
+    ["a model with no long-context suffix", "claude-haiku-4-5", "claude-opus-5", "claude-haiku-4-5"],
+  ])("records as served %s", async (_case, servedKey, requested, expected) => {
+    const output = await served({ [servedKey]: used }, requested);
+    expect(output).toEqual({ responseId: "provider-message", responseModel: expected });
+  });
 
+  it("does not invent a served model when the SDK result has no unambiguous model table", async () => {
+    const output = await served({ "claude-opus-4-8": {}, "claude-sonnet-4-6": {} });
     expect(output).toEqual({ responseId: "provider-message" });
   });
 
@@ -966,58 +945,60 @@ describe("the Pi Claude bridge CLI-owned builtin boundary", () => {
     return context;
   };
 
-  it("lets the CLI execute its named builtin without forwarding another Pi call", async () => {
-    const context = await driveToolCall("WebSearch", { builtinTools: ["WebSearch"] });
-    // The CLI runs WebSearch and receives its result inside its own loop. Forwarding the call to Pi
-    // would reject a tool that already ran, so the bridge returns the remaining text.
-    expect(context.turnBlocks.map((block) => block.type)).toEqual(["text"]);
-    expect(context.turnSawToolCall).toBe(false);
-    expect(context.turnToolCallIds).toEqual([]);
-    expect(context.turnOutput?.stopReason).toBe("stop");
-  });
-
-  // Runs w28 and w30 recorded `web-search:claude` on every case and could not show one search: the
-  // result stays inside the CLI, whose transcript is removed with the worker configuration directory. The
-  // host observes the call here so the built trace can carry it.
-  it("reports a CLI-owned builtin call to the host observer", async () => {
+  // The CLI runs its own builtin and receives the result inside its own loop, and that result is
+  // gone with the worker's configuration directory; so the call is reported to the host observer
+  // for the Built trace, and kept out of pi, which would reject a tool that already ran.
+  it.each<{
+    tool: string;
+    builtins: string[];
+    observed: string[];
+    blocks: Array<"text" | "toolCall">;
+    toPi: string[];
+    stop: StopReason;
+  }>([
+    {
+      tool: "WebSearch",
+      builtins: ["WebSearch"],
+      observed: ["WebSearch"],
+      blocks: ["text"],
+      toPi: [],
+      stop: "stop",
+    },
+    {
+      tool: MCP_WRITE,
+      builtins: ["WebSearch"],
+      observed: [],
+      blocks: ["toolCall", "text"],
+      toPi: ["call-1"],
+      stop: "toolUse",
+    },
+    {
+      tool: MCP_WRITE,
+      builtins: [],
+      observed: [],
+      blocks: ["toolCall", "text"],
+      toPi: ["call-1"],
+      stop: "toolUse",
+    },
+  ])("routes $tool with CLI builtins $builtins to Pi only when the CLI does not own it", async (row) => {
     const seen: Array<{ name: string; id: string; input: unknown }> = [];
-    const context = await driveToolCall("WebSearch", {
-      builtinTools: ["WebSearch"],
+    const context = await driveToolCall(row.tool, {
+      builtinTools: row.builtins,
       onBuiltinTool: (call) => seen.push(call),
     });
-    expect(seen).toEqual([{ name: "WebSearch", id: "call-1", input: { query: "public fact" } }]);
-    // Observation only: the call still stays out of pi's registry and off the turn's tool list.
-    expect(context.turnSawToolCall).toBe(false);
-    expect(context.turnToolCallIds).toEqual([]);
-  });
-
-  it("reports nothing to the observer for a tool the CLI does not own", async () => {
-    const seen: string[] = [];
-    await driveToolCall(MCP_WRITE, {
-      builtinTools: ["WebSearch"],
-      onBuiltinTool: (call) => seen.push(call.name),
-    });
-    expect(seen).toEqual([]);
-  });
-
-  it("still hands a tool the CLI does not own to Pi, including under the same settings", async () => {
-    const context = await driveToolCall(MCP_WRITE, { builtinTools: ["WebSearch"] });
-    expect(context.turnBlocks.map((block) => block.type)).toEqual(["toolCall", "text"]);
-    expect(context.turnSawToolCall).toBe(true);
-    expect(context.turnToolCallIds).toEqual(["call-1"]);
-    expect(context.turnOutput?.stopReason).toBe("toolUse");
-  });
-
-  it("forwards an MCP tool to Pi when no CLI builtin is registered", async () => {
-    const context = await driveToolCall(MCP_WRITE, {});
-    expect(context.turnSawToolCall).toBe(true);
-    expect(context.turnToolCallIds).toEqual(["call-1"]);
+    expect(seen).toEqual(
+      row.observed.map((name) => ({ name, id: "call-1", input: { query: "public fact" } })),
+    );
+    expect(context.turnBlocks.map((block) => block.type)).toEqual(row.blocks);
+    expect(context.turnSawToolCall).toBe(row.toPi.length > 0);
+    expect(context.turnToolCallIds).toEqual(row.toPi);
+    expect(context.turnOutput?.stopReason).toBe(row.stop);
   });
 
   it("leaves a call the CLI cannot route to the CLI, so the model's next valid call still reaches Pi", async () => {
-    // Truss run 298967 (2026-09-15): the model called a bare `bash`, the CLI answered "No such tool
-    // available: bash" and the model retried through the MCP tool. Forwarding the bare call ran it in pi
-    // and closed the stream, so the retry never reached pi and its handler waited until the silence wall.
+    // The CLI answers a bare `bash` with "No such tool available" and the model retries through the
+    // MCP tool. Forwarding the bare call would run it in pi and close the stream, so the retry would
+    // never reach pi and its handler would wait until the silence wall.
     const assistant = (id: string, name: string) => ({
       type: "assistant",
       message: {
@@ -1073,59 +1054,22 @@ describe("the Pi Claude bridge delivers one turn translation on both paths", () 
     const whole = await drive([
       { type: "assistant", message: { id: "msg-1", model: "claude-opus-5", content: blocks } },
     ]);
+    const delta = (index: number, value: NonNullable<SdkStreamEvent["delta"]>) =>
+      streamed({ type: CONTENT_BLOCK_DELTA, index, delta: value });
     const piecemeal = await drive([
-      {
-        type: STREAM_EVENT,
-        event: { type: "message_start", message: { id: "msg-1", model: "claude-opus-5" } },
-      },
-      {
-        type: STREAM_EVENT,
-        event: { type: CONTENT_BLOCK_START, index: 0, content_block: { type: "thinking" } },
-      },
-      {
-        type: STREAM_EVENT,
-        event: {
-          type: CONTENT_BLOCK_DELTA,
-          index: 0,
-          delta: { type: "thinking_delta", thinking: "weigh " },
-        },
-      },
-      {
-        type: STREAM_EVENT,
-        event: { type: CONTENT_BLOCK_DELTA, index: 0, delta: { type: "thinking_delta", thinking: "it" } },
-      },
-      {
-        type: STREAM_EVENT,
-        event: {
-          type: CONTENT_BLOCK_DELTA,
-          index: 0,
-          delta: { type: "signature_delta", signature: "sig" },
-        },
-      },
-      { type: STREAM_EVENT, event: { type: CONTENT_BLOCK_STOP, index: 0 } },
-      {
-        type: STREAM_EVENT,
-        event: { type: CONTENT_BLOCK_START, index: 1, content_block: { type: "text" } },
-      },
-      {
-        type: STREAM_EVENT,
-        event: { type: CONTENT_BLOCK_DELTA, index: 1, delta: { type: "text_delta", text: "the fact " } },
-      },
-      {
-        type: STREAM_EVENT,
-        event: { type: CONTENT_BLOCK_DELTA, index: 1, delta: { type: "text_delta", text: "is 42" } },
-      },
-      { type: STREAM_EVENT, event: { type: CONTENT_BLOCK_STOP, index: 1 } },
-      {
-        type: STREAM_EVENT,
-        event: {
-          type: CONTENT_BLOCK_START,
-          index: 2,
-          content_block: { type: TOOL_USE, id: "call-1", name: MCP_WRITE, input: { answer: "42" } },
-        },
-      },
-      { type: STREAM_EVENT, event: { type: CONTENT_BLOCK_STOP, index: 2 } },
-      { type: STREAM_EVENT, event: { type: "message_stop" } },
+      streamed({ type: "message_start", message: { id: "msg-1", model: "claude-opus-5" } }),
+      streamed({ type: CONTENT_BLOCK_START, index: 0, content_block: { type: "thinking" } }),
+      delta(0, { type: "thinking_delta", thinking: "weigh " }),
+      delta(0, { type: "thinking_delta", thinking: "it" }),
+      delta(0, { type: "signature_delta", signature: "sig" }),
+      streamed({ type: CONTENT_BLOCK_STOP, index: 0 }),
+      streamed({ type: CONTENT_BLOCK_START, index: 1, content_block: { type: "text" } }),
+      delta(1, { type: "text_delta", text: "the fact " }),
+      delta(1, { type: "text_delta", text: "is 42" }),
+      streamed({ type: CONTENT_BLOCK_STOP, index: 1 }),
+      streamed({ type: CONTENT_BLOCK_START, index: 2, content_block: blocks[2]! }),
+      streamed({ type: CONTENT_BLOCK_STOP, index: 2 }),
+      streamed({ type: "message_stop" }),
     ]);
 
     expect(summarize(piecemeal.events)).toEqual(summarize(whole.events));

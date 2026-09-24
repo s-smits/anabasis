@@ -211,73 +211,62 @@ describe("a payload the transport cannot carry", () => {
 });
 
 describe("what a ready frame has to agree with", () => {
-  const start =
-    (registrationValue: BuiltStarterRegistration, checkpointValue = checkpoint()) =>
-    () =>
-      roundTrip(ready({ registration: registrationValue, checkpoint: checkpointValue }));
+  const writer = (name: string) => ({
+    name,
+    owner: "domain" as const,
+    authority: "artifact-writer" as const,
+  });
 
   it("carries a registration whose writers are the names it declares", () => {
     const consistent = registration({
-      tools: [
-        { name: "submit_truss", owner: "domain", authority: "artifact-writer" },
-        { name: "read_task", owner: "controller", authority: "reader" },
-      ],
+      tools: [writer("submit_truss"), { name: "read_task", owner: "controller", authority: "reader" }],
       artifactWriterNames: ["submit_truss"],
     });
-    expect(start(consistent)().type).toBe("ready");
+    expect(roundTrip(ready({ registration: consistent })).type).toBe("ready");
   });
 
-  it("refuses an artifact writer the declared names leave out", () => {
-    const hidden = registration({
-      tools: [{ name: "submit_truss", owner: "domain", authority: "artifact-writer" }],
-      artifactWriterNames: [],
-    });
-    expect(refusal(start(hidden)).message).toContain("payload is invalid");
-  });
-
-  it("refuses a declared name no registered tool answers to", () => {
-    const phantom = registration({ artifactWriterNames: ["submit_truss"] });
-    expect(refusal(start(phantom)).message).toContain("payload is invalid");
-  });
-
-  it("refuses two tools registered under one name", () => {
-    const duplicate = registration({
-      tools: [
-        { name: "read_task", owner: "controller", authority: "reader" },
-        { name: "read_task", owner: "domain", authority: "reader" },
-      ],
-    });
-    expect(refusal(start(duplicate)).message).toContain("payload is invalid");
-  });
-
-  it("refuses writer names out of order, so one registration has one spelling", () => {
-    const unsorted = registration({
-      tools: [
-        { name: "write_b", owner: "domain", authority: "artifact-writer" },
-        { name: "write_a", owner: "domain", authority: "artifact-writer" },
-      ],
-      artifactWriterNames: ["write_b", "write_a"],
-    });
-    expect(refusal(start(unsorted)).message).toContain("payload is invalid");
-  });
-
-  it("refuses a worker that reports no execution wall", () => {
-    expect(refusal(() => roundTrip(ready({ execWall: "none" })))).toBeInstanceOf(
-      GeneratedToolWorkerNonResult,
-    );
-  });
-
-  it("refuses a probe outcome that is neither proved, violated nor a non-result", () => {
-    const probe = { ...PROBE, networkRefused: { status: "skipped", code: "n/a" } };
-    expect(refusal(() => roundTrip(ready({ probe })))).toBeInstanceOf(GeneratedToolWorkerNonResult);
+  it.each<[string, ReadyOverrides]>([
+    [
+      "an artifact writer the declared names leave out",
+      { registration: registration({ tools: [writer("submit_truss")], artifactWriterNames: [] }) },
+    ],
+    [
+      "a declared name no registered tool answers to",
+      { registration: registration({ artifactWriterNames: ["submit_truss"] }) },
+    ],
+    [
+      "two tools registered under one name",
+      {
+        registration: registration({
+          tools: [
+            { name: "read_task", owner: "controller", authority: "reader" },
+            { name: "read_task", owner: "domain", authority: "reader" },
+          ],
+        }),
+      },
+    ],
+    [
+      "writer names out of order, so one registration has one spelling",
+      {
+        registration: registration({
+          tools: [writer("write_b"), writer("write_a")],
+          artifactWriterNames: ["write_b", "write_a"],
+        }),
+      },
+    ],
+    ["a worker that reports no execution wall", { execWall: "none" }],
+    [
+      "a probe outcome that is neither proved, violated nor a non-result",
+      { probe: { ...PROBE, networkRefused: { status: "skipped", code: "n/a" } } },
+    ],
+  ])("refuses %s", (_case, overrides) => {
+    expect(refusal(() => roundTrip(ready(overrides))).message).toContain("payload is invalid");
   });
 });
 
 describe("what a checkpoint has to agree with", () => {
-  const carry = (value: BuiltStarterCheckpoint) => () => {
-    roundTrip(toolResult("ok"));
-    return roundTrip({ type: "materialization_result", requestId: "r1", checkpoint: value });
-  };
+  const carry = (value: BuiltStarterCheckpoint) => () =>
+    roundTrip({ type: "materialization_result", requestId: "r1", checkpoint: value });
 
   const record = (sourceSeq: number) => ({
     artifactJson: "{}",
@@ -287,40 +276,43 @@ describe("what a checkpoint has to agree with", () => {
     callId: "c1",
   });
 
-  it("carries a current materialization written at the draft the checkpoint reports", () => {
-    const value = checkpoint({ draftSeq: 4, materialization: { state: "current", record: record(4) } });
-    expect(carry(value)()).toBeTruthy();
+  it.each([
+    [
+      "a current materialization written at the draft the checkpoint reports",
+      4,
+      { state: "current", record: record(4) },
+    ],
+    [
+      "a stale materialization the draft has moved past",
+      6,
+      { state: "stale", record: record(4), currentSeq: 6 },
+    ],
+  ] as const)("carries %s", (_case, draftSeq, materialization) => {
+    const value = checkpoint({ draftSeq, materialization });
+    expect(carry(value)()).toEqual({ type: "materialization_result", requestId: "r1", checkpoint: value });
   });
 
-  it("refuses a current materialization written at another draft", () => {
-    const value = checkpoint({ draftSeq: 5, materialization: { state: "current", record: record(4) } });
+  it.each([
+    [
+      "a current materialization written at another draft",
+      checkpoint({ draftSeq: 5, materialization: { state: "current", record: record(4) } }),
+    ],
+    [
+      "a stale materialization that is not actually behind",
+      checkpoint({ draftSeq: 4, materialization: { state: "stale", record: record(4), currentSeq: 4 } }),
+    ],
+    [
+      "an artifact past the recorded answer's own byte limit",
+      checkpoint({
+        materialization: {
+          state: "current",
+          record: { ...record(0), artifactJson: "x".repeat(ARTIFACT_JSON_MAX_BYTES + 1) },
+        },
+      }),
+    ],
+    ["a turn number below the first turn", checkpoint({ turn: 0 })],
+  ])("refuses %s", (_case, value) => {
     expect(refusal(carry(value)).message).toContain("payload is invalid");
-  });
-
-  it("carries a stale materialization the draft has moved past", () => {
-    const value = checkpoint({
-      draftSeq: 6,
-      materialization: { state: "stale", record: record(4), currentSeq: 6 },
-    });
-    expect(carry(value)()).toBeTruthy();
-  });
-
-  it("refuses a stale materialization that is not actually behind", () => {
-    const value = checkpoint({
-      draftSeq: 4,
-      materialization: { state: "stale", record: record(4), currentSeq: 4 },
-    });
-    expect(refusal(carry(value)).message).toContain("payload is invalid");
-  });
-
-  it("refuses an artifact past the recorded answer's own byte limit", () => {
-    const big = { ...record(0), artifactJson: "x".repeat(ARTIFACT_JSON_MAX_BYTES + 1) };
-    const value = checkpoint({ materialization: { state: "current", record: big } });
-    expect(refusal(carry(value))).toBeInstanceOf(GeneratedToolWorkerNonResult);
-  });
-
-  it("refuses a turn number below the first turn", () => {
-    expect(refusal(carry(checkpoint({ turn: 0 })))).toBeInstanceOf(GeneratedToolWorkerNonResult);
   });
 });
 
@@ -333,18 +325,12 @@ describe("the file map a command hands back", () => {
     expect(carried.type).toBe("files_result");
   });
 
-  it("refuses a path that climbs out of the draft", () => {
-    expect(refusal(files({ "../escape.txt": "x" })).message).toContain("payload is invalid");
-  });
-
-  it("refuses an absolute path", () => {
-    expect(refusal(files({ "/etc/passwd": "x" })).message).toContain("payload is invalid");
-  });
-
-  it("refuses one file past the transport's per-file ceiling", () => {
-    expect(refusal(files({ "big.txt": "x".repeat(BUILT_FILE_MAX_CHARS + 1) }))).toBeInstanceOf(
-      GeneratedToolWorkerNonResult,
-    );
+  it.each([
+    ["a path that climbs out of the draft", { "../escape.txt": "x" }],
+    ["an absolute path", { "/etc/passwd": "x" }],
+    ["one file past the transport's per-file ceiling", { "big.txt": "x".repeat(BUILT_FILE_MAX_CHARS + 1) }],
+  ])("refuses %s", (_case, value) => {
+    expect(refusal(files(value)).message).toContain("payload is invalid");
   });
 });
 
@@ -382,34 +368,36 @@ describe("a parent frame the child can trust", () => {
     expect(parseGeneratedToolParentFrame(serializeGeneratedToolParentFrame(start).trimEnd())).toEqual(start);
   });
 
-  it("refuses the same fields in another order", () => {
-    const reordered = JSON.stringify({ type: "materialization", requestId: "r1" });
-    expect(() => parseGeneratedToolParentFrame(reordered)).toThrow("not canonical");
-  });
-
-  it("refuses a field the message does not carry, even beside a valid one", () => {
-    const extra = JSON.stringify({ note: "hello", requestId: "r1", type: "materialization" });
-    expect(() => parseGeneratedToolParentFrame(extra)).toThrow("invalid frame");
-  });
-
-  it("refuses bytes that are not JSON", () => {
-    expect(() => parseGeneratedToolParentFrame("{")).toThrow("malformed JSONL");
-  });
-
-  it("refuses a message type the protocol does not name", () => {
-    expect(() => parseGeneratedToolParentFrame(JSON.stringify({ type: "shutdown" }))).toThrow(
+  it.each([
+    [
+      "the same fields in another order",
+      JSON.stringify({ type: "materialization", requestId: "r1" }),
+      "not canonical",
+    ],
+    [
+      "a field the message does not carry, even beside a valid one",
+      JSON.stringify({ note: "hello", requestId: "r1", type: "materialization" }),
       "invalid frame",
-    );
-  });
-
-  it("refuses a start frame from another protocol version", () => {
-    const line = JSON.stringify({ protocol: "generated-tool-worker/v2", type: "start" });
-    expect(() => parseGeneratedToolParentFrame(line)).toThrow("invalid frame");
-  });
-
-  it("refuses an applied file map with an unsafe path", () => {
-    const line = JSON.stringify({ files: { "../out.txt": "x" }, requestId: "r1", type: "apply_files" });
-    expect(() => parseGeneratedToolParentFrame(line)).toThrow("invalid frame");
+    ],
+    ["bytes that are not JSON", "{", "malformed JSONL"],
+    ["a message type the protocol does not name", JSON.stringify({ type: "shutdown" }), "invalid frame"],
+    [
+      "a start frame from another protocol version",
+      JSON.stringify({ protocol: "generated-tool-worker/v2", type: "start" }),
+      "invalid frame",
+    ],
+    [
+      "an applied file map with an unsafe path",
+      JSON.stringify({ files: { "../out.txt": "x" }, requestId: "r1", type: "apply_files" }),
+      "invalid frame",
+    ],
+    [
+      "a line past the ceiling, before parsing it",
+      `"${"x".repeat(GENERATED_TOOL_FRAME_MAX_BYTES)}"`,
+      "byte limit",
+    ],
+  ])("refuses %s", (_case, line, message) => {
+    expect(() => parseGeneratedToolParentFrame(line)).toThrow(message);
   });
 
   it("refuses to write a frame past the ceiling rather than truncating it", () => {
@@ -419,12 +407,6 @@ describe("a parent frame the child can trust", () => {
       files: { "a.txt": "x".repeat(GENERATED_TOOL_FRAME_MAX_BYTES) },
     };
     expect(refusal(() => serializeGeneratedToolParentFrame(huge)).kind).toBe("protocol");
-  });
-
-  it("refuses to read a line past the ceiling before parsing it", () => {
-    expect(() => parseGeneratedToolParentFrame(`"${"x".repeat(GENERATED_TOOL_FRAME_MAX_BYTES)}"`)).toThrow(
-      "byte limit",
-    );
   });
 });
 

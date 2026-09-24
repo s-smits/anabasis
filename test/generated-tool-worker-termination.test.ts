@@ -37,7 +37,10 @@ describe("what stops a close from being an ordinary one", () => {
   });
 
   it("refuses a close with a request still in flight, which the protocol owns", () => {
-    expect(closeRefusal("done", 1)).toMatchObject({ kind: "protocol" });
+    expect(closeRefusal("done", 1)).toMatchObject({
+      kind: "protocol",
+      message: expect.stringContaining("pending"),
+    });
   });
 
   it("names the unready worker before the pending request, since it explains the request too", () => {

@@ -29,11 +29,16 @@ afterAll(() => {
   for (const dir of [claudeDir, ...projects]) rmSync(dir, { recursive: true, force: true });
 });
 
-/** A continuity owner and a project directory of its own, so no case sees another's files. */
-function bridge() {
+function project(): string {
   const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
   projects.push(cwd);
-  return { continuity: sessionContinuity(claudeDir), cwd };
+  return cwd;
+}
+
+/** A continuity owner, with the CLI's token budget when given, and a project directory of its
+ *  own, so no case sees another's files. */
+function bridge(budget?: number) {
+  return { continuity: sessionContinuity(claudeDir, budget), cwd: project() };
 }
 
 function piUser(text: string): PiMessage {
@@ -58,6 +63,24 @@ function piAssistant(text: string): PiMessage {
     stopReason: "stop",
     timestamp: 0,
   };
+}
+
+/** One tool call and the result pi holds for it. */
+function piCall(name: string, result: string): PiMessage[] {
+  // SAFETY: the fixture builds pi's AssistantMessage arm around one tool call.
+  const call = {
+    ...piAssistant(""),
+    content: [{ type: "toolCall", id: name, name, arguments: {} }],
+  } as PiMessage;
+  const done: PiMessage = {
+    role: "toolResult",
+    toolCallId: name,
+    toolName: name,
+    content: [{ type: "text", text: result }],
+    isError: false,
+    timestamp: 0,
+  };
+  return [call, done];
 }
 
 /** One exchange per pair, so a history of n pairs is 2n prior messages. */
@@ -99,26 +122,12 @@ describe("the first turn", () => {
 
   it("carries the caller's tool names into the replayed history", () => {
     const { continuity, cwd } = bridge();
-    // SAFETY: the fixture builds pi's AssistantMessage arm around one tool call.
-    const call = {
-      role: "assistant",
-      content: [{ type: "toolCall", id: "c1", name: "truss_solve", arguments: {} }],
-      api: "anthropic",
-      provider: "claude-bridge",
-      model: "m",
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "stop",
-      timestamp: 0,
-    } as PiMessage;
     const tools = new Map([["truss_solve", "mcp__pi__truss_solve"]]);
-    const { sessionId } = continuity.sync([piUser("solve it"), call], cwd, tools);
+    const { sessionId } = continuity.sync(
+      [piUser("solve it"), ...piCall("truss_solve", "solved")],
+      cwd,
+      tools,
+    );
     expect(sessionText(cwd, sessionId!)).toContain("mcp__pi__truss_solve");
   });
 });
@@ -192,8 +201,7 @@ describe("a turn that moved to another directory", () => {
     // another project asks the CLI for a conversation that is not there.
     const { continuity, cwd } = bridge();
     const first = continuity.sync(exchange(2), cwd);
-    const elsewhere = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(elsewhere);
+    const elsewhere = project();
 
     const second = continuity.sync(exchange(2), elsewhere);
     expect(second.sessionId).not.toBe(first.sessionId);
@@ -209,9 +217,8 @@ describe("a rewrite under a token budget", () => {
   // The bridge passes the CLI's compaction window: pi's history outgrows it while the CLI compacts,
   // and a rewrite carries zero usage, so the CLI would send all of it before it could compact.
   it("keeps the newest messages that fit, behind one note naming how many were left out", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const { sessionId } = sessionContinuity(claudeDir, 60).sync(exchange(20), cwd);
+    const { continuity, cwd } = bridge(60);
+    const { sessionId } = continuity.sync(exchange(20), cwd);
     const text = sessionText(cwd, sessionId!);
     expect(text).toContain("answer 19");
     expect(text).not.toContain('answer 0"');
@@ -221,49 +228,27 @@ describe("a rewrite under a token budget", () => {
   });
 
   it("rewrites the whole history when it fits", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const { sessionId } = sessionContinuity(claudeDir, 10_000).sync(exchange(20), cwd);
+    const { continuity, cwd } = bridge(10_000);
+    const { sessionId } = continuity.sync(exchange(20), cwd);
     const text = sessionText(cwd, sessionId!);
     expect(text).toContain('answer 0"');
     expect(text).not.toContain("were left out");
   });
 
   it("keeps the newest message even when it alone is over the budget", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const { sessionId } = sessionContinuity(claudeDir, 1).sync(exchange(2), cwd);
+    const { continuity, cwd } = bridge(1);
+    const { sessionId } = continuity.sync(exchange(2), cwd);
     const text = sessionText(cwd, sessionId!);
     expect(text).toContain("answer 1");
     expect(text).toContain("[3 earlier messages");
   });
 });
 
-/** One tool call and the result pi holds for it. */
-function piCall(name: string, result: string): PiMessage[] {
-  // SAFETY: the fixture builds pi's AssistantMessage arm around one tool call.
-  const call = {
-    ...piAssistant(""),
-    content: [{ type: "toolCall", id: name, name, arguments: {} }],
-  } as PiMessage;
-  const done: PiMessage = {
-    role: "toolResult",
-    toolCallId: name,
-    toolName: name,
-    content: [{ type: "text", text: result }],
-    isError: false,
-    timestamp: 0,
-  };
-  return [call, done];
-}
-
 describe("an abort when the CLI compacts its own session", () => {
   // The bridge passes a budget exactly when the CLI compacts. Pi then never does, so its history is
   // the whole run while the session the CLI compacted is what the model saw.
   it("forks the stopped session instead of rewriting pi's whole history", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const continuity = sessionContinuity(claudeDir, 10_000);
+    const { continuity, cwd } = bridge(10_000);
     const first = continuity.sync(exchange(2), cwd);
     const written = sessionText(cwd, first.sessionId!);
 
@@ -282,9 +267,7 @@ describe("an abort when the CLI compacts its own session", () => {
   });
 
   it("resumes the fork afterwards like any session", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const continuity = sessionContinuity(claudeDir, 10_000);
+    const { continuity, cwd } = bridge(10_000);
     continuity.sync(exchange(2), cwd);
     continuity.aborted();
     const history = [...exchange(2), ...piCall("submit", "accepted")];
@@ -296,9 +279,7 @@ describe("an abort when the CLI compacts its own session", () => {
   });
 
   it("still rewrites when a steer never reached the session", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "pi-bridge-cwd-"));
-    projects.push(cwd);
-    const continuity = sessionContinuity(claudeDir, 10_000);
+    const { continuity, cwd } = bridge(10_000);
     const first = continuity.sync(exchange(2), cwd);
 
     continuity.rebuildNextTurn();

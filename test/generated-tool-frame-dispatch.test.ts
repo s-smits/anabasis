@@ -94,51 +94,31 @@ describe("a request the session is not ready for", () => {
     expect(refusal.kind).toBe("protocol");
   });
 
-  it("refuses a second start while the first is still starting", () => {
-    expect(refusalOf(line(START), "starting").error).toContain("initialized twice");
-  });
-
-  it("refuses a second start after the toolset exists", () => {
-    expect(refusalOf(line(START), "ready").error).toContain("initialized twice");
+  it.each<SessionPhase>(["starting", "ready"])("refuses a second start once the session is %s", (phase) => {
+    expect(refusalOf(line(START), phase).error).toContain("initialized twice");
   });
 });
 
 describe("a line the protocol cannot read", () => {
-  it("names bytes that are not JSON as malformed", () => {
-    expect(refusalOf("{", "ready").error).toContain("malformed JSONL");
+  it.each([
+    ["bytes that are not JSON as malformed", "{", "malformed JSONL"],
+    // The canonical spelling orders keys, so this is the right fields in the wrong order.
+    ["a non-canonical spelling as that", `{"type":"materialization","requestId":"r1"}`, "not canonical"],
+    ["a message type the protocol does not have as an invalid frame", `{"type":"shutdown"}`, "invalid frame"],
+    ["a line past the frame ceiling without parsing it", `"${"x".repeat(4 * 1024 * 1024)}"`, "byte limit"],
+  ])("names %s", (_case, text, message) => {
+    const refusal = refusalOf(text, "ready");
+    expect(refusal.error).toContain(message);
+    if (message !== "malformed JSONL") expect(refusal.error).not.toContain("malformed");
   });
 
-  it("names a non-canonical spelling as that, not as malformed", () => {
-    const canonical = line({ type: "materialization", requestId: "r1" });
-    const reordered = `{"type":"materialization","requestId":"r1"}`;
-    expect(canonical).not.toBe(reordered);
-    const refusal = refusalOf(reordered, "ready");
-    expect(refusal.error).toContain("not canonical");
-    expect(refusal.error).not.toContain("malformed");
-  });
-
-  it("names a message type the protocol does not have as an invalid frame", () => {
-    const refusal = refusalOf(`{"type":"shutdown"}`, "ready");
-    expect(refusal.error).toContain("invalid frame");
-    expect(refusal.error).not.toContain("malformed");
-  });
-
-  it("refuses a start frame whose protocol version is not this one", () => {
-    // The version is a literal in the frame schema, so a mismatch fails to match the start
-    // arm at all. The worker needs no second check of its own: both ends read the version
-    // from one constant, and a frame that disagrees came from a different build.
-    const stale = line(START).replace(GENERATED_TOOL_PROTOCOL, "generated-tool-worker/v2");
-    expect(refusalOf(stale, "new").error).toContain("invalid frame");
-  });
-
-  it("refuses a start frame whose secret is not a digest", () => {
-    const weak = line(START).replace(`"${"a".repeat(64)}"`, `"hunter2"`);
-    expect(refusalOf(weak, "new").error).toContain("invalid frame");
-  });
-
-  it("refuses a line past the frame ceiling without parsing it", () => {
-    const oversized = `"${"x".repeat(4 * 1024 * 1024)}"`;
-    expect(refusalOf(oversized, "ready").error).toContain("byte limit");
+  it.each([
+    // The version is a literal in the frame schema, so a mismatch fails to match the start arm
+    // at all: both ends read it from one constant, and a frame that disagrees is another build.
+    ["protocol version is not this one", [GENERATED_TOOL_PROTOCOL, "generated-tool-worker/v2"]],
+    ["secret is not a digest", [`"${"a".repeat(64)}"`, `"hunter2"`]],
+  ] as const)("refuses a start frame whose %s", (_case, [from, to]) => {
+    expect(refusalOf(line(START).replace(from, to), "new").error).toContain("invalid frame");
   });
 });
 

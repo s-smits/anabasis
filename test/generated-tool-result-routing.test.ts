@@ -106,8 +106,10 @@ describe("a tool's own failure, which the session survives", () => {
   it("still refuses a failure where the controller was preparing the trusted answer", () => {
     // `materialization` is the controller's own request, not the solver's. A worker that
     // answers it with a request error has broken the contract rather than failed a call.
-    const verdict = admitResult(failed, "materialization_result", HELD);
-    expect(verdict.act).toBe("refuse");
+    expect(admitResult(failed, "materialization_result", HELD)).toMatchObject({
+      act: "refuse",
+      error: "trusted answer preparation returned a request error",
+    });
   });
 });
 
@@ -143,7 +145,10 @@ describe("a frame that ends the session", () => {
   it("refuses the same roster spelled in another order, since the order is the identity", () => {
     const held = checkpoint({ artifactWriterNames: ["write_a", "write_b"] });
     const swapped = checkpoint({ artifactWriterNames: ["write_b", "write_a"] });
-    expect(admitResult(toolResult({ checkpoint: swapped }), TOOL_RESULT, held).act).toBe("refuse");
+    expect(admitResult(toolResult({ checkpoint: swapped }), TOOL_RESULT, held)).toMatchObject({
+      act: "refuse",
+      error: "checkpoint artifact-writer identity drifted",
+    });
   });
 
   it("refuses a reply of the wrong kind, even with a checkpoint it would have taken", () => {

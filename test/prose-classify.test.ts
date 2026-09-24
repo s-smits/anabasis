@@ -16,7 +16,12 @@ const dirs: string[] = [];
 const classEntries: Array<[string, string[]]> = Object.entries(CLASSES);
 const anchorClass = new Map<string, number>();
 type Submit = { kind: string; turn: number; atMs: number; outcome: string; stage?: string | null };
-type Row = { turn: number; atMs: number; kind: "message" | "reasoning"; text: string };
+type Row = {
+  turn: number;
+  atMs: number;
+  kind: "message" | "reasoning" | "prompt" | "compaction";
+  text: string;
+};
 /**
  * The execution-record fields a test may override; the session outcome decides whether its rows
  * count as evidence.
@@ -78,7 +83,7 @@ function writeEpoch(rows: Row[], submits: Submit[], extra: Partial<Execution> = 
     omitted: 0,
   };
   const lines = rows.map((row, index) => ({
-    schema: "builder-prose/v1",
+    schema: "builder-prose/v2",
     sequence: index + 1,
     ...row,
     chars: row.text.length,
@@ -91,7 +96,7 @@ function writeEpoch(rows: Row[], submits: Submit[], extra: Partial<Execution> = 
   writeFileSync(
     join(epochDir, "builder-execution.json"),
     JSON.stringify({
-      schema: "builder-execution/v5",
+      schema: "builder-execution/v6",
       proseCapture: {
         schema: "builder-prose-capture/v1",
         captureId,
@@ -212,6 +217,25 @@ describe("prose posture classifier", () => {
     expect(text).toContain("#3 disputing-verifier?: row three: disputing");
     expect(text).toContain("[running-checks → workaround]");
   });
+  it("classifies only the Builder's own words, never the controller's prompt or a compaction", async () => {
+    // The fake embedder throws on any text without a fixture vector, so embedding either of the
+    // two controller rows fails the classification outright.
+    const epochDir = writeEpoch(
+      [
+        { turn: 1, atMs: 500, kind: "prompt", text: "Build the harness for this request." },
+        ...ROWS,
+        { turn: 1, atMs: 9500, kind: "compaction", text: "tokensBefore=90000 compacted=true" },
+      ],
+      SUBMITS,
+    );
+    const result = await classifyTarget(epochDir, {
+      embed: fakeEmbed(VECTORS),
+      window: 2,
+      priorsFile: join(epochDir, "none.json"),
+    });
+    expect(result.state).toBe("classified");
+    expect(result.rows).toHaveLength(ROWS.length);
+  });
 
   it("attaches corpus priors bound to the anchor digest and marks other priors stale", async () => {
     const epochDir = writeEpoch(ROWS, SUBMITS);
@@ -274,7 +298,7 @@ describe("prose posture classifier", () => {
     mkdirSync(join(epochDir, "epoch-0123456789ab"));
     writeFileSync(
       join(epochDir, "epoch-0123456789ab", "builder-execution.json"),
-      JSON.stringify({ schema: "builder-execution/v5", proseOmitted: 0, submits: [] }),
+      JSON.stringify({ schema: "builder-execution/v6", proseOmitted: 0, submits: [] }),
     );
     const result = await classifyTarget(epochDir, { embed: fakeEmbed(new Map()) });
     expect(result.state).toBe("no-prose");
@@ -443,7 +467,7 @@ describe("prose posture classifier", () => {
         omitted: 0,
       };
       const row = {
-        schema: "builder-prose/v1",
+        schema: "builder-prose/v2",
         sequence: 1,
         turn: 1,
         atMs: 1000,
@@ -456,7 +480,7 @@ describe("prose posture classifier", () => {
       writeFileSync(
         join(epoch, executionFile),
         JSON.stringify({
-          schema: "builder-execution/v5",
+          schema: "builder-execution/v6",
           backend: "codex",
           writtenAt,
           durationMs,

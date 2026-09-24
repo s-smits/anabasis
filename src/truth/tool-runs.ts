@@ -4,6 +4,7 @@
  * returned result, an executed run is the only thing that grounds an external check, and a
  * runtimeNonResult without host evidence cannot establish an environment failure.
  */
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import type {
   ExecutedCheckBinding,
@@ -91,6 +92,7 @@ export function executionEvidence(verifier: VerifierHostHandle): ExternalExecuti
             kind: entry.kind,
             interpreter: entry.interpreter,
             ...interpreter,
+            ...keyIfDefined("packages", entry.packages === undefined ? undefined : [...entry.packages]),
           },
         ];
       }),

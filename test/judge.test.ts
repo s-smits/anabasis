@@ -1,7 +1,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "../src/backends/backend-types.ts";
-import { validateJudgeEvidence } from "../src/claim/judge.ts";
+import { evaluatorIndependence } from "../src/claim/calibration.ts";
+import { judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import { JudgeCensus, type JudgeCensusSubject } from "../src/truth/judge-census.ts";
 import { runJudgePhase } from "../src/truth/judge-phase.ts";
 import {
@@ -44,8 +45,8 @@ const REQUEST: JudgeRequest = {
   submittedArtifact: { route: ["a", "b"] },
 };
 
-/** The evaluated (built-agent) pin every aggregation test uses; a different family from the
- *  scripted judge pin so the baseline evidence read independence:"different-family". */
+/** The evaluated (built-agent) pin every aggregation test uses, a different family from the
+ *  scripted judge pin. */
 const EVALUATED_PIN = "codex/gpt-5.5";
 
 /** One tri-state attempt, stated by the fields that differ. Every judge answer carries all seven,
@@ -567,35 +568,6 @@ describe("the judge battery review", () => {
     ).toEqual(["c1", "c5"]);
   });
 
-  it("a session declaring a wider census sends one wave, and the abort then records it instead of shortening it", async () => {
-    // A reviewer that spends nothing may take the whole census at once. The price is that the
-    // consecutive-error stop has no next batch left to refuse, so it must still write its evidence.
-    const writtenWhenInvoked: number[] = [];
-    const written: string[] = [];
-    const census = new JudgeCensus(
-      {
-        pin: "free/judge",
-        maxConcurrency: 64,
-        invoke: async () => {
-          writtenWhenInvoked.push(written.length);
-          return attempt({ error: "degraded", errorKind: "provider", turns: 0 });
-        },
-      },
-      (path) => written.push(path),
-    );
-    const result = await census.run(subjects(8));
-    // Every subject was invoked before any evidence was written: one wave, not two batches.
-    expect(writtenWhenInvoked).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
-    expect(result.observations).toHaveLength(8);
-    expect(result.abort).toMatchObject({
-      phase: "battery-census",
-      attempted: 8,
-      threshold: 5,
-      lastError: "degraded",
-    });
-    expect(written).toContain("judge/census-abort.json");
-  });
-
   it("without a declared width the census keeps the shared batch stop, so the sixth subject is never spent", async () => {
     const invoked: string[] = [];
     const census = new JudgeCensus(
@@ -669,7 +641,6 @@ describe("the judge battery review", () => {
     expect(result.observations).toHaveLength(15);
     expect(result.abort).toEqual({
       schema: "judge-census-abort/v1",
-      phase: "battery-census",
       attempted: 15,
       threshold: 5,
       lastError: "provider degraded turn",
@@ -740,10 +711,11 @@ describe("judge battery aggregation", () => {
     const evidence = summarize([observation("t1", false, { verifier: true })]);
     expect(evidence).toMatchObject({
       judge: "unvalidated",
-      censusSize: { controls: 0, battery: 1, total: 1 },
-      disagreementRate: 1,
-      decision: "advisory-comparison",
+      offered: 1,
+      disagreements: 1,
+      disagreementDenominator: 1,
     });
+    expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect("controlValidity" in evidence).toBe(false);
     expect("calibration" in evidence).toBe(false);
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
@@ -765,7 +737,6 @@ describe("judge battery aggregation", () => {
     expect(evidence).toMatchObject({
       disagreements: 5,
       verifierPassJudgeFail: 4,
-      verifierFailJudgePass: 1,
       vetoed: 1,
     });
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
@@ -773,22 +744,17 @@ describe("judge battery aggregation", () => {
     expect(() => validateJudgeEvidence({ ...evidence, vetoed: 5 })).toThrow(/vetoed/);
   });
 
-  it("a zero-verdict review records typed error causes instead of flattened prose", () => {
-    // Run 39's failure at fixture scale: every attempt failed, so `verdicts.total` is 0 and the
-    // decision is "non-result". The evidence must say WHAT failed, not just that nothing completed.
+  it("a review in which every attempt failed reads as a non-result, not a comparison", () => {
+    // Each subject's typed errorKind stays in its own cases/<taskId>/judge.json; the aggregate
+    // records only that nothing came back.
     const evidence = summarize([
       observation("t1", null, { verifier: true, errorKind: "provider", error: "turn refused" }),
       observation("t2", null, { verifier: false, errorKind: "provider", error: "turn refused" }),
       observation("t3", null, { verifier: true, errorKind: "transport", error: "socket reset" }),
     ]);
-    expect(evidence).toMatchObject({
-      decision: "non-result",
-      errorKinds: { provider: 2, transport: 1 },
-    });
-  });
-
-  it("a review with no Judge errors omits errorKinds", () => {
-    expect("errorKinds" in summarize([observation("t1", true, { verifier: true })])).toBe(false);
+    expect(evidence).toMatchObject({ offered: 3, verdicts: 0 });
+    expect(judgeDecision(evidence)).toBe("non-result");
+    expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });
 
   it("an incomplete battery review discloses the rate but proves neither direction", () => {
@@ -799,11 +765,11 @@ describe("judge battery aggregation", () => {
     ]);
     expect(evidence).toMatchObject({
       disagreementDenominator: 1,
-      disagreementRate: 1,
-      censusSize: { controls: 0, battery: 3, total: 3 },
-      verdicts: { controls: 0, battery: 2, total: 2 },
-      decision: "incomplete-census",
+      disagreements: 1,
+      offered: 3,
+      verdicts: 2,
     });
+    expect(judgeDecision(evidence)).toBe("incomplete-census");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });
 
@@ -816,11 +782,9 @@ describe("judge battery aggregation", () => {
     expect(evidence).toMatchObject({
       disagreements: 2,
       disagreementDenominator: 3,
-      disagreementRate: 2 / 3,
       verifierPassJudgeFail: 1,
-      verifierFailJudgePass: 1,
-      decision: "advisory-comparison",
     });
+    expect(judgeDecision(evidence)).toBe("advisory-comparison");
     expect(() => validateJudgeEvidence(evidence)).not.toThrow();
   });
 
@@ -828,14 +792,11 @@ describe("judge battery aggregation", () => {
     expect(summarizeJudge(undefined, "correctness-model@g1", EVALUATED_PIN, [])).toEqual({ judge: "off" });
   });
 
-  it("an aborted battery keeps the offered denominator: unattempted subjects stay in censusSize", () => {
+  it("an aborted battery keeps the offered denominator: unattempted subjects stay offered", () => {
     // Three eligible artifacts were offered; the review aborted after one completed observation.
     const aborted = summarize([observation("t1", true, { verifier: true })], { battery: 3 });
-    expect(aborted).toMatchObject({
-      censusSize: { controls: 0, battery: 3, total: 3 },
-      verdicts: { controls: 0, battery: 1, total: 1 },
-      decision: "incomplete-census",
-    });
+    expect(aborted).toMatchObject({ offered: 3, verdicts: 1 });
+    expect(judgeDecision(aborted)).toBe("incomplete-census");
     expect(() => validateJudgeEvidence(aborted)).not.toThrow();
     // A stated denominator below the completed observations is a controller contradiction.
     expect(() =>
@@ -845,21 +806,12 @@ describe("judge battery aggregation", () => {
     ).toThrow(/cannot be below/);
   });
 
-  it("independence derives from the two pins", () => {
-    const samePinObservation = observation("t1", true, { verifier: true });
-    samePinObservation.evidence.judgePin = EVALUATED_PIN;
-    const evidence = summarizeJudge(
-      { pin: EVALUATED_PIN, invoke: session.invoke },
-      "correctness-model@g1",
-      EVALUATED_PIN,
-      [samePinObservation],
-    );
-    expect(evidence).toMatchObject({ independence: "same-model" });
+  it("records both pins, from which independence derives", () => {
     const crossFamily = summarize([observation("t1", true, { verifier: true })]);
-    expect(crossFamily).toMatchObject({ independence: "different-family" });
-    // Record both pins so validateJudgeEvidence can recompute this model-family label.
     // The label compares model names; it does not prove independent errors or reasoning.
-    expect(crossFamily).toMatchObject({ judgePin: "scripted/judge", evaluatedPin: EVALUATED_PIN });
+    expect(crossFamily).toMatchObject({ judgePin: session.pin, evaluatedPin: EVALUATED_PIN });
+    expect(evaluatorIndependence("scripted/judge", EVALUATED_PIN)).toBe("different-family");
+    expect(evaluatorIndependence(EVALUATED_PIN, EVALUATED_PIN)).toBe("same-model");
   });
 
   it("rejects contradictory observations before aggregation", () => {

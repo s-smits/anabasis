@@ -1,12 +1,10 @@
 /** The Judge aggregate reports whether a complete public-artifact comparison happened. It never
  * changes case truth or the score, and no disagreement grants it authority. Evidence
- * distinguishes intentional abstention from evaluator failure and records the Judge's
- * independence classification derived from the model pins.
+ * distinguishes intentional abstention from evaluator failure and records both model pins, from
+ * which the Judge's independence is derived.
  *
  * The Judge has no control census, so a review is always `unvalidated`. An older record written
  * while one still ran is refused rather than read (operator decision). */
-import { type EvaluatorIndependence, evaluatorIndependence } from "./calibration.ts";
-import type { NonResultKind } from "./record-events.ts";
 
 export type JudgeState = "off" | "unvalidated";
 
@@ -16,12 +14,6 @@ export type JudgeDecision =
   | "incomplete-census"
   | "advisory-comparison";
 
-type JudgeCensusCounts = {
-  controls: number;
-  battery: number;
-  total: number;
-};
-
 export type JudgeEvidence =
   | { judge: "off" }
   | {
@@ -29,36 +21,29 @@ export type JudgeEvidence =
       judgePin: string;
       /** Content policy identity used by the census, when the session names one. */
       promptPolicyDigest?: string;
-      /** The Built Harness backend pin, used with judgePin to recalculate `independence`; storing
-       *  the classification alone leaves the validator unable to check its basis. Consumers
-       *  assessing target or plateau decisions must also compare this pin with the battery record's
-       *  backendPin. */
+      /** The Built Harness backend pin. Independence is derived from it and judgePin by
+       *  `evaluatorIndependence` wherever it is needed, so the evidence stores the basis rather than
+       *  a classification that could disagree with it. Consumers assessing target or plateau
+       *  decisions must also compare this pin with the battery record's backendPin. */
       evaluatedPin: string;
       /** The exact correctnessModel version whose battery this Judge reviewed. */
       correctnessModelId: string;
-      /** `controls` is 0: the Judge has no control census. */
-      censusSize: JudgeCensusCounts;
-      verdicts: JudgeCensusCounts;
+      /** Every battery subject offered to the Judge, including the ones an abort left unattempted,
+       *  so truncated coverage never reads as complete coverage. */
+      offered: number;
+      /** Offered subjects that came back with a boolean verdict. */
+      verdicts: number;
       /** Designed abstentions (the evaluator said "cannot decide", with a reason) — a subset of
-       *  censusSize - verdicts, never a wrong answer and never a proof of anything. */
-      abstentions: JudgeCensusCounts;
+       *  offered - verdicts, never a wrong answer and never a proof of anything. */
+      abstentions: number;
       disagreements: number;
       disagreementDenominator: number;
-      disagreementRate: number | null;
+      /** Of `disagreements`, the Judge fails of a verifier pass; the rest are Judge passes of a
+       *  verifier fail. */
       verifierPassJudgeFail: number;
-      verifierFailJudgePass: number;
       /** Of `verifierPassJudgeFail`, the fails that cite a shown rule: the cases the epoch reviewer
        *  settles and the claim reports beside its verifier rate. */
       vetoed: number;
-      decision: JudgeDecision;
-      /** How independent this evaluator is from the evaluated model — derived from the two
-       *  pins, never asserted. */
-      independence: EvaluatorIndependence;
-      /** Typed causes of evaluator errors in this census, counted per NonResultKind. Present only
-       *  when at least one attempt failed, so a zero-verdict census names what failed — provider,
-       *  protocol, transport — instead of flattening every cause into prose. Diagnostic only:
-       *  validity and decision never read it. */
-      errorKinds?: Partial<Record<NonResultKind, number>>;
     };
 
 /** The controller records Judge aggregates as advisory evidence. Contradictory fields indicate
@@ -80,19 +65,20 @@ function nonNegativeInteger(value: number): boolean {
   return Number.isInteger(value) && value >= 0;
 }
 
-/** The decision the aggregate fields imply, in the order those fields rule each other out: no
- *  verdicts at all, then an incomplete census, then no battery verdict to compare, and only then
- *  an advisory comparison. */
-function aggregateDecision(evidence: Exclude<JudgeEvidence, { judge: "off" }>): JudgeDecision {
-  if (evidence.verdicts.total === 0) return "non-result";
-  if (evidence.verdicts.battery < evidence.censusSize.battery) return "incomplete-census";
-  if (evidence.disagreementRate === null) return "no-battery-verdicts";
+/** What a review as a whole says, derived rather than stored, in the order the counts rule each
+ *  other out: nothing came back, then verdicts missing from the offered battery, then no
+ *  comparable pair to read, and only then an advisory comparison. Null when no Judge ran. */
+export function judgeDecision(evidence: JudgeEvidence): JudgeDecision | null {
+  if (evidence.judge === "off") return null;
+  if (evidence.verdicts === 0) return "non-result";
+  if (evidence.verdicts < evidence.offered) return "incomplete-census";
+  if (evidence.disagreementDenominator === 0) return "no-battery-verdicts";
   return "advisory-comparison";
 }
 
 /** Recalculate the aggregate relationships used by claim creation. Saved evidence may be older,
  * manually constructed or inconsistent, and matching the JudgeEvidence TypeScript shape cannot
- * establish that its counts, classifications and decisions agree. */
+ * establish that its counts agree. */
 export function validateJudgeEvidence(evidence: JudgeEvidence): void {
   if (evidence.judge === "off") return;
 
@@ -106,39 +92,14 @@ export function validateJudgeEvidence(evidence: JudgeEvidence): void {
   judgeIntegrity(evidence.evaluatedPin.trim() !== "", "evaluatedPin must be non-empty");
   judgeIntegrity(evidence.correctnessModelId.trim() !== "", "correctnessModelId must be non-empty");
 
-  for (const component of ["controls", "battery", "total"] as const) {
-    const census = evidence.censusSize[component];
-    const verdicts = evidence.verdicts[component];
-    judgeIntegrity(nonNegativeInteger(census), `censusSize.${component} must be a non-negative integer`);
-    judgeIntegrity(nonNegativeInteger(verdicts), `verdicts.${component} must be a non-negative integer`);
-    judgeIntegrity(verdicts <= census, `verdicts.${component} exceeds censusSize.${component}`);
+  for (const count of ["offered", "verdicts", "abstentions"] as const) {
+    judgeIntegrity(nonNegativeInteger(evidence[count]), `${count} must be a non-negative integer`);
   }
+  judgeIntegrity(evidence.verdicts <= evidence.offered, "verdicts exceeds offered");
+  // Abstentions are designed nulls, so they fit inside the unanswered part of the census.
   judgeIntegrity(
-    evidence.censusSize.controls === 0,
-    "censusSize.controls must be 0: a control census stood behind this review, and none has run since 2026-09-14",
-  );
-  judgeIntegrity(
-    evidence.censusSize.total === evidence.censusSize.controls + evidence.censusSize.battery,
-    "censusSize.total must equal controls + battery",
-  );
-  judgeIntegrity(
-    evidence.verdicts.total === evidence.verdicts.controls + evidence.verdicts.battery,
-    "verdicts.total must equal controls + battery",
-  );
-  // Abstentions are designed nulls: bounded by the uncompleted census componentwise.
-  for (const component of ["controls", "battery", "total"] as const) {
-    judgeIntegrity(
-      nonNegativeInteger(evidence.abstentions[component]),
-      `abstentions.${component} must be a non-negative integer`,
-    );
-    judgeIntegrity(
-      evidence.abstentions[component] <= evidence.censusSize[component] - evidence.verdicts[component],
-      `abstentions.${component} exceeds the unanswered census — an abstention is a designed null`,
-    );
-  }
-  judgeIntegrity(
-    evidence.abstentions.total === evidence.abstentions.controls + evidence.abstentions.battery,
-    "abstentions.total must equal controls + battery",
+    evidence.abstentions <= evidence.offered - evidence.verdicts,
+    "abstentions exceeds the unanswered census — an abstention is a designed null",
   );
 
   judgeIntegrity(nonNegativeInteger(evidence.disagreements), "disagreements must be a non-negative integer");
@@ -147,7 +108,7 @@ export function validateJudgeEvidence(evidence: JudgeEvidence): void {
     "disagreementDenominator must be a non-negative integer",
   );
   judgeIntegrity(
-    evidence.disagreementDenominator <= evidence.verdicts.battery,
+    evidence.disagreementDenominator <= evidence.verdicts,
     "disagreementDenominator cannot exceed completed battery verdicts",
   );
   judgeIntegrity(
@@ -155,34 +116,12 @@ export function validateJudgeEvidence(evidence: JudgeEvidence): void {
     "disagreements cannot exceed disagreementDenominator",
   );
   judgeIntegrity(
-    nonNegativeInteger(evidence.verifierPassJudgeFail) && nonNegativeInteger(evidence.verifierFailJudgePass),
-    "directional disagreement counts must be non-negative integers",
-  );
-  judgeIntegrity(
-    evidence.verifierPassJudgeFail + evidence.verifierFailJudgePass === evidence.disagreements,
-    "directional disagreement counts must sum to disagreements",
+    nonNegativeInteger(evidence.verifierPassJudgeFail) &&
+      evidence.verifierPassJudgeFail <= evidence.disagreements,
+    "verifierPassJudgeFail must be a non-negative integer within disagreements",
   );
   judgeIntegrity(
     nonNegativeInteger(evidence.vetoed) && evidence.vetoed <= evidence.verifierPassJudgeFail,
     "vetoed must be a non-negative integer within verifierPassJudgeFail",
-  );
-
-  const derivedRate =
-    evidence.disagreementDenominator === 0 ? null : evidence.disagreements / evidence.disagreementDenominator;
-  judgeIntegrity(
-    evidence.disagreementRate === derivedRate,
-    `disagreementRate must equal disagreements/disagreementDenominator (${String(derivedRate)})`,
-  );
-
-  const derivedDecision = aggregateDecision(evidence);
-  judgeIntegrity(
-    evidence.decision === derivedDecision,
-    `decision=${evidence.decision} contradicts aggregate fields (expected ${derivedDecision})`,
-  );
-
-  const derivedIndependence = evaluatorIndependence(evidence.judgePin, evidence.evaluatedPin);
-  judgeIntegrity(
-    evidence.independence === derivedIndependence,
-    `independence=${evidence.independence} contradicts the evidence's pins (derived ${derivedIndependence} from ${evidence.judgePin} vs ${evidence.evaluatedPin})`,
   );
 }

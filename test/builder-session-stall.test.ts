@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { runBuilderSession, type BuilderSubmitOutcome } from "../src/author/builder-session.ts";
 import { builderExecutionEvidenceWriter } from "../src/author/builder-execution-writer.ts";
-import type { BuilderCustomToolSemantic } from "../src/author/builder-execution.ts";
+import { type BuilderCustomToolSemantic, submitProjection } from "../src/author/builder-execution.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 import { mkdirSync, mkdtempSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
@@ -174,6 +174,6 @@ describe("Builder refusal cycles", () => {
     expect(
       run.returns.slice(0, 4).some((result) => result.content[0]?.text.includes("strike") === true),
     ).toBe(false);
-    expect(run.evidence.unchangedTreeSubmits).toBe(3);
+    expect(submitProjection(run.evidence.submits).unchangedTreeSubmits).toBe(3);
   });
 });

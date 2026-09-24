@@ -11,8 +11,8 @@
  * than the check, which lets the author supply the world its own artifact is judged in.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { openSync, readSync, closeSync, statSync } from "../meta/filesystem.ts";
-import { basename, isAbsolute, join, resolve } from "../meta/path.ts";
+import { openSync, readSync, readdirSync, closeSync, statSync } from "../meta/filesystem.ts";
+import { basename, dirname, isAbsolute, join, resolve } from "../meta/path.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { toolchainPathDirs } from "./wall-policy.ts";
@@ -21,6 +21,10 @@ import type { ToolEntry, ToolInventory } from "./verifier-port.ts";
 
 /** A tool id is a plain command name: no path separators, so it cannot address a file. */
 export const TOOL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$/;
+
+/** Distinct packages kept per tool. Reporting, not identity: a list this long already says the
+ *  interpreter is a whole distribution rather than one installed tool. */
+const MAX_PACKAGES = 256;
 
 interface ResolveToolInventoryInput {
   toolIds: readonly string[];
@@ -86,11 +90,48 @@ export function toolProvenance(path: string): Pick<ToolEntry, "kind" | "interpre
  *  the tool digest alone calls both of those one environment. Undefined when the interpreter cannot
  *  be found, which the run itself then reports. */
 export function interpreterDigest(path: string, toolTree: string | null): string | undefined {
+  const found = interpreterPath(path, toolTree);
+  return found === undefined ? undefined : sha256OfFile(found);
+}
+
+function interpreterPath(path: string, toolTree: string | null): string | undefined {
   const command = shebangCommand(path);
   if (command === null || command === "") return undefined;
   const dirs = isAbsolute(command) ? [""] : commandSearchPath(toolTree).split(":");
-  const found = dirs.map((dir) => (dir === "" ? command : join(dir, command))).find(isExecutableFile);
-  return found === undefined ? undefined : sha256OfFile(found);
+  return dirs.map((dir) => (dir === "" ? command : join(dir, command))).find(isExecutableFile);
+}
+
+/**
+ * The Python distributions installed beside a script's interpreter, as `name==version` from each
+ * `<prefix>/lib/python*\/site-packages/*.dist-info` directory name, sorted. The prefix is the
+ * directory above the interpreter's own, taken without resolving links, because a virtual
+ * environment's `bin/python3` is a link to the base interpreter and its packages live beside the
+ * link. Empty for a binary tool or a non-Python interpreter.
+ *
+ * This says what was installed, never what decided a verdict: a wrapper can import a package and
+ * ignore it. It also stays out of every identity hash, although a `pip install` changes it with no
+ * digest moving, because it reads directory names rather than bytes.
+ */
+function interpreterPackages(path: string, toolTree: string | null): string[] {
+  const interpreter = interpreterPath(path, toolTree);
+  if (interpreter === undefined || !basename(interpreter).startsWith("python")) return [];
+  const lib = join(dirname(dirname(interpreter)), "lib");
+  const packages = new Set<string>();
+  for (const version of listDir(lib).filter((name) => name.startsWith("python"))) {
+    for (const entry of listDir(join(lib, version, "site-packages"))) {
+      const match = /^(.+?)-([^-]+)\.dist-info$/.exec(entry);
+      if (match !== null) packages.add(`${match[1]}==${match[2]}`);
+    }
+  }
+  return [...packages].sort(compareCodeUnits).slice(0, MAX_PACKAGES);
+}
+
+function listDir(path: string): string[] {
+  try {
+    return readdirSync(path);
+  } catch {
+    return [];
+  }
 }
 
 function isExecutableFile(path: string): boolean {
@@ -112,6 +153,7 @@ function resolveOne(
     // turn /usr/bin/cc into /usr/bin/git; hash the selected path without renaming it.
     const path = resolve(dir, id);
     if (!isExecutableFile(path)) continue;
+    const packages = interpreterPackages(path, toolTree);
     return {
       id,
       path,
@@ -119,6 +161,7 @@ function resolveOne(
       source,
       ...toolProvenance(path),
       ...keyIfDefined("interpreterDigest", interpreterDigest(path, toolTree)),
+      ...keyIfDefined("packages", packages.length === 0 ? undefined : packages),
     };
   }
   return null;

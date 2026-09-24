@@ -257,6 +257,9 @@ export interface ClaimStatement {
     source: "workspace-toolchain" | "host";
     kind: "binary" | "script";
     interpreter: string | null;
+    /** Python distributions beside the interpreter, when there are any: what was installed where
+     *  the check ran, which is provenance and never independence. */
+    packages?: string[];
     digest: string;
   }>;
   /** Exception groundings with their original justifications, so that every exception is visible

@@ -10,6 +10,7 @@
 import { BUILDER_EXECUTION_EVIDENCE_FILE } from "../../src/author/builder-execution.ts";
 import { homedir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
+import { controllerDenominator } from "../../src/run/controller-denominator.ts";
 import type { CaseCounts, Observation, RunEvidence } from "./evidence.ts";
 import { readClaims, readDifficultyDecisions, observabilityPath } from "./evidence.ts";
 import type { RunDetail, RunRow } from "./rows.ts";
@@ -170,16 +171,19 @@ function batteryLines(detail: RunDetail): string[] {
 function terminalLines(evidence: RunEvidence): string[] {
   const terminal = evidence.terminal;
   if (terminal === null) return [];
-  const denominator = terminal.denominator;
+  // Only the run asked about reads its case rows; the listing never pays for them.
+  const denominator = controllerDenominator(evidence.location.campaignDir, terminal.measured);
   return [
     "",
     "Terminal",
     `  ${terminal.outcome ?? "?"}${terminal.abortClause === null ? "" : ` (${terminal.abortClause})`} at ${terminal.writtenAt ?? "?"}`,
     ...(terminal.terminalReason === null ? [] : [`  ${terminal.terminalReason}`]),
-    ...(denominator === null
-      ? ["  denominator: not recorded"]
-      : [
+    ...(denominator.state === "recorded"
+      ? [
           `  denominator: ${denominator.total} cases — ${denominator.verified} verified, ${denominator.unaccepted} unaccepted, ${denominator.nonResults} non-result`,
+        ]
+      : [
+          `  denominator: ${denominator.state === "absent" ? "no battery measured" : "case record unreadable"}`,
         ]),
     `  provider turns: ${terminal.turnsUsed ?? "unknown"}${terminal.byRole.length === 0 ? "" : ` (${terminal.byRole.map((role) => `${role.role} ${role.turns}`).join(", ")})`}`,
   ];

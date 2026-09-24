@@ -2,7 +2,7 @@ import type { OutcomeJudgeReport } from "../../../../tools/outcome/judge.ts";
 import { RecordView } from "../components/record.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, FileJson, X } from "lucide-react";
-import type { JudgeEvidence } from "../../../../src/claim/judge.ts";
+import { type JudgeEvidence, judgeDecision } from "../../../../src/claim/judge.ts";
 import type { OutcomeMetrics, OutcomeReport } from "../../../../tools/outcome/metrics.ts";
 import { MetricCard, MetricGrid, Section } from "../components/layout.js";
 import { Badge, Button, Card, DataTable, Disclosure, HashValue, NoSignal } from "../components/primitives.js";
@@ -205,7 +205,7 @@ function ReviewStatus({ review }: { review: OutcomeJudgeReport }) {
   // The Judge has no control census, so what a review can show is whether its comparison was complete.
   const status =
     review.available && review.census !== null && "evidence" in review.census
-      ? review.census.evidence.decision
+      ? judgeDecision(review.census.evidence)
       : "unavailable";
   const label = `Judge review: ${status}`;
   return (

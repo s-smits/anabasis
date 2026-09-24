@@ -98,14 +98,23 @@ describe("judge review reader", () => {
     mkdirSync(join(camp, "analysis"), { recursive: true });
     const current = {
       schema: JUDGE_REVIEWS_SCHEMA,
-      census: { runId: "r1", evidence: { decision: "advisory-comparison", abstentions: { total: 1 } } },
+      census: {
+        runId: "r1",
+        evidence: {
+          judge: "unvalidated",
+          offered: 6,
+          verdicts: 5,
+          abstentions: 1,
+          disagreementDenominator: 5,
+        },
+      },
       contested: [{ taskId: "t1" }, { taskId: "t2" }],
       coverage: { reviewable: 6, reviewed: 5 },
       provisional: "the judge review is incomplete",
     };
     writeFileSync(join(camp, "analysis", "r1-judges.json"), JSON.stringify(current));
     const earlier = {
-      schema: "judge-reviews/v9",
+      schema: "judge-reviews/v10",
       census: { on: { evidence: { decision: "advisory-comparison" } } },
     };
     writeFileSync(join(camp, "analysis", "r0-judges.json"), JSON.stringify(earlier));
@@ -113,7 +122,7 @@ describe("judge review reader", () => {
     expect(judges).toEqual([
       {
         name: "r0-judges",
-        decision: `not read: schema judge-reviews/v9 is not ${JUDGE_REVIEWS_SCHEMA}`,
+        decision: `not read: schema judge-reviews/v10 is not ${JUDGE_REVIEWS_SCHEMA}`,
         abstained: null,
         reviewed: "—",
         contested: null,
@@ -121,7 +130,7 @@ describe("judge review reader", () => {
       },
       {
         name: "r1-judges",
-        decision: "advisory-comparison",
+        decision: "incomplete-census",
         abstained: 1,
         reviewed: "5/6",
         contested: 2,

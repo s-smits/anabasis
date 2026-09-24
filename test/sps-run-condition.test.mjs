@@ -149,7 +149,7 @@ describe("run-condition through the real controller", () => {
     const [round] = report.outcome.rounds;
     expect(round.move).toBe("build");
     expect(round.build).toBe("adopted");
-    expect(round.batteryRunIds).toHaveLength(1);
+    expect(round.measured).toBe(true);
     expect(round.terminal).toContain("operator-interrupted: round cap 1");
     expect(report.firstBuilderPrompt.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(report.firstBuilderPrompt.turn).toBe(1);
@@ -163,7 +163,7 @@ describe("run-condition through the real controller", () => {
       "versions",
       round.runId,
       "runs",
-      round.batteryRunIds[0],
+      round.runId,
       "battery.json",
     );
     expect(existsSync(battery)).toBe(true);

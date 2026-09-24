@@ -146,6 +146,17 @@ function createLedgerFile(root: string, path: string, descriptor: string): void 
   closeSync(openSync(path, "wx", 0o600));
 }
 
+/** The campaign budget row, read without creating state: a campaign that has written nothing
+ *  reads as unspent. Any other campaign opens its ledger, which refuses a missing, replaced or
+ *  pre-ledger one rather than reading it as unspent. */
+export function loadBudget(root: string): CampaignBudget {
+  if (!existsSync(controllerLedgerPath(root)) && !existsSync(descriptorPath(root))) {
+    return { turnBudget: null, turnsUsed: 0, status: "active" };
+  }
+  using ledger = ControllerLedger.open(root);
+  return ledger.campaignBudget();
+}
+
 /** Construction checks the durable identity before any caller can reserve or select state. */
 export class ControllerLedger {
   private constructor(

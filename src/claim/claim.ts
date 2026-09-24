@@ -25,7 +25,7 @@ import type {
   RunStatusEvidence,
   ScoredCase,
 } from "./claim-evidence.ts";
-import { InvalidReviewEvidenceError, validateJudgeEvidence } from "./judge.ts";
+import { InvalidReviewEvidenceError, judgeDecision, validateJudgeEvidence } from "./judge.ts";
 import { PROVIDER_STOPPED_REASON_PREFIX } from "./record-events.ts";
 import { runtimeIdentityFindings } from "./runtime-model-identity.ts";
 import { hasText } from "../meta/text.ts";
@@ -157,7 +157,7 @@ export class Claim {
       backendPin: evidence.backendPin,
       thresholdManifestDigest: evidence.thresholdManifestDigest,
       judge: evidence.judge.judge,
-      judgeDecision: evidence.judge.judge === "off" ? null : evidence.judge.decision,
+      judgeDecision: judgeDecision(evidence.judge),
       // Copied, so a caller editing the array it passed cannot edit a written claim's condition.
       capabilities: [...evidence.capabilities],
       buildInputsHash,

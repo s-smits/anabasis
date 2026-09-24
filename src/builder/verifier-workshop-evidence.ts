@@ -23,6 +23,10 @@ interface WorkshopEvidenceBody {
   requestDigest: string;
   resultDigest: string;
   subjectDigest: string | null;
+  /** On a completed fetch, the address the Builder asked for and the one the bytes finally came
+   *  from after redirects. Every later workshop row joins to the download by `subjectDigest` alone,
+   *  so without the address a claim reader can say which bytes were fetched but not from where. */
+  origin?: { initialUrl: string; finalUrl: string };
 }
 
 export type VerifierWorkshopActionEvidence = WorkshopEvidenceBody & {

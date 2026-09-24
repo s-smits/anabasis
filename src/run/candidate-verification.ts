@@ -61,7 +61,7 @@ interface PostBuildInput {
   publicRequest?: string;
   experimentAuthoring?: ExperimentAuthoring;
   /** Kept beside post-build sequencing so later steps cannot erase a started battery identity. */
-  recordBatteryRun?: (runId: string) => void;
+  markMeasured?: () => void;
   /** One run-bound diagnostic channel shared by the battery and the review. */
   safeguardContext?: SafeguardContext;
   providerBudget?: ProviderResourceBudget;
@@ -317,7 +317,7 @@ async function driveCandidate(input: PostBuildInput): Promise<HarnessMeasureResu
     ...keyIfDefined("publicRequest", input.publicRequest),
     domainDir: measureDir,
     ...keyIfDefined("experimentAuthoring", input.experimentAuthoring),
-    ...keyIfDefined("onBatteryStart", input.recordBatteryRun),
+    ...keyIfDefined("onBatteryStart", input.markMeasured),
     ...keyIfDefined("verifierLifetime", input.verifierLifetime),
     ...keyIfDefined("providerBudget", input.providerBudget),
     ...keyIfDefined("safeguardContext", input.safeguardContext),

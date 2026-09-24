@@ -4,7 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { admitFindings, deriveIterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
-import { type JudgeEvidence, validateJudgeEvidence } from "../src/claim/judge.ts";
+import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import type { JudgeAttempt, JudgeSession } from "../src/truth/judge.ts";
 import { briefPublicResources } from "../src/truth/public-resources.ts";
 import { MATCHING_BRIEF, scriptedMatchingSolver } from "./helpers/matching-fixture.ts";
@@ -106,8 +106,8 @@ describe("the census Judge on a measured round", () => {
     validateJudgeEvidence(battery.judge);
     expect(battery.judge.judge).toBe("unvalidated");
     if (battery.judge.judge === "off") throw new Error("the census ran; the evidence must not read off");
-    expect(battery.judge.decision).toBe("advisory-comparison");
-    expect(battery.judge.censusSize).toEqual({ controls: 0, battery: 4, total: 4 });
+    expect(judgeDecision(battery.judge)).toBe("advisory-comparison");
+    expect(battery.judge).toMatchObject({ offered: 4, verdicts: 4 });
     // Domain resources reach every Judge call. Public-validity rules are task-relative and reach
     // only real battery/control subjects, not the null-task driver probe. The fixture's hidden
     // "pairs" field and truth checks stay out throughout.
@@ -154,13 +154,12 @@ describe("the census Judge on a measured round", () => {
     expect(firstCaseJudge).toMatchObject({ schema: "judge-subject/v3" });
     expect(firstCaseJudge.publicContextDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(firstCaseJudge.judgeInputDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(battery.judge.verifierPassJudgeFail).toBe(1);
-    expect(battery.judge.verifierFailJudgePass).toBe(0);
+    expect(battery.judge).toMatchObject({ disagreements: 1, verifierPassJudgeFail: 1 });
     // Analysis projects this recorded main-Judge census with no extra model call.
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census");
     expect(analysis.battery.claimCreated).toBe(true);
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.schema).toBe("judge-reviews/v10");
+    expect(reviews.schema).toBe("judge-reviews/v11");
     expect(reviews.provisional).toBeNull();
     expect(reviews.census?.runId).toBe("m6-census");
     expect(reviews.coverage).toMatchObject({ reviewable: 4, reviewed: 4 });
@@ -223,10 +222,10 @@ describe("the census Judge on a measured round", () => {
     }>(readFileSync(join(runDir, "battery.json"), "utf8"));
     validateJudgeEvidence(battery.judge);
     if (battery.judge.judge === "off") throw new Error("the review ran; the evidence must not read off");
+    expect(judgeDecision(battery.judge)).toBe("advisory-comparison");
     expect(battery.judge).toMatchObject({
       judge: "unvalidated",
-      decision: "advisory-comparison",
-      censusSize: { controls: 0, battery: battery.cases.length },
+      offered: battery.cases.length,
       verifierPassJudgeFail: battery.cases.length,
     });
     // Every cited fail of a verifier pass bought exactly one confirming sample and no census file.

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "../src/meta/filesystem.
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
+import { judgeDecision } from "../src/claim/judge.ts";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
 import { makeVerify } from "../src/truth/verification-runner.ts";
 import { type Solver } from "../src/truth/solve.ts";
@@ -86,16 +87,14 @@ describe("makeVerify paid judge census", () => {
     const abort = JSON.parse(readFileSync(join(runDir, "judge/census-abort.json"), "utf8"));
     expect(abort).toMatchObject({
       schema: "judge-census-abort/v1",
-      phase: "battery-census",
       attempted: 5,
       threshold: 5,
       lastError: "provider degraded turn",
     });
     // Scoring is untouched: the partial census aggregates through the existing vocabulary.
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
-    expect(battery.judge.decision).toBe("non-result");
-    expect(battery.judge.censusSize.controls).toBe(0);
-    expect(battery.judge.censusSize.battery).toBe(7);
+    expect(judgeDecision(battery.judge)).toBe("non-result");
+    expect(battery.judge.offered).toBe(7);
     expect(existsSync(join(runDir, "judge/bait-corpus.json"))).toBe(false);
     expect(existsSync(join(runDir, "judge/review-standing.json"))).toBe(false);
   }, 30_000);
@@ -163,12 +162,11 @@ describe("makeVerify paid judge census", () => {
     const runDir = join(slugDir, "runs/run-parallel-census");
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
     expect(maximumBattery).toBe(5);
-    expect(battery.judge.censusSize.battery).toBe(7);
+    expect(battery.judge.offered).toBe(7);
     expect(tasks.map((task) => existsSync(join(runDir, `cases/${task.taskId}/judge.json`)))).toEqual(
       Array(7).fill(true),
     );
-    // No control census runs: the evidence reads unvalidated over zero controls.
-    expect(battery.judge.censusSize.controls).toBe(0);
+    // No control census runs: the evidence reads unvalidated.
     expect(battery.judge.judge).toBe("unvalidated");
     expect(battery.judge.disagreements).toBe(0);
     expect(existsSync(join(runDir, "judge/bait-corpus.json"))).toBe(false);
@@ -249,7 +247,7 @@ describe("makeVerify paid judge census", () => {
     // -1 would mean no battery existed when the review started, which is the defect.
     expect(casesSeenAtFirstReview).toBe(3);
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
-    expect(battery.judge.censusSize.battery).toBe(3);
+    expect(battery.judge.offered).toBe(3);
   }, 30_000);
 
   it.concurrent("buys no control census when every battery verdict disagreed with the verifier", async () => {
@@ -309,8 +307,7 @@ describe("makeVerify paid judge census", () => {
     expect(controlKinds).toEqual([]);
     expect(battery.judge).toMatchObject({
       judge: "unvalidated",
-      decision: "advisory-comparison",
-      censusSize: { controls: 0, battery: 3 },
+      offered: 3,
       disagreements: 3,
     });
     expect(battery.judge).not.toHaveProperty("controlValidity");
@@ -384,7 +381,7 @@ describe("makeVerify paid judge census", () => {
     const runDir = join(slugDir, "runs/run-eligible-only");
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
     expect(judgedBatterySubjects.sort()).toEqual(["judge-1", "judge-3"]);
-    expect(battery.judge.censusSize.battery).toBe(2);
+    expect(battery.judge.offered).toBe(2);
     expect(existsSync(join(runDir, "cases/judge-1/judge.json"))).toBe(true);
     expect(existsSync(join(runDir, "cases/judge-2/judge.json"))).toBe(false);
     expect(existsSync(join(runDir, "cases/judge-3/judge.json"))).toBe(true);

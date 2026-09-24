@@ -7,15 +7,16 @@
  */
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
+import { submitProjection } from "../src/author/builder-execution.ts";
 import { FRESH_BUILD, completeBundle, submitTool } from "./helpers/builder-campaign.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { scriptedSession } from "./helpers/doubles.ts";
 import {
   CampaignBudgetConfigurationError,
   campaignBudgetGate,
-  loadBudget,
   setTurnBudget,
 } from "../src/run/campaign-budget.ts";
+import { loadBudget } from "../src/run/controller-ledger.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 import { readAuthoringAttemptEvidence } from "../src/author/build-attempt-evidence.ts";
@@ -261,6 +262,10 @@ describe("the campaign's provider ledger", () => {
         terminal: true,
       }),
     ]);
-    expect(execution[0]?.submitCounts).toEqual({ raw: 1, candidates: 0, controllerTerminals: 1 });
+    expect(submitProjection(execution[0]?.submits ?? []).submitCounts).toEqual({
+      raw: 1,
+      candidates: 0,
+      controllerTerminals: 1,
+    });
   });
 });

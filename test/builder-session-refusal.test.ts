@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import type { BuilderExecutionEvidence } from "../src/author/builder-execution.ts";
+import { type BuilderExecutionEvidence, submitProjection } from "../src/author/builder-execution.ts";
 import { runBuilderSession } from "../src/author/builder-session.ts";
 import type { CandidateCheckOutcome } from "../src/author/candidate-check.ts";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
@@ -189,7 +189,10 @@ describe("what a refusal tells the Builder", () => {
     expect(completed[0]?.submits.map((s) => s.treeFirstSubmittedAsAttempt)).toEqual([null, null, 1]);
     // Three submissions over two trees. The controller validates each tree once, so this pair also
     // says how many times the probes and the adoption gates executed, and how often they did not.
-    expect(completed[0]).toMatchObject({ uniqueCandidateTrees: 2, repeatedTreeSubmits: 1 });
+    expect(submitProjection(completed[0]?.submits ?? [])).toMatchObject({
+      uniqueCandidateTrees: 2,
+      repeatedTreeSubmits: 1,
+    });
   });
 
   // The depth-1 delta and the byte-identical echo are both blind to a session moving AWAY from

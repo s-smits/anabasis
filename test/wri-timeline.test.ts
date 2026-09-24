@@ -59,7 +59,12 @@ function campaign(rows: string[], battery: string[] | null = null): string {
     mkdirSync(join(dir, "controller", RUN), { recursive: true });
     writeFileSync(
       join(dir, "controller", RUN, "terminal.json"),
-      JSON.stringify({ iterations: [{ batteryRunIds: [BATTERY] }] }),
+      JSON.stringify({
+        iterations: [
+          { runId: RUN, measured: false },
+          { runId: BATTERY, measured: true },
+        ],
+      }),
     );
     writeFileSync(join(dir, "observability", BATTERY + ".jsonl"), battery.join("\n") + "\n");
   }

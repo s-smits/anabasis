@@ -13,8 +13,12 @@ export const CENSUS_SCHEMA = "builder-prose-census/v1";
  *  limit" as the only row of its second epoch. Rows from these sessions carry no posture. */
 export const NON_EVIDENCE_OUTCOMES = new Set(["turn-non-result", "evidence-unavailable"]);
 const CAPTURE_SCHEMA = "builder-prose-capture/v1";
-const ROW_SCHEMA = "builder-prose/v1";
-const EXECUTION_SCHEMA = "builder-execution/v5";
+const ROW_SCHEMA = "builder-prose/v2";
+const ROW_KINDS = new Set(["message", "reasoning", "prompt", "compaction"]);
+/** The rows in the Builder's own words. `prompt` and `compaction` rows record what the controller
+ *  sent and what the transport did, so they carry no posture of the Builder's. */
+const BUILDER_KINDS = new Set(["message", "reasoning"]);
+const EXECUTION_SCHEMA = "builder-execution/v6";
 const EXECUTION_RE = /^builder-execution(?:-(\d{2}))?\.json$/;
 const PROSE_RE = /^builder-prose(?:-(\d{2}))?\.jsonl$/;
 const EPOCH_RE = /^epoch-[0-9a-f]{12}$/;
@@ -80,7 +84,7 @@ function validateRow(row, index, file) {
   if (!validInteger(row.turn, 1) || !validInteger(row.atMs)) {
     throw new Error(`${label}: invalid turn or atMs`);
   }
-  if (row.kind !== "message" && row.kind !== "reasoning") throw new Error(`${label}: invalid kind`);
+  if (!ROW_KINDS.has(row.kind)) throw new Error(`${label}: invalid kind`);
   if (!validInteger(row.chars, 1) || !isString(row.text) || row.text.length === 0) {
     throw new Error(`${label}: invalid text length`);
   }
@@ -234,7 +238,7 @@ function inspectPair(location, session) {
       omitted: header.omitted,
       captureId: header.captureId,
     },
-    rows: sidecar.rows,
+    rows: sidecar.rows.filter((row) => BUILDER_KINDS.has(row.kind)),
   };
 }
 

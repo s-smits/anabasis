@@ -20,7 +20,7 @@ export const EVALUATOR_CALIBRATION_POLICY = policyRow("evaluatorCalibration", {
  * How independent the Judge is from the model being evaluated. Classification uses the two
  * `backendKind/modelId` pins, for example `claude/claude-opus-4-8`.
  */
-export type EvaluatorIndependence = "same-model" | "same-family" | "different-family" | "deterministic";
+export type EvaluatorIndependence = "same-model" | "same-family" | "different-family";
 
 /** Model family follows the vendor. A pin is `backendKind/modelId`, and the model id may have
  *  a vendor prefix (`openrouter/anthropic/claude-opus-4-8`). Classifying on the backend kind would

@@ -9,7 +9,6 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { ContestedCase } from "../src/analyse/judge-contested.ts";
 import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
-import { evaluatorIndependence } from "../src/claim/calibration.ts";
 import type { JudgeEvidence } from "../src/claim/judge.ts";
 import { main } from "../tools/outcome/cli.ts";
 import { OUTCOME_JUDGE_SCHEMA, judgeReport } from "../tools/outcome/judge.ts";
@@ -33,31 +32,25 @@ function campaignDir(): string {
 
 /** The review the current producer records: no control census behind it. */
 function validEvidence(): Exclude<JudgeEvidence, { judge: "off" }> {
-  const judgePin = "claude/claude-opus-5";
-  const evaluatedPin = "codex/gpt-5.5";
   return {
     judge: "unvalidated",
-    judgePin,
+    judgePin: "claude/claude-opus-5",
     promptPolicyDigest: "a".repeat(64),
-    evaluatedPin,
+    evaluatedPin: "codex/gpt-5.5",
     correctnessModelId: "correctness-model@g1",
-    censusSize: { controls: 0, battery: 1, total: 1 },
-    verdicts: { controls: 0, battery: 1, total: 1 },
-    abstentions: { controls: 0, battery: 0, total: 0 },
+    offered: 1,
+    verdicts: 1,
+    abstentions: 0,
     disagreements: 0,
     disagreementDenominator: 1,
-    disagreementRate: 0,
     verifierPassJudgeFail: 0,
-    verifierFailJudgePass: 0,
     vetoed: 0,
-    decision: "advisory-comparison",
-    independence: evaluatorIndependence(judgePin, evaluatedPin),
   };
 }
 
 /** Evidence whose battery verdicts exceed its battery census: re-validation must refuse it. */
 function contradictoryEvidence(): Exclude<JudgeEvidence, { judge: "off" }> {
-  return { ...validEvidence(), verdicts: { controls: 0, battery: 2, total: 2 } };
+  return { ...validEvidence(), verdicts: 2 };
 }
 
 function contestedRow(taskId: string, judge: boolean, verifier: boolean): ContestedCase {
@@ -88,7 +81,7 @@ function review(
   },
 ): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v10",
+    schema: "judge-reviews/v11",
     slug: "fixture",
     runId: RUN,
     judgePin: "claude/claude-opus-5",
@@ -182,21 +175,6 @@ describe("the evidence-bound judge projection", () => {
     ]);
   });
 
-  it("refuses a review a control census stood behind, from before 2026-09-14", () => {
-    const dir = campaignDir();
-    const evidence: Exclude<JudgeEvidence, { judge: "off" }> = {
-      ...validEvidence(),
-      censusSize: { controls: 4, battery: 1, total: 5 },
-      verdicts: { controls: 4, battery: 1, total: 5 },
-    };
-    writeReview(dir, review(evidence, [contestedRow("t1", false, true)]));
-    const report = availableReport(dir, RUN);
-    expect(report.contested).toEqual([]);
-    expect(report.contestedUnavailable).toEqual([
-      expect.stringContaining("t1: the measured review was refused or absent"),
-    ]);
-  });
-
   it("follows a contested path that promotion moved from candidates/ to domains/, and keeps one found nowhere", () => {
     // Run c66e0d: judges.json recorded candidates/<run>/… paths and promotion moved the tree to
     // domains/<slug>/ 112 seconds later, so the reader printed four paths that no longer existed.
@@ -260,11 +238,11 @@ describe("the evidence-bound judge projection", () => {
 
   it("refuses a foreign review schema instead of projecting unknown bytes", () => {
     const dir = campaignDir();
-    writeReview(dir, { ...review(validEvidence()), schema: "judge-reviews/v9" });
+    writeReview(dir, { ...review(validEvidence()), schema: "judge-reviews/v10" });
     const report = judgeReport(dir, RUN);
     expect(report).toMatchObject({ available: false });
     if (report.available) throw new Error("unreachable");
-    expect(report.reason).toContain("judge-reviews/v9 is not judge-reviews/v10");
+    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v11");
   });
 
   it("is reachable from the CLI as --judge", () => {

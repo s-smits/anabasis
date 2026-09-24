@@ -131,7 +131,7 @@ function analysis(
 
 function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v10",
+    schema: "judge-reviews/v11",
     slug: SLUG,
     runId: RUN,
     judgePin: null,

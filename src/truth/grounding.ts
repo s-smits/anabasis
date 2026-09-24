@@ -72,6 +72,7 @@ export type VerifierExecutionEvidence = {
       kind: "binary" | "script";
       interpreter: string | null;
       interpreterDigest?: string;
+      packages?: string[];
     }
   >;
 };

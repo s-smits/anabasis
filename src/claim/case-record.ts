@@ -193,7 +193,7 @@ function conditionDefect(c: JsonValue): string | null {
 }
 
 /** Why a value is none of the three verdict shapes of {@link CaseVerdict}, or null when it is one
- *  of them. The three are verified (`acceptedSubmit` true with boolean `truthOk` and `pass`),
+ *  of them. The three are verified (`acceptedSubmit` true with boolean `truthOk` and an equal `pass`),
  *  unaccepted (`acceptedSubmit` false, `truthOk` null, `pass` false, because an attempt that left
  *  no accepted bytes has no truth verdict and still stays in the denominator) and non-result
  *  (`truthOk` and `pass` null, with both a reason string and a recognised kind — either one
@@ -217,6 +217,11 @@ export function caseVerdictDefect(value: unknown): string | null {
   if (acceptedSubmit) {
     if (!isBoolean(truthOk) || !isBoolean(pass)) {
       return "a verified row needs boolean truthOk and pass";
+    }
+    // The producer writes pass as acceptedSubmit && truthOk, so a verified row whose two disagree
+    // was not written by it, and the tallies that read pass would count a verdict truthOk denies.
+    if (pass !== truthOk) {
+      return "a verified row passes exactly when truthOk is true (pass must equal truthOk)";
     }
     return null;
   }
@@ -267,9 +272,18 @@ function isCaseRecordRow(value: JsonValue): value is CaseRecordRow {
 /** The strict line-set parse, shared by the reader and by the writer's own open so both hold the
  *  file to one standard. It throws and never skips, because skipping is what makes a torn row
  *  invisible to every count at once. */
+/** The bytes after the last newline. The writer appends each row as one line ending in a newline,
+ *  so a non-empty remainder is a row whose append has not finished: a reader racing the writer sees
+ *  it, and so does anyone reading after a crash mid-append. */
+function unterminatedTail(text: string): string {
+  return text.slice(text.lastIndexOf("\n") + 1);
+}
+
+/** Parses every newline-terminated line. An unterminated last line is not yet written and is left
+ *  for the next read; a damaged terminated line anywhere is still a defect and throws. */
 function parseRecordText(text: string, path: string): StoredCaseRow[] {
   const rows: StoredCaseRow[] = [];
-  const lines = text.split("\n");
+  const lines = text.slice(0, text.length - unterminatedTail(text).length).split("\n");
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (line === undefined || line === "") continue;
@@ -297,7 +311,9 @@ function parseRecordText(text: string, path: string): StoredCaseRow[] {
   return rows;
 }
 
-/** Strict read: any malformed, misshapen, or out-of-order line throws. */
+/** Strict read: any malformed, misshapen, or out-of-order terminated line throws. A last line the
+ *  writer has not finished is not a row yet, so a reader polling a live battery sees the rows
+ *  written so far rather than a refusal of the whole record. */
 export function readCaseRecord(path: string): StoredCaseRow[] {
   if (!existsSync(path)) return [];
   return parseRecordText(readFileSync(path, "utf8"), path);
@@ -331,6 +347,13 @@ export class CaseRecord {
       );
     }
     const existing = readCaseRecord(path);
+    // No writer holds the file yet, so an unfinished last line is an append a crash cut short, and
+    // appending after it would join the next row onto the fragment as one damaged middle line.
+    if (existsSync(path) && unterminatedTail(readFileSync(path, "utf8")) !== "") {
+      throw new Error(
+        `${path}: the last line is unterminated — an interrupted append must be repaired (B-1)`,
+      );
+    }
     const lockPath = `${key}.lock`;
     let fd: number;
     try {

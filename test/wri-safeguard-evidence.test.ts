@@ -70,7 +70,6 @@ function fixture(log: string | null = null) {
   writeJson(join(controller, "terminal.json"), {
     outcome: "completed",
     epoch: "epoch-test",
-    denominator: { state: "recorded", total: 1, verified: 1, unaccepted: 0, nonResults: 0 },
   });
   writeJson(join(snapshot, "snapshot-status.json"), {
     source: { commit: "a".repeat(40), sourceDigest: "b".repeat(64) },

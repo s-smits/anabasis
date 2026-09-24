@@ -68,8 +68,7 @@ function writeTerminal(campaignDir: string, runId: string, writtenAt: string, us
     outcome: "aborted",
     abortClause: "signal-terminated",
     terminalReason: "signal-terminated: fullrun received SIGTERM",
-    iterations: [{ runId: `${runId}-1` }],
-    denominator: { total: 3, verified: 1, unaccepted: 1, nonResults: 1 },
+    iterations: [{ runId: `${runId}-1`, measured: true }],
     providerResourceBudget: { cap: 1320, used, byRole: { builder: 1, built: 8, review: 8 } },
   });
 }
@@ -196,6 +195,17 @@ describe("runs list", () => {
     expect(text).toContain("unknown/1320");
     expect(text).toContain("1v 1u 1n");
     expect(text).toContain("2 open, 1 closed shown");
+    // The detail derives the closed run's counts from its measured iteration's case rows alone.
+    const detail = collectDetail(root, "closed-run", {
+      closedLimit: 8,
+      manager,
+      now: Date.parse("2026-09-20T03:00:00.000Z"),
+      query: () => answer("Could not find service", 1),
+    });
+    if (detail.detail === undefined) throw new Error(detail.refusal);
+    expect(renderShow(detail.detail, [])).toContain(
+      "denominator: 3 cases — 1 verified, 1 unaccepted, 1 non-result",
+    );
   });
 
   it("keeps the newest closed runs only, and lists every open one", () => {

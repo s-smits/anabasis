@@ -9,7 +9,7 @@
 import { existsSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
 import { BATTERY_FILE, batteryPath, CASE_ARTIFACT_FILE, CASE_JUDGE_FILE } from "../truth/battery-record.ts";
-import { type JudgeEvidence, validateJudgeEvidence } from "../claim/judge.ts";
+import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../truth/judge-prompt-policy.ts";
 import type { JudgeSubjectEvidence } from "../truth/judge.ts";
@@ -51,7 +51,7 @@ export type JudgeExit = {
   reason: string;
 };
 
-export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v10";
+export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v11";
 
 export type JudgeReviewsResult = {
   schema: typeof JUDGE_REVIEWS_SCHEMA;
@@ -174,9 +174,9 @@ function batteryCensus(analysis: IterationAnalysis, repoRoot: string): CensusAtt
 function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[]): string | null {
   if (subjects.length === 0) return null;
   if (attempt.census === null) return `the battery has no census: ${attempt.reason}`;
-  const { verdicts, censusSize, decision } = attempt.census.evidence;
-  if (verdicts.battery === censusSize.battery) return null;
-  return `the judge review is incomplete (${decision}): ${verdicts.battery}/${censusSize.battery} battery verdicts returned`;
+  const { evidence } = attempt.census;
+  if (evidence.verdicts === evidence.offered) return null;
+  return `the judge review is incomplete (${judgeDecision(evidence)}): ${evidence.verdicts}/${evidence.offered} battery verdicts returned`;
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number): JudgeExit {
@@ -248,8 +248,8 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
     census: attempt.census,
     contested,
     coverage: {
-      reviewable: attempt.census?.evidence.censusSize.battery ?? 0,
-      reviewed: attempt.census?.evidence.verdicts.battery ?? 0,
+      reviewable: attempt.census?.evidence.offered ?? 0,
+      reviewed: attempt.census?.evidence.verdicts ?? 0,
     },
     provisional,
     exit,

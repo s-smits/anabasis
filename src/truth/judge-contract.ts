@@ -81,13 +81,6 @@ export type Judge = (input: JudgeInput, context?: JudgeCallContext) => Promise<J
 export interface JudgeSession {
   pin: string;
   promptPolicyDigest?: string;
-  /** Subjects this reviewer may be asked in one batch, when its provider tolerates more than the
-   *  pool's shared default. Absent keeps `JUDGE_MAX_CONCURRENCY`, which every slot the repository
-   *  configures uses. A width at or above the subject count sends the whole census at once, and
-   *  the consecutive-error abort can then only record what happened rather than stop the next
-   *  batch; a session declaring a wide batch is declaring that its spend does not need that stop,
-   *  which is why the default is unchanged. */
-  maxConcurrency?: number;
   invoke: Judge;
 }
 

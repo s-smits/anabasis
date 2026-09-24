@@ -13,6 +13,7 @@ import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { required, scriptedSession } from "./helpers/doubles.ts";
 import { generatedExecutionFinding } from "../src/truth/brief.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
+import { submitProjection } from "../src/author/builder-execution.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 
@@ -85,7 +86,7 @@ describe("a candidate the session keeps resubmitting", () => {
     expect(submits.map((row) => row.treeFirstSubmittedAsAttempt)).toEqual([null, null, 1, null]);
     expect(submits[2]?.commit).not.toBe(submits[0]?.commit);
     expect(submits[2]?.treeId).toBe(required(submits[0]?.treeId, "the first submission's contract roots"));
-    expect(record).toMatchObject({ uniqueCandidateTrees: 3, repeatedTreeSubmits: 1 });
+    expect(submitProjection(submits)).toMatchObject({ uniqueCandidateTrees: 3, repeatedTreeSubmits: 1 });
   });
 
   // Run 52 made 17 submissions inside one provider turn, each paying a fresh census and F2 to be
@@ -138,7 +139,7 @@ describe("a candidate the session keeps resubmitting", () => {
     // resubmit and counted four distinct trees where the controller had validated one.
     const record = required(readExecutionEvidence(campaignDir)[0], "one execution record for this session");
     expect(record.submits.map((row) => row.workspaceChanged)).toEqual([null, false, false, false]);
-    expect(record).toMatchObject({
+    expect(submitProjection(record.submits)).toMatchObject({
       uniqueCandidateTrees: 1,
       unchangedTreeSubmits: 3,
       repeatedTreeSubmits: 3,

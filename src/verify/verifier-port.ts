@@ -46,6 +46,9 @@ export interface ToolEntry {
   /** sha256 of that interpreter's bytes as the cell's search path resolved it at snapshot time;
    *  absent for a binary or an interpreter that could not be found. */
   interpreterDigest?: string;
+  /** `name==version` of the Python distributions beside a script's interpreter, sorted; absent
+   *  when there are none. Installation only, and outside every identity hash. */
+  packages?: string[];
 }
 
 /** toolId → resolved entry. toolId is the adapterId a brief's external-verifier declaration

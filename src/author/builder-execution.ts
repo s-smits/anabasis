@@ -46,11 +46,12 @@ export type { BuilderFailedCall } from "./builder-turn-observation.ts";
 import { BuilderProseLog, type BuilderProseCapture, type BuilderProseRow } from "./builder-prose.ts";
 
 export const BUILDER_EXECUTION_EVIDENCE_FILE = "builder-execution.json";
-export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v5";
+export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v6";
 
 /** The workspace files one round leaves for the next. An accepted submit ends the turn, so the
  *  Builder writes no closing message; these files are its handover. */
 export const HANDOVER_FILES = [EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE] as const;
+
 const MAX_CUSTOM_CALL_RECEIPTS = 512;
 
 export interface BuilderSubmitAttempt {
@@ -155,22 +156,9 @@ export interface BuilderExecutionEvidence {
   };
   /** Milliseconds from session start to the first tool call; null when the Builder called none. */
   firstToolMs: number | null;
-  /** Milliseconds from session start to the first submission; null when it never submitted. */
-  firstSubmitMs: number | null;
+  /** Every submission in order. The counts a reader wants over them are `submitProjection`'s, derived
+   *  from these rows when read rather than stored beside them. */
   submits: BuilderSubmitAttempt[];
-  /** Submissions whose findings digest repeated the submission before it. */
-  repeatedFindingSubmits: number;
-  /** Submissions completed at the previous submission's commit. */
-  unchangedTreeSubmits: number;
-  /** Distinct candidate trees submitted. The controller validates each one once, so this is also
-   *  the number of times the conformance probes and the adoption gates actually executed. */
-  uniqueCandidateTrees: number;
-  /** Submissions at a tree an earlier submission had already completed at, whether the session came
-   *  straight back to it or wandered. Read with the field above, it says how many submissions cost
-   *  no second execution. */
-  repeatedTreeSubmits: number;
-  /** The raw and candidate-only row counts. */
-  submitCounts: BuilderSubmitCounts;
   /** The turn that was still running when this record was written, and what it had already done.
    *  Its calls are already inside `toolCalls`, while `turns` still counts settled turns only, so a
    *  record killed mid-turn says both how much work was recorded and that one turn never returned.
@@ -240,15 +228,24 @@ export interface BuilderExecutionEvidence {
   writtenAt: string;
 }
 
-type SubmitProjection = Pick<
-  BuilderExecutionEvidence,
-  | "firstSubmitMs"
-  | "repeatedFindingSubmits"
-  | "unchangedTreeSubmits"
-  | "uniqueCandidateTrees"
-  | "repeatedTreeSubmits"
-  | "submitCounts"
->;
+/** The counts a reader derives from a record's submit rows. */
+interface SubmitProjection {
+  /** Milliseconds from session start to the first submission; null when it never submitted. */
+  firstSubmitMs: number | null;
+  /** Submissions whose findings digest repeated the submission before it. */
+  repeatedFindingSubmits: number;
+  /** Submissions completed at the previous submission's commit. */
+  unchangedTreeSubmits: number;
+  /** Distinct candidate trees submitted. The controller validates each one once, so this is also
+   *  the number of times the conformance probes and the adoption gates actually executed. */
+  uniqueCandidateTrees: number;
+  /** Submissions at a tree an earlier submission had already completed at, whether the session came
+   *  straight back to it or wandered. Read with the field above, it says how many submissions cost
+   *  no second execution. */
+  repeatedTreeSubmits: number;
+  /** The raw and candidate-only row counts. */
+  submitCounts: BuilderSubmitCounts;
+}
 
 /** One gate's contribution to a refusal identity: who refused, what it said, and which finding
  *  codes and paths it carried. */
@@ -270,9 +267,8 @@ export function isCandidateSubmit(row: Pick<BuilderSubmitAttempt, "kind">): bool
   return row.kind === "candidate";
 }
 
-/** The counts a record states beside its submit rows. The writer records them here and the outcome
- *  reader derives them again from the rows, refusing any record whose stated counts are not this
- *  projection, so a hand-edited or half-written record cannot pass as one this writer produced. */
+/** The counts over a record's submit rows, derived where they are read so no stored copy can
+ *  disagree with the rows it summarises. */
 export function submitProjection(submits: readonly BuilderSubmitAttempt[]): SubmitProjection {
   const candidateRows = submits.filter(isCandidateSubmit);
   return {
@@ -619,7 +615,6 @@ export class BuilderExecutionRecorder {
       // Copied, not aliased: finish() also runs per checkpoint, and an earlier snapshot must not
       // grow when a later submission lands.
       submits: [...this.submits],
-      ...submitProjection(this.submits),
       partialTurn: open.total === 0 ? null : { turn: this.turns + 1, toolCalls: open },
       failedByName: mergeCounts(this.failedByName, open.failedByName),
       turnRetries: [...this.turnRetries],

@@ -61,7 +61,7 @@ interface Group {
   variants: Variant[];
 }
 
-type FindingAction = "summary" | "typecheck" | "feedback";
+type FindingAction = "readiness" | "feedback";
 
 type Latest =
   | (AuthorRefusalIdentity & { source: "submit"; findings: ContractFinding[] })
@@ -177,7 +177,7 @@ export function authorFindingOverview(
   findings: readonly ContractFinding[],
   offset?: number,
   limit?: number,
-  action: FindingAction = "summary",
+  action: FindingAction = "readiness",
 ) {
   const groups = groupAuthorFindings(findings);
   const rows =
@@ -199,7 +199,9 @@ export function authorFindingOverview(
     navigation:
       groups.length === 0
         ? "No author-visible findings are present."
-        : `Use harness_inspect {"action":"${action}"} with group and field to read an exact code, path or detail; use offset for later characters or, without group, later groups.`,
+        : action === "readiness"
+          ? 'Use harness_inspect {"action":"readiness"} with group and field to read an exact code, path or detail, including a group past this page; use offset for later characters.'
+          : `Use harness_inspect {"action":"${action}"} with group and field to read an exact code, path or detail; use offset for later characters or, without group, later groups.`,
   };
 }
 
@@ -207,7 +209,7 @@ export function authorFindingOverview(
 export function authorFindingPage(
   findings: readonly ContractFinding[],
   query: AuthorFeedbackQuery = {},
-  action: FindingAction = "summary",
+  action: FindingAction = "readiness",
 ) {
   if (query.group === undefined) return authorFindingOverview(findings, query.offset, query.limit, action);
   const groups = groupAuthorFindings(findings);
@@ -274,7 +276,7 @@ export class BuilderAuthorFeedback {
         available: false as const,
         phase: "before-submit" as const,
         nextAction:
-          "Use harness_inspect readiness; run submit only after the candidate and contrasting trials are ready.",
+          "No correctness_check or submit has run this round, so there is no feedback yet; harness_inspect readiness shows what the candidate still lacks.",
       };
     }
     const identity =

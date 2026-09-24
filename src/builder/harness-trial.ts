@@ -23,6 +23,7 @@ import type { BuilderCustomToolSemantic } from "../author/builder-execution.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { bundleSnapshotIdOf, ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { asRecord, isBoolean, isNumber, isString } from "../meta/json-shape.ts";
+import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
@@ -43,6 +44,10 @@ import {
   solverBlockerOf,
 } from "../truth/solve-case.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
+import type { RehearsalRow } from "../author/experiment-plan.ts";
+import { harnessSettings } from "../truth/harness-config.ts";
+import type { RehearsalTraces } from "./context-tool.ts";
+import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
 
 /** How many blind rehearsals one authoring session may run. Each one costs a measured case, so the
  *  bound is the session's own experiment budget rather than a safety limit: two tasks read at the
@@ -67,6 +72,11 @@ interface HarnessTrialBinding {
   /** Where each rehearsal's solve evidence is written, one directory per call. Absent in tests. */
   rehearsalDir?: string;
   verifierLifetime?: VerifierLifetime;
+  /** This round's passing rehearsals, which the context tool offers as traces. */
+  rehearsals?: RehearsalTraces;
+  /** Records each rehearsal that reached a solve into the round plan's evidence and returns the
+   *  plan's advice after it. Only the aggregate verdict and the solve's effort cross. */
+  onRehearsal?: (row: RehearsalRow) => string[];
 }
 
 type LoadedTrial = Extract<ReturnType<typeof loadTrialCandidate>, { ok: true }>;
@@ -81,7 +91,47 @@ type BlindGrade = {
   readonly loaded: LoadedTrial;
   readonly solved: SolvedCase;
   readonly openedCandidateId: string | null;
+  readonly ordinal: number;
+  /** The harness's solve wall, read from the snapshot the solve ran under. */
+  readonly wallMinutes: number;
 };
+
+/** What this round's rehearsals have measured so far. A rehearsal that reached no verdict measures
+ *  nothing and stays out of the denominator, which is the same rule a measured battery applies to a
+ *  typed non-result. */
+interface RoundRehearsals {
+  graded: number;
+  passed: number;
+  /** Passes the solver reached without needing a second turn. A task it solves in one is not near
+   *  any limit, and the turn count is the part of that a pass/fail alone cannot say. */
+  passedInOneTurn: number;
+}
+
+/** The fields of a grading result this boundary reads, and the only ones it can name. `kind` and
+ *  `truthOk` are optional because the grading path returns them on the outcomes that have them, and
+ *  a result carrying neither is a run that reached neither. Nothing here validates a record at
+ *  runtime: `gradeBlind` passes `rehearseCase`'s own return, so the call site is what proves the two
+ *  still agree, and a producer that changed shape fails to compile rather than being interpreted. */
+interface RehearsalResult {
+  status: string;
+  kind?: string;
+  truthOk?: boolean | null;
+}
+
+/**
+ * The whole of what a verifier result may tell the author who wrote it. This type is rule 4's
+ * boundary rather than a convenience shape: a field not named here cannot cross, however much the
+ * grading path grows.
+ *
+ * How far the execution got and what the checks decided travel separately because they have separate
+ * readers. The status chooses the sentence the round gets back; the bit means nothing at all unless
+ * the run reached the check program, so a caller that reads one without the other is reading a
+ * verdict that was never taken.
+ */
+interface RehearsalVerdict {
+  execution: { status: string; kind?: string };
+  truthOk: boolean | null;
+}
 
 function candidateId(binding: HarnessTrialBinding): string | null {
   const fingerprint = fingerprintSlug(binding.workspace, { slug: binding.context.slug });
@@ -111,7 +161,7 @@ function loadTrialCandidate(binding: HarnessTrialBinding, taskId: string) {
         status: "blocked",
         stage: "candidate",
         findings: authorFindingOverview(findings),
-        nextAction: "Use harness_inspect summary and typecheck, then repair the candidate before trial.",
+        nextAction: "Use harness_inspect readiness, then repair the candidate before trial.",
       },
     };
   }
@@ -125,7 +175,8 @@ function loadTrialCandidate(binding: HarnessTrialBinding, taskId: string) {
         taskId,
         availableTaskIds: bundle.battery.tasks.slice(0, 20).map((row) => row.taskId),
         totalTasks: bundle.battery.tasks.length,
-        nextAction: "Use harness_inspect inventory to choose an authored public task.",
+        nextAction:
+          "Use harness_inspect readiness to choose an authored public task; name a family there for all of its task ids.",
       },
     };
   }
@@ -136,6 +187,25 @@ function loadTrialCandidate(binding: HarnessTrialBinding, taskId: string) {
     task,
     committed: commitPublicTask(task),
     publicArtifactSchema,
+  };
+}
+
+/**
+ * What of a verifier result may cross to its author, decided here rather than inherited from
+ * whatever shape the grading path happens to return.
+ *
+ * `rehearseCase` computes far more than it returns. The sentence naming the tool and the check that
+ * reached no completed run, and the ids of the externally grounded checks that ran no tool, are
+ * both composed in `acceptedOutcome` and both dropped on the way out — and a Builder holding a
+ * check id holds a piece of its own answer key. Copying the result whole would make that discard,
+ * in another module, the only thing standing between those ids and an authoring prompt, which is
+ * not where rule 4's boundary belongs. So this reads the two fields permitted to cross and builds a
+ * fresh object from them, and a field added upstream arrives nowhere.
+ */
+export function verifierView(verifier: RehearsalResult): RehearsalVerdict {
+  return {
+    execution: { status: verifier.status, ...keyIfDefined("kind", verifier.kind) },
+    truthOk: verifier.truthOk ?? null,
   };
 }
 
@@ -205,11 +275,15 @@ async function solveBlind(
   );
 }
 
-function solveView(solved: SolvedCase) {
+/** What the solve did, with its effort as a plain fact: minutes against the solve wall, tool calls
+ *  and cost. A fast pass and a slow one say the same about difficulty, which is nothing; the verdict
+ *  is the evidence. */
+function solveView(solved: SolvedCase, effort: SolveEffort, wallMinutes: number) {
   return {
     accepted: solved.acceptedSubmit,
     turns: solved.solved.turns,
     toolCalls: solved.solved.toolCalls ?? null,
+    effort: effortPhrase(effort, wallMinutes),
     nonResult: solverBlockerOf(solved),
   };
 }
@@ -223,11 +297,13 @@ async function runTrial(
   if (taskId.trim() === "") return { status: "blocked", stage: "request", error: "taskId must not be blank" };
   let loaded: ReturnType<typeof loadTrialCandidate>;
   let binding = sourceBinding;
+  let wallMinutes: number;
   try {
     const fingerprint = fingerprintSlug(binding.workspace, { slug: binding.context.slug });
     if (!fingerprint.ok) return { status: "blocked", stage: "candidate" };
     binding = { ...binding, workspace: ensureBundleSnapshot(binding.workspace, fingerprint).dir };
     loaded = loadTrialCandidate(binding, taskId);
+    wallMinutes = harnessSettings(binding.workspace).solveMs / 60_000;
   } catch (error) {
     return { status: "blocked", stage: "candidate", error: visibleError(error) };
   }
@@ -252,11 +328,14 @@ async function runTrial(
       candidate: { candidateId: openedCandidateId, stable: true },
     };
   }
-  return gradeBlind({ binding, sourceBinding, loaded, solved, openedCandidateId }, signal);
+  return gradeBlind(
+    { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes },
+    signal,
+  );
 }
 
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
-  const { binding, sourceBinding, loaded, solved, openedCandidateId } = grade;
+  const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
   // The battery's branch order decides this rather than convenience: `gradeOutcome` in
   // `src/truth/solve-case.ts` returns the solver's non-result before it ever looks at the accepted
@@ -264,36 +343,47 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   // behind. A rehearsal that graded those bytes anyway would answer the round's difficulty question
   // with evidence the battery itself discards, so the verifier runs only when the candidate held
   // still, the solver accepted a submission and no non-result was typed.
-  const verifier =
+  const { execution, truthOk } = verifierView(
     candidate.stable && solved.acceptedSubmit && solved.solved.nonResult === undefined
       ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
-      : { status: "not-run" };
+      : { status: "not-run" },
+  );
   let status = solved.acceptedSubmit ? "completed" : "unaccepted";
   if (solved.solved.nonResult !== undefined) status = "non-result";
-  if (verifier.status === "execution-failed") status = "verifier-failed";
-  if (verifier.status === "non-result") status = "non-result";
+  if (execution.status === "execution-failed") status = "verifier-failed";
+  if (execution.status === "non-result") status = "non-result";
   if (!candidate.stable) status = "candidate-changed";
-  // How far execution got and what the checks decided are separate facts with separate readers, so
-  // the bit leaves in `truth` alone and the verifier view below keeps reporting execution only. Of
-  // the four shapes `rehearseCase` returns — not-run, non-result, execution-failed and completed —
-  // only `completed` carries `truthOk`, which is why the default sits in front of the spread: it
-  // gives all four the key that the destructuring then takes back out.
-  const { truthOk, ...execution } = { truthOk: null, ...verifier };
   // Only the aggregate bit crosses, and only where there is one to cross. A rehearsal that never
   // reached the check program says not-run rather than reading as a failure, which the Builder would
   // otherwise answer by making a task easier on evidence that never graded it.
-  const graded = candidate.stable && verifier.status === "completed" ? truthOk : null;
+  const graded = candidate.stable && execution.status === "completed" ? truthOk : null;
+  const verdict = graded === null ? "not-run" : graded ? "pass" : "fail";
+  const { taskId, family } = loaded.task;
+  // The solver's own count wins over the trace's, which a capture bound can cut short.
+  const effort = {
+    ...traceEffort(solved.solved.trace),
+    ...keyIfDefined("toolCalls", solved.solved.toolCalls),
+  };
+  // A passing solve is the solver's own record of a task it can do, which the context tool offers
+  // beside the measured passes; a failing one would show where a check bit, so it stays here.
+  if (verdict === "pass") {
+    const heading = `${taskId} in rehearsal ${String(ordinal)}`;
+    binding.rehearsals?.add(
+      `traces/rehearsal-${String(ordinal)}/${taskId}`,
+      `the passing rehearsal of ${taskId}`,
+      solverTraceLines(heading, solved.solved.trace, wallMinutes),
+    );
+  }
+  const advice =
+    binding.onRehearsal?.({ taskId, family: family ?? null, verdict, wallMinutes, ...effort }) ?? [];
   return {
     status,
-    task: {
-      taskId: loaded.task.taskId,
-      family: loaded.task.family,
-      publicTaskDigest: loaded.committed.publicTaskDigest,
-    },
+    task: { taskId, family, publicTaskDigest: loaded.committed.publicTaskDigest },
     candidate,
-    solve: solveView(solved),
+    solve: solveView(solved, effort, wallMinutes),
     verifier: candidate.stable ? execution : { status: "not-run", reason: "candidate-changed" },
-    truth: { verdict: graded === null ? "not-run" : graded ? "pass" : "fail" },
+    truth: { verdict },
+    ...keysIf(advice.length > 0, () => ({ planAdvice: advice })),
   };
 }
 
@@ -312,15 +402,49 @@ function trialOutcome(status: string, verdict: string): BuilderCustomToolSemanti
  *  to make its battery easier. */
 function blockedNextAction(stage: string): string {
   if (stage === "request") {
-    return "The call named no task, so nothing was rehearsed. Use harness_inspect inventory to choose an authored taskId and repeat it.";
+    return "The call named no task, so nothing was rehearsed. Use harness_inspect readiness to choose an authored taskId and repeat it.";
   }
   if (stage === "cancelled") {
     return "The host cancelled this call before your solver ran, so nothing was measured and no rehearsal was spent. Repeat it if the round continues.";
   }
-  return "The rehearsal stopped before your solver ran: this candidate could not be read as a bundle. Use harness_inspect summary and typecheck, repair it, then repeat the rehearsal.";
+  return "The rehearsal stopped before your solver ran: this candidate could not be read as a bundle. Use harness_inspect readiness, repair it, then repeat the rehearsal.";
 }
 
-function trialNextAction(status: string, verdict: string, remaining: number, stage: string): string {
+function countRehearsal(tally: RoundRehearsals, verdict: string, turns: number | null): void {
+  if (verdict !== "pass" && verdict !== "fail") return;
+  tally.graded += 1;
+  if (verdict !== "pass") return;
+  tally.passed += 1;
+  if (turns === 1) tally.passedInOneTurn += 1;
+}
+
+/**
+ * The round's record so far, in one clause, added to the sentence that already reads this call's
+ * verdict. Nothing here is new information: it is the sum of bits this tool has already returned,
+ * so it crosses the rule-4 boundary on exactly the terms the single aggregate verdict does.
+ *
+ * It is here because a per-call sentence is the wrong unit for the decision it feeds. The band a
+ * battery is aimed at is stated as a rate -- 5 to 12 verified of 25 -- and a Builder holding six
+ * separate sentences has to add them up itself, from a conversation pi compacts as it goes, whose
+ * oldest turns are the first to be cut. Three recorded campaigns rehearsed and shipped anyway: of
+ * 16 rehearsals carrying a verdict, 12 passed and 3 failed, and every single pass came back at one
+ * turn. Each of those twelve results said, correctly, that a battery of tasks like this one scores
+ * near its size. None of them said it twelve times.
+ */
+function roundClause(tally: RoundRehearsals): string {
+  if (tally.graded < 2) return "";
+  const inOneTurn =
+    tally.passedInOneTurn === 0 ? "" : `, ${String(tally.passedInOneTurn)} of them inside a single turn`;
+  return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${inOneTurn}.`;
+}
+
+function trialNextAction(
+  status: string,
+  verdict: string,
+  remaining: number,
+  stage: string,
+  tally: RoundRehearsals,
+): string {
   if (status === "blocked") return blockedNextAction(stage);
   if (status === "non-result" || status === "verifier-failed") {
     return "The rehearsal reached no verdict, so this task is unmeasured: it is neither hard nor easy evidence. Repair the named stage and repeat it.";
@@ -332,12 +456,18 @@ function trialNextAction(status: string, verdict: string, remaining: number, sta
     return "The solver ran and submitted no accepted artifact. That is a solver miss, not a check failure: it counts towards difficulty only if a correct answer is reachable from the public task with the tools you published. Read your own tool roster and brief before treating it as a hard task.";
   }
   if (verdict === "pass") {
-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size. ${String(remaining)} rehearsals left.`;
+    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)} ${String(remaining)} rehearsals left.`;
   }
-  return `Your solver missed this task. ${String(remaining)} rehearsals left; rehearse a task you believe is easier to find where the limit sits.`;
+  // Stated as the mirror of the pass sentence, and with no next task: a miss is the aim of a first
+  // battery, so a sentence steering towards an easier task would choose the course for the Builder.
+  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally)} ${String(remaining)} rehearsals left.`;
 }
 
-function trialResultSummary(value: unknown, remaining: number) {
+/** Counts this call into the round before it reads the round back, so a result speaks for every
+ *  rehearsal including its own. The tally is updated here rather than by the caller because this is
+ *  where the row has already been parsed, and a second parse of the same bytes is a second thing to
+ *  keep right. */
+function trialResultSummary(value: unknown, remaining: number, tally: RoundRehearsals) {
   const row = asRecord(value);
   const solve = asRecord(row?.solve);
   const candidate = asRecord(row?.candidate);
@@ -351,24 +481,28 @@ function trialResultSummary(value: unknown, remaining: number) {
   if (isNumber(solve?.turns)) receipt.turns = solve.turns;
   if (isString(candidate?.candidateId)) receipt.candidateId = candidate.candidateId;
   if (stage !== "") receipt.stage = stage;
+  countRehearsal(tally, verdict, isNumber(solve?.turns) ? solve.turns : null);
   return {
-    validation: { ...counted, rehearsalsLeft: remaining },
+    validation: { ...counted, rehearsalsLeft: remaining, round: { ...tally } },
     // A body that already named its own cause keeps it. The status alone cannot tell a blank taskId
     // from an unreadable bundle, so recomputing here would write a vaguer sentence over the more
     // specific one the stage produced.
     nextAction: isString(row?.nextAction)
       ? row.nextAction
-      : trialNextAction(status, verdict, remaining, stage),
+      : trialNextAction(status, verdict, remaining, stage, tally),
     receipt,
   };
 }
 
 export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<typeof Params> {
   let spent = 0;
+  // Round-scoped, like `spent`, and for the same reason: the tool instance is the round, so neither
+  // count outlives it and neither has anywhere else to live.
+  const tally: RoundRehearsals = { graded: 0, passed: 0, passedInOneTurn: 0 };
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, and how many turns it took: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes first time is a task the battery will pass. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and a ${REHEARSAL_VERIFIER_DEADLINE_MS / 1000}-second total verifier deadline over the accepted bytes. Use harness_inspect inventory to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and a ${REHEARSAL_VERIFIER_DEADLINE_MS / 1000}-second total verifier deadline over the accepted bytes. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {
@@ -378,7 +512,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
             status: "blocked",
             stage: "budget",
             rehearsalsLeft: 0,
-            nextAction: `This round has spent all ${MAX_REHEARSALS} rehearsals. Decide the battery from what they measured and submit.`,
+            nextAction: `This round has spent all ${MAX_REHEARSALS} rehearsals, so no further task can be measured before submit.`,
           }),
           details: { taskId: params.taskId, receipt: { outcome: "blocked", stage: "budget" } },
         };
@@ -390,7 +524,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
       // a mistyped taskId. Nothing was written under this ordinal either, so the next call reuses it
       // without colliding with an evidence directory that exists.
       if (result.status === "blocked") spent -= 1;
-      const summary = trialResultSummary(result, MAX_REHEARSALS - spent);
+      const summary = trialResultSummary(result, MAX_REHEARSALS - spent, tally);
       return {
         text: capturedJsonStringify({
           ...result,

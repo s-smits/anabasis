@@ -7,8 +7,8 @@
  */
 import {
   BUILDER_EXECUTION_SCHEMA,
-  submitProjection,
   type BuilderExecutionEvidence,
+  HANDOVER_FILES,
   type BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
 import { parseExperimentSubmission } from "../../src/author/experiment-plan.ts";
@@ -18,7 +18,6 @@ import {
   declaredSemanticOutcome,
 } from "../../src/author/builder-custom-tool-call.ts";
 import { plainRecord } from "../../src/meta/json-evidence.ts";
-import { canonicalJson } from "../../src/meta/stable-json.ts";
 import { isBoolean, isNumber, isString } from "../../src/meta/json-shape.ts";
 import {
   isNonNegativeInteger,
@@ -96,7 +95,9 @@ function currentCustomSemantic(value: unknown): boolean {
     optionalCount(semantic.callsAttempted) &&
     optionalCount(semantic.callsFailed) &&
     optionalBoolean(semantic.repeated) &&
-    optionalBoolean(semantic.submitted)
+    optionalBoolean(semantic.submitted) &&
+    (semantic.findingCodes === undefined ||
+      (Array.isArray(semantic.findingCodes) && semantic.findingCodes.every(isString)))
   );
 }
 
@@ -369,23 +370,6 @@ function currentSubmits(value: unknown): value is BuilderSubmitAttempt[] {
   });
 }
 
-/** The writer states these counts as its submit rows' projection, so a record whose counts are
- *  not that projection was not written by it. */
-function currentSubmitRecord(plain: EvidenceRecord): boolean {
-  const submits = plain.submits;
-  if (!currentSubmits(submits)) return false;
-  const derived = submitProjection(submits);
-  const stated = {
-    firstSubmitMs: plain.firstSubmitMs,
-    repeatedFindingSubmits: plain.repeatedFindingSubmits,
-    unchangedTreeSubmits: plain.unchangedTreeSubmits,
-    uniqueCandidateTrees: plain.uniqueCandidateTrees,
-    repeatedTreeSubmits: plain.repeatedTreeSubmits,
-    submitCounts: plain.submitCounts,
-  };
-  return canonicalJson(stated) === canonicalJson(derived);
-}
-
 function currentExecutionReceipts(plain: EvidenceRecord): boolean {
   return (
     currentPartialTurn(plain.partialTurn) &&
@@ -431,8 +415,24 @@ export function isCurrentExecutionRecord(value: unknown): value is BuilderExecut
     currentToolCalls(plain.toolCalls, plain.failedByName) &&
     currentUsage(plain.usage) &&
     nullableNumber(plain.firstToolMs) &&
-    currentSubmitRecord(plain) &&
+    currentSubmits(plain.submits) &&
     currentExecutionReceipts(plain) &&
-    currentExecutionSettlement(plain)
+    currentExecutionSettlement(plain) &&
+    currentHandovers(plain.handovers)
+  );
+}
+
+/** Absent, or one digest-or-null per handover file and no other key. */
+function currentHandovers(value: unknown): boolean {
+  if (value === undefined) return true;
+  const plain = plainRecord(value);
+  if (plain === null) return false;
+  const keys = Object.keys(plain);
+  return (
+    keys.length === HANDOVER_FILES.length &&
+    HANDOVER_FILES.every((name) => {
+      const digest = plain[name];
+      return digest === null || (isString(digest) && /^[0-9a-f]{64}$/.test(digest));
+    })
   );
 }

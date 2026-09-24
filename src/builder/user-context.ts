@@ -1,6 +1,6 @@
 /**
  * The context mechanism: the controller admits an explicit corpus, fingerprints it, lists a compact
- * manifest in the kickoff, and gives the Builder bounded list, read and search access. Context is
+ * manifest in the kickoff, and `context-tool.ts` serves the files as its user source. Context is
  * user input — not a generated ask, and not verifier truth — which is why it is admitted once and
  * read through a controller-owned snapshot rather than consulted live.
  */
@@ -19,16 +19,10 @@ import {
 } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { basename, isAbsolute, join, relative, resolve } from "../meta/path.ts";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { Type } from "typebox";
 import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { defineTool } from "../solve/define-tool.ts";
-import { eachFileLine, readFileCharacterWindow, readFileWindow, scanTextFile } from "./file-window.ts";
-import { truncateLine } from "./pi-coding/truncate.ts";
-import { hasText } from "../meta/text.ts";
-import { characterLimit, jsonListPage, LIST_WINDOW_ROWS, windowNote } from "./read-window.ts";
+import { scanTextFile } from "./file-window.ts";
 
 const MAX_FILES = 5_000;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
@@ -37,9 +31,8 @@ const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 // one page-sized read rather than the file.
 const FIRST_CHUNK_BYTES = 256 * 1024;
 const MANIFEST_FILES = 40;
-const MAX_SEARCH_MATCHES = 40;
 
-interface UserContextFile {
+export interface UserContextFile {
   id: string;
   label: string;
   lines: number;
@@ -256,111 +249,10 @@ export function contextManifest(context: PreparedUserContext): string {
   const omitted = context.files.length - Math.min(context.files.length, MANIFEST_FILES);
   return [
     `User context: ${context.files.length} approved file(s), digest ${context.digest}.`,
-    "Use the context tool to list, read, or search these user files. They are input material, not answers.",
+    "The context tool reads and searches these user files (source user). They are input material, not answers.",
     listed,
     ...(omitted === 0
       ? []
-      : [`- … ${omitted} more; call the context tool with {"action":"list"} to see all files.`]),
+      : [`- … ${omitted} more; the context tool's overview of source user lists all of them.`]),
   ].join("\n");
-}
-
-const Params = Type.Object({
-  action: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("search")]),
-  id: Type.Optional(Type.String()),
-  query: Type.Optional(Type.String()),
-  /** 1-based first line (read), row (list), or match (search). Defaults to the start. */
-  offset: Type.Optional(Type.Number()),
-  /** 1-based exact character page for a minified or otherwise single-line context file. */
-  characterOffset: Type.Optional(Type.Number()),
-  /** How many lines, rows, or matches to return. Defaults to the window owner's size. */
-  limit: Type.Optional(Type.Number()),
-});
-
-export function createUserContextTool(context: PreparedUserContext): AgentTool<typeof Params> {
-  const byId = new Map(context.files.map((file) => [file.id, file]));
-  return defineTool({
-    name: "context",
-    label: "User context",
-    description:
-      "List, read, or search controller-admitted user context. It is input, not verification truth. Results carry admitted hashes and explicit continuation; use characterOffset to page an oversized single line exactly.",
-    parameters: Params,
-    run: async (params) => {
-      if (params.action === "list") {
-        const rows = context.files.map(({ id, label, lines, bytes, sha256: hash }) => ({
-          id,
-          label,
-          lines,
-          bytes,
-          sha256: hash,
-        }));
-        const page = jsonListPage(rows, "files", params.offset, params.limit ?? LIST_WINDOW_ROWS);
-        return {
-          text: page.text,
-          details: {
-            action: params.action,
-            files: page.count,
-            digest: context.digest,
-            receipt: { outcome: "completed", resultDigest: context.digest },
-          },
-        };
-      }
-      if (params.action === "read") {
-        if (!hasText(params.id)) throw new Error("context.read requires id");
-        const file = byId.get(params.id);
-        if (file === undefined) throw new Error(`unknown context id: ${params.id}`);
-        // The note leads the body: `details` never reaches the model, so a window stated only there
-        // would leave a partial read looking exactly like a whole one.
-        const lineWindow =
-          params.characterOffset === undefined
-            ? readFileWindow(file.path, file.lines, params.offset, params.limit)
-            : null;
-        const characterPage =
-          params.characterOffset !== undefined || lineWindow?.cut === true
-            ? readFileCharacterWindow(
-                file.path,
-                file.characters,
-                params.characterOffset,
-                characterLimit(params.limit),
-              )
-            : null;
-        const window = characterPage ?? lineWindow;
-        if (window === null) throw new Error("context read window was not constructed");
-        const unit = characterPage === null ? "lines" : "characters";
-        const offsetName = characterPage === null ? "offset" : "characterOffset";
-        return {
-          text: `${file.id} ${file.label} sha256:${file.sha256} — ${windowNote(window, unit, offsetName)}\n\n${window.text}`,
-          details: {
-            action: params.action,
-            id: file.id,
-            bytes: file.bytes,
-            sha256: file.sha256,
-            receipt: { outcome: "completed", resultDigest: context.digest, subjectDigest: file.sha256 },
-          },
-        };
-      }
-      const query = params.query?.trim();
-      if (!hasText(query)) throw new Error("context.search requires a non-empty query");
-      // Collect the whole match set, then window it: stopping at one page would make 400 matches
-      // look like 40. Each file still streams one line at a time rather than being held in memory.
-      const needle = query.toLocaleLowerCase();
-      const matches: Array<{ id: string; label: string; line: number; text: string }> = [];
-      for (const file of context.files) {
-        eachFileLine(file.path, (line, number) => {
-          if (line.toLocaleLowerCase().includes(needle)) {
-            matches.push({ id: file.id, label: file.label, line: number, text: truncateLine(line).text });
-          }
-        });
-      }
-      const page = jsonListPage(matches, "matches", params.offset, params.limit ?? MAX_SEARCH_MATCHES);
-      return {
-        text: page.text,
-        details: {
-          action: params.action,
-          query,
-          matches: matches.length,
-          receipt: { outcome: "completed", resultDigest: context.digest },
-        },
-      };
-    },
-  });
 }

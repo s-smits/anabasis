@@ -38,7 +38,7 @@ function campaign() {
 
 function execution(outcome: BuilderExecutionEvidence["outcome"]): BuilderExecutionEvidence {
   return {
-    schema: "builder-execution/v5",
+    schema: "builder-execution/v6",
     backend: "codex",
     runtimeIdentity: null,
     turns: 1,
@@ -46,13 +46,7 @@ function execution(outcome: BuilderExecutionEvidence["outcome"]): BuilderExecuti
     toolCalls: { total: 1, failed: 0, byName: { submit: 1 }, custom: 1, native: 0 },
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 0, estimatedTurns: 0 },
     firstToolMs: 0,
-    firstSubmitMs: 100,
     submits: [],
-    repeatedFindingSubmits: 0,
-    unchangedTreeSubmits: 0,
-    uniqueCandidateTrees: 0,
-    repeatedTreeSubmits: 0,
-    submitCounts: { raw: 0, candidates: 0, controllerTerminals: 0 },
     partialTurn: null,
     turnRetries: [],
     authoringReviews: [],
@@ -85,7 +79,7 @@ function open(campaignRoot: string, runId: string, writtenAt?: string): string {
 function record(campaignRoot: string, runId: string, writtenAt: string): void {
   writeFileSync(
     join(open(campaignRoot, runId), "terminal.json"),
-    JSON.stringify({ schema: "campaign-terminal/v2", outcome: "completed", writtenAt }),
+    JSON.stringify({ schema: "campaign-terminal/v4", outcome: "completed", writtenAt }),
   );
 }
 

@@ -69,7 +69,7 @@ export interface HarnessBuildOptions {
   /** Controller-derived advisory prose delivered beside the kickoff, never inside it — the
    *  kickoff's content hash keys the epoch, and an advisory note must not re-key a campaign. */
   advisoryNote?: string;
-  readHistory?: BuilderCampaignInput["readHistory"];
+  measured?: BuilderCampaignInput["measured"];
   /** The run's pass-rate band, read from `thresholds.frozen.yaml` by the controller. The Builder's
    *  difficulty sentences quote the counts it implies, so it must be the band the placement is read
    *  against. Absent, the prompt falls back to the code-owned policy row. */
@@ -104,14 +104,13 @@ export interface HarnessBuildOptions {
   diagnosisInput?: DiagnosisInput;
   /** Admitted-history public fingerprints for the A→B→A refusal of a task-only experiment. */
   priorPublicTaskFingerprints?: readonly string[];
+  lastBattery?: BuilderCampaignInput["lastBattery"];
   /** The selector's reading of the adopted product's batteries; a held limit refuses a product change. */
   /** Controller iteration identity for this immutable product version. */
   productVersionId?: string;
-  /** Present when the controller's reopen decision returns the campaign workspace to the starter
-   *  seed before the session; the value keys idempotence across resumed rounds. */
-  rebuildReset?: string;
-  /** The same reopen evidence, keying the epoch this pass opens. A reopening pass creates its own
-   *  epoch rather than writing a second harness lineage into the one an earlier pass recorded. */
+  /** The reopen evidence, keying the epoch this pass opens and the harness_reset it mounts. A
+   *  reopening pass creates its own epoch rather than writing a second harness lineage into the one
+   *  an earlier pass recorded. */
   epochPass?: string;
   /** Authoring scope; accepted bytes determine the measured experiment. */
   experiment?: HarnessAuthoring;
@@ -173,7 +172,7 @@ export function resolveBuilderCondition(
   repoRoot: string,
 ) {
   const slots = options.resolvedSlots ?? resolveBuilderSlots(repoRoot, manifest.slug);
-  const effort = options.effort ?? slots.builder.reasoningEffort ?? "medium";
+  const effort = options.effort ?? slots.builder.reasoningEffort;
   const denominated = withBuilderPin(slots, {
     effort,
     ...keyIfDefined("model", options.model),
@@ -278,7 +277,7 @@ export function authoringReviewText(
   const blocking = shown.filter((finding) => finding.severity !== "advisory").length;
   const route =
     blocking === 0
-      ? "No finding blocks submit: once your checks are sufficient evidence, submit."
+      ? "No finding blocks submit."
       : `${String(blocking)} blocking finding(s) name a demonstrated defect: repair those before submit.`;
   const rows = shown.map((finding) => `- [${finding.severity ?? "blocking"}] ${finding.claim}`);
   return [
@@ -313,7 +312,7 @@ function authoringReviewer(
   binding: AuthoringReviewBinding,
 ): NonNullable<BuilderCampaignDeps["reviewAuthoring"]> {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
-  return async (root, trigger) => {
+  return async (root, trigger, experiment) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);
     const result = await runEpochReview({
@@ -324,6 +323,7 @@ function authoringReviewer(
       analysis: null,
       priorAdvice: advice,
       priorAdviceOnSeededTree: advice === null ? null : measuredSelectedProduct(repoRoot, slug, advice.runId),
+      experiment,
       review,
       publicRequest,
       observer,
@@ -354,10 +354,7 @@ async function runEpochBuild(
   const observer = options.observer ?? createRunObserver(repoRoot, manifest.slug, epoch.key);
   const runtime = await (options.builderRuntime ?? productionBuilderRuntime)(
     manifest,
-    {
-      ...keyIfDefined("userContext", options.userContext),
-      ...keyIfDefined("safeguardContext", options.safeguardContext),
-    },
+    { ...keyIfDefined("safeguardContext", options.safeguardContext) },
     repoRoot,
     epoch.dir,
     builderCondition,
@@ -386,10 +383,14 @@ async function runEpochBuild(
       ...keyIfDefined("admissionLineage", options.admissionLineage),
       ...keyIfDefined("diagnosisInput", options.diagnosisInput),
       ...keyIfDefined("advisoryNote", options.advisoryNote),
-      ...keyIfDefined("readHistory", options.readHistory),
+      ...keyIfDefined("measured", options.measured),
+      ...keyIfDefined("userContext", options.userContext),
       ...keyIfDefined("band", options.band),
       ...keyIfDefined("priorPublicTaskFingerprints", options.priorPublicTaskFingerprints),
-      ...keyIfDefined("rebuildReset", options.rebuildReset),
+      ...keyIfDefined("lastBattery", options.lastBattery),
+      // A reopen is the one round harness_reset works in; its pass keys the once-per-scope rule,
+      // so a resumed round finds its own reset in history rather than wiping its later work.
+      ...keyIfDefined("resetKey", options.epochPass),
     },
     {
       open: runtime.open,

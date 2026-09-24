@@ -24,7 +24,12 @@ import {
   windowRange,
   visibleError,
 } from "../src/builder/read-window.ts";
-import { contextManifest, createUserContextTool, prepareUserContext } from "../src/builder/user-context.ts";
+import {
+  contextManifest,
+  type PreparedUserContext,
+  prepareUserContext,
+} from "../src/builder/user-context.ts";
+import { createContextTool, RehearsalTraces } from "../src/builder/context-tool.ts";
 import { TOOL_TEXT_LIMITS } from "../src/solve/define-tool.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 
@@ -39,9 +44,31 @@ function root(): string {
   return dir;
 }
 
-function text(result: Awaited<ReturnType<ReturnType<typeof createUserContextTool>["execute"]>>): string {
-  const block = result.content[0];
-  return block?.type === "text" ? block.text : "";
+/** The context tool scoped to the user source, over a workspace that holds nothing. */
+function userTool(context: PreparedUserContext) {
+  const tool = createContextTool({
+    round: "",
+    workspace: "/nonexistent-context-workspace",
+    rehearsals: new RehearsalTraces(),
+    user: context,
+  });
+  return async (args: {
+    depth: "overview" | "cited" | "page";
+    question?: string;
+    id?: string;
+    offset?: number;
+    limit?: number;
+    characterOffset?: number;
+  }): Promise<string> => {
+    const result = await tool.execute("context", {
+      question: "user context",
+      decides: "the test",
+      source: "user",
+      ...args,
+    });
+    const block = result.content[0];
+    return block?.type === "text" ? block.text : "";
+  };
 }
 
 describe("direct user context", () => {
@@ -69,46 +96,36 @@ describe("direct user context", () => {
     writeFileSync(join(repo, "real.md"), "admitted line\n");
     symlinkSync(join(repo, "real.md"), join(repo, "link.md"));
     const context = prepareUserContext(repo, ["link.md"]);
-    const tool = createUserContextTool(context);
+    const ask = userTool(context);
     writeFileSync(join(repo, "real.md"), "changed line\n");
     writeFileSync(join(repo, "other.md"), "other line\n");
     rmSync(join(repo, "link.md"));
     symlinkSync(join(repo, "other.md"), join(repo, "link.md"));
     rmSync(join(repo, "real.md"));
     writeFileSync(join(repo, "real.md"), "replaced line\n");
-    const read = text(await tool.execute("read", { action: "read", id: "ctx-1" }));
+    const read = await ask({ depth: "page", id: "ctx-1" });
     expect(read).toContain("admitted line");
     expect(read).not.toMatch(/changed|other|replaced/);
     expect(read).toContain(`sha256:${context.files[0]?.sha256}`);
-    const hits = JSON.parse(text(await tool.execute("search", { action: "search", query: "line" })));
-    expect(hits.matches.map((match: { text: string }) => match.text)).toEqual(["admitted line"]);
+    const hits = await ask({ depth: "cited", question: "line" });
+    expect(hits.split("\n").slice(1)).toEqual(["[ctx-1:L1] admitted line"]);
   });
 
   it("lists, reads, and searches without exposing a general filesystem reader", async () => {
     const repo = root();
     writeFileSync(join(repo, "brief.md"), "Use the RP2040.\nKeep power below 1 W.\n");
     const context = prepareUserContext(repo, ["brief.md"]);
-    const tool = createUserContextTool(context);
-    expect(JSON.parse(text(await tool.execute("list", { action: "list" })))).toMatchObject({
-      from: 1,
-      to: 1,
-      total: 1,
-      more: false,
-      files: [{ id: "ctx-1", label: "brief.md" }],
-    });
-    const read = text(await tool.execute("read", { action: "read", id: "ctx-1" }));
+    const ask = userTool(context);
+    expect(await ask({ depth: "overview" })).toBe(
+      `documents 1-1 of 1:\n- ctx-1 (user): brief.md sha256:${context.files[0]?.sha256}`,
+    );
+    const read = await ask({ depth: "page", id: "ctx-1" });
     expect(read).toContain("RP2040");
     expect(read).toContain(`sha256:${context.files[0]?.sha256}`);
-    expect(JSON.parse(text(await tool.execute("search", { action: "search", query: "power" })))).toEqual({
-      from: 1,
-      to: 1,
-      more: false,
-      total: 1,
-      matches: [{ id: "ctx-1", label: "brief.md", line: 2, text: "Keep power below 1 W." }],
-    });
-    await expect(tool.execute("missing", { action: "read", id: "../secret" })).rejects.toThrow(
-      /unknown context id/,
+    expect(await ask({ depth: "cited", question: "power" })).toBe(
+      "Citations 1-1 of 1 over 1 document(s), best match first. Page an id for the surrounding lines.\n[ctx-1:L2] Keep power below 1 W.",
     );
+    await expect(ask({ depth: "page", id: "../secret" })).rejects.toThrow(/unknown context id/);
   });
 
   // A listing is one JSON body, and the record count alone does not bound it. Paged by count only,
@@ -122,13 +139,14 @@ describe("direct user context", () => {
     for (let index = 1; index <= 200; index += 1) {
       writeFileSync(join(dir, `${String(index).padStart(3, "0")}-${"n".repeat(200)}.md`), "one line\n");
     }
-    const tool = createUserContextTool(prepareUserContext(repo, ["ctx"]));
-    const first = JSON.parse(text(await tool.execute("list", { action: "list" })));
-    expect(first.total).toBe(200);
-    expect(first.more).toBe(true);
-    expect(first.files).toHaveLength(first.to - first.from + 1);
-    const next = JSON.parse(text(await tool.execute("list", { action: "list", offset: first.to + 1 })));
-    expect(next.files[0].id).toBe(`ctx-${first.to + 1}`);
+    const ask = userTool(prepareUserContext(repo, ["ctx"]));
+    const first = await ask({ depth: "overview", limit: 1_000 });
+    const range = /documents 1-(\d+) of 200; call again with offset (\d+)/.exec(first);
+    const to = Number(range?.[1]);
+    expect(Number(range?.[2])).toBe(to + 1);
+    expect(first.split("\n").slice(1)).toHaveLength(to);
+    const next = await ask({ depth: "overview", offset: to + 1 });
+    expect(next.split("\n")[1]).toStartWith(`- ctx-${to + 1} (user)`);
   });
 
   // The earlier context limit was 512 KiB, already larger than evidenceResult's 64 KiB limit.
@@ -138,12 +156,12 @@ describe("direct user context", () => {
     const repo = root();
     const lines = Array.from({ length: 6_000 }, (_, index) => `line ${index + 1}: ${"detail ".repeat(10)}`);
     writeFileSync(join(repo, "big.md"), lines.join("\n"));
-    const tool = createUserContextTool(prepareUserContext(repo, ["big.md"]));
-    const first = text(await tool.execute("read", { action: "read", id: "ctx-1" }));
+    const ask = userTool(prepareUserContext(repo, ["big.md"]));
+    const first = await ask({ depth: "page", id: "ctx-1" });
     expect(first).toContain("lines 1-400 of 6000; call again with offset 401");
     expect(first).toContain("line 1:");
     expect(first).not.toContain("line 401:");
-    const later = text(await tool.execute("read", { action: "read", id: "ctx-1", offset: 5_900 }));
+    const later = await ask({ depth: "page", id: "ctx-1", offset: 5_900 });
     expect(later).toContain("lines 5900-6000 of 6000");
     expect(later).not.toContain("call again");
     expect(later).toContain("line 6000:");
@@ -153,16 +171,15 @@ describe("direct user context", () => {
     const repo = root();
     const value = `start-${"x".repeat(80_000)}-end`;
     writeFileSync(join(repo, "minified.json"), value);
-    const tool = createUserContextTool(prepareUserContext(repo, ["minified.json"]));
+    const ask = userTool(prepareUserContext(repo, ["minified.json"]));
     const parts: string[] = [];
     let characterOffset: number | undefined;
     for (;;) {
-      const args = {
-        action: "read" as const,
+      const page = await ask({
+        depth: "page",
         id: "ctx-1",
         ...keyIfDefined("characterOffset", characterOffset),
-      };
-      const page = text(await tool.execute("read", args));
+      });
       const range = /characters (\d+)-(\d+) of (\d+)/.exec(page);
       expect(range).not.toBeNull();
       parts.push(page.slice(page.indexOf("\n\n") + 2));
@@ -179,14 +196,14 @@ describe("direct user context", () => {
   it("states the whole match count even when it returns one page of them", async () => {
     const repo = root();
     writeFileSync(join(repo, "hits.md"), Array.from({ length: 120 }, () => "power rail").join("\n"));
-    const tool = createUserContextTool(prepareUserContext(repo, ["hits.md"]));
-    const page = JSON.parse(text(await tool.execute("search", { action: "search", query: "power" })));
-    expect(page).toMatchObject({ from: 1, to: 40, total: 120, more: true });
-    expect(page.matches).toHaveLength(40);
-    const later = JSON.parse(
-      text(await tool.execute("search", { action: "search", query: "power", offset: 101 })),
+    const ask = userTool(prepareUserContext(repo, ["hits.md"]));
+    const page = await ask({ depth: "cited", question: "power" });
+    expect(page).toStartWith(
+      "Citations 1-30 of 120 over 1 document(s), best match first; continue with offset 31.",
     );
-    expect(later).toMatchObject({ from: 101, to: 120, total: 120, more: false });
+    expect(page.split("\n").slice(1)).toHaveLength(30);
+    const later = await ask({ depth: "cited", question: "power", offset: 101 });
+    expect(later).toStartWith("Citations 101-120 of 120 over 1 document(s), best match first. Page");
   });
 
   it("skips symlinks and hidden descendants, and refuses missing or binary inputs", () => {
@@ -280,13 +297,13 @@ describe("direct user context", () => {
     Bun.gc(true);
     const before = heapStats().heapSize;
     const context = prepareUserContext(repo, ["a.md", "b.md", "c.md"]);
-    const tool = createUserContextTool(context);
-    await tool.execute("read", { action: "read", id: "ctx-3", offset: 7_900 });
-    const found = text(await tool.execute("search", { action: "search", query: "unmistakable" }));
+    const ask = userTool(context);
+    await ask({ depth: "page", id: "ctx-3", offset: 7_900 });
+    const found = await ask({ depth: "cited", question: "unmistakable" });
     Bun.gc(true);
     const grew = heapStats().heapSize - before;
     expect(context.files.reduce((total, file) => total + file.bytes, 0)).toBeGreaterThan(24_000_000);
-    expect(JSON.parse(found).total).toBe(3);
+    expect(found).toStartWith("Citations 1-3 of 3 over 3 document(s)");
     expect(grew).toBeLessThan(8 * 1024 * 1024);
   });
 
@@ -300,9 +317,7 @@ describe("direct user context", () => {
     // Nothing in the record carries the file's text: the snapshot is a file, so a 200 MB corpus
     // is not held in memory from launch to terminal.
     expect(JSON.stringify(file)).not.toContain("second line");
-    expect(
-      text(await createUserContextTool(context).execute("read", { action: "read", id: "ctx-1" })),
-    ).toContain("second line");
+    expect(await userTool(context)({ depth: "page", id: "ctx-1" })).toContain("second line");
   });
 
   it("an empty context creates no staging directory and can be disposed", () => {

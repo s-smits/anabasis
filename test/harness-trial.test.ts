@@ -1,447 +1,649 @@
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "../src/meta/filesystem.ts";
+/**
+ * The one bounded hole in the evaluator-coaching wall, tested as a boundary rather than as a
+ * function at a time.
+ *
+ * The Builder writes the tasks and the hidden expectations, so anything the verifier learns is, to
+ * the Builder, its own answer key. AGENTS.md rule 4 therefore protects verifier stdout and stderr,
+ * issue and remedy text, verifier source and internal payloads, generated counterexamples,
+ * reference artifacts and per-task failure locations, and lets none of it reach an authoring
+ * prompt. `harness_trial` is granted one exception and it is exactly four facts wide: the aggregate
+ * pass/fail/not-run verdict over the bytes the confined Built solver submitted unaided, whether it
+ * submitted at all, how many turns it took, and any typed non-result.
+ *
+ * A boundary is tested by pushing protected detail at it and finding none of it on the other side,
+ * and by freezing what does cross so that a field added upstream fails here rather than arriving in
+ * a prompt. So the cases below do two things a per-function test cannot. They hand the projection a
+ * verifier result dense with every protected class — including the check-naming sentences
+ * `acceptedOutcome` in `src/truth/solve-case.ts` composes today and `rehearseCase` happens to drop
+ * — and assert the crossing key set rather than a list of strings someone thought of. And they take
+ * a census of every key path in the model-visible result of a real rehearsal, so that a new field
+ * anywhere fails by default.
+ *
+ * Which surface is model-visible matters for reading these assertions. `defineTool` returns an
+ * `AgentToolResult`, pi-agent-core turns it into a `toolResult` message carrying both `content` and
+ * `details`, and `convertToolResult` in `@earendil-works/pi-ai` puts only `content` on the wire.
+ * `text` is therefore the whole model-visible result and `details` is host evidence, which is what
+ * AGENTS.md rule 14 says. The marker sweeps below run over the whole tool result all the same, so
+ * they hold whichever of the two a future transport decides to send.
+ */
+import { afterAll, describe, expect, it } from "bun:test";
+import { Type } from "typebox";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
-import { createHarnessInspectTool } from "../src/builder/harness-inspect.ts";
-import { createHarnessTrialTool } from "../src/builder/harness-trial.ts";
-import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
-import {
-  writeMatchingBuildFixture,
-  MATCHING_BRIEF,
-  MATCHING_TASKS,
-  MATCHING_ACCEPTS,
-} from "./helpers/matching-fixture.ts";
+import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
+import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
+import { createHarnessTrialTool, verifierView } from "../src/builder/harness-trial.ts";
+import { RehearsalTraces } from "../src/builder/context-tool.ts";
+import type { RehearsalRow } from "../src/author/experiment-plan.ts";
+import { createBuiltStarter } from "../src/solve/built-starter.ts";
+import { defineDraftTool } from "../src/solve/draft-tool.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { REHEARSAL_VERIFIER_DEADLINE_MS } from "../src/truth/solve-case.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import { processGroupExists } from "../src/meta/subprocess.ts";
-import { loadValidatedBundle } from "../src/author/candidate-check.ts";
-import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
-import { loadBuiltControllerInterface } from "../src/truth/contracts.ts";
-import { type Solver, type SolverNonResult, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
-import { keyIfDefined } from "../src/meta/optional-key.ts";
-import { double, text } from "./helpers/doubles.ts";
-import { runtimeProcess } from "../src/meta/process.ts";
+import {
+  MATCHING_BRIEF,
+  MATCHING_OPERATING_GUIDE,
+  writeMatchingBuildFixture,
+} from "./helpers/matching-fixture.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { double, required } from "./helpers/doubles.ts";
 
-const scratch: string[] = [];
-const SOLVES = [
-  { tool: "declare_part", arguments: { name: "alpha" } },
-  { tool: "set_assignments", arguments: { assignments: [{ part: "alpha", slot: "s3" }] } },
-  { tool: "submit", arguments: {} },
+/** The task every case rehearses: one part, one slot, two applicable checks. */
+const TASK_ID = "t1";
+const RIGHT_SLOT = "s3";
+const WRONG_SLOT = "s9";
+const SOLE_PART = "alpha";
+const WRITER = "write_answer";
+const SUBMIT = "submit";
+const GUIDE_FILE = "agent/BUILT_AGENTS.md";
+
+/** The two check ids the fixture's evaluator declares. Every one of them is a check identity, which
+ *  rule 4 withholds whatever the verdict was, so they double as search markers below. */
+const FAILING_CHECK = "expected-binding";
+const PASSING_CHECK = "parts-assigned";
+
+/**
+ * A verifier result carrying every class of detail rule 4 protects.
+ *
+ * The first four fields are what `rehearseCase` returns today. The next two are the sentences
+ * `acceptedOutcome` composes for a tool that reached no completed run and for an externally
+ * grounded check that ran no tool: both name a check id, both exist in source right now, and both
+ * survive only because `rehearseCase` returns `outcome.nonResultKind` rather than `outcome`. The
+ * rest stand in for the classes the rule names that have no producer here yet.
+ */
+const DENSE_VERIFIER_RESULT = {
+  status: "completed",
+  kind: "verifier",
+  truthOk: false,
+  reason: `tool "z3-marker" for check "${FAILING_CHECK}" reached no completed run (timeout)`,
+  nonResultKind: `externally grounded check(s) "${PASSING_CHECK}" ran no tool for this case`,
+  failedCheckIds: [FAILING_CHECK],
+  checkResults: { [PASSING_CHECK]: true, [FAILING_CHECK]: false },
+  stdout: `stdout-marker: slot ${RIGHT_SLOT} expected, ${WRONG_SLOT} given`,
+  stderr: "stderr-marker: evaluator.ts:31",
+  issues: [{ code: "issue-marker", remedy: `remedy-marker: bind ${SOLE_PART} to ${RIGHT_SLOT}` }],
+  counterexample: { assignments: [{ part: SOLE_PART, slot: RIGHT_SLOT }] },
+  referenceArtifact: { assignments: [{ part: SOLE_PART, slot: RIGHT_SLOT }] },
+  failureLocation: "$.assignments[0].slot",
+  diagnostics: ["diagnostic-marker: 1 of 2 checks ran"],
+  evaluatorSource: "export const checks = { 'parts-assigned': () => false }",
+};
+
+/** Substrings that must not appear anywhere in the tool result. Each one belongs to a class rule 4
+ *  names, and each is distinctive enough that a search for it means what it says. */
+const PROTECTED_MARKERS = [
+  FAILING_CHECK,
+  PASSING_CHECK,
+  "z3-marker",
+  "stdout-marker",
+  "stderr-marker",
+  "issue-marker",
+  "remedy-marker",
+  "diagnostic-marker",
+  "counterexample",
+  "referenceArtifact",
+  "failureLocation",
+  "evaluatorSource",
+  "failedCheckIds",
+  "checkResults",
+  "truthOk",
+  WRONG_SLOT,
 ];
 
-afterEach(() => {
-  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
+/**
+ * Every key path the model-visible body of a rehearsal may carry, over every branch these cases
+ * reach. Freezing the union is what makes the protected-detail assertion structural: a field added
+ * to the verifier result, to the solve view or to the candidate view arrives as a path that is not
+ * in this list, and fails here rather than in a Builder's prompt.
+ */
+const PERMITTED_KEY_PATHS: readonly string[] = [
+  // The one bit rule 4 lets a rehearsal return, and the reach of the execution that produced it.
+  "truth.verdict",
+  "verifier.status",
+  "verifier.kind",
+  "verifier.reason",
+  "status",
+  "stage",
+  // Whether it submitted at all, how many turns it took, and any typed non-result.
+  "solve.accepted",
+  "solve.turns",
+  "solve.toolCalls",
+  "solve.nonResult",
+  // What the solve spent, as a plain fact: minutes against the wall, tool calls and cost.
+  "solve.effort",
+  // Where EXPERIMENT.json and the round's rehearsal verdicts disagree: the verdicts already returned.
+  "planAdvice[]",
+  "error",
+  // Public identities of the task the caller selected, which the caller authored.
+  "task.taskId",
+  "task.family",
+  "task.publicTaskDigest",
+  "taskId",
+  "availableTaskIds[]",
+  "totalTasks",
+  // The candidate's own bytes and the candidate's own static authoring findings.
+  "candidate.candidateId",
+  "candidate.stable",
+  "candidate.staticFindings.totalFindings",
+  "candidate.staticFindings.totalGroups",
+  "candidate.staticFindings.from",
+  "candidate.staticFindings.to",
+  "candidate.staticFindings.more",
+  "candidate.staticFindings.groups[]",
+  "candidate.staticFindings.navigation",
+  "findings.totalFindings",
+  "findings.totalGroups",
+  "findings.from",
+  "findings.to",
+  "findings.more",
+  "findings.groups[]",
+  "findings.navigation",
+  // The round's own budget arithmetic, which is the sum of bits already returned.
+  "validation.outcome",
+  "validation.submitted",
+  "validation.truthVerdict",
+  "validation.rehearsalsLeft",
+  "validation.round.graded",
+  "validation.round.passed",
+  "validation.round.passedInOneTurn",
+  "rehearsalsLeft",
+  "nextAction",
+];
 
+/** The exact census of a rehearsal that reached a verdict. The union above catches an addition
+ *  anywhere; this catches a removal on the branch that matters most. */
+const VERDICT_KEY_PATHS: readonly string[] = [
+  "candidate.candidateId",
+  "candidate.stable",
+  "candidate.staticFindings.from",
+  "candidate.staticFindings.groups[]",
+  "candidate.staticFindings.more",
+  "candidate.staticFindings.navigation",
+  "candidate.staticFindings.to",
+  "candidate.staticFindings.totalFindings",
+  "candidate.staticFindings.totalGroups",
+  "nextAction",
+  "solve.accepted",
+  "solve.effort",
+  "solve.nonResult",
+  "solve.toolCalls",
+  "solve.turns",
+  "status",
+  "task.family",
+  "task.publicTaskDigest",
+  "task.taskId",
+  "truth.verdict",
+  "validation.outcome",
+  "validation.rehearsalsLeft",
+  "validation.round.graded",
+  "validation.round.passed",
+  "validation.round.passedInOneTurn",
+  "validation.submitted",
+  "validation.truthVerdict",
+  "verifier.status",
+];
+
+afterAll(cleanupScratch);
+
+/** A candidate workspace holding the shared matching bundle. The scratch root sits inside the
+ *  checkout so the compiled correctness model resolves `@ana/*` through the root node_modules. */
 function workspace(): string {
-  // The production workspace sits below the repository and resolves its admitted dependencies
-  // from that root. Place this fixture below the repository too, so its imports resolve.
-  const dir = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-harness-trial-"));
-  scratch.push(dir);
+  const dir = scratchDir(".ana-scratch-harness-trial-", import.meta.dir);
   writeMatchingBuildFixture(dir);
   return dir;
 }
 
-/** A solver standing where the measured Built solver stands: the same confined generated-tool
- *  starter the production factory opens, driven by a fixed call list instead of a provider. What
- *  the tool does with the result — grade it, project it, bound it — is what these tests read. */
-function scriptedBuiltSolver(
-  calls: Array<{ tool: string; arguments: JsonObject }>,
-  nonResult?: SolverNonResult,
-): Solver {
+/** Every key path in a parsed body, arrays rendered once as `name[]` and walked through their
+ *  first element. Sorted, so a census reads as a set rather than as an insertion order. */
+function keyPaths(value: unknown, prefix = ""): string[] {
+  if (Array.isArray(value)) {
+    const head = value[0];
+    return [`${prefix}[]`, ...(head === undefined ? [] : keyPaths(head, `${prefix}[]`))];
+  }
+  const row = asRecord(value);
+  if (row === null) return prefix === "" ? [] : [prefix];
+  return Object.keys(row)
+    .flatMap((key) => keyPaths(row[key], prefix === "" ? key : `${prefix}.${key}`))
+    .sort();
+}
+
+/** The model-visible half of a tool result: the text content, parsed. */
+function modelVisible(result: unknown): JsonObject {
+  const content = asRecord(result)?.content;
+  if (!Array.isArray(content)) throw new Error("the tool result carries no content");
+  const body = asRecord(content[0])?.text;
+  if (!isString(body)) throw new Error("the first content block carries no text");
+  return required(asRecord(JSON.parse(body)), "a parsed rehearsal body");
+}
+
+function expectNoProtectedDetail(subject: string): void {
+  for (const marker of PROTECTED_MARKERS) expect(subject).not.toContain(marker);
+}
+
+function expectWithinCensus(body: JsonObject): void {
+  for (const path of keyPaths(body)) expect(PERMITTED_KEY_PATHS).toContain(path);
+}
+
+/**
+ * A solver that writes the assignments it is given and submits, or stops short when told to. It is
+ * the measured Built solver's stand-in: it reaches the registered tools through the starter the
+ * trial builds, and it is never told what the hidden expectations are.
+ */
+function assigningSolver(slot: string | null, submitting = true, onSolve?: () => void): Solver {
   const solver: Solver = async (_task, toolset) => {
+    onSolve?.();
     const byName = new Map(toolset.tools.map((tool) => [tool.name, tool]));
-    let seq = 0;
-    for (const call of calls) {
-      const tool = byName.get(call.tool);
-      if (tool === undefined) throw new Error(`generated toolset is missing tool "${call.tool}"`);
-      await tool.execute(`blind-${++seq}`, double(call.arguments));
-    }
-    await toolset.close?.();
-    return {
-      turns: 2,
-      completedTurns: 2,
-      errors: [],
-      toolCalls: calls.length,
-      ...keyIfDefined("nonResult", nonResult),
+    const call = async (name: string, params: JsonObject) => {
+      const tool = required(byName.get(name), `a registered "${name}" tool`);
+      await tool.execute("call", double(params), undefined);
     };
+    if (slot !== null) await call(WRITER, { assignments: [{ part: SOLE_PART, slot }] });
+    if (submitting) await call(SUBMIT, {});
+    return { turns: 1, completedTurns: 1, errors: [], toolCalls: 2, startedToolCalls: 2 };
   };
-  return withSolverBuiltStarterFactory(solver, async (slugDir, task, submission, publicArtifactSchema) =>
-    createGeneratedToolStarter({
-      slugDir,
+  return withSolverBuiltStarterFactory(solver, async (_slugDir, task, submission, schema) =>
+    createBuiltStarter(
       task,
+      () => ({
+        tools: [
+          defineDraftTool({
+            name: WRITER,
+            label: "Write answer",
+            description: "Write the complete structured answer.",
+            executionMode: "sequential",
+            parameters: Type.Object({ assignments: Type.Unknown() }),
+            run(params, draft) {
+              draft.setArtifact(double(params));
+              return { text: "answer written" };
+            },
+          }),
+        ],
+      }),
       submission,
-      publicArtifactSchema,
-      contract: await loadBuiltControllerInterface(slugDir),
-    }),
+      {
+        domainToolAuthorities: [{ name: WRITER, authority: "artifact-writer" }],
+        publicArtifactSchema: schema,
+      },
+    ),
   );
 }
 
-async function trial(
+/** One round: a workspace, its evidence directory and the tool the Builder would call. A round with
+ *  no lifetime is the bound the caller wants when the verifier must not run. */
+function round(
   dir: string,
-  taskId: string,
-  calls: Array<{ tool: string; arguments: JsonObject }> = SOLVES,
-  nonResult?: SolverNonResult,
+  solver: Solver | null,
+  verifying = true,
+  plan: Pick<Parameters<typeof createHarnessTrialTool>[0], "rehearsals" | "onRehearsal"> = {},
 ) {
-  const root = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-trial-lifetime-"));
-  scratch.push(root);
-  const verifierLifetime = createVerifierLifetime({ root });
+  const rehearsalDir = join(dir, "rehearsals");
   const tool = createHarnessTrialTool({
     workspace: dir,
-    context: { slug: "matching", exactTasks: 4 },
-    builtSolver: () => scriptedBuiltSolver(calls, nonResult),
-    verifierLifetime,
+    context: { slug: "matching" },
+    rehearsalDir,
+    ...plan,
+    ...keyIfNotNull("builtSolver", solver === null ? null : () => solver),
+    ...keysIf(verifying, () => ({
+      verifierLifetime: createVerifierLifetime({ root: join(dir, ".verifier") }),
+    })),
   });
-  const result = await tool.execute("trial", { taskId });
-  expect(verifierLifetime.pendingReceipts()).toEqual([]);
-  expect(await verifierLifetime.close()).toEqual([]);
-  const block = result.content[0];
-  if (block?.type !== "text") throw new Error("harness_trial returned no text block");
-  return parseJsonAs<Record<string, JsonValue>>(block.text);
+  return { rehearsalDir, tool };
 }
 
-describe("harness_trial", () => {
-  it("solves one authored task with the measured solver and grades what it submitted", async () => {
-    const result = await trial(workspace(), "t1");
+async function rehearse(tool: ReturnType<typeof round>["tool"], taskId = TASK_ID, signal?: AbortSignal) {
+  return tool.execute("call", double({ taskId }), signal);
+}
 
-    expect(result.status, JSON.stringify(result)).toBe("completed");
-    expect(result.task).toMatchObject({ taskId: "t1", family: "single-part" });
-    expect(result.solve).toMatchObject({ accepted: true, turns: 2, toolCalls: 3, nonResult: null });
-    expect(result.validation).toEqual({
-      outcome: "completed",
-      submitted: true,
-      truthVerdict: "pass",
-      rehearsalsLeft: 5,
-    });
-    expect(result.candidate).toMatchObject({ stable: true, candidateId: expect.any(String) });
-    expect(result.verifier).toEqual({ status: "completed" });
-    expect(result.truth).toMatchObject({ verdict: "pass" });
-    expect(JSON.stringify(result)).not.toContain("expected-binding");
-    // The one reading the Builder needs and the only one this bit supports.
-    expect(text(result.nextAction)).toContain("passed this task on its first unaided attempt");
+describe("what a rehearsal may tell its author about its own answer key", () => {
+  it("passes on the execution status and the typed non-result kind, and nothing else in the verifier result", () => {
+    const view = verifierView(DENSE_VERIFIER_RESULT);
+
+    expect(Object.keys(view).sort()).toEqual(["execution", "truthOk"]);
+    expect(Object.keys(view.execution).sort()).toEqual(["kind", "status"]);
+    expect(view.execution).toEqual({ status: "completed", kind: "verifier" });
+    expectNoProtectedDetail(JSON.stringify(view.execution));
   });
 
-  it("reports a solver miss as a miss rather than a check failure", async () => {
-    const result = await trial(workspace(), "t1", [{ tool: "declare_part", arguments: { name: "alpha" } }]);
-    expect(result.status).toBe("unaccepted");
-    expect(result.solve).toMatchObject({ accepted: false });
-    expect(result.truth).toMatchObject({ verdict: "not-run" });
-    expect(text(result.nextAction)).toContain("solver miss, not a check failure");
+  it("reads the aggregate bit out of the verifier result without letting it into the execution view", () => {
+    expect(verifierView({ status: "completed", truthOk: true }).truthOk).toBe(true);
+    expect(verifierView({ status: "completed", truthOk: false }).truthOk).toBe(false);
+    expect(verifierView({ status: "completed" }).truthOk).toBeNull();
+    expect(verifierView({ status: "completed", truthOk: null }).truthOk).toBeNull();
+    expect(Object.keys(verifierView({ status: "not-run" }).execution)).toEqual(["status"]);
   });
 
-  it("rehearses a single task before admission coverage exists", async () => {
+  it("carries none of the protected classes into either surface of a real failing rehearsal", async () => {
     const dir = workspace();
-    const tasks = structuredClone(MATCHING_TASKS);
-    await Bun.write(join(dir, "correctness-model/tasks.json"), JSON.stringify(tasks.slice(0, 1)));
-    await Bun.write(
-      join(dir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: MATCHING_ACCEPTS.slice(0, 1), reject: [] }),
-    );
-    expect(loadValidatedBundle(dir, { slug: "matching", exactTasks: 4 }).battery).toBeNull();
-    const inspect = createHarnessInspectTool({
-      workspace: dir,
-      context: { slug: "matching", exactTasks: 4 },
-    });
-    // The task projection is one of three public surfaces the solver reads, not all of them.
-    expect(inspect.description).toContain(
-      "public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide",
-    );
-    const readiness = await inspect.execute("inspect", { action: "readiness" });
-    const block = readiness.content[0];
-    if (block?.type !== "text") throw new Error("missing readiness text");
-    const view = JSON.parse(block.text);
-    expect(view.rehearsalReady).toBe(true);
-    expect(view.suggestedTrials).toContainEqual({ family: "single-part", taskId: "t1" });
-    expect(await trial(dir, "t1")).toMatchObject({ status: "completed", verifier: { status: "completed" } });
-    tasks[0]!.hidden = [];
-    await Bun.write(join(dir, "correctness-model/tasks.json"), JSON.stringify(tasks.slice(0, 1)));
-    expect(await trial(dir, "t1")).toMatchObject({ status: "blocked", stage: "candidate" });
-  });
+    const { tool } = round(dir, assigningSolver(WRONG_SLOT));
+    const result = await rehearse(tool);
+    const body = modelVisible(result);
 
-  it("publishes the aggregate verdict and keeps protected check detail out of the public result", async () => {
+    expect(body.truth).toEqual({ verdict: "fail" });
+    expect(body.verifier).toEqual({ status: "completed" });
+    // Both surfaces at once, so the sweep does not depend on which one a transport sends today.
+    expectNoProtectedDetail(JSON.stringify(result));
+    expect(keyPaths(body)).toEqual([...VERDICT_KEY_PATHS]);
+  }, 60_000);
+
+  it("crosses the same fields on a pass as on a fail, so the census is not the verdict's", async () => {
     const dir = workspace();
-    const projections = new Map<string, Record<string, JsonValue>>();
-    const expected = new Map([
-      ["return true", "pass"],
-      ["return false", "fail"],
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body.truth).toEqual({ verdict: "pass" });
+    expect(keyPaths(body)).toEqual([...VERDICT_KEY_PATHS]);
+  }, 60_000);
+
+  it("keeps the host receipt to identities the text already states", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    const details = asRecord((await rehearse(tool)).details);
+
+    expect(Object.keys(required(details, "the tool details")).sort()).toEqual(["receipt", "taskId"]);
+    expect(Object.keys(required(asRecord(details?.receipt), "the receipt")).sort()).toEqual([
+      "candidateId",
+      "outcome",
+      "submitted",
+      "truthVerdict",
+      "turns",
     ]);
-    for (const body of [
-      "return true",
-      "return false",
-      'throw new Error("PRIVATE_A")',
-      'throw new Error("PRIVATE_B")',
-    ]) {
-      await Bun.write(
-        join(dir, "correctness-model/evaluator.ts"),
-        `export const checks = { "parts-assigned": () => { ${body} }, "expected-binding": () => true };`,
-      );
-      const result = await trial(dir, "t1");
-      expect(result.verifier).toEqual({
-        status: body.startsWith("return") ? "completed" : "execution-failed",
-      });
-      expect(JSON.stringify(result)).not.toContain("PRIVATE_");
-      expect(JSON.stringify(result)).not.toContain("parts-assigned");
-      // The one bit crosses: a check that accepted and one that rejected are distinguishable.
-      const verdict = expected.get(body) ?? "not-run";
-      expect(result.truth).toEqual({ verdict });
-      // Nothing beside it does. Two different private exceptions still project identically,
-      // and candidate identity may change with source bytes; content must not.
-      const { candidate: _candidate, ...publicResult } = result;
-      const previous = projections.get(verdict);
-      if (previous === undefined) {
-        projections.set(verdict, publicResult);
-      } else {
-        expect(publicResult).toEqual(previous);
-      }
-    }
+  }, 60_000);
+
+  /**
+   * The boundary runs in both directions, and this is the inbound half. A caller that could supply
+   * the solve would be the author playing solver while holding the answer key, so the measurement
+   * would say nothing about the battery. A schema naming one task is what closes that off, and it
+   * closes it harder than any sentence in the description: a parameter that does not exist cannot
+   * be passed.
+   */
+  it("lets the author name a task and nothing else, so it cannot supply the solve", () => {
+    const { tool } = round(workspace(), assigningSolver(RIGHT_SLOT));
+
+    expect(Object.keys(tool.parameters.properties)).toEqual(["taskId"]);
+    expect(tool.parameters.required).toEqual(["taskId"]);
   });
 
-  it.each([false, true])(
-    "runs installed tools and drains cancelled processes (cancel=%s)",
-    async (cancel) => {
-      const dir = workspace();
-      const root = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-trial-process-"));
-      scratch.push(root);
-      const lifetime = createVerifierLifetime({ root });
-      const brief = structuredClone(MATCHING_BRIEF);
-      for (const check of brief.truthChecks) {
-        check.execution.evidence =
-          check.id === "parts-assigned"
-            ? { kind: "authored" }
-            : { kind: "external", requiredToolIds: [cancel ? "sleep" : "cat"] };
-        if (check.execution.evidence.kind === "authored") {
-          check.execution.requiredToolIds = [cancel ? "sleep" : "cat"];
-        }
-      }
-      await Bun.write(join(dir, "correctness-model/brief.json"), JSON.stringify(brief));
-      await Bun.write(
-        join(dir, "correctness-model/evaluator.ts"),
-        `
-      async function run(request, runtime) {
-        await runtime.tools.run(${cancel ? '{ toolId: "sleep", args: ["60"] }' : '{ toolId: "cat", stdin: JSON.stringify(request.artifact) }'});
-        return false;
-      }
-      export const checks = { "parts-assigned": run, "expected-binding": run };
-    `,
-      );
-      const abort = new AbortController();
-      const tool = createHarnessTrialTool({
-        workspace: dir,
-        context: { slug: "matching" },
-        builtSolver: () => scriptedBuiltSolver(SOLVES),
-        verifierLifetime: lifetime,
-      });
-      const pending = tool.execute("trial", { taskId: "t1" }, abort.signal);
-      if (cancel) {
-        try {
-          let spawned = false;
-          for (let attempt = 0; attempt < 500 && !spawned; attempt++) {
-            spawned = readdirSync(root).some(
-              (id) =>
-                parseJsonAs<{ role: string }>(readFileSync(join(root, id, "intent.json"), "utf8")).role ===
-                  "tool" && existsSync(join(root, id, "spawned.json")),
-            );
-            if (!spawned) await Bun.sleep(10);
-          }
-          expect(spawned).toBe(true);
-        } finally {
-          abort.abort();
-        }
-      }
-      const result = await pending;
-      const block = result.content[0];
-      if (block?.type !== "text") throw new Error("missing trial result");
-      const body = parseJsonAs<Record<string, JsonValue>>(block.text);
-      expect(body.verifier, block.text).toEqual(
-        cancel ? { status: "non-result", kind: "cancelled" } : { status: "completed" },
-      );
-      const receipts = readdirSync(root).map((id) => join(root, id));
-      // Four completed `cat` runs start three processes: one asks a question the host already answered.
-      expect(receipts).toHaveLength(cancel ? 2 : 3);
-      for (const receipt of receipts) {
-        expect(
-          parseJsonAs<{ groupReaped: boolean }>(readFileSync(join(receipt, "settlement.json"), "utf8"))
-            .groupReaped,
-        ).toBe(true);
-        const { pid } = parseJsonAs<{ pid: number }>(readFileSync(join(receipt, "spawned.json"), "utf8"));
-        expect(processGroupExists(pid)).toBe(false);
-      }
-      expect(lifetime.pendingReceipts()).toEqual([]);
-      lifetime.assertUsable();
-      expect(await lifetime.close()).toEqual([]);
-    },
-  );
-
-  it("grades as the battery does: a grounded check that ran no tool, or a solver non-result, is no pass", async () => {
+  /**
+   * The dense fixture above stands in for a verifier result; this drives the real one. An external
+   * check whose declared tool never runs makes `acceptedOutcome` compose a sentence naming that
+   * check by id, and the whole of rule 4's wall on that branch is that `rehearseCase` returns the
+   * kind and drops the sentence. So this asserts over the sentence's own words rather than over a
+   * shape: the two checks both pass here, and the only reason there is no verdict is the missing
+   * tool run — which the Builder is told about as `verifier`, and not by name.
+   */
+  it("names no check when a grounded check decided without running its tool", async () => {
     const dir = workspace();
     const brief = structuredClone(MATCHING_BRIEF);
     for (const check of brief.truthChecks) {
-      if (check.id === "expected-binding") {
+      if (check.id === FAILING_CHECK) {
         check.execution.evidence = { kind: "external", requiredToolIds: ["cat"] };
       }
     }
-    await Bun.write(join(dir, "correctness-model/brief.json"), JSON.stringify(brief));
-    await Bun.write(
+    writeFileSync(join(dir, "correctness-model/brief.json"), JSON.stringify(brief));
+    writeFileSync(
       join(dir, "correctness-model/evaluator.ts"),
-      'export const checks = { "parts-assigned": () => true, "expected-binding": () => true };',
+      `export const checks = { "${PASSING_CHECK}": () => true, "${FAILING_CHECK}": () => true };`,
     );
-    const ungrounded = await trial(dir, "t1");
-    expect(ungrounded.verifier).toEqual({ status: "non-result", kind: "verifier" });
-    expect(ungrounded.truth).toEqual({ verdict: "not-run" });
-    const stopped = await trial(workspace(), "t1", SOLVES, {
-      kind: "provider",
-      message: "provider stopped after submit",
-    });
-    expect(stopped.status).toBe("non-result");
-    expect(stopped.solve).toMatchObject({ accepted: true });
-    expect(stopped.truth).toEqual({ verdict: "not-run" });
-  });
+    const result = await rehearse(round(dir, assigningSolver(RIGHT_SLOT)).tool);
+    const body = modelVisible(result);
 
-  it("reports a schema-rejected submission without presenting it as a correctness verdict", async () => {
+    expect(body.verifier).toEqual({ status: "non-result", kind: "verifier" });
+    expect(body.truth).toEqual({ verdict: "not-run" });
+    expectNoProtectedDetail(JSON.stringify(result));
+    expectWithinCensus(body);
+  }, 60_000);
+});
+
+describe("what a rehearsal hands the round plan", () => {
+  // The plan's evidence and the traces source receive the verdict the result already states and
+  // what the solve spent; a failing solve's trace would show where a check bit, so it stays out.
+  it("records the verdict and effort, returns the plan's advice, and offers only a passing trace", async () => {
     const dir = workspace();
-    await Bun.write(
-      join(dir, "correctness-model/evaluator.ts"),
-      'throw new Error("must not execute without an artifact");',
+    const rehearsals = new RehearsalTraces();
+    const rows: RehearsalRow[] = [];
+    const plan = {
+      rehearsals,
+      onRehearsal: (row: RehearsalRow) => {
+        rows.push(row);
+        return row.verdict === "pass" ? ["Advice: a stand-in line."] : [];
+      },
+    };
+    const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
+    const failing = modelVisible(await rehearse(round(dir, assigningSolver(WRONG_SLOT), true, plan).tool));
+
+    expect(passing.planAdvice).toEqual(["Advice: a stand-in line."]);
+    expect(failing.planAdvice).toBeUndefined();
+    expectWithinCensus(passing);
+    expect(rows.map((row) => [row.taskId, row.verdict, row.toolCalls, row.wallMinutes])).toEqual([
+      [TASK_ID, "pass", 2, 120],
+      [TASK_ID, "fail", 2, 120],
+    ]);
+    expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
+      "costUsd",
+      "family",
+      "minutes",
+      "taskId",
+      "toolCalls",
+      "verdict",
+      "wallMinutes",
+    ]);
+    expect(rehearsals.list().map((doc) => doc.id)).toEqual([`traces/rehearsal-1/${TASK_ID}`]);
+    for (const doc of rehearsals.list()) expectNoProtectedDetail("text" in doc ? doc.text() : "");
+  }, 60_000);
+});
+
+describe("the four facts that do cross", () => {
+  it("decides the verdict from the bytes the solver submitted, not from the task", async () => {
+    const dir = workspace();
+    const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT)).tool));
+    const failing = modelVisible(await rehearse(round(dir, assigningSolver(WRONG_SLOT)).tool));
+
+    expect(asRecord(passing.task)?.taskId).toBe(asRecord(failing.task)?.taskId);
+    expect(passing.truth).toEqual({ verdict: "pass" });
+    expect(failing.truth).toEqual({ verdict: "fail" });
+    // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
+    // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
+    const missed = isString(failing.nextAction) ? failing.nextAction : "";
+    expect(missed).toContain("a battery of tasks like it scores near zero");
+    expect(missed).not.toMatch(/easier|rehearse a/);
+    expect(passing.solve).toEqual({
+      accepted: true,
+      turns: 1,
+      toolCalls: 2,
+      effort: "unrecorded minutes of a 120-minute solve wall, 2 tool calls, cost unreported",
+      nonResult: null,
+    });
+  }, 60_000);
+
+  it("says a solve that submitted nothing is unaccepted, and reaches no verdict over bytes that do not exist", async () => {
+    const dir = workspace();
+    const body = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT, false)).tool));
+
+    expect(body.status).toBe("unaccepted");
+    expect(asRecord(body.solve)?.accepted).toBe(false);
+    expect(body.truth).toEqual({ verdict: "not-run" });
+    expect(body.verifier).toEqual({ status: "not-run" });
+    expectWithinCensus(body);
+  }, 60_000);
+
+  it("refuses a rehearsal with no Built solver bound rather than measuring a different agent", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, null);
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body.status).toBe("non-result");
+    expect(body.stage).toBe("solver");
+    expect(body.error).toContain("no Built solver is bound");
+    // No solver ran, so no bytes were graded and the body states no verdict of its own. The one
+    // place a verdict is spelled says not-run, which is the honest reading: a rehearsal that
+    // measured nothing is neither hard nor easy evidence.
+    expect(body.truth).toBeUndefined();
+    expect(asRecord(body.validation)?.truthVerdict).toBe("not-run");
+    expectWithinCensus(body);
+  }, 60_000);
+
+  it("reports a verifier it could not reach as a typed non-result, never as a miss", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT), false);
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body.verifier).toEqual({ status: "non-result", kind: "verifierUnavailable" });
+    expect(body.status).toBe("non-result");
+    expect(body.truth).toEqual({ verdict: "not-run" });
+    expect(isString(body.nextAction) ? body.nextAction : "").toContain("neither hard nor easy evidence");
+    expectWithinCensus(body);
+  }, 60_000);
+
+  it("withholds a verdict when the candidate moved under the solve", async () => {
+    const dir = workspace();
+    const { tool } = round(
+      dir,
+      assigningSolver(RIGHT_SLOT, true, () => {
+        writeFileSync(join(dir, GUIDE_FILE), `${MATCHING_OPERATING_GUIDE}\nedited mid-solve\n`);
+      }),
     );
-    const result = await trial(dir, "t1", [{ tool: "submit", arguments: {} }]);
-    expect(result.status).toBe("unaccepted");
-    expect(result.solve).toMatchObject({ accepted: false });
-    expect(result.truth).toMatchObject({ verdict: "not-run" });
-  });
+    const body = modelVisible(await rehearse(tool));
 
-  it("keeps unrelated static candidate findings visible beside the solve", async () => {
+    expect(body.status).toBe("candidate-changed");
+    expect(body.verifier).toEqual({ status: "not-run", reason: "candidate-changed" });
+    expect(body.truth).toEqual({ verdict: "not-run" });
+    expect(asRecord(body.candidate)?.candidateId).toBeNull();
+    expectWithinCensus(body);
+  }, 60_000);
+});
+
+describe("what one round of rehearsals costs", () => {
+  it("spends six measured cases and then refuses, and says the same number it enforces", async () => {
     const dir = workspace();
-    await Bun.write(join(dir, "agent/BUILT_AGENTS.md"), "");
-    const result = await trial(dir, "t1");
-    expect(result.candidate).toMatchObject({
-      staticFindings: {
-        totalFindings: 1,
-        groups: [{ code: { text: "operating-guide-shape", complete: true } }],
-      },
-    });
-  });
+    let solves = 0;
+    const { tool } = round(
+      dir,
+      assigningSolver(RIGHT_SLOT, true, () => {
+        solves += 1;
+      }),
+    );
+    const left: unknown[] = [];
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      const body = modelVisible(await rehearse(tool));
+      left.push(asRecord(body.validation)?.rehearsalsLeft ?? body.rehearsalsLeft);
+    }
 
-  it("refuses an unknown task before any worker opens", async () => {
-    const result = await trial(workspace(), "hidden-task");
-    expect(result).toMatchObject({ status: "blocked", stage: "task", taskId: "hidden-task" });
-    expect(result.availableTaskIds).toEqual(["t1", "t1b", "t2", "t2b"]);
-  });
+    expect(left).toEqual([5, 4, 3, 2, 1, 0, 0]);
+    expect(solves).toBe(6);
+    const blocked = modelVisible(await rehearse(tool));
+    expect(blocked.stage).toBe("budget");
+    expect(isString(blocked.nextAction) ? blocked.nextAction : "").not.toMatch(/\bDecide\b/);
+    expect(tool.description).toContain(`At most ${String(solves)} rehearsals per round`);
+    expect(tool.description).toContain(
+      `${String(REHEARSAL_VERIFIER_DEADLINE_MS / 1000)}-second total verifier deadline`,
+    );
+  }, 120_000);
 
-  it("names the candidate's own cause for a blocked call rather than reporting a solver miss", async () => {
-    // The blocked body already named the available taskIds. The summary then recomputed the reading
-    // from the status alone and wrote "Your solver missed this task" over it: a solver verdict for a
-    // call in which no solver ran, and the only reading the Builder acts on.
-    const result = await trial(workspace(), "hidden-task");
-    expect(text(result.nextAction)).toContain("harness_inspect inventory");
-    expect(text(result.nextAction)).not.toContain("Your solver missed this task");
-    // A call blocked before its solve measured nothing and cost no case, so it spends no rehearsal.
-    expect(result.validation).toMatchObject({ outcome: "blocked", rehearsalsLeft: 6 });
-  });
-
-  it("reports a call that named no task as a request that rehearsed nothing", async () => {
-    const result = await trial(workspace(), " ");
-    expect(result).toMatchObject({ status: "blocked", stage: "request" });
-    expect(text(result.nextAction)).toContain("named no task");
-    expect(result.validation).toMatchObject({ outcome: "blocked", rehearsalsLeft: 6 });
-  });
-
-  it("opens no solve for a call the host has already cancelled", async () => {
-    // A Built solve runs under the harness's own wall, which may be hours. The caller's signal
-    // reached only the verifier stage, so a cancelled rehearsal paid for its whole solve first and
-    // then discarded it.
-    let solverOpened = false;
-    const tool = createHarnessTrialTool({
-      workspace: workspace(),
-      context: { slug: "matching" },
-      builtSolver: () => {
-        solverOpened = true;
-        return scriptedBuiltSolver(SOLVES);
-      },
-    });
-    const result = await tool.execute("trial", { taskId: "t1" }, AbortSignal.abort());
-    const block = result.content[0];
-    if (block?.type !== "text") throw new Error("missing trial result");
-    const body = parseJsonAs<Record<string, JsonValue>>(block.text);
-    expect(body).toMatchObject({ status: "blocked", stage: "cancelled" });
-    expect(solverOpened).toBe(false);
-    expect(text(body.nextAction)).toContain("cancelled this call");
-    expect(body.validation).toMatchObject({ rehearsalsLeft: 6 });
-  });
-
-  it("refuses rather than measuring a different agent when no Built solver is bound", async () => {
-    const tool = createHarnessTrialTool({ workspace: workspace(), context: { slug: "matching" } });
-    const result = await tool.execute("trial", { taskId: "t1" });
-    const block = result.content[0];
-    if (block?.type !== "text") throw new Error("missing trial result");
-    expect(parseJsonAs<Record<string, JsonValue>>(block.text)).toMatchObject({
-      status: "non-result",
-      stage: "solver",
-    });
-  });
-
-  it("writes each rehearsal's solve evidence and stops at the session bound", async () => {
+  it("charges nothing for a call that never reached a solve", async () => {
     const dir = workspace();
-    const evidence = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-trial-evidence-"));
-    scratch.push(evidence);
+    let solves = 0;
+    const { tool } = round(
+      dir,
+      assigningSolver(RIGHT_SLOT, true, () => {
+        solves += 1;
+      }),
+    );
+    const unknownTask = modelVisible(await rehearse(tool, "no-such-task"));
+    expect(unknownTask.status).toBe("blocked");
+    expect(unknownTask.stage).toBe("task");
+    expect(unknownTask.rehearsalsLeft ?? asRecord(unknownTask.validation)?.rehearsalsLeft).toBe(6);
+    expectWithinCensus(unknownTask);
+
+    const blank = modelVisible(await rehearse(tool, "   "));
+    expect(blank.stage).toBe("request");
+
+    const cancelled = modelVisible(await rehearse(tool, TASK_ID, AbortSignal.abort()));
+    expect(cancelled.stage).toBe("cancelled");
+
+    expect(solves).toBe(0);
+    expect(asRecord(modelVisible(await rehearse(tool)).validation)?.rehearsalsLeft).toBe(5);
+  }, 60_000);
+
+  it("gives each round its own budget, because the tool instance is the round", async () => {
+    const dir = workspace();
+    const first = round(dir, assigningSolver(RIGHT_SLOT));
+    await rehearse(first.tool);
+    const second = round(dir, assigningSolver(RIGHT_SLOT));
+    const body = modelVisible(await rehearse(second.tool));
+
+    expect(asRecord(body.validation)?.rehearsalsLeft).toBe(5);
+    expect(asRecord(body.validation)?.round).toEqual({ graded: 1, passed: 1, passedInOneTurn: 1 });
+  }, 60_000);
+
+  it("adds the round's own record to a result once two rehearsals have been graded", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    const first = modelVisible(await rehearse(tool));
+    const second = modelVisible(await rehearse(tool));
+
+    expect(isString(first.nextAction) ? first.nextAction : "").not.toContain("Across this round");
+    expect(isString(second.nextAction) ? second.nextAction : "").toContain(
+      "Across this round your solver has now passed 2 of 2 graded rehearsals",
+    );
+    expect(asRecord(second.validation)?.round).toEqual({ graded: 2, passed: 2, passedInOneTurn: 2 });
+  }, 60_000);
+});
+
+describe("where a rehearsal's solve evidence is kept", () => {
+  it("writes one directory per rehearsal under the campaign, named by its ordinal", async () => {
+    const dir = workspace();
+    const { rehearsalDir, tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    await rehearse(tool);
+    await rehearse(tool);
+
+    expect(readdirSync(rehearsalDir).sort()).toEqual(["rehearsal-1", "rehearsal-2"]);
+    const caseDir = join(rehearsalDir, "rehearsal-1", "cases", TASK_ID);
+    expect(existsSync(join(caseDir, "public-task.json"))).toBe(true);
+    expect(existsSync(join(caseDir, "final-submission.json"))).toBe(true);
+  }, 60_000);
+
+  it("takes the next free name rather than writing over an earlier session's solve", async () => {
+    const dir = workspace();
+    const { rehearsalDir, tool } = round(dir, assigningSolver(RIGHT_SLOT));
+    mkdirSync(join(rehearsalDir, "rehearsal-1"), { recursive: true });
+    await rehearse(tool);
+
+    expect(readdirSync(rehearsalDir).sort()).toEqual(["rehearsal-1", "rehearsal-2"]);
+    expect(existsSync(join(rehearsalDir, "rehearsal-1", "cases"))).toBe(false);
+    expect(existsSync(join(rehearsalDir, "rehearsal-2", "cases", TASK_ID))).toBe(true);
+  }, 60_000);
+
+  it("discards the evidence and changes nothing else when the round has nowhere to write it", async () => {
+    const dir = workspace();
     const tool = createHarnessTrialTool({
       workspace: dir,
       context: { slug: "matching" },
-      rehearsalDir: evidence,
-      builtSolver: () => scriptedBuiltSolver(SOLVES),
+      builtSolver: () => assigningSolver(RIGHT_SLOT),
+      verifierLifetime: createVerifierLifetime({ root: join(dir, ".verifier") }),
     });
-    const bodies: Array<Record<string, JsonValue>> = [];
-    for (let call = 0; call < 7; call++) {
-      const result = await tool.execute("trial", { taskId: "t1" });
-      const block = result.content[0];
-      if (block?.type !== "text") throw new Error("missing trial result");
-      bodies.push(parseJsonAs<Record<string, JsonValue>>(block.text));
-    }
-    // No verifier lifetime is bound here, so each solve reaches no verdict. It still spent a
-    // rehearsal: the solve ran and cost a case, and a typed non-result is not free measurement.
-    expect(bodies.slice(0, 6).map((body) => body.status)).toEqual(
-      Array.from({ length: 6 }, () => "non-result"),
-    );
-    expect(bodies[5]).toMatchObject({ validation: { rehearsalsLeft: 0 } });
-    expect(bodies[6]).toMatchObject({ status: "blocked", stage: "budget", rehearsalsLeft: 0 });
-    expect(readdirSync(evidence).sort()).toEqual(
-      Array.from({ length: 6 }, (_row, index) => `rehearsal-${index + 1}`),
-    );
-    expect(existsSync(join(evidence, "rehearsal-1", "cases/t1/public-task.json"))).toBe(true);
-  });
+    const body = modelVisible(await rehearse(tool));
 
-  it("keeps an earlier session's rehearsal evidence when a second session rehearses", async () => {
-    // The ordinal counts rehearsals within a session; the directory is the campaign's. A second
-    // authoring session therefore opened at rehearsal-1 again and wrote over the first session's
-    // solve, which is the one record rule 6 asks each session to keep.
-    const dir = workspace();
-    const evidence = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-trial-sessions-"));
-    scratch.push(evidence);
-    const session = () =>
-      createHarnessTrialTool({
-        workspace: dir,
-        context: { slug: "matching" },
-        rehearsalDir: evidence,
-        builtSolver: () => scriptedBuiltSolver(SOLVES),
-      });
-    const first = session();
-    await first.execute("trial", { taskId: "t1" });
-    await first.execute("trial", { taskId: "t1" });
-    await session().execute("trial", { taskId: "t1" });
-    expect(readdirSync(evidence).sort()).toEqual(["rehearsal-1", "rehearsal-2", "rehearsal-3"]);
-    for (const name of ["rehearsal-1", "rehearsal-2", "rehearsal-3"]) {
-      expect(existsSync(join(evidence, name, "cases/t1/public-task.json"))).toBe(true);
-    }
-  });
-
-  it("describes a blind measurement and publishes no construction detail", () => {
-    const described = createHarnessTrialTool({
-      workspace: workspace(),
-      context: { slug: "matching" },
-    }).description;
-    expect(described).toContain("solves the named task blind");
-    expect(described).toContain("no hidden expectations, no reference solve");
-    expect(described).toContain("A task your solver passes first time is a task the battery will pass");
-    // The author-driven scenario is gone: nothing here asks the Builder to supply calls.
-    expect(described).not.toContain("deliberately ordinary answer");
-    expect(described).not.toContain("calls");
-  });
+    expect(body.truth).toEqual({ verdict: "pass" });
+    expect(existsSync(join(dir, "rehearsals"))).toBe(false);
+  }, 60_000);
 });

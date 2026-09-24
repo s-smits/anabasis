@@ -14,7 +14,6 @@ import { double, required } from "./helpers/doubles.ts";
 import type { BuilderToolsReport } from "../tools/outcome/builder-tools.ts";
 import type { OutcomeMetrics, OutcomeReport } from "../tools/outcome/metrics.ts";
 import { scorecardFromReports } from "../tools/outcome/scorecard.ts";
-import { isCandidateSubmit } from "../src/author/builder-execution.ts";
 function builderReport(): BuilderToolsReport {
   return {
     schema: "builder-tools/v7",
@@ -100,7 +99,7 @@ function executionEvidence(): BuilderToolsReport["epochs"][number]["execution"][
     ),
   );
   return {
-    schema: "builder-execution/v5",
+    schema: "builder-execution/v6",
     backend: "claude",
     runtimeIdentity: null,
     turns: 4,
@@ -108,17 +107,7 @@ function executionEvidence(): BuilderToolsReport["epochs"][number]["execution"][
     toolCalls: { total: 8, failed: 0, byName: { submit: 4 }, custom: 4, native: 4 },
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 0, estimatedTurns: 0 },
     firstToolMs: 500,
-    firstSubmitMs: 1_000,
     submits,
-    repeatedFindingSubmits: submits.filter((row) => row.repeatedFindings === true).length,
-    unchangedTreeSubmits: submits.filter((row) => row.workspaceChanged === false).length,
-    uniqueCandidateTrees: new Set(submits.map((row) => row.commit)).size,
-    repeatedTreeSubmits: submits.filter((row) => row.treeFirstSubmittedAsAttempt !== null).length,
-    submitCounts: {
-      raw: submits.length,
-      candidates: submits.filter(isCandidateSubmit).length,
-      controllerTerminals: submits.filter((row) => !isCandidateSubmit(row)).length,
-    },
     partialTurn: null,
     turnRetries: [],
     authoringReviews: [],
@@ -307,7 +296,6 @@ describe("the evidence-bound campaign scorecard", () => {
     if (fourth === undefined) throw new Error("fixture submit missing");
     // Same commit as its predecessor, different findings: the gates stage completed differently.
     execution.submits[3] = { ...fourth, findingsDigest: "gates-timeout", repeatedFindings: false };
-    execution.repeatedFindingSubmits = 2;
     epoch.execution = [execution];
     const submits = scorecardFromReports(builder, null, "run-1").learningYield?.submits;
     expect(submits).toEqual({ compared: 3, moved: 0, stalled: 1, unchangedTree: 2 });
@@ -575,6 +563,71 @@ describe("the run-end numbers", () => {
       intrinsic: { checks: 1, withPackages: 0 },
     });
     expect(provenanceRunEnd(dir, "absent")).toBeNull();
+  });
+
+  const evidence = (
+    planDigest: string,
+    verdicts: Array<[string, "pass" | "fail" | "not-run"]>,
+    schema = "experiment-evidence/v1",
+  ) =>
+    JSON.stringify({
+      schema,
+      planDigest,
+      rehearsals: verdicts.map(([taskId, verdict]) => ({ taskId, family: null, verdict, wallMinutes: 1 })),
+      predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
+    });
+
+  it("joins each battery's trials by the measured plan's digest, and says so when none or several match", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
+    for (const epoch of ["epoch-a", "epoch-b"]) {
+      mkdirSync(join(dir, epoch, "rehearsals"), { recursive: true });
+    }
+    writeFileSync(
+      join(dir, "difficulty-decisions", "a.json"),
+      decision(DIFFICULTY_DECISION_SCHEMA, [
+        row("b4", "2026-09-04", "on-aim"),
+        row("b3", "2026-09-03", "on-aim", null, "p3"),
+        row("b2", "2026-09-02", "on-aim", null, "p2"),
+        row("b1", "2026-09-01", "too-easy", null, "p1"),
+      ]),
+    );
+    const put = (path: string, text: string) => writeFileSync(join(dir, path), text);
+    put(
+      "epoch-a/rehearsals/experiment-evidence.json",
+      evidence("p1", [
+        ["t1", "pass"],
+        ["t1", "pass"],
+        ["t2", "fail"],
+        ["t3", "not-run"],
+      ]),
+    );
+    put("epoch-a/rehearsals/experiment-evidence-2.json", evidence("p3", [["t1", "pass"]]));
+    put("epoch-b/rehearsals/experiment-evidence.json", evidence("p3", [["t2", "pass"]]));
+    // The hostile neighbour: the right digest under a schema the writer never produced is not read.
+    put(
+      "epoch-b/rehearsals/experiment-evidence-2.json",
+      evidence("p2", [["t1", "pass"]], "experiment-evidence/v0"),
+    );
+    const batteries = climbRunEnd(dir)?.batteries ?? [];
+    expect(batteries.map((battery) => battery.trials)).toEqual([
+      {
+        state: "recorded",
+        evidence: join("epoch-a", "rehearsals", "experiment-evidence.json"),
+        rehearsals: 4,
+        passedTasks: 1,
+        predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
+      },
+      { state: "none" },
+      {
+        state: "ambiguous",
+        evidence: [
+          join("epoch-a", "rehearsals", "experiment-evidence-2.json"),
+          join("epoch-b", "rehearsals", "experiment-evidence.json"),
+        ],
+      },
+      undefined,
+    ]);
   });
 
   it("reads a fresh readout at the terminal and counts provenance for this run's batteries alone", () => {

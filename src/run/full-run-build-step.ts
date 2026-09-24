@@ -16,7 +16,9 @@ import {
   priorPublicFingerprints,
   readClimbBatteries,
 } from "./climb-history.ts";
-import { readReadoutHistory, renderProbeSizing, renderReadout } from "./climb-readout.ts";
+import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
+import { measuredSolverTraces } from "./solver-traces.ts";
+import { lastBatteryOf } from "../author/experiment-plan.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
@@ -27,7 +29,6 @@ import { type ProbeLanding, adoptedTaskCount, batterySizingGate } from "./batter
 import { claimsDirFor } from "./claim-write.ts";
 import { fixedProductBoundary } from "./fixed-product-policy.ts";
 import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
-import type { HarnessBuildOptions } from "./harness-build.ts";
 import type { IterationInput } from "./full-run-round.ts";
 import { type NextMove, epochPassOf } from "./next-move.ts";
 import type { RecordedDifficultyDecision } from "./difficulty-decision.ts";
@@ -220,31 +221,25 @@ function composeAuthoringMemory(
   ]
     .filter((part) => part !== null)
     .join("\n\n");
-  const readHistory =
+  // Read once, when the context tool first asks: the recorded history does not move inside a round.
+  let measuredRows: AdmittedClimbRow[] | undefined;
+  const rows = () => (measuredRows ??= readClimbBatteries(domainDir, null, claimsDir).history);
+  const measured =
     readout === null
       ? undefined
-      : (runId?: string, taskId?: string, offset?: number, limit?: number) =>
-          readReadoutHistory(domainDir, readout, readClimbBatteries(domainDir, null, claimsDir).history, {
-            runId,
-            taskId,
-            offset,
-            limit,
-          });
+      : {
+          history: () => readoutHistoryDocuments(domainDir, readout, rows()),
+          traces: () => measuredSolverTraces(domainDir, rows()),
+        };
   return {
     read,
     advice,
     advisoryNote,
-    readHistory,
+    measured,
     band: climbThresholds(manifestPath).band,
     priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
+    lastBattery: readout === null ? undefined : lastBatteryOf(readout.rows),
   };
-}
-
-/** The reopening pass the build step binds its epoch on. */
-function epochBindingKeys(decision: NextMove): Pick<HarnessBuildOptions, "epochPass" | "rebuildReset"> {
-  const epochPass = epochPassOf(decision);
-  if (epochPass === undefined) return {};
-  return { epochPass };
 }
 
 export async function runBuildStep(
@@ -309,10 +304,12 @@ export async function runBuildStep(
         productVersionId: input.runId,
         band,
         priorPublicTaskFingerprints,
-        ...keyIfDefined("readHistory", memory.readHistory),
-        // Reopen on the exact evidence identity. Repair starts from adopted bytes; a deliberate
-        // redesign resets to the starter. Reusing this epoch preserves in-flight edits on resume.
-        ...epochBindingKeys(decision),
+        ...keyIfDefined("lastBattery", memory.lastBattery),
+        ...keyIfDefined("measured", memory.measured),
+        // Reopen on the exact evidence identity. The round starts from adopted bytes, and a
+        // redesign is the Builder's harness_reset call. Reusing this epoch preserves in-flight
+        // edits on resume.
+        ...keyIfDefined("epochPass", epochPassOf(decision)),
         observer: observer.child(buildPhase),
       },
     )

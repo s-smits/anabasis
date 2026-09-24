@@ -54,7 +54,7 @@ describe("harness_reset", () => {
     writeFileSync(join(dir, "agent/later.ts"), "export const later = 1;\n");
     commitAll(dir, "02-t: later");
     const again = await run(tool, "agent");
-    expect(again?.applied).toBe(false);
+    expect(again).toMatchObject({ applied: false, receipt: { outcome: "refused" } });
     expect(existsSync(join(dir, "agent/later.ts"))).toBe(true);
     // A different scope under the same key still applies.
     const evaluation = await run(tool, "correctness-model");

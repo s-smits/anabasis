@@ -58,6 +58,8 @@ type ClimbRunEnd = {
     verified: number;
     /** The plan's target read against the verified passes. */
     target?: NonNullable<ReadoutRow["target"]>;
+    /** The per-task predictions against the verdicts: expected against observed passes. */
+    calibration?: NonNullable<ReadoutRow["calibration"]>;
     /** Absent when the battery bound no plan. */
     trials?: TrialsReading;
   }>;
@@ -128,6 +130,7 @@ function climbFromReadout(campaignDir: string, readFrom: string, readout: ClimbR
       passed: row.passed,
       verified: row.verified,
       ...keyIfNotNull("target", row.target),
+      ...keyIfNotNull("calibration", row.calibration),
       ...keyIfDefined("trials", digest === undefined ? undefined : trialsReading(trials.get(digest) ?? [])),
     };
   });

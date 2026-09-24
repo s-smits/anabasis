@@ -26,7 +26,6 @@ const SCRATCH_ROOT = scratchDir(".ana-scratch-tool-mount-", import.meta.dir);
 
 const MOUNT_NAMES = [
   "bash",
-  "context",
   "edit",
   "find",
   "grep",
@@ -99,7 +98,7 @@ describe("the production Builder tool contract", () => {
       public_source: ["write"],
       verifier_workshop: ["read", "write", "exec"],
     });
-    expect(evidence.research).toEqual(["context"]);
+    expect(evidence.research).toEqual([]);
     expect(evidence.schema).toBe("builder-session-evidence/v4");
     expect(evidence.isolations).toHaveLength(3);
     expect(

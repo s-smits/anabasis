@@ -3,7 +3,6 @@ import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { CUSTOM_TOOL_NAMES, bareCustomToolName } from "../src/author/builder-custom-tool-call.ts";
 import {
-  submitProjection,
   type BuilderCustomToolCall,
   type BuilderExecutionEvidence,
   type BuilderSubmitAttempt,
@@ -64,7 +63,7 @@ function derivedToolCalls(
   return { total, failed, byName, custom, native: total - custom, ...override };
 }
 
-/** Build a complete `builder-execution/v5` record. The reader validates every field before
+/** Build a complete `builder-execution/v6` record. The reader validates every field before
  * projecting it to a consumer, so these fixtures fill the writer's stable defaults and leave each
  * test's actual variation visible in its override. */
 function executionRecord(overrides: ExecutionFixtureOverrides = {}): BuilderExecutionEvidence {
@@ -110,7 +109,7 @@ function executionRecord(overrides: ExecutionFixtureOverrides = {}): BuilderExec
     }),
   );
   return {
-    schema: "builder-execution/v5",
+    schema: "builder-execution/v6",
     backend: "claude",
     runtimeIdentity: null,
     turns: 0,
@@ -126,7 +125,6 @@ function executionRecord(overrides: ExecutionFixtureOverrides = {}): BuilderExec
     },
     firstToolMs: null,
     submits,
-    ...submitProjection(submits),
     turnRetries: [],
     authoringReviews: [],
     failedByName: {},
@@ -229,10 +227,7 @@ describe("the Harness Builder tool census", () => {
           toolCalls: { byName: { Read: 14, submit: 3, context: 3 } },
           usage: { inputTokens: 900, outputTokens: 120, reportedTurns: 4 },
           firstToolMs: 4_000,
-          firstSubmitMs: 1_000,
           submits: [refused({ repeatedFindings: null, workspaceChanged: null }), refused(), refused()],
-          repeatedFindingSubmits: 2,
-          unchangedTreeSubmits: 2,
           outcome: "turn-bound",
           writtenAt: "2026-08-01T12:00:35.000Z",
         }),
@@ -361,7 +356,7 @@ describe("the Harness Builder tool census", () => {
     writeBuilderExecutionEvidence(
       epochDir,
       executionRecord({
-        schema: "builder-execution/v5",
+        schema: "builder-execution/v6",
         backend: "codex",
         toolCalls: { byName: { harness_inspect: 2 } },
         failedByName: {},
@@ -400,8 +395,6 @@ describe("the Harness Builder tool census", () => {
         toolCalls: { byName: { submit: 1 } },
         failedByName: {},
         submits: [],
-        unchangedTreeSubmits: 0,
-        repeatedFindingSubmits: 0,
       }),
     );
     const legacyDir = join(campaign, "epoch-legacy");
@@ -414,8 +407,6 @@ describe("the Harness Builder tool census", () => {
         toolCalls: { byName: { submit: 1 } },
         failedByName: {},
         submits: [],
-        unchangedTreeSubmits: 0,
-        repeatedFindingSubmits: 0,
       }),
     );
 

@@ -32,6 +32,7 @@ import {
 } from "../src/builder/bash-install-env.ts";
 import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE } from "../src/truth/harness-config.ts";
 import type { CandidateAccessPolicy } from "../src/builder/candidate-isolation.ts";
+import { DCG_RULES } from "../src/solve/dcg-rules.ts";
 
 const workDir = mkdtempSync(join(tmpdir(), "child-shell-env-"));
 const URL_PASSWORD = "hunter2";
@@ -156,6 +157,8 @@ describe("the Builder bash cell's environment", () => {
       expect(text).toContain("keep a long search in the foreground of one call and raise its timeout");
       expect(text).not.toContain("finishes in minutes");
     }
+    // The system prompt's shell rules reach the same session, so the deadline is stated here alone.
+    expect(DCG_RULES.join(" ")).not.toMatch(/timeout|time limit|by default/);
   });
 });
 

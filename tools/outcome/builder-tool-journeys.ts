@@ -11,6 +11,7 @@ import {
   type BuilderExecutionEvidence,
   type BuilderSubmitAttempt,
   type BuilderSubmitCounts,
+  submitProjection,
 } from "../../src/author/builder-execution.ts";
 import { bareBuilderToolName, builderCustomToolCensus, builderToolsReport } from "./builder-tools.ts";
 import {
@@ -438,6 +439,7 @@ function foldReceipts(calls: readonly BuilderCustomToolCall[], tallies: Tallies,
       bumpSemantic(semantic, "observations");
       bump(semantic.byOutcome, call.semantic.outcome);
       if (call.semantic.reason !== undefined) bump(semantic.byReason, call.semantic.reason);
+      for (const code of call.semantic.findingCodes ?? []) bump(semantic.byFindingCode, code);
       if (["completed", "clear", "accepted"].includes(call.semantic.outcome)) {
         bumpSemantic(semantic, "successes");
       } else if (call.semantic.outcome === "non-result") bumpSemantic(semantic, "nonResults");
@@ -536,7 +538,7 @@ function sessionJourney(
     aggregateMinusKnownReceipts: execution.toolCalls.custom - calls.length - omitted,
     timeline: timeline(calls),
     submitMoments: submitMoments(calls, execution.submits),
-    submitCounts: execution.submitCounts,
+    submitCounts: submitProjection(execution.submits).submitCounts,
   };
 }
 

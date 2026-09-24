@@ -4,7 +4,7 @@ import { isCurrentExecutionRecord } from "../tools/outcome/builder-execution-cur
 
 function executionRecord(): BuilderExecutionEvidence {
   return {
-    schema: "builder-execution/v5",
+    schema: "builder-execution/v6",
     backend: "codex",
     runtimeIdentity: null,
     turns: 1,
@@ -18,13 +18,7 @@ function executionRecord(): BuilderExecutionEvidence {
     },
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 0, estimatedTurns: 0 },
     firstToolMs: 0,
-    firstSubmitMs: null,
     submits: [],
-    repeatedFindingSubmits: 0,
-    unchangedTreeSubmits: 0,
-    uniqueCandidateTrees: 0,
-    repeatedTreeSubmits: 0,
-    submitCounts: { raw: 0, candidates: 0, controllerTerminals: 0 },
     partialTurn: null,
     turnRetries: [],
     authoringReviews: [],

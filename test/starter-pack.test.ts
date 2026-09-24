@@ -147,7 +147,6 @@ describe("pi starter pack brief vocabulary", () => {
     expect(STARTER_DOC.replace(/\n\s*/g, " ")).toContain("Required tools may also resolve on the host PATH");
     expect(STARTER_DOC).not.toContain("Install the real public tool below `.toolchain`");
   });
-
   it.concurrent("the starter package ships all seven required files, not six plus prose", () => {
     // Run 68's tree scaffolded six placeholders while agent/BUILT_AGENTS.md was taught by prose
     // alone, an asymmetry: candidate-check refuses its absence, so the

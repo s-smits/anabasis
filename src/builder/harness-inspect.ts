@@ -20,11 +20,9 @@
  * Every candidate view derives from the Builder's own files, so nothing hidden is at risk here by
  * construction: hidden expectations appear as counts because `commitPublicTask` selects public
  * fields rather than deleting hidden ones, findings render through the shared feedback grouping
- * that applies the same author projection submit uses, and the history action reads
- * controller-verified public history through its bound reader rather than a path the model names.
+ * that applies the same author projection submit uses. Recorded history is the context tool's.
  */
 import { capturedJsonStringify, capturedJsonParse } from "../meta/json-runtime.ts";
-import { sha256 } from "../meta/digest.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { countBy } from "../meta/tally.ts";
@@ -67,32 +65,24 @@ import { readJsonFile } from "../meta/completed-json.ts";
 const Params = Type.Object({
   action: Type.Union([
     Type.Literal("readiness"),
-    Type.Literal("summary"),
     Type.Literal("task"),
-    Type.Literal("tools"),
-    Type.Literal("typecheck"),
-    Type.Literal("inventory"),
     Type.Literal("coverage"),
     Type.Literal("feedback"),
-    Type.Literal("history"),
   ]),
-  runId: Type.Optional(
-    Type.String({ description: "Recorded battery id for history; omit to list measured experiments." }),
-  ),
   taskId: Type.Optional(Type.String()),
   family: Type.Optional(Type.String()),
   group: Type.Optional(
     Type.Number({
-      description: "1-based finding group. Only summary, typecheck and feedback accept finding selectors.",
+      description: "1-based finding group. Only readiness and feedback accept finding selectors.",
     }),
   ),
   field: Type.Optional(
     Type.Union([Type.Literal("code"), Type.Literal("path"), Type.Literal("detail")], {
       description:
-        "Exact finding field for summary, typecheck or feedback; defaults to detail when group is supplied.",
+        "Exact finding field for readiness or feedback; defaults to detail when group is supplied.",
     }),
   ),
-  /** 1-based finding group, task row, public path, or character offset. */
+  /** 1-based family row, public path, or character offset. */
   offset: Type.Optional(Type.Number()),
   limit: Type.Optional(Type.Number()),
 });
@@ -103,7 +93,7 @@ const GENERATED_MODULES = [
   { bundle: "correctness-model", rel: EVALUATOR_FILE },
 ] as const;
 
-export interface HarnessInspectBinding {
+interface HarnessInspectBinding {
   /** The Builder's own workspace. The controller binds it; the model cannot name a path. */
   workspace: string;
   /** The exact context the submission check will validate under, so inspect and submit read one
@@ -115,18 +105,12 @@ export interface HarnessInspectBinding {
   /** This round's task count and battery contract, the same bytes the round opened with. Absent
    *  only for isolated inspection tests. */
   contract?: string;
-  /** Controller-bound, verified public history only; the model cannot supply a filesystem path. */
-  readHistory?: (
-    runId: string | undefined,
-    taskId: string | undefined,
-    offset: number | undefined,
-    limit: number | undefined,
-  ) => string;
 }
 
 type Bundle = ReturnType<typeof loadValidatedBundle>;
-/** The model's validated arguments. Four of the views read a family, an offset and a limit out of
- *  the same object, so it travels whole rather than as three positional undefineds each. */
+type StaticStatus = "static-checks-clear" | "blocked";
+/** The model's validated arguments. Each view reads a family, an offset and a limit out of the
+ *  same object, so it travels whole rather than as three positional undefineds each. */
 type InspectParams = Static<typeof Params>;
 
 /** The tool names agent/tools.ts must register, from the same derivation the conformance probe
@@ -134,13 +118,11 @@ type InspectParams = Static<typeof Params>;
 function toolsView(bundle: Bundle) {
   const spec = bundle.toolsSpec;
   if (spec === null) {
-    // The whole finding list is returned, because a validator finding carries a validator-relative
-    // path such as "$" or "tools[0]" rather than a file path, so any filter here would be a guess
-    // that silently returned nothing.
+    // The findings beside it in readiness say why: a validator finding carries a validator-relative
+    // path such as "$" or "tools[0]" rather than a file path, so no filter here could pick them out.
     return {
       toolsSpecValid: false,
       note: "agent/tools-spec.json has not validated yet, so the registered contract cannot be derived",
-      findings: authorFindingOverview(bundle.findings),
     };
   }
   return {
@@ -201,28 +183,18 @@ function taskView(bundle: Bundle, { taskId, family, offset, limit }: InspectPara
   return { ...base, publicTask: capturedJsonParse(committed.publicTaskJson) };
 }
 
-/**
- * Whether the two generated modules compile. The summary view can only say they exist, which leaves
- * a Builder to learn that `correctness-model/evaluator.ts` does not compile by spending a submission
- * to find out. This runs the same `typecheckGeneratedModule` that submit runs, over the model's own
- * file, and executes nothing. The diagnostics are already controller-validated and already cross to
- * the author at submit time, so showing them here moves the moment rather than the boundary.
- */
-function typecheckView(workspace: string, query: AuthorFeedbackQuery) {
+/** Whether the two generated modules compile, by the same `typecheckGeneratedModule` submit runs,
+ *  over the model's own file and executing nothing. Its diagnostics are controller-validated and
+ *  already cross to the author at submit time, so showing them here moves the moment rather than
+ *  the boundary. A module not written yet is absent, not clean. */
+function typecheckModules(workspace: string) {
   const modules = GENERATED_MODULES.map(({ bundle, rel }) => {
-    if (!existsSync(join(workspace, ...rel.split("/")))) return { module: rel, present: false };
-    const found = typecheckGeneratedModule(workspace, bundle);
-    return { module: rel, present: true, diagnostics: found };
+    const present = existsSync(join(workspace, ...rel.split("/")));
+    return { module: rel, present, found: present ? typecheckGeneratedModule(workspace, bundle) : [] };
   });
-  const findings = modules.flatMap((module) => ("diagnostics" in module ? module.diagnostics : []));
   return {
-    modules: modules.map((module) => ({
-      module: module.module,
-      present: module.present,
-      diagnostics: "diagnostics" in module ? module.diagnostics.length : 0,
-    })),
-    diagnostics: findings.length,
-    findings: authorFindingPage(findings, query, "typecheck"),
+    modules: modules.map(({ module, present, found }) => ({ module, present, diagnostics: found.length })),
+    findings: modules.flatMap((module) => module.found),
   };
 }
 
@@ -275,11 +247,9 @@ function installedToolsView(workspace: string) {
   }
 }
 
-/** Contract state of each validated file, with counts instead of full content. */
-function summaryView(bundle: Bundle, workspace: string, query: AuthorFeedbackQuery) {
-  const tasks: readonly BuildTask[] = bundle.battery?.tasks ?? [];
-  const { brief } = bundle;
-  // Presence only: a file that fails its contract exists, and its findings name the repair.
+/** Presence of every file the bundle needs. A file that fails its contract exists, and its findings
+ *  name the repair. */
+function fileState(workspace: string) {
   const files = Object.fromEntries(
     [
       BRIEF_FILE,
@@ -291,41 +261,7 @@ function summaryView(bundle: Bundle, workspace: string, query: AuthorFeedbackQue
       BUILT_AGENTS_FILE,
     ].map((path) => [path, existsSync(join(workspace, ...path.split("/")))]),
   );
-  const missing = Object.keys(files).filter((path) => files[path] !== true);
-  const structurallyReady = missing.length === 0 && bundle.findings.length === 0;
-  return {
-    staticStatus: structurallyReady ? "structurally-ready" : "blocked",
-    files,
-    missing,
-    findings: authorFindingPage(bundle.findings, query),
-    brief:
-      brief === null
-        ? null
-        : {
-            slug: brief.slug,
-            artifactFields: brief.artifactSchema.map((field) => field.name),
-            truthCheckGroundings: countBy(brief.truthChecks, (check) => check.execution.evidence.kind),
-          },
-    tasks: {
-      count: tasks.length,
-      families: countBy(tasks, (task) => task.family),
-      // How many rows each declared check id carries, so a check the brief declares and no task
-      // exercises becomes visible. Counts and ids only: the expectation values stay in
-      // correctness-model/, where the author cannot read them back out of this view.
-      hiddenChecksByCheckId: countBy(
-        tasks.flatMap((task) => task.hidden),
-        (check) => check.checkId,
-      ),
-    },
-    controls:
-      bundle.corpus === null
-        ? null
-        : { accept: bundle.corpus.accept.length, reject: bundle.corpus.reject.length },
-    installedTools: installedToolsView(workspace),
-    nextAction: structurallyReady
-      ? "Run harness_inspect readiness, then harness_trial. Structural readiness does not execute generated tools or establish correctness."
-      : "Author any missing file and page through every finding group before typecheck or submit.",
-  };
+  return { files, missing: Object.keys(files).filter((path) => files[path] !== true) };
 }
 
 function rowLimit(limit: number | undefined): number {
@@ -333,49 +269,41 @@ function rowLimit(limit: number | undefined): number {
   return Math.min(LIST_WINDOW_ROWS, Math.max(1, Math.trunc(limit)));
 }
 
-/** The battery-wide map the one-task inspection cannot show: every family, task id and public-input
- *  path a generated reader or adviser may depend on. Values stay in the task action, so inventory
- *  reports public names and paths and nothing else. */
-function inventoryView(bundle: Bundle, { family, offset, limit }: InspectParams) {
-  const tasks: readonly BuildTask[] = bundle.battery?.tasks ?? [];
+/** Every family with its task count, public-input path count and the first task to rehearse. */
+function familyRows(tasks: readonly BuildTask[]) {
+  const paths = publicInputPathsByFamily(tasks);
+  const samples = new Map<string, string>();
+  for (const task of tasks) if (!samples.has(task.family)) samples.set(task.family, task.taskId);
+  return [...samples]
+    .map(([family, sampleTaskId]) => ({
+      family,
+      tasks: tasks.filter((task) => task.family === family).length,
+      publicInputPaths: paths.get(family)?.size ?? 0,
+      sampleTaskId,
+    }))
+    .sort((left, right) => compareCodeUnits(left.family, right.family));
+}
+
+/** One family's task ids and the public-input paths a generated reader or adviser may depend on,
+ *  paged by path. Values stay in the task action, so this names ids and paths and nothing else. */
+function familyView(rehearsal: Bundle, family: string, { offset, limit }: InspectParams) {
+  const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
   if (tasks.length === 0) {
     return {
       tasksValid: false,
-      note: "correctness-model/tasks.json has not validated yet, so no inventory can be derived",
-      findings: authorFindingOverview(bundle.findings),
+      note: "correctness-model/tasks.json has not validated yet, so no family can be listed",
     };
   }
-  const paths = publicInputPathsByFamily(tasks);
-  const families = [...paths]
-    .map(([name, familyPaths]) => ({
-      family: name,
-      tasks: tasks.filter((task) => task.family === name).length,
-      publicInputPaths: familyPaths.size,
-    }))
-    .sort((left, right) => compareCodeUnits(left.family, right.family));
-  if (family !== undefined) {
-    const familyPaths = paths.get(family);
-    if (familyPaths === undefined) throw new Error(`unknown task family: ${family}`);
-    const ordered = [...familyPaths].sort(compareCodeUnits);
-    const range = windowRange(ordered.length, offset, rowLimit(limit));
-    return {
-      family,
-      taskCount: tasks.filter((task) => task.family === family).length,
-      ...range,
-      total: ordered.length,
-      publicInputPaths: ordered.slice(range.from - 1, range.to),
-    };
-  }
-  const range = windowRange(tasks.length, offset, rowLimit(limit));
+  const familyPaths = publicInputPathsByFamily(tasks).get(family);
+  if (familyPaths === undefined) throw new Error(`unknown task family: ${family}`);
+  const ordered = [...familyPaths].sort(compareCodeUnits);
+  const range = windowRange(ordered.length, offset, rowLimit(limit));
   return {
-    families,
+    family,
+    taskIds: tasks.flatMap((task) => (task.family === family ? [task.taskId] : [])),
     ...range,
-    total: tasks.length,
-    tasks: tasks.slice(range.from - 1, range.to).map((task) => ({
-      taskId: task.taskId,
-      family: task.family,
-    })),
-    note: "Name family to page its public-input paths; use task to read a selected public value projection.",
+    total: ordered.length,
+    publicInputPaths: ordered.slice(range.from - 1, range.to),
   };
 }
 
@@ -434,34 +362,14 @@ function coverageView(bundle: Bundle, { family, offset, limit }: InspectParams) 
   };
 }
 
-/** One static pass at the cost of one call. It combines the summary, inventory, roster and compile
- *  questions a Builder repeats, while the narrower actions remain for paging through exact tasks,
- *  paths and findings that would not fit here. */
-function readinessView(
-  bundle: Bundle,
-  workspace: string,
-  { offset, limit }: InspectParams,
-  rehearsal: Bundle,
-) {
-  const summary = summaryView(bundle, workspace, {});
-  const typecheck = typecheckView(workspace, {});
-  const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
-  const paths = publicInputPathsByFamily(tasks);
-  const samples = new Map<string, string>();
-  for (const task of tasks) if (!samples.has(task.family)) samples.set(task.family, task.taskId);
-  const allFamilies = [...samples]
-    .map(([family, sampleTaskId]) => ({
-      family,
-      tasks: tasks.filter((task) => task.family === family).length,
-      publicInputPaths: paths.get(family)?.size ?? 0,
-      sampleTaskId,
-    }))
-    .sort((left, right) => compareCodeUnits(left.family, right.family));
-  const range = windowRange(allFamilies.length, offset, rowLimit(limit));
-  const families = allFamilies.slice(range.from - 1, range.to);
+/** What the static checks found, before any of it is shaped for the page: the files, the merged
+ *  validation and module findings, the installed tools, and the two verdicts drawn from them. */
+function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle) {
+  const { files, missing } = fileState(workspace);
+  const typecheck = typecheckModules(workspace);
+  const installedTools = installedToolsView(workspace);
   const modulesClear = typecheck.modules.every((module) => module.present && module.diagnostics === 0);
-  const toolsClear =
-    Array.isArray(summary.installedTools) && summary.installedTools.every((tool) => !("missing" in tool));
+  const toolsClear = Array.isArray(installedTools) && installedTools.every((tool) => !("missing" in tool));
   const rehearsalReady =
     rehearsal.brief !== null &&
     rehearsal.battery !== null &&
@@ -469,29 +377,81 @@ function readinessView(
     rehearsal.toolsSpec !== null &&
     modulesClear &&
     toolsClear;
-  const staticChecksClear = summary.staticStatus === "structurally-ready" && modulesClear && toolsClear;
+  const clear = missing.length === 0 && bundle.findings.length === 0 && modulesClear && toolsClear;
+  const staticStatus: StaticStatus = clear ? "static-checks-clear" : "blocked";
   return {
-    staticStatus: staticChecksClear ? "static-checks-clear" : "blocked",
-    files: summary.files,
-    missing: summary.missing,
-    validationFindings: summary.findings,
+    files,
+    missing,
     modules: typecheck.modules,
-    moduleFindings: typecheck.findings,
+    findings: [...bundle.findings, ...typecheck.findings],
+    installedTools,
+    rehearsalReady,
+    staticStatus,
+  };
+}
+
+/** The whole static view in one call: files, findings, module compilation, the tool roster, the
+ *  installed tools, the brief, the tasks and families, the controls and the trials to start with.
+ *  A named group pages one exact finding instead, since the findings are the only part too long to
+ *  fit; a named family lists that family's task ids and public-input paths. */
+function readinessView(
+  bundle: Bundle,
+  workspace: string,
+  { offset, limit }: InspectParams,
+  rehearsal: Bundle,
+  query: AuthorFeedbackQuery,
+) {
+  const state = readinessState(bundle, workspace, rehearsal);
+  if (query.group !== undefined) {
+    return {
+      staticStatus: state.staticStatus,
+      findings: authorFindingPage(state.findings, query, "readiness"),
+    };
+  }
+  const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
+  const allFamilies = familyRows(tasks);
+  const range = windowRange(allFamilies.length, offset, rowLimit(limit));
+  const families = allFamilies.slice(range.from - 1, range.to);
+  const { brief } = bundle;
+  return {
+    staticStatus: state.staticStatus,
+    files: state.files,
+    missing: state.missing,
+    findings: authorFindingOverview(state.findings, undefined, undefined, "readiness"),
+    modules: state.modules,
+    brief:
+      brief === null
+        ? null
+        : {
+            slug: brief.slug,
+            artifactFields: brief.artifactSchema.map((field) => field.name),
+            truthCheckGroundings: countBy(brief.truthChecks, (check) => check.execution.evidence.kind),
+          },
     toolContract: toolsView(bundle),
-    installedTools: summary.installedTools,
-    taskCoverage: {
+    installedTools: state.installedTools,
+    tasks: {
       count: tasks.length,
+      // How many rows each declared check id carries, so a check the brief declares and no task
+      // exercises becomes visible. Counts and ids only: the expectation values stay in
+      // correctness-model/, where the author cannot read them back out of this view.
+      hiddenChecksByCheckId: countBy(
+        tasks.flatMap((task) => task.hidden),
+        (check) => check.checkId,
+      ),
       familiesTotal: allFamilies.length,
-      familiesReturned: families.length,
       ...range,
       families,
     },
-    rehearsalReady,
+    controls:
+      rehearsal.corpus === null
+        ? null
+        : { accept: rehearsal.corpus.accept.length, reject: rehearsal.corpus.reject.length },
+    rehearsalReady: state.rehearsalReady,
     suggestedTrials: families.slice(0, 8).map(({ family, sampleTaskId }) => ({
       family,
       taskId: sampleTaskId,
     })),
-    nextAction: readinessNextAction(staticChecksClear, rehearsalReady, range.more, range.to + 1),
+    nextAction: readinessNextAction(state.staticStatus, state.rehearsalReady, range.more, range.to + 1),
   };
 }
 
@@ -499,49 +459,49 @@ function readinessView(
  *  whether a rehearsal is possible at all. These strings are model-visible, so a changed byte here
  *  is a changed prompt condition and not a wording preference. */
 function readinessNextAction(
-  staticChecksClear: boolean,
+  staticStatus: StaticStatus,
   rehearsalReady: boolean,
   more: boolean,
   nextOffset: number,
 ): string {
+  const staticChecksClear = staticStatus === "static-checks-clear";
   if (!staticChecksClear && rehearsalReady) {
     return "Run harness_trial on a suggested task for early feedback. Repair the admission findings before correctness_check or submit.";
   }
   if (!staticChecksClear) {
-    return `Repair every missing file, installed tool, validation finding, verifier copy and module diagnostic before trial or submit; use the narrower actions to page exact detail.${
-      more ? ` Then read the remaining family samples with readiness offset ${nextOffset}.` : ""
+    return `Repair every missing file, installed tool, finding and module diagnostic before trial or submit; name a group to page one finding exactly.${
+      more ? ` Then read the remaining families with readiness offset ${nextOffset}.` : ""
     }`;
   }
   if (more) {
-    return `Read the remaining family samples with readiness offset ${nextOffset} before choosing contrasting harness_trial tasks.`;
+    return `Read the remaining families with readiness offset ${nextOffset} before choosing contrasting harness_trial tasks.`;
   }
   return "Use coverage to reconcile public rules, declared check inputs and one-fact controls. Read each suggested task's exact public projection when its values matter, then run harness_trial on contrasting families. Static checks do not establish runtime behaviour or correctness.";
 }
 
-/** The view each remaining action reads. The actions handled before this point return results of
- *  their own; the ones left share one shape, so they share one reader rather than each spelling out
- *  the same bundle-backed envelope. */
-function actionView(
-  bundle: Bundle,
-  binding: HarnessInspectBinding,
-  params: InspectParams,
-  query: AuthorFeedbackQuery,
-) {
+function readinessResult(binding: HarnessInspectBinding, params: InspectParams, query: AuthorFeedbackQuery) {
   const { workspace, context } = binding;
-  if (params.action === "readiness") {
-    const view = readinessView(
-      bundle,
-      workspace,
-      params,
-      loadValidatedBundle(workspace, context, "rehearsal"),
-    );
-    return { ...view, ...keyIfDefined("contract", binding.contract) };
+  const rehearsal = loadValidatedBundle(workspace, context, "rehearsal");
+  if (params.family !== undefined && query.group === undefined) {
+    const view = familyView(rehearsal, params.family, params);
+    return {
+      text: capturedJsonStringify({ action: params.action, ...view }),
+      details: { action: params.action, findings: 0, receipt: { outcome: "completed", findings: 0 } },
+    };
   }
-  if (params.action === "tools") return toolsView(bundle);
-  if (params.action === "task") return taskView(bundle, params);
-  if (params.action === "inventory") return inventoryView(bundle, params);
-  if (params.action === "coverage") return coverageView(bundle, params);
-  return summaryView(bundle, workspace, query);
+  const bundle = loadValidatedBundle(workspace, context, "admission");
+  const view = readinessView(bundle, workspace, params, rehearsal, query);
+  const body =
+    "files" in view && binding.contract !== undefined ? { ...view, contract: binding.contract } : view;
+  const count = view.findings.totalFindings;
+  return {
+    text: capturedJsonStringify({ action: params.action, ...body }),
+    details: {
+      action: params.action,
+      findings: count,
+      receipt: { outcome: view.staticStatus === "blocked" ? "findings" : "clear", findings: count },
+    },
+  };
 }
 
 function feedbackResult(feedback: BuilderAuthorFeedback, query: AuthorFeedbackQuery) {
@@ -565,23 +525,22 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
     name: "harness_inspect",
     label: "Harness inspect",
     description:
-      "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. Start with readiness to combine required files, paged families, sample trials, tool roster, module typechecks and installed tools, and to see what the gate would refuse before a preview spends the attempt. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit findings. Use history to page measured experiments, then runId and optional taskId for older recorded public tasks: read what earlier batteries of this product asked and where they landed before settling what this one demands.",
+      "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. readiness is the whole static view in one call: required files, validation findings and module typecheck diagnostics, the brief, tasks, families, controls, the tool roster agent/tools.ts must register, installed tools and sample trials, so you see what the gate would refuse before a preview spends the attempt; name group (and field) to page one finding exactly, or family to list its task ids and public-input paths. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit findings.",
     parameters: Params,
     run: async (params) => {
-      // An overview's "same action" hint leads authors into readiness and inventory still carrying
-      // a `group`, which neither action can honour and both would otherwise ignore in silence. So a
-      // selector an action cannot honour is refused here, before the validation and tsc work is
+      // A selector an action cannot honour is refused here, before the validation and tsc work is
       // repeated to produce a result that answers a different question from the one asked.
       if (
         (params.group !== undefined || params.field !== undefined) &&
-        !["summary", "typecheck", "feedback"].includes(params.action)
+        params.action !== "readiness" &&
+        params.action !== "feedback"
       ) {
         return {
           text: capturedJsonStringify({
             action: params.action,
             status: "blocked",
             nextAction:
-              "Finding selectors require summary for validationFindings, typecheck for moduleFindings, or feedback for correctness_check and submit findings. Repeat with that action and the same group and field.",
+              "Finding selectors require readiness for the candidate's own findings, or feedback for correctness_check and submit findings. Repeat with that action and the same group and field.",
           }),
           details: {
             action: params.action,
@@ -596,61 +555,19 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
         ...keyIfDefined("limit", params.limit),
       };
       if (params.action === "feedback") return feedbackResult(feedback, query);
-      if (params.action === "history") {
-        // The digest and the page kind make two reads of history distinguishable in the execution
-        // record. Without them every history receipt reads as the same bare `completed`, and which
-        // rows an author had in front of it when it wrote a proposal cannot be recovered at all.
-        const text =
-          binding.readHistory?.(params.runId, params.taskId, params.offset, params.limit) ??
-          capturedJsonStringify({
-            action: "history",
-            unavailable: "No measured history is bound to this round.",
-          });
-        return {
-          text,
-          details: {
-            action: "history",
-            receipt: {
-              outcome: binding.readHistory === undefined ? "blocked" : "completed",
-              stage: params.runId === undefined ? "list" : "tasks",
-              resultDigest: sha256(text),
-            },
-          },
-        };
-      }
-      if (params.action === "typecheck") {
-        // The bundle is not read for this action: the two modules compile or they do not, whatever
-        // the JSON beside them says, so loading and validating it would be work with no bearing.
-        const view = typecheckView(binding.workspace, query);
-        return {
-          text: capturedJsonStringify({ action: params.action, ...view }),
-          details: {
-            action: params.action,
-            findings: view.diagnostics,
-            receipt: {
-              outcome: view.diagnostics === 0 ? "clear" : "findings",
-              findings: view.diagnostics,
-            },
-          },
-        };
-      }
+      if (params.action === "readiness") return readinessResult(binding, params, query);
       const bundle = loadValidatedBundle(
         binding.workspace,
         binding.context,
         params.action === "task" ? "rehearsal" : "admission",
       );
-      const { findings } = bundle;
-      const body = actionView(bundle, binding, params, query);
-      const staticStatus = "staticStatus" in body ? body.staticStatus : null;
+      const body = params.action === "task" ? taskView(bundle, params) : coverageView(bundle, params);
       return {
         text: capturedJsonStringify({ action: params.action, ...body }),
         details: {
           action: params.action,
-          findings: findings.length,
-          receipt: {
-            outcome: staticStatus === null ? "completed" : staticStatus === "blocked" ? "findings" : "clear",
-            findings: findings.length,
-          },
+          findings: bundle.findings.length,
+          receipt: { outcome: "completed", findings: bundle.findings.length },
         },
       };
     },

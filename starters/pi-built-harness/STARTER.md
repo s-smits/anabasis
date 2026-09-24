@@ -13,7 +13,7 @@ You may change the harness's runtime settings in `agent/config.yaml`.
 Four tiers — easy, medium, hard, frontier — by what one answer has to hold at once, rising from
 one published limit to a whole set of adversarial states the same answer must clear, and then to a
 set the solver has to search rather than read off the brief, the guide or your tool text. Take the
-first battery from the **frontier** row, above what you believe the harness handles.
+first battery from the **frontier** row.
 
 A battery after the first moves the demand or repairs the last measurement. Adding tasks is
 neither, and growing a probe to the full size is no exception: the probe measured the level, so the
@@ -32,10 +32,10 @@ Six domains at all four tiers, and what each side of a missed aim asks for:
    measurement of how hard your battery is, six per round. A battery you do not measure is one
    the controller measures for you, a round at a time. `correctness_check` runs every gate below
    without adopting, and on changed product bytes also runs a review of several minutes.
-4. Call `submit` once you are confident a clear `correctness_check` and your own checks are
-   sufficient evidence; polish and the review note wait for the next round. A refusal names
-   the code and file to fix. Previewing unchanged bytes is free.
-5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`.
+4. `submit` freezes and gates the candidate; a refusal names the code and file to fix.
+   Previewing unchanged bytes is free.
+5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`; the `context` tool searches
+   them, the round plan, measured batteries and passing solve traces.
 
 ## Gates
 
@@ -89,7 +89,8 @@ at a time, each within a per-task wall.
 - `SOLVABILITY_CENSUS_BLOCKED`: every task's reference solve passes within its wall. Bound a
   search by a fixed iteration count, since a clock budget changes the answer between runs. A
   longer search, still minutes per task, records its best artifact per task in a module under
-  `reference/` for `solve` to return, so the wall bounds the replay and not the limit.
+  `reference/` for `solve` to return, so the wall bounds the replay, not the limit, and the limit
+  is real only if the solver cannot run that search in its walls.
 The first two arrive upper-case with underscores.
 
 **7. Family transplant.** Moves each accepted `taskConditioned` root into its sibling tasks and

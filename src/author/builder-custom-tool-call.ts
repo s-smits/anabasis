@@ -74,6 +74,10 @@ export interface BuilderCustomToolSemantic {
   truthVerdict?: string;
   repeated?: boolean;
   submitted?: boolean;
+  /** The distinct blocking finding codes a correctness_check returned, sorted. A submit attempt
+   *  records its codes on its own row; a preview recorded only their count, so which gate refused a
+   *  tree, and how often, could not be read back from a session that repaired it before submit. */
+  findingCodes?: string[];
   /** Finding-code delta of a correctness_check against the previous check or submit. */
   carried?: number;
   resolved?: number;
@@ -82,23 +86,17 @@ export interface BuilderCustomToolSemantic {
 
 type CustomTarget = BuilderCustomToolCall["target"];
 
+/** Distinct codes kept per receipt. Codes are controller vocabulary, so a check returning more than
+ *  this many distinct ones is already unreadable as a list. */
+const MAX_FINDING_CODES = 64;
+
 const CUSTOM_TOOL_ACTIONS = {
   bash: ["execute"],
-  context: ["list", "read", "search"],
+  context: ["overview", "cited", "page"],
   edit: ["edit"],
   find: ["find"],
   grep: ["grep"],
-  harness_inspect: [
-    "readiness",
-    "summary",
-    "task",
-    "tools",
-    "typecheck",
-    "inventory",
-    "coverage",
-    "feedback",
-    "history",
-  ],
+  harness_inspect: ["readiness", "task", "coverage", "feedback"],
   harness_reset: ["reset"],
   harness_trial: ["run"],
   ls: ["list"],
@@ -150,7 +148,8 @@ function feedbackTarget(args: Record<string, JsonValue> | undefined): CustomTarg
  *  path. It names the intent without copying argument values, which may carry user context or
  *  checker source. */
 export function customCallIntent(tool: string, args: Record<string, JsonValue> | undefined) {
-  const actionArg = args?.action;
+  // The context tool names its intent by depth, and a call that states none asks the default.
+  const actionArg = tool === "context" ? (args?.depth ?? "cited") : args?.action;
   // Own-property lookup only: a declared name, never one the prototype supplies.
   const allowed: readonly string[] =
     Object.entries(CUSTOM_TOOL_ACTIONS).find(([name]) => name === tool)?.[1] ?? [];
@@ -206,6 +205,10 @@ export function semanticFromResult(result: unknown): BuilderCustomToolSemantic |
   for (const key of ["repeated", "submitted"] as const) {
     const value = receipt[key];
     if (isBoolean(value)) semantic[key] = value;
+  }
+  const codes = receipt.findingCodes;
+  if (Array.isArray(codes) && codes.length > 0) {
+    semantic.findingCodes = codes.filter(isString).slice(0, MAX_FINDING_CODES);
   }
   return semantic;
 }

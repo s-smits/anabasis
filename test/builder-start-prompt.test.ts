@@ -27,7 +27,9 @@ import {
   builderSystemPrompt,
 } from "../src/author/builder-start-prompt.ts";
 import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
+import { SUBMIT_DESCRIPTION } from "../src/gate/submit-tool.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
+import { directKickoff } from "../src/run/direct-input.ts";
 import { DCG_RULES } from "../src/solve/dcg-rules.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
 import { CENSUS_LANES } from "../src/truth/run-controls.ts";
@@ -116,9 +118,10 @@ describe("Builder start prompt", () => {
     );
     for (const code of codes) expect(PROMPT, code).not.toContain(code);
     expect(PROMPT).not.toMatch(/[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+/);
-    // One tool is named, the one that reaches earlier runs; naming it cost less than the
-    // circumlocution (operator decision). The rest of the roster is the starter's.
-    expect(PROMPT.match(/harness_\w+|correctness_check|\bsubmit\b/g)).toEqual(["harness_inspect"]);
+    // One tool is named, the one that reaches earlier runs and solver traces; naming it cost less
+    // than the circumlocution (operator decision). The rest of the roster is the starter's.
+    expect(PROMPT.match(/harness_\w+|correctness_check|\bsubmit\b/g)).toBeNull();
+    expect(PROMPT).toContain("only through the context tool");
     for (const owned of [
       "runtime.tools.run",
       "tasks.json",
@@ -176,6 +179,23 @@ describe("Builder start prompt", () => {
     }
   });
 
+  /** The kickoff sits beside the request on the first turn, which makes it the natural place to
+   *  restate a duty the system prompt already carries; the same measure holds it to one owner. */
+  it("leaves the kickoff no duty the system prompt already states", () => {
+    const kickoff = directKickoff("designs steel roof trusses to Eurocode 3", {
+      files: [],
+      digest: "0".repeat(64),
+      root: null,
+      dispose: () => undefined,
+    });
+    const closing = kickoff.split("\n").at(-1) ?? "";
+    for (const line of closing.split(/(?<=[.:])\s+/).map(flat)) {
+      for (const sentence of SENTENCES) {
+        expect(overlap(words(line), words(sentence)), `${line}\n~~\n${sentence}`).toBeLessThan(0.55);
+      }
+    }
+  });
+
   /** The difficulty judgement has an instrument, so the prompt points at measuring rather than
    *  carrying a recipe. What remains is the one direction with outcome evidence behind it: stacking
    *  interactions inside an unchanged limit makes a battery far harder than adding one interaction
@@ -200,9 +220,10 @@ describe("Builder start prompt", () => {
    *  minutes in, resubmits the same tree when refused, and the run ends with no battery at all. So
    *  the clause is controller-owned and arrives only in the refusal that needs it. The literal has
    *  two segments, so the code sweep above — which reads kebab literals of three or more — does not
-   *  see it. */
+   *  see it. The submit description is held too, because a tool description is in front of the
+   *  Builder on every turn and is where a retry rule is most naturally read. */
   it("names no settlement the controller alone may declare", () => {
-    for (const surface of [PROMPT, STARTER_DOC, STARTER_ENTRY]) {
+    for (const surface of [PROMPT, STARTER_DOC, STARTER_ENTRY, SUBMIT_DESCRIPTION]) {
       expect(surface).not.toContain("verifier-required");
     }
   });
@@ -253,9 +274,7 @@ describe("STARTER.md gate map", () => {
    *  the one read first. */
   it("points the first battery at the top tier and leaves the counts to the prompt", () => {
     const starter = flat(STARTER_ENTRY);
-    expect(starter).toContain(
-      "Take the first battery from the **frontier** row, above what you believe the harness handles",
-    );
+    expect(starter).toContain("Take the first battery from the **frontier** row.");
     for (const downwards of ["easy to hard", "start easy", "from easy"]) {
       expect(starter, downwards).not.toContain(downwards);
     }
@@ -320,7 +339,8 @@ describe("STARTER.md gate map", () => {
       "a check takes `runtime` as its second argument or on the request",
       "returns `false` for a deliverable that does not fit; it neither throws nor returns before the run",
       "Bound a search by a fixed iteration count",
-      "so the wall bounds the replay and not the limit",
+      "so the wall bounds the replay, not the limit",
+      "the limit is real only if the solver cannot run that search in its walls",
     ]) {
       expect(starter, contract).toContain(contract);
     }

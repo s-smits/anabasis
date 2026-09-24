@@ -1,5 +1,5 @@
-import { afterAll, expect, it } from "bun:test";
 import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { afterAll, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -7,7 +7,7 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
-import { isRecord, isString } from "../src/meta/json-shape.ts";
+import { isRecord } from "../src/meta/json-shape.ts";
 import { claimsDirFor } from "../src/run/claim-write.ts";
 import { BATTERY_SIZE } from "../src/run/battery-sizing.ts";
 import { selectNextMoveFromDisk } from "../src/run/next-move.ts";
@@ -174,9 +174,8 @@ async function assertRebuildRound(
       kickoff: selected.kickoff,
       epochPass: selected.decision.reopenKey,
     });
-    expect(options?.rebuildReset).toBeUndefined();
     expect(options?.advisoryNote).toContain(selected.decision.reason);
-    expect(options?.readHistory?.(undefined, undefined, undefined, undefined)).toContain("history");
+    expect(options?.measured?.history?.().map((doc) => doc.id)).toContain("history/overview");
     return double({
       buildAdmissible: false,
       adopted: false,
@@ -263,10 +262,13 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
 
   let pages: unknown[] = [];
   const build: FullRunDeps["build"] = async (_manifest, options) => {
-    const history = required(options?.readHistory, "the history reader");
+    const history = required(options?.measured?.history, "the history source")();
     pages = ["other-pin", "other-thresholds"].map((runId) => {
-      const page = capturedJsonParse(history(runId, "measured-3", undefined, undefined));
-      return isRecord(page) && isString(page.text) ? capturedJsonParse(page.text) : page;
+      const doc = history.find((item) => item.id === `history/${runId}`);
+      const text = doc !== undefined && "text" in doc ? doc.text() : "";
+      const page = capturedJsonParse(text.slice(text.indexOf("\n") + 1));
+      if (!isRecord(page) || !Array.isArray(page.tasks)) return page;
+      return { ...page, tasks: page.tasks.filter((task) => isRecord(task) && task.taskId === "measured-3") };
     });
     return double({
       buildAdmissible: false,

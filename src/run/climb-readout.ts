@@ -2,7 +2,7 @@
  * The climb readout: one reading of the recorded batteries, rendered once.
  *
  * Every row is read once here, over the sample that decides it, and the kickoff, the stop rule and
- * `harness_inspect history` all read those rows. Spread across separate readers — a selector
+ * the context tool's history source all read those rows. Spread across separate readers — a selector
  * deciding the round, a measurement note wording the decision, a ledger note tabling task sets with
  * its own interval, a history tool placing every row a third way, a stop rule counting its streak
  * in a fifth place — they disagree, and one battery reads as a near-perfect score in one paragraph
@@ -22,10 +22,9 @@
  */
 import { type BandPlacement, aimCounts, bandLandmarks, placeOnBand } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";
-import { characterWindow } from "../builder/read-window.ts";
+import type { ContextDocument } from "../builder/context-tool.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { isRecord, isString } from "../meta/json-shape.ts";
-import { keysIf } from "../meta/optional-key.ts";
+import { isString } from "../meta/json-shape.ts";
 import {
   type AdmittedClimbRow,
   type ClimbBattery,
@@ -33,6 +32,7 @@ import {
   type ClimbEffort,
   type ClimbFamilySummary,
   type ExcludedBattery,
+  type FamilyEffort,
   climbThresholds,
   decidingSample,
   excludedSummary,
@@ -101,8 +101,17 @@ type ReadoutRow = {
   families: ClimbFamilySummary[] | null;
   /** Null when the claim was refused, or when no case recorded a solver block. */
   effort: ClimbEffort | null;
+  /** Null when the claim was refused; empty when no case named a family and recorded a solver block. */
+  familyEffort: FamilyEffort[] | null;
+  /** The `solve_minutes` wall the effort is read against; null when the product's config did not parse. */
+  solveWallMinutes: number | null;
+  /** The plan's predictions scored against the verdicts; null when the claim was refused or no
+   *  prediction named a scored task. */
+  calibration: ClimbAuthoringCalibration | null;
   experiment: ExperimentAuthoring | null;
 };
+
+type ClimbAuthoringCalibration = AdmittedClimbRow["authoring"]["calibration"];
 
 /** The consecutive rounds that ended on one side of the aim or with a refused claim. */
 export type OffAimAllowance = {
@@ -132,14 +141,6 @@ export type ClimbReadout = {
   allowance: OffAimAllowance | null;
 };
 
-/** Which slice of the public history a reader asked for; every field absent reads everything. */
-type HistoryQuery = {
-  readonly runId?: string | undefined;
-  readonly taskId?: string | undefined;
-  readonly offset?: number | undefined;
-  readonly limit?: number | undefined;
-};
-
 /** Ceiling for the kickoff rendering; whole older rows go first, then the family line. */
 export const CLIMB_READOUT_MAX_CHARS = 16_000;
 const TABLE_ROWS = 3;
@@ -149,16 +150,14 @@ const READING: Record<BandPlacement["zone"], string> = FRAME.zoneWords;
 const TABLE_HEAD = `| ${FRAME.readout.columns} |`;
 const TABLE_RULE = `|${" --- |".repeat(FRAME.readout.columns.split(" | ").length)}`;
 
-/** The one difficulty decision. Pure: the latest battery decides, earlier ones are evidence. An
- *  inverted band makes both direction predicates true, so it throws rather than deciding both ways. */
+/** The one difficulty decision. Pure: the latest battery decides, earlier ones are evidence. The
+ *  band is already bounded where it is read: `climbThresholds` takes a manifest row only through
+ *  `band01`, which falls back to policy on an inverted, non-numeric or out-of-range pair. */
 export function decideDifficulty(
   batteries: readonly ClimbBattery[],
   band: [number, number] = POLICY.climb.band,
 ): DifficultyDecision {
   const [lo, hi] = band;
-  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo < 0 || hi > 1 || lo >= hi) {
-    throw new TypeError(`band must satisfy 0 <= lo < hi <= 1, got [${lo}, ${hi}]`);
-  }
   const base = { evidence: batteries.map(({ runId, batterySha256 }) => ({ runId, batterySha256 })) };
   const latest = batteries.at(-1);
   if (latest === undefined) {
@@ -280,7 +279,18 @@ function readoutRow(
   decision: DifficultyDecision | undefined,
   names: { product: Map<string | null, string>; taskSet: Map<string | null, string> },
 ): ReadoutRow {
-  const admitted = row.excludedReason === null;
+  // A refused claim's passes, samples and per-case measures are not evidence, so each reads null.
+  const admitted =
+    row.excludedReason === null
+      ? {
+          passed: row.battery.passed,
+          deciding: decidingSample(row.battery),
+          families: row.authoring.familySummary,
+          effort: row.authoring.effort,
+          familyEffort: row.authoring.familyEffort,
+          calibration: row.authoring.calibration,
+        }
+      : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, calibration: null };
   const placement = decision?.action === "placed" ? decision.placement : null;
   return {
     runId: row.battery.runId,
@@ -289,11 +299,11 @@ function readoutRow(
     product: names.product.get(row.harnessId) ?? "unknown",
     taskSet: names.taskSet.get(row.authoring.taskSetHash) ?? "unknown",
     operation: row.authoring.experimentAuthoring?.operation.operation ?? null,
-    passed: admitted ? row.battery.passed : null,
+    passed: admitted.passed,
     verified: row.battery.n - row.battery.unaccepted,
     unaccepted: row.battery.unaccepted,
     nonResults: row.authoring.caseIds.length - row.battery.n,
-    deciding: admitted ? decidingSample(row.battery) : null,
+    deciding: admitted.deciding,
     zone: placement?.zone ?? null,
     setAside: decision === undefined || decision.action === "placed" ? null : decision.action,
     aim: placement?.aim ?? null,
@@ -301,8 +311,11 @@ function readoutRow(
     wilson: placement === null ? null : [Number(placement.lo.toFixed(3)), Number(placement.hi.toFixed(3))],
     target: readTarget(row),
     claimRefusal: row.excludedReason,
-    families: admitted ? row.authoring.familySummary : null,
-    effort: admitted ? row.authoring.effort : null,
+    families: admitted.families,
+    effort: admitted.effort,
+    familyEffort: admitted.familyEffort,
+    solveWallMinutes: row.authoring.solveWallMinutes,
+    calibration: admitted.calibration,
     experiment: row.authoring.experimentAuthoring ?? null,
   };
 }
@@ -404,14 +417,6 @@ export function readClimbReadout(
   return climbReadout(read, climbThresholds(manifestPath).band, (row) => publicSchemaPrint(domainDir, row));
 }
 
-/** The stop reason once the allowance is spent, or null while it lasts. */
-export function allowanceStop(readout: ClimbReadout | null): string | null {
-  const allowance = readout?.allowance ?? null;
-  if (allowance === null || allowance.rounds < POLICY.climb.offAimStreakRounds) return null;
-  const { rounds, placed, refused, side, products } = allowance;
-  return fill(FRAME.stop, { rounds, side, placed, refused, products });
-}
-
 const cell = (value: string) => value.replaceAll("|", String.raw`\|`).replaceAll("\n", " ");
 
 function targetCell(target: TargetReading | null): string {
@@ -474,6 +479,20 @@ function proposalLines(readout: ClimbReadout): string[] {
   return [lines.join(" ")];
 }
 
+/** The latest scored plan's calibration, from the newest admitted row that carries one. */
+function calibrationLine(readout: ClimbReadout): string | null {
+  const row = readout.rows.find((item) => item.calibration !== null);
+  const score = row?.calibration;
+  if (row === undefined || score === null || score === undefined) return null;
+  return fill(FRAME.readout.calibration, {
+    runId: row.runId,
+    scored: score.scored,
+    expected: score.expected,
+    observed: score.observed,
+    brier: score.brier,
+  });
+}
+
 function readingLines(readout: ClimbReadout): string[] {
   const { decision, band } = readout;
   if (decision.action !== "placed") {
@@ -501,7 +520,11 @@ function readingLines(readout: ClimbReadout): string[] {
     hi: placement.aim[1],
     zone: READING[placement.zone],
   });
-  return [`${reading}${ladder}`];
+  const allPass =
+    latest !== undefined && latest.verified > 0 && latest.passed === latest.verified
+      ? [fill(FRAME.readout.allPass, { verified: latest.verified })]
+      : [];
+  return [`${reading}${ladder}`, ...allPass];
 }
 
 function allowanceLines(readout: ClimbReadout): string[] {
@@ -530,6 +553,21 @@ function familyLine(readout: ClimbReadout): string | null {
   return fill(FRAME.readout.families, { families: list });
 }
 
+function familyEffortLine(readout: ClimbReadout): string | null {
+  const latest = readout.rows.find((row) => row.familyEffort !== null);
+  const families = latest?.familyEffort ?? [];
+  if (latest === undefined || families.length === 0) return null;
+  const count = (value: number | null) => (value === null ? "unrecorded" : String(value));
+  const list = families
+    .map(
+      (row) =>
+        `${row.family} ${count(row.medianMinutes)} median and ${count(row.maxMinutes)} most minutes, ${count(row.medianToolCalls)} median tool calls over ${row.cases} case(s)`,
+    )
+    .join("; ");
+  const wall = latest.solveWallMinutes === null ? "an unrecorded" : `its ${latest.solveWallMinutes}-minute`;
+  return fill(FRAME.readout.familyEffort, { wall, families: list });
+}
+
 /**
  * The kickoff rendering: the boundary, the table of the newest rows, the latest proposal and its
  * result, the reading with its ladder pointer, the allowance, the families and the exclusions.
@@ -550,9 +588,11 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
         : [TABLE_HEAD, TABLE_RULE, ...readout.rows.slice(0, shown).map(tableLine)].join("\n"),
       omitted > 0 ? fill(FRAME.readout.omittedRows, { count: omitted }) : null,
       ...proposalLines(readout),
+      calibrationLine(readout),
       ...readingLines(readout),
       ...allowanceLines(readout),
       withFamilies ? familyLine(readout) : null,
+      withFamilies ? familyEffortLine(readout) : null,
       summary === null ? null : fill(FRAME.readout.excluded, { summary }),
       FRAME.readout.history,
     ]
@@ -570,7 +610,7 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
 /** The counts the band implies, stated as targets; how to reach them is the Builder's. */
 function passTargets(n: number, min: number, continuation: boolean, band: [number, number]): string {
   const t = FRAME.targets;
-  const open = continuation ? t.openContinuation : t.openFirst;
+  const open = `${continuation ? t.openContinuation : t.openFirst} ${t.walls}`;
   if (min !== n) {
     const rows = Array.from({ length: n - min + 1 }, (_, index) => min + index).map((size) => {
       const { aim, tooEasyFrom, first } = bandLandmarks(size, band);
@@ -614,52 +654,49 @@ export function renderProbeSizing(tasks: { min: number; max: number }, requested
 }
 
 /**
- * `harness_inspect history`: the readout's own rows, newest first, or one recorded battery's
- * public tasks. Newest first, because a reader stops on page 1 and that page should be the one
- * that decides: oldest-first, it reads superseded batteries and concludes the opposite of what the
- * product needs. Character paging keeps any public task reachable without exposing verdicts,
- * private paths or verifier text.
+ * The history source of the `context` tool: one overview document holding the readout's own rows,
+ * newest first, and one document per recorded battery holding its public tasks. Newest first,
+ * because a reader stops early and the rows it reads first should be the ones that decide:
+ * oldest-first, it reads superseded batteries and concludes the opposite of what the product needs.
+ * Each text is projected when a question reaches it, and it carries no verdict by task, private
+ * path or verifier text.
  */
-export function readReadoutHistory(
+export function readoutHistoryDocuments(
   domainDir: string,
   readout: ClimbReadout,
   history: readonly AdmittedClimbRow[],
-  query: HistoryQuery = {},
-): string {
-  const { runId, taskId, offset, limit } = query;
-  const unavailable = (text: string) => capturedJsonStringify({ action: "history", unavailable: text });
-  let body;
-  if (runId === undefined) {
-    // The allowance rides along because it is the one readout field the rows cannot reconstruct:
-    // it counts placements across product identities and includes claim-refused rounds. A Builder
-    // that cannot see it is two rounds into a three-round stop takes a smaller step than the
-    // evidence warrants. It sits ahead of the rows because the page is character-windowed, and a
-    // fact that pages off the end of a long history is one no reader knows to ask for.
-    body = {
-      band: readout.band,
-      allowance: readout.allowance,
-      rows: readout.rows,
-      excluded: readout.excluded,
-    };
-  } else {
-    const row = history.find((item) => item.battery.runId === runId);
-    if (row === undefined) return unavailable("No verified history is bound to this runId.");
-    const projection = publicTaskProjection(domainDir, runId, row.authoring.caseIds);
-    if (!("tasks" in projection)) return unavailable(projection.refusal);
-    const tasks =
-      taskId === undefined
-        ? projection.tasks
-        : projection.tasks.filter((task) => isRecord(task) && task.taskId === taskId);
-    body = {
-      runId,
-      condition: row.condition,
-      tasks,
-      ...keysIf(tasks.length === 0, () => ({ unavailable: "No recorded public task has this taskId." })),
-    };
-  }
-  return capturedJsonStringify({
-    action: "history",
-    ...characterWindow(capturedJsonStringify(body), offset, limit),
-    note: fill(FRAME.history.note, { legend: FRAME.readout.legend, zones: FRAME.readout.zones }),
-  });
+): ContextDocument[] {
+  const note = fill(FRAME.history.note, { legend: FRAME.readout.legend, zones: FRAME.readout.zones });
+  // The allowance rides along because it is the one readout field the rows cannot reconstruct: it
+  // counts placements across product identities and includes claim-refused rounds. A Builder that
+  // cannot see it is two rounds into a three-round stop takes a smaller step than the evidence
+  // warrants.
+  const overview = {
+    band: readout.band,
+    allowance: readout.allowance,
+    rows: readout.rows,
+    excluded: readout.excluded,
+  };
+  return [
+    {
+      id: "history/overview",
+      source: "history",
+      title: "every measured battery, newest first, with the band and the off-aim allowance",
+      text: () => `${note}\n${capturedJsonStringify(overview, null, 2)}`,
+    },
+    ...history.toReversed().map((row): ContextDocument => {
+      const { runId } = row.battery;
+      return {
+        id: `history/${runId}`,
+        source: "history",
+        title: `the public tasks of battery ${runId}`,
+        text: () => {
+          const projection = publicTaskProjection(domainDir, runId, row.authoring.caseIds);
+          return "tasks" in projection
+            ? `${note}\n${capturedJsonStringify({ runId, condition: row.condition, tasks: projection.tasks }, null, 2)}`
+            : `No public task of ${runId} can be vouched for: ${projection.refusal}`;
+        },
+      };
+    }),
+  ];
 }

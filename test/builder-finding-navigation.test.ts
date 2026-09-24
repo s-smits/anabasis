@@ -13,7 +13,7 @@ afterEach(() => {
   for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-it("follows readiness's two finding routes and refuses selectors that an action cannot read", async () => {
+it("follows readiness's one finding route to both kinds and refuses selectors that an action cannot read", async () => {
   const dir = mkdtempSync(join(runtimeProcess.cwd(), ".ana-scratch-finding-navigation-"));
   scratch.push(dir);
   writeMatchingBuildFixture(dir);
@@ -31,29 +31,26 @@ it("follows readiness's two finding routes and refuses selectors that an action 
     navigation: string;
     groups: Array<{ group: number }>;
   }
-  const ready = parseJsonAs<{ validationFindings: Overview; moduleFindings: Overview }>(
-    await call({ action: "readiness" }),
+  const ready = parseJsonAs<{ findings: Overview }>(await call({ action: "readiness" }));
+  // Follow the actual returned navigation, rather than copying a route into the test call.
+  const readiness = parseJsonAs<{ action: "readiness" }>(
+    ready.findings.navigation.match(/\{[^}]+\}/)?.[0] ?? "{}",
   );
-  for (const [overview, action, expected] of [
-    [ready.validationFindings, "summary", "the array is the whole file"],
-    [ready.moduleFindings, "typecheck", "TS2322"],
-  ] as const) {
-    // Follow the actual returned navigation, rather than copying a route into the test call.
-    const route = parseJsonAs<{ action: "summary" | "typecheck" }>(
-      overview.navigation.match(/\{[^}]+\}/)?.[0] ?? "{}",
-    );
-    expect(route.action).toBe(action);
-    const group = overview.groups[0]?.group;
-    if (group === undefined) throw new Error("missing finding group");
+  expect(readiness.action).toBe("readiness");
+  // A validation finding and a module diagnostic sit in the one list, each reachable by its group.
+  const details: string[] = [];
+  for (const { group } of ready.findings.groups) {
     const page = parseJsonAs<{ findings: { text: string } }>(
-      await call({ ...route, group, field: "detail" }),
+      await call({ ...readiness, group, field: "detail" }),
     );
-    expect(page.findings.text).toContain(expected);
+    details.push(page.findings.text);
   }
-  for (const action of ["readiness", "inventory", "tools", "task"] as const) {
+  expect(details.some((detail) => detail.includes("the array is the whole file"))).toBe(true);
+  expect(details.some((detail) => detail.includes("TS2322"))).toBe(true);
+  for (const action of ["task", "coverage"] as const) {
     expect(parseJsonAs(await call({ action, group: 1, field: "detail" }))).toMatchObject({
       status: "blocked",
-      nextAction: expect.stringContaining("summary for validationFindings"),
+      nextAction: expect.stringContaining("readiness for the candidate's own findings"),
     });
   }
   // Check/submit feedback is a stored result, never a redirect to today's workspace findings.

@@ -507,7 +507,7 @@ describe("review coverage tied to recorded execution", () => {
     expect(inventory.truncated).toBe(true);
     expect(inventory.missing).toEqual([]);
     const state = reviewState();
-    const reader = readSourceTool(root, new Set(inventory.files), state);
+    const reader = readSourceTool(root, new Set(inventory.files), state, {}, new Map());
     for (const path of inventory.files) await call(reader, { path });
     expect(
       reviewCoverage(inventory, { identity: "none", tools: {}, unavailable: null }, state).complete,
@@ -520,7 +520,7 @@ describe("review coverage tied to recorded execution", () => {
     writeFileSync(join(root, path), "a".repeat(20_000));
     const inventory = reviewInventory(root),
       state = reviewState();
-    const reader = readSourceTool(root, new Set(inventory.files), state);
+    const reader = readSourceTool(root, new Set(inventory.files), state, {}, new Map());
     const verifier = { identity: "none", tools: {}, unavailable: null };
     for (const file of inventory.files.filter((name) => name !== path)) await call(reader, { path: file });
     expect(await call(reader, { path, offset: 16_000 })).toContain(
@@ -545,7 +545,13 @@ describe("review coverage tied to recorded execution", () => {
     expect(aliases).toHaveLength(1);
     const alias = aliases[0]!;
     const inventory = reviewInventory(root);
-    const reader = readSourceTool(root, new Set([...inventory.files, ...aliases]), state, verifier.tools);
+    const reader = readSourceTool(
+      root,
+      new Set([...inventory.files, ...aliases]),
+      state,
+      verifier.tools,
+      new Map(),
+    );
     expect(await call(reader, { path: alias })).toContain("#!/bin/sh\nexit 0");
     expect(await call(reader, { path })).toContain("not in the inventory");
     expect(await call(reader, { path: ".toolchain/bin/domain-check" })).toContain("not in the inventory");
@@ -563,9 +569,12 @@ describe("review coverage tied to recorded execution", () => {
       { log, battery } = recordedTool(root, "BINARY_BYTES", "binary");
     const verifier = reviewVerifierEvidence(root, "r1");
     const alias = Object.keys(verifier.tools)[0]!;
-    const text = await call(readSourceTool(root, new Set([alias]), reviewState(), verifier.tools), {
-      path: alias,
-    });
+    const text = await call(
+      readSourceTool(root, new Set([alias]), reviewState(), verifier.tools, new Map()),
+      {
+        path: alias,
+      },
+    );
     expect(text).toContain("Binary entry point: source is unavailable");
     expect(text).not.toContain("BINARY_BYTES");
     log.write("battery.json", { ...battery, executionEvidence: [] });
@@ -795,7 +804,7 @@ describe("what the reviewer may open", () => {
     const first = "correctness-model/tasks.json",
       second = "correctness-model/controls.json";
     writeFileSync(join(root, first), "x".repeat(20_000));
-    const reader = readSourceTool(root, new Set([first, second]), state);
+    const reader = readSourceTool(root, new Set([first, second]), state, {}, new Map());
     expect(await call(reader, {})).toContain(`${first} (offset 0)`);
     expect(await call(reader, {})).toContain(`${first} (offset 16000)`);
     expect(await call(reader, {})).toContain(`${second} (offset 0)`);
@@ -839,7 +848,7 @@ describe("what the reviewer may open", () => {
     symlinkSync(join(outside, "secret.txt"), join(root, "broken.json"));
     writeFileSync(join(root, "real.json"), "the evidence the reviewer needs");
     const state = reviewState();
-    const reader = readSourceTool(root, new Set(["broken.json", "real.json"]), state);
+    const reader = readSourceTool(root, new Set(["broken.json", "real.json"]), state, {}, new Map());
     expect(await call(reader, {})).toContain("real.json (offset 0)");
     expect(state.reads).toEqual(["real.json"]);
     expect(state.refused).toBe(0);
@@ -860,7 +869,7 @@ describe("what the reviewer may open", () => {
     writeFileSync(join(root, "a.json"), "a".repeat(20_000));
     writeFileSync(join(root, "b.json"), "b");
     const state = reviewState();
-    const reader = readSourceTool(root, new Set(["a.json", "b.json"]), state);
+    const reader = readSourceTool(root, new Set(["a.json", "b.json"]), state, {}, new Map());
     expect(await call(reader, {})).toContain("a.json (offset 0)");
     writeFileSync(join(root, "a.json"), "a".repeat(30_000));
     expect(await call(reader, {})).toContain("a.json changed since its pages were delivered");
@@ -904,7 +913,7 @@ describe("what the reviewer may open", () => {
     writeFileSync(join(outside, "secret.txt"), "private controller bytes");
     const inventory = new Set(reviewInventory(root).files);
     const state = reviewState();
-    const tool = readSourceTool(root, inventory, state);
+    const tool = readSourceTool(root, inventory, state, {}, new Map());
     expect(await call(tool, { path: EVALUATOR_TS })).toBe("public evaluation");
     unlinkSync(join(root, EVALUATOR_TS));
     symlinkSync(join(outside, "secret.txt"), join(root, EVALUATOR_TS));
@@ -919,7 +928,7 @@ describe("what the reviewer may open", () => {
     const source = `${"a".repeat(15_999)}\u{1F600}b`;
     writeFileSync(join(root, EVALUATOR_TS), source);
     const state = reviewState();
-    const tool = readSourceTool(root, new Set([EVALUATOR_TS]), state);
+    const tool = readSourceTool(root, new Set([EVALUATOR_TS]), state, {}, new Map());
     const first = await call(tool, { path: EVALUATOR_TS });
     expect(first.startsWith("a".repeat(15_999))).toBe(true);
     expect(first).toContain("call again to continue.");
@@ -948,7 +957,7 @@ describe("what the reviewer may open", () => {
     writeFileSync(join(root, EVALUATOR_TS), source);
     writeFileSync(join(root, "secret.txt"), "not offered");
     const state = reviewState();
-    const tool = readSourceTool(root, new Set([EVALUATOR_TS]), state);
+    const tool = readSourceTool(root, new Set([EVALUATOR_TS]), state, {}, new Map());
     expect(await call(tool, { path: "secret.txt" })).toContain("not in the inventory");
     let reconstructed = "";
     while (reconstructed.length < source.length) {
@@ -963,7 +972,7 @@ describe("what the reviewer may open", () => {
     }
     expect(reconstructed).toBe(source);
     // One character short of complete: the count, its noun and its verb all agree.
-    const edge = readSourceTool(root, new Set(["edge.ts"]), reviewState());
+    const edge = readSourceTool(root, new Set(["edge.ts"]), reviewState(), {}, new Map());
     writeFileSync(join(root, "edge.ts"), "e".repeat(16_001));
     expect(await call(edge, { path: "edge.ts" })).toEndWith("(1 character remains; call again to continue.)");
     expect(state.readChars).toBe(source.length);

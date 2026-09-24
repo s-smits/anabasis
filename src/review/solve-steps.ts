@@ -73,10 +73,7 @@ function stepOf(call: Record<string, JsonValue>): Step {
       : "";
   const turn = isNumber(call.turn) ? ` turn ${call.turn}` : "";
   const time = isNumber(call.timingMs) ? ` ${(call.timingMs / 1000).toFixed(1)}s` : "";
-  const args =
-    status === "ERR" && isString(call.argsExcerpt)
-      ? ` | args: ${clip(oneLine(call.argsExcerpt), ARGS_CHARS)}`
-      : "";
+  const args = isString(call.argsExcerpt) ? ` | args: ${clip(oneLine(call.argsExcerpt), ARGS_CHARS)}` : "";
   const result = clip(oneLine(said), RESULT_CHARS) || "(no result recorded)";
   return {
     tool,
@@ -180,7 +177,7 @@ export function compileSolve(
   const shown = shownGroups(all);
   const refs = new Map<string, string | null>();
   const lines: string[] = [head];
-  if (trace.truncated || trace.droppedRawEvents > 0) {
+  if (trace.truncated) {
     lines.push("  (the recorded trace is a prefix: its capture hit a bound, so later steps are unrecorded)");
   }
   let next = 0;

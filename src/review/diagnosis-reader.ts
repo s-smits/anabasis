@@ -30,6 +30,7 @@
  * never stated by the model.
  */
 import { campaignDir } from "../meta/campaign-root.ts";
+import { readJsonFileOrNull } from "../meta/completed-json.ts";
 import { join } from "../meta/path.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -150,12 +151,7 @@ interface DiagnosisReaderInput {
  *  solve rather than the evaluation. Worst share first. */
 export function diagnosableIssues(issues: readonly AdviceIssue[]): AdviceIssue[] {
   return issues
-    .filter(
-      (issue) =>
-        isStanding(issue) &&
-        !environmentOwned(issue) &&
-        (issue.kind === "verified-fail" || issue.kind === "unaccepted" || issue.kind === "non-result"),
-    )
+    .filter((issue) => isStanding(issue) && !environmentOwned(issue) && !issue.kind.startsWith("judge-"))
     .sort((a, b) => b.count / Math.max(b.denominator, 1) - a.count / Math.max(a.denominator, 1));
 }
 
@@ -173,7 +169,7 @@ const clipped = (text: string, chars: number) =>
  *  files this reader names are ever asked for. */
 function runReader(runId: string, checkedRuns: Map<string, EvidenceLogViolation[]>): RecordedRead {
   return (trace, taskId, file) => {
-    if (trace.state !== "recorded" || trace.baseDir === null) return null;
+    if (trace.baseDir === null) return null;
     if (!isSafePathSegment(runId) || !isSafePathSegment(taskId)) return null;
     if (trace.path !== `runs/${runId}/cases/${taskId}/trace.json`) return null;
     const runDir = join(trace.baseDir, "runs", runId);
@@ -225,16 +221,6 @@ function registeredTools(read: RecordedRead, trace: VerifiedTraceRead, taskId: s
 
 const named = (value: JsonValue | undefined, absent: string) => (isString(value) ? value : absent);
 
-function toolsSpec(measuredDir: string): JsonValue | null {
-  const path = join(measuredDir, TOOLS_SPEC_FILE);
-  if (!existsSync(path)) return null;
-  try {
-    return parseJsonAs<JsonValue>(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
 /** A config the gate would refuse never reached measurement, so a throw here reads the defaults. */
 function settingsOf(measuredDir: string) {
   try {
@@ -249,7 +235,7 @@ function settingsOf(measuredDir: string) {
 function harnessSurface(measuredDir: string) {
   const guidePath = join(measuredDir, BUILT_AGENTS_FILE);
   const guide = existsSync(guidePath) ? readFileSync(guidePath, "utf8") : null;
-  const spec = toolsSpec(measuredDir);
+  const spec = readJsonFileOrNull(join(measuredDir, TOOLS_SPEC_FILE));
   const tools = isRecord(spec) && Array.isArray(spec.tools) ? spec.tools.filter(isRecord) : [];
   const described = tools.map(
     (tool) =>
@@ -293,7 +279,7 @@ function sampled(solves: readonly CompiledSolve[]): CompiledSolve[] {
   return [...first, ...solves.filter((solve) => !first.includes(solve))].slice(0, MATCHING_SHOWN);
 }
 
-function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], task: (entry: Compiled) => string) {
+function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], read: RecordedRead) {
   const family = compiled.filter((entry) => entry.row.family === issue.family);
   const matching = family.filter((entry) => carriesIssue(entry.row, issue));
   const shown = sampled(matching.map((entry) => entry.solve));
@@ -306,10 +292,12 @@ function issueOffer(issue: AdviceIssue, compiled: readonly Compiled[], task: (en
   const block = [
     `ISSUE ${key} — family ${issue.family}, kind ${issue.kind}${detail}: ${issue.count} of ${issue.denominator}, ${issueStatusWord(issue)}, first seen ${issue.firstSeenRunId}.`,
     `Showing ${shown.length} of ${matching.length} failing solves; ${contrasts.length === 0 ? "no passing solve of this family to contrast" : `${contrasts.length} passing solve(s) of this family to contrast`}.`,
-    ...(firstShown === undefined ? [] : [`${firstShown.solve.label} ${task(firstShown)}`]),
+    ...(firstShown === undefined
+      ? []
+      : [`${firstShown.solve.label} ${publicTask(read, firstShown.trace, firstShown.row.taskId)}`]),
     ...shown.map((solve) => solve.text),
     ...contrasts.flatMap((entry, nth) => [
-      ...(nth === 0 ? [`${entry.solve.label} ${task(entry)}`] : []),
+      ...(nth === 0 ? [`${entry.solve.label} ${publicTask(read, entry.trace, entry.row.taskId)}`] : []),
       entry.solve.text,
     ]),
   ].join("\n");
@@ -352,7 +340,7 @@ export function diagnosisPacket(
   const offers: IssueOffer[] = [];
   let used = head.length;
   for (const issue of issues) {
-    const offer = issueOffer(issue, compiled, (entry) => publicTask(read, entry.trace, entry.row.taskId));
+    const offer = issueOffer(issue, compiled, read);
     if (offers.length > 0 && used + offer.block.length + 2 > BODY_MAX_CHARS) break;
     offers.push(offer);
     used += offer.block.length + 2;
@@ -360,8 +348,16 @@ export function diagnosisPacket(
   return { body: [head, ...offers.map((offer) => offer.block)].join("\n\n"), offers };
 }
 
-function blankEvidence(analysis: DiagnosisReaderInput["analysis"]): DiagnosisReaderEvidence {
-  return {
+/**
+ * Read the diagnosable issues once. Returns the evidence record; the caller attaches the diagnoses
+ * to the issue register. A turn that failed records its error and no diagnoses, so a broken reader
+ * never looks like a battery with nothing to explain.
+ */
+export async function readDiagnoses(input: DiagnosisReaderInput): Promise<DiagnosisReaderEvidence> {
+  const { analysis, repoRoot } = input;
+  const diagnosable = diagnosableIssues(input.advice.issues);
+  const issues = diagnosable.slice(0, MAX_ISSUES);
+  const evidence: DiagnosisReaderEvidence = {
     schema: DIAGNOSIS_READING_SCHEMA,
     slug: analysis.slug,
     runId: analysis.runId,
@@ -375,18 +371,6 @@ function blankEvidence(analysis: DiagnosisReaderInput["analysis"]): DiagnosisRea
     error: null,
     readerText: null,
   };
-}
-
-/**
- * Read the diagnosable issues once. Returns the evidence record; the caller attaches the diagnoses
- * to the issue register. A turn that failed records its error and no diagnoses, so a broken reader
- * never looks like a battery with nothing to explain.
- */
-export async function readDiagnoses(input: DiagnosisReaderInput): Promise<DiagnosisReaderEvidence> {
-  const { analysis, repoRoot } = input;
-  const diagnosable = diagnosableIssues(input.advice.issues);
-  const issues = diagnosable.slice(0, MAX_ISSUES);
-  const evidence = blankEvidence(analysis);
   if (issues.length === 0) return { ...evidence, error: "no-standing-issue" };
   if (!input.review.enabled) return { ...evidence, error: "review-slot-off" };
   const packet = diagnosisPacket(input, issues);
@@ -412,7 +396,8 @@ export async function readDiagnoses(input: DiagnosisReaderInput): Promise<Diagno
   });
   evidence.readerPin = turn.pin;
   evidence.error = turn.error;
-  evidence.readerText = turn.error === null ? redactProviderDiagnostic(turn.text, 0) : null;
   // Tool calls from a failed turn already updated the sink; discard that incomplete reading.
-  return turn.error === null ? evidence : { ...evidence, diagnoses: [], abstentions: [] };
+  if (turn.error !== null) return { ...evidence, diagnoses: [], abstentions: [] };
+  evidence.readerText = redactProviderDiagnostic(turn.text, 0);
+  return evidence;
 }

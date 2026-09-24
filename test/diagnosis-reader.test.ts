@@ -495,6 +495,15 @@ describe("a solve compiled into steps", () => {
     expect(batteryCensus([solve])).toContain("1 reached the turn cap, 1 reached the solve wall.");
   });
 
+  test("a trace is called a prefix only when its capture was truncated, not when raw events were dropped", () => {
+    const calls: Call[] = [{ tool: "bash", ok: true, result: "done" }];
+    const prefix = "the recorded trace is a prefix";
+    const complete = compileSolve("c03", "fail", { ...trace(calls, 1), droppedRawEvents: 3 }, WALLS, "none");
+    expect(complete.text).not.toContain(prefix);
+    const cut = compileSolve("c04", "fail", { ...trace(calls, 1), truncated: true }, WALLS, "none");
+    expect(cut.text).toContain(prefix);
+  });
+
   test("a missing trace compiles to nothing citable", () => {
     const solve = compileSolve("c02", "unaccepted", null, WALLS, "none");
     expect(solve.refs.size).toBe(0);

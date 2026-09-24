@@ -20,7 +20,6 @@ import {
   type IssueDiagnosis,
 } from "../author/rebuild-advice.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
-import { plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";
 import type { DiagnosisReaderEvidence, IssueOffer } from "./diagnosis-reader.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
@@ -177,8 +176,7 @@ function citedBoundary(
     };
   }
   const [label = ""] = fields.boundary.split(".");
-  const refs = shown.get(label)?.refs;
-  const tool = refs?.get(fields.boundary);
+  const tool = shown.get(label)?.refs.get(fields.boundary);
   if (!fields.supporting.includes(label) || tool === undefined) {
     return { why: `boundary ${fields.boundary} must be a shown step of a solve named in supporting` };
   }
@@ -237,17 +235,16 @@ export function recordDiagnosisTool(
       "Record one harness flaw located at a shown step, covering every offered issue it explains, or abstain for issues you cannot read. For an abstention send only issueIds and abstainReason. Never name a task.",
     parameters: readerParameters(PARAMETERS),
     execute: (_id: string, args: Record<string, JsonValue>) => {
-      const record = plainRecord(args) ?? {};
-      const resolved = resolveIssues(strings(record.issueIds), offers, sink);
+      const resolved = resolveIssues(strings(args.issueIds), offers, sink);
       if ("why" in resolved) return refuse(resolved.why);
-      if (record.abstainReason !== undefined) {
-        const reason = text(record, "abstainReason");
+      if (args.abstainReason !== undefined) {
+        const reason = text(args, "abstainReason");
         if (reason === "") return refuse("an abstention needs a reason");
         if (namesTask(reason)) return refuse("an abstention may not name an individual task");
         sink.abstentions.push({ issueIds: resolved.ids, reason });
         return Promise.resolve(readerToolText(`abstained for ${resolved.ids.length} issue(s)`));
       }
-      const fields = readingFields(record);
+      const fields = readingFields(args);
       if ("why" in fields) return refuse(fields.why);
       const boundary = citedBoundary(fields, resolved.offers);
       if ("why" in boundary) return refuse(boundary.why);

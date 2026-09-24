@@ -1,33 +1,26 @@
 /**
  * What the controller tells the author between turns.
  *
- * Two mechanisms write into a live session: the Epoch Reviewer on its clock, and the steering
- * line a repeated diagnosis earns. Both must reach the author without carrying protected
- * verifier detail, and neither may end a session that is still making progress.
+ * The steering line a repeated diagnosis earns must reach the author without carrying protected
+ * verifier detail, and it may not end a session that is still making progress. The Epoch
+ * Reviewer's word to the same session is `authoring-review.test.ts`'s.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import {
-  FRESH_BUILD,
   bundleWithoutGuide,
   commitRoundEntry,
   completeBundle,
-  installTool,
-  requireExternalVerifier,
   submitOnce,
   submitTool,
 } from "./helpers/builder-campaign.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { scriptedSession, toolDouble } from "./helpers/doubles.ts";
-import type { FixtureSubmitTool } from "./helpers/builder-campaign.ts";
-import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { scriptedSession } from "./helpers/doubles.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { workspaceHead } from "../src/author/domain-repo.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { CampaignOutcome, IterationEvidence } from "../src/author/campaign-types.ts";
-import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 
 afterAll(cleanupScratch);
 
@@ -86,118 +79,6 @@ describe("the controller's word to a running session", () => {
   function attemptRows(outcomes: readonly CampaignOutcome[]): IterationEvidence[] {
     return outcomes.flatMap((outcome) => outcome.iterations);
   }
-
-  it("returns the review of a validated product repair in the correctness_check result, once per changed product", async () => {
-    const campaignDir = scratchDir("ana-review-repair-");
-    const workspace = join(campaignDir, "workspace");
-    const reviewed: string[] = [];
-    const plans: Array<string | null> = [];
-    const outcome = await runBuilderCampaign(
-      { ...FRESH_BUILD, campaignDir, maxTurns: 1 },
-      {
-        tools: [],
-        toolsProbes: () => ({ load: async () => [] }),
-        gates: async () => [],
-        reviewAuthoring: async (root, trigger, experiment) => {
-          expect(trigger).toBe("repair");
-          expect(root).toContain(".bundle-snapshots");
-          reviewed.push(readFileSync(join(root, "agent/BUILT_AGENTS.md"), "utf8"));
-          // The snapshot holds the bundle alone; the plan is read from the workspace beside it.
-          plans.push(experiment?.gap ?? null);
-          return "Public review advice.";
-        },
-        open: async (tools) =>
-          scriptedSession(async () => {
-            completeBundle(workspace);
-            requireExternalVerifier(workspace);
-            installTool(workspace, "field-engine");
-            writeFileSync(
-              join(workspace, "EXPERIMENT.json"),
-              JSON.stringify({
-                ...PLAN_FIELDS,
-                scope: "product",
-                gap: "The writer cannot express a pinned joint.",
-                change: "Add pinned joints to the writer.",
-                expectedResult: "More accepted submissions.",
-                target: { comparator: "at-least", verifiedPasses: 1 },
-              }),
-            );
-            // SAFETY: the campaign mounts this executable tool when gates are supplied.
-            const check = tools.find(
-              (tool) => (tool as { name?: string }).name === "correctness_check",
-            ) as FixtureSubmitTool;
-            expect(JSON.stringify(await check.execute("check", {}))).toContain("Public review advice");
-            expect(reviewed).toHaveLength(1);
-            expect(plans).toEqual(["The writer cannot express a pinned joint."]);
-            // Unchanged product bytes: the same clear result, no second review.
-            expect(JSON.stringify(await check.execute("same-check", {}))).not.toContain(
-              "Public review advice",
-            );
-            writeFileSync(
-              join(workspace, "agent/BUILT_AGENTS.md"),
-              `${MATCHING_OPERATING_GUIDE}\nA repaired public instruction.\n`,
-            );
-            expect(JSON.stringify(await check.execute("repaired-check", {}))).toContain(
-              "Public review advice",
-            );
-            // Acceptance closes authoring; the accepted product is reviewed after its battery.
-            expect(JSON.stringify(await submitTool(tools).execute("submit", {}))).not.toContain(
-              "Public review advice",
-            );
-            return { status: "completed" };
-          }),
-      },
-    );
-    expect(outcome.buildAdmissible).toBe(true);
-    expect(reviewed).toHaveLength(2);
-    expect(reviewed[1]).toContain("A repaired public instruction.");
-    const reviews = readExecutionEvidence(campaignDir)[0]?.authoringReviews;
-    expect(reviews?.map((row) => [row.tool, row.adviceChars])).toEqual([
-      ["correctness_check", 21],
-      ["correctness_check", 21],
-    ]);
-  });
-
-  it("reviews the live workspace at the next completed tool call once the interval has elapsed, then restarts the clock", async () => {
-    const campaignDir = scratchDir("ana-review-clock-");
-    const workspace = join(campaignDir, "workspace");
-    let reviews = 0;
-    const noop = toolDouble({
-      name: "noop",
-      execute: async () => ({ content: [{ type: "text", text: "ok" }] }),
-    });
-    await runBuilderCampaign(
-      { ...FRESH_BUILD, campaignDir, maxTurns: 1 },
-      {
-        tools: [noop],
-        toolsProbes: () => ({}),
-        reviewIntervalMs: 300,
-        reviewAuthoring: async (root, trigger) => {
-          expect(root).toBe(workspace);
-          expect(trigger).toBe("backstop");
-          reviews += 1;
-          await Bun.sleep(150);
-          return "Review finished.";
-        },
-        open: async (tools) =>
-          scriptedSession(async ({ signal }) => {
-            expect(signal).toBeUndefined();
-            // SAFETY: the scripted roster carries the fixture tool this test mounted; only its execute is read.
-            const tool = tools.find((row) => (row as { name?: string }).name === "noop") as FixtureSubmitTool;
-            await Bun.sleep(350);
-            expect(reviews).toBe(0);
-            expect(JSON.stringify(await tool.execute("due", {}))).toContain("Review finished.");
-            expect(reviews).toBe(1);
-            // The clock restarted when the review finished, not when it became due.
-            expect(JSON.stringify(await tool.execute("fresh-clock", {}))).not.toContain("Review finished.");
-            await Bun.sleep(350);
-            await tool.execute("due-again", {});
-            expect(reviews).toBe(2);
-            return { status: "completed" };
-          }),
-      },
-    );
-  });
 
   it.concurrent("continues a second invocation that repeats one blocked diagnosis instead of stalling", async () => {
     // Runs w26 and w28 each died as authoring-stalled on a single repeat under the deleted

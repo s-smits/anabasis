@@ -69,31 +69,7 @@ describe("the campaign's provider ledger", () => {
     expect(loadBudget(campaignDir)).toEqual(before);
   });
 
-  it.concurrent("charges one ordinary model call and stops before a second turn", async () => {
-    const campaignDir = scratchDir("ana-primary-attempt-gate-");
-    setTurnBudget(campaignDir, 1);
-    const gate = campaignBudgetGate(campaignDir);
-    let turns = 0;
-    const outcome = await runBuilderCampaign(
-      { campaignDir, slug: "matching", kickoff: "Build a harness.", expectedTasks: 4, maxTurns: 1 },
-      {
-        tools: [],
-        toolsProbes: () => ({}),
-        budget: gate,
-        attemptGate: gate,
-        open: async () =>
-          scriptedSession(async () => {
-            turns += 1;
-            return { status: "completed", assistantText: "still authoring" };
-          }),
-      },
-    );
-    expect(turns).toBe(1);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["budget-limited"] });
-    expect(loadBudget(campaignDir)).toMatchObject({ turnBudget: 1, turnsUsed: 1, status: "budget_limited" });
-  });
-
-  it.concurrent("derives the durable gate when a direct campaign caller omits attemptGate", async () => {
+  it.concurrent("charges one model call through the durable budget's gate and stops before a second turn", async () => {
     const campaignDir = scratchDir("ana-primary-implicit-attempt-gate-");
     setTurnBudget(campaignDir, 1);
     const gate = campaignBudgetGate(campaignDir);

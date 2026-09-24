@@ -12,6 +12,13 @@
  * answer is a fact about the evaluation rather than a reading of it: which declared checks moved
  * their verdict when that one field changed.
  *
+ * The change is a whole replacement value, or an edit of one passage inside a text leaf. The edit
+ * exists because a rule's second reading is often a line of code: when the artifact is a source
+ * file, the field the two readings disagree about is that whole file, and a probe that could only
+ * replace it whole asked the reviewer to retype thousands of characters to move one anchor. The
+ * census cannot answer that question for it either, because the accept controls were all written
+ * under the reference's reading.
+ *
  * It is a narrow fact, and the host says so, because the wider reading is false. No check moving
  * does not mean no check reads the field: `mass <= maxMass` observes `mass` and accepts both 8 and 9
  * against a limit of 10. An `unobserved` finding still needs the reviewer to show that the changed
@@ -27,7 +34,8 @@
  * reads it" about something the artifact never carried.
  *
  * Probe rows are review evidence like the reviewer's prose and stay private under the same rule.
- * Only `epoch-review-public.ts` crosses to authoring, and it projects no probe.
+ * Only `epoch-review-public.ts` crosses to authoring, and of a probe a finding cites it projects
+ * the control, the path and the checks that moved — never the value or the edit.
  */
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
@@ -61,10 +69,14 @@ import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
  *  settle the artifact roots a single review can argue about, and small enough that a review cannot
  *  turn into a second census. */
 export const PROBE_BUDGET = 8;
-/** A replacement value is one field, not a redesigned artifact. The ceiling is this high because in
- *  a file map one field is a whole file, and an accept control's files run to thousands of
- *  characters of JSON. */
+/** A replacement value is one field, not a redesigned artifact, and each half of an edit is one
+ *  passage. A whole file past this ceiling is still reachable, by an edit of the passage that
+ *  matters rather than a retyped file. */
 const VALUE_MAX_CHARS = 4_000;
+/** What a probe changed: a whole replacement value as the reviewer wrote it, or the one passage of
+ *  a text leaf that `find` names, rewritten to `replace`. */
+type ProbeEdit = { find: string; replace: string };
+type ProbeChange = { value: string } | ProbeEdit;
 /** What one probe executed and what the candidate's own checks said about it. Private review
  *  evidence, because `blockingCheckIds` is verifier detail. */
 export type ReviewProbeRow = {
@@ -73,8 +85,7 @@ export type ReviewProbeRow = {
   controlId: string;
   taskId: string;
   path: string;
-  /** The JSON text of the substituted value, as the reviewer wrote it. */
-  value: string;
+  change: ProbeChange;
   baseline: ProbeSide | null;
   mutated: ProbeSide | null;
   /** Declared checks whose verdict the one changed field moved. Empty is the decisive negative: no
@@ -82,11 +93,17 @@ export type ReviewProbeRow = {
   movedCheckIds: string[];
   /** Why nothing executed; null when the pair ran. */
   refused: string | null;
+  /** Set when a finding this review recorded rests on the row, which makes it one of the
+   *  demonstrations the next authoring review of the round is shown (`carriedDemonstrations`). A
+   *  failed turn keeps the mark and drops the finding, so it carries nothing. */
+  cited?: true;
 };
 
 type ProbeSide = { outcome: ControlReceiptOutcome; blockingCheckIds: string[] };
 
 export type ProbeState = { rows: ReviewProbeRow[]; refused: number };
+
+type ProbeRequest = { controlId: string; path: string; change: ProbeChange };
 
 type ProbeCandidate = {
   brief: Brief;
@@ -193,14 +210,30 @@ function stepInto(value: JsonValue | undefined, token: string): JsonValue | unde
  * "no declared check reads it" about a field the artifact never carried, which is true and useless.
  *
  * The path is the rooted spelling the candidate's own checks declare — `$.layout.members[0].area`,
- * read through `jsonPathTokens`. It used to be a second language, bare and dotted with array
- * positions as integer segments, so a reviewer that copied a path out of the declarations it was
- * reading was told the field did not exist. One grammar, and the refusal is true whenever it fires.
+ * read through `jsonPathTokens`, the one grammar a reviewer copying a path out of those
+ * declarations can use.
  */
 export function withReplacedField(artifact: JsonValue, path: string, value: JsonValue): JsonValue | null {
   const tokens = jsonPathTokens(path);
   if (tokens === null || tokens.length === 0) return null;
   return replacedAt(artifact, tokens, value) ?? null;
+}
+
+/**
+ * The leaf at `path` with the one passage `find` names rewritten to `replace`, which is what an edit
+ * hands `withReplacedField` in place of a value. Where that leaf is not text holding `find` exactly
+ * once it comes back as it was, so the probe is refused as a change that changes nothing; overlapping
+ * occurrences count, since `aa` in `aaa` names two passages and editing either would be a guess. The
+ * text is sliced rather than passed through `String.replace`, which reads `$&` in a replacement as a
+ * pattern, and code is full of dollar signs.
+ */
+export function editedPassage(artifact: JsonValue, path: string, edit: ProbeEdit): JsonValue {
+  const text = (jsonPathTokens(path) ?? []).reduce<JsonValue | undefined>(stepInto, artifact) ?? null;
+  if (!isString(text)) return text;
+  const at = text.indexOf(edit.find);
+  return at === -1 || at !== text.lastIndexOf(edit.find)
+    ? text
+    : `${text.slice(0, at)}${edit.replace}${text.slice(at + edit.find.length)}`;
 }
 
 /** A token spelled back into the grammar, with a key that is not a plain name in quotes. */
@@ -233,9 +266,9 @@ function quotedSpelling(at: JsonValue, prefix: string, rest: readonly string[]):
 /**
  * Why `path` names nothing in `artifact`, in words that are true of the path as written. A path
  * outside the grammar is told so rather than that its field is absent, because the field may well
- * be there: the old bare spelling `files.src/main.cpp` names a file the control carries. A rooted
- * path is told where it stopped and what that step carries, and when an unquoted dot split a key
- * that step does carry, it is given the quoted spelling that reaches it.
+ * be there: the bare spelling `files.src/main.cpp` names a file the control carries. A rooted path
+ * is told where it stopped and what that step carries, and when an unquoted dot split a key that
+ * step does carry, it is given the quoted spelling that reaches it.
  */
 export function missingFieldRefusal(artifact: JsonValue, path: string, controlId: string): string {
   const tokens = jsonPathTokens(path);
@@ -323,12 +356,18 @@ async function runPair(
   return execution.controlReceipts;
 }
 
+/** The reply names an edit by its size rather than echoing it, because the reviewer wrote both
+ *  halves and the leaf around them can run to thousands of characters. */
 function renderRow(row: ReviewProbeRow): string {
   if (row.refused !== null) return `probe ${row.id} did not run: ${row.refused}`;
   const side = (label: string, value: ProbeSide | null) =>
     `  ${label}: ${value === null ? "no receipt" : `${value.outcome}${value.blockingCheckIds.length === 0 ? "" : `, blocked by ${value.blockingCheckIds.join(", ")}`}`}`;
+  const change =
+    "find" in row.change
+      ? `edited, its one passage of ${row.change.find.length} characters rewritten as ${row.change.replace.length}`
+      : `replaced with ${row.change.value}`;
   return [
-    `probe ${row.id}: accept control ${row.controlId} (task ${row.taskId}), ${row.path} replaced with ${row.value}`,
+    `probe ${row.id}: accept control ${row.controlId} (task ${row.taskId}), ${row.path} ${change}`,
     side("original", row.baseline),
     side("changed", row.mutated),
     row.movedCheckIds.length === 0
@@ -342,21 +381,24 @@ function renderRow(row: ReviewProbeRow): string {
   ].join("\n");
 }
 
-function probeArgs(args: Record<string, JsonValue>) {
-  const read = (key: string) => (isString(args[key]) ? args[key].trim() : "");
-  return { controlId: read("controlId"), path: read("path"), value: read("value") };
-}
-
-/** Everything the host can refuse before anything executes. */
-function argumentRefusal(parsed: ReturnType<typeof probeArgs>, state: ProbeState): string | null {
+/**
+ * Everything the host can refuse before anything executes, or the request it will run. A change is
+ * a value or an edit, never both and never neither, so a `replace` beside a `value` is refused rather
+ * than ignored. The ids and the value are trimmed; `find` and `replace` are not, because in code the
+ * whitespace is part of the passage, and a `replace` left empty or unsent deletes it.
+ */
+function probeRequest(args: Record<string, JsonValue>, state: ProbeState): ProbeRequest | string {
   if (state.rows.length >= PROBE_BUDGET) return `a review runs at most ${PROBE_BUDGET} probes`;
-  if (parsed.controlId === "" || parsed.path === "" || parsed.value === "") {
-    return "controlId, path and value are all required";
+  const text = (key: string) => (isString(args[key]) ? args[key] : "");
+  const [controlId, path, value] = [text("controlId").trim(), text("path").trim(), text("value").trim()];
+  const [find, replace] = [text("find"), text("replace")];
+  if (controlId === "" || path === "" || (value === "") === (find + replace === "")) {
+    return "controlId and path are required, with either value or find and replace, not both";
   }
-  if (parsed.value.length > VALUE_MAX_CHARS) {
-    return `value must be at most ${VALUE_MAX_CHARS} characters: a probe changes one field, not the artifact`;
+  if (Math.max(value.length, find.length, replace.length) > VALUE_MAX_CHARS) {
+    return `value, find and replace must each be at most ${VALUE_MAX_CHARS} characters: a probe changes one field or one passage of it, not the artifact, so change one passage of a long text with find and replace`;
   }
-  return null;
+  return { controlId, path, change: value === "" ? { find, replace } : { value } };
 }
 
 /** What the reviewer is told `probe_check` is for, as data. This wording is the whole of the
@@ -367,11 +409,11 @@ const PROBE_CHECK_CONTRACT = {
   name: "probe_check",
   label: "Probe a declared check",
   description:
-    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. Cite the probe numbers you relied on in `probeIds` when you record the finding; a probe whose original passed and whose changed artifact reached a verdict may be admitted blocking on its first occurrence.",
+    "Execute the candidate's own declared checks over one accept control and over a copy of it with a single field changed, and return which checks moved their verdict. Use it instead of arguing a check's behaviour from source: choose a replacement that breaks a public obligation, so a check reading that field would have to refuse it, and read what the checks actually did. No check moving is not by itself proof that nothing reads the field, since a check that reads it can accept the new value too, so state which obligation the changed artifact breaks. The path must already exist in the accept control's artifact and the value must differ from the one it carries. For a string field holding a source file or other long text, send `find` and `replace` in place of `value`: `find` must occur exactly once in that leaf, it becomes `replace`, and every other byte stays. Cite the probe numbers you relied on in `probeIds` when you record the finding; a probe whose original passed and whose changed artifact reached a verdict may be admitted blocking on its first occurrence.",
   parameters: readerParameters({
     type: "object",
     additionalProperties: false,
-    required: ["controlId", "path", "value"],
+    required: ["controlId", "path"],
     properties: {
       controlId: {
         type: "string",
@@ -385,7 +427,16 @@ const PROBE_CHECK_CONTRACT = {
       value: {
         type: "string",
         description:
-          'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only.',
+          'The replacement value as JSON text, e.g. `0.0001`, `"bolted"` or `null`. One field only. Omit it when you send `find` and `replace`.',
+      },
+      find: {
+        type: "string",
+        description:
+          "Exact text inside the string field at `path`, occurring there exactly once; include enough of its surroundings to make it unique. Sent with `replace`, in place of `value`.",
+      },
+      replace: {
+        type: "string",
+        description: "The text that takes the place of `find`; empty deletes it.",
       },
     },
   }),
@@ -415,22 +466,16 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     return readerToolText(renderRow(row));
   };
   const runProbe = async (args: Record<string, JsonValue>): Promise<ReaderToolResult> => {
-    const parsed = probeArgs(args);
-    const why = argumentRefusal(parsed, state);
-    if (why !== null) return refuse(why);
-    let value: JsonValue;
+    const request = probeRequest(args, state);
+    if (isString(request)) return refuse(request);
+    let value: JsonValue = null;
     try {
-      value = parseJsonAs<JsonValue>(parsed.value);
+      if ("value" in request.change) value = parseJsonAs<JsonValue>(request.change.value);
     } catch {
       return refuse("value must be JSON text; quote a string value");
     }
     const id = state.rows.length + 1;
-    const base: Omit<ReviewProbeRow, "taskId" | "baseline" | "mutated" | "movedCheckIds" | "refused"> = {
-      id,
-      controlId: parsed.controlId,
-      path: parsed.path,
-      value: parsed.value,
-    };
+    const base = { id, controlId: request.controlId, path: request.path, change: request.change };
     const failed = (taskId: string, reason: string) =>
       record({ ...base, taskId, baseline: null, mutated: null, movedCheckIds: [], refused: reason });
     let candidate: ProbeCandidate;
@@ -442,10 +487,10 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
         `the candidate's correctness model could not be loaded, so no probe can run in this review: ${errorMessage(cause)}`,
       );
     }
-    const control = candidate.corpus.accept.find((row) => row.id === parsed.controlId);
+    const control = candidate.corpus.accept.find((row) => row.id === request.controlId);
     if (control === undefined) {
       return refuse(
-        `no accept control is named ${parsed.controlId}; accept ids are ${
+        `no accept control is named ${request.controlId}; accept ids are ${
           candidate.corpus.accept
             .map((row) => row.id)
             .slice(0, 20)
@@ -453,22 +498,18 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
         }`,
       );
     }
-    const mutated = withReplacedField(control.artifact, parsed.path, value);
-    if (mutated === null) return refuse(missingFieldRefusal(control.artifact, parsed.path, parsed.controlId));
-    if (hashJsonValue(mutated) === hashJsonValue(/* SAFETY: as above. */ control.artifact)) {
+    const { path, change } = request;
+    const leaf = "find" in change ? editedPassage(control.artifact, path, change) : value;
+    const mutated = withReplacedField(control.artifact, path, leaf);
+    if (mutated === null) return refuse(missingFieldRefusal(control.artifact, path, request.controlId));
+    if (hashJsonValue(mutated) === hashJsonValue(control.artifact)) {
       return refuse(
-        `control ${parsed.controlId} already carries that value at ${parsed.path}; a replacement that changes nothing cannot move a verdict`,
+        `control ${request.controlId} is unchanged at ${path}: it already carries that value, or find does not occur exactly once in text there, and a change that changes nothing cannot move a verdict`,
       );
     }
     let receipts: ControlReceipt[];
     try {
-      receipts = await runPair(
-        candidate,
-        id,
-        control.taskId,
-        /* SAFETY: as above. */ control.artifact,
-        mutated,
-      );
+      receipts = await runPair(candidate, id, control.taskId, control.artifact, mutated);
     } catch (cause: unknown) {
       return failed(control.taskId, `the checks did not settle: ${errorMessage(cause)}`.slice(0, 300));
     }

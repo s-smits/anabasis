@@ -329,8 +329,7 @@ export function briefIdentities(root: string): BriefIdentities {
  *  of the rules below so that each of them reads as the rule it is rather than as field parsing,
  *  and so that a change to how a field is read cannot be made in one rule and missed in another. */
 function findingArgs(args: Record<string, JsonValue>) {
-  const record = plainRecord(args);
-  const read = (key: string) => (record !== null && isString(record[key]) ? record[key] : "");
+  const read = (key: string) => (isString(args[key]) ? args[key] : "");
   const optional = (key: string) => {
     const value = read(key).trim();
     return value === "" ? null : value;
@@ -347,7 +346,7 @@ function findingArgs(args: Record<string, JsonValue>) {
     checkId: optional("checkId"),
     artifactSchemaPath: optional("artifactSchemaPath"),
     publicInputPath: optional("publicInputPath"),
-    unobserved: record?.unobserved === true,
+    unobserved: args.unobserved === true,
   };
 }
 
@@ -649,6 +648,7 @@ export function recordFindingTool(
       const recurrences =
         parsed.kind === "harness-defect" && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);
+      for (const row of probes) row.cited = true;
       const admitted = admitSeverity(parsed.kind, subject.owner, verdict.severity, {
         blockingAlready,
         recurrences,

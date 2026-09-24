@@ -4,11 +4,10 @@ import { cpSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { AgentToolsProbes } from "../author/agent-tools-session.ts";
 import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
-import { ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { writeAuthoringAttemptEvidence } from "../author/build-attempt-evidence.ts";
 import { builderExecutionEvidenceWriter } from "../author/builder-execution-writer.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
-import { type ExperimentSubmission, PlanEvidence, currentPlan } from "../author/experiment-plan.ts";
+import { type ExperimentSubmission, PlanEvidence } from "../author/experiment-plan.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
 import {
@@ -51,11 +50,11 @@ import type { SafeguardContext } from "../meta/safeguard.ts";
 import {
   campaignAttemptGate,
   type CampaignBudgetGate,
-  type ModelAttemptGate,
   type SavedCampaignBudgetGate,
 } from "./campaign-budget.ts";
 import { toolNonResultFinding } from "../author/tool-non-result.ts";
 import { AuthoringReviewClock, REVIEW_INTERVAL_MS } from "../gate/review-clock.ts";
+import { AuthoringReviews, type ReviewAuthoring } from "./authoring-review.ts";
 import { CandidateMemory } from "../gate/candidate-memory.ts";
 import { gateTerminalClause, settleGateRun } from "../gate/settlement.ts";
 import { BuilderAuthorFeedback, gateFeedbackFindings } from "../builder/author-feedback.ts";
@@ -82,7 +81,7 @@ import { hashJsonValue } from "../meta/stable-json.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-evidence.ts";
-import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
+import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../truth/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
@@ -123,11 +122,10 @@ export interface BuilderCampaignInput
   resetKey?: string;
 }
 
-type ReviewTrigger = "repair" | "backstop";
 export interface BuilderCampaignDeps {
-  /** The Epoch Reviewer: `repair` reads a validated snapshot, `backstop` the live workspace, and
-   *  the plan comes from the workspace for both. Returns the public advice the Builder reads. */
-  reviewAuthoring?(root: string, trigger: ReviewTrigger, plan: ExperimentSubmission | null): Promise<string>;
+  /** The Epoch Reviewer over a frozen snapshot: `repair` a validated product's, `backstop` the one
+   *  the clock froze. The plan comes from the workspace for both. It runs beside the session. */
+  reviewAuthoring?: ReviewAuthoring;
   /**
    * Test-only shortened backstop clock; production uses `REVIEW_INTERVAL_MS`, forty minutes.
    *
@@ -153,8 +151,6 @@ export interface BuilderCampaignDeps {
   /** Finite production budgets must pass campaignAttemptGate's check of the canonical pair. */
   budget?: CampaignBudgetGate &
     Partial<Pick<SavedCampaignBudgetGate, "startAttempt" | "assertAttemptAvailable" | "campaignRoot">>;
-  /** Per-model-call gate. */
-  attemptGate?: ModelAttemptGate;
   providerBudget?: ProviderResourceBudget;
   observer?: RunObserver;
   onIteration?: (evidence: IterationEvidence) => void;
@@ -216,10 +212,12 @@ function roundContract(input: BuilderCampaignInput): string {
 
 /** One authoring round's submit, preview and review handling over the Builder workspace. */
 class BuilderCampaignController {
-  /** When this session hears from the Epoch Reviewer, and over which bytes. Elapsed time alone
-   *  only makes a review due at the next completed host tool call, never inside one, and the clock
-   *  restarts when a review finishes. */
+  /** When this session hears from the Epoch Reviewer, and over which bytes. A review becomes due
+   *  and starts at a completed host tool call, runs beside the session, and restarts the clock
+   *  when it finishes. */
   private readonly reviewClock: AuthoringReviewClock;
+  /** The review beside this round, absent when the review slot is. */
+  readonly reviews: AuthoringReviews | null;
   readonly workspace: string;
   readonly iterations: IterationEvidence[] = [];
   accepted: Accepted | null = null;
@@ -239,7 +237,6 @@ class BuilderCampaignController {
   readonly rehearsals = new RehearsalTraces();
   /** The round plan's evidence: every rehearsal's verdict and effort, and how the plan scores. */
   readonly plan: PlanEvidence;
-  private opening: string | undefined;
 
   constructor(
     private readonly input: BuilderCampaignInput,
@@ -254,19 +251,22 @@ class BuilderCampaignController {
     this.roundBaseCommit = workspaceHead(this.workspace);
     this.candidates = new CandidateMemory(memory);
     this.plan = new PlanEvidence(this.workspace, join(input.campaignDir, "rehearsals"));
+    this.reviews =
+      deps.reviewAuthoring === undefined
+        ? null
+        : new AuthoringReviews(this.workspace, input.slug, this.reviewClock, deps.reviewAuthoring);
   }
 
   /** What every opening turn carries, in the order the author reads it: what the round asks for,
    *  then what the measured evidence advises without choosing its repair scope. */
   openingContext(): string {
-    this.opening ??= [
+    return [
       roundContract(this.input),
       this.input.advisoryNote,
       advisory(this.input.priorEvidence?.feedback ?? []),
     ]
       .filter(Boolean)
       .join("\n\n");
-    return this.opening;
   }
 
   /** What only a fresh session's opening carries: the campaign's earlier attempts and the refusals
@@ -330,21 +330,20 @@ class BuilderCampaignController {
     this.experimentProposal = candidate.experimentProposal;
     // A repaired executable is a new submission condition even when the candidate files did not
     // change, so a valid candidate is keyed by its submission condition and a malformed one by its
-    // committed contract-root tree. One identity, resolved once: the candidate memory keys its
-    // remembered refusals and its no-op strikes on it, and the execution record compares
-    // submissions on the same value, so none of the three can disagree about what "the same
-    // candidate" means.
+    // committed contract-root tree. The candidate memory keys its remembered refusals and its no-op
+    // strikes on that identity, and the execution record compares submissions on the same value, so
+    // none of the three can disagree about what "the same candidate" means.
     const tree = candidateTreeIdentity(this.workspace, candidate.commit);
     this.submittedTree = tree;
-    const candidateId = candidate.ok ? conditionKey(candidate) : tree;
     // Bundle findings, a missing installed tool among them, are ordinary repairable defects: the
     // refusal keeps the session, and it is the byte-identical resubmit that strikes.
     if (!candidate.ok) {
-      return this.strike(candidateId, {
+      return this.strike(tree, {
         ...candidate,
         findings: [...candidate.findings, ...(candidate.proposalFindings ?? [])],
       });
     }
+    const candidateId = conditionKey(candidate);
     // Admission reads EXPERIMENT.json, which the key leaves out, so it is recomputed beside a
     // remembered refusal (A → B → A) rather than remembered with it.
     const cached = this.candidates.refusalFor(candidateId);
@@ -421,7 +420,7 @@ class BuilderCampaignController {
     if (clear !== undefined && !outcome.ok && executed.findings.length > 0) {
       safeguardTriggered(
         "33-preview-clear-submit-refused",
-        `candidate ${candidate.snapshotId.slice(0, 12)}: correctness_check was clear under condition ${clear.conditionDigest ?? "null"}, submit refused at stage ${outcome.stage} with ${outcome.findings.map((finding) => finding.code).join(", ")}`,
+        `candidate ${candidate.snapshotId.slice(0, 12)}: correctness_check was clear under condition ${String(clear.conditionDigest)}, submit refused at stage ${outcome.stage} with ${outcome.findings.map((finding) => finding.code).join(", ")}`,
         this.deps.safeguardContext,
       );
     }
@@ -437,19 +436,12 @@ class BuilderCampaignController {
     return { ordinal, dir, iterationDir: join(this.input.campaignDir, dir) };
   }
 
-  /** The disk-replayed trailing run of blocked findings hashes, extended by this session's own
-   *  settled iterations under the one shared rule, so a session that resumes a campaign continues
-   *  the same streak rather than starting a fresh one. */
-  private trailingBlockedFindingsHashes(): string[] {
-    return this.iterations.reduce(extendTrailingBlockedFindings, this.memory.trailingBlockedFindingsHashes);
-  }
-
   private candidateCheckContext() {
     return {
       slug: this.input.slug,
       exactTasks: this.input.expectedTasks,
       ...keyIfDefined("minTasks", this.input.minTasks),
-      ...keysIf(proposesExperiment(this.input), () => ({ experimentProposalRequired: true })),
+      ...keyIfTruthy("experimentProposalRequired", proposesExperiment(this.input)),
     };
   }
 
@@ -502,24 +494,6 @@ class BuilderCampaignController {
     return report;
   }
 
-  /** At a quiescent tool checkpoint, reviews a validated repair on its own immutable snapshot, or
-   *  the live draft when the backstop clock is what made the review due. An adopted product is
-   *  reviewed after measurement instead, where there is a battery to read it against. */
-  async reviewIfDue(): Promise<string | null> {
-    if (this.deps.reviewAuthoring === undefined || this.terminalClause !== null) return null;
-    const due = this.reviewClock.due();
-    if (due === null) return null;
-    const root =
-      due.kind === "repair" ? ensureBundleSnapshot(this.workspace, due.fingerprint).dir : this.workspace;
-    try {
-      const advice = await this.deps.reviewAuthoring(root, due.kind, currentPlan(this.workspace));
-      if (due.kind === "repair") this.reviewClock.read(due.fingerprint);
-      return advice;
-    } finally {
-      this.reviewClock.restart();
-    }
-  }
-
   /** A shared gate run's evidence becomes the iteration's, including one a preview started. */
   private async settle(
     candidate: CandidateSnapshot,
@@ -535,7 +509,12 @@ class BuilderCampaignController {
       attempts: { builder: Math.max(1, turn - this.lastRecordedTurn) },
       ordinal,
       dir,
-      priorBlockedFindingsHashes: this.trailingBlockedFindingsHashes(),
+      // The disk-replayed trailing run, extended by this session's own settled iterations under the
+      // one shared rule, so a session that resumes a campaign continues the same streak.
+      priorBlockedFindingsHashes: this.iterations.reduce(
+        extendTrailingBlockedFindings,
+        this.memory.trailingBlockedFindingsHashes,
+      ),
     });
     // Charged before the copy, so the iteration's copy carries the run's charge marker and a
     // replay counts the run once rather than again.
@@ -588,7 +567,7 @@ class BuilderCampaignController {
         ...(step.kind === "continue" && step.steering !== undefined ? [step.steering] : []),
         ...toolStrike.findings,
       ],
-      ...keysIf(step.kind === "terminal" || toolStrike.terminal, () => ({ terminal: true })),
+      ...keyIfTruthy("terminal", step.kind === "terminal" || toolStrike.terminal),
     };
     // Only the rows the bytes earned are remembered; steering and strike counts belong to this call.
     return { outcome: refused, executed: { ...refused, findings: gated } };
@@ -599,11 +578,9 @@ class BuilderCampaignController {
    *  authoring round against the same failing tool. */
   private chargeToolNonResult(run: GateRun) {
     const strike = this.candidates.chargeToolNonResult(run.trialDir);
-    if (strike?.terminal === true) this.terminalClause = "verifier-required";
-    return {
-      terminal: strike?.terminal === true,
-      findings: strike === null ? [] : [toolNonResultFinding(strike)],
-    };
+    const terminal = strike?.terminal === true;
+    if (terminal) this.terminalClause = "verifier-required";
+    return { terminal, findings: strike === null ? [] : [toolNonResultFinding(strike)] };
   }
 
   /** A candidate refused before settlement writes no iteration, but a gate run it executed still
@@ -614,11 +591,10 @@ class BuilderCampaignController {
     const clause = gateTerminalClause(report.gated.feedback);
     if (clause !== null) this.terminalClause = clause;
     const toolStrike = this.chargeToolNonResult(report.gated);
-    if (clause === null && !toolStrike.terminal && toolStrike.findings.length === 0) return refused;
     const outcome: Refused = {
       ...refused.outcome,
       findings: [...refused.outcome.findings, ...toolStrike.findings],
-      ...keysIf(clause !== null || toolStrike.terminal, () => ({ terminal: true })),
+      ...keyIfTruthy("terminal", clause !== null || toolStrike.terminal),
     };
     return { outcome, executed: refused.executed };
   }
@@ -658,7 +634,10 @@ class BuilderCampaignController {
       context: toolContext,
       rehearsalDir: join(input.campaignDir, "rehearsals"),
       rehearsals: this.rehearsals,
-      onRehearsal: (row) => this.plan.record(row),
+      onRehearsal: (row, submitted) => {
+        this.reviews?.rehearsed(row, submitted);
+        return this.plan.record(row);
+      },
       ...keyIfDefined(
         "builtSolver",
         builtSolver === undefined ? undefined : () => builtSolver(deps.providerBudget),
@@ -710,15 +689,6 @@ function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport) {
   return { outcome, executed };
 }
 
-/** One attempt gate for the campaign: the durable reservation when the budget provides one, else
- *  the caller's own. Availability is asserted here, before any session or workspace work. */
-function withCanonicalAttemptGate(deps: BuilderCampaignDeps): BuilderCampaignDeps {
-  const durableBudget = campaignAttemptGate(deps.budget);
-  durableBudget?.assertAttemptAvailable();
-  const gate = durableBudget ?? deps.attemptGate;
-  return gate === deps.attemptGate ? deps : { ...deps, ...keyIfDefined("attemptGate", gate) };
-}
-
 /**
  * One persistent session authors files and calls the same submit tool repeatedly. Each successful
  * candidate snapshot is reconstructed from disk, conformance-probed and passed through the
@@ -728,9 +698,12 @@ function withCanonicalAttemptGate(deps: BuilderCampaignDeps): BuilderCampaignDep
  */
 export async function runBuilderCampaign(
   input: BuilderCampaignInput,
-  suppliedDeps: BuilderCampaignDeps,
+  deps: BuilderCampaignDeps,
 ): Promise<CampaignOutcome> {
-  const deps = withCanonicalAttemptGate(suppliedDeps);
+  // The campaign's one attempt gate is its durable budget's reservation, asserted before any
+  // session or workspace work.
+  const attemptGate = campaignAttemptGate(deps.budget);
+  attemptGate?.assertAttemptAvailable();
   const memory = resumeCampaignMemory(input.campaignDir, input.slug, hashJsonValue(input.kickoff));
   const refused = preSessionRefusal(input, memory);
   if (refused !== null) return refused;
@@ -768,7 +741,11 @@ export async function runBuilderCampaign(
         open: deps.open,
         ...keyIfDefined("recordSession", deps.recordSession),
         ...keyIfDefined("conversation", deps.conversation),
-        ...keysIf(deps.reviewAuthoring !== undefined, () => ({ afterTool: () => controller.reviewIfDue() })),
+        // The review beside the session: its advice at a completed call, its join at submit. A
+        // settled round runs neither, because the session stops calling both once submit has
+        // accepted or finally refused. An adopted product is reviewed after measurement instead.
+        ...keyIfDefined("afterTool", controller.reviews?.afterTool),
+        ...keyIfDefined("beforeSubmit", controller.reviews?.join),
         tools: [...deps.tools, ...authoringTools],
         ...keyIfDefined("turnTimeoutMs", deps.turnTimeoutMs),
         ...keyIfDefined("observer", deps.observer),
@@ -785,7 +762,7 @@ export async function runBuilderCampaign(
           writeExecution(evidence);
           beginIteration(controller.workspace, "checkpoint");
         },
-        ...keyIfDefined("attemptGate", deps.attemptGate),
+        ...keyIfDefined("attemptGate", attemptGate),
         ...keyIfDefined("providerBudget", deps.providerBudget),
         ...keyIfDefined("waitMs", deps.waitMs),
       },
@@ -793,6 +770,8 @@ export async function runBuilderCampaign(
   } catch (error) {
     if (error instanceof BuildAgentTurnNonResult) controller.recordNonResult(error);
     throw error;
+  } finally {
+    await controller.reviews?.join();
   }
   const admitted = controller.accepted;
   if (admitted !== null && outcome.ok) {

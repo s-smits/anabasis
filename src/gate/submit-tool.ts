@@ -73,6 +73,9 @@ export const SUBMIT_DESCRIPTION =
 
 interface SubmitToolBinding {
   submit(input: { turn: number }): BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
+  /** Asked before any attempt is counted. Text it returns is this call's whole result: nothing was
+   *  submitted, and no attempt is recorded. */
+  hold?: () => Promise<string | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
   /** The operator's turn cap, which also bounds refused submits; absent, the round has none. */
@@ -244,9 +247,11 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           },
         );
       }
-      state.attempts += 1;
       inFlight = true;
       try {
+        const held = binding.hold === undefined ? null : await binding.hold();
+        if (held !== null) return text(held, { outcome: "blocked", reason: "review-unread" });
+        state.attempts += 1;
         return await settleSubmit(binding);
       } finally {
         inFlight = false;

@@ -121,6 +121,9 @@ export interface BuilderSessionDeps {
    *  the session is still authoring; the public advice it returns rides that tool's result, so the
    *  review reaches the Builder without a turn of its own. */
   afterTool?: () => Promise<string | null>;
+  /** Submit's join with that review: text returned here replaces the submit's verdict, and the call
+   *  counts as no submit. */
+  beforeSubmit?: () => Promise<string | null>;
   /** Opens the Builder slot's host session; a continued conversation reconfigures its own instead. */
   open: OpenSession;
   /** Record what this round's session exposes, every round and before it begins, whether the round
@@ -373,6 +376,7 @@ function roundRoster(context: RoundContext, feedback: BuilderAuthorFeedback): Pi
   const { afterTool } = deps;
   const submit = makeSubmitTool({
     submit: deps.submit,
+    ...keyIfDefined("hold", deps.beforeSubmit),
     state,
     recorder,
     feedback,

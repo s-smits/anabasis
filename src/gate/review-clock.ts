@@ -1,8 +1,9 @@
 /**
  * When an authoring session next owes the Epoch Reviewer a reading, and over which bytes: after a
  * clear `correctness_check` whose agent, correctness-model or battery bytes changed since the last
- * review, that immutable snapshot; after the backstop interval, the live workspace. Both are
- * consulted at the completion of a host tool call, never inside one.
+ * review, that immutable snapshot; after the backstop interval, a snapshot of the workspace frozen
+ * then. Both are consulted at the completion of a host tool call, never inside one, and the review
+ * runs beside the session (`src/run/authoring-review.ts`).
  *
  * The battery counts because `tasks.json` carries each task's hidden expectations and
  * `controls.json` the accept and reject artifacts that calibrate the checks, and neither is inside
@@ -20,12 +21,13 @@ type Fingerprint = BuiltHarness["fingerprint"];
  *  an axis for savings. */
 export const REVIEW_INTERVAL_MS = 40 * 60_000;
 
-/** What the next completed tool call owes the reviewer: a validated product snapshot, the live
- *  workspace, or nothing yet. */
+/** What the next completed tool call owes the reviewer: a validated product snapshot, a freeze of
+ *  the workspace, or nothing yet. */
 type ReviewDue = { kind: "repair"; fingerprint: Fingerprint } | { kind: "backstop" } | null;
 
 export class AuthoringReviewClock {
-  /** The last clear `correctness_check`'s product, consumed by the next completed tool call. */
+  /** The last clear `correctness_check`'s product, consumed by the next completed tool call that
+   *  finds no review running; a later clear check replaces it. */
   private validated: Fingerprint | null = null;
   /** The product a review has already read. An adopted bundle counts as read, because the accepted
    *  product is reviewed after its battery. */
@@ -61,8 +63,8 @@ export class AuthoringReviewClock {
     return performance.now() < this.dueAt ? null : { kind: "backstop" };
   }
 
-  /** This product has now been read. A backstop review of the live workspace reads a draft that is
-   *  still moving, so it settles nothing and records no product. */
+  /** This product has now been read, by a repair review or by a backstop review of the same frozen
+   *  bytes. */
   read(fingerprint: Fingerprint): void {
     this.reviewed = fingerprint;
   }

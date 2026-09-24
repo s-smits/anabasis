@@ -168,9 +168,11 @@ export interface BuilderExecutionEvidence {
    *  attempts are inside `turns` and the provider budget, because each one reserved and spent its
    *  own turn. */
   turnRetries: TurnRetryRow[];
-  /** Authoring reviews that ran after a completed tool call: the advice characters attached to that
+  /** Authoring reviews handed over at a completed tool call: the advice characters attached to that
    *  tool's result (0 when the review found nothing, null when it failed and the result went back
-   *  unchanged), and how long the review held the session, which the call's `durationMs` omits. */
+   *  unchanged), and how long handing it over and freezing the bytes for the next review held the
+   *  session, which the call's `durationMs` omits. The review ran beside the session, so its own
+   *  minutes are in neither. */
   authoringReviews: Array<{ turn: number; tool: string; adviceChars: number | null; reviewMs: number }>;
   /** Failed tool calls by name. The aggregate above says how many failed; a name says which
    *  contract the session was fighting. */

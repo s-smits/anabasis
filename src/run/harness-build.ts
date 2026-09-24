@@ -11,7 +11,8 @@ import {
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
 } from "../author/rebuild-advice.ts";
-import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
+import { type EpochReviewInput, carriedDemonstrations, runEpochReview } from "../review/epoch-reviewer.ts";
+import type { ReviewProbeRow } from "../review/review-probe.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import type {
   AdmissionLineage,
@@ -31,12 +32,9 @@ import { readValidatedBrief } from "../truth/public-resources.ts";
 import { makeProbeControls } from "../truth/probes.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
+import type { AuthoringAdvice, ReviewAuthoring } from "./authoring-review.ts";
 import { builderSessionCapMs } from "./builder-backend.ts";
-import {
-  runBuilderCampaign,
-  type BuilderCampaignDeps,
-  type BuilderCampaignInput,
-} from "./builder-campaign.ts";
+import { runBuilderCampaign, type BuilderCampaignInput } from "./builder-campaign.ts";
 import { type BuilderRuntimeFactory, productionBuilderRuntime } from "./builder-runtime.ts";
 import { campaignBudgetGate, setTurnBudget } from "./campaign-budget.ts";
 import { makeCensusGate } from "./census-gate.ts";
@@ -255,10 +253,11 @@ export async function buildHarness(
 
 /** A repair review follows a clear check, and the header has to say so. Left unsaid, a Builder
  *  reads the review's findings as a condition on the check it just cleared and returns to authoring
- *  instead of submitting. */
+ *  instead of submitting. Both readings ran while the Builder kept working, so each also says that
+ *  edits made since are not in the bytes it read. */
 const REVIEW_HEADER = {
-  repair: "Epoch review of the candidate your clear correctness_check just previewed.",
-  backstop: "Epoch review of the live workspace.",
+  repair: "Epoch review of the candidate your clear correctness_check previewed.",
+  backstop: "Epoch review of your workspace, frozen when the review began.",
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
@@ -270,7 +269,7 @@ export function authoringReviewText(
   status: string,
   request: string,
   findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes">[],
-): string {
+): AuthoringAdvice {
   const shown = findings.filter(
     (finding) => finding.severity !== "advisory" || (finding.probes ?? []).length > 0,
   );
@@ -280,11 +279,12 @@ export function authoringReviewText(
       ? "No finding blocks submit."
       : `${String(blocking)} blocking finding(s) name a demonstrated defect: repair those before submit.`;
   const rows = shown.map((finding) => `- [${finding.severity ?? "blocking"}] ${finding.claim}`);
-  return [
-    `${REVIEW_HEADER[trigger]} Review ${status}. ${shown.length === 0 ? "No finding blocks submit." : route}`,
+  const text = [
+    `${REVIEW_HEADER[trigger]} It ran while you kept working, so edits made since are not in it. Review ${status}. ${route}`,
     ...(shown.length === 0 ? [] : [`Original request: ${capturedJsonStringify(request)}`]),
     ...rows,
   ].join("\n");
+  return { text, findings: shown.length };
 }
 
 /** Carry an authoring review's disputes onto the issue register the next build reads. The measured
@@ -305,14 +305,19 @@ export function recordAuthoringDisputes(
   if (carried !== prior) writeCompleted(latestRebuildAdvicePath(repoRoot, slug), carried);
 }
 
-/** The existing Epoch Reviewer over an authoring tree, which the campaign invokes at a completed
- *  host tool call. Its evidence is recorded beside the measured reviews with a null condition;
- *  only the public projection of its findings returns to the Builder. */
-function authoringReviewer(
-  binding: AuthoringReviewBinding,
-): NonNullable<BuilderCampaignDeps["reviewAuthoring"]> {
+/** The existing Epoch Reviewer over a frozen authoring snapshot, which the campaign starts at a
+ *  completed host tool call and runs beside the session. Its evidence is recorded beside the
+ *  measured reviews with a null condition; only the public projection of its findings returns to
+ *  the Builder.
+ *
+ *  One reviewer serves one round, and the probes each review rested its findings on are handed to
+ *  the next review of that round. They are carried here rather than by `AuthoringReviews`, which
+ *  is the Builder's side of the join: a probe row holds a counterexample value and the checks it
+ *  moved, so it stays on the reviewer's side. */
+function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
-  return async (root, trigger, experiment) => {
+  let demonstrations: readonly ReviewProbeRow[] = [];
+  return async (root, trigger, experiment, rehearsals) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);
     const result = await runEpochReview({
@@ -324,11 +329,14 @@ function authoringReviewer(
       priorAdvice: advice,
       priorAdviceOnSeededTree: advice === null ? null : measuredSelectedProduct(repoRoot, slug, advice.runId),
       experiment,
+      rehearsals,
+      demonstrations,
       review,
       publicRequest,
       observer,
       ...keyIfDefined("providerBudget", providerBudget),
     });
+    demonstrations = carriedDemonstrations(result) ?? demonstrations;
     const dir = join(campaignDir(repoRoot, slug), "analysis");
     mkdirSync(dir, { recursive: true });
     writeCompleted(join(dir, `${runId}-epoch-review.json`), result);
@@ -413,7 +421,6 @@ async function runEpochBuild(
       toolsProbes: makeAgentToolsProbes,
       gates,
       budget,
-      attemptGate: budget,
       ...keyIfDefined("providerBudget", options.providerBudget),
       observer,
       ...keyIfDefined("safeguardContext", options.safeguardContext),

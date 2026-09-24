@@ -37,7 +37,7 @@ import {
   adviceTotals,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
-import type { ExperimentSubmission } from "../author/experiment-plan.ts";
+import type { ExperimentSubmission, RehearsalRow } from "../author/experiment-plan.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -51,7 +51,7 @@ import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { runReaderTurn } from "./review-reader.ts";
-import { emptyProbeState, probeTool } from "./review-probe.ts";
+import { type ReviewProbeRow, emptyProbeState, probeTool } from "./review-probe.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
 import { roundPlanLines } from "./round-plan-lines.ts";
 import { reviewSlotPin } from "./review-session.ts";
@@ -104,6 +104,12 @@ export interface EpochReviewInput {
   vetoed?: readonly ContestedCase[];
   /** Verifier fails the Main Judge passed, with the failing checks on record; settled the other way. */
   disputed?: readonly ContestedCase[];
+  /** The round's blind rehearsals, at an authoring checkpoint alone. */
+  rehearsals?: readonly RehearsalCase[];
+  /** The probes the previous authoring review of this round rested its findings on, at an
+   *  authoring checkpoint alone. They hold counterexample values and name checks, so the next
+   *  reviewer is their one reader. */
+  demonstrations?: readonly ReviewProbeRow[];
   review: ReviewChoice;
   publicRequest: string | null;
   observer?: RunObserver;
@@ -112,6 +118,18 @@ export interface EpochReviewInput {
    *  the real admission rules without a provider call: those rules all live on this side of the
    *  model. */
   readerTurn?: typeof runReaderTurn;
+}
+
+/** One blind rehearsal under the measured projection: the bytes the Built solver submitted, or null
+ *  when it accepted none, and the one verdict the declared checks gave them. `current` says whether
+ *  it solved the bytes under review rather than an earlier draft. */
+export interface RehearsalCase {
+  ordinal: number;
+  taskId: string;
+  family: string | null;
+  verdict: RehearsalRow["verdict"];
+  artifact: string | null;
+  current: boolean;
 }
 
 type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
@@ -191,7 +209,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v6",
+      policy: "review-probing-findings/v7",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -264,6 +282,57 @@ function contestedLines(input: EpochReviewInput): string[] {
     ...(input.disputed ?? []).map((row) =>
       line("Disputed fail", row, `failed ${row.checkIds.join(", ")}; the Judge passed it`),
     ),
+  ];
+}
+
+/** The name read_source returns a rehearsal's submitted bytes under. */
+const rehearsalName = (row: RehearsalCase) => `rehearsal:${row.ordinal}:${row.taskId}`;
+
+/**
+ * The round's blind rehearsals, each with the one verdict it earned and the name its bytes are read
+ * by. A rehearsal is where a solver holding only the public contract met the declared checks before
+ * measurement, so a failed one can be the first sign that a rule admits two readings. The reviewer
+ * is shown the solver's reading, and which rule it bears on is settled from the source.
+ */
+function rehearsalLines(rehearsals: readonly RehearsalCase[]): string[] {
+  if (rehearsals.length === 0) return [];
+  return [
+    "Blind rehearsals this round. The Builder ran each on one task with the measured Built solver, which saw only the public contract, and was shown the verdict alone. read_source returns what the solver submitted under the name each line gives. A rehearsal carries no check result, verifier output or failure location: a failed one is a lead on how a solver reads the public contract, to weigh against the brief and the checks, and the finding still comes from the source.",
+    ...rehearsals.map((row) => {
+      const earlier = row.current ? "" : ", solved against earlier bytes than the tree under review";
+      const note = row.artifact === null ? ", nothing submitted" : earlier;
+      return `- ${rehearsalName(row)} (${row.family ?? "no family"}): ${row.verdict}${note}.`;
+    }),
+  ];
+}
+
+/**
+ * What an authoring review hands the next one of its round: the probes its recorded findings rested
+ * on, or null when it recorded none, because a review that failed or never ran has weighed nothing
+ * and the set the one before it carried still stands. A finished review that rested nothing on a
+ * probe carries an empty set, which ends the chain.
+ */
+export function carriedDemonstrations(
+  review: Pick<EpochReviewEvidence, "status" | "probes">,
+): ReviewProbeRow[] | null {
+  if (review.status !== "completed" && review.status !== "incomplete") return null;
+  return (review.probes ?? []).filter((row) => row.cited === true);
+}
+
+/**
+ * Each carried probe as the probe_check call that re-runs it and the checks it moved. Its number
+ * stays behind, since it numbered a probe of another review and this review's own numbering starts
+ * again at one: a finding here rests on the probe this review runs, and on nothing it was shown.
+ */
+function demonstrationLines(rows: readonly ReviewProbeRow[]): string[] {
+  if (rows.length === 0) return [];
+  return [
+    "Probes the previous review of this round rested its findings on, as it ran them against the bytes it read. Re-run any you rely on with probe_check, since the tree may have changed, and cite the new numbers: a line here is a lead, not a probe of this review, and backs no finding.",
+    ...rows.map(({ controlId, path, change, movedCheckIds }) => {
+      const moved =
+        movedCheckIds.length === 0 ? "no declared check moved" : `moved ${movedCheckIds.join(", ")}`;
+      return `- probe_check ${capturedJsonStringify({ controlId, path, ...change })}: ${moved}.`;
+    }),
   ];
 }
 
@@ -441,6 +510,8 @@ function orientation(
         ]),
     ...roundPlanLines(input.experiment ?? null, analysis),
     ...contestedLines(input),
+    ...rehearsalLines(input.rehearsals ?? []),
+    ...demonstrationLines(input.demonstrations ?? []),
     ...standingIssueLines(issues),
     `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
     inventory.files.join("\n"),
@@ -530,7 +601,19 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       return path === null || row.artifact === null ? [] : [[path, row.artifact] as const];
     }),
   );
-  const sourcePaths = new Set([...inventory.files, ...Object.keys(verifier.tools), ...contested.keys()]);
+  // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
+  // coverage the review is held to, which counts the tree and the verifier alone.
+  const rehearsed = new Map(
+    (input.rehearsals ?? []).flatMap((row) =>
+      row.artifact === null ? [] : [[rehearsalName(row), row.artifact] as const],
+    ),
+  );
+  const sourcePaths = new Set([
+    ...inventory.files,
+    ...Object.keys(verifier.tools),
+    ...contested.keys(),
+    ...rehearsed.keys(),
+  ]);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -557,7 +640,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, sourcePaths, state, verifier.tools),
+        readSourceTool(root, sourcePaths, state, verifier.tools, rehearsed),
         probe.tool,
         recordFindingTool(
           issues,

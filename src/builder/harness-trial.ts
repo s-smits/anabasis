@@ -75,8 +75,17 @@ interface HarnessTrialBinding {
   /** This round's passing rehearsals, which the context tool offers as traces. */
   rehearsals?: RehearsalTraces;
   /** Records each rehearsal that reached a solve into the round plan's evidence and returns the
-   *  plan's advice after it. Only the aggregate verdict and the solve's effort cross. */
-  onRehearsal?: (row: RehearsalRow) => string[];
+   *  plan's advice after it. The plan reads the aggregate verdict and the solve's effort; the bytes
+   *  the solver submitted go to the authoring review alone, and never back to the Builder. */
+  onRehearsal?: (row: RehearsalRow, submitted: SubmittedRehearsal) => string[];
+}
+
+/** What a rehearsal's solver submitted: the accepted artifact's bytes, or null when it accepted
+ *  none, with the candidate it was given to solve. */
+export interface SubmittedRehearsal {
+  ordinal: number;
+  artifact: string | null;
+  candidateId: string | null;
 }
 
 type LoadedTrial = Extract<ReturnType<typeof loadTrialCandidate>, { ok: true }>;
@@ -374,8 +383,12 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
       solverTraceLines(heading, solved.solved.trace, wallMinutes),
     );
   }
+  const artifact = solved.final?.accepted === true ? solved.final.artifactJson : null;
   const advice =
-    binding.onRehearsal?.({ taskId, family: family ?? null, verdict, wallMinutes, ...effort }) ?? [];
+    binding.onRehearsal?.(
+      { taskId, family: family ?? null, verdict, wallMinutes, ...effort },
+      { ordinal, artifact, candidateId: openedCandidateId },
+    ) ?? [];
   return {
     status,
     task: { taskId, family, publicTaskDigest: loaded.committed.publicTaskDigest },

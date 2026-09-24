@@ -6,7 +6,7 @@ import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.t
 import { validateTasks } from "../src/truth/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { resolveJsonPath } from "../src/meta/json-evidence.ts";
-import { projectJsonPaths } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
+import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 
 function greenBrief(overrides: Partial<Brief> = {}): Brief {
   return {
@@ -141,7 +141,11 @@ describe("brief and task contract", () => {
     check.execution.artifactPaths = ['$["good"]'];
     expect(validateBrief(brief).ok).toBe(true);
     const artifact = { good: { "main.cpp": "loop", "other.h": "secret" } };
-    expect(projectJsonPaths(artifact, ["$.good['main.cpp']"])).toEqual({ good: { "main.cpp": "loop" } });
+    check.execution.artifactPaths = ["$.good['main.cpp']"];
+    const publicTask = { taskId: "t", family: "f", publicInput: {} };
+    expect(checkPublicInputs(check, { artifact, publicTask }).artifact).toEqual({
+      good: { "main.cpp": "loop" },
+    });
     expect(resolveJsonPath(artifact, '$.good["main.cpp"]')).toEqual({ found: true, value: "loop" });
     // The quoted step is one key: it never splits into `.main` then `.cpp`.
     expect(resolveJsonPath(artifact, "$.good.main.cpp").found).toBe(false);

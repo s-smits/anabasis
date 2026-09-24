@@ -62,7 +62,7 @@ function projectPaths(value: JsonValue, paths: readonly string[][]): JsonValue {
   );
 }
 
-export function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue {
+function projectJsonPaths(value: JsonValue, paths: readonly string[]): JsonValue {
   const parsed = paths.map((path) => {
     const segments = jsonPathTokens(path);
     if (segments === null) throw new Error(`invalid declared JSON path: ${path}`);

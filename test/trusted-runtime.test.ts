@@ -76,14 +76,17 @@ try {
   syncBuiltinESMExports();
 
   const liveGroupSeen = subprocess.processGroupExists(live.pid);
-  const solved = await solvability.executeIsolatedReferenceSolve(
-    ${JSON.stringify(root)},
-    { taskId: "a", family: "one", publicInput: { expected: "A" } },
-    45_000,
-    undefined,
-    lifetime,
-  );
-  result = { liveGroupSeen, artifact: solved.artifact };
+  const { outcome } = await solvability.referenceSolveStage({
+    slugDir: ${JSON.stringify(root)},
+    task: { taskId: "a", family: "one", publicInput: { expected: "A" } },
+    timeoutMs: 45_000,
+    executable: undefined,
+    verifierLifetime: lifetime,
+    producedUnder: "trusted-runtime",
+    memory: undefined,
+  });
+  if (outcome.kind !== "artifact") throw new Error(JSON.stringify(outcome.failure));
+  result = { liveGroupSeen, artifact: outcome.artifact };
 } catch (error) {
   failure = error instanceof Error ? error.stack : String(error);
 } finally {

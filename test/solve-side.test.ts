@@ -9,7 +9,6 @@ import {
   publicArtifactSchemaFindings,
   validatePublicArtifactSchema,
 } from "../src/solve/public-artifact-schema.ts";
-import { scanTokens } from "../tools/loc/token-facts.ts";
 import { double, required } from "./helpers/doubles.ts";
 
 function schemaFor(artifact: Record<string, JsonValue>) {
@@ -30,19 +29,6 @@ const sources = () =>
       const path = join(entry.parentPath, entry.name);
       return { path, text: readFileSync(path, "utf8") };
     });
-
-describe("the removed solve interfaces stay removed", () => {
-  it("keeps response-intent and code-workspace producers absent", () => {
-    for (const { path, text } of sources()) {
-      const facts = scanTokens(text);
-      expect(facts.calls.has("acceptClarification"), path).toBe(false);
-      expect(facts.calls.has("acceptRefusal"), path).toBe(false);
-      expect(facts.calls.has("buildCodeReadTool"), path).toBe(false);
-      expect(facts.calls.has("buildCodeWriteTool"), path).toBe(false);
-      expect(text.includes("PI_CODE_WORKSPACE_ATTR"), path).toBe(false);
-    }
-  });
-});
 
 describe("model-visible prompts match the submission contract", () => {
   it("names only real submission-port methods", () => {

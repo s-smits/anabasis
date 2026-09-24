@@ -10,11 +10,7 @@ import {
   unexecutedGroundingFindings,
 } from "../src/truth/grounding-coverage.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
-import {
-  checkReceiptSet,
-  totalsMatchRecorded,
-  validateControlReceipts,
-} from "../src/truth/control-receipts.ts";
+import { checkReceiptSet, totalsMatchRecorded } from "../src/truth/control-receipts.ts";
 import type { ControlReceipt } from "../src/truth/battery-record.ts";
 import type { BuildTask } from "../src/truth/tasks.ts";
 import type {
@@ -285,7 +281,7 @@ describe("control receipts", () => {
     expect(multiple.controlReceipts[1]?.observedBlockingCheckIds).toEqual(["intrinsic-check", "other-check"]);
   });
 
-  it("records current hidden checks once and retains strict historical hidden-pair reading", async () => {
+  it("records current hidden checks once and refuses a duplicated saved receipt", async () => {
     const hidden = [{ checkId: "intrinsic-check", expectation: { answer: 7 } }];
     const task = { ...TASK, hidden };
     const corpus = intrinsicCorpus({
@@ -321,7 +317,7 @@ describe("control receipts", () => {
 
     const savedAccept = item(execution.controlReceipts, 0);
     expect(
-      validateControlReceipts({ accept: [accept], reject: [] }, [savedAccept, savedAccept]).map(
+      checkReceiptSet({ accept: [accept], reject: [] }, [savedAccept, savedAccept]).findings.map(
         (finding) => finding.message,
       ),
     ).toEqual(expect.arrayContaining([expect.stringContaining("more than one receipt")]));
@@ -365,11 +361,6 @@ describe("control receipts", () => {
     expect(checkReceiptSet(corpus, malformedRows).findings.map((finding) => finding.message)).toEqual(
       expect.arrayContaining([expect.stringContaining("invalid shape")]),
     );
-    for (const mode of ["strict", "live"] as const) {
-      expect(validateControlReceipts(corpus, malformedRows, mode).map((finding) => finding.message)).toEqual(
-        expect.arrayContaining([expect.stringContaining("invalid shape")]),
-      );
-    }
     expect(
       checkReceiptSet(corpus, [
         ...execution.controlReceipts,
@@ -624,7 +615,7 @@ describe("control receipts", () => {
     },
   );
 
-  it("strict validation refuses an observed outcome its declared control contradicts; live does not", async () => {
+  it("refuses a saved receipt whose observed outcome its declared control contradicts", () => {
     const corpus = intrinsicCorpus({
       id: "reject-mode",
       taskId: TASK.taskId,
@@ -656,14 +647,13 @@ describe("control receipts", () => {
         nonResultKind: null,
       },
     ];
-    // Saved evidence is read strictly: a rejected accept cannot be filed as a matched receipt.
-    expect(validateControlReceipts(corpus, receipts).map((finding) => finding.message)).toEqual(
-      expect.arrayContaining([expect.stringContaining("does not satisfy its expected pass")]),
-    );
-    expect(checkReceiptSet(corpus, receipts).findings).not.toEqual([]);
-    // A live run already reported that mismatch as its own finding, so `live` skips the duplicate
-    // and still checks kind, task and expected check.
-    expect(validateControlReceipts(corpus, receipts, "live")).toEqual([]);
+    // A rejected accept cannot be filed as a matched receipt.
+    expect(checkReceiptSet(corpus, receipts)).toEqual({
+      findings: [
+        expect.objectContaining({ message: expect.stringContaining("does not satisfy its expected pass") }),
+      ],
+      totals: null,
+    });
   });
 
   // A claim compares its recorded summary against totals recalculated from the receipts. The

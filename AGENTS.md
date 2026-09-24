@@ -1151,7 +1151,7 @@ lint, source-policy or complexity fails, the pre-push hook lists each finding as
 
 | Changed files | While editing | Delivery proof |
 | --- | --- | --- |
-| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit locally and hold it; the operator approves the push, which repeats the diff check and skips the gate |
+| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit on local main and hold it; the operator approves the push, which repeats the diff check and skips the gate |
 | Test or source | `scripts/worktree.sh run <dir> bun run test -- <owning-paths...>` | One normal push runs the composed gate |
 | Intentional dependency change | One unfrozen install at the root, review manifest plus lock | Frozen install, then source delivery |
 | Stack checkpoint with publication | Union of affected owning checks | One multi-ref push from the clean top runs the gate |
@@ -1262,9 +1262,19 @@ were never pushed.
 
 ### Where changes go
 
-Surrounding files are `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md` — exactly the
-paths the pre-push hook excludes when it decides a push is documentation-only, after which it runs
-`git diff --check` alone. **Commit them locally and leave them there until the operator approves
+**Main takes two kinds of change directly, and everything else arrives as a stacked pull request**
+(operator decision 2026-09-24). The first is surrounding documentation: `README.md`, `AGENTS.md`,
+`docs/**` and `.claude/**/*.md`, exactly the paths the pre-push hook excludes when it decides a
+push is documentation-only, after which it runs `git diff --check` alone. The second is a hotfix, a
+small fix to a defect on main that cannot wait for the stack to land: each of its commits ends with
+a `Hotfix: <why>` trailer, and the push is gated like any other source push. The pre-push hook
+refuses a push to main that changes source while any commit it adds lacks that trailer, and a
+documentation-only push needs nothing, because the hook already recognises one. The declaration
+lives in the commit rather than in a flag, which also leaves nothing to install: Git rejects an
+unknown option such as `git push --docs`, ignores an alias that shadows `push`, and hands a
+pre-push hook no `-o` push option.
+
+**Commit those documentation files on local main and leave them there until the operator approves
 the push** (operator decision 2026-09-23). Until then they went straight to main, on the reasoning
 that a note carries no gate and so costs nothing to publish. What that missed is that the gate was
 never the thing standing between a document and its readers — a source change is read by a test, a
@@ -1284,7 +1294,7 @@ Nothing enforces this. The hook will push a documentation commit as readily as i
 discipline rather than a gate — worth saying plainly, because a rule this file cannot point to a
 consumer for is one a reader should know is unenforced.
 
-**Skill and helper scripts are not in that set**, for publication or for checks.
+**Skill and helper scripts are not in the documentation set**, for publication or for checks.
 A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
 delivery, and how much of the composed gate reaches one depends on the script. `ROOTS` in
 `tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint reads every
@@ -1298,10 +1308,19 @@ either, grep `test/` for the file you are editing. A document describing source 
 stays with that source. Everything under `src/`, `tools/` and `vendor/` is source, whatever the file
 type.
 
-Production code and its tests follow the latest intended PR stack published on GitHub: fetch and
-verify its parent chain, then use that composed head as the working baseline. Main alone is not the
-current production-development state while that stack is open. "Add stacked PR" means use or rebase
-onto the latest stack head. Independent non-production tooling may go directly to main.
+Every other change is a pull request on the one open stack, and a new pull request goes on the top
+of it, never beside it: the stack is a single chain from its bottom PR to its head, each PR based on
+the one before. Two changes that do not depend on each other still go one above the other, because
+one chain has one review order, one gate path and one merge order, while a branch off its middle
+has to be rebased back in by hand. Fetch and verify the chain's parent edges, then use its
+composed head as the working baseline; main alone is not the current production-development state
+while the stack is open. "Add stacked PR" means a new PR on the latest stack head, opened with
+`--base` set to that head's branch. The pre-push hook holds the first half: a push that creates a
+branch reads the open pull requests with `gh`, takes the top as the one no other open PR is based
+on, and refuses the branch unless it contains that top's head, or when the open PRs have more than
+one top. It cannot see `--base`, and when GitHub cannot be read it says so and lets the push
+through. A hotfix lands on main beneath the stack, and the stack's bottom takes it the next time
+the stack is restacked.
 
 When a PR worktree overlaps another session, create an isolated branch from the PR's published head
 rather than editing that worktree: `scripts/worktree.sh pr <number> <absolute-dir>` fetches that

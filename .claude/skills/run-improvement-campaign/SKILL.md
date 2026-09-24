@@ -65,7 +65,7 @@ change and never as text a Builder reads.
 Batch related corrections under their owner. Repair an open PR **in that PR**; a distinct
 experiment gets its own child. A consolidated fix PR on the stack top hides which change repairs
 which PR. Surrounding files — `.claude/skills/**`, `README.md`, `AGENTS.md` — go
-straight to main, and `notes/**` stays local; a document coupled to unmerged source stays with that source. Skill *scripts*
+to main once the operator approves the push, and `notes/**` stays local; a document coupled to unmerged source stays with that source. Skill *scripts*
 are not text-only: they need a focused check before the push.
 
 Batching is not a tidiness preference while a run is live. On 18 September eleven same-owner text

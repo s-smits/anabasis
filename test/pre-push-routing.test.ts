@@ -34,6 +34,12 @@ writeFileSync(
     '[ -z "${ANA_FAKE_GATE_OUTPUT:-}" ] || { printf \'%s\\n\' "$ANA_FAKE_GATE_OUTPUT"; exit 1; }\n',
 );
 chmodSync(join(fakeBin, "bun"), 0o755);
+// The open stack's tops, as the hook's `gh pr list` query prints them, one per line.
+writeFileSync(
+  join(fakeBin, "gh"),
+  '#!/bin/sh\n[ -z "${ANA_FAKE_GH_FAILS:-}" ] || exit 1\nprintf \'%s\' "${ANA_FAKE_STACK_TOPS:-}"\n',
+);
+chmodSync(join(fakeBin, "gh"), 0o755);
 git("init", "-q");
 git("config", "user.email", "fixture@localhost");
 git("config", "user.name", "fixture");
@@ -60,7 +66,7 @@ function runHook(local: string, remote: string, markerName: string, gateOutput =
   const marker = join(fixture, markerName);
   const result = spawnTextSync("sh", [hook], {
     cwd: fixture,
-    stdin: `refs/heads/main ${local} refs/heads/main ${remote}\n`,
+    stdin: `refs/heads/topic ${local} refs/heads/topic ${remote}\n`,
     env: {
       ...Bun.env,
       HOME: fixture,
@@ -75,7 +81,7 @@ function runHook(local: string, remote: string, markerName: string, gateOutput =
   return { ...result, marker };
 }
 
-function runHookWithRefs(lines: readonly string[], markerName: string) {
+function runHookWithRefs(lines: readonly string[], markerName: string, github: Record<string, string> = {}) {
   const marker = join(fixture, markerName);
   const result = spawnTextSync("sh", [hook], {
     cwd: fixture,
@@ -86,6 +92,7 @@ function runHookWithRefs(lines: readonly string[], markerName: string) {
       PATH: `${fakeBin}:${Bun.env.PATH ?? ""}`,
       ANA_HOOK_MARKER: marker,
       ANA_TEST_WORKERS: "9",
+      ...github,
     },
   });
   return { ...result, marker };
@@ -119,7 +126,7 @@ describe("pre-push proof routing", () => {
   // report the same commit whichever order Git lists them in.
   it("names the checked-out tree whatever order the refs arrive in", () => {
     const parent = `refs/heads/parent ${docs} refs/heads/parent ${base}`;
-    const tip = `refs/heads/main ${source} refs/heads/main ${docs}`;
+    const tip = `refs/heads/topic ${source} refs/heads/topic ${docs}`;
     const forward = runHookWithRefs([parent, tip], "order-forward-marker");
     const reverse = runHookWithRefs([tip, parent], "order-reverse-marker");
     expect(forward.status).toBe(0);
@@ -127,6 +134,75 @@ describe("pre-push proof routing", () => {
     const named = (marker: string): string => readFileSync(marker, "utf8").trim().split("\t")[2] ?? "";
     expect(named(forward.marker)).toBe(source);
     expect(named(reverse.marker)).toBe(named(forward.marker));
+  });
+
+  // Main takes documentation and hotfixes directly; anything else goes as a stacked pull request.
+  it("takes documentation on main without calling it a hotfix", () => {
+    const result = runHookWithRefs([`refs/heads/main ${docs} refs/heads/main ${base}`], "main-docs-marker");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("documentation-only update");
+  });
+
+  it("refuses source on main that no commit calls a hotfix", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/main ${source} refs/heads/main ${docs}`],
+      "main-source-marker",
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`${source.slice(0, 9)} has no Hotfix: trailer`);
+    expect(existsSync(result.marker)).toBe(false);
+  });
+
+  // A new branch is a new pull request, and it goes on the top of the one open stack.
+  it("takes a new branch that contains the head of the stack's top", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`],
+      "stack-top-marker",
+      {
+        ANA_FAKE_STACK_TOPS: `#11 claude/top ${docs}`,
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
+  });
+
+  it("refuses a new branch beside the stack instead of on its top", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/beside ${docs} refs/heads/beside ${"0".repeat(40)}`],
+      "stack-beside-marker",
+      {
+        ANA_FAKE_STACK_TOPS: `#11 claude/top ${source}`,
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`${docs.slice(0, 9)} does not contain its head`);
+    expect(result.stderr).toContain("--base claude/top");
+    expect(existsSync(result.marker)).toBe(false);
+  });
+
+  it("refuses a new branch while the open pull requests have two tops", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`],
+      "stack-two-tops-marker",
+      {
+        ANA_FAKE_STACK_TOPS: `#11 claude/top ${docs}\n#12 claude/other ${base}`,
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("more than one top");
+    expect(result.stderr).toContain("#12 claude/other");
+  });
+
+  it("steps aside when GitHub cannot be read", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`],
+      "stack-unread-marker",
+      {
+        ANA_FAKE_GH_FAILS: "1",
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("the stack check was skipped");
   });
 
   it("refuses a ref the checked-out tree does not contain", () => {
@@ -275,7 +351,7 @@ describe("pre-push proof routing", () => {
     const result = runHookWithRefs(
       [
         `refs/heads/parent ${parent} refs/heads/parent ${docs}`,
-        `refs/heads/main ${tip} refs/heads/main ${docs}`,
+        `refs/heads/topic ${tip} refs/heads/topic ${docs}`,
       ],
       "branch-head-marker",
     );
@@ -293,5 +369,20 @@ describe("pre-push proof routing", () => {
       ["whole", parent],
       ["run gate", tip],
     ]);
+  });
+
+  // Last, because it moves HEAD again.
+  it("gives a hotfix on main the whole gate", () => {
+    const before = git("rev-parse", "HEAD");
+    writeFileSync(join(fixture, "src", "owner.ts"), "export const owner = 4;\n");
+    git("add", "src/owner.ts");
+    git("commit", "-qm", "fix\n\nHotfix: main is broken now");
+    const hotfix = git("rev-parse", "HEAD");
+    const result = runHookWithRefs(
+      [`refs/heads/main ${hotfix} refs/heads/main ${before}`],
+      "main-hotfix-marker",
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(result.marker, "utf8")).toContain(`9\trun gate\t${hotfix}`);
   });
 });

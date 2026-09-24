@@ -56,3 +56,6 @@ SAFEGUARDS_LOG.txt
 tools/test-remote.sh
 .harness/backends/bb28.json
 .harness/backends/consumer-hw.json
+
+# Working register from the whole-tree read; kept local, not published.
+docs/systems-read-findings.md

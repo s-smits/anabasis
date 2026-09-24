@@ -137,8 +137,10 @@ describe("the submit gate end to end", () => {
   }, 120_000);
 
   it.concurrent("keeps the claim open with one grounding row when the host cannot run the rejects to a verdict", async () => {
-    // The installed tool loops on the rejects' empty answer and exits on every other one, so only
-    // the rejects meet the 400 ms wall. The grounding row names the tool and check, and replaces the
+    // The installed tool loops on the rejects' empty answer and exits on every other one, and only
+    // the rejects get the 400 ms wall. An answer that exits gets a minute, because on a loaded host
+    // its launch alone can outlast 400 ms, and an accept that times out adds a solvability row this
+    // test is not about. The grounding row names the tool and check, and replaces the
     // DISCRIMINATION_PROBE_NO_VERDICT row runControls records for the same controls.
     const outcome = await preview(
       "no-verdict",
@@ -148,7 +150,10 @@ describe("the submit gate end to end", () => {
           '#!/bin/sh\n[ -z "$1" ] && while :; do :; done\nexit 0\n',
         );
         edit(dir, "correctness-model/evaluator.ts", (text) =>
-          text.replace("args: [] }", "args: [String(artifact.answer)], timeoutMs: 400 }"),
+          text.replace(
+            "args: [] }",
+            'args: [String(artifact.answer)], timeoutMs: artifact.answer === "" ? 400 : 60000 }',
+          ),
         );
       },
       true,

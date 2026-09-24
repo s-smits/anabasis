@@ -1,22 +1,42 @@
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+/**
+ * The Builder execution record as the recorder builds it and the strict reader admits it.
+ *
+ * The record is the only durable account of what an authoring session did, so two things have to
+ * hold. The recorder must fold every observed event into rows whose aggregates stay exact even
+ * when the session is killed mid-turn, and must never carry an argument, a result text or a
+ * credential. The validator `isCurrentExecutionRecord` must admit exactly what the writer can
+ * produce, which is why the admitted cases go through the real recorder and the refused cases
+ * mutate one field of an admitted record.
+ */
 import { afterAll, describe, expect, it } from "bun:test";
+
 import { writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { sha256 } from "../src/meta/digest.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
+  type BuilderExecutionEvidence,
   BuilderExecutionRecorder,
   isCandidateSubmit,
   submitProjection,
 } from "../src/author/builder-execution.ts";
 import { turnEventRecorder } from "../src/author/builder-turn-loop.ts";
-import { sha256 } from "../src/meta/digest.ts";
-import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { isCurrentExecutionRecord } from "../tools/outcome/builder-execution-current.ts";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { executionRecord } from "./helpers/session-execution-record.ts";
+
+afterAll(cleanupScratch);
 
 const commit = (letter: string) => letter.repeat(40);
+const refusedSubmit = { outcome: "refused" as const, findings: [], terminal: false };
+const started = (toolName: string, toolCallId: string) =>
+  ({ type: "tool_started", toolName, toolCallId }) as const;
+const ended = (toolName: string, toolCallId: string, isError = false) =>
+  ({ type: "tool_ended", toolName, toolCallId, isError }) as const;
 
-describe("builder execution submission events", () => {
-  it("retains a captured proposal on refusal and rejects a changed digest through the strict reader", () => {
+describe("the submission rows", () => {
+  it("retains a captured proposal on refusal, and the reader refuses one whose digest no longer matches", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
     const proposal = {
       scope: "product" as const,
@@ -27,12 +47,10 @@ describe("builder execution submission events", () => {
       expectedResult: "Next measured result",
     };
     recorder.recordSubmit({
+      ...refusedSubmit,
       turn: 1,
-      outcome: "refused",
       stage: "bundle",
       commit: commit("a"),
-      findings: [],
-      terminal: false,
       experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
     });
     const evidence = recorder.finish("turn-bound");
@@ -45,202 +63,139 @@ describe("builder execution submission events", () => {
     expect(isCurrentExecutionRecord(altered)).toBe(true);
   });
 
-  it("records the host workshop action identity from the closed tool receipt", () => {
-    const recorder = new BuilderExecutionRecorder(Date.now());
-    const sequence = recorder.customToolStarted("verifier_workshop", { action: "run" });
-    recorder.customToolFinished(sequence, "returned", {
-      details: {
-        receipt: {
-          outcome: "completed",
-          resultDigest: "result-digest",
-          workshopSequence: 7,
-        },
-      },
-    });
-
-    expect(recorder.finish("turn-bound").customCalls[0]).toMatchObject({
-      sequence: 1,
-      semantic: {
-        outcome: "completed",
-        resultDigest: "result-digest",
-        workshopSequence: 7,
-      },
-    });
-  });
-
-  it("records a preview's refusing codes and the strict reader refuses a non-string code", () => {
-    const recorder = new BuilderExecutionRecorder(Date.now());
-    const sequence = recorder.customToolStarted("correctness_check", {});
-    recorder.customToolFinished(sequence, "returned", {
-      details: {
-        receipt: {
-          outcome: "findings",
-          stage: "gates",
-          findings: 2,
-          findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
-        },
-      },
-    });
-    const evidence = recorder.finish("turn-bound");
-    expect(evidence.customCalls[0]?.semantic?.findingCodes).toEqual([
-      "gate-environment",
-      "tasks-hidden-operand-unexpected",
-    ]);
-    expect(isCurrentExecutionRecord(evidence)).toBe(true);
-    const altered = JSON.parse(JSON.stringify(evidence));
-    altered.customCalls[0].semantic.findingCodes = [7];
-    expect(isCurrentExecutionRecord(altered)).toBe(false);
-  });
-
-  it("keeps a controller terminal in the raw rows but excludes it from candidate trees", () => {
+  // The controller writes its own stop as a submit row; it stays in the raw rows but is never a
+  // candidate tree and never the predecessor the next candidate compares itself against.
+  it("keeps a controller terminal in the raw rows and out of every candidate comparison", () => {
+    expect([
+      isCandidateSubmit({ kind: "candidate" }),
+      isCandidateSubmit({ kind: "controller-terminal" }),
+    ]).toEqual([true, false]);
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.recordSubmit({
+      ...refusedSubmit,
       kind: "candidate",
       turn: 1,
-      outcome: "refused",
       stage: "bundle",
       commit: commit("a"),
-      findings: [],
-      terminal: false,
     });
     recorder.recordSubmit({
-      kind: "candidate",
-      turn: 2,
-      outcome: "refused",
-      stage: "gates",
-      commit: commit("b"),
-      findings: [],
-      terminal: false,
-    });
-    recorder.recordSubmit({
+      ...refusedSubmit,
       kind: "controller-terminal",
-      turn: 3,
-      outcome: "refused",
+      turn: 2,
       stage: "gates",
       commit: "budget-limited",
-      findings: [],
+      terminal: true,
+    });
+    recorder.recordSubmit({
+      ...refusedSubmit,
+      kind: "candidate",
+      turn: 3,
+      stage: "bundle",
+      commit: commit("b"),
+    });
+    // A real candidate that happens to be terminal is still a candidate.
+    recorder.recordSubmit({
+      ...refusedSubmit,
+      kind: "candidate",
+      turn: 4,
+      stage: "gates",
+      commit: commit("c"),
       terminal: true,
     });
 
     const evidence = recorder.finish("terminal-refusal");
     expect(evidence.schema).toBe("builder-execution/v6");
-    expect(evidence.submits).toHaveLength(3);
     expect(evidence.submits.map((row) => row.kind)).toEqual([
       "candidate",
-      "candidate",
       "controller-terminal",
+      "candidate",
+      "candidate",
     ]);
-    expect(evidence.submits.at(-1)).toMatchObject({ commit: "budget-limited", terminal: true });
-    expect(submitProjection(evidence.submits).uniqueCandidateTrees).toBe(2);
-    expect(submitProjection(evidence.submits).firstSubmitMs).not.toBeNull();
-  });
-
-  it("counts a real candidate that happens to terminate, while kind helpers stay schema-blind", () => {
-    expect(isCandidateSubmit({ kind: "candidate" })).toBe(true);
-    expect(isCandidateSubmit({ kind: "controller-terminal" })).toBe(false);
-
-    const recorder = new BuilderExecutionRecorder(Date.now());
-    recorder.recordSubmit({
-      kind: "candidate",
-      turn: 1,
-      outcome: "refused",
-      stage: "gates",
-      commit: commit("c"),
-      findings: [],
-      terminal: true,
-    });
-    const evidence = recorder.finish("terminal-refusal");
-    expect(submitProjection(evidence.submits).uniqueCandidateTrees).toBe(1);
-    expect(evidence.submits[0]).toMatchObject({ kind: "candidate", terminal: true, commit: commit("c") });
-  });
-
-  it("does not let a controller terminal become the next candidate's predecessor", () => {
-    const recorder = new BuilderExecutionRecorder(Date.now());
-    recorder.recordSubmit({
-      kind: "candidate",
-      turn: 1,
-      outcome: "refused",
-      stage: "bundle",
-      commit: commit("a"),
-      findings: [],
-      terminal: false,
-    });
-    recorder.recordSubmit({
-      kind: "controller-terminal",
-      turn: 2,
-      outcome: "refused",
-      stage: "gates",
+    expect(evidence.submits[1]).toMatchObject({
       commit: "budget-limited",
-      findings: [],
       terminal: true,
-    });
-    recorder.recordSubmit({
-      kind: "candidate",
-      turn: 3,
-      outcome: "refused",
-      stage: "bundle",
-      commit: commit("b"),
-      findings: [],
-      terminal: false,
-    });
-
-    const rows = recorder.finish("turn-bound").submits;
-    expect(rows[1]).toMatchObject({
-      kind: "controller-terminal",
       repeatedFindings: null,
       findingsDelta: null,
       workspaceChanged: null,
       treeFirstSubmittedAsAttempt: null,
     });
-    expect(rows[2]).toMatchObject({
-      kind: "candidate",
+    expect(evidence.submits[2]).toMatchObject({
       workspaceChanged: true,
       findingsDelta: { carried: 0, resolved: 0, introduced: 0 },
       treeFirstSubmittedAsAttempt: null,
     });
+    expect(evidence.submits[3]).toMatchObject({ kind: "candidate", terminal: true });
+    expect(submitProjection(evidence.submits).uniqueCandidateTrees).toBe(3);
+    expect(submitProjection(evidence.submits).firstSubmitMs).not.toBeNull();
+  });
+
+  // An accepted submit records the task-quality advisories beside the acceptance, so the reader
+  // must admit a non-empty finding list on an accepted row; hand-rolled records on both sides hid
+  // that the reader once dropped every such session as an invalid shape.
+  it("admits the advisories the accepted row records, and refuses a digest on an accepted row", () => {
+    const recorder = new BuilderExecutionRecorder(Date.now() - 1_000);
+    recorder.recordSubmit({
+      ...refusedSubmit,
+      turn: 1,
+      stage: "validation",
+      commit: "a1b2c3d",
+      findings: [
+        { code: "tasks-self-reported-expectation", path: "tasks", detail: "d", owner: "task-curriculum" },
+      ],
+    });
+    const accepted = recorder.recordSubmit({
+      turn: 2,
+      outcome: "accepted",
+      stage: null,
+      commit: "e4f5a6b",
+      findings: [
+        {
+          code: "tasks-multiplicity-unobservable",
+          path: "tasks",
+          detail: "the bounded search cannot enumerate an externally decided task",
+          owner: "task-curriculum",
+        },
+      ],
+      terminal: false,
+    });
+    expect(accepted.findingCodes).toEqual(["tasks-multiplicity-unobservable"]);
+    expect(accepted.findingsDigest).toBeNull();
+    const record = recorder.finish("recorded");
+    expect(isCurrentExecutionRecord(structuredClone(record))).toBe(true);
+    // The null digest is what marks the acceptance; a digest there is not a shape the writer produces.
+    const forged = structuredClone(record);
+    forged.submits[1]!.findingsDigest = "0".repeat(64);
+    expect(isCurrentExecutionRecord(forged)).toBe(false);
   });
 });
 
-describe("builder execution tool tallies", () => {
-  const started = (toolName: string, toolCallId: string) =>
-    ({ type: "tool_started", toolName, toolCallId }) as const;
-
-  it("lets the settled turn tally own the turn it closes, without counting its events twice", () => {
+describe("the tool tallies", () => {
+  // The settled tally owns the turn it closes; without one, the observed events are folded instead.
+  it.each([
+    ["the transport's own tally", { total: 1, failed: 0, byName: { bash: 1 }, failedByName: {} }],
+    ["no tally at all", undefined],
+  ])("counts a settled turn once from %s", (_, toolCalls) => {
     const recorder = new BuilderExecutionRecorder(Date.now());
-    recorder.turnToolEvent(started("edit_code", "call-1"));
-    recorder.turnToolEvent({
-      type: "tool_ended",
-      toolName: "edit_code",
-      toolCallId: "call-1",
-      isError: false,
-    });
-    recorder.turnCompleted({
-      status: "completed",
-      toolCalls: { total: 1, failed: 0, byName: { edit_code: 1 }, failedByName: {} },
-    });
-
+    recorder.turnToolEvent(started("bash", "call-1"));
+    recorder.turnToolEvent(ended("bash", "call-1"));
+    recorder.turnCompleted(
+      toolCalls === undefined ? { status: "completed" } : { status: "completed", toolCalls },
+    );
     const evidence = recorder.finish("recorded");
     expect(evidence.turns).toBe(1);
-    expect(evidence.toolCalls).toMatchObject({ total: 1, failed: 0, byName: { edit_code: 1 } });
+    expect(evidence.toolCalls).toMatchObject({ total: 1, failed: 0, byName: { bash: 1 } });
     expect(evidence.partialTurn).toBeNull();
     expect(evidence.firstToolMs).not.toBeNull();
   });
 
-  it("records the running turn's calls when the host kills the session before the turn returns", () => {
-    // Run w41-opus: a SIGTERM inside the first turn recorded turns 0, toolCalls.total 0 and an
-    // empty byName for a session that had made 24 controller-hosted calls over 5m31s. The events
-    // were all observed; only the fold waited for a turn that never came back.
+  // A kill inside the first turn must not read as a session that made no calls; the Claude backend
+  // names roster tools `mcp__harness__<name>`, and those are custom, not native.
+  it("records the running turn's calls when the session is killed before the turn returns", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
     for (let call = 1; call <= 24; call += 1) {
       recorder.turnToolEvent(started("mcp__harness__write", `call-${call}`));
-      recorder.turnToolEvent({
-        type: "tool_ended",
-        toolName: "mcp__harness__write",
-        toolCallId: `call-${call}`,
-        isError: false,
-      });
+      recorder.turnToolEvent(ended("mcp__harness__write", `call-${call}`));
     }
-
     const evidence = recorder.finish("in-flight");
     expect(evidence.turns).toBe(0);
     expect(evidence.toolCalls).toMatchObject({
@@ -258,42 +213,39 @@ describe("builder execution tool tallies", () => {
     recorder.turnToolEvent(started("bash", "call-1"));
     const snapshot = recorder.finish("in-flight");
     recorder.turnToolEvent(started("bash", "call-2"));
-
     expect(snapshot.toolCalls.total).toBe(1);
     expect(snapshot.partialTurn?.toolCalls.byName).toEqual({ bash: 1 });
     expect(recorder.finish("in-flight").toolCalls.total).toBe(2);
   });
 
-  it("folds the observed events when a transport settles a turn with no tally of its own", () => {
+  it("carries both tool edges from the persistent session's sink, with one liveness checkpoint", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
-    recorder.turnToolEvent(started("bash", "call-1"));
-    recorder.turnCompleted({ status: "completed" });
-
-    const evidence = recorder.finish("recorded");
-    expect(evidence.turns).toBe(1);
-    expect(evidence.toolCalls).toMatchObject({ total: 1, byName: { bash: 1 } });
-    expect(evidence.partialTurn).toBeNull();
+    let checkpoints = 0;
+    const sink = turnEventRecorder(recorder, () => {
+      checkpoints += 1;
+    });
+    sink({ type: "tool_started", toolName: "bash", toolCallId: "call-1", args: { command: "bun run gate" } });
+    sink({ ...ended("bash", "call-1", true), resultPreview: "exit 1" });
+    const evidence = recorder.finish("in-flight");
+    expect(evidence.toolCalls).toMatchObject({ total: 1, failed: 1, byName: { bash: 1 } });
+    expect(evidence.failedCalls?.[0]).toMatchObject({ tool: "bash", error: "exit 1" });
+    expect(evidence.failedCalls?.[0]?.request).toContain("bun run gate");
+    // One liveness checkpoint per minute, whichever edge arrives first.
+    expect(checkpoints).toBe(1);
   });
 });
 
-describe("builder execution failed-call identity", () => {
-  const failure = (toolCallId: string) =>
-    ({ type: "tool_ended", toolName: "commandExecution", toolCallId, isError: true }) as const;
-  const failureWith = (toolCallId: string, resultPreview: string) =>
-    ({ ...failure(toolCallId), resultPreview }) as const;
-
+describe("the failed-call rows", () => {
   it("names each failed call, its request and what came back", () => {
-    // Runs w23 K4 and sol-329 recorded "28 failed commandExecution" and 19 of 19
-    // failures with no per-call identity, so the record could not say what the session was fighting.
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.turnToolEvent({
-      type: "tool_started",
-      toolName: "commandExecution",
-      toolCallId: "call-1",
+      ...started("commandExecution", "call-1"),
       args: { command: "bun test correctness-model/checker.test.ts" },
     });
-    recorder.turnToolEvent(failureWith("call-1", "error: module not found"));
-
+    recorder.turnToolEvent({
+      ...ended("commandExecution", "call-1", true),
+      resultPreview: "error: module not found",
+    });
     const rows = recorder.finish("in-flight").failedCalls ?? [];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -310,14 +262,13 @@ describe("builder execution failed-call identity", () => {
   it("bounds the rows, redacts credential-shaped text and leaves an absent field null", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.turnToolEvent({
-      type: "tool_started",
-      toolName: "commandExecution",
-      toolCallId: "secret",
+      ...started("commandExecution", "secret"),
       args: { command: `curl -H "authorization: Bearer sk-live-${"9".repeat(40)}" https://x/y` },
     });
-    recorder.turnToolEvent(failureWith("secret", "x".repeat(4000)));
-    for (let call = 0; call < 60; call += 1) recorder.turnToolEvent(failure(`call-${call}`));
-
+    recorder.turnToolEvent({ ...ended("commandExecution", "secret", true), resultPreview: "x".repeat(4000) });
+    for (let call = 0; call < 60; call += 1) {
+      recorder.turnToolEvent(ended("commandExecution", `call-${call}`, true));
+    }
     const evidence = recorder.finish("turn-non-result");
     const rows = evidence.failedCalls ?? [];
     expect(rows).toHaveLength(50);
@@ -334,36 +285,75 @@ describe("builder execution failed-call identity", () => {
   });
 });
 
-describe("builder execution turn event sink", () => {
-  it("carries both tool edges from the persistent session's sink into the record", () => {
-    // The campaign's own sink is the path run w41-opus ran on: it forwarded the start edge
-    // for the first-call timestamp only, so a checkpoint mid-turn had nothing to record.
+describe("the custom-tool receipts", () => {
+  it("records the semantic fields of a closed receipt, and the reader refuses a non-string finding code", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
-    let checkpoints = 0;
-    const sink = turnEventRecorder(recorder, () => {
-      checkpoints += 1;
+    const workshop = recorder.customToolStarted("verifier_workshop", { action: "run" });
+    recorder.customToolFinished(workshop, "returned", {
+      details: { receipt: { outcome: "completed", resultDigest: "result-digest", workshopSequence: 7 } },
     });
-    sink({ type: "tool_started", toolName: "bash", toolCallId: "call-1", args: { command: "bun run gate" } });
-    sink({
-      type: "tool_ended",
-      toolName: "bash",
-      toolCallId: "call-1",
-      isError: true,
-      resultPreview: "exit 1",
+    const preview = recorder.customToolStarted("correctness_check", {});
+    recorder.customToolFinished(preview, "returned", {
+      details: {
+        receipt: {
+          outcome: "findings",
+          stage: "gates",
+          findings: 2,
+          findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
+        },
+      },
     });
-
-    const evidence = recorder.finish("in-flight");
-    expect(evidence.toolCalls).toMatchObject({ total: 1, failed: 1, byName: { bash: 1 } });
-    expect(evidence.failedCalls?.[0]).toMatchObject({ tool: "bash", error: "exit 1" });
-    expect(evidence.failedCalls?.[0]?.request).toContain("bun run gate");
-    // One liveness checkpoint per minute, whichever edge arrives first.
-    expect(checkpoints).toBe(1);
+    const evidence = recorder.finish("turn-bound");
+    expect(evidence.customCalls.map((call) => call.semantic)).toMatchObject([
+      { outcome: "completed", resultDigest: "result-digest", workshopSequence: 7 },
+      { findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"] },
+    ]);
+    expect(isCurrentExecutionRecord(evidence)).toBe(true);
+    const altered = JSON.parse(JSON.stringify(evidence));
+    altered.customCalls[1].semantic.findingCodes = [7];
+    expect(isCurrentExecutionRecord(altered)).toBe(false);
   });
 
-  // The positive case and its two hostile neighbours. A turn the provider settled itself carries
-  // its own account; an aborted turn and a failed turn carry whatever the transport had in flight,
-  // which for the Claude SDK is a sum of frames whose usage it documents as not final. Run
-  // 17f9de read four such epochs as 36.5M input tokens and no cost.
+  it("bounds the receipts at 512 while the aggregate count stays exact, and never records the query", () => {
+    const recorder = new BuilderExecutionRecorder(0);
+    for (let call = 0; call < 514; call += 1) {
+      const sequence = recorder.customToolStarted("context", { action: "search", query: `private-${call}` });
+      recorder.customToolFinished(sequence, "returned");
+    }
+    const evidence = recorder.finish("recorded");
+    expect(evidence.customCalls).toHaveLength(512);
+    expect(evidence.customCallsOmitted).toBe(2);
+    expect(JSON.stringify(evidence)).not.toContain("private-");
+  });
+
+  // A context call records its depth, defaulting to cited, and never the question; a depth outside
+  // the closed set records as unknown.
+  it("records only closed custom-tool actions", () => {
+    const recorder = new BuilderExecutionRecorder();
+    for (const args of [
+      { depth: "private-depth-text", question: "private-question-text" },
+      { question: "private-question-text" },
+    ]) {
+      recorder.customToolFinished(recorder.customToolStarted("context", args), "returned");
+    }
+    for (const action of ["coverage", "feedback"]) {
+      recorder.customToolFinished(recorder.customToolStarted("harness_inspect", { action }), "returned");
+    }
+    const evidence = recorder.finish("recorded");
+    expect(evidence.customCalls.map((call) => call.action)).toEqual([
+      "unknown",
+      "cited",
+      "coverage",
+      "feedback",
+    ]);
+    expect(JSON.stringify(evidence)).not.toContain("private-");
+  });
+});
+
+describe("the usage account", () => {
+  // A turn the provider settled carries its own account; an aborted or failed turn carries whatever
+  // the transport had in flight, which is not final. The counts still sum, and the qualifier says
+  // what they are worth.
   it("separates the turns whose usage the provider settled from the turns that were estimated", () => {
     const usage = { inputTokens: 100, outputTokens: 20, totalTokens: 120, costUsd: 0.5 };
     const settled = new BuilderExecutionRecorder(Date.now());
@@ -375,7 +365,6 @@ describe("builder execution turn event sink", () => {
     sink({ type: "turn_ended", stopReason: "aborted", usage });
     sink({ type: "turn_failed", errorMessage: "transport closed", usage });
     const evidence = interrupted.finish("in-flight");
-    // The counts still sum: an estimate beats nothing, and the qualifier says what it is worth.
     expect(evidence.usage).toMatchObject({
       inputTokens: 200,
       costUsd: 1,
@@ -384,7 +373,7 @@ describe("builder execution turn event sink", () => {
     });
     expect(isCurrentExecutionRecord(evidence)).toBe(true);
 
-    // A record without the estimate, or one claiming more estimates than reported turns, is refused.
+    // A record without the estimate, or claiming more estimates than reported turns, is refused.
     const { estimatedTurns: _, ...unstatedUsage } = evidence.usage;
     expect(isCurrentExecutionRecord({ ...evidence, usage: unstatedUsage })).toBe(false);
     const impossible = structuredClone(evidence);
@@ -393,47 +382,7 @@ describe("builder execution turn event sink", () => {
   });
 });
 
-it("bounds custom-tool receipts while aggregate counting remains a separate exact owner", () => {
-  const recorder = new BuilderExecutionRecorder(0);
-  for (let call = 0; call < 514; call += 1) {
-    const sequence = recorder.customToolStarted("context", { action: "search", query: `private-${call}` });
-    recorder.customToolFinished(sequence, "returned");
-  }
-  const evidence = recorder.finish("recorded");
-  expect(evidence.customCalls).toHaveLength(512);
-  expect(evidence.customCallsOmitted).toBe(2);
-  expect(JSON.stringify(evidence)).not.toContain("private-");
-});
-
-it("records only closed custom-tool actions", () => {
-  const recorder = new BuilderExecutionRecorder();
-  // A context call records its depth, defaulting to cited, and never the question it asked; a depth
-  // outside the closed set records as unknown.
-  const sequence = recorder.customToolStarted("context", {
-    depth: "private-depth-text",
-    question: "private-question-text",
-  });
-  recorder.customToolFinished(sequence, "returned");
-  const asked = recorder.customToolStarted("context", { question: "private-question-text" });
-  recorder.customToolFinished(asked, "returned");
-  const evidence = recorder.finish("recorded");
-  expect(evidence.customCalls.map((call) => call.action)).toEqual(["unknown", "cited"]);
-  expect(JSON.stringify(evidence)).not.toContain("private-");
-  for (const action of ["coverage", "feedback"]) {
-    const next = recorder.customToolStarted("harness_inspect", { action });
-    recorder.customToolFinished(next, "returned");
-  }
-  expect(
-    recorder
-      .finish("recorded")
-      .customCalls.slice(2)
-      .map((call) => call.action),
-  ).toEqual(["coverage", "feedback"]);
-});
-
 describe("the handover a round leaves in its workspace", () => {
-  afterAll(cleanupScratch);
-
   it("digests each handover file as it stands when the record is written, and null for a missing one", () => {
     const workspace = scratchDir("handovers-");
     writeFileSync(join(workspace, "EXPERIMENT.json"), '{"gap":"one"}');
@@ -443,7 +392,6 @@ describe("the handover a round leaves in its workspace", () => {
     const checkpoint = recorder.finish("in-flight");
     writeFileSync(join(workspace, "MEMORY.md"), "# notes\nThe round learned one thing.\n");
     const settled = recorder.finish("recorded");
-
     expect(checkpoint.handovers).toEqual({
       "EXPERIMENT.json": sha256('{"gap":"one"}'),
       "MEMORY.md": sha256("# notes\n"),
@@ -451,18 +399,96 @@ describe("the handover a round leaves in its workspace", () => {
     });
     expect(settled.handovers?.["MEMORY.md"]).toBe(sha256("# notes\nThe round learned one thing.\n"));
     expect(isCurrentExecutionRecord(settled)).toBe(true);
-  });
 
-  it("leaves the field off when no workspace was named, and the reader refuses a malformed one", () => {
     const bare = new BuilderExecutionRecorder(Date.now()).finish("recorded");
     expect("handovers" in bare).toBe(false);
     expect(isCurrentExecutionRecord(bare)).toBe(true);
-    for (const handovers of [
-      { "EXPERIMENT.json": "not-a-digest", "MEMORY.md": null, "SCRATCHPAD.md": null },
-      { "EXPERIMENT.json": null, "MEMORY.md": null },
+  });
+
+  it.each([
+    ["a non-digest value", { "EXPERIMENT.json": "not-a-digest", "MEMORY.md": null, "SCRATCHPAD.md": null }],
+    ["a missing file key", { "EXPERIMENT.json": null, "MEMORY.md": null }],
+    [
+      "an extra file key",
       { "EXPERIMENT.json": null, "MEMORY.md": null, "SCRATCHPAD.md": null, "NOTES.md": null },
-    ]) {
-      expect(isCurrentExecutionRecord({ ...bare, handovers })).toBe(false);
-    }
+    ],
+  ])("refuses a handover map with %s", (_, handovers) => {
+    const bare = new BuilderExecutionRecorder(Date.now()).finish("recorded");
+    expect(isCurrentExecutionRecord({ ...bare, handovers })).toBe(false);
+  });
+});
+
+/** The aggregate contract the reader holds every record to: totals agree with their per-name
+ *  rows, the custom/native split agrees with the names, and receipts keep the writer's order. */
+describe("the aggregate integrity the reader enforces", () => {
+  const base = () =>
+    executionRecord({ turns: 1, toolCalls: { byName: { Read: 2, Bash: 1 } }, failedByName: { Bash: 1 } });
+  const receipt = (sequence: number) => ({
+    sequence,
+    turn: 1,
+    tool: "harness_inspect",
+    action: "readiness",
+    target: {},
+    startedAtMs: 0,
+    durationMs: 1,
+    dispatchOutcome: "returned" as const,
+  });
+  const withReceipts = (record: BuilderExecutionEvidence, sequences: number[]) => {
+    record.toolCalls = {
+      total: 5,
+      failed: 1,
+      byName: { Read: 2, Bash: 1, harness_inspect: 2 },
+      custom: 2,
+      native: 3,
+    };
+    record.customCalls = sequences.map(receipt);
+  };
+
+  it.each([
+    ["a writer-consistent record", () => {}],
+    [
+      "receipts in the writer's 1..n order",
+      (record: BuilderExecutionEvidence) => withReceipts(record, [1, 2]),
+    ],
+  ])("admits %s", (_, mutate) => {
+    const record = base();
+    mutate(record);
+    expect(isCurrentExecutionRecord(record)).toBe(true);
+  });
+
+  it.each([
+    [
+      "a total above its per-name rows",
+      (record: BuilderExecutionEvidence) => void (record.toolCalls.total += 1),
+    ],
+    [
+      "a failed count below its per-name rows",
+      (record: BuilderExecutionEvidence) => void (record.toolCalls.failed = 0),
+    ],
+    [
+      "a failed call the all-call map never recorded",
+      (record: BuilderExecutionEvidence) => {
+        record.toolCalls.failed = 2;
+        record.failedByName = { Bash: 2 };
+      },
+    ],
+    [
+      "a custom/native split that contradicts the names",
+      (record: BuilderExecutionEvidence) => void (record.toolCalls.byName = { harness_inspect: 2, Bash: 1 }),
+    ],
+    ["receipts out of order", (record: BuilderExecutionEvidence) => withReceipts(record, [2, 1])],
+    ["receipts with a gap", (record: BuilderExecutionEvidence) => withReceipts(record, [1, 3])],
+    [
+      "a running partial turn whose tally disagrees with itself",
+      (record: BuilderExecutionEvidence) =>
+        void (record.partialTurn = {
+          turn: 2,
+          toolCalls: { total: 2, failed: 0, byName: { Read: 1 }, failedByName: {} },
+        }),
+    ],
+  ])("refuses %s", (_, mutate) => {
+    const record = base();
+    mutate(record);
+    expect(isCurrentExecutionRecord(record)).toBe(false);
   });
 });

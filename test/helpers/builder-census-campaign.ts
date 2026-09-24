@@ -1,9 +1,8 @@
 /**
  * A campaign tree the Builder tool census reads, and the recorded session shapes it reads it as.
  *
- * `outcome-builder-tools.test.ts` and `outcome-builder-epochs.test.ts` both build campaign
- * directories of epoch folders holding a session-evidence file and a path record. This module
- * carries what both need; a fixture one of them uses stays in that file.
+ * `outcome-builder-tools.test.ts` builds campaign directories of epoch folders holding a
+ * session-evidence file and a path record, per epoch and across epochs, from this module.
  *
  * The three session constants are recorded shapes rather than invented ones:
  * `contractlessSession` is a session that reconciled no contract, `reconciledSession` adds the

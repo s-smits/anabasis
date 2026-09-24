@@ -6,6 +6,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { WORKSPACE_DIR } from "../src/author/builder-memory.ts";
 import { BUILDER_WORKSPACE_CARD } from "../src/author/builder-start-prompt.ts";
 import { openHostSession } from "../src/backends/pi-session.ts";
+import { CandidateIsolationRefusal } from "../src/builder/candidate-isolation-runtime.ts";
 import { double } from "./helpers/doubles.ts";
 import { mountRepo } from "./helpers/builder-mount-repo.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -63,7 +64,7 @@ describe("the production Builder tool contract", () => {
     mkdirSync(join(campaignDir, "02-late"), { recursive: true });
     for (const path of late) {
       writeFileSync(path, "PRIVATE_LATE_EVIDENCE");
-      await expect(run("read", { path })).rejects.toThrow();
+      await expect(run("read", { path })).rejects.toBeInstanceOf(CandidateIsolationRefusal);
       const error = await run("bash", { command: `/bin/cat '${path}'` }).catch(String);
       // Seatbelt refuses the open; the Bubblewrap namespace has no such node, or a closed one.
       expect(error).toMatch(/Operation not permitted|No such file or directory|Permission denied/);

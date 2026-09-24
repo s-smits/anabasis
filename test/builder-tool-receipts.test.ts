@@ -10,7 +10,14 @@ const NO_ARGS = double<never>({});
 /** One tool's own result, which the receipt wrapper hands back unchanged. */
 const WRITTEN = { content: [{ type: "text" as const, text: "written" }], details: null };
 
-function wrap(execute: () => Promise<JsonValue>, review: () => Promise<string | null>) {
+type Session = Parameters<typeof withCustomToolReceipts>[1];
+
+/** Two tools sharing one receipt session; `session` replaces any of its hooks. */
+function wrap(
+  execute: () => Promise<JsonValue>,
+  review: (() => Promise<string | null>) | undefined,
+  session: Partial<Session> = {},
+) {
   const recorder = new BuilderExecutionRecorder(Date.now());
   const tools = withCustomToolReceipts(
     [toolDouble({ name: "write", execute }), toolDouble({ name: "read", execute })],
@@ -20,9 +27,15 @@ function wrap(execute: () => Promise<JsonValue>, review: () => Promise<string | 
       checkpoint: () => {},
       closed: () => null,
       afterTool: review,
+      ...session,
     },
   );
-  return { call: (index = 0) => tools[index]!.execute("call", NO_ARGS), recorder };
+  return {
+    call: (index = 0, signal?: AbortSignal) => tools[index]!.execute("call", NO_ARGS, signal),
+    /** The call's whole result as text, for the notices a result carries. */
+    text: async () => JSON.stringify(await tools[0]!.execute("call", NO_ARGS)),
+    recorder,
+  };
 }
 
 it("coalesces overlapping completions and holds new work until review settles", async () => {
@@ -135,33 +148,22 @@ it("refuses a call cancelled or outrun by its turn while it waited behind a revi
   const reviewDone = Promise.withResolvers<void>();
   let turn = 1;
   let calls = 0;
-  const recorder = new BuilderExecutionRecorder(Date.now());
-  const tools = withCustomToolReceipts(
-    [
-      toolDouble({
-        name: "write",
-        execute: async () => {
-          calls += 1;
-          return WRITTEN;
-        },
-      }),
-    ],
-    {
-      recorder,
-      activeTurn: () => turn,
-      checkpoint: () => {},
-      closed: () => null,
-      afterTool: async () => {
-        await reviewDone.promise;
-        return null;
-      },
+  const { call, recorder } = wrap(
+    async () => {
+      calls += 1;
+      return WRITTEN;
     },
+    async () => {
+      await reviewDone.promise;
+      return null;
+    },
+    { activeTurn: () => turn },
   );
-  const first = tools[0]!.execute("call", NO_ARGS);
+  const first = call();
   await Promise.resolve();
   const controller = new AbortController();
-  const cancelled = tools[0]!.execute("call", NO_ARGS, controller.signal);
-  const outrun = tools[0]!.execute("call", NO_ARGS);
+  const cancelled = call(0, controller.signal);
+  const outrun = call();
   await Promise.resolve();
   expect(calls).toBe(1);
   controller.abort(new Error("turn ended"));
@@ -177,22 +179,13 @@ it("refuses a call cancelled or outrun by its turn while it waited behind a revi
 it("states the session clock once per half hour and not after the build closed", async () => {
   let now = 0;
   let closed: "accepted" | null = null;
-  const recorder = new BuilderExecutionRecorder(Date.now());
-  const tools = withCustomToolReceipts(
-    [toolDouble({ name: "write", execute: async () => ({ content: [] }) })],
-    {
-      recorder,
-      activeTurn: () => 1,
-      checkpoint: () => {},
-      closed: () => closed,
-      afterTool: undefined,
-      clock: sessionClock(
-        () => true,
-        () => now,
-      ),
-    },
-  );
-  const text = async () => JSON.stringify(await tools[0]!.execute("call", NO_ARGS));
+  const { text, recorder } = wrap(async () => ({ content: [] }), undefined, {
+    closed: () => closed,
+    clock: sessionClock(
+      () => true,
+      () => now,
+    ),
+  });
   now = 29 * 60_000;
   expect(await text()).not.toContain("Round clock");
   now = 31 * 60_000;
@@ -208,31 +201,23 @@ it("states the session clock once per half hour and not after the build closed",
 it("asks once inside a running turn for authoring when two hours pass without a submit", async () => {
   let now = 0;
   let submitted = false;
-  const bash = () =>
-    withCustomToolReceipts([toolDouble({ name: "bash", execute: async () => ({ content: [] }) })], {
-      recorder: new BuilderExecutionRecorder(Date.now()),
-      activeTurn: () => 1,
-      checkpoint: () => {},
-      closed: () => null,
-      afterTool: undefined,
+  const session = () =>
+    wrap(async () => ({ content: [] }), undefined, {
       clock: sessionClock(
         () => submitted,
         () => now,
       ),
-    })[0]!;
-  const tool = bash();
-  const text = async () => JSON.stringify(await tool.execute("call", NO_ARGS));
+    });
+  const { text } = session();
   now = 119 * 60_000;
-  expect(await text()).not.toContain("No candidate has been submitted yet");
+  expect(await text()).not.toContain("No candidate");
   now = 121 * 60_000;
-  expect(await text()).toContain(
-    "No candidate has been submitted yet. Preserve useful environment work, but move to authoring now",
-  );
+  expect(await text()).toContain("No candidate has been submitted yet.");
   now = 125 * 60_000;
-  expect(await text()).not.toContain("No candidate has been submitted yet");
+  expect(await text()).not.toContain("No candidate");
   // A session that has submitted is past this question, so the notice never fires for it.
   submitted = true;
-  const later = bash();
+  const later = session();
   now = 500 * 60_000;
-  expect(JSON.stringify(await later.execute("call", NO_ARGS))).not.toContain("No candidate");
+  expect(await later.text()).not.toContain("No candidate");
 });

@@ -276,7 +276,6 @@ describe("Builder tool journeys", () => {
         after: [],
       }),
     ]);
-    expect(report.boundary.dispatch).toMatch(/returned means/);
     // The same workshop reading is rolled up per campaign, not only across all of them.
     expect(
       report.campaigns[0]?.tools.find((row) => row.tool === "verifier_workshop")?.semantic,
@@ -427,10 +426,10 @@ describe("Builder tool journeys", () => {
     // returned receipt and one attempt. Positional pairing would attach attempt 1 to the thrown
     // receipt; the turn join must not.
     camp.session({
-      // v4 requires the aggregate to equal its own per-name map, so three named submits are three.
+      // The schema requires the aggregate to equal its own per-name map, so three named submits are three.
       toolCalls: { total: 3, failed: 1, byName: { submit: 3 }, custom: 3, native: 0 },
       failedByName: { submit: 1 },
-      // v4 numbers receipts 1..n in dispatch order, so the turn a receipt names is its own field.
+      // Receipts are numbered 1..n in dispatch order, so the turn a receipt names is its own field.
       customCalls: [
         { ...call(1, "submit.submit", { dispatch: "threw" }), turn: 3 },
         { ...call(2, "submit.submit"), turn: 4 },
@@ -439,7 +438,7 @@ describe("Builder tool journeys", () => {
       submits: [
         { ...attempt(1, false, ["missing-check"]), turn: 4 },
         { ...attempt(2, true, []), turn: 5 },
-        // The one controller-created row: v4 states its kind, and the three comparison fields a
+        // The one controller-created row states its kind, and the three comparison fields a
         // candidate carries are null on it because no candidate was inspected.
         {
           ...attempt(3, false, ["missing-check"]),

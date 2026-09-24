@@ -47,6 +47,7 @@ import {
 import { type BuilderIsolation, createBuilderTools } from "../src/builder/tools.ts";
 import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
 import { osIsolationSupport } from "../src/verify/os-isolation.ts";
+import { rejectionOf } from "./helpers/doubles.ts";
 
 const SCRATCH = realpathSync.native(mkdtempSync(join(tmpdir(), "ana-toolkit-")));
 interface MakeFixtureRepoResult {
@@ -133,16 +134,6 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
   };
   const workspacePath = (...tail: string[]) =>
     relative(binding.iterationDir, join(binding.iterationDir, ...tail));
-  const rejectionOf = async (promise: Promise<unknown>): Promise<Error> => {
-    try {
-      await promise;
-    } catch (error) {
-      if (error instanceof Error) return error;
-      throw new Error("isolated tool rejected with a non-Error value", { cause: error });
-    }
-    throw new Error("isolated tool unexpectedly resolved");
-  };
-
   it("read: workspace-relative paths, line windowing, and a typed measured-evidence refusal with no remedy text", async () => {
     expect(await run("read", { path: workspacePath("slug", "correctness-model", "brief.json") })).toContain(
       '"authored":true',
@@ -192,8 +183,6 @@ describe.if(osIsolationSupport().ok)("the seven capabilities through the isolati
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".local", "bin"));
     expect(installEnv).toContain(join(binding.iterationDir, ".toolchain", "home", ".cargo", "bin"));
     const refusal = await rejectionOf(run("bash", { command: `cat ${join(repoRoot, ".env")}` }));
-    expect(refusal).toBeInstanceOf(Error);
-    if (!(refusal instanceof Error)) throw new Error("bash refusal was not an Error");
     expect(refusal.message).toContain("exited with code");
     expect(refusal.message).not.toContain("hunter2");
     await expect(run("bash", { command: "true", cwd: repoRoot })).rejects.toBeInstanceOf(

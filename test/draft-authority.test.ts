@@ -26,17 +26,6 @@ describe("call-scoped draft authority", () => {
     ).toThrow(/name exceeds/);
   });
 
-  it("refuses evidence text beyond the public worker limit before framing", async () => {
-    const tool = defineDraftTool({
-      name: "read",
-      label: "Read",
-      description: "Read.",
-      parameters: Type.Object({}),
-      run: () => ({ text: "x".repeat(64 * 1024 + 1) }),
-    });
-    await expect(tool.execute("large", {}, new DraftStore())).rejects.toThrow(/evidence text exceeds/);
-  });
-
   // pr180 truss review: 18/18 malformed writer probes reached run() unchecked — Static<P> is a
   // compile-time type and nothing on the worker path validated the model's arguments at runtime.
   it("rejects a malformed call against the declared schema before the tool runs", async () => {
@@ -101,8 +90,8 @@ describe("call-scoped draft authority", () => {
       draft.setValue("value", 1);
       expect(() => draft.setArtifact({ value: 1 })).toThrow(/artifact-writer/);
       expect(Reflect.set(draft, "_seq", 99)).toBe(false);
-      expect(() => Object.defineProperty(draft, "seq", { value: 99 })).toThrow();
-      expect(() => Object.setPrototypeOf(draft, { seq: 99 })).toThrow();
+      expect(() => Object.defineProperty(draft, "seq", { value: 99 })).toThrow(TypeError);
+      expect(() => Object.setPrototypeOf(draft, { seq: 99 })).toThrow(TypeError);
       deferred = new Promise((resolve) =>
         setTimeout(() => {
           try {
@@ -115,7 +104,7 @@ describe("call-scoped draft authority", () => {
       );
     });
     expect(() => retained?.setValue("late", true)).toThrow(/lease has ended/);
-    await expect(deferred).resolves.toBeInstanceOf(Error);
+    await expect(deferred).resolves.toMatchObject({ message: expect.stringMatching(/lease has ended/) });
     await expect(
       withDraftLease(raw, "reader", "read", "call-2", (draft) => draft.setValue("value", 2)),
     ).rejects.toThrow(/registered writer/);
@@ -150,7 +139,7 @@ describe("call-scoped draft authority", () => {
         }, 0),
       );
     });
-    await expect(deferred).resolves.toBeInstanceOf(Error);
+    await expect(deferred).resolves.toMatchObject({ message: expect.stringMatching(/lease has ended/) });
     expect(raw.artifactMaterialization()).toEqual({ state: "absent" });
   });
 

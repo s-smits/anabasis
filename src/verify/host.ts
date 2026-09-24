@@ -91,7 +91,8 @@ const STDERR_TAIL_CHARS = 2000;
  *  character, so the tail can hold `STDERR_TAIL_CHARS` characters whatever they encode to. */
 const STDERR_TAIL_BYTES = STDERR_TAIL_CHARS * 4;
 
-const CELL_TOOL_PREFIX = "cell:";
+/** The tool id prefix a program a check built inside its own cell runs under. */
+export const CELL_TOOL_PREFIX = "cell:";
 
 export interface VerifierHostOptions {
   /** The protected owner of the controller and outDir. Production requires it before a subprocess

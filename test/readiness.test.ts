@@ -23,9 +23,8 @@ function statement(overrides: Partial<ClaimStatement> = {}): ClaimStatement {
     correctnessModelHash: "g".repeat(64),
     taskSetHash: "t".repeat(64),
     correctnessModelId: `correctness-model@${"g".repeat(64)}`,
-    groundings: [{ checkId: "c1", kind: "intrinsic", adapterId: null }],
+    groundings: [{ checkId: "c1", kind: "authored", adapterId: null }],
     verifierTools: [],
-    groundingExceptions: [],
     verifierEnvironmentHash: null,
     ...overrides,
   };
@@ -203,11 +202,25 @@ describe("assessReadiness — readiness assessed separately from the score claim
 });
 
 // Coverage follows executed tools (2026-09-06): a declared external check whose tool ran on
-// no verified case of the battery leaves the claim `intrinsic`, and readiness names that check
-// through the same grounding-coverage finding used by admission.
+// no verified case of the battery is named by readiness through the same grounding-coverage
+// finding used by admission.
 describe("declared-but-unlaunched external checks", () => {
-  const launched = { checkId: "firmware-builds", toolId: "avr-gcc", attestedLaunches: 3, rejects: 1 };
-  const unlaunched = { checkId: "control-behaviour", toolId: "cc", attestedLaunches: 0, rejects: 1 };
+  const launched = {
+    checkId: "firmware-builds",
+    toolId: "avr-gcc",
+    attestedLaunches: 3,
+    cellProgramLaunches: 0,
+    rejects: 1,
+    kind: "external" as const,
+  };
+  const unlaunched = {
+    checkId: "control-behaviour",
+    toolId: "cc",
+    attestedLaunches: 0,
+    cellProgramLaunches: 0,
+    rejects: 1,
+    kind: "external" as const,
+  };
 
   it("a check with zero launches on verified cases is a readiness clause naming the check and tool", () => {
     const verdict = assessReadiness(

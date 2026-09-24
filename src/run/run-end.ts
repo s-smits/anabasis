@@ -9,10 +9,10 @@
  * wrote, so this module stores nothing of its own. None of it reaches a model: the terminal lives
  * under controller evidence, outside every model-facing reader, and so do the files it joins.
  */
-import { existsSync, readFileSync, readdirSync } from "../meta/filesystem.ts";
+import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
-import { isRecord, isString } from "../meta/json-shape.ts";
+import { readJsonFileOrNull } from "../meta/completed-json.ts";
+import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined, keyIfNotNull } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
@@ -69,10 +69,11 @@ type GroundingKind = ClaimStatement["groundings"][number]["kind"];
 
 type ProvenanceRunEnd = {
   runId: string;
-  /** Per declared grounding kind: how many truth checks, and how many of them named a tool that
-   *  ran with public packages installed beside its interpreter. Installation, never independence:
-   *  a wrapper can import a package and ignore it. */
-  byKind: Partial<Record<GroundingKind, { checks: number; withPackages: number }>>;
+  /** Per declared grounding kind: how many truth checks, how many named a tool that ran with public
+   *  packages installed beside its interpreter, and how many ran a program built in their own cell
+   *  on a verified case. Installation, never independence: a wrapper can import a package and ignore
+   *  it, and an `external-verifier` check that ran a built program did not decide by its tool alone. */
+  byKind: Partial<Record<GroundingKind, { checks: number; withPackages: number; withCellProgram: number }>>;
 };
 
 export type RunEnd = {
@@ -173,12 +174,7 @@ function trialsByPlan(campaignDir: string): Map<string, TrialsFile[]> {
 }
 
 function readTrials(path: string): { planDigest: string; facts: Omit<TrialsFile, "evidence"> } | null {
-  let parsed: unknown;
-  try {
-    parsed = parseJsonAs<unknown>(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
+  const parsed = readJsonFileOrNull(path);
   if (
     !isRecord(parsed) ||
     parsed.schema !== EVIDENCE_SCHEMA ||
@@ -212,40 +208,37 @@ function seesLater(candidate: DifficultyDecisionEvidence, current: DifficultyDec
 }
 
 function readDecision(path: string): DifficultyDecisionEvidence | null {
-  try {
-    const parsed = parseJsonAs<unknown>(readFileSync(path, "utf8"));
-    if (!isRecord(parsed) || parsed.schema !== DIFFICULTY_DECISION_SCHEMA) return null;
-    const { difficulty } = parsed;
-    if (!isRecord(difficulty) || !Array.isArray(difficulty.rows) || !Array.isArray(difficulty.band)) {
-      return null;
-    }
-    // SAFETY: the one schema the controller writes, with the two fields read here present.
-    return parsed as DifficultyDecisionEvidence;
-  } catch {
+  const parsed = readJsonFileOrNull(path);
+  if (!isRecord(parsed) || parsed.schema !== DIFFICULTY_DECISION_SCHEMA) return null;
+  const { difficulty } = parsed;
+  if (!isRecord(difficulty) || !Array.isArray(difficulty.rows) || !Array.isArray(difficulty.band)) {
     return null;
   }
+  // SAFETY: the one schema the controller writes, with the two fields read here present.
+  return parsed as DifficultyDecisionEvidence;
 }
 
-/** One battery's claim, read for its groundings and the tools that ran. Null when the claim is
- *  absent, unreadable or carries neither list. */
+/** One battery's claim, read for its groundings, the tools that ran and its coverage rows. Null
+ *  when the claim is absent, unreadable, or carries any of those lists in another shape, and that
+ *  includes a coverage row without its cell-program count: a claim that never recorded the count
+ *  cannot be read as having run none. */
 export function provenanceRunEnd(campaignDir: string, runId: string): ProvenanceRunEnd | null {
-  const path = join(campaignDir, "claims", `${runId}.json`);
-  if (!existsSync(path)) return null;
-  let statement: unknown;
-  try {
-    const evidence = parseJsonAs<unknown>(readFileSync(path, "utf8"));
-    statement = isRecord(evidence) && isRecord(evidence.claim) ? evidence.claim.statement : undefined;
-  } catch {
-    return null;
-  }
+  const evidence = readJsonFileOrNull(join(campaignDir, "claims", `${runId}.json`));
+  const statement = isRecord(evidence) && isRecord(evidence.claim) ? evidence.claim.statement : undefined;
   if (
     !isRecord(statement) ||
     !Array.isArray(statement.groundings) ||
-    !Array.isArray(statement.verifierTools)
+    !Array.isArray(statement.verifierTools) ||
+    !Array.isArray(statement.externalCheckCoverage)
   ) {
     return null;
   }
-  const packaged = new Set(
+  const cellBuilt = new Set<unknown>();
+  for (const row of statement.externalCheckCoverage) {
+    if (!isRecord(row) || !isString(row.checkId) || !isNumber(row.cellProgramLaunches)) return null;
+    if (row.cellProgramLaunches > 0) cellBuilt.add(row.checkId);
+  }
+  const packaged = new Set<unknown>(
     statement.verifierTools.flatMap((tool) =>
       isRecord(tool) && isString(tool.toolId) && Array.isArray(tool.packages) && tool.packages.length > 0
         ? [tool.toolId]
@@ -257,13 +250,11 @@ export function provenanceRunEnd(campaignDir: string, runId: string): Provenance
     if (!isRecord(grounding) || !isString(grounding.kind)) return null;
     const kind =
       /* SAFETY: a claim's grounding kind is the closed set its writer declares. */ grounding.kind as GroundingKind;
-    const tools = [
-      ...(isString(grounding.adapterId) ? [grounding.adapterId] : []),
-      ...(Array.isArray(grounding.requiredToolIds) ? grounding.requiredToolIds.filter(isString) : []),
-    ];
-    const row = (byKind[kind] ??= { checks: 0, withPackages: 0 });
+    const tools = [grounding.adapterId, grounding.requiredToolIds].flat();
+    const row = (byKind[kind] ??= { checks: 0, withPackages: 0, withCellProgram: 0 });
     row.checks += 1;
     if (tools.some((tool) => packaged.has(tool))) row.withPackages += 1;
+    if (cellBuilt.has(grounding.checkId)) row.withCellProgram += 1;
   }
   return { runId, byKind };
 }

@@ -112,7 +112,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
     const spend = new Map<string, { evaluations: number; totalMs: number }>();
     let evaluate: EvaluatorFn;
     let verifier: VerifierHostHandle | undefined;
-    let externalChecks: Array<{ checkId: string; adapterId: string }>;
+    let externalChecks: ReturnType<typeof externalChecksOf>;
     // Resolved once: every entry hashes its executable, and the host and the identity read one map.
     let inventory: ToolInventory = {};
     try {

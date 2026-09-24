@@ -7,6 +7,7 @@ import {
 } from "../src/run/difficulty-decision.ts";
 import { type RunEnd, climbRunEnd, provenanceRunEnd, runEndAtClose } from "../src/run/run-end.ts";
 import type { ClimbReadout } from "../src/run/climb-readout.ts";
+import type { ToolCheckCoverage } from "../src/truth/grounding-coverage.ts";
 import type { ControllerEvidence } from "../src/run/controller-evidence.ts";
 import { sharedPackRunEnd } from "../tools/outcome/shared-pack.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -484,6 +485,16 @@ describe("the evidence-bound campaign scorecard", () => {
   });
 });
 
+/** One claim coverage row, as the claim writer records it for a check/tool pair. */
+function coverage(
+  checkId: string,
+  toolId: string,
+  cellProgramLaunches: number,
+  kind: ToolCheckCoverage["kind"],
+): ToolCheckCoverage {
+  return { checkId, toolId, attestedLaunches: 4, cellProgramLaunches, rejects: 1, kind };
+}
+
 describe("the run-end numbers", () => {
   afterAll(cleanupScratch);
 
@@ -549,20 +560,69 @@ describe("the run-end numbers", () => {
         { checkId: "a", kind: "external-verifier", adapterId: "frame" },
         { checkId: "b", kind: "authored", adapterId: null, requiredToolIds: ["frame"] },
         { checkId: "c", kind: "authored", adapterId: null, requiredToolIds: ["bare"] },
-        { checkId: "d", kind: "intrinsic", adapterId: null },
+        { checkId: "d", kind: "authored", adapterId: null },
       ],
       verifierTools: [
         { toolId: "frame", packages: ["openseespy==3.5.1"] },
         { toolId: "bare", packages: [] },
       ],
+      externalCheckCoverage: [
+        coverage("a", "frame", 0, "external"),
+        coverage("b", "frame", 0, "authored"),
+        coverage("c", "bare", 0, "authored"),
+      ],
     };
     writeFileSync(join(dir, "claims", "b1.json"), JSON.stringify({ claim: { ok: true, statement } }));
     expect(provenanceRunEnd(dir, "b1")?.byKind).toEqual({
-      "external-verifier": { checks: 1, withPackages: 1 },
-      authored: { checks: 2, withPackages: 1 },
-      intrinsic: { checks: 1, withPackages: 0 },
+      "external-verifier": { checks: 1, withPackages: 1, withCellProgram: 0 },
+      authored: { checks: 3, withPackages: 1, withCellProgram: 0 },
     });
     expect(provenanceRunEnd(dir, "absent")).toBeNull();
+  });
+
+  // An external check whose verdict also passed through a program it compiled in its own cell is
+  // not the same evidence as one decided by the installed tool alone, and the claim's coverage row
+  // is the one record that says so. A check with two tool rows is still one check.
+  it("counts a check whose verified cases ran a program it built in its cell, once per check", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "claims"), { recursive: true });
+    const statement = {
+      groundings: [
+        { checkId: "display", kind: "external-verifier", adapterId: "cc" },
+        { checkId: "builds", kind: "external-verifier", adapterId: "cc" },
+        { checkId: "behaviour", kind: "authored", adapterId: null, requiredToolIds: ["cc", "sim"] },
+      ],
+      verifierTools: [{ toolId: "cc" }, { toolId: "sim" }],
+      externalCheckCoverage: [
+        coverage("display", "cc", 4, "external"),
+        coverage("builds", "cc", 0, "external"),
+        coverage("behaviour", "cc", 4, "authored"),
+        coverage("behaviour", "sim", 4, "authored"),
+      ],
+    };
+    writeFileSync(join(dir, "claims", "b1.json"), JSON.stringify({ claim: { ok: true, statement } }));
+    expect(provenanceRunEnd(dir, "b1")?.byKind).toEqual({
+      "external-verifier": { checks: 2, withPackages: 0, withCellProgram: 1 },
+      authored: { checks: 1, withPackages: 0, withCellProgram: 1 },
+    });
+  });
+
+  it("refuses a claim whose coverage rows do not state the cell-program count", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "claims"), { recursive: true });
+    const { cellProgramLaunches: _dropped, ...unstated } = coverage("display", "cc", 4, "external");
+    const statement = {
+      groundings: [{ checkId: "display", kind: "external-verifier", adapterId: "cc" }],
+      verifierTools: [{ toolId: "cc" }],
+      externalCheckCoverage: [unstated],
+    };
+    writeFileSync(join(dir, "claims", "b1.json"), JSON.stringify({ claim: { ok: true, statement } }));
+    expect(provenanceRunEnd(dir, "b1")).toBeNull();
+    writeFileSync(
+      join(dir, "claims", "b2.json"),
+      JSON.stringify({ claim: { ok: true, statement: { ...statement, externalCheckCoverage: undefined } } }),
+    );
+    expect(provenanceRunEnd(dir, "b2")).toBeNull();
   });
 
   const evidence = (
@@ -636,6 +696,7 @@ describe("the run-end numbers", () => {
     const statement = {
       groundings: [{ checkId: "a", kind: "authored", adapterId: null, requiredToolIds: ["frame"] }],
       verifierTools: [{ toolId: "frame", packages: ["openseespy==3.5.1"] }],
+      externalCheckCoverage: [coverage("a", "frame", 0, "authored")],
     };
     for (const runId of ["mine-i01", "sibling-i01"]) {
       writeFileSync(join(dir, "claims", `${runId}.json`), JSON.stringify({ claim: { ok: true, statement } }));

@@ -1,23 +1,25 @@
 /**
- * How each truth check's verdict is evidenced.
+ * How each truth check's verdict is evidenced, and what the claim records about it.
  *
  * A declared check has to show two separate things before its verdicts can carry a claim. It must
  * have rejected something: a reject control that failed on exactly this check, which is the only
  * in-process evidence available, since no capability boundary exists inside the verifier. And, when
  * an installed tool decides it, that tool must have run on the specific verified case being scored.
  *
- * Both halves came from recorded failures. The adapter-name join was the P0 insufficiency: a run
- * row naming the same adapter under a different check grounded nothing. Run-level coverage let one
- * case's tool run vouch for every case using the check. And the two measured firmware runs recorded
- * complete engine executions for an adapter no control had ever made reject an artifact — which is
- * why executing and discriminating are separate clauses.
+ * The claim then says which instrument actually ran. A declared kind is the author's statement
+ * about that; the host's rows are the fact. The one way the rows can contradict an `external`
+ * declaration without a digest is a program the check built inside its own cell and then ran —
+ * the artifact compiled together with whatever the check supplied, which no inventory hashed at
+ * submit. So every coverage row counts those launches beside the declared tool's own, and the
+ * claim records them rather than refusing: a reader of an `external` row sees whether its verdict
+ * also passed through a built program.
  */
 import { describe, expect, it } from "bun:test";
 import type { ScoredCase } from "../src/claim/claim-evidence.ts";
 import { NO_EXTERNAL_EXECUTION, type VerifierExecutionEvidence } from "../src/truth/grounding.ts";
 import {
+  AUTHORED_C1,
   GREEN_SCORE,
-  INTRINSIC_C1,
   QISKIT_TOOLS,
   RESONANCE,
   clauseNames,
@@ -35,12 +37,42 @@ const resonanceOnT1: ScoredCase[] = GREEN_SCORE.map((row) =>
   row.caseId === "t1" ? { ...row, checkIds: ["c1", "resonance"] } : row,
 );
 
+/** A battery row: one completed run of `adapterId` for `checkId` on `subjectId`. */
+function ran(subjectId: string, checkId: string, adapterId: string) {
+  return { phase: "battery" as const, subjectId, attempt: 1, checkId, adapterId };
+}
+
+/** The recorded shape of a behaviour check declared external over an installed compiler: each case
+ *  compiles the artifact with the check's own driver and then runs the program that build left in
+ *  the cell. */
+const BEHAVIOUR = {
+  checkId: "display-composition",
+  grounding: { kind: "external-verifier", adapterId: "cc", assertion: "the display shows the reading" },
+} as const;
+
+const CC_TOOLS: VerifierExecutionEvidence["tools"] = {
+  cc: { digest: "c".repeat(64), source: "host", kind: "binary", interpreter: null },
+};
+
+/** Every GREEN_SCORE case applies the behaviour check. */
+const behaviourEverywhere: ScoredCase[] = GREEN_SCORE.map((row) => ({
+  ...row,
+  checkIds: ["display-composition"],
+}));
+
+function behaviourExecution(executed: VerifierExecutionEvidence["executed"]): VerifierExecutionEvidence {
+  return { executed, verifierEnvironmentHash: "e".repeat(64), tools: CC_TOOLS };
+}
+
 describe("every declared check must have rejected something", () => {
-  it("blocks an intrinsic check no reject control ever failed on", () => {
+  it("blocks an authored check no reject control ever failed on", () => {
     // The honest runtime evidence for an in-process check is behavioural: import presence and
     // source shape prove nothing about whether the check can reject an invalid artifact.
     const result = createClaim(
-      greenEvidence({ discrimination: { claimable: true, findings: [], attributedCheckIds: {} } }),
+      greenEvidence({
+        grounding: { declared: [AUTHORED_C1], execution: NO_EXTERNAL_EXECUTION },
+        discrimination: { claimable: true, findings: [], attributedCheckIds: {} },
+      }),
     );
     expect(clauseNames(result)).toContain("intrinsic-grounding-uncovered");
     if (!result.ok) {
@@ -61,8 +93,7 @@ describe("every declared check must have rejected something", () => {
 
   it("blocks a fully executed external check that no reject ever made fail, under its own clause", () => {
     // Running proves execution alone: both measured firmware runs shipped an engine session in exactly
-    // this state. The clause id is separate from the intrinsic one so claims recorded before this
-    // rule keep their exact vocabulary.
+    // this state.
     const executed = qiskitExecution(["t1"]);
     const uncovered = createClaim(
       greenEvidence({
@@ -94,6 +125,33 @@ describe("every declared check must have rejected something", () => {
         createClaim(greenEvidence({ grounding: { declared: [], execution: NO_EXTERNAL_EXECUTION } })),
       ),
     ).toContain("grounding-missing");
+  });
+
+  it("requires an authored check to have both rejected and fired", () => {
+    const evidence = greenEvidence({
+      grounding: { declared: [AUTHORED_C1], execution: NO_EXTERNAL_EXECUTION },
+    });
+    const covered = createClaim(evidence);
+    expect(covered.ok).toBe(true);
+    if (covered.ok) {
+      expect(covered.statement.groundings).toEqual([{ checkId: "c1", kind: "authored", adapterId: null }]);
+    }
+    const unrejected = createClaim({
+      ...evidence,
+      discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 0 } },
+    });
+    expect(clauseNames(unrejected)).toContain("intrinsic-grounding-uncovered");
+    const unfired = createClaim({
+      ...evidence,
+      truthCheckFiring: {
+        firedByCheck: { c1: 0 },
+        executedByCheck: {},
+        blockingByCheck: {},
+        applicableByCheck: { c1: 4 },
+        verifierVerifiedCount: 4,
+      },
+    });
+    expect(clauseNames(unfired)).toContain("TRUTH_CHECK_NEVER_FIRED");
   });
 });
 
@@ -153,18 +211,7 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
       greenEvidence({
         grounding: {
           declared: [RESONANCE],
-          execution: {
-            ...base,
-            executed: [
-              {
-                phase: "battery",
-                subjectId: "t1",
-                attempt: 1,
-                checkId: "some-other-check",
-                adapterId: "qiskit-adapter",
-              },
-            ],
-          },
+          execution: { ...base, executed: [ran("t1", "some-other-check", "qiskit-adapter")] },
         },
         discrimination: discriminatedChecks("resonance"),
       }),
@@ -178,18 +225,7 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
       greenEvidence({
         grounding: {
           declared: [RESONANCE],
-          execution: {
-            ...base,
-            executed: [
-              {
-                phase: "battery",
-                subjectId: "t1",
-                attempt: 1,
-                checkId: "resonance",
-                adapterId: "some-other-adapter",
-              },
-            ],
-          },
+          execution: { ...base, executed: [ran("t1", "resonance", "some-other-adapter")] },
         },
         discrimination: discriminated,
       }),
@@ -201,18 +237,7 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
       greenEvidence({
         grounding: {
           declared: [RESONANCE],
-          execution: {
-            ...base,
-            executed: [
-              {
-                phase: "battery",
-                subjectId: "t1",
-                attempt: 1,
-                checkId: "resonance",
-                adapterId: "qiskit-adapter",
-              },
-            ],
-          },
+          execution: { ...base, executed: [ran("t1", "resonance", "qiskit-adapter")] },
         },
         discrimination: discriminated,
       }),
@@ -247,16 +272,16 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
     const covered = createClaim(evidence, resonanceEverywhere);
     expect(covered.ok).toBe(true);
     if (covered.ok) {
-      expect(covered.statement.externalCheckCoverage).toEqual([
-        { checkId: "resonance", toolId: "qiskit-adapter", attestedLaunches: 4, rejects: 2, kind: "external" },
-        {
+      expect(covered.statement.externalCheckCoverage).toEqual(
+        ["qiskit-adapter", "statevector-audit"].map((toolId) => ({
           checkId: "resonance",
-          toolId: "statevector-audit",
+          toolId,
           attestedLaunches: 4,
+          cellProgramLaunches: 0,
           rejects: 2,
           kind: "external",
-        },
-      ]);
+        })),
+      );
     }
     // Dropping the second tool on one case, and relabelling it on that case, both leave the gap.
     for (const replacement of [null, "foreign-adapter"]) {
@@ -289,16 +314,7 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
     const execution = qiskitExecution(GREEN_SCORE.map((row) => row.caseId));
     execution.executed = execution.executed.map((row) => ({ ...row, checkId: "c1" }));
     const evidence = greenEvidence({
-      grounding: {
-        declared: [
-          {
-            checkId: "c1",
-            grounding: { kind: "authored", assertion: "authored numerical check" },
-            requiredToolIds: ["qiskit-adapter"],
-          },
-        ],
-        execution,
-      },
+      grounding: { declared: [{ ...AUTHORED_C1, requiredToolIds: ["qiskit-adapter"] }], execution },
     });
     const covered = createClaim(evidence);
     expect(covered.ok).toBe(true);
@@ -308,52 +324,113 @@ describe("a tool's run binds to one case, one check and one adapter", () => {
         { checkId: "c1", kind: "authored", adapterId: null, requiredToolIds: ["qiskit-adapter"] },
       ]);
       expect(covered.statement.externalCheckCoverage).toEqual([
-        { checkId: "c1", toolId: "qiskit-adapter", attestedLaunches: 4, rejects: 1, kind: "authored" },
+        {
+          checkId: "c1",
+          toolId: "qiskit-adapter",
+          attestedLaunches: 4,
+          cellProgramLaunches: 0,
+          rejects: 1,
+          kind: "authored",
+        },
       ]);
     }
     execution.executed = execution.executed.filter((row) => row.subjectId !== "t2");
     expect(clauseNames(createClaim(evidence))).toContain("external-grounding-case-uncovered");
   });
+});
 
-  it("requires an authored check to have both rejected and fired", () => {
-    const evidence = greenEvidence({
-      grounding: {
-        declared: [
-          {
-            checkId: "c1",
-            grounding: { kind: "authored", assertion: "assignments obey the public slot rules" },
-          },
-        ],
-        execution: NO_EXTERNAL_EXECUTION,
+describe("the claim records which instrument ran, not only which one was declared", () => {
+  it("counts the programs an external check built and ran in its cell, and still claims", () => {
+    // The recorded shape: every behaviour check declared external over `cc` compiled the artifact
+    // with a driver the Builder published, then ran the result. `cc` alone is what the inventory
+    // hashed; the verdict came from the built program.
+    const executed = GREEN_SCORE.flatMap((row) => [
+      ran(row.caseId, "display-composition", "cc"),
+      ran(row.caseId, "display-composition", "cell:app"),
+    ]);
+    const result = createClaim(
+      greenEvidence({
+        grounding: { declared: [AUTHORED_C1, BEHAVIOUR], execution: behaviourExecution(executed) },
+        discrimination: discriminatedChecks("display-composition"),
+      }),
+      behaviourEverywhere,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.statement.externalCheckCoverage).toEqual([
+      {
+        checkId: "display-composition",
+        toolId: "cc",
+        attestedLaunches: 4,
+        cellProgramLaunches: 4,
+        rejects: 2,
+        kind: "external",
       },
-    });
-    const covered = createClaim(evidence);
-    expect(covered.ok).toBe(true);
-    if (covered.ok) {
-      expect(covered.statement.groundings).toEqual([{ checkId: "c1", kind: "authored", adapterId: null }]);
-    }
-    expect(
-      clauseNames(
-        createClaim({
-          ...evidence,
-          discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 0 } },
-        }),
-      ),
-    ).toContain("intrinsic-grounding-uncovered");
-    expect(
-      clauseNames(
-        createClaim({
-          ...evidence,
-          truthCheckFiring: {
-            firedByCheck: { c1: 0 },
-            executedByCheck: {},
-            blockingByCheck: {},
-            applicableByCheck: { c1: 4 },
-            verifierVerifiedCount: 4,
-          },
-        }),
-      ),
-    ).toContain("TRUTH_CHECK_NEVER_FIRED");
+    ]);
+    // The built program is no inventory tool, so it never enters the hashed tool list.
+    expect(result.statement.verifierTools.map((tool) => tool.toolId)).toEqual(["cc"]);
+  });
+
+  it("counts a built program only on the check that ran it and only on a verified case", () => {
+    // A program run for a neighbouring check, on a control, or on a case with no verdict grounds
+    // nothing this row reports.
+    const executed = [
+      ...GREEN_SCORE.map((row) => ran(row.caseId, "display-composition", "cc")),
+      ran("t1", "another-check", "cell:app"),
+      ran("reject-7", "display-composition", "cell:app"),
+      ran("t4", "display-composition", "cell:app"),
+    ];
+    const t4Unverified = behaviourEverywhere.map((row) =>
+      row.caseId === "t4" ? { ...row, truthVerified: false } : row,
+    );
+    const result = createClaim(
+      greenEvidence({
+        grounding: { declared: [AUTHORED_C1, BEHAVIOUR], execution: behaviourExecution(executed) },
+        discrimination: discriminatedChecks("display-composition"),
+      }),
+      t4Unverified,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.statement.externalCheckCoverage).toEqual([
+      {
+        checkId: "display-composition",
+        toolId: "cc",
+        attestedLaunches: 3,
+        cellProgramLaunches: 0,
+        rejects: 2,
+        kind: "external",
+      },
+    ]);
+  });
+
+  it("counts an authored check's built programs the same way, without changing its kind", () => {
+    // An authored check that compiles its own test with an installed compiler and runs it is the
+    // honest declaration of the same computation: the count is recorded and the kind stays.
+    const executed = GREEN_SCORE.flatMap((row) => [
+      ran(row.caseId, "c1", "cc"),
+      ran(row.caseId, "c1", "cell:firmware-test"),
+    ]);
+    const result = createClaim(
+      greenEvidence({
+        grounding: {
+          declared: [{ ...AUTHORED_C1, requiredToolIds: ["cc"] }],
+          execution: behaviourExecution(executed),
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.statement.externalCheckCoverage).toEqual([
+      {
+        checkId: "c1",
+        toolId: "cc",
+        attestedLaunches: 4,
+        cellProgramLaunches: 4,
+        rejects: 1,
+        kind: "authored",
+      },
+    ]);
   });
 });
 
@@ -371,14 +448,12 @@ describe("the tools that ran are identified by what the host hashed", () => {
     );
     expect(clauseNames(unfingerprinted)).toContain("grounding-environment-unfingerprinted");
     // Nothing executed, so there is no tool to fingerprint: an in-process check still claims.
-    const nothingRan = createClaim(
-      greenEvidence({ grounding: { declared: [INTRINSIC_C1], execution: NO_EXTERNAL_EXECUTION } }),
-    );
+    const nothingRan = createClaim(greenEvidence());
     expect(clauseNames(nothingRan)).not.toContain("grounding-environment-unfingerprinted");
     expect(nothingRan.ok).toBe(true);
   });
 
-  it("names the adapter that executed each external check on the statement", () => {
+  it("names the adapter that executed each external check on the statement, and nothing else", () => {
     const result = createClaim(
       greenEvidence({
         grounding: { declared: [RESONANCE], execution: qiskitExecution(["t1"]) },
@@ -390,25 +465,10 @@ describe("the tools that ran are identified by what the host hashed", () => {
     expect(result.statement.groundings).toEqual([
       { checkId: "resonance", kind: "external-verifier", adapterId: "qiskit-adapter" },
     ]);
-    expect(result.statement.groundingExceptions).toEqual([]);
     expect(result.statement.verifierEnvironmentHash).toBe("e".repeat(64));
-  });
-
-  it("carries an exception grounding's justification verbatim rather than silently", () => {
-    const justification =
-      "no executable engine exists for narrative coherence; verified by structured rubric pending adapter";
-    const result = createClaim(
-      greenEvidence({
-        grounding: {
-          declared: [{ checkId: "coherence", grounding: { kind: "exception", justification } }],
-          execution: NO_EXTERNAL_EXECUTION,
-        },
-      }),
-    );
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.statement.groundingExceptions).toEqual([{ checkId: "coherence", justification }]);
-    }
+    // Every check is authored or external, so there is no third kind with prose of its own to
+    // carry: the statement has no exception list.
+    expect(Object.hasOwn(result.statement, "groundingExceptions")).toBe(false);
   });
 });
 
@@ -424,7 +484,14 @@ describe("a coverage row exists only where a verified case gave the tool an oppo
     expect(onVerifiedCase.ok).toBe(true);
     if (onVerifiedCase.ok) {
       expect(onVerifiedCase.statement.externalCheckCoverage).toEqual([
-        { checkId: "resonance", toolId: "qiskit-adapter", attestedLaunches: 1, rejects: 2, kind: "external" },
+        {
+          checkId: "resonance",
+          toolId: "qiskit-adapter",
+          attestedLaunches: 1,
+          cellProgramLaunches: 0,
+          rejects: 2,
+          kind: "external",
+        },
       ]);
     }
     const onControlOnly = createClaim(
@@ -469,16 +536,15 @@ describe("a coverage row exists only where a verified case gave the tool an oppo
     if (result.ok) expect(result.statement.externalCheckCoverage).toEqual([]);
   });
 
-  it("writes no row for an all-intrinsic brief, nor for a battery that verified nothing", () => {
-    const intrinsic = createClaim(greenEvidence());
-    expect(intrinsic.ok).toBe(true);
-    if (intrinsic.ok) expect(intrinsic.statement.externalCheckCoverage).toEqual([]);
+  it("writes no row for a tool-free authored brief, nor for a battery that verified nothing", () => {
+    const authored = createClaim(greenEvidence());
+    expect(authored.ok).toBe(true);
+    if (authored.ok) expect(authored.statement.externalCheckCoverage).toEqual([]);
 
     const unverified = createClaim(
       greenEvidence({
         grounding: { declared: [RESONANCE], execution: qiskitExecution(["reject-7"]) },
         discrimination: discriminatedChecks("resonance"),
-        runStatus: { state: "terminal", reason: "complete", verified: 4, nonResults: {} },
       }),
       GREEN_SCORE.map((row) => ({ ...row, truthVerified: false, passed: false })),
     );

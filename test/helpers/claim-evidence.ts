@@ -2,7 +2,7 @@
  * The recorded evidence a claim is written from.
  *
  * Every claim test starts from one battery that should be claimable — four scored cases, three
- * passing, one declared intrinsic check that fired on all four — and changes exactly one fact.
+ * passing, one declared authored check that fired on all four — and changes exactly one fact.
  * That is the shape of the assertions: a clause fires because of the changed fact and nothing
  * else, so the fixture has to be green for a reason each test can name.
  *
@@ -20,8 +20,8 @@ import type { JudgeEvidence } from "../../src/claim/judge.ts";
 import { NO_EXTERNAL_EXECUTION, type VerifierExecutionEvidence } from "../../src/truth/grounding.ts";
 
 /** Four verified case identities, three passing — matching `greenEvidence()`'s `verified: 4`. Every
- *  case exercises the declared intrinsic check c1; per-case tool coverage applies only to external
- *  checks, so these stay green with no execution evidence. */
+ *  case exercises the declared authored check c1; per-case tool coverage applies only to required
+ *  tools, so these stay green with no execution evidence. */
 export const GREEN_SCORE: ScoredCase[] = [
   { caseId: "t1", passed: true, truthVerified: true, checkIds: ["c1"] },
   { caseId: "t2", passed: true, truthVerified: true, checkIds: ["c1"] },
@@ -29,16 +29,16 @@ export const GREEN_SCORE: ScoredCase[] = [
   { caseId: "t4", passed: false, truthVerified: true, checkIds: ["c1"] },
 ];
 
-/** The declared check `greenEvidence()` grounds intrinsically. */
-export const INTRINSIC_C1 = {
+/** The declared check `greenEvidence()` grounds, as the claim writer records a brief's authored check. */
+export const AUTHORED_C1 = {
   checkId: "c1",
-  grounding: { kind: "intrinsic", primitive: "relationalJoin" },
+  grounding: { kind: "authored", assertion: "assignments obey the public slot rules" },
 } as const;
 
-/** A second intrinsic check, so a test can separate one declared check's reading from another's. */
-export const INTRINSIC_C2 = {
+/** A second authored check, so a test can separate one declared check's reading from another's. */
+export const AUTHORED_C2 = {
   checkId: "c2",
-  grounding: { kind: "intrinsic", primitive: "collectionExactByKey" },
+  grounding: { kind: "authored", assertion: "every keyed row matches the expected collection" },
 } as const;
 
 /** An externally grounded check: its verdict comes from an installed tool, not from authored code. */
@@ -100,7 +100,7 @@ export function greenEvidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvid
       correctnessModelHash: "g".repeat(64),
       taskSetHash: "t".repeat(64),
     },
-    grounding: { declared: [INTRINSIC_C1], execution: NO_EXTERNAL_EXECUTION },
+    grounding: { declared: [AUTHORED_C1], execution: NO_EXTERNAL_EXECUTION },
     // c1 fired on all four verified cases, which keeps the never-fired clause inert on the green path.
     truthCheckFiring: {
       firedByCheck: { c1: 4 },

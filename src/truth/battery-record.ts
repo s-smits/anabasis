@@ -139,7 +139,7 @@ export type BatteryRecord = {
   /** Every invocation evidence (verdicts and non-results) — request/result digests, outcome,
    *  host-derived command digest. The durable form of "the tool ran, on these bytes". */
   executionEvidence: HostVerifierExecutionEvidence[];
-  /** Execution counts for each declared intrinsic check over verifier-verified cases. The claim
+  /** Execution counts for each declared authored check over verifier-verified cases. The claim
    *  gate reads these counts to detect a check that never ran at all, which no per-case verdict
    *  discloses. Recording them with the battery rather than deriving them at claim time preserves
    *  the evidence in the evidence log, so a later reader inspects the same counts the gate read. */

@@ -117,7 +117,6 @@ type ReviewAdmission = {
   }>;
 };
 const MAX_FINDINGS = 6;
-const CLAIM_MAX_CHARS = 1_200;
 export type ReviewState = SourceReadState & {
   probes: ProbeState;
   findings: AnalysisFinding[];
@@ -138,7 +137,7 @@ type FindingArgs = ReturnType<typeof findingArgs>;
 const DEMONSTRATION_MIN_CHARS = 40;
 
 const CITATIONS_UNBOUND =
-  "citations must quote 1–4 passages actually returned by read_source; read the source and retry";
+  "citations must quote passages actually returned by read_source; read the source and retry";
 const SEVERITY_REQUIRED = "severity must explicitly be advisory or blocking";
 
 /** Everything one `record_finding` call offers, as the rules below read it. The raw `args` stay
@@ -352,10 +351,12 @@ function findingArgs(args: Record<string, JsonValue>) {
   };
 }
 
-/** Source quotations establish what was available, not whether the model's inference is right. */
+/** Source quotations establish what was available, not whether the model's inference is right. How
+ *  many there are and how long each runs is the reviewer's choice: what the host holds them to is
+ *  that every one quotes a page `read_source` returned. */
 function findingCitations(args: Record<string, JsonValue>, state: SourceReadState): string | null {
   const { citations } = args;
-  if (!Array.isArray(citations) || citations.length === 0 || citations.length > 4) return null;
+  if (!Array.isArray(citations) || citations.length === 0) return null;
   const bound = citations.map((value) => boundQuote(value, state));
   return bound.every((row) => row !== null) ? bound.join("\n") : null;
 }
@@ -365,7 +366,7 @@ function boundQuote(value: JsonValue, state: SourceReadState): string | null {
   const row = plainRecord(value);
   if (!isString(row?.path) || !isString(row.quote)) return null;
   const { path, quote } = row;
-  if (quote.trim() === "" || quote.length > 800) return null;
+  if (quote.trim() === "") return null;
   const returned =
     deliveredSource(state, path).record?.pages.some((page) => page.text.includes(quote)) === true;
   return returned ? `${path}: ${capturedJsonStringify(quote)}` : null;
@@ -440,10 +441,6 @@ const FINDING_RULES: readonly FindingRule[] = [
     FINDING_KINDS.some((known) => known === parsed.kind) && parsed.claim !== ""
       ? null
       : "kind and claim are required",
-  ({ parsed }) =>
-    parsed.claim.length > CLAIM_MAX_CHARS
-      ? `claim must be at most ${CLAIM_MAX_CHARS} characters; shorten it and retry`
-      : null,
   ({ parsed }) => (parsed.severity === null ? SEVERITY_REQUIRED : null),
   ({ parsed, taskIds }) =>
     taskIds.some((taskId) => mentionsTask(parsed.claim, taskId))
@@ -451,7 +448,13 @@ const FINDING_RULES: readonly FindingRule[] = [
       : null,
   ({ parsed, owner }) =>
     parsed.kind === "harness-defect" && owner === null ? "a harness-defect must name a routable owner" : null,
-  ({ args, citations }) => (args.citations !== undefined && citations === null ? CITATIONS_UNBOUND : null),
+  // An empty list cites nothing, the same as leaving the field out, rather than failing to bind.
+  ({ args, citations }) =>
+    args.citations !== undefined &&
+    !(Array.isArray(args.citations) && args.citations.length === 0) &&
+    citations === null
+      ? CITATIONS_UNBOUND
+      : null,
   blockingEvidence,
   disputeEligibility,
   ({ parsed, state, args }) => probeCitationRefusal(parsed.kind, state.probes, args.probeIds),
@@ -522,7 +525,7 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
     required: ["kind", "claim", "severity"],
     properties: {
       kind: { type: "string", enum: [...FINDING_KINDS] },
-      claim: { type: "string", minLength: 1, maxLength: CLAIM_MAX_CHARS },
+      claim: { type: "string", minLength: 1 },
       owner: {
         type: "string",
         enum: [...owners],
@@ -541,8 +544,6 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
       },
       citations: {
         type: "array",
-        minItems: 1,
-        maxItems: 4,
         description:
           "Required for blocking or disputing. Quote deciding source from read_source; quote a published requirement too when the tree contains it. When the original request supplies the obligation, state it in demonstration. Quotes are checked against returned pages and stay private.",
         items: {
@@ -557,7 +558,6 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
             quote: {
               type: "string",
               minLength: 1,
-              maxLength: 800,
               description: "An exact quotation from one returned page, without a continuation notice.",
             },
           },

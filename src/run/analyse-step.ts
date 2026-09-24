@@ -55,6 +55,8 @@ import { readValidatedBrief } from "../truth/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
+import { type ExperimentSubmission, parseExperimentSubmission } from "../author/experiment-plan.ts";
+import { readRecordedBatteryRecord } from "../truth/battery-record.ts";
 
 export interface AnalyseStepResult {
   judges: JudgeReviewsResult;
@@ -85,6 +87,19 @@ interface AnalyseStepOptions {
   publicRequest?: string;
   /** Test interface for the reviewer turn: a reader that dies mid-turn. */
   epochReview?: typeof runEpochReview;
+}
+
+/** The plan recorded with the battery under review, or null when the battery recorded none. The
+ *  analysis above has already read this battery through the same attested reader, so a record it
+ *  cannot read again here has changed underneath the round; the reviewer is advisory, and is then
+ *  told there is no plan rather than stopping the analysis. */
+export function recordedPlan(measuredDir: string, runId: string): ExperimentSubmission | null {
+  try {
+    const record = readRecordedBatteryRecord(join(measuredDir, "runs", runId), runId);
+    return parseExperimentSubmission(record.experimentAuthoring?.proposal ?? null);
+  } catch {
+    return null;
+  }
 }
 
 export async function analyseStep(
@@ -154,6 +169,7 @@ export async function analyseStep(
     treeRoot: analysis.treeRoot,
     analysis,
     priorAdvice: standing ?? null,
+    experiment: recordedPlan(measuredDir, runId),
     ...contested,
     review,
     publicRequest: options.publicRequest ?? null,

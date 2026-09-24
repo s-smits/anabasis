@@ -38,6 +38,7 @@ import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
 import { deriveIterationAnalysis } from "#src/analyse/iteration-analysis.ts";
 import { runEpochReview } from "#src/review/epoch-reviewer.ts";
+import { recordedPlan } from "#src/run/analyse-step.ts";
 import { readLatestRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -124,6 +125,7 @@ const evidence = await runEpochReview({
   treeRoot: analysis.treeRoot,
   analysis,
   priorAdvice,
+  experiment: recordedPlan(measuredDir, runId),
   vetoed,
   review,
   publicRequest: isString(publicRequest) ? publicRequest : null,

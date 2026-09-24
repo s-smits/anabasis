@@ -1,8 +1,15 @@
 /**
  * When an authoring session next owes the Epoch Reviewer a reading, and over which bytes: after a
- * clear `correctness_check` whose agent or correctness-model bytes changed since the last review,
- * that immutable snapshot; after the backstop interval, the live workspace. Both are consulted at
- * the completion of a host tool call, never inside one.
+ * clear `correctness_check` whose agent, correctness-model or battery bytes changed since the last
+ * review, that immutable snapshot; after the backstop interval, the live workspace. Both are
+ * consulted at the completion of a host tool call, never inside one.
+ *
+ * The battery counts because `tasks.json` carries each task's hidden expectations and
+ * `controls.json` the accept and reject artifacts that calibrate the checks, and neither is inside
+ * `correctnessModelHash`. A tolerance widened in a hidden operand, or a reject control rewritten
+ * until it no longer tests the fact it was named for, loosens the evaluation exactly as an edit to
+ * `evaluator.ts` does, and with only the two bundle hashes compared a task-only round could adopt
+ * that change without any review of it before its battery.
  */
 import type { BuiltHarness } from "../author/campaign-types.ts";
 
@@ -46,7 +53,8 @@ export class AuthoringReviewClock {
     if (
       fingerprint !== null &&
       (fingerprint.agentHash !== this.reviewed?.agentHash ||
-        fingerprint.correctnessModelHash !== this.reviewed.correctnessModelHash)
+        fingerprint.correctnessModelHash !== this.reviewed.correctnessModelHash ||
+        fingerprint.taskSetHash !== this.reviewed.taskSetHash)
     ) {
       return { kind: "repair", fingerprint };
     }

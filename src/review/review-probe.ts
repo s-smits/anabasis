@@ -50,7 +50,7 @@ import {
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { plainRecord } from "../meta/json-evidence.ts";
+import { jsonPathTokens, plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
 import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolText } from "./review-reader.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -180,16 +180,7 @@ async function openCandidate(root: string, lifetimeRoot: string): Promise<ProbeC
   return { brief, evaluate, corpus, tasks: loadRecordedTasks(root), verifier, lifetime };
 }
 
-/** The steps of a probe path: the declared grammar of `jsonPathTokens`, plus a quoted key read as
- *  the plain step it names. A file map's keys hold dots, so `$.firmware['fw_logic.cpp']` is the
- *  only way to name one file, and without the quoted form no spelling of it resolves. */
-function probeSteps(path: string): string[] | null {
-  const tokens = path.match(/^\$|\.[A-Za-z_][A-Za-z0-9_-]*|\[(?:0|[1-9]\d*)\]|\[(?:'[^']+'|"[^"]+")\]/g);
-  if (tokens?.[0] !== "$" || tokens.join("") !== path) return null;
-  return tokens.slice(1).map((token) => (/^\[['"]/.test(token) ? `.${token.slice(2, -2)}` : token));
-}
-
-/** One step down a rooted path, taking the tokens `probeSteps` produces: `[0]` into an array,
+/** One step down a rooted path, taking the tokens `jsonPathTokens` produces: `[0]` into an array,
  *  `.name` into a plain object. `undefined` means the path does not exist here. */
 function stepInto(value: JsonValue | undefined, token: string): JsonValue | undefined {
   if (token.startsWith("[")) return Array.isArray(value) ? value[Number(token.slice(1, -1))] : undefined;
@@ -202,15 +193,66 @@ function stepInto(value: JsonValue | undefined, token: string): JsonValue | unde
  * "no declared check reads it" about a field the artifact never carried, which is true and useless.
  *
  * The path is the rooted spelling the candidate's own checks declare — `$.layout.members[0].area`,
- * read through `probeSteps`. It used to be a second language, bare and dotted with array positions
- * as integer segments, so a reviewer that copied a path out of the declarations it was reading was
- * told the field did not exist. One grammar, plus the quoted key a declaration never needs, and the
- * refusal is true whenever it fires.
+ * read through `jsonPathTokens`. It used to be a second language, bare and dotted with array
+ * positions as integer segments, so a reviewer that copied a path out of the declarations it was
+ * reading was told the field did not exist. One grammar, and the refusal is true whenever it fires.
  */
 export function withReplacedField(artifact: JsonValue, path: string, value: JsonValue): JsonValue | null {
-  const tokens = probeSteps(path);
+  const tokens = jsonPathTokens(path);
   if (tokens === null || tokens.length === 0) return null;
   return replacedAt(artifact, tokens, value) ?? null;
+}
+
+/** A token spelled back into the grammar, with a key that is not a plain name in quotes. */
+const spelled = (token: string) =>
+  token.startsWith("[") || /^\.[A-Za-z_][A-Za-z0-9_-]*$/.test(token) ? token : `['${token.slice(1)}']`;
+
+/** What the deepest step a path reached holds, so a refusal can say where the path stopped. */
+function stepContents(at: JsonValue, prefix: string): string {
+  if (Array.isArray(at)) return `${prefix} holds ${at.length} element${at.length === 1 ? "" : "s"}`;
+  const record = plainRecord(at);
+  if (record === null) return `${prefix} is a leaf`;
+  return `${prefix} carries ${Object.keys(record).slice(0, 12).join(", ") || "no keys"}`;
+}
+
+/** The quoted spelling that reaches a key an unquoted dot split: `.design.json` below a record that
+ *  carries `design.json` becomes `['design.json']`. Empty when no run of the remaining name steps
+ *  joins into a key the record carries. */
+function quotedSpelling(at: JsonValue, prefix: string, rest: readonly string[]): string {
+  const record = plainRecord(at);
+  if (record === null) return "";
+  const bracket = rest.findIndex((token) => token.startsWith("["));
+  const names = (bracket === -1 ? rest : rest.slice(0, bracket)).map((token) => token.slice(1));
+  for (let count = names.length; count >= 2; count -= 1) {
+    const key = names.slice(0, count).join(".");
+    if (Object.hasOwn(record, key)) return `${prefix}${spelled(`.${key}`)}${rest.slice(count).join("")}`;
+  }
+  return "";
+}
+
+/**
+ * Why `path` names nothing in `artifact`, in words that are true of the path as written. A path
+ * outside the grammar is told so rather than that its field is absent, because the field may well
+ * be there: the old bare spelling `files.src/main.cpp` names a file the control carries. A rooted
+ * path is told where it stopped and what that step carries, and when an unquoted dot split a key
+ * that step does carry, it is given the quoted spelling that reaches it.
+ */
+export function missingFieldRefusal(artifact: JsonValue, path: string, controlId: string): string {
+  const tokens = jsonPathTokens(path);
+  if (tokens === null || tokens.length === 0) {
+    return `${path} is not a rooted path; spell it as the declared checks do, \`$.layout.members[0].area\`, with a key holding a dot or a slash quoted: \`$.files['src/main.cpp']\``;
+  }
+  let at = artifact;
+  let depth = 0;
+  for (const token of tokens) {
+    const next = stepInto(at, token);
+    if (next === undefined) break;
+    at = next;
+    depth += 1;
+  }
+  const prefix = `$${tokens.slice(0, depth).map(spelled).join("")}`;
+  const quoted = quotedSpelling(at, prefix, tokens.slice(depth));
+  return `${path} is not an existing field of control ${controlId}: ${stepContents(at, prefix)}${quoted === "" ? "" : `; a key holding a dot is quoted, as in ${quoted}`}. Probe a path the artifact already carries`;
 }
 
 /** `value` with the field at `tokens` replaced, or `undefined` when a step is missing. A step that
@@ -397,7 +439,7 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     } catch (cause: unknown) {
       return failed(
         "",
-        `the candidate's correctness model could not be loaded: ${errorMessage(cause)}`.slice(0, 300),
+        `the candidate's correctness model could not be loaded, so no probe can run in this review: ${errorMessage(cause)}`,
       );
     }
     const control = candidate.corpus.accept.find((row) => row.id === parsed.controlId);
@@ -412,11 +454,7 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
       );
     }
     const mutated = withReplacedField(control.artifact, parsed.path, value);
-    if (mutated === null) {
-      return refuse(
-        `${parsed.path} is not an existing field of control ${parsed.controlId}; probe a path the artifact already carries`,
-      );
-    }
+    if (mutated === null) return refuse(missingFieldRefusal(control.artifact, parsed.path, parsed.controlId));
     if (hashJsonValue(mutated) === hashJsonValue(/* SAFETY: as above. */ control.artifact)) {
       return refuse(
         `control ${parsed.controlId} already carries that value at ${parsed.path}; a replacement that changes nothing cannot move a verdict`,

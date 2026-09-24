@@ -191,6 +191,16 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.findings).toHaveLength(0);
   });
 
+  // The closing message is recorded as the review's report and read by whoever takes the campaign
+  // up next. A reviewer told only to "close with a short synthesis" treated it as a sign-off.
+  test("its prompt says the closing message is read and asks for plain prose, and reads the plan", () => {
+    expect(EPOCH_REVIEW_PROMPT).toContain("Your closing message is recorded as this review's report");
+    expect(EPOCH_REVIEW_PROMPT).toContain("end in plain prose with what that reader should know");
+    expect(EPOCH_REVIEW_PROMPT).not.toContain("close with a short synthesis");
+    expect(EPOCH_REVIEW_PROMPT).toContain("Judge the round against what it set out to do");
+    expect(EPOCH_REVIEW_PROMPT).toContain("The plan is intent, never evidence that anything was achieved");
+  });
+
   test("a blocking harness defect must state the case it demonstrates", async () => {
     // Run truss-opus-20260907T210000000Z-6bf0e9 round 3 blocked on a defect whose own claim said it
     // could not construct the passing case, and that finding took the run's next move.
@@ -231,10 +241,38 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(publicEpochReview({ status: "completed", ...long })).toEqual(
       publicEpochReview({ status: "completed", ...stated }),
     );
-    expect(await call(longTool, { ...hedged, claim: claim + "x", demonstration })).toContain(
-      "claim must be at most 1200 characters",
+    // Nothing reads the claim's length: it stays in review evidence and never crosses to authoring,
+    // so a longer one is recorded whole rather than refused for its form.
+    const longer = `${claim}${"y".repeat(800)}`;
+    expect(await call(longTool, { ...hedged, severity: "advisory", claim: longer })).toContain(
+      "recorded harness-defect",
     );
-    expect(long.findings).toHaveLength(1);
+    expect(long.findings[1]?.claim).toBe(longer);
+    expect(longTool.parameters).not.toHaveProperty("properties.claim.maxLength");
+  });
+
+  test("citations are held to what read_source returned, not to a count or a length", async () => {
+    const state = reviewState();
+    const tool = recordFindingTool([], [], evidence, state);
+    const advisory = { kind: "hardness", claim: "the family demands little", severity: "advisory" };
+    // Five bound quotations, one of them longer than the old 800-character ceiling, all quote
+    // returned pages, so each is a citation the finding may carry.
+    const long = "x".repeat(900);
+    state.delivered.push({
+      path: "long.ts",
+      digest: "",
+      length: long.length,
+      pages: [{ start: 0, text: long }],
+    });
+    const five = [...CITATIONS, ...CITATIONS, ...CITATIONS, ...CITATIONS, { path: "long.ts", quote: long }];
+    expect(await call(tool, { ...advisory, citations: five })).toContain("recorded hardness");
+    // An empty list cites nothing, which is the same as sending none.
+    expect(await call(tool, { ...advisory, citations: [] })).toContain("recorded hardness");
+    // A quotation no returned page contains is still refused: that is the rule, not the form.
+    expect(
+      await call(tool, { ...advisory, citations: [{ path: "evaluator.ts", quote: "never returned" }] }),
+    ).toContain("citations must quote");
+    expect(state.findings).toHaveLength(2);
   });
 
   test("a curriculum defect must name the public input the fresh battery should vary", async () => {
@@ -585,6 +623,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         truthChecks: [
           reads("builds", ["$.pins"]),
           reads("budget", ["$.pins.gpio"]),
+          // The bracketed spelling the brief validator accepts reads the same path.
+          reads("wiring", ["$['pins']['gpio']"]),
           reads("report", ["$.report"]),
         ],
       });
@@ -593,7 +633,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         publicEpochReview({ status: "completed", ...state, findings: [traced] }, { brief }).findings[0]
           ?.claim,
       ).toBe(
-        "Epoch review (evaluator): none of the 2 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); add a check that observes what the delivered artifact does there.",
+        "Epoch review (evaluator): none of the 3 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); add a check that observes what the delivered artifact does there.",
       );
     });
 

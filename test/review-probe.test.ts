@@ -11,6 +11,7 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
   PROBE_BUDGET,
   emptyProbeState,
+  missingFieldRefusal,
   probeBackedRows,
   probeTool,
   withReplacedField,
@@ -119,6 +120,38 @@ describe("withReplacedField — one field of a known-correct artifact", () => {
   });
 });
 
+describe("missingFieldRefusal — a refused path is refused for the reason that is true of it", () => {
+  const fileMap: JsonValue = { files: { "firmware/config.h": "x", "build-report.json": "{}" } };
+
+  it("names the grammar when the path is not a rooted path, instead of denying a field that exists", () => {
+    // The spelling this tool used to take. The file is there; the path is simply not in the grammar.
+    const why = missingFieldRefusal(fileMap, "files.firmware/config.h", "accept-a");
+    expect(why).toContain("files.firmware/config.h is not a rooted path");
+    expect(why).toContain("$.files['src/main.cpp']");
+    expect(why).not.toContain("not an existing field");
+  });
+
+  it("offers the quoted spelling when an unquoted dot split a key the artifact carries", () => {
+    const artifact: JsonValue = { firmware: { "design.json": "{}", "fw_config.h": "" } };
+    const why = missingFieldRefusal(artifact, "$.firmware.design.json", "accept-a");
+    expect(why).toContain("$.firmware.design.json is not an existing field of control accept-a");
+    expect(why).toContain("$.firmware['design.json']");
+    expect(withReplacedField(artifact, "$.firmware['design.json']", "[]")).not.toBeNull();
+  });
+
+  it("says what the deepest present step carries, and suggests nothing for a key that is absent", () => {
+    const absent = missingFieldRefusal(fileMap, "$.files['main.cpp']", "accept-a");
+    expect(absent).toContain("$.files['main.cpp'] is not an existing field of control accept-a");
+    expect(absent).toContain("$.files carries firmware/config.h, build-report.json");
+    expect(absent).not.toContain("is quoted, as in");
+    const artifact: JsonValue = { layout: { members: [{ area: 2 }] }, answer: "A" };
+    expect(missingFieldRefusal(artifact, "$.layout.members[9].area", "c")).toContain(
+      "$.layout.members holds 1 element",
+    );
+    expect(missingFieldRefusal(artifact, "$.answer.inner", "c")).toContain("$.answer is a leaf");
+  });
+});
+
 describe("probeBackedRows — a finding rests on results, not on requests", () => {
   const side = (outcome: "pass" | "fail" | "non-result") => ({ outcome, blockingCheckIds: [] });
   const row = (id: number, refused: string | null, baseline = side("pass"), mutated = side("fail")) => ({
@@ -203,6 +236,10 @@ describe("probe_check — the candidate's own checks over one changed field", ()
       expect(
         text(await run(probe.tool, "2", { controlId: "accept-a", path: "$.invented", value: "1" })),
       ).toContain("is not an existing field of control accept-a");
+      // The field is there; the spelling is not in the grammar, and the refusal says which.
+      expect(
+        text(await run(probe.tool, "2b", { controlId: "accept-a", path: "answer", value: '"x"' })),
+      ).toContain("answer is not a rooted path");
       expect(
         text(await run(probe.tool, "3", { controlId: "accept-a", path: "$.answer", value: "not json" })),
       ).toContain("value must be JSON text");
@@ -225,7 +262,7 @@ describe("probe_check — the candidate's own checks over one changed field", ()
         text(await run(probe.tool, "5", { controlId: "accept-a", path: "$.answer", value: '"A"' })),
       ).toContain("already carries that value at $.answer");
       expect(state.rows).toEqual([]);
-      expect(state.refused).toBe(6);
+      expect(state.refused).toBe(7);
 
       for (let i = 0; i < PROBE_BUDGET; i += 1) {
         state.rows.push({
@@ -344,6 +381,9 @@ describe("probe_check — the candidate's own checks over one changed field", ()
         text(await run(probe.tool, "1", { controlId: "accept-a", path: "$.answer", value: '"x"' })),
       ).toContain("probe 1 did not run:");
       expect(state.rows[0]?.refused).toContain("correctness model could not be loaded");
+      // The load is attempted once per review, so the refusal says every later probe fails the same
+      // way rather than letting the reader spend its budget finding that out.
+      expect(state.rows[0]?.refused).toContain("no probe can run in this review");
       expect(probeBackedRows(state, [1])).toEqual([]);
     } finally {
       await probe.close(false);

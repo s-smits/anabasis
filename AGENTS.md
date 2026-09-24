@@ -1118,10 +1118,13 @@ the push publishes and runs `bun run gate --static` over it — runtime, format,
 source-policy, complexity, and the test files near what that commit changed — then runs the whole
 gate on the tip, and on the head of every other branch the push moves, since that is where a
 stacked pull request ends. GitHub Actions is off for this repository, so that local run is the only
-full gate a pull request head gets. "Near" is `tools/runtime/affected-tests.ts`: a test within three imports
-of a changed file. Over the seventeen commits of one pull request that selected 26% of the suite at
-the median and 49% at p90; it bounds the cost, it has not been measured against the bugs it
-catches, and the tip's full suite is what backs it. A failure names the commit, and its fix goes into that commit rather than on
+full gate a pull request head gets. "Near" is `tools/runtime/affected-tests.ts`: a test that
+imports a changed file directly (operator decision 2026-09-24). It was three imports on the day the
+rule landed, and the first push to pay for that showed why not: the slow end-to-end files sit two
+or three imports from anything near the root of the graph, so three commits of 11 to 17 files each
+selected 62% to 70% of the suite's recorded test time at depth 3, and 14% to 19% at depth 1. The
+tip then ran all of it again. Depth 1 bounds the cost; it has not been measured against the bugs
+it catches, and the tip's full suite is what backs it. A failure names the commit, and its fix goes into that commit rather than on
 top of it: `git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash
 <sha>~1`, or `git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no
 one anything. A rule agents keep breaking is fixed at its owner, whether that is a prompt, a skill

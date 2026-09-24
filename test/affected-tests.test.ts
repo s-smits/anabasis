@@ -53,4 +53,20 @@ describe("affected test selection", () => {
   it("selects a changed test itself at distance zero", () => {
     expect(distances(graph, ["test/far.test.ts"]).get("test/far.test.ts")).toBe(0);
   });
+
+  // The gate calls the script with `--base` alone, so the default is the depth every earlier commit
+  // in a push is tested at.
+  it("selects by default only the tests that import a changed file directly", () => {
+    const git = (...args: string[]): string => execTextSync("git", args, { cwd: fixture });
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Test");
+    git("commit", "-qm", "base");
+    writeFileSync(join(fixture, "src/top.ts"), `${files["src/top.ts"]}export const again = top;\n`);
+    git("commit", "-qam", "change top");
+    const env = Object.fromEntries(Object.entries(Bun.env).filter(([name]) => name !== "ANA_AFFECTED_DEPTH"));
+    const script = join(import.meta.dir, "../tools/runtime/affected-tests.ts");
+    expect(execTextSync("bun", [script, "--base", "HEAD^1"], { cwd: fixture, env })).toBe(
+      "test/near.test.ts\n",
+    );
+  });
 });

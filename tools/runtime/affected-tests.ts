@@ -12,8 +12,11 @@
  *
  * `--cost <range>` prints, for every commit in a revision range, the share of the suite each depth
  * selects, then the mean, p50 and p90 over the range. That is cost; nothing here measures how many
- * bugs a depth catches, and the tip still runs the whole suite. The default of 3 is the operator's
- * choice (2026-09-24).
+ * bugs a depth catches, and the tip still runs the whole suite. The default is 1, the tests that
+ * import a changed file directly (operator decision 2026-09-24). Share of files understates what a
+ * deeper selection costs: the slow end-to-end files sit two or three imports from any module near
+ * the root of the graph, so for a commit touching one, depth 2 already buys most of the suite's
+ * recorded time and depth 3 nearly all of what the tip's whole suite then runs again.
  *
  *   bun tools/runtime/affected-tests.ts [--base <rev>] [--depth <n>]
  *   bun tools/runtime/affected-tests.ts --cost <range>
@@ -22,7 +25,7 @@ import { existsSync, readFileSync, realpathSync } from "../../src/meta/filesyste
 import { dirname, join, relative } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
 
-const DEFAULT_DEPTH = 3;
+const DEFAULT_DEPTH = 1;
 const COST_DEPTHS = [1, 2, 3, 4, 5, Number.POSITIVE_INFINITY];
 const MODULE = /\.[cm]?[jt]sx?$/;
 const TEST = /^test\/[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/;

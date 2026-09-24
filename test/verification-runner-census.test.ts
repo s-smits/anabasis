@@ -1,5 +1,8 @@
-// The paid Judge battery review of makeVerify, split from verification-runner.test.ts so the
-// slowest describe blocks run as separate files under the parallel test runner.
+/**
+ * The paid Judge battery review inside makeVerify: which subjects it offers, how wide it runs,
+ * when it stops paying, and that the measurement is on disk before it starts. Every case runs the
+ * real verifier over a battery of copies of the first fixture task, with a scripted Judge.
+ */
 
 import { existsSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -7,8 +10,9 @@ import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { judgeDecision } from "../src/claim/judge.ts";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
-import { type Solver } from "../src/truth/solve.ts";
+import type { Judge, JudgeAttempt } from "../src/truth/judge-contract.ts";
+import type { Solver } from "../src/truth/solve.ts";
+import type { VerificationRunnerOptions } from "../src/truth/verification-runner.ts";
 import { double, required } from "./helpers/doubles.ts";
 import {
   ACCEPTS,
@@ -19,158 +23,116 @@ import {
   fingerprintOf,
   removeScratchRoot,
   scriptedSolver,
-  SCRIPTED_CONDITION,
-  SCRIPTED_THRESHOLD_DIGEST,
+  scriptedVerify,
 } from "./helpers/verification-runner-fixtures.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 
+const PASS: JudgeAttempt = {
+  verdict: true,
+  abstained: false,
+  rationale: "scripted verdict",
+  rules: [],
+  error: null,
+  errorKind: null,
+  turns: 1,
+};
+
 afterAll(removeScratchRoot);
 
-describe("makeVerify paid judge census", () => {
+/**
+ * Runs `count` copies of the first fixture task under the Judge `judgeFor` returns for the run
+ * directory, and returns that directory and its battery record. The synthetic battery replaces
+ * t1/t2/t3, so the fixture controls are rebound to judge-1; an unknown taskId would make
+ * discrimination unclaimable and end the run before any review.
+ */
+async function judgedBattery(
+  runId: string,
+  count: number,
+  judgeFor: (runDir: string) => Judge,
+  overrides: Partial<VerificationRunnerOptions> = {},
+) {
+  const slugDir = directPiSlug();
+  const runDir = join(slugDir, "runs", runId);
+  const tasks = Array.from({ length: count }, (_, index) => ({
+    ...FIRST_TASK,
+    taskId: `judge-${index + 1}`,
+  }));
+  writeFileSync(
+    join(slugDir, "correctness-model/controls.json"),
+    JSON.stringify({
+      accept: ACCEPTS.map((control) => ({ ...control, taskId: "judge-1" })),
+      reject: REJECTS.map((control) => ({
+        ...required(
+          REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
+          "single-part reject",
+        ),
+        id: control.id,
+        taskId: "judge-1",
+      })),
+    }),
+  );
+  await scriptedVerify(runId, {
+    judge: { pin: "scripted/judge-v1", invoke: judgeFor(runDir) },
+    ...overrides,
+  })({
+    slug: "matching",
+    slugDir,
+    fingerprint: fingerprintOf(slugDir),
+    tasks,
+  });
+  return { runDir, battery: JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8")) };
+}
+
+describe("makeVerify paid judge review", () => {
   it.concurrent("aborts after five consecutive real subjects fail to deliver valid output", async () => {
-    // Seven eligible cases: five cannot deliver valid output, so the
-    // remaining two are never paid for.
-    const slugDir = directPiSlug();
-    const tasks = Array.from({ length: 7 }, (_, index) => ({
-      ...FIRST_TASK,
-      taskId: `judge-${index + 1}`,
-    }));
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({
-        accept: ACCEPTS.map((control) => ({ ...control, taskId: "judge-1" })),
-        reject: REJECTS.map((control) => ({
-          ...required(
-            REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
-            "single-part reject",
-          ),
-          id: control.id,
-          taskId: "judge-1",
-        })),
-      }),
-    );
+    // Seven eligible cases: five cannot deliver valid output, so the remaining two are never paid for.
     let judgeInvocations = 0;
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-census-abort",
-      judge: {
-        pin: "scripted/judge-v1",
-        invoke: async () => {
-          judgeInvocations += 1;
-          return {
-            verdict: null,
-            abstained: false,
-            rationale: null,
-            rules: [],
-            error: "provider degraded turn",
-            errorKind: "provider",
-            turns: 0,
-          };
-        },
-      },
+    const { runDir, battery } = await judgedBattery("run-census-abort", 7, () => async () => {
+      judgeInvocations += 1;
+      return {
+        ...PASS,
+        verdict: null,
+        rationale: null,
+        error: "provider degraded turn",
+        errorKind: "provider",
+        turns: 0,
+      };
     });
-    await evaluate({
-      slug: "matching",
-      slugDir,
-      fingerprint: fingerprintOf(slugDir),
-      tasks: tasks,
-    });
-    // Exactly five errored real subjects; the remaining two eligible subjects and the
-    // whole control corpus were never paid for.
     expect(judgeInvocations).toBe(5);
-    const runDir = join(slugDir, "runs/run-census-abort");
-    const abort = JSON.parse(readFileSync(join(runDir, "judge/census-abort.json"), "utf8"));
-    expect(abort).toMatchObject({
+    expect(JSON.parse(readFileSync(join(runDir, "judge/census-abort.json"), "utf8"))).toMatchObject({
       schema: "judge-census-abort/v1",
       attempted: 5,
       threshold: 5,
       lastError: "provider degraded turn",
     });
-    // Scoring is untouched: the partial census aggregates through the existing vocabulary.
-    const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
+    // Scoring is untouched: the partial review aggregates through the existing vocabulary.
     expect(judgeDecision(battery.judge)).toBe("non-result");
     expect(battery.judge.offered).toBe(7);
-    expect(existsSync(join(runDir, "judge/bait-corpus.json"))).toBe(false);
-    expect(existsSync(join(runDir, "judge/review-standing.json"))).toBe(false);
   }, 30_000);
 
-  it.concurrent("runs the battery census five-wide and records every case evidence", async () => {
-    const slugDir = directPiSlug();
+  it.concurrent("reviews five subjects at a time and records every case's evidence and phase", async () => {
     const observer = createRunObserver(SCRATCH_ROOT, "matching", "run-parallel-census");
-    const tasks = Array.from({ length: 7 }, (_, index) => ({
-      ...FIRST_TASK,
-      taskId: `judge-${index + 1}`,
-    }));
-    // The synthetic battery replaces t1/t2/t3, so the fixture controls re-bind to a task that
-    // exists in it — an unknown taskId would (correctly) make discrimination unclaimable.
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({
-        accept: ACCEPTS.map((control) => ({ ...control, taskId: "judge-1" })),
-        reject: REJECTS.map((control) => ({
-          ...required(
-            REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
-            "single-part reject",
-          ),
-          id: control.id,
-          taskId: "judge-1",
-        })),
-      }),
-    );
-    let activeBattery = 0;
-    let maximumBattery = 0;
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-parallel-census",
-      observer,
-      judge: {
-        pin: "scripted/judge-v1",
-        invoke: async (_input, context) => {
-          if (context?.subjectKind === "battery-case") {
-            activeBattery += 1;
-            maximumBattery = Math.max(maximumBattery, activeBattery);
-            await Bun.sleep(2);
-            activeBattery -= 1;
-          }
-          return {
-            verdict: true,
-            abstained: false,
-            rationale: "scripted verdict",
-            rules: [],
-            error: null,
-            errorKind: null,
-            turns: 1,
-          };
-        },
+    let active = 0;
+    let mostAtOnce = 0;
+    const { runDir, battery } = await judgedBattery(
+      "run-parallel-census",
+      7,
+      () => async () => {
+        active += 1;
+        mostAtOnce = Math.max(mostAtOnce, active);
+        await Bun.sleep(2);
+        active -= 1;
+        return PASS;
       },
-    });
-    await evaluate({
-      slug: "matching",
-      slugDir,
-      fingerprint: fingerprintOf(slugDir),
-      tasks: tasks,
-    });
-    const runDir = join(slugDir, "runs/run-parallel-census");
-    const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
-    expect(maximumBattery).toBe(5);
-    expect(battery.judge.offered).toBe(7);
-    expect(tasks.map((task) => existsSync(join(runDir, `cases/${task.taskId}/judge.json`)))).toEqual(
-      Array(7).fill(true),
+      { observer },
     );
-    // No control census runs: the evidence reads unvalidated.
-    expect(battery.judge.judge).toBe("unvalidated");
-    expect(battery.judge.disagreements).toBe(0);
-    expect(existsSync(join(runDir, "judge/bait-corpus.json"))).toBe(false);
-    expect(existsSync(join(runDir, "judge/review-standing.json"))).toBe(false);
+    expect(mostAtOnce).toBe(5);
+    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 7, disagreements: 0 });
+    const judged = Array.from({ length: 7 }, (_, index) =>
+      existsSync(join(runDir, `cases/judge-${index + 1}/judge.json`)),
+    );
+    expect(judged).toEqual(Array(7).fill(true));
     const phases = readFileSync(
       join(SCRATCH_ROOT, "campaigns/matching/observability/run-parallel-census.jsonl"),
       "utf8",
@@ -184,132 +146,41 @@ describe("makeVerify paid judge census", () => {
     }
   }, 30_000);
 
-  // The verifier finishes its cases before the optional review starts. A run stopped inside the
-  // review used to leave those verdicts with no battery record, so the canonical readers saw no
-  // measurement at all (run 69868a, 25 cases). The measurement is now on disk before the first
-  // review call, and the completed review rewrites the same file.
+  // The verifier finishes its cases before the optional review starts, so a run stopped inside the
+  // review still leaves a battery record the canonical readers accept, and the completed review
+  // rewrites the same file.
   it.concurrent("publishes the finished measurement before the review runs", async () => {
-    const slugDir = directPiSlug();
-    const tasks = Array.from({ length: 3 }, (_, index) => ({ ...FIRST_TASK, taskId: `early-${index + 1}` }));
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({
-        accept: ACCEPTS.map((control) => ({ ...control, taskId: "early-1" })),
-        reject: REJECTS.map((control) => ({
-          ...required(
-            REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
-            "single-part reject",
-          ),
-          id: control.id,
-          taskId: "early-1",
-        })),
-      }),
-    );
-    const runDir = join(slugDir, "runs/run-review-ordering");
-    let firstReviewSeen = false;
-    let casesSeenAtFirstReview = -1;
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-review-ordering",
-      judge: {
-        pin: "scripted/judge-v1",
-        invoke: async () => {
-          // Every review file written so far is named by the manifest on disk: a process killed
-          // here leaves a run dir the reader accepts, with the measurement intact and the review
-          // partial. The earlier subjects' judge rows must stay bound to the manifest the battery published.
-          expect(verifyRunDir(runDir).filter((violation) => violation.code !== "evidence-torn")).toEqual([]);
-          if (!firstReviewSeen) {
-            firstReviewSeen = true;
-            const path = join(runDir, "battery.json");
-            // SAFETY: recordBatteryRecord writes this file in this process and always gives it a
-            // cases array; the existsSync guard covers the only other state, the file being absent.
-            casesSeenAtFirstReview = existsSync(path)
-              ? (JSON.parse(readFileSync(path, "utf8")) as { cases: unknown[] }).cases.length
-              : -1;
-          }
-          return {
-            verdict: true,
-            abstained: false,
-            rationale: "scripted verdict",
-            rules: [],
-            error: null,
-            errorKind: null,
-            turns: 1,
-          };
-        },
-      },
+    // How many cases the battery record held at each review call; -1 means no record existed.
+    const casesSeenAtReview: number[] = [];
+    const { battery } = await judgedBattery("run-review-ordering", 3, (runDir) => async () => {
+      // Every review file written so far is named by the manifest on disk: a process killed here
+      // leaves a run dir the reader accepts, with the measurement intact and the review partial.
+      expect(verifyRunDir(runDir).filter((violation) => violation.code !== "evidence-torn")).toEqual([]);
+      const path = join(runDir, "battery.json");
+      // SAFETY: recordBatteryRecord writes this file in this process and always gives it a cases
+      // array; the existsSync guard covers the only other state, the file being absent.
+      casesSeenAtReview.push(
+        existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as { cases: unknown[] }).cases.length : -1,
+      );
+      return PASS;
     });
-    await evaluate({ slug: "matching", slugDir, fingerprint: fingerprintOf(slugDir), tasks });
-    // -1 would mean no battery existed when the review started, which is the defect.
-    expect(casesSeenAtFirstReview).toBe(3);
-    const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
+    expect(casesSeenAtReview[0]).toBe(3);
     expect(battery.judge.offered).toBe(3);
   }, 30_000);
 
-  it.concurrent("buys no control census when every battery verdict disagreed with the verifier", async () => {
-    const slugDir = directPiSlug();
-    const tasks = Array.from({ length: 3 }, (_, index) => ({
-      ...FIRST_TASK,
-      taskId: `judge-${index + 1}`,
-    }));
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({
-        accept: ACCEPTS.map((control) => ({ ...control, taskId: "judge-1" })),
-        reject: REJECTS.map((control) => ({
-          ...required(
-            REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
-            "single-part reject",
-          ),
-          id: control.id,
-          taskId: "judge-1",
-        })),
-      }),
-    );
-    const controlKinds: string[] = [];
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-disagree-census",
-      judge: {
-        pin: "scripted/judge-v1",
-        invoke: async (_input, context) => {
-          if (context?.subjectKind !== "battery-case") controlKinds.push(context?.subjectKind ?? "?");
-          return {
-            // The judge fails every battery case the verifier passed: three real disagreements.
-            verdict: false,
-            abstained: false,
-            rationale: "scripted verdict",
-            rules: ["publicInput"],
-            error: null,
-            errorKind: null,
-            turns: 1,
-          };
-        },
+  it.concurrent("counts every disagreement and buys no control census for it", async () => {
+    const subjectKinds = new Set<string>();
+    const { runDir, battery } = await judgedBattery(
+      "run-disagree-census",
+      3,
+      () => async (_input, context) => {
+        subjectKinds.add(context?.subjectKind ?? "none");
+        // The judge fails every battery case the verifier passed: three real disagreements.
+        return { ...PASS, verdict: false, rules: ["publicInput"] };
       },
-    });
-    await evaluate({
-      slug: "matching",
-      slugDir,
-      fingerprint: fingerprintOf(slugDir),
-      tasks: tasks,
-    });
-    const runDir = join(slugDir, "runs/run-disagree-census");
-    const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
-    // Only battery subjects reached the Judge session, and no census file was written.
-    expect(controlKinds).toEqual([]);
-    expect(battery.judge).toMatchObject({
-      judge: "unvalidated",
-      offered: 3,
-      disagreements: 3,
-    });
+    );
+    expect([...subjectKinds]).toEqual(["battery-case"]);
+    expect(battery.judge).toMatchObject({ judge: "unvalidated", offered: 3, disagreements: 3 });
     expect(battery.judge).not.toHaveProperty("controlValidity");
     for (const retired of ["control-census-sample.json", "bait-corpus.json", "review-standing.json"]) {
       expect(existsSync(join(runDir, "judge", retired))).toBe(false);
@@ -317,27 +188,8 @@ describe("makeVerify paid judge census", () => {
   }, 30_000);
 
   it.concurrent("offers only eligible subjects: an unaccepted case gets no judge call and no judge.json", async () => {
-    const slugDir = directPiSlug();
-    const tasks = Array.from({ length: 3 }, (_, index) => ({
-      ...FIRST_TASK,
-      taskId: `judge-${index + 1}`,
-    }));
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({
-        accept: ACCEPTS.map((control) => ({ ...control, taskId: "judge-1" })),
-        reject: REJECTS.map((control) => ({
-          ...required(
-            REJECTS.find((row) => row.id === control.id.replace("-two-part", "")),
-            "single-part reject",
-          ),
-          id: control.id,
-          taskId: "judge-1",
-        })),
-      }),
-    );
     // judge-2 never submits, so its case is unaccepted: no artifact to inspect and no verifier
-    // verdict to compare against — it must never be offered to the judge or paid for.
+    // verdict to compare against. It must never be offered to the judge or paid for.
     const base = scriptedSolver();
     const solver: Solver = async (task, toolset, submitted) => {
       if (task.taskId !== "judge-2") return await base(task, toolset, submitted);
@@ -348,43 +200,21 @@ describe("makeVerify paid judge census", () => {
       await declare.execute("c-unaccepted", double({ name: input.parts[0] }));
       return { turns: 1, completedTurns: 1, errors: [] };
     };
-    const judgedBatterySubjects: string[] = [];
-    const evaluate = makeVerify({
-      solver,
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-eligible-only",
-      judge: {
-        pin: "scripted/judge-v1",
-        invoke: async (_input, context) => {
-          if (context?.subjectKind === "battery-case") judgedBatterySubjects.push(context.subjectId);
-          return {
-            verdict: true,
-            abstained: false,
-            rationale: "scripted verdict",
-            rules: [],
-            error: null,
-            errorKind: null,
-            turns: 1,
-          };
-        },
+    const judged: string[] = [];
+    const { runDir, battery } = await judgedBattery(
+      "run-eligible-only",
+      3,
+      () => async (_input, context) => {
+        judged.push(required(context, "the judge call context").subjectId);
+        return PASS;
       },
-    });
-    await evaluate({
-      slug: "matching",
-      slugDir,
-      fingerprint: fingerprintOf(slugDir),
-      tasks: tasks,
-    });
-    const runDir = join(slugDir, "runs/run-eligible-only");
-    const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
-    expect(judgedBatterySubjects.sort()).toEqual(["judge-1", "judge-3"]);
+      { solver },
+    );
+    expect(judged.sort()).toEqual(["judge-1", "judge-3"]);
     expect(battery.judge.offered).toBe(2);
-    expect(existsSync(join(runDir, "cases/judge-1/judge.json"))).toBe(true);
-    expect(existsSync(join(runDir, "cases/judge-2/judge.json"))).toBe(false);
-    expect(existsSync(join(runDir, "cases/judge-3/judge.json"))).toBe(true);
+    expect(
+      ["judge-1", "judge-2", "judge-3"].map((id) => existsSync(join(runDir, `cases/${id}/judge.json`))),
+    ).toEqual([true, false, true]);
     const unaccepted = JSON.parse(readFileSync(join(runDir, "cases/judge-2/case-result.json"), "utf8"));
     expect(unaccepted.acceptedSubmit).toBe(false);
   }, 30_000);

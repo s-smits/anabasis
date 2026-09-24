@@ -12,8 +12,7 @@ import {
   BRIEF,
   EVALUATOR_SOURCE,
   REJECTS,
-  TASKS,
-  TOOLS_SOURCE,
+  bundleSlug,
   scratch,
 } from "./verification-runner-fixtures.ts";
 
@@ -79,8 +78,6 @@ export const EXTERNAL_BRIEF = {
   ],
 };
 
-/** The battery every grounded case in the second half of C3 measures. */
-export const markedTasks = TASKS.tasks;
 /** Install one executable in the candidate workspace's own `.toolchain` tree, where
  *  resolveToolInventory looks first. Toolchain bytes sit outside the fingerprint, so this may
  *  be written before or after fingerprintOf. */
@@ -140,12 +137,7 @@ export function externalSlug(
     reject: [...REJECTS, ...TOOL_REJECTS],
   },
 ): string {
-  const slugDir = scratch();
-  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-  mkdirSync(join(slugDir, "agent"), { recursive: true });
+  const slugDir = bundleSlug({ evaluator: evaluatorSource, controls });
   writeFileSync(join(slugDir, "correctness-model/brief.json"), JSON.stringify(EXTERNAL_BRIEF));
-  writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), evaluatorSource);
-  writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-  writeFileSync(join(slugDir, "correctness-model/controls.json"), JSON.stringify(controls));
   return slugDir;
 }

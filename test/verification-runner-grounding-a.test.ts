@@ -7,29 +7,22 @@
 // non-result receipt, while an author-repairable one is settled at once with no second attempt;
 // and a host non-result outranks a correctness model that swallowed it and returned a verdict
 // anyway.
-//
-// Split from verification-runner.test.ts so that each file finishes within about half a minute
-// under four concurrent tests.
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "../src/meta/filesystem.ts";
+import { readFileSync, existsSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
-import { makeVerify } from "../src/truth/verification-runner.ts";
 import type { ControlReceipt } from "../src/truth/battery-record.ts";
 import {
   ACCEPTS,
   EVALUATOR_SOURCE,
   REJECTS,
   TASKS,
-  TOOLS_SOURCE,
-  fingerprintOf,
+  bundleSlug,
   matchingBattery,
   removeScratchRoot,
-  scratch,
   scriptedSolver,
-  SCRIPTED_CONDITION,
-  SCRIPTED_THRESHOLD_DIGEST,
+  scriptedVerify,
 } from "./helpers/verification-runner-fixtures.ts";
 import {
   GAMMA_HANGS_TOOL_SCRIPT,
@@ -41,7 +34,6 @@ import {
   VERIFIER_EVALUATOR_SOURCE,
   externalSlug,
   installTool,
-  markedTasks,
   unreadableToolHost,
 } from "./helpers/verification-runner-external.ts";
 
@@ -51,37 +43,17 @@ describe("makeVerify external-verifier grounding (C3)", () => {
   it.concurrent("tool runs during the battery write execution evidence on battery and report", async () => {
     const slugDir = externalSlug(VERIFIER_EVALUATOR_SOURCE);
     installTool(slugDir, TOOL_SCRIPT);
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-c3-grounding",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
+    const report = await scriptedVerify("run-c3-grounding")(matchingBattery(slugDir));
     // Discrimination is verified through the SAME tool-backed verifier, and stays claimable.
     expect(report.evidence.discrimination.claimable).toBe(true);
-    expect(report.score).toEqual([
-      {
-        caseId: "t1",
+    expect(report.score).toEqual(
+      ["t1", "t2", "t3"].map((caseId) => ({
+        caseId,
         passed: true,
         truthVerified: true,
         checkIds: ["expected-binding", "ghost-ref", "parts-assigned"],
-      },
-      {
-        caseId: "t2",
-        passed: true,
-        truthVerified: true,
-        checkIds: ["expected-binding", "ghost-ref", "parts-assigned"],
-      },
-      {
-        caseId: "t3",
-        passed: true,
-        truthVerified: true,
-        checkIds: ["expected-binding", "ghost-ref", "parts-assigned"],
-      },
-    ]);
+      })),
+    );
     // Bindings are subject-bound: every control and every case that ran the tool has its OWN
     // entry, so one run cannot ground the whole run. The host orders rows by phase, subject and
     // attempt whatever the census lane timing, so the comparison is exact.
@@ -166,87 +138,45 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     );
   }, 60_000);
 
-  it.concurrent("a task-time authored non-Boolean result is rejected as a generated verifier exception", async () => {
-    const UNBACKED_TASK_NONRESULT_SOURCE = EVALUATOR_SOURCE.replace(
-      "const rows = artifact.assignments;",
-      `if (Array.isArray(artifact?.assignments) && artifact.assignments.some((row) => row?.part === "gamma")) {
+  // An authored non-Boolean result names no instrument the host ran, so it is a generated
+  // verifier exception on that case. Accept a1 is byte-identical to t1's solution, so the
+  // every-task row flubs t1 onto its own slot and marks t2/t3 by theirs, which keeps the controls
+  // healthy while every measured task is unbacked.
+  it.concurrent.each<{ tasks: string; marker: string; flub: string[]; verified: string[] }>([
+    { tasks: "one task", marker: 'row?.part === "gamma"', flub: [], verified: ["t1", "t2"] },
+    {
+      tasks: "every task",
+      marker: 'row?.slot === "s4" || row?.slot === "s5" || row?.slot === "flub-wrong-slot"',
+      flub: ["t1"],
+      verified: [],
+    },
+  ])(
+    "rejects an authored non-Boolean result on $tasks before a fabricated aggregate can escape",
+    async ({ tasks, marker, flub, verified }) => {
+      const slugDir = bundleSlug({
+        evaluator: EVALUATOR_SOURCE.replace(
+          "const rows = artifact.assignments;",
+          `if (Array.isArray(artifact?.assignments) && artifact.assignments.some((row) => ${marker})) {
     return { ok: false, issues: [], resultKind: "runtimeNonResult", nonResultKind: "verifierUnavailable" };
   }
   const rows = artifact.assignments;`,
-    );
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), UNBACKED_TASK_NONRESULT_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-c3-unbacked-nonresult",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
-    expect(report.score.map((row) => row.caseId)).toEqual(["t1", "t2"]);
-    expect(report.evidence.discrimination.claimable).toBe(true);
-    const battery = JSON.parse(
-      readFileSync(join(slugDir, "runs/run-c3-unbacked-nonresult/battery.json"), "utf8"),
-    );
-    expect(battery.cases.find((row: { taskId: string }) => row.taskId === "t3")).toMatchObject({
-      runtimeNonResultKind: "verifier-throw",
-      pass: null,
-    });
-    expect(battery.executionEvidence.filter((row: { subjectId: string }) => row.subjectId === "t3")).toEqual(
-      [],
-    );
-  }, 60_000);
-
-  it.concurrent("rejects every authored non-Boolean task result before a fabricated aggregate can escape", async () => {
-    const ALL_TASKS_UNBACKED_SOURCE = EVALUATOR_SOURCE.replace(
-      "const rows = artifact.assignments;",
-      // Accept a1 is byte-identical to t1's solution (accepts evaluate under the task's own hidden
-      // rows), so the flubbed t1 submission plus t2/t3's s4/s5 slots are the battery-only markers
-      // that keep calibration healthy while every measured task is unbacked.
-      `if (Array.isArray(artifact?.assignments) && artifact.assignments.some((row) => row?.slot === "s4" || row?.slot === "s5" || row?.slot === "flub-wrong-slot")) {
-    return { ok: false, issues: [], resultKind: "runtimeNonResult", nonResultKind: "verifierUnavailable" };
-  }
-  const rows = artifact.assignments;`,
-    );
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), ALL_TASKS_UNBACKED_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    const runId = "run-c3-all-unbacked-nonresult";
-    // Flub t1 so its accepted submission carries the distinctive flub slot instead of matching
-    // accept a1 byte for byte; the non-result fires before verification, so the flub never scores.
-    const report = await makeVerify({
-      solver: scriptedSolver(new Set(["t1"])),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })(matchingBattery(slugDir));
-    expect(report.score).toEqual([]);
-    expect(report.evidence.discrimination.claimable).toBe(true);
-    const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
-    expect(battery.cases).toHaveLength(TASKS.tasks.length);
-    expect(
-      battery.cases.every(
-        (row: { runtimeNonResultKind: string }) => row.runtimeNonResultKind === "verifier-throw",
-      ),
-    ).toBe(true);
-  }, 60_000);
+        ),
+      });
+      const runId = `run-c3-unbacked-${tasks.replace(" ", "-")}`;
+      const report = await scriptedVerify(runId, { solver: scriptedSolver(new Set(flub)) })(
+        matchingBattery(slugDir),
+      );
+      expect(report.score.map((row) => row.caseId)).toEqual(verified);
+      expect(report.evidence.discrimination.claimable).toBe(true);
+      const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
+      expect(battery.cases).toHaveLength(TASKS.tasks.length);
+      const unbacked = battery.cases.filter((row: { taskId: string }) => !verified.includes(row.taskId));
+      expect(unbacked.map((row: { runtimeNonResultKind: string }) => row.runtimeNonResultKind)).toEqual(
+        Array(TASKS.tasks.length - verified.length).fill("verifier-throw"),
+      );
+    },
+    60_000,
+  );
 
   it.concurrent("retries one control once for an environment-owned tool failure, then settles it as its own non-result receipt", async () => {
     // One control the host cannot run to a verdict used to stop the whole corpus. Each such
@@ -254,16 +184,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     // result decides whether solving starts.
     const slugDir = externalSlug(VERIFIER_EVALUATOR_SOURCE);
     const runId = "run-control-host-refusal";
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-      createVerifier: unreadableToolHost,
-      toolRetryWaitMs: 0,
-    })(matchingBattery(slugDir));
+    const report = await scriptedVerify(runId, { createVerifier: unreadableToolHost, toolRetryWaitMs: 0 })(
+      matchingBattery(slugDir),
+    );
     const runDir = join(slugDir, "runs", runId);
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
     expect(existsSync(join(runDir, "verifier-non-result.json"))).toBe(false);
@@ -300,14 +223,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     const slugDir = externalSlug(SHORT_WALL_EVALUATOR_SOURCE);
     installTool(slugDir, HANGING_TOOL_SCRIPT);
     const runId = "run-control-tool-timeout";
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })(matchingBattery(slugDir));
+    const report = await scriptedVerify(runId)(matchingBattery(slugDir));
     const runDir = join(slugDir, "runs", runId);
     expect(existsSync(join(runDir, "verifier-non-result.json"))).toBe(false);
     const battery = JSON.parse(readFileSync(join(runDir, "battery.json"), "utf8"));
@@ -323,100 +239,52 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     ).toHaveLength(1);
   }, 60_000);
 
-  it.concurrent("records a task non-result from matching host evidence and retains it outside the verified denominator", async () => {
-    // Only t3's artifact contains "gamma", so the controls and t1/t2 complete and the battery keeps
-    // two verified cases beside one measured outage. The relay matches the host's own row, so the
-    // case is a typed non-result while discrimination remains claimable.
-    // A 400 ms limit on the controls can interrupt calibration under suite load before reaching t3.
-    // Keep the short limit on the hanging subject; ordinary subjects retain startup time.
-    const slugDir = externalSlug(
-      SHORT_WALL_EVALUATOR_SOURCE.replace(
-        "timeoutMs: 400",
-        'timeoutMs: JSON.stringify(artifact).includes("gamma") ? 400 : 10_000',
+  // Only t3's artifact contains "gamma", so the tool hangs for t3 alone while the controls and
+  // t1/t2 complete. The short wall stays on the hanging subject: a flat 400 ms can time the
+  // ordinary subjects out under suite load. Whether the evaluator reports the host's timeout or
+  // swallows it and returns a verdict, the host's own row decides: t3 is a typed non-result
+  // outside the verified denominator, and discrimination stays claimable.
+  const GAMMA_WALL_SOURCE = SHORT_WALL_EVALUATOR_SOURCE.replace(
+    "timeoutMs: 400",
+    'timeoutMs: JSON.stringify(artifact).includes("gamma") ? 400 : 10_000',
+  );
+  it.concurrent.each([
+    { evaluator: "reports", source: GAMMA_WALL_SOURCE },
+    {
+      evaluator: "swallows",
+      source: GAMMA_WALL_SOURCE.replace(
+        "return run.exitCode === 0;",
+        "return run.nonResult ? true : run.exitCode === 0;",
       ),
-    );
-    installTool(slugDir, GAMMA_HANGS_TOOL_SCRIPT);
-    const runId = "run-c3-backed-nonresult";
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })(matchingBattery(slugDir));
-    expect(report.evidence.discrimination.claimable).toBe(true);
-    expect(report.score.map((row) => row.caseId)).toEqual(["t1", "t2"]);
-    const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
-    expect(battery.cases.find((row: { taskId: string }) => row.taskId === "t3")).toMatchObject({
-      truthOk: null,
-      pass: null,
-      runtimeNonResultKind: "timeout",
-    });
-    // t3 is a non-result, so its tool run is not a verified execution of the check.
-    expect(battery.truthCheckFiring).toMatchObject({
-      verifierVerifiedCount: 2,
-      executedByCheck: { "ghost-ref": 2 },
-    });
-    expect(battery.executionEvidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          runId,
-          phase: "battery",
-          subjectId: "t3",
-          attempt: 1,
-          outcome: "timeout",
-        }),
-      ]),
-    );
-  }, 60_000);
-
-  it.concurrent("a host non-result outranks a Correctness Model evaluator that swallows it and returns a verdict", async () => {
-    // The tool hangs for t3 and the check ignores that outcome. The host still records the
-    // timeout while the controls and the other two cases complete.
-    // The short wall stays on the hanging subject alone: a flat 400 ms times t1 and t2 out under
-    // gate load.
-    const SWALLOWING_EVALUATOR_SOURCE = SHORT_WALL_EVALUATOR_SOURCE.replace(
-      "timeoutMs: 400",
-      'timeoutMs: JSON.stringify(artifact).includes("gamma") ? 400 : 10_000',
-    ).replace("return run.exitCode === 0;", "return run.nonResult ? true : run.exitCode === 0;");
-    const slugDir = externalSlug(SWALLOWING_EVALUATOR_SOURCE);
-    installTool(slugDir, GAMMA_HANGS_TOOL_SCRIPT);
-    const runId = "run-c3-swallowed-outage";
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })(matchingBattery(slugDir));
-    expect(report.score.map((row) => row.caseId)).toEqual(["t1", "t2"]);
-    const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
-    expect(battery.cases.find((row: { taskId: string }) => row.taskId === "t3")).toMatchObject({
-      truthOk: null,
-      pass: null,
-      runtimeNonResultKind: "timeout",
-    });
-    // The evaluator's raw verdict cannot add the timed-out case to any verified check count.
-    expect(battery.truthCheckFiring).toMatchObject({
-      verifierVerifiedCount: 2,
-      applicableByCheck: { "parts-assigned": 2, "expected-binding": 2 },
-      firedByCheck: { "parts-assigned": 2, "expected-binding": 2 },
-      executedByCheck: { "ghost-ref": 2 },
-    });
-    expect(battery.executionEvidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          runId,
-          phase: "battery",
-          subjectId: "t3",
-          attempt: 1,
-          outcome: "timeout",
-        }),
-      ]),
-    );
-  }, 60_000);
+    },
+  ])(
+    "records a host timeout as the case's non-result when the evaluator $evaluator it",
+    async ({ evaluator, source }) => {
+      const slugDir = externalSlug(source);
+      installTool(slugDir, GAMMA_HANGS_TOOL_SCRIPT);
+      const runId = `run-c3-outage-${evaluator}`;
+      const report = await scriptedVerify(runId)(matchingBattery(slugDir));
+      expect(report.evidence.discrimination.claimable).toBe(true);
+      expect(report.score.map((row) => row.caseId)).toEqual(["t1", "t2"]);
+      const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
+      expect(battery.cases.find((row: { taskId: string }) => row.taskId === "t3")).toMatchObject({
+        truthOk: null,
+        pass: null,
+        runtimeNonResultKind: "timeout",
+      });
+      // The evaluator's raw verdict cannot add the timed-out case to any verified check count.
+      expect(battery.truthCheckFiring).toMatchObject({
+        verifierVerifiedCount: 2,
+        applicableByCheck: { "parts-assigned": 2, "expected-binding": 2 },
+        firedByCheck: { "parts-assigned": 2, "expected-binding": 2 },
+        executedByCheck: { "ghost-ref": 2 },
+      });
+      expect(battery.executionEvidence).toContainEqual(
+        expect.objectContaining({ runId, phase: "battery", subjectId: "t3", attempt: 1, outcome: "timeout" }),
+      );
+    },
+    60_000,
+  );
 
   it.concurrent("refuses a cell file the author supplied rather than the submission's own bytes", async () => {
     // The shim-header shape the tool port exists to close: a check that compiles the artifact
@@ -430,14 +298,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     );
     const slugDir = externalSlug(AUTHORED_CELL_SOURCE);
     installTool(slugDir, TOOL_SCRIPT);
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-c3-authored-cell",
-    })(matchingBattery(slugDir));
+    const report = await scriptedVerify("run-c3-authored-cell")(matchingBattery(slugDir));
     expect(report.evidence.discrimination.claimable).toBe(false);
     expect(report.evidence.discrimination.findings).toEqual(
       expect.arrayContaining([
@@ -465,14 +326,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       reject: [...REJECTS, ...TOOL_REJECTS],
     });
     installTool(slugDir, TOOL_SCRIPT);
-    const report = await makeVerify({
-      solver: scriptedSolver(flubTaskIds),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })({ slug: "matching", slugDir, fingerprint: fingerprintOf(slugDir), tasks: markedTasks });
+    const report = await scriptedVerify(runId, { solver: scriptedSolver(flubTaskIds) })(
+      matchingBattery(slugDir),
+    );
     const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
     return {
       scored: report.score.map((row) => row.caseId),

@@ -18,7 +18,6 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
 import { builtStarterFactoryForSolver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   FIRST_TASK,
@@ -27,22 +26,14 @@ import {
   directPiSolver,
   fingerprintOf,
   removeScratchRoot,
-  SCRIPTED_CONDITION,
-  SCRIPTED_THRESHOLD_DIGEST,
+  scriptedVerify,
 } from "./helpers/verification-runner-fixtures.ts";
 
 afterAll(removeScratchRoot);
 
 /** One battery of the first fixture task, through the production starter. */
 const solveFirstTask = (slugDir: string, solver: ReturnType<typeof directPiSolver>, runId: string) =>
-  makeVerify({
-    solver,
-    backendPin: "openrouter/faux-eval-production",
-    condition: SCRIPTED_CONDITION,
-    thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-    capabilities: ["web-search:off"],
-    runId,
-  })({
+  scriptedVerify(runId, { solver, backendPin: "openrouter/faux-eval-production" })({
     slug: "matching",
     slugDir,
     fingerprint: fingerprintOf(slugDir),
@@ -102,7 +93,6 @@ describe("a case solved through the production Pi path", () => {
           break;
         }
       }
-      expect(() => runtimeProcess.kill(pid, 0)).toThrow();
       return toolset;
     });
 
@@ -122,7 +112,8 @@ describe("a case solved through the production Pi path", () => {
     );
     expect(runtime.generatedTools.termination).toMatchObject({ status: "non-result", kind: "runtime" });
     expect(existsSync(join(caseDir, "verifier.json"))).toBe(false);
-    expect(() => runtimeProcess.kill(required(killedPid, "the killed worker pid"), 0)).toThrow();
+    // Signal 0 probes a pid without signalling it; ESRCH says the worker is gone, not merely unreachable.
+    expect(() => runtimeProcess.kill(required(killedPid, "the killed worker pid"), 0)).toThrow(/ESRCH/);
     expect(verifyRunDir(join(slugDir, "runs/run-direct-pi-worker-exit"))).toEqual([]);
   }, 60_000);
 

@@ -19,9 +19,10 @@ import type { BuildTask } from "../src/truth/tasks.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import type { VerifierExecutionEvidence, VerifierHostHandle } from "../src/verify/verifier-port.ts";
+import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
 import { join } from "../src/meta/path.ts";
 import { double, required } from "./helpers/doubles.ts";
+import { overrideHost } from "./helpers/host-override.ts";
 import {
   ACCEPTS,
   BRIEF,
@@ -49,21 +50,12 @@ afterAll(async () => {
 });
 
 /**
- * A verifier host holding exactly the run rows the coverage and grounding joins read. The fixture
- * evaluator uses authored computation and never calls a tool, so the rows are supplied here rather
- * than produced by a run.
+ * A real verifier host reporting exactly the run rows the coverage and grounding joins read. The
+ * fixture evaluator uses authored computation and never calls a tool, so the rows are supplied
+ * here rather than produced by a run.
  */
-function hostWithEvidence(evidence: VerifierExecutionEvidence[]): VerifierHostHandle {
-  return double<VerifierHostHandle>({
-    openSubject: () => ({
-      port: { run: async () => undefined },
-      close: async () => ({ pendingInvocations: 0 }),
-    }),
-    executedBindings: () => [],
-    tools: () => ({}),
-    evidence: () => evidence,
-  });
-}
+const hostWithEvidence = (evidence: VerifierExecutionEvidence[]) =>
+  overrideHost({ evidence: () => evidence });
 
 function cloneBrief(): ClonedBrief {
   // SAFETY: a structured clone of the same Brief the production probe accepted in the first case.
@@ -130,9 +122,8 @@ describe("the controls probe", () => {
     return { brief, corpus, tasks, dir: writeSlug(name, { brief, corpus, tasks }) };
   }
 
-  // Run w26 declared six external checks over four deliverable families and was charged 153
-  // unexecuted-grounding findings; its public contract never required most of those pairs. The
-  // probe now asks the one applicability owner instead of pairing every control with every check.
+  // A check's external evidence is owed only where the check applies, so the probe asks the one
+  // applicability owner instead of pairing every control with every check.
   it.concurrent("charges external evidence only in the declared check families", async () => {
     const fixture = externalFixture("controls-external-applicability", "cat");
     // The host double reports one timed-out run elsewhere and none for these controls, so every
@@ -160,13 +151,8 @@ describe("the controls probe", () => {
   }, 30_000);
 
   /**
-   * A tool-grounded check the host never ran.
-   *
-   * Runs 22, 23 and 25 each adopted a firmware-compiles style check declared as external-verifier
-   * grounding. They had three to ten reject controls but rejected no measured answers across
-   * 73, 100 and 8 graded rows respectively. In run 22 the nested arduino-cli launch had no host
-   * attestation; in run 23 the build path was defined but unused, and a syntax scan decided the
-   * check. Passing controls alone did not establish the declared external execution.
+   * The census over a check declared as external evidence from `checker`. Passing controls alone
+   * do not establish that the declared tool ran: only the host's own rows do.
    */
   const toolBackedSlug = async (
     name: string,
@@ -181,8 +167,7 @@ describe("the controls probe", () => {
   };
 
   it("refuses a declared tool that resolves to no executable, before spending the census", async () => {
-    // truss-run9-sol 2026-09-02 spent 145 controls on the same unusable verifier and told the
-    // author to pin it somewhere else. The unresolved tool id is named once instead, and no
+    // An unresolved tool would fail every control the same way, so it is named once and no
     // control receipt is produced.
     const result = await toolBackedSlug("tool-unresolved", [], "live");
     expect(result.findings).toEqual([
@@ -254,9 +239,8 @@ describe("the controls probe", () => {
       path: "correctness-model/controls.json",
     });
     expect(findings[0]?.detail).toContain("r-actually-clean");
-    // Run w11: 36 iterations saw only "generated-evaluate-result" while the row identity was
-    // public authoring detail. The identity-composed finding now survives projection with its
-    // control row id and mutation class, so the author knows which row to repair.
+    // The finding is composed from public authoring identities, so it survives projection with
+    // its control row id and mutation class and the author knows which row to repair.
     // SAFETY: toHaveLength(1)/toMatchObject above proved findings[0] exists.
     const first = findings[0] as ContractFinding;
     expect(first.disclosure).toMatchObject({ class: "authored" });
@@ -364,8 +348,7 @@ describe("the controls probe", () => {
     // Attribution is only observable once the second check reached a verdict of its own.
     expect(result.checkCost?.map((row) => row.checkId)).toContain("unrelated-limit");
     // The alias reject fails its named check and unrelated-limit together; the named check
-    // rejected it, so the cascade is attributed (exact-set rule ended 2026-09-14) and the census
-    // reports nothing.
+    // rejected it, so the cascade is attributed and the census reports nothing.
     expect(result.findings.map((finding) => finding.code)).toEqual([]);
   }, 30_000);
 

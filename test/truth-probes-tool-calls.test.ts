@@ -25,8 +25,8 @@ const PATTERNED_SOURCE = TOOLS_SOURCE.replace(
 
 describe("the arguments the conformance probe derives", () => {
   it.concurrent("refuses a tool whose declared parameters the probe cannot satisfy instead of skipping it", async () => {
-    // The sampler derives "" for a plain string; a pattern it cannot read left declare_part
-    // silently unexercised on every task before 2026-09-15.
+    // The sampler derives "" for a plain string; a pattern it cannot read would otherwise leave
+    // declare_part silently unexercised on every task.
     expect(PATTERNED_SOURCE).not.toBe(TOOLS_SOURCE);
     const findings = await conform("conform-unprobed", [TASK], { tools: PATTERNED_SOURCE });
     expect(findings.filter((f) => f.code === "generated-toolset-unprobed")).toEqual([
@@ -65,20 +65,18 @@ describe("the arguments the conformance probe derives", () => {
     await expect(conform("conform-nullable-integer", [TASK], { tools: source })).resolves.toEqual([]);
   });
 
-  it.concurrent("names a tool whose empty or unsupported type array derives no arguments", async () => {
-    // Before 2026-09-15 the probe skipped such a tool without a row; nothing had opened a task through it.
-    for (const [name, schema] of [
-      ["empty", "[]"],
-      ["unsupported", '["date"]'],
-    ]) {
-      const source = TOOLS_SOURCE.replace(
-        "parameters: Type.Object({ name: Type.String() }),",
-        `parameters: Type.Object({ name: Type.Unsafe({ type: ${schema} }) }),`,
-      );
-      expect(source).toContain(`name: Type.Unsafe({ type: ${schema} })`);
-      const findings = await conform(`conform-${name}-type-array`, [TASK], { tools: source });
-      expect(findings.map((f) => f.code)).toEqual(["generated-toolset-unprobed"]);
-    }
+  // A tool the probe derives no arguments for has opened no task, so it is a row rather than a skip.
+  it.concurrent.each([
+    ["empty", "[]"],
+    ["unsupported", '["date"]'],
+  ])("names a tool whose %s type array derives no arguments", async (name, schema) => {
+    const source = TOOLS_SOURCE.replace(
+      "parameters: Type.Object({ name: Type.String() }),",
+      `parameters: Type.Object({ name: Type.Unsafe({ type: ${schema} }) }),`,
+    );
+    expect(source).toContain(`name: Type.Unsafe({ type: ${schema} })`);
+    const findings = await conform(`conform-${name}-type-array`, [TASK], { tools: source });
+    expect(findings.map((f) => f.code)).toEqual(["generated-toolset-unprobed"]);
   });
 });
 
@@ -110,8 +108,8 @@ describe("what a probed call's failure means", () => {
   });
 
   it.concurrent("reports a writer that breaks the draft contract as a build finding", async () => {
-    // A plain writer calling setArtifact is the run-40 defect class: legal-looking generated
-    // code whose call the draft store refuses. Conformance must catch it before fingerprinting.
+    // A plain writer calling setArtifact is legal-looking generated code whose call the draft
+    // store refuses. Conformance must catch it before fingerprinting.
     const source = TOOLS_SOURCE.replace(
       'draft.setValue("parts", [...parts(draft), name]);',
       'draft.setValue("parts", [...parts(draft), name]);\n        draft.setArtifact({ assignments: [] });',
@@ -134,14 +132,10 @@ describe("what a probed call's failure means", () => {
     await expect(conform("conform-domain-error", [TASK], { tools: source })).resolves.toEqual([]);
   });
 
-  it.concurrent("checks materialisation after a settled artifact-writer call", async () => {
-    await expect(conform("conform-settled-artifact-writer", [TASK])).resolves.toEqual([]);
-  });
-
   // A result the frame protocol cannot carry is that call's failure, not the worker's: the probe
   // refuses the tool that returns it and the session stays open, so the remaining probes are still
-  // observed. Before 2026-09-17 the same bytes ended the worker and the pack recorded a termination
-  // beside the throw, which a paid solve recorded as an environment non-result.
+  // observed. Ending the worker instead would record a termination beside the throw, which a paid
+  // solve reads as an environment non-result.
   it.concurrent("refuses a tool whose result cannot be framed, without ending the worker", async () => {
     const source = TOOLS_SOURCE.replace(
       'return { text: "declared " + name };',

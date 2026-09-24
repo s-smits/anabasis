@@ -8,6 +8,7 @@
  * same product live in experiment-intent.e2e.test.ts, and those over the tool-requiring variant
  * in experiment-intent-tool.e2e.test.ts (see test/helpers/experiment-freeze-products.ts).
  */
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { double, required } from "./helpers/doubles.ts";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -79,6 +80,7 @@ it("records only changed public inputs and refuses drifted attribution", () => {
     target: { comparator: "at-least" as const, verifiedPasses: 0 },
     gap: "Untested interaction.",
     change: "Change public input.",
+    ...PLAN_FIELDS,
     expectedResult: "The subset changes.",
   };
   const captured = { ...proposal, digest: hashJsonValue(proposal) };
@@ -159,7 +161,6 @@ it.each(["helper", "hidden", "controls"] as const)(
     }
     writeBoundRepresentation(candidate);
     expect(candidateExperimentScope("build", base, candidate, undefined, "product")).toEqual({
-      requested: "build",
       actual: "evaluation",
       freeze: { state: "held", clauses: [] },
     });
@@ -221,7 +222,6 @@ it.each(["agent", "exam", "schema", "unreadable", "absent"] as const)(
       undefined,
       "product",
     );
-    expect(scope.requested).toBe("build");
     expect(scope.actual).toBe("build");
     expect(scope.freeze?.state).not.toBe("held");
   },
@@ -273,6 +273,7 @@ it.concurrent.each(["private", "public", "unproven"] as const)(
             target: { comparator: "at-least", verifiedPasses: 0 },
             gap: "The evaluator needs repair.",
             change: `Repair ${kind}.`,
+            ...PLAN_FIELDS,
             expectedResult: "The public exam remains solvable.",
           }),
         );
@@ -353,6 +354,7 @@ function snapshotOf(
     target: { comparator: "at-least" as const, verifiedPasses },
     gap: "Gap.",
     change: changeText,
+    ...PLAN_FIELDS,
     expectedResult: "Result.",
   };
   // The parts as parsed, validated or not: these cases move bytes a real submit would refuse, and
@@ -452,6 +454,36 @@ it("reports every independent proposal refusal at once", () => {
   ]);
   expect(codes("tasks", MATCHING_TASKS.length)).toEqual(["experiment-scope-mismatch"]);
   expect(codes("product", MATCHING_TASKS.length)).toEqual([]);
+});
+
+// Four batteries in a row once moved only their published magnitudes after each one passed every
+// verified case. After a battery that found no limit, a plan that declares a climb must declare a
+// new move for at least one family; the comparison is between declarations, not difficulty.
+it("refuses a climb after a no-limit battery whose families all repeat the last plan's moves", () => {
+  const { base, candidate } = pair();
+  bindBaselineRepresentation(base);
+  const plan = (change: string) =>
+    required(snapshotOf(candidate, 1, "product", change).experimentProposal, "plan");
+  const lastBattery = { noLimit: true, passed: 3, verified: 3, plan: plan("Earlier magnitudes.") };
+  const codes = (snapshot: CandidateSnapshot) =>
+    candidateProposalRefusals(snapshot, { adoptedDir: base, lastBattery }).map((finding) => finding.code);
+  // Hostile: only the magnitudes changed, and every family declares the move it declared before.
+  expect(codes(snapshotOf(candidate, 1, "product", "Larger magnitudes."))).toEqual([
+    "climb-battery-repeats-history",
+  ]);
+  // Positive: one family names a new move.
+  const moved = snapshotOf(candidate, 1, "product", "Larger magnitudes.");
+  const proposal = required(moved.experimentProposal, "plan");
+  const { digest: _digest, ...rest } = {
+    ...proposal,
+    families: proposal.families.map((row) => ({
+      ...row,
+      move: "An earlier choice now forecloses a later one.",
+    })),
+  };
+  expect(codes({ ...moved, experimentProposal: { ...rest, digest: hashJsonValue(rest) } })).toEqual([]);
+  // A plan that does not declare a climb below the last count is not asked the question.
+  expect(codes(snapshotOf(candidate, 3, "product", "Larger magnitudes."))).toEqual([]);
 });
 
 it("reads a retained task's changed expectations as moving scoring, and an added task as not", () => {

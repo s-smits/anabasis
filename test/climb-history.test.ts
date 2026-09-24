@@ -18,6 +18,8 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { type JsonValue, isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required } from "./helpers/doubles.ts";
 import { fixtureThresholdDigest } from "./helpers/thresholds.ts";
 
@@ -35,7 +37,7 @@ import {
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
 import { POLICY } from "../src/critic/policy.ts";
-import { allowanceStop, readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
+import { readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 
 const RUN_PIN = "test/pin";
 const BAND: [number, number] = [0.2, 0.5];
@@ -45,6 +47,7 @@ const BAND: [number, number] = [0.2, 0.5];
  *  the run records beside the case. */
 interface CaseRow {
   taskId?: string | null;
+  family?: string;
   pass: boolean | null;
   acceptedSubmit?: boolean;
   toolCalls?: number;
@@ -68,6 +71,7 @@ function caseRecord(row: CaseRow): JsonValue {
   };
   return {
     ...keyIfDefined("taskId", row.taskId === null ? undefined : (row.taskId ?? "t")),
+    ...keyIfDefined("family", row.family),
     pass: row.pass,
     acceptedSubmit: row.acceptedSubmit ?? row.pass !== null,
     ...keyIfDefined("solver", Object.keys(solver).length === 0 ? undefined : solver),
@@ -82,6 +86,13 @@ function writeBattery(
   createdAt: string,
   overrides: BatteryFields = {},
 ): void {
+  openBattery(tree, runId, cases, overrides).record();
+  writeClaim(tree, runId, createdAt, true);
+}
+
+/** The battery's evidence log with its battery and public tasks written and not yet recorded, so a
+ *  test can add the files a run records beside them. */
+function openBattery(tree: string, runId: string, cases: CaseRow[], overrides: BatteryFields = {}) {
   const evidence = new EvidenceLog(join(tree, "runs", runId));
   evidence.write("battery.json", {
     runId,
@@ -99,8 +110,7 @@ function writeBattery(
       evidence.write(`cases/${taskId}/public-task.json`, { taskId, publicTask: { publicInput } });
     }
   }
-  evidence.record();
-  writeClaim(tree, runId, createdAt, true);
+  return evidence;
 }
 
 function writeClaim(
@@ -262,9 +272,7 @@ describe("what one battery contributes to the reading", () => {
     expect(summary[1]).toMatchObject({ family: "void-span", attempts: 2, passes: 1 });
   });
 
-  it("reads the most any one case spent, so two batteries with the same passes are not read alike", () => {
-    // The minutes are run 1aa6e6's: every case passed inside a tenth of its declared walls, which
-    // the pass count alone cannot say.
+  it("reads the most any one case spent, as a fact beside the verdicts", () => {
     const tree = tmp();
     writeBattery(
       tree,
@@ -286,6 +294,90 @@ describe("what one battery contributes to the reading", () => {
       minutes: 14.8,
       toolCalls: 53,
     });
+  });
+
+  it("reads each family's median and most minutes and its median tool calls", () => {
+    const tree = tmp();
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "t1", family: "span", pass: true, toolCalls: 10, minutes: 4 },
+        { taskId: "t2", family: "span", pass: false, toolCalls: 30, minutes: 20 },
+        { taskId: "t3", family: "span", pass: true, toolCalls: 14, minutes: 9 },
+        { taskId: "t4", family: "joint", pass: true, toolCalls: 5, minutes: 2 },
+        { taskId: "t5", family: "joint", pass: true, toolCalls: 7 },
+        // A case without a family, and one without a solver block, join no family's effort.
+        { taskId: "t6", pass: true, toolCalls: 99, minutes: 99 },
+        { taskId: "t7", family: "joint", pass: true },
+      ],
+      RECORDED_AT,
+    );
+    expect(read(tree).admitted[0]?.authoring.familyEffort).toEqual([
+      { family: "joint", cases: 2, medianMinutes: 2, maxMinutes: 2, medianToolCalls: 6 },
+      { family: "span", cases: 3, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 },
+    ]);
+  });
+
+  it("scores the bound plan's predictions against the verdicts, and states none without a plan", () => {
+    const plan = {
+      ...PLAN_FIELDS,
+      scope: "tasks" as const,
+      gap: "g",
+      change: "c",
+      expectedResult: "r",
+      target: { comparator: "at-most" as const, verifiedPasses: 1 },
+      predictions: [
+        { taskId: "t1", pass: 0.2 },
+        { taskId: "t2", pass: 0.9 },
+        { taskId: "unmeasured", pass: 0.5 },
+      ],
+    };
+    const experimentAuthoring = {
+      proposal: { ...plan, digest: hashJsonValue(plan) },
+      operation: { operation: "task-probe", moved: ["tasks"] },
+      baseline: { agentHash: "agent", correctnessModelHash: "model", taskSetHash: "tasks" },
+      actual: "climb",
+      changedTaskIds: [],
+    };
+    const cases = [
+      { taskId: "t1", pass: true },
+      { taskId: "t2", pass: false },
+    ];
+    const scored = tmp();
+    writeBattery(scored, "r1", cases, RECORDED_AT, { experimentAuthoring });
+    expect(read(scored).admitted[0]?.authoring.calibration).toEqual({
+      scored: 2,
+      brier: 0.725,
+      expected: 1.1,
+      observed: 1,
+    });
+    const unbound = tmp();
+    writeBattery(unbound, "r1", cases, RECORDED_AT);
+    expect(read(unbound).admitted[0]?.authoring.calibration).toBeNull();
+  });
+
+  // Rule 4's mechanical test for the readout: protected files recorded beside each case change
+  // nothing a Builder reads.
+  it("renders a byte-identical readout when only protected verifier detail differs", () => {
+    const rendered = (secret: string) => {
+      const tree = tmp();
+      const evidence = openBattery(tree, "r1", [
+        { taskId: "t1", family: "span", pass: true, toolCalls: 4, minutes: 3 },
+        { taskId: "t2", family: "span", pass: false, toolCalls: 8, minutes: 6 },
+      ]);
+      for (const taskId of ["t1", "t2"]) {
+        evidence.write(`cases/${taskId}/verifier.json`, { stdout: secret, issues: [secret] });
+        evidence.write(`cases/${taskId}/oracle.json`, { expectation: secret });
+      }
+      evidence.record();
+      writeClaim(tree, "r1", RECORDED_AT, true);
+      return renderReadout(readClimbReadout(tree, RUN_PIN, join(tree, "claims")), "next");
+    };
+    const a = rendered("secret-verifier-a");
+    expect(rendered("secret-verifier-b")).toBe(a);
+    expect(a).not.toContain("secret-verifier");
+    expect(a).toContain("Solve effort by family");
   });
 
   it("states no effort for a battery whose cases recorded no solver block", () => {
@@ -365,6 +457,8 @@ describe("the frozen climb thresholds a round reads", () => {
     // Operator direction 2026-07-26: a bad row never blocks a run, per field.
     expect(climbThresholds(manifest("climb:\n  band: [0.3, 0.6]\n")).band).toEqual([0.3, 0.6]);
     expect(climbThresholds(manifest("climb:\n  band: [2, 3]\n")).band).toEqual(BAND);
+    expect(climbThresholds(manifest("climb:\n  band: [0.5, 0.2]\n")).band).toEqual(BAND);
+    expect(climbThresholds(manifest("climb:\n  band: [.nan, 0.5]\n")).band).toEqual(BAND);
     expect(climbThresholds(manifest("climb:\n  band: sometimes\n")).band).toEqual(BAND);
     expect(climbThresholds(manifest("significanceGate:\n  z: 1.96\n")).band).toEqual(BAND);
     expect(climbThresholds(join(tmp(), "absent.yaml")).band).toEqual(BAND);
@@ -536,14 +630,18 @@ describe("the off-aim allowance, read from recorded batteries", () => {
     expect(renderReadout(newQuestions, "choose the next experiment")).not.toContain(sentence);
   });
 
-  it("stops at the configured allowance and says what the stop does not establish", () => {
+  it("counts a whole allowance of above-aim rounds, each product identity once", () => {
+    // The stop sentence this streak ends in is next-move's; this walk only has to count it.
     const limit = POLICY.climb.offAimStreakRounds;
     const rounds = Array.from({ length: limit }, (_, i) => ({ passed: above, agent: `agent-${String(i)}` }));
-    const stop = required(allowanceStop(readout(roundsTree(rounds))), "a stop reason");
-    expect(stop).toContain(`${String(limit)} consecutive rounds ended above the aim`);
-    expect(stop).toContain(`across ${String(limit)} product identities`);
-    expect(stop).toContain("does not establish that another product would add no evidence");
-    expect(allowanceStop(readout(roundsTree(rounds.slice(1))))).toBeNull();
+    expect(readout(roundsTree(rounds)).allowance).toMatchObject({
+      rounds: limit,
+      placed: limit,
+      refused: 0,
+      side: "above",
+      products: limit,
+    });
+    expect(readout(roundsTree(rounds.slice(1))).allowance).toMatchObject({ rounds: limit - 1 });
   });
 
   it("reads the frozen manifest's band, so an override reaches every placement", () => {
@@ -586,6 +684,10 @@ describe("the prior public fingerprints the repeated-condition refusal compares 
         caseIds: Array.from({ length: count }, (_, i) => `t${String(i)}`),
         familySummary: [],
         effort: null,
+        familyEffort: [],
+        calibration: null,
+        passedTaskIds: [],
+        solveWallMinutes: 120,
       },
     };
   }

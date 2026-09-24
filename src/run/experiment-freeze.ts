@@ -26,10 +26,10 @@ import { briefPublicResources, judgePublicTaskOf } from "../truth/public-resourc
 import { validateBrief } from "../truth/brief-validator.ts";
 import type { BuildTask } from "../truth/tasks.ts";
 import {
-  type ExperimentProposal,
+  type ExperimentPlan,
   ExperimentSubmissionSchema,
   type ExperimentSubmission,
-} from "../author/experiment-proposal.ts";
+} from "../author/experiment-plan.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 export type ExperimentFreeze = { state: "held" | "unproven" | "broken"; clauses: string[] };
@@ -90,7 +90,6 @@ export type ExperimentAuthoring = Static<typeof ExperimentAuthoringSchema>;
 /** Repair direction is advisory. A broader candidate is a build, and can never inherit the
  * attribution or admission-pointer privileges of a proved evaluation-only correction. */
 export type ExperimentScope = {
-  requested: HarnessExperiment;
   actual: HarnessExperiment;
   freeze: ExperimentFreeze | null;
   /** What the accepted bytes moved, when the author bound an experiment proposal. */
@@ -175,9 +174,9 @@ export function candidateExperimentScope(
   baseDir: string | undefined,
   candidateDir: string,
   conformance?: ConformanceEvidence | null,
-  proposalScope?: ExperimentProposal["scope"],
+  proposalScope?: ExperimentPlan["scope"],
 ): ExperimentScope {
-  if (proposalScope === undefined) return { requested, actual: requested, freeze: null };
+  if (proposalScope === undefined) return { actual: requested, freeze: null };
   let freeze: ExperimentFreeze;
   try {
     freeze =
@@ -186,12 +185,12 @@ export function candidateExperimentScope(
         : experimentFreeze({ kind: "evaluation", baseDir, candidateDir }, conformance);
     if (baseDir !== undefined && freeze.state !== "held") {
       const taskFreeze = experimentFreeze({ kind: "climb", baseDir, candidateDir }, conformance);
-      if (taskFreeze.state === "held") return { requested, actual: "climb", freeze: taskFreeze };
+      if (taskFreeze.state === "held") return { actual: "climb", freeze: taskFreeze };
     }
   } catch {
     freeze = { state: "unproven", clauses: ["evaluation-baseline-unreadable"] };
   }
-  return { requested, actual: freeze.state === "held" ? "evaluation" : "build", freeze };
+  return { actual: freeze.state === "held" ? "evaluation" : "build", freeze };
 }
 
 /** Hash every task and battery field except the private expectation rows. New fields must

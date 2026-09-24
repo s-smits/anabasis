@@ -104,7 +104,7 @@ describe("the off-aim allowance", () => {
 });
 
 describe("the blocking reopen route", () => {
-  it.each(["tests", "controls", "correctness-model", "brief", "tools-spec", "unknown"] as const)(
+  it.each(["tests", "controls", "correctness-model", "brief", "tools-spec"] as const)(
     "leaves %s repair scope to the Builder",
     (owner) => {
       const move = decideNextMove("adopted", rows("blocking", owner));

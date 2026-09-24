@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { BuilderExecutionRecorder, isCandidateSubmit } from "../src/author/builder-execution.ts";
 import { turnEventRecorder } from "../src/author/builder-turn-loop.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -15,6 +16,7 @@ describe("builder execution submission events", () => {
       gap: "Public gap",
       change: "Proposed repair",
       expectedResult: "Next measured result",
+      ...PLAN_FIELDS,
     };
     recorder.recordSubmit({
       turn: 1,

@@ -8,6 +8,7 @@
  * attribution from accepted bytes, the real census, solvability and adoption path, and the real
  * recorded evidence the next round reads.
  */
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -177,6 +178,7 @@ function writeProposal(workspace: string, change: string, verifiedPasses: number
       scope: "tasks",
       gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
       change,
+      ...PLAN_FIELDS,
       expectedResult: "fewer verified passes on the same product, from the longer inputs alone",
       target: { comparator: "at-most", verifiedPasses },
     }),

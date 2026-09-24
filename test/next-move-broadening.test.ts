@@ -1,4 +1,5 @@
 import { afterAll, expect, it } from "bun:test";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -329,6 +330,7 @@ it("carries accepted intent and the host-derived changed subset out of the build
     target: { comparator: "at-least" as const, verifiedPasses: 0 },
     gap: "Coverage was narrow.",
     change: "Author new families.",
+    ...PLAN_FIELDS,
     expectedResult: "Test coordination.",
   };
   const experimentProposal = { ...proposal, digest: hashJsonValue(proposal) };

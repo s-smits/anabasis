@@ -28,7 +28,7 @@ const ROWS = [
   ["unchanged", "product", null, null, "rebuild-evaluation-unmoved", 1],
   ["unsolvable", "product", null, null, null, 1],
   ["blocked-tasks", "tasks", "correctness-model", null, "experiment-product-repair-required", 1],
-  ["blocked-product", "product", "unknown", null, "experiment-product-repair-required", 1],
+  ["blocked-product", "product", "brief", null, "experiment-product-repair-required", 1],
 ] as const;
 
 it.concurrent.each(ROWS.map((row) => [row[0], row] as const))(

@@ -8,7 +8,7 @@ import { ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
 import { writeAuthoringAttemptEvidence } from "../author/build-attempt-evidence.ts";
 import { builderExecutionEvidenceWriter } from "../author/builder-execution-writer.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
-import type { ExperimentSubmission } from "../author/experiment-proposal.ts";
+import { type ExperimentSubmission, PlanEvidence, currentPlan } from "../author/experiment-plan.ts";
 import { iterationMemoryFindings } from "../author/iteration-memory.ts";
 import { advisory } from "../author/feedback-routing.ts";
 import {
@@ -85,7 +85,8 @@ import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../truth/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
 
-export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicTaskFingerprints"> {
+export interface BuilderCampaignInput
+  extends Pick<AdmissionInput, "priorPublicTaskFingerprints" | "lastBattery"> {
   campaignDir: string;
   slug: string;
   kickoff: string;
@@ -115,10 +116,11 @@ export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicT
   rebuildReset?: string;
 }
 
+type ReviewTrigger = "repair" | "backstop";
 export interface BuilderCampaignDeps {
-  /** The Epoch Reviewer: `repair` reads a validated snapshot, `backstop` the live workspace. Returns
-   *  the public advice the Builder reads. */
-  reviewAuthoring?(root: string, trigger: "repair" | "backstop"): Promise<string>;
+  /** The Epoch Reviewer: `repair` reads a validated snapshot, `backstop` the live workspace, and
+   *  the plan comes from the workspace for both. Returns the public advice the Builder reads. */
+  reviewAuthoring?(root: string, trigger: ReviewTrigger, plan: ExperimentSubmission | null): Promise<string>;
   /**
    * Test-only shortened backstop clock; production uses `REVIEW_INTERVAL_MS`, forty minutes.
    *
@@ -234,6 +236,8 @@ class BuilderCampaignController {
   /** What this session already knows about the candidates it has seen, and what that memory
    *  permits it to spend next. */
   private readonly candidates: CandidateMemory<Refused>;
+  /** The round plan's evidence: every rehearsal's verdict and effort, and how the plan scores. */
+  readonly plan: PlanEvidence;
 
   constructor(
     private readonly input: BuilderCampaignInput,
@@ -247,6 +251,7 @@ class BuilderCampaignController {
     );
     this.roundBaseCommit = workspaceHead(this.workspace);
     this.candidates = new CandidateMemory(memory);
+    this.plan = new PlanEvidence(this.workspace, join(input.campaignDir, "rehearsals"));
   }
 
   /** Everything the opening turn carries, in the order the author reads it: what the round asks
@@ -279,8 +284,10 @@ class BuilderCampaignController {
     this.experimentProposal = undefined;
     this.submittedTree = undefined;
     const outcome = await this.checkSubmission(turn);
+    const advice = outcome.ok ? [] : this.plan.advice();
     return {
       ...outcome,
+      ...keysIf(advice.length > 0, () => ({ advice })),
       ...keyIfDefined("experimentProposal", this.experimentProposal),
       ...keyIfDefined("treeId", this.submittedTree),
     };
@@ -437,6 +444,7 @@ class BuilderCampaignController {
       toolsProbes: this.deps.toolsProbes,
       ...keyIfDefined("feedback", this.input.priorEvidence?.feedback),
       ...keyIfDefined("priorPublicTaskFingerprints", this.input.priorPublicTaskFingerprints),
+      ...keyIfDefined("lastBattery", this.input.lastBattery),
       ...keyIfDefined("experiment", this.input.experiment),
       ...keyIfDefined("adoptedDir", this.input.adoptedDir),
     };
@@ -490,7 +498,7 @@ class BuilderCampaignController {
     const root =
       due.kind === "repair" ? ensureBundleSnapshot(this.workspace, due.fingerprint).dir : this.workspace;
     try {
-      const advice = await this.deps.reviewAuthoring(root, due.kind);
+      const advice = await this.deps.reviewAuthoring(root, due.kind, currentPlan(this.workspace));
       if (due.kind === "repair") this.reviewClock.read(due.fingerprint);
       return advice;
     } finally {
@@ -644,6 +652,7 @@ class BuilderCampaignController {
       expectedTasks: input.expectedTasks,
       ...keyIfDefined("minTasks", input.minTasks),
       feedback,
+      planAdvice: () => this.plan.advice(),
     });
     return [inspect, trial, reset, correctnessCheck];
   }

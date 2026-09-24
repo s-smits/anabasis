@@ -1,7 +1,7 @@
 /**
  * The run-end numbers: where each battery landed on the band, how far the Builder's own target
- * was from what it measured, and how many truth checks ran through a tool that had public
- * packages installed beside it.
+ * and predictions were from what it measured and from what its round's trials showed, and how
+ * many truth checks ran through a tool that had public packages installed beside it.
  *
  * The controller records them once, in `terminal.json`, from a readout it takes at the close; the
  * outcome report reads that record, and reads the same numbers live from the newest difficulty
@@ -13,14 +13,33 @@ import { existsSync, readFileSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
-import { keyIfNotNull } from "../meta/optional-key.ts";
+import { keyIfDefined, keyIfNotNull } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
+import { EVIDENCE_SCHEMA, EVIDENCE_STEM, type PredictionScore } from "../author/experiment-plan.ts";
 import type { ClaimStatement } from "../claim/claim-evidence.ts";
 import type { ClimbReadout } from "./climb-readout.ts";
 import { DIFFICULTY_DECISION_SCHEMA, type DifficultyDecisionEvidence } from "./difficulty-decision.ts";
 
 type ReadoutRow = ClimbReadout["rows"][number];
+
+/** A round's `harness_trial` evidence, joined to the battery by the digest of the plan it
+ *  measured. `none` when no trial ran under that exact plan — including a plan edited after its
+ *  last trial — and `ambiguous` when several rounds rehearsed byte-identical plans. */
+type TrialsReading =
+  | ({ state: "recorded" } & TrialsFile)
+  | { state: "none" }
+  | { state: "ambiguous"; evidence: string[] };
+
+type TrialsFile = {
+  /** Relative to the campaign. */
+  evidence: string;
+  rehearsals: number;
+  /** Distinct tasks a trial passed, to read against the plan's target. */
+  passedTasks: number;
+  /** The plan's predictions against the trial verdicts, as the controller recorded it. */
+  predictionScore: PredictionScore | null;
+};
 
 type ClimbRunEnd = {
   /** The decision file the rows come from, relative to the campaign, or `terminal` for the
@@ -39,6 +58,8 @@ type ClimbRunEnd = {
     verified: number;
     /** The plan's target read against the verified passes. */
     target?: NonNullable<ReadoutRow["target"]>;
+    /** Absent when the battery bound no plan. */
+    trials?: TrialsReading;
   }>;
 };
 
@@ -72,7 +93,7 @@ export function runEndAtClose(
   try {
     const readout = readClimb?.() ?? null;
     return {
-      climb: readout === null ? null : climbFromReadout("terminal", readout),
+      climb: readout === null ? null : climbFromReadout(campaignDir, "terminal", readout),
       provenance: batteryRunIds.flatMap((runId) => provenanceRunEnd(campaignDir, runId) ?? []),
     };
   } catch (error) {
@@ -93,24 +114,89 @@ export function climbRunEnd(campaignDir: string): ClimbRunEnd | null {
     if (newest === null || seesLater(evidence, newest.evidence)) newest = { file, evidence };
   }
   if (newest === null) return null;
-  return climbFromReadout(join("difficulty-decisions", newest.file), newest.evidence.difficulty);
+  return climbFromReadout(campaignDir, join("difficulty-decisions", newest.file), newest.evidence.difficulty);
 }
 
-function climbFromReadout(readFrom: string, readout: ClimbReadout): ClimbRunEnd {
+function climbFromReadout(campaignDir: string, readFrom: string, readout: ClimbReadout): ClimbRunEnd {
   const { rows, band } = readout;
-  const batteries = rows.toReversed().map((row) => ({
-    runId: row.runId,
-    zone: row.zone,
-    passed: row.passed,
-    verified: row.verified,
-    ...keyIfNotNull("target", row.target),
-  }));
+  const trials = trialsByPlan(campaignDir);
+  const batteries = rows.toReversed().map((row) => {
+    const digest = row.experiment?.proposal.digest;
+    return {
+      runId: row.runId,
+      zone: row.zone,
+      passed: row.passed,
+      verified: row.verified,
+      ...keyIfNotNull("target", row.target),
+      ...keyIfDefined("trials", digest === undefined ? undefined : trialsReading(trials.get(digest) ?? [])),
+    };
+  });
   return {
     readFrom,
     band,
     onAim: rows.filter((row) => row.zone === "on-aim").length,
     placed: rows.filter((row) => row.zone !== null).length,
     batteries,
+  };
+}
+
+function trialsReading(files: readonly TrialsFile[]): TrialsReading {
+  const [only] = files;
+  if (only === undefined) return { state: "none" };
+  if (files.length > 1) return { state: "ambiguous", evidence: files.map((file) => file.evidence).sort() };
+  return { state: "recorded", ...only };
+}
+
+/** Every round's trial evidence in the campaign, keyed by the plan digest it was last scored
+ *  against. A round writes its file under its own epoch, so the walk covers each epoch's
+ *  `rehearsals/` and reads only the one schema the controller writes. */
+function trialsByPlan(campaignDir: string): Map<string, TrialsFile[]> {
+  const byPlan = new Map<string, TrialsFile[]>();
+  const epochs = existsSync(campaignDir)
+    ? readdirSync(campaignDir).filter((name) => name.startsWith("epoch-"))
+    : [];
+  for (const epoch of epochs) {
+    const dir = join(campaignDir, epoch, "rehearsals");
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      if (!name.startsWith(EVIDENCE_STEM) || !name.endsWith(".json")) continue;
+      const evidence = join(epoch, "rehearsals", name);
+      const read = readTrials(join(campaignDir, evidence));
+      if (read === null) continue;
+      byPlan.set(read.planDigest, [...(byPlan.get(read.planDigest) ?? []), { evidence, ...read.facts }]);
+    }
+  }
+  return byPlan;
+}
+
+function readTrials(path: string): { planDigest: string; facts: Omit<TrialsFile, "evidence"> } | null {
+  let parsed: unknown;
+  try {
+    parsed = parseJsonAs<unknown>(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+  if (
+    !isRecord(parsed) ||
+    parsed.schema !== EVIDENCE_SCHEMA ||
+    !isString(parsed.planDigest) ||
+    !Array.isArray(parsed.rehearsals)
+  ) {
+    return null;
+  }
+  const passed = parsed.rehearsals.flatMap((row) =>
+    isRecord(row) && row.verdict === "pass" && isString(row.taskId) ? [row.taskId] : [],
+  );
+  const score = parsed.predictionScore;
+  return {
+    planDigest: parsed.planDigest,
+    facts: {
+      rehearsals: parsed.rehearsals.length,
+      passedTasks: new Set(passed).size,
+      predictionScore: isRecord(score)
+        ? /* SAFETY: the one schema PlanEvidence writes, whose score is predictionScore()'s result. */ (score as PredictionScore)
+        : null,
+    },
   };
 }
 

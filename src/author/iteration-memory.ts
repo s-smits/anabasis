@@ -28,7 +28,7 @@ import { controllerValidatedFindings, projectFindingForAuthor } from "../truth/b
 import type { IterationEvidence } from "./campaign-types.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isNumber, isRecord } from "../meta/json-shape.ts";
-import { parseExperimentSubmission } from "./experiment-proposal.ts";
+import { parseExperimentSubmission } from "./experiment-plan.ts";
 
 /** The code every memory finding carries in the Builder's opening advisory. */
 export const ITERATION_MEMORY_CODE = "prior-iteration-memory";

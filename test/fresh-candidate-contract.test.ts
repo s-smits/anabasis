@@ -8,6 +8,7 @@
  * candidate (conformance, census, F2) are proved by their own files; this one owns the contract
  * that decides whether those stages ever run.
  */
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -428,6 +429,7 @@ describe("the agent the solver gets", () => {
       target: { comparator: "at-least", verifiedPasses: 3 },
       gap: "The battery leaves a public requirement unmeasured.",
       change: "Raise that requirement in the public tasks.",
+      ...PLAN_FIELDS,
       expectedResult: "The next measurement separates the two conditions.",
     });
     const outcome = refuse(dir, { experimentProposalRequired: true });

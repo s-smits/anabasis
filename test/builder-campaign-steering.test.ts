@@ -22,6 +22,7 @@ import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import type { FixtureSubmitTool } from "./helpers/builder-campaign.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { workspaceHead } from "../src/author/domain-repo.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
@@ -90,16 +91,19 @@ describe("the controller's word to a running session", () => {
     const campaignDir = scratchDir("ana-review-repair-");
     const workspace = join(campaignDir, "workspace");
     const reviewed: string[] = [];
+    const plans: Array<string | null> = [];
     const outcome = await runBuilderCampaign(
       { ...FRESH_BUILD, campaignDir, maxTurns: 1 },
       {
         tools: [],
         toolsProbes: () => ({ load: async () => [] }),
         gates: async () => [],
-        reviewAuthoring: async (root, trigger) => {
+        reviewAuthoring: async (root, trigger, experiment) => {
           expect(trigger).toBe("repair");
           expect(root).toContain(".bundle-snapshots");
           reviewed.push(readFileSync(join(root, "agent/BUILT_AGENTS.md"), "utf8"));
+          // The snapshot holds the bundle alone; the plan is read from the workspace beside it.
+          plans.push(experiment?.gap ?? null);
           return "Public review advice.";
         },
         open: async (tools) =>
@@ -107,12 +111,24 @@ describe("the controller's word to a running session", () => {
             completeBundle(workspace);
             requireExternalVerifier(workspace);
             installTool(workspace, "field-engine");
+            writeFileSync(
+              join(workspace, "EXPERIMENT.json"),
+              JSON.stringify({
+                ...PLAN_FIELDS,
+                scope: "product",
+                gap: "The writer cannot express a pinned joint.",
+                change: "Add pinned joints to the writer.",
+                expectedResult: "More accepted submissions.",
+                target: { comparator: "at-least", verifiedPasses: 1 },
+              }),
+            );
             // SAFETY: the campaign mounts this executable tool when gates are supplied.
             const check = tools.find(
               (tool) => (tool as { name?: string }).name === "correctness_check",
             ) as FixtureSubmitTool;
             expect(JSON.stringify(await check.execute("check", {}))).toContain("Public review advice");
             expect(reviewed).toHaveLength(1);
+            expect(plans).toEqual(["The writer cannot express a pinned joint."]);
             // Unchanged product bytes: the same clear result, no second review.
             expect(JSON.stringify(await check.execute("same-check", {}))).not.toContain(
               "Public review advice",

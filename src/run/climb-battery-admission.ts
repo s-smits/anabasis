@@ -19,7 +19,7 @@ import { isBoolean, isNumber, isString, type JsonValue } from "../meta/json-shap
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BATTERY_FILE } from "../truth/battery-record.ts";
 import { recordedVerifierHash } from "../truth/verifier-environment.ts";
-import { parseExperimentSubmission } from "../author/experiment-proposal.ts";
+import { parseExperimentSubmission } from "../author/experiment-plan.ts";
 import { ExperimentAuthoringSchema, type ExperimentAuthoring } from "./experiment-freeze.ts";
 import { SHIPPING_VARIANT } from "./run-driver.ts";
 
@@ -132,9 +132,9 @@ export function currentThresholdDigest(manifestPath?: string): ThresholdIdentity
  *  The task set, its controls, reference solves and tests are excluded on purpose, because a task
  *  probe rewrites them together while keeping this product fixed, so a probe that changed this
  *  identity would make every earlier battery of the same product incomparable. Null when the
- *  evidence lacks the required identity, as every battery recorded before `scoringHash` does, and
- *  a null is dropped rather than matched: `priorPublicFingerprints` skips such a row, so it
- *  contributes no repeat-refusal print instead of collapsing several products into one. */
+ *  evidence lacks an agent or scoring hash, and a null is dropped rather than matched:
+ *  `priorPublicFingerprints` skips such a row, so it contributes no repeat-refusal print instead of
+ *  collapsing several products into one. */
 function harnessIdentity(evidence: BatteryEvidence): string | null {
   const { agentHash, scoringHash } = evidence.bundleSnapshot ?? {};
   return isString(agentHash) && isString(scoringHash)

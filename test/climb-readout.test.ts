@@ -12,6 +12,7 @@
  * task ids changes nothing the Builder can read.
  */
 import { describe, expect, it } from "bun:test";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import type {
   AdmittedClimbRow,
   ClimbBatteriesRead,
@@ -62,6 +63,7 @@ function authoring(target: NonNullable<Spec["target"]>, gap: string): Experiment
     expectedResult: "fewer passes",
     digest: "d",
     target,
+    ...PLAN_FIELDS,
   };
   return {
     proposal,
@@ -99,6 +101,10 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
       wilson: [0, 1],
     })),
     effort: spec.effort ?? null,
+    familyEffort: [],
+    calibration: null,
+    passedTaskIds: [],
+    solveWallMinutes: 120,
   };
   if (spec.target !== undefined || spec.gap !== undefined) {
     recorded.experimentAuthoring = authoring(

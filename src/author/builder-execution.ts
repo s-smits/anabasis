@@ -18,7 +18,7 @@ import type { AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/bac
 import type { BackendKind } from "../backends/resolve.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BuilderExecutionInvocation } from "../run/builder-execution-closure.ts";
-import type { ExperimentSubmission } from "./experiment-proposal.ts";
+import type { ExperimentSubmission } from "./experiment-plan.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";

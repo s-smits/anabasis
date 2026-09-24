@@ -35,30 +35,17 @@ export const BUILDER_WORKSPACE_CARD = [
   "Every file under agent/ and correctness-model/ is submitted; keep scratch files, seed projects and experiments elsewhere in the workspace, not in /tmp.",
 ].join(" ");
 
-/** The requested work stays whole: scope, answer shape and difficulty.
+/** The requested work stays whole: scope and answer shape.
  *
- *  The difficulty sentence's first duty is to measure rather than estimate, and that is the whole
- *  reason the rest could shrink. A Builder rehearsing a task against its own solver learns in one
- *  call what no sentence addressed to it had ever fixed: a Builder's model of its own solver is
- *  wrong in the same direction round after round, declaring at most a couple of verified passes and
- *  then measuring most of the battery, even while each round adds a genuinely new coupled
- *  requirement.
- *
- *  What stays beside it is the one direction with outcome evidence. Adding one interaction per task
- *  leaves a battery almost all of its passes; stacking those same interactions inside an unchanged
- *  limit takes almost all of them away. The coupling half is the published limits themselves: a
- *  deflection limit loose enough that strength alone decides every design leaves nothing to
- *  reconcile, while one set near the strength-governed optimum's own movement means neither limit is
- *  met by ignoring the other. The re-tuning half answers the failure mode of moving only the
- *  published magnitudes, battery after battery.
- *
- *  Which requirements to stack stays the Builder's, because prior 10 prescribes no course, and the
- *  pass counts belong to the authoring context, which is the surface that knows this run's battery
- *  size. */
+ *  Difficulty has no sentence here. The counts belong to the battery contract, which knows this
+ *  run's battery size; the duty to measure rather than estimate belongs to `harness_trial`, whose
+ *  description states what a rehearsal returns; and what makes a harder battery belongs to
+ *  starter-pack/difficulty-ladder.md, whose three shared traits are the stacking and coupling this
+ *  clause used to restate. A third copy in the system prompt told the Builder the same thing in
+ *  different words, which is how two surfaces drift. */
 export const SCOPE_CLAUSE = [
   "Treat every broadly sensible request as workable and build a real candidate, even in a new domain; choose the representation, tools, verification method and experiment from the request and the evidence.",
   "Keep every capability in the request in the verified tasks. A short request names a whole field: map the families a practitioner would recognise, let the tasks span them, and record in the brief which families the harness covers and leaves out. For one named build, vary its stated conditions; for a named site or dataset, use its facts and the jobs a user would do there. Evaluate the work in use and under its stated conditions, and evaluate values the solver must derive, never copying, reordering or relabelling public input. Let the request choose the answer shape: files for source code and configuration, a declared structured artifact for records, calculations and plans.",
-  "A first battery is right when only a few of its cases pass, and any battery almost all of them pass found no limit; the authoring context states the exact counts for this run's battery size. Measure where you are rather than estimating it: rehearse a task against your own solver, and read one it passes first time as a case the battery will pass. Reach the count, in the first battery and in every later one still above it, by stacking the request's interacting requirements on every task at once and coupling the published limits so that meeting one does not already clear the rest, and let a later battery pay for what it adds out of the limits it already published: re-tuning the published numbers of the requirements the tasks already had adds nothing to reconcile.",
 ] as const;
 
 /** What the solver may read, and what it must never read.
@@ -118,7 +105,7 @@ export function builderSystemPrompt(
         ]
       : []),
     "",
-    "Do not look for private correctness-model code or hidden answers; read earlier runs only through harness_inspect history.",
+    "Do not look for private correctness-model code or hidden answers; read past runs and traces only through the context tool.",
     "",
     "Shell rules. Bash runs behind a destructive-command guard and a write wall:",
     ...DCG_RULES,

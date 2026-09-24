@@ -210,6 +210,36 @@ describe("groupAuthorFindings", () => {
       '\n    · ×2 receipt for control "r0" expected fail on check-0 Also for: "r34".\n    · ×2',
     );
     expect(text).toContain("\n    · (2 more variants; page this group's detail)\n- group 2 S");
+    // The round plan's advice closes the refusal and changes nothing above it.
+    expect(text).not.toContain("Advice:");
+    const advised = renderRefusal(
+      {
+        ok: false,
+        stage: "gates",
+        commit: "d".repeat(40),
+        findings: controllerValidatedFindings(findings),
+        advice: ["Advice: a stand-in line."],
+      },
+      {
+        kind: "candidate",
+        ordinal: 1,
+        turn: 1,
+        atMs: 0,
+        outcome: "refused",
+        stage: "gates",
+        commit: "d".repeat(40),
+        findingsDigest: "x",
+        findingCodes: [],
+        repeatedFindings: null,
+        findingsDelta: null,
+        workspaceChanged: null,
+        treeFirstSubmittedAsAttempt: null,
+        terminal: false,
+      },
+      10,
+      null,
+    );
+    expect(advised).toBe(`${text}\nAdvice: a stand-in line.`);
   });
 
   it("returns the code delta against the previous stored result on every recorded check", () => {

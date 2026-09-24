@@ -11,7 +11,7 @@ import {
   type BuilderExecutionEvidence,
   type BuilderSubmitAttempt,
 } from "../../src/author/builder-execution.ts";
-import { parseExperimentSubmission } from "../../src/author/experiment-proposal.ts";
+import { parseExperimentSubmission } from "../../src/author/experiment-plan.ts";
 import {
   CUSTOM_TOOL_NAMES,
   bareCustomToolName,

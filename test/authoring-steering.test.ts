@@ -21,16 +21,12 @@
  * bytes from bytes that were edited afterwards. Given no output directory it stays inert instead of
  * failing, because a missing transcript must not be able to end a round that was otherwise working.
  */
-import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
+import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import { type BuilderSessionDeps, runBuilderSession } from "../src/author/builder-session.ts";
 import { continuePrompt, unchangedAuthoringNote } from "../src/author/builder-continuation.ts";
-import {
-  ControllerEventTranscript,
-  type BuilderTranscriptPointerV2,
-} from "../src/builder/session-transcript.ts";
 import type { AgentTurnResult, RunTurnOptions } from "../src/backends/backend-types.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 import type { RuntimeModelIdentity } from "../src/claim/runtime-model-identity.ts";
@@ -167,6 +163,17 @@ describe("turn-budget steering", () => {
     expect(uncapped).not.toContain("turns remain");
   });
 
+  it("carries the round plan's view between the round's facts and its next action, only when given one", () => {
+    const text = goal({
+      activeTurn: 2,
+      planView: "Round plan (experiment-plan/v2, tasks scope): target at-most 2.",
+    });
+    expect(text).toContain(
+      "This round so far: turn 2, no submit yet.\n\nRound plan (experiment-plan/v2, tasks scope): target at-most 2.\n\nFinish the candidate",
+    );
+    expect(goal({ activeTurn: 2 })).not.toContain("Round plan");
+  });
+
   it("asks for authoring after eight turns or two hours without a submit, and for a batched repair after one", () => {
     expect(goal({ activeTurn: 8 })).toContain("move to authoring now");
     expect(goal({ activeTurn: 7 })).not.toContain("move to authoring now");
@@ -202,42 +209,4 @@ const REFUSER: BuilderSessionDeps["submit"] = () => ({
   findings: [{ code: "missing-bundle-file", path: "correctness-model/tasks.json", detail: "absent" }],
   commit: "d".repeat(40),
   attempts: {},
-});
-
-describe("the controller-event transcript", () => {
-  it("buffers until opened, then settles a v2 pointer with the file sha", () => {
-    const dir = tempRoot();
-    const transcript = new ControllerEventTranscript("sess-1", "openrouter", dir, "/tmp/ws");
-    transcript.prompt(1, "first prompt");
-    transcript.open(dir); // identity arrives after turn 1
-    transcript.prompt(2, "second prompt");
-    transcript.toolStarted(2, "bash", { command: "bun test" });
-    transcript.toolEnded(2, "bash", "returned");
-    transcript.turnResult(2, "completed");
-    transcript.settle();
-
-    const pointerPath = join(dir, "builder-transcript.json");
-    // SAFETY: settle wrote this file from the typed pointer above; the parse restores that shape.
-    const pointer = JSON.parse(readFileSync(pointerPath, "utf8")) as BuilderTranscriptPointerV2;
-    expect(pointer.schema).toBe("builder-transcript-pointer/v2");
-    expect(pointer.source).toBe("controller-events");
-    expect(pointer.path).toBe(join(dir, "builder-events-sess-1.jsonl"));
-    expect(pointer.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(pointer.settledAt).not.toBeNull();
-    expect(pointer.warnings).toEqual([]);
-    // SAFETY: every record line was written by push() from the typed record union.
-    const lines = readFileSync(pointer.path, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { sessionId: string; kind: string; turn: number });
-    expect(lines[0]).toMatchObject({ sessionId: "sess-1", kind: "prompt", turn: 1 });
-    expect(lines.at(-1)).toMatchObject({ kind: "turn_result", status: "completed" });
-  });
-
-  it("is inert when no directory is given", () => {
-    const transcript = new ControllerEventTranscript("sess-2", "openrouter", undefined, "/tmp/ws");
-    transcript.prompt(1, "lost");
-    transcript.open(tempRoot());
-    transcript.settle();
-  });
 });

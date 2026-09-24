@@ -1,3 +1,4 @@
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { describe, expect, it, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -62,13 +63,14 @@ describe("cross-iteration Builder memory", () => {
       target: { comparator: "at-least" as const, verifiedPasses: 0 },
       gap: "Untested coupling.",
       change: "Change task coupling.",
+      ...PLAN_FIELDS,
       expectedResult: "More failures would support the hypothesis.",
     };
     settle(dir, {
       ordinal: 1,
       outcome: "gates-blocked",
       experimentProposal: { ...proposal, digest: hashJsonValue(proposal) },
-      experimentScope: { requested: "build", actual: "climb", freeze: { state: "held", clauses: [] } },
+      experimentScope: { actual: "climb", freeze: { state: "held", clauses: [] } },
     });
     expect(detailOf(dir)).toContain("Untested coupling");
     expect(detailOf(dir)).toContain("admitted as climb");

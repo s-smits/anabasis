@@ -115,6 +115,24 @@ describe("the shared Builder repair feedback", () => {
   });
 });
 
+/** The refused submit a gates-stage refusal is rendered against. */
+const GATES_ATTEMPT: BuilderSubmitAttempt = {
+  kind: "candidate",
+  ordinal: 1,
+  turn: 1,
+  atMs: 0,
+  outcome: "refused",
+  stage: "gates",
+  commit: "d".repeat(40),
+  findingsDigest: "x",
+  findingCodes: [],
+  repeatedFindings: null,
+  findingsDelta: null,
+  workspaceChanged: null,
+  treeFirstSubmittedAsAttempt: null,
+  terminal: false,
+};
+
 const row = (code: string, detail: string, subject?: string) =>
   controllerValidatedFinding({
     code,
@@ -125,7 +143,7 @@ const row = (code: string, detail: string, subject?: string) =>
 
 describe("groupAuthorFindings", () => {
   it("folds rows that differ only in their declared subject into one variant naming the rest", () => {
-    // An Opus run on 2026-08-22, submit 3: 30 accept rows named the same eight checks and differed by id.
+    // Accept rows that name the same checks and differ only by control id are one repair.
     const findings = [
       row("A", 'valid example "one" was rejected on checks [x, y]. Fix it', "one"),
       row("A", 'valid example "two" was rejected on checks [x, y]. Fix it', "two"),
@@ -154,7 +172,7 @@ describe("groupAuthorFindings", () => {
   });
 
   it("keeps rows apart when no producer declared a subject, even if they differ only in a quoted name", () => {
-    // The first-quote guess folded two different tools into one repair before 2026-09-15.
+    // Guessing the subject from the first quoted name folds two different tools into one repair.
     const groups = groupAuthorFindings([
       row("T", 'generated tool "a" failed'),
       row("T", 'generated tool "b" failed'),
@@ -164,8 +182,7 @@ describe("groupAuthorFindings", () => {
   });
 
   it("indexes every variant of a group in the overview and the refusal text, count first", () => {
-    // 189 recorded refusals of 2026-08-30 to 09-13: a group held 7 variants at the median and the
-    // 240-character preview showed the first, so a Builder repaired one check per round.
+    // A preview that shows only a group's first variant has a Builder repair one check per round.
     const findings = [
       ...Array.from({ length: 36 }, (_, i) =>
         row("R", `receipt for control "r${i}" expected fail on check-${i % 34}`, `r${i}`),
@@ -186,22 +203,7 @@ describe("groupAuthorFindings", () => {
     expect(overview.groups[1]?.variantIndex).toBeUndefined();
     const text = renderRefusal(
       { ok: false, stage: "gates", commit: "d".repeat(40), findings: controllerValidatedFindings(findings) },
-      {
-        kind: "candidate",
-        ordinal: 1,
-        turn: 1,
-        atMs: 0,
-        outcome: "refused",
-        stage: "gates",
-        commit: "d".repeat(40),
-        findingsDigest: "x",
-        findingCodes: [],
-        repeatedFindings: null,
-        findingsDelta: null,
-        workspaceChanged: null,
-        treeFirstSubmittedAsAttempt: null,
-        terminal: false,
-      },
+      GATES_ATTEMPT,
       10,
       null,
     );
@@ -220,22 +222,7 @@ describe("groupAuthorFindings", () => {
         findings: controllerValidatedFindings(findings),
         advice: ["Advice: a stand-in line."],
       },
-      {
-        kind: "candidate",
-        ordinal: 1,
-        turn: 1,
-        atMs: 0,
-        outcome: "refused",
-        stage: "gates",
-        commit: "d".repeat(40),
-        findingsDigest: "x",
-        findingCodes: [],
-        repeatedFindings: null,
-        findingsDelta: null,
-        workspaceChanged: null,
-        treeFirstSubmittedAsAttempt: null,
-        terminal: false,
-      },
+      GATES_ATTEMPT,
       10,
       null,
     );
@@ -303,9 +290,9 @@ describe("the census disclosure", () => {
     });
   });
 
-  // Run c1d2a7 established that a best-answer domain's published limit is only as tight as the
-  // reference search behind it, and the gate wall that search runs under is set by the candidate's
-  // own agent/config.yaml. The bare label left the author with nothing to change.
+  // A best-answer domain's published limit is only as tight as the reference search behind it, and
+  // the gate wall that search runs under is set by the candidate's own agent/config.yaml, so a bare
+  // label would leave the author with nothing to change.
   it("names the wall a timed-out reference solve hit, and still carries no verifier text", () => {
     const projected = projectFindingForAuthor(
       generatedExecutionFinding(

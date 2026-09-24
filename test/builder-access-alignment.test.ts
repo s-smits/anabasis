@@ -46,7 +46,7 @@ function builderAccessExpectations(workspace: string): AccessExpectation[] {
       path: join(home, ".codex", "sessions", "rollout.jsonl"),
       read: false,
       write: false,
-      why: "no Builder writes codex rollouts since the app-server went, so the home keeps them closed",
+      why: "no Builder writes codex rollouts, so the home keeps them closed",
     },
   ];
 }

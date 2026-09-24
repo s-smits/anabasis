@@ -39,10 +39,40 @@ function writeJson(path: string, value: FixtureJson): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function commit(workspace: string, subject: string): string {
+/** The audit script over one campaign, as the operator runs it. */
+function runAudit(root: string, campaign: string) {
+  return spawnSync(bunExecutable!, [script, "domain", "--repo", root, "--campaign", campaign, "--json"], {});
+}
+
+/** One recorded battery case; a runtime non-result kind carries its message beside it. */
+function caseRow(
+  acceptedSubmit: boolean,
+  truthOk: boolean | null,
+  pass: boolean | null,
+  kind: string | null = null,
+) {
+  return {
+    acceptedSubmit,
+    truthOk,
+    pass,
+    runtimeNonResult: kind === null ? null : `${kind} unavailable`,
+    runtimeNonResultKind: kind,
+  };
+}
+
+function commit(workspace: string, subject: string, ...dated: string[]): string {
   git(workspace, ["add", "."]);
-  git(workspace, ["commit", "-qm", subject]);
+  git(workspace, ["commit", "-qm", subject, ...dated]);
   return git(workspace, ["rev-parse", "HEAD"]);
+}
+
+/** An epoch workspace repository with the two authored trees in place. */
+function initWorkspace(workspace: string): void {
+  mkdirSync(join(workspace, "agent"), { recursive: true });
+  mkdirSync(join(workspace, "correctness-model"), { recursive: true });
+  git(workspace, ["init", "-q"]);
+  git(workspace, ["config", "user.email", "test@example.com"]);
+  git(workspace, ["config", "user.name", "Test"]);
 }
 
 function fingerprint(seed: string) {
@@ -58,11 +88,7 @@ function fixture() {
   const campaign = join(root, "campaigns/domain");
   const epoch = join(campaign, "epoch-one");
   const workspace = join(epoch, "workspace");
-  mkdirSync(join(workspace, "agent"), { recursive: true });
-  mkdirSync(join(workspace, "correctness-model"), { recursive: true });
-  git(workspace, ["init", "-q"]);
-  git(workspace, ["config", "user.email", "test@example.com"]);
-  git(workspace, ["config", "user.name", "Test"]);
+  initWorkspace(workspace);
 
   writeFileSync(join(workspace, "agent/solve.ts"), "export const solve = () => 'starter';\n");
   writeJson(join(workspace, "correctness-model/tasks.json"), [
@@ -122,28 +148,10 @@ function fixture() {
     runId: "measure-first",
     bundleSnapshot: firstFingerprint,
     cases: [
-      { acceptedSubmit: true, truthOk: true, pass: true, runtimeNonResult: null, runtimeNonResultKind: null },
-      {
-        acceptedSubmit: true,
-        truthOk: false,
-        pass: false,
-        runtimeNonResult: null,
-        runtimeNonResultKind: null,
-      },
-      {
-        acceptedSubmit: false,
-        truthOk: null,
-        pass: false,
-        runtimeNonResult: null,
-        runtimeNonResultKind: null,
-      },
-      {
-        acceptedSubmit: false,
-        truthOk: null,
-        pass: null,
-        runtimeNonResult: "provider unavailable",
-        runtimeNonResultKind: "provider",
-      },
+      caseRow(true, true, true),
+      caseRow(true, false, false),
+      caseRow(false, null, false),
+      caseRow(false, null, null, "provider"),
     ],
   });
   firstEvidence.record();
@@ -153,16 +161,7 @@ function fixture() {
   secondEvidence.write("battery.json", {
     runId: "measure-second",
     bundleSnapshot: secondFingerprint,
-    cases: [
-      { acceptedSubmit: true, truthOk: true, pass: true, runtimeNonResult: null, runtimeNonResultKind: null },
-      {
-        acceptedSubmit: false,
-        truthOk: null,
-        pass: false,
-        runtimeNonResult: null,
-        runtimeNonResultKind: null,
-      },
-    ],
+    cases: [caseRow(true, true, true), caseRow(false, null, false)],
   });
   secondEvidence.record();
   return { root, campaign };
@@ -178,11 +177,7 @@ afterEach(() => {
 describe("harness evolution facts", () => {
   it("joins candidate and contest measurements to size, starter-deviation and public-task facts", () => {
     const { root, campaign } = fixture();
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+    const result = runAudit(root, campaign);
     expect(result.status).toBe(0);
     const audit = JSON.parse(result.stdout);
 
@@ -291,11 +286,7 @@ describe("harness evolution facts", () => {
     });
     taskless.record();
     const ledgerBefore = readFileSync(join(campaign, "controller.sqlite"));
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+    const result = runAudit(root, campaign);
     expect(result.status).toBe(0);
     const audit = JSON.parse(result.stdout);
     expect(audit.summary).toMatchObject({ savedVersions: 4, measuredSavedVersions: 2, measuredBatteries: 5 });
@@ -329,11 +320,7 @@ describe("harness evolution facts", () => {
     );
     expect(readFileSync(join(campaign, "controller.sqlite"))).toEqual(ledgerBefore);
     writeJson(join(campaign, "budget.json"), { schema: "controller-ledger/v1", id: "wrong-ledger" });
-    const corrupted = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+    const corrupted = runAudit(root, campaign);
     const incomplete = JSON.parse(corrupted.stdout);
     expect(incomplete.savedVersions).toHaveLength(3);
     expect(incomplete.current).toMatchObject({ state: "unobservable", bundleSnapshotId: null });
@@ -342,40 +329,16 @@ describe("harness evolution facts", () => {
     );
   });
 
-  it("refuses changed battery bytes instead of reporting their counts as measured evidence", () => {
-    const { root, campaign } = fixture();
-    writeJson(join(campaign, "candidates/first/runs/measure-first/battery.json"), {
-      runId: "measure-first",
-      bundleSnapshot: fingerprint("a"),
-      cases: [],
-    });
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("evidence-tampered");
-  });
-
   it("orders checkpoints by recorded commit time when an older epoch is touched last", () => {
     const { root, campaign } = fixture();
     const epoch = join(campaign, "epoch-older");
     const workspace = join(epoch, "workspace");
-    mkdirSync(join(workspace, "agent"), { recursive: true });
-    mkdirSync(join(workspace, "correctness-model"), { recursive: true });
-    git(workspace, ["init", "-q"]);
-    git(workspace, ["config", "user.email", "test@example.com"]);
-    git(workspace, ["config", "user.name", "Test"]);
+    initWorkspace(workspace);
     writeFileSync(join(workspace, "agent/solve.ts"), "export const solve = () => 'older';\n");
     writeJson(join(workspace, "correctness-model/tasks.json"), []);
-    git(workspace, ["add", "."]);
-    git(workspace, ["commit", "-qm", "starter: older epoch", "--date=2000-01-01T00:00:00Z"]);
-    const starter = git(workspace, ["rev-parse", "HEAD"]);
+    const starter = commit(workspace, "starter: older epoch", "--date=2000-01-01T00:00:00Z");
     writeFileSync(join(workspace, "agent/solve.ts"), "export const solve = () => 'old candidate';\n");
-    git(workspace, ["add", "."]);
-    git(workspace, ["commit", "-qm", "submit: old candidate", "--date=2000-01-02T00:00:00Z"]);
-    const older = git(workspace, ["rev-parse", "HEAD"]);
+    const older = commit(workspace, "submit: old candidate", "--date=2000-01-02T00:00:00Z");
     mkdirSync(join(epoch, "01-domain"));
     writeJson(join(epoch, "01-domain/iteration.json"), {
       ordinal: 1,
@@ -384,11 +347,7 @@ describe("harness evolution facts", () => {
     });
     writeJson(join(epoch, "campaign.json"), { domain: "domain" });
     utimesSync(join(epoch, "campaign.json"), new Date("2099-01-01"), new Date("2099-01-01"));
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+    const result = runAudit(root, campaign);
     expect(result.status).toBe(0);
     const audit = JSON.parse(result.stdout);
     expect(audit.versions[0].epoch).toBe("epoch-older");
@@ -397,30 +356,31 @@ describe("harness evolution facts", () => {
     expect(audit.quickRead.measuredToLastGrowth.toOrdinal).toBe(2);
   });
 
-  it("refuses a recorded contradictory verdict instead of inventing a verified result", () => {
+  it.each([
+    ["battery bytes changed after they were recorded", false, "evidence-tampered"],
+    [
+      "a recorded verified row without a boolean verdict",
+      true,
+      "a verified row needs boolean truthOk and pass",
+    ],
+  ])("refuses %s instead of reporting it as measured evidence", (_name, recorded, refusal) => {
     const { root, campaign } = fixture();
-    const evidence = new EvidenceLog(join(campaign, "candidates/first/runs/measure-first"));
-    evidence.write("battery.json", {
+    const run = join(campaign, "candidates/first/runs/measure-first");
+    const battery = {
       runId: "measure-first",
       bundleSnapshot: fingerprint("a"),
-      cases: [
-        {
-          acceptedSubmit: true,
-          truthOk: null,
-          pass: null,
-          runtimeNonResult: null,
-          runtimeNonResultKind: null,
-        },
-      ],
-    });
-    evidence.record();
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+      cases: [caseRow(true, null, null)],
+    };
+    if (recorded) {
+      const evidence = new EvidenceLog(run);
+      evidence.write("battery.json", battery);
+      evidence.record();
+    } else {
+      writeJson(join(run, "battery.json"), { ...battery, cases: [] });
+    }
+    const result = runAudit(root, campaign);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("a verified row needs boolean truthOk and pass");
+    expect(result.stderr).toContain(refusal);
   });
 
   it("keeps malformed or pairless task sets explicit instead of reporting false similarity zeros", () => {
@@ -436,11 +396,7 @@ describe("harness evolution facts", () => {
     const { root, campaign } = fixture();
     rmSync(join(campaign, "candidates"), { recursive: true, force: true });
     rmSync(join(campaign, "contest"), { recursive: true, force: true });
-    const result = spawnSync(
-      bunExecutable,
-      [script, "domain", "--repo", root, "--campaign", campaign, "--json"],
-      {},
-    );
+    const result = runAudit(root, campaign);
     expect(result.status).toBe(0);
     const audit = JSON.parse(result.stdout);
     expect(audit.summary.measuredCheckpoints).toBe(0);

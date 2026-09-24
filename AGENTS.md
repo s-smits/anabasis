@@ -1496,6 +1496,18 @@ silently picking one. "Queries" may mean harness-query probes, review lanes or s
 full run; and "cycle N" is most likely one cycle of a cycle series. Suffix a `cNN` name with its
 product.
 
+One operator term is not ambiguous, and it is easy to under-read. When the operator says to "sed"
+something from a source, it means copying it across as directly as that source allows: the code,
+its names, its patterns, its constants and its messages, verbatim, with the upstream path and
+commit cited beside the copy. Rewrite only what this repository's rules force — a lint rule the
+upstream spelling breaks, a primitive the tree already owns, a name that would collide with one
+here — and name each departure in the report, so that a reader checking the copy does not have to
+diff it against upstream to find them. A fresh implementation of the same idea is not a sed, and
+neither is adding the upstream package as a dependency. On 2026-09-24 a test-runner fix the
+operator asked to sed from Bun's own CI runner arrived as hand-written code, then as a new
+dependency, then as a rewrite of Bun's approach, before Bun's parse loop and messages were copied
+across (operator decision 2026-09-24).
+
 ## Before and during a paid full run
 
 Load each launch procedure from current `origin/main`; PR, stack and historical revisions select

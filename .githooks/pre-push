@@ -123,19 +123,21 @@ static_findings() {
 
 # A pass that keeps its output in a log prints nothing for minutes, which reads exactly like a hung
 # push, so each interval says how far the tests in that log have got. A failure the test wrapper has
-# sent back for a rerun on a crowded host is not yet a verdict, so the pulse says when that rerun is
-# under way. Killing the pulse's sleep ends its loop; the kill after it only covers a pulse caught
-# between two sleeps.
+# sent back for a rerun is not yet a verdict, so the pulse says when that rerun is under way, in the
+# wrapper's own words for why. Only the wrapper's two rerun lines count: a `host-wall: error:` or
+# `idle-wall: error:` line means the failures stand. The wrapper colours the line, so it is matched
+# anywhere in the line rather than at its start. Killing the pulse's sleep ends its loop; the kill
+# after it only covers a pulse caught between two sleeps.
 pulse_seconds=${ANA_PUSH_PULSE_SECONDS:-60}
 pulse() {
   started=$(date +%s)
   while sleep "$pulse_seconds"; do
     passed=$(grep -c '(pass)' "$2" 2>/dev/null) || true
     failed=$(grep -c '(fail)' "$2" 2>/dev/null) || true
-    rerun=
-    if grep -q 'host-wall:' "$2" 2>/dev/null; then
-      rerun="; the host was crowded, so the failed files are running again alone and that run decides"
-    fi
+    rerun=$(sed -n \
+      -e 's/.*host-wall: \(.*\); running their .*/; \1, so the failed files are running again in one fresh process and that run decides/p' \
+      -e 's/.*idle-wall: retrying \(.*\) one at a time .*/; the idle wall ended the suite, so its \1 are running again one at a time and that run decides/p' \
+      "$2" 2>/dev/null | head -1) || true
     minutes=$(( ($(date +%s) - started) / 60 ))
     echo "pre-push: $1 still running after $minutes min: ${passed:-0} tests passed, ${failed:-0} failed so far$rerun." >&2
   done

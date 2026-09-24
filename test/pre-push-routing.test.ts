@@ -30,7 +30,7 @@ mkdirSync(fakeBin);
 writeFileSync(
   join(fakeBin, "bun"),
   '#!/bin/sh\nprintf \'%s\\t%s\\t%s\\n\' "$ANA_TEST_WORKERS" "$*" "$ANA_TESTED_COMMIT" >> "$ANA_HOOK_MARKER"\n' +
-    '[ "${ANA_FAKE_GATE_SECONDS:-0}" = 0 ] || { printf \'(pass) one\\n(fail) two\\nhost-wall: rerun\\n(pass) two\\n\'; sleep "$ANA_FAKE_GATE_SECONDS"; }\n' +
+    '[ -z "${ANA_FAKE_HOST_WALL:-}" ] || { printf \'(pass) one\\n(fail) two\\n%s\\n(pass) two\\n\' "$ANA_FAKE_HOST_WALL"; sleep 2; }\n' +
     '[ -z "${ANA_FAKE_GATE_OUTPUT:-}" ] || { printf \'%s\\n\' "$ANA_FAKE_GATE_OUTPUT"; exit 1; }\n',
 );
 chmodSync(join(fakeBin, "bun"), 0o755);
@@ -56,7 +56,7 @@ const source = git("rev-parse", "HEAD");
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-function runHook(local: string, remote: string, markerName: string, gateOutput = "", gateSeconds = "0") {
+function runHook(local: string, remote: string, markerName: string, gateOutput = "", hostWall = "") {
   const marker = join(fixture, markerName);
   const result = spawnTextSync("sh", [hook], {
     cwd: fixture,
@@ -68,7 +68,7 @@ function runHook(local: string, remote: string, markerName: string, gateOutput =
       ANA_HOOK_MARKER: marker,
       ANA_TEST_WORKERS: "9",
       ANA_FAKE_GATE_OUTPUT: gateOutput,
-      ANA_FAKE_GATE_SECONDS: gateSeconds,
+      ANA_FAKE_HOST_WALL: hostWall,
       ANA_PUSH_PULSE_SECONDS: "1",
     },
   });
@@ -210,23 +210,49 @@ describe("pre-push proof routing", () => {
     expect(calls(fail.marker)).toHaveLength(1);
   });
 
+  // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
+  const red = "\u001b[0m\u001b[31m";
+
   // An earlier commit's pass keeps its output in a log, so it names the log and pulses rather than
-  // reading as a hung push, and says a failure is being rerun rather than reporting it as final. The
-  // pulse ends with that pass: none of its lines follows the tip's gate starting.
+  // reading as a hung push, and says a failure is being rerun, in the wrapper's words for why, rather
+  // than reporting it as final. The pulse ends with that pass: none of its lines follows the tip's
+  // gate starting. The wrapper lines here are the shapes tools/runtime/test-suite.ts prints.
   it("names each earlier commit's log and pulses only while its pass runs", () => {
-    const result = runHook(git("rev-parse", "HEAD"), docs, "pulse-marker", "", "2");
+    const wall = `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`;
+    const result = runHook(git("rev-parse", "HEAD"), docs, "pulse-marker", "", wall);
     expect(result.status).toBe(0);
     const log = /Log: (\/\S+-[0-9a-f]{9}\.log)/.exec(result.stderr)?.[1] ?? "";
     expect(readFileSync(log, "utf8")).toContain("(pass) two");
     const pulses = [
       ...result.stderr.matchAll(
-        /still running after 0 min: 2 tests passed, 1 failed so far; the host was crowded, so the failed files are running again alone and that run decides\./g,
+        /still running after 0 min: 2 tests passed, 1 failed so far; 1 test\(s\) failed on time alone, none on an assertion, so the failed files are running again in one fresh process and that run decides\./g,
       ),
     ];
     expect(pulses.length).toBeGreaterThan(0);
     const tipGate = result.stderr.indexOf("running bun run gate");
     expect(pulses.every((line) => line.index < tipGate)).toBe(true);
   }, 20_000);
+
+  // The idle wall's retry is the wrapper's other rerun, and an `error:` line is the wrapper keeping
+  // the failures, so that pulse promises no rerun at all.
+  const said: [string, string, string][] = [
+    [
+      "an idle-wall retry",
+      "idle-wall: retrying 1 interrupted and 0 unfinished file(s) one at a time in one fresh process: test/two.test.ts",
+      "1 failed so far; the idle wall ended the suite, so its 1 interrupted and 0 unfinished file(s) are running again one at a time and that run decides.",
+    ],
+    [
+      "a host-wall error",
+      `${red}host-wall: error: the host reached a load average of 20.0 on 8 cores, but 1 file(s) printed no result at all: test/two.test.ts`,
+      "1 failed so far.\n",
+    ],
+  ];
+  for (const [name, wall, pulse] of said) {
+    it(`pulses what the wrapper said after ${name}`, () => {
+      const result = runHook(git("rev-parse", "HEAD"), docs, `pulse-${name.replaceAll(" ", "-")}`, "", wall);
+      expect(result.stderr).toContain(pulse);
+    }, 20_000);
+  }
 
   // A stacked push moves a pull request's head beneath the tip, and that head is where the pull
   // request ends, so it gets the whole gate rather than the per-commit pass.

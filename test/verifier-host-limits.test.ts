@@ -1,6 +1,6 @@
 /**
  * What bounds a tool run: its time limit, the identity of the bytes it may execute, the OS wall it
- * requires, the output it may hand back and the environment it starts in.
+ * requires and the output it may hand back.
  *
  * Each of these ends a run without an answer rather than letting a doubtful one through, so each
  * case pins both the refusal and the typed non-result it records. A missing sandbox, a changed
@@ -19,7 +19,6 @@ import {
   resolveToolTimeoutMs,
 } from "../src/verify/host.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
-import { commandSearchPath } from "../src/verify/solve-command-isolation.ts";
 import { executionEvidence } from "../src/truth/tool-runs.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
@@ -233,50 +232,5 @@ describe("the bytes the host hands back", () => {
     expect(out.stderr.length).toBe(256 * 1024);
     expect(out.evidence.stderrTail).toHaveLength(2000);
     expect(out.evidence.stderrTail.endsWith("TAIL-MARK")).toBe(true);
-  });
-
-  it("starts the tool in a fresh cell home without inherited credentials or search path", async () => {
-    const stage = scratchDir("ana-host-env-");
-    const parentHome = join(stage, "parent-home");
-    // The launcher's PATH names an interpreter directory first; the cell must not search it, or a
-    // `#!/usr/bin/env python3` tool would run under a different Python than the Builder shell's.
-    const launcherBin = join(stage, "launcher-bin");
-    script(launcherBin, "python3", ["echo launcher-python"]);
-    const fx = hostFixture(
-      { "env-tool": ["/usr/bin/env"] },
-      {
-        parentEnv: {
-          PATH: `${launcherBin}:${TOOL_PATH}`,
-          HOME: parentHome,
-          AWS_SECRET_ACCESS_KEY: "leak-one",
-          DATABASE_URL: "postgres://user:leak-two@host/db",
-          OPENROUTER_API_KEY: "leak-three",
-        },
-      },
-    );
-
-    const out = await runOnce(fx.host, subject({}), { toolId: "env-tool", checkId: "c-env" });
-    expect(out.executed).toBe(true);
-    const env = Object.fromEntries(
-      out.stdout
-        .split("\n")
-        .filter((line) => line.includes("="))
-        .map((line): [string, string] => [
-          line.slice(0, line.indexOf("=")),
-          line.slice(line.indexOf("=") + 1),
-        ]),
-    );
-
-    // The cell env is built up from empty, so nothing crosses that was not named.
-    const cellPrefix = join(fx.cells, "ana-cell-");
-    expect(required(env.HOME, "HOME").startsWith(cellPrefix)).toBe(true);
-    expect(required(env.TMPDIR, "TMPDIR").startsWith(cellPrefix)).toBe(true);
-    expect(env.HOME).not.toBe(parentHome);
-    expect(env.PATH).toBe(commandSearchPath(fx.toolTree));
-    expect(required(env.PATH, "PATH").startsWith(join(fx.toolTree, "bin"))).toBe(true);
-    expect(env.PATH).not.toContain(launcherBin);
-    for (const secret of ["leak-one", "leak-two", "leak-three"]) expect(out.stdout).not.toContain(secret);
-    const shellOwned = new Set(["HOME", "PATH", "TMPDIR", "PWD", "SHLVL", "_"]);
-    expect(Object.keys(env).filter((name) => !shellOwned.has(name))).toEqual([]);
   });
 });

@@ -26,6 +26,7 @@ import {
   isOverbroadSandboxReadRoot,
   ancestorDirectories,
   SEATBELT_BASELINE,
+  canonicalForms,
   darwinPlatformReadRoots,
   darwinUserTempRoot,
   userTempChildTreeRules,
@@ -33,7 +34,7 @@ import {
   surroundingSandbox,
 } from "./wall-policy.ts";
 import { type IsolationPosture, seatbeltProfile } from "./isolation-description.ts";
-import { canonicalForms, sbRule } from "./seatbelt-path-guard.ts";
+import { sbRule } from "./seatbelt-path-guard.ts";
 import { runtimeProcess } from "../meta/process.ts";
 
 export const DARWIN_SEATBELT_ID = "darwin-seatbelt/v1" as const;

@@ -63,7 +63,7 @@ import {
   VerifierContractError,
   type VerifierContractCode,
 } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import { engineCellEnv } from "./engine-cell-env.ts";
+import { type CellToolCache, engineCellEnv, withToolCache } from "./engine-cell-env.ts";
 import {
   createVerifierLifetime,
   settleUnspawned,
@@ -127,6 +127,8 @@ export interface VerifierHostOptions {
 interface ToolCell extends ToolInputGrant {
   path: string;
   ran?: ToolRunRequest | null;
+  /** The tool cache the cell's first run restored, which every later run in the cell also finds. */
+  cache?: CellToolCache;
 }
 
 interface Scope {
@@ -749,10 +751,12 @@ class VerifierHost implements VerifierHostHandle {
     if (earlier?.executed === true) {
       cell.ran = request;
       const { phase, subjectId, attempt, requestId, sandbox, sandboxPolicyHash } = earlier.evidence;
+      // A reused answer restored nothing, so it carries no cache row of its own.
+      const { cache, ...answered } = earlier.evidence;
       result = {
         ...earlier,
         evidence: {
-          ...earlier.evidence,
+          ...answered,
           ...base,
           sandbox,
           sandboxPolicyHash,
@@ -761,7 +765,8 @@ class VerifierHost implements VerifierHostHandle {
         },
       };
     } else {
-      const launched = this.spawn({
+      const tool = { tree: this.toolTree, digest: liveDigest, interpreterDigest: entry.interpreterDigest };
+      const launch = {
         scope,
         cell,
         toolId: request.toolId,
@@ -770,7 +775,8 @@ class VerifierHost implements VerifierHostHandle {
         args,
         stdin,
         timeoutMs,
-      });
+      };
+      const launched = withToolCache(cell, this.baseDir, subject.phase, tool, () => this.spawn(launch));
       if (replay === undefined) this.answers.set(question, launched);
       result = await launched;
     }

@@ -4,7 +4,7 @@
  *
  * 1. Path form. `/var/folders/...` and `/private/var/folders/...` are the same directory, and the kernel
  *    matches the canonical one. A denial naming only the symlink form can miss the protected
- *    read. `canonicalForms` returns both.
+ *    read. `canonicalForms` in `wall-policy.ts` returns both.
  * 2. Location. A confined process that can rename an ancestor of a denied path moves the protected
  *    bytes to a path no rule mentions. `moveBlockingRules` denies those renames.
  *
@@ -35,7 +35,7 @@
  */
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
-import { join, resolve } from "../meta/path.ts";
+import { join } from "../meta/path.ts";
 import { posixContainsPath } from "../meta/path-containment.ts";
 import { ancestorDirectories } from "./wall-policy.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -57,19 +57,6 @@ export interface MoveGuardCheck {
    *  rather than to a filesystem that would have failed the rename anyway. */
   liftedSucceeded: boolean;
   detail: string;
-}
-
-/** Both path forms of a root: a deny that names only the symlink form leaves the real one open,
- *  which on Darwin is the difference between `/var` and `/private/var`. Every caller constructing a
- *  denial needs both forms, so this returns both rather than picking one. */
-export function canonicalForms(path: string): string[] {
-  const abs = resolve(path);
-  try {
-    const real = realpathSync.native(abs);
-    return real === abs ? [abs] : [abs, real];
-  } catch {
-    return [abs];
-  }
 }
 
 /** Whether a deny rooted at `root` reaches `target`. Used to lift exactly the rules covering one

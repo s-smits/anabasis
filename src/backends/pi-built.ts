@@ -56,7 +56,7 @@ import type { SafeguardContext } from "../meta/safeguard.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { buildWorkerBundle } from "../meta/subprocess.ts";
-import { canonicalForms } from "../verify/seatbelt-path-guard.ts";
+import { canonicalForms } from "../verify/wall-policy.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 
 export interface PiBuiltRuntime {

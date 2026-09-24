@@ -301,6 +301,25 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     expect(sh(`cat ${join(binding.iterationDir, "census.json")}`).stdout).not.toContain("remedy");
   });
 
+  it("writes the launch's temporary directory, which the wall only ever sees resolved", () => {
+    // A detached launch freezes TMPDIR under `/var/tmp`, and Seatbelt evaluates the resolved
+    // `/private/var/tmp`: a scratch grant naming only the spelling refused every mktemp and
+    // compiler scratch file the Builder's shell made there, whichever spelling the shell used.
+    const launch = mkdtempSync(join("/var/tmp", "ana-scratch-grant-"));
+    try {
+      const { profile } = candidateIsolationProfile(policy, "exec", ["/usr/bin/touch"]);
+      for (const target of [join(launch, "spelled"), join(realpathSync.native(launch), "resolved")]) {
+        const touched = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/usr/bin/touch", target], {
+          env: {},
+          timeout: 10_000,
+        });
+        expect(touched.status, target).toBe(0);
+      }
+    } finally {
+      rmSync(launch, { recursive: true, force: true });
+    }
+  });
+
   it("resolves a linked package's hoisted dependency from the Builder cell's environment", () => {
     // The workspace links each repository package as `linkWorkspacePackageScopes` does; the wall
     // never lists the repository root, so resolving from a package's real path misses its sibling.

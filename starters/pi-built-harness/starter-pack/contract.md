@@ -113,7 +113,11 @@ process itself. The host supplies the check id, refuses undeclared tool ids, req
 completed run of every required tool, and owns sandbox, timeout and cleanup: each run gets a
 private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`. TMPDIR is
 the run's working directory. `/tmp` is private on Linux and closed on macOS, even though your shell
-can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR.
+can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR. The one
+thing a run starts with is its user cache directory (`XDG_CACHE_HOME`, `~/Library/Caches` on
+macOS): what an earlier `correctness_check` or `submit` stored there for the same tool bytes. A
+`harness_trial` or measured run starts from it and stores nothing. So keep a compiler's build cache
+there; one under TMPDIR is rebuilt on every run.
 - Args carry flags and names; files and stdin carry operands. Omit `stdin` when the command has
   none. A nonzero exit is a completed result for your code to interpret.
 - For external evidence, file contents and stdin must be string leaves or JSON of this check's

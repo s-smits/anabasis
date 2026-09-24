@@ -2041,7 +2041,9 @@ writes a header on nearly everything. The scan is right to ask; the answers belo
 the scan.
 
 The first three rows went on 2026-09-21 with the Codex app-server and Claude SDK backends they
-served, when every host slot moved onto the shared pi provider layer. The last two stand.
+served, when every host slot moved onto the shared pi provider layer. The fifth left the shape on
+2026-09-24, when `engine-cell-env.ts` took the verifier tool cache as a second export beside the
+environment rule, so a single export no longer describes it. The fourth stands.
 
 ### `tree/identity-without-owner`: four fixed, three refused
 

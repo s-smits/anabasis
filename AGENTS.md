@@ -909,7 +909,9 @@ same version, fingerprint and experiment. Preserve damaged state for review.
 Verifier process results and process cleanup are separate facts. A deadline bounds execution and
 output collection even when a child or a pipe will not settle, cleanup keeps a durable receipt,
 recovery never signals a saved PID, and a successful kill syscall on its own proves nothing. Each
-tool run gets fresh private `TMPDIR` and `HOME` children. Darwin Seatbelt and Linux Bubblewrap each
+tool run gets fresh private `TMPDIR` and `HOME` children, and the one thing restored into them is
+the tool's user cache directory, from what an earlier gate run of the same tool bytes stored
+(`withToolCache`, `src/verify/engine-cell-env.ts`); a battery run restores it and never stores. Darwin Seatbelt and Linux Bubblewrap each
 need their own live proof, and an unavailable required wall yields a typed non-result — never an
 unconfined run.
 

@@ -240,11 +240,11 @@ function composeAuthoringMemory(
   };
 }
 
-/** The reopening pass the build step binds its epoch on, with the starter reset when the redesign starts fresh. */
+/** The reopening pass the build step binds its epoch on. */
 function epochBindingKeys(decision: NextMove): Pick<HarnessBuildOptions, "epochPass" | "rebuildReset"> {
   const epochPass = epochPassOf(decision);
   if (epochPass === undefined) return {};
-  return { epochPass, ...keysIf(decision.seed === "starter", () => ({ rebuildReset: epochPass })) };
+  return { epochPass };
 }
 
 export async function runBuildStep(

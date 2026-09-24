@@ -24,16 +24,20 @@
  * The wall. `--timeout=60000` bounds each test, not the worker. Bun 1.4 sometimes leaves a
  * `--test-worker` spinning at full CPU with exited, unreaped children after a subprocess-heavy
  * file; no test is running, so the per-test wall never fires, and an unattended run holds the
- * queue until someone notices. Every chunk of output resets a clock; 180 s of silence (three
- * per-test walls) ends the whole process group and lists what it was running. The wedge sits in
- * the worker's own tail, so the wall then runs the files never reported again, once, in one fresh
- * process without workers, and that verdict is the suite's for the files it reports -- a file
- * silent there as well was tested by neither process, so its silence is a failure and not a pass.
- * The wall fails the suite outright when more than a few files are missing, which is an early
- * wedge rather than a tail. A failure printed before the wall is kept: the rerun covers the files
- * the first process never finished, never the verdict of one it did. The suite owns the wall, so
- * `bun run test` and the gate share one behaviour; `ANA_TEST_IDLE_SECONDS` shortens it for its own
- * test, and `wallSeconds` widens it in proportion to load the suite did not create.
+ * queue until someone notices. A worker that finishes its own share of the files takes over the
+ * rest of another's, so the group goes silent only when every worker has wedged, and then every
+ * file behind them is stranded: with two workers, two wedges can leave most of the suite unrun.
+ * Every chunk of output resets a clock, and 180 s of silence (three per-test walls) fires the
+ * wall, which lists what the group was running and then does what Bun's own CI runner does with a
+ * stalled batch: SIGTERM to the coordinator, SIGKILL 15 s later, and every file left unfinished run
+ * again one at a time, however many there are. Here that is one fresh process without workers, over
+ * the files Bun's interrupt report names and every file that printed no result, and its verdict is
+ * the suite's for the files it reports -- a file silent there as well was tested by neither
+ * process, so its silence is a failure and not a pass. A failure printed before the wall is kept:
+ * the rerun covers the files the first process never finished, never the verdict of one it did.
+ * The suite owns the wall, so `bun run test` and the gate share one behaviour;
+ * `ANA_TEST_IDLE_SECONDS` shortens it for its own test, and `wallSeconds` widens it in proportion
+ * to load the suite did not create.
  *
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
@@ -42,7 +46,7 @@ import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "../.
 import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
-import { killProcessGroup, terminateAndReapProcessGroup } from "../../src/meta/subprocess.ts";
+import { interruptAndReapProcessGroup, killProcessGroup } from "../../src/meta/subprocess.ts";
 
 const REPO_ROOT = join(import.meta.dir, "../..");
 // Absolute, so a focused `--cwd` request still reads and refreshes the repository file.
@@ -84,16 +88,28 @@ const COMMON_FLAGS = [
  *  worker it is the file the wall interrupted. `exitCode` is null when the wall ended the group.
  *  `failures` counts the `(fail)` lines and `clockEnded` how many a wall ended rather than an
  *  assertion: a run where the two agree failed on time alone. `errors` counts what Bun printed
- *  outside any test, which appears in no result line and so in neither set. */
+ *  outside any test, which appears in no result line and so in neither set. `interrupted` holds the
+ *  files Bun said it was still running when interrupted, or whose worker crashed, and `incomplete`
+ *  those it said it had not started, or aborted, or had no live worker for. */
 export interface WalledRun {
   exitCode: number | null;
   reported: Set<string>;
   failed: Set<string>;
+  interrupted: Set<string>;
+  incomplete: Set<string>;
   inFlight: string | null;
   failures: number;
   clockEnded: number;
   errors: number;
   peakLoad: number;
+}
+
+/** What the output relay and the wall share while one process runs: the relay resets the clock,
+ *  the wall reads it, and `walled` says the wall fired. */
+interface WallState {
+  lastOutputAt: number;
+  peakLoad: number;
+  walled: boolean;
 }
 
 /** Bun names a per-test wall on the line after the result. Either way the clock decided, and
@@ -104,6 +120,10 @@ const TIMED_OUT_NOTICE = /^\s*\^ this test timed out after \d+ms\.$/;
  *  a module that would not load, a stray throw between tests. It reaches the suite on stderr, and
  *  Bun counts it in its own exit code. */
 const UNHANDLED_ERROR = /^# Unhandled error/;
+
+/** How long the coordinator has between the wall's SIGTERM and the group kill: the `gracefulTimeout`
+ *  of Bun's own CI runner. */
+const GRACE_MS = 15_000;
 
 /** Why the suite did what it did with a first process's result. `stands` takes that verdict with
  *  nothing to say; the rest each print one sentence naming `subject`. */
@@ -259,6 +279,41 @@ export function testCommand(requested: readonly string[], workers: string | unde
   return requested.length === 0 ? [...command, "test"] : [...command, ...requested];
 }
 
+/** A reader for the lines Bun's parallel coordinator prints about files it did not finish: the
+ *  report a SIGTERM makes it print, a heading for the files it was still running and one for those
+ *  it had not started with a file indented under each, and the line for a file whose worker ended
+ *  under it. Copied from the parse loop of the parallel bucket in Bun's own CI runner
+ *  (`scripts/runner.node.ts` in oven-sh/bun at 73df7bb), where `interrupted` is its `failed`,
+ *  since `failed` here is the files with a `(fail)` line. Returns whether the line was one. */
+function interruptReader(
+  norm: (p: string) => string,
+  interrupted: Set<string>,
+  incomplete: Set<string>,
+): (line: string) => boolean {
+  let list: "running" | "not-started" | null = null; // while inside an interrupt report list
+  return (line) => {
+    if (line.startsWith("Interrupted while still running:")) {
+      list = "running";
+      return true;
+    }
+    if (/^\d+ file\(s\) had not started:$/.test(line)) {
+      list = "not-started";
+      return true;
+    }
+    if (list !== null && /^ {2}\S/.test(line)) {
+      const testPath = norm(line);
+      (list === "running" ? interrupted : incomplete).add(testPath);
+      return true;
+    }
+    list = null;
+    const ended = /^✗ (.+?) \((worker crashed|aborted:|no live workers)/.exec(line);
+    if (ended === null) return false;
+    const [, testPath = "", how] = ended;
+    (how === "worker crashed" ? interrupted : incomplete).add(norm(testPath));
+    return true;
+  };
+}
+
 /** One line per descendant as the tree stood when the wall fired: pid, CPU share and command
  *  line, so a stalled log says which worker spun and what the rest of the group was running.
  *  Returns those pids: the group kill below cannot reach a descendant that started its own
@@ -329,6 +384,38 @@ async function killStrays(pids: number[]): Promise<void> {
 /** The group under the wall right now, so an interrupt reaching the suite ends it too. */
 let active: Bun.Subprocess | null = null;
 
+/** Every second, whether the group has been silent for the whole wall, and if it has, its end:
+ *  the SIGTERM, grace and reap of Bun's own CI runner, through `interruptAndReapProcessGroup`. The
+ *  coordinator is not the process that wedged, and given the grace it ends its own workers and
+ *  prints which files it was still running and which it had not started, for `interruptReader`. */
+function startWall(
+  child: Bun.Subprocess,
+  idleSeconds: number,
+  state: WallState,
+): ReturnType<typeof setInterval> {
+  const ticker = setInterval(() => {
+    const busy = hostLoad();
+    state.peakLoad = Math.max(state.peakLoad, busy);
+    const wall = wallSeconds(idleSeconds, busy);
+    if (state.walled || performance.now() - state.lastOutputAt < wall * 1000) return;
+    state.walled = true;
+    clearInterval(ticker);
+    void (async () => {
+      console.error(
+        `idle-wall: no output for ${String(wall)} s at a load average of ${busy.toFixed(1)} on ${String(availableParallelism())} cores; interrupting the test run.`,
+      );
+      const descendants = await describeTree(child.pid);
+      const reaped = await interruptAndReapProcessGroup(child, GRACE_MS);
+      if (!reaped) console.error("idle-wall: some process in the group survived SIGKILL.");
+      await killStrays(descendants);
+    })().catch((cause: unknown) => {
+      killProcessGroup(child, "SIGKILL");
+      console.error("idle-wall: cleanup failed", cause);
+    });
+  }, 1000);
+  return ticker;
+}
+
 /** One `bun test` process under the idle wall, relaying its output. Bun prints file headers
  *  relative to `cwd`, the request's working directory. */
 async function runWalled(
@@ -353,16 +440,32 @@ async function runWalled(
   active = child;
   const reported = new Set<string>();
   const failed = new Set<string>();
+  const interrupted = new Set<string>();
+  const incomplete = new Set<string>();
   let failures = 0,
     clockEnded = 0,
     errors = 0,
-    awaitingNotice = false,
-    peakLoad = hostLoad();
-  let lastOutputAt = performance.now();
+    awaitingNotice = false;
+  const state: WallState = { lastOutputAt: performance.now(), peakLoad: hostLoad(), walled: false };
   let pending = "";
   let header: string | null = null;
-  /** One output line: a file header, a result line under it, or the wall's own notice. */
+  // Bun's `norm`, resolving to this file's spelling of a file rather than to a bucket entry.
+  const norm = (p: string) =>
+    fileIdentity(
+      resolve(
+        cwd,
+        p
+          .trim()
+          .replace(/:$/, "")
+          .replace(/ \(\d+s\)$/, "")
+          .replaceAll("\\", "/"),
+      ),
+    );
+  const readInterrupt = interruptReader(norm, interrupted, incomplete);
+  /** One output line: a line about a file Bun did not finish, a file header, a result line under
+   *  it, or the wall's own notice. */
   const scanLine = (line: string): void => {
+    if (readInterrupt(line)) return;
     if (/^\S+\.(?:test|spec)\.[cm]?[jt]sx?:$/.test(line)) {
       header = fileIdentity(resolve(cwd, line.slice(0, -1)));
       awaitingNotice = false;
@@ -393,7 +496,7 @@ async function runWalled(
   ): Promise<void> => {
     const writer = sink.writer();
     for await (const chunk of source) {
-      lastOutputAt = performance.now();
+      state.lastOutputAt = performance.now();
       await writer.write(chunk);
       await writer.flush();
       if (!scan) continue;
@@ -406,40 +509,23 @@ async function runWalled(
     }
     await writer.end();
   };
-  let walled = false;
-  const ticker = setInterval(() => {
-    const busy = hostLoad();
-    peakLoad = Math.max(peakLoad, busy);
-    const wall = wallSeconds(idleSeconds, busy);
-    if (walled || performance.now() - lastOutputAt < wall * 1000) return;
-    walled = true;
-    clearInterval(ticker);
-    void (async () => {
-      console.error(
-        `idle-wall: no output for ${String(wall)} s at a load average of ${busy.toFixed(1)} on ${String(availableParallelism())} cores; ending the test group.`,
-      );
-      const descendants = await describeTree(child.pid);
-      const reaped = await terminateAndReapProcessGroup(child);
-      if (!reaped) console.error("idle-wall: some process in the group survived SIGKILL.");
-      await killStrays(descendants);
-    })().catch((cause: unknown) => {
-      killProcessGroup(child, "SIGKILL");
-      console.error("idle-wall: cleanup failed", cause);
-    });
-  }, 1000);
+  const ticker = startWall(child, idleSeconds, state);
   await Promise.all([relay(child.stdout, Bun.stdout, false), relay(child.stderr, Bun.stderr, true)]);
   const exitCode = await child.exited;
   clearInterval(ticker);
-  // Once the wall has fired, the group's own exit (137 after the kill) is not the verdict.
+  // Once the wall has fired, the group's own exit (130 after the interrupt, 137 after a kill) is not
+  // the verdict.
   return {
-    exitCode: walled ? null : exitCode,
+    exitCode: state.walled ? null : exitCode,
     reported,
     failed,
+    interrupted,
+    incomplete,
     inFlight: header,
     failures,
     clockEnded,
     errors,
-    peakLoad,
+    peakLoad: state.peakLoad,
   };
 }
 
@@ -465,11 +551,19 @@ export function attribute(
     // The wall ended the group. A failure it had already printed is the verdict: the rerun covers
     // the files the first process never finished, never the verdict of one it did.
     if (failed.length > 0) return { rerun: null, exitCode: 1, because: "already-failed", subject: failed };
-    // The file printed last may be a streamed block the wall cut short, so it runs again too.
-    const remaining = asked.filter((file) => !first.reported.has(file) || file === first.inFlight);
-    if (remaining.length === 0 || remaining.length > RERUN_FILE_LIMIT) {
-      return { rerun: null, exitCode: 1, because: "none-left", subject: remaining };
-    }
+    // Every file left unfinished runs again, however many: Bun's own CI runner reruns each one an
+    // interrupted batch left, uncapped, because a queue two wedges stranded says nothing about the
+    // files behind them. The files Bun named join those asked for that printed nothing, so the
+    // rerun holds when a request named a directory or the coordinator printed no report. The file
+    // printed last may be a streamed block the wall cut short, so it runs again too.
+    const remaining = [
+      ...new Set([
+        ...first.interrupted,
+        ...first.incomplete,
+        ...asked.filter((file) => !first.reported.has(file) || file === first.inFlight),
+      ]),
+    ];
+    if (remaining.length === 0) return { rerun: null, exitCode: 1, because: "none-left", subject: remaining };
     return { rerun: remaining, exitCode: 1, because: "never-finished", subject: remaining };
   }
   if (first.exitCode === 0 || first.failures === 0) {
@@ -546,14 +640,16 @@ async function main(): Promise<number> {
         first.clockEnded === first.failures
           ? `${String(first.failures)} test(s) failed on time alone, none on an assertion`
           : `the host reached a load average of ${first.peakLoad.toFixed(1)} on ${String(availableParallelism())} cores while these ran`;
+      const interrupted = step.subject.filter((file) => first.interrupted.has(file)).length;
       const rerunning = `running their ${String(step.subject.length)} file(s) again in one fresh process: ${relative(step.subject)}`;
       // A Record, so a new reason cannot be added without a sentence that names its subject.
       const said: Record<Exclude<Reason, "stands">, string> = {
         "already-failed": `idle-wall: error: ${silence}; ${String(step.subject.length)} file(s) had already failed: ${relative(step.subject)}`,
-        // Nothing reported, so the branch was not measured and a second identical push will not
-        // measure it either. The override is the only lever that does not need this file read.
-        "none-left": `idle-wall: error: ${silence} with ${String(step.subject.length)} of ${String(asked.length)} files unfinished; the suite learned nothing about this branch. Retry with fewer workers (ANA_TEST_WORKERS=4) or on a less loaded host.`,
-        "never-finished": `idle-wall: ${String(step.subject.length)} of ${String(asked.length)} files were never finished; running them again in one fresh process: ${relative(step.subject)}`,
+        // Every file it can name printed its result, so there is nothing to run again, and the
+        // process that went silent afterwards left no exit code to take as the verdict.
+        "none-left": `idle-wall: error: ${silence} with no file left unfinished that it can name, so nothing can run again and there is no exit code to take as the verdict.`,
+        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`.
+        "never-finished": `idle-wall: retrying ${String(interrupted)} interrupted and ${String(step.subject.length - interrupted)} unfinished file(s) one at a time in one fresh process: ${relative(step.subject)}`,
         unreported: `host-wall: error: ${machine}, but ${String(step.subject.length)} file(s) printed no result at all: ${relative(step.subject)}`,
         "too-many-failed": `host-wall: error: ${machine}, but ${String(step.subject.length)} files failed, which is more than a busy host explains: ${relative(step.subject)}`,
         "clock-only": `host-wall: ${machine}; ${rerunning}`,

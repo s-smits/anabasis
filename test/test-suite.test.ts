@@ -45,6 +45,8 @@ function ran(overrides: Partial<WalledRun> = {}): WalledRun {
     exitCode: 0,
     reported: new Set(),
     failed: new Set(),
+    interrupted: new Set(),
+    incomplete: new Set(),
     inFlight: null,
     failures: 0,
     clockEnded: 0,
@@ -253,15 +255,36 @@ describe("whose verdict the suite reports", () => {
     });
   });
 
-  it("fails a wall that left more files unfinished than a tail, or none at all", () => {
-    // More than a tail is an early wedge: the suite tested too little to report anything.
+  it("runs every file a wall left unfinished again, however many, as Bun's own runner does", () => {
+    // Two wedged workers strand the whole queue behind them, which says nothing about those files.
     const many = Array.from({ length: 12 }, (_, index) => file(`f${String(index)}.test.ts`));
     expect(attribute(ran({ exitCode: null }), many, 8)).toMatchObject({
-      rerun: null,
+      rerun: many,
       exitCode: 1,
-      because: "none-left",
+      because: "never-finished",
     });
-    expect(attribute(ran({ exitCode: null, reported: new Set(many) }), many, 8)).toMatchObject({
+  });
+
+  it("runs the files Bun's interrupt report named again, including any the request never listed", () => {
+    // A request naming a directory lists no file, so only the report can say what went unrun.
+    const first = ran({
+      exitCode: null,
+      interrupted: new Set([file("x.test.ts")]),
+      incomplete: new Set([file("y.test.ts")]),
+    });
+    expect(attribute(first, [], 8)).toMatchObject({
+      rerun: [file("x.test.ts"), file("y.test.ts")],
+      because: "never-finished",
+    });
+    // A file both unreported and named in the report runs once.
+    expect(attribute(first, [file("x.test.ts")], 8)).toMatchObject({
+      rerun: [file("x.test.ts"), file("y.test.ts")],
+    });
+  });
+
+  it("fails a wall that left nothing it can name unfinished", () => {
+    const every = [file(A_TEST_TS), file("b.test.ts")];
+    expect(attribute(ran({ exitCode: null, reported: new Set(every) }), every, 8)).toMatchObject({
       rerun: null,
       exitCode: 1,
       because: "none-left",
@@ -331,7 +354,9 @@ describe("the wall itself", () => {
 
   it("ends a silent group whose members ignore SIGTERM, names them, and removes the temporary root", async () => {
     // Two grandchildren that refuse SIGTERM, one of them in its own session as a Bubblewrap
-    // verifier is, so the group kill cannot reach it and it must be ended by pid.
+    // verifier is, so the group kill cannot reach it and it must be ended by pid. The test refuses
+    // SIGTERM as well, so the wall's interrupt goes unanswered and the group kill follows only
+    // after the whole grace -- once for the first process and once for the rerun, hence the time.
     const pidFile = join(tmpdir(), `ana-wall-pids-${String(runtimeProcess.pid)}`);
     const { host, fixture } = wedged(`  process.on("SIGTERM", () => {});
   const sleeper = ["bun", "-e", 'process.on("SIGTERM", () => {}); await Bun.sleep(600000);'];
@@ -369,7 +394,7 @@ describe("the wall itself", () => {
     } finally {
       run.kill();
     }
-  }, 60_000);
+  }, 90_000);
 
   it("waits proportionally longer for the same silence when the host is carrying twice its cores", async () => {
     // The gate of 2026-09-20: a flat wall ended a push after 180 s with no file reported, one
@@ -423,9 +448,77 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
     });
     try {
       const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
-      expect(err).toContain("1 of 1 files were never finished; running them again in one fresh process");
+      // One worker runs inside the coordinator, which prints no interrupt report, so the file counts
+      // as unfinished rather than interrupted: it printed no result, and that alone brings it back.
+      expect(err).toContain(
+        "idle-wall: retrying 0 interrupted and 1 unfinished file(s) one at a time in one fresh process",
+      );
       expect(err).toContain("1 pass");
       expect(err).not.toContain("dropped the request's filter");
+      expect(code).toBe(0);
+    } finally {
+      run.kill("SIGKILL");
+    }
+  }, 60_000);
+
+  it("interrupts a run whose every worker has wedged, and runs all it left unfinished again", async () => {
+    // With two workers, two wedges leave nothing to drain the queue, and every file behind them is
+    // stranded: more of them here than any cap on a tail would take. SIGTERM lets the coordinator
+    // say which files it was running and which it had not started, and all of them pass alone.
+    const host = scratchDir("ana-suite-workers-");
+    const fixture = join(host, "fixture");
+    mkdirSync(fixture);
+    for (const name of ["a", "c"]) {
+      const marker = join(host, `first-run-${name}`);
+      writeFileSync(
+        join(fixture, `${name}-wedge.test.ts`),
+        `import { it } from "bun:test";
+it("passes once its worker has wedged", async () => {
+  if (await Bun.file(${JSON.stringify(marker)}).exists()) return;
+  await Bun.write(${JSON.stringify(marker)}, "wedged");
+  await Bun.sleep(600_000);
+}, 900_000);
+`,
+      );
+    }
+    const quick = ["b", "d"].flatMap((group) =>
+      Array.from({ length: 5 }, (_, index) => `${group}${String(index)}`),
+    );
+    for (const name of quick) {
+      writeFileSync(
+        join(fixture, `${name}.test.ts`),
+        `import { it } from "bun:test";\nit("passes", () => {});\n`,
+      );
+    }
+    // Named one by one, as the gate's own request resolves to files: a directory is a filter, and a
+    // rerun keeping it would run the whole directory again.
+    const files = ["a-wedge", "c-wedge", ...quick].map((name) => join(fixture, `${name}.test.ts`));
+    const run = Bun.spawn(["bun", SUITE, ...files], {
+      cwd: REPO_ROOT,
+      env: {
+        ...Bun.env,
+        TMPDIR: host,
+        ANA_TEST_TMPDIR: host,
+        ANA_TEST_WORKERS: "2",
+        ANA_TEST_IDLE_SECONDS: "3",
+        ANA_TEST_HOST_LOAD: "0",
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    try {
+      const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
+      expect(err).toContain("cores; interrupting the test run.");
+      expect(err).toContain("Interrupted while still running:");
+      // Bun gives each worker six files in a row, a wedge first, so both wedges hold their workers
+      // from the start and the ten quick files behind them never start: more than the eight a tail
+      // was once capped at.
+      const rerun = err.split("\n").find((line) => line.startsWith("idle-wall: retrying "));
+      expect(rerun).toStartWith(
+        "idle-wall: retrying 2 interrupted and 10 unfinished file(s) one at a time in one fresh process: ",
+      );
+      expect(rerun).toContain("a-wedge.test.ts");
+      expect(rerun).toContain("c-wedge.test.ts");
       expect(code).toBe(0);
     } finally {
       run.kill("SIGKILL");

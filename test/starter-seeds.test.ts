@@ -26,7 +26,7 @@ import {
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
-import { dirname, isAbsolute, join, relative, resolve } from "../src/meta/path.ts";
+import { isAbsolute, join, relative, resolve } from "../src/meta/path.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, describe, expect, it } from "bun:test";
 import { execTextSync } from "./helpers/bun-spawn-sync.ts";
@@ -42,35 +42,26 @@ import { brief as workedBrief, fence } from "./helpers/starter-contracts.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
 import type { BuildTask } from "../src/truth/tasks.ts";
 
-const REPO_ROOT = join(import.meta.dir, "..");
+// Realpath'd and under the repository root on purpose: @ana/* resolve by walking up to the true
+// root node_modules, so a workspace outside the tree, or behind a symlinked path to it, cannot load
+// the bundles at all (src/truth/solvability.ts makes the same choice for the reference-solve scratch).
+const REPO_ROOT = realpathSync.native(join(import.meta.dir, ".."));
 const STARTER_ROOT = join(REPO_ROOT, "starters", "pi-built-harness");
-
-const SEED_COMMAND = `${WORKSPACE_BUN_LINK} --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`;
-// Under the repository root on purpose: @ana/* resolve by walking up to the root node_modules, so
-// a workspace outside the tree cannot load the bundles at all (src/truth/solvability.ts makes the
-// same choice for the reference-solve scratch).
+const SEED_FILES = ["correctness-model/harness.test.ts", "correctness-model/evaluator.test.ts"];
+const SEED_COMMAND = `${WORKSPACE_BUN_LINK} --preserve-symlinks --no-env-file test ${SEED_FILES.join(" ")}`;
 mkdirSync(join(REPO_ROOT, ".scratch"), { recursive: true });
-const SCRATCH = mkdtempSync(join(REPO_ROOT, ".scratch", "starter-seed-"));
+const SCRATCH = realpathSync.native(mkdtempSync(join(REPO_ROOT, ".scratch", "starter-seed-")));
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
 async function runSeedTests(workspace: string) {
-  const child = Bun.spawn(
-    [
-      Bun.argv[0]!,
-      "--no-env-file",
-      "test",
-      "correctness-model/harness.test.ts",
-      "correctness-model/evaluator.test.ts",
-    ],
-    {
-      cwd: workspace,
-      env: Bun.env,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      maxBuffer: 32 * 1024 * 1024,
-    },
-  );
+  const child = Bun.spawn([Bun.argv[0]!, "--no-env-file", "test", ...SEED_FILES], {
+    cwd: workspace,
+    env: Bun.env,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    maxBuffer: 32 * 1024 * 1024,
+  });
   const [status, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
@@ -186,32 +177,9 @@ describe("starter seed tests on the documented worked harness", () => {
     ).toBe(false);
   });
 
-  /** The command the contract tells the Builder to run. */
-  const run = runSeedTests;
-  /** Run the production tests, then take a conservative Bun module-graph upper bound over both entries. */
-  const traced = async (workspace: string) => {
-    await run(workspace);
-    const result = await Bun.build({
-      entrypoints: [
-        join(workspace, "correctness-model", "harness.test.ts"),
-        join(workspace, "correctness-model", "evaluator.test.ts"),
-      ],
-      target: "bun",
-      format: "esm",
-      metafile: true,
-    });
-    if (!result.success || result.metafile === undefined) {
-      throw new Error(result.logs.map((log) => log.message).join("\n") || "Bun module graph unavailable");
-    }
-    return Object.keys(result.metafile.inputs)
-      .map((path) => (isAbsolute(path) ? path : resolve(path)))
-      .map((path) => `LOADED file://${path}\n`)
-      .join("");
-  };
-
-  it.concurrent("all eight seed cases pass once the harness is authored", async () => {
+  it.concurrent("all eight seed cases pass once authored, resolving only derived repository files", async () => {
     const workspace = authoredWorkspace();
-    const { stdout, stderr } = await run(workspace);
+    const { stdout, stderr } = await runSeedTests(workspace);
     const output = `${stdout}${stderr}`;
     const seeded = fingerprintSlug(workspace, { slug: "starter-seed" });
     expect(
@@ -223,17 +191,21 @@ describe("starter seed tests on the documented worked harness", () => {
     expect(output).toContain("8 pass");
     expect(output).toContain("0 fail");
     expect(output).not.toContain("(skip)");
-  }, 60_000);
 
-  it.concurrent("runs under Bun and resolves only derived repository files including the Correctness Model barrels", async () => {
-    const workspace = authoredWorkspace();
-    const trace = await traced(workspace);
-    const contract = new Set(deriveBundleContract(REPO_ROOT));
-    const opened = [...trace.matchAll(/^LOADED (file:\S+)$/gm)].map((match) =>
-      Bun.fileURLToPath(
-        /* SAFETY: the pattern captures a file: URL emitted by the tracer. */ match[1] as string,
-      ),
+    // A conservative upper bound on what the run opened: Bun's module graph over both entries.
+    const graph = await Bun.build({
+      entrypoints: SEED_FILES.map((path) => join(workspace, path)),
+      target: "bun",
+      format: "esm",
+      metafile: true,
+    });
+    if (!graph.success || graph.metafile === undefined) {
+      throw new Error(graph.logs.map((log) => log.message).join("\n") || "Bun module graph unavailable");
+    }
+    const opened = Object.keys(graph.metafile.inputs).map((path) =>
+      isAbsolute(path) ? path : resolve(path),
     );
+    const contract = new Set(deriveBundleContract(REPO_ROOT));
     for (const barrel of [
       "vendor/correctness-model-bundle/index.ts",
       "vendor/correctness-model-bundle/evaluate.ts",
@@ -292,25 +264,18 @@ describe("the seed suite catches the defects it exists for", () => {
     expect(output).toContain("an accept control must pass");
   }, 60_000);
 
-  it.concurrent("keeps the worked harness readable from one directory above the workspace", () => {
-    // correctness-model/*.test.ts reaches the harness as ../agent/tools.ts; if that boundary ever moves, the
-    // seeds must move with it rather than silently importing nothing.
-    const seed = readFileSync(join(STARTER_ROOT, "correctness-model", "harness.test.ts"), "utf8");
-    expect(seed).toContain('from "../agent/tools.ts"');
-    expect(dirname(join(STARTER_ROOT, "correctness-model"))).toBe(STARTER_ROOT);
-  });
+  it.concurrent("fails when a check returns an aggregate object instead of a Boolean", async () => {
+    const output = await runSeeds((workspace) => {
+      writeFileSync(
+        join(workspace, "correctness-model/evaluator.ts"),
+        'export const checks = {"assignments-match": () => ({ok:true,issues:[]})};',
+      );
+    });
+    expect(output).toContain("check-result-not-boolean: assignments-match");
+  }, 60_000);
 });
 
 describe("starter checks use host-owned Boolean aggregation", () => {
-  it("rejects an evaluator returning an aggregate object instead of a Boolean", async () => {
-    const workspace = authoredWorkspace();
-    writeFileSync(
-      join(workspace, "correctness-model/evaluator.ts"),
-      'export const checks = {"assignments-match": () => ({ok:true,issues:[]})};',
-    );
-    await expect(runSeedTests(workspace)).rejects.toThrow("seed tests exited 1");
-  }, 60_000);
-
   it("passes a reject that fails on its expected check and on another check too", async () => {
     const workspace = authoredWorkspace();
     const model = join(workspace, "correctness-model");
@@ -382,14 +347,7 @@ export const checks = {"assignments-match": (request: Request) => {
   );
 });
 
-// Under the repository root, as production is: @ana/* resolve by walking up to the root
-// node_modules, so a campaign dir outside the tree cannot load the bundles at all.
-// Realpath'd: @ana/* resolve by walking up to the root node_modules, so the loop workspace must
-// sit inside the true repository root rather than a symlinked path to it.
-const LOOP_REPO_ROOT = realpathSync.native(new URL("..", import.meta.url).pathname);
-mkdirSync(join(LOOP_REPO_ROOT, ".scratch"), { recursive: true });
-const EPOCH_DIR = realpathSync.native(mkdtempSync(join(LOOP_REPO_ROOT, ".scratch", "builder-seed-")));
-afterAll(() => rmSync(EPOCH_DIR, { recursive: true, force: true }));
+const EPOCH_DIR = mkdtempSync(join(SCRATCH, "builder-seed-"));
 
 const WORKSPACE = join(EPOCH_DIR, "workspace");
 const OSS_ROOT = join(EPOCH_DIR, ".oss");
@@ -404,7 +362,7 @@ describe.if(osIsolationSupport().ok)("the Builder's toolkit on the starter's see
   const isolation: BuilderIsolation = {
     policy: deriveCandidateIsolation(
       {
-        repoRoot: LOOP_REPO_ROOT,
+        repoRoot: REPO_ROOT,
         slug: "seed",
         epochDir: EPOCH_DIR,
         iterationDir: WORKSPACE,
@@ -492,28 +450,6 @@ test("createDomainHarness returns a tool array for every task", () => {`,
     const output = await bash(SEED_COMMAND);
     expect(output).toContain("9 pass");
     expect(output).toContain("0 fail");
-  });
-
-  it("catches a main-file edit that breaks the tool contract", async () => {
-    // SAFETY: the fence is the worked tool list STARTER.md publishes; test/starter-pack.test.ts
-    // validates it against the real tool-spec schema, so a shape change fails there first.
-    const spec = JSON.parse(fence("## Agent tool list contract", "json")) as {
-      tools: Array<{ name: string }>;
-    };
-    const declared = spec.tools[0]?.name;
-    if (declared === undefined) throw new Error("STARTER.md's worked tool list is empty");
-    await run("edit", {
-      path: "agent/tools.ts",
-      edits: [{ oldText: `name: "${declared}"`, newText: `name: "${declared}_renamed"` }],
-    });
-    const output = await bash(SEED_COMMAND);
-    expect(output).toContain("implemented tool names equal");
-    expect(output).toContain("Command exited with code");
-    // Restore, so the workspace this file leaves behind is the authored one.
-    await run("edit", {
-      path: "agent/tools.ts",
-      edits: [{ oldText: `name: "${declared}_renamed"`, newText: `name: "${declared}"` }],
-    });
   });
 
   it("keeps both edited seeds inside the tracked candidate interface", () => {

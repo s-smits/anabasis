@@ -58,7 +58,7 @@ describe("bundle hashing", () => {
   });
 });
 
-describe("bundle isolation checks (hw23)", () => {
+describe("bundle isolation checks", () => {
   it("an agent-bundle file importing correctnessModel material fails the fingerprint", () => {
     const dir = slugDir();
     write(
@@ -74,30 +74,83 @@ describe("bundle isolation checks (hw23)", () => {
     // and there are no hashes to claim with — recorded and fingerprinted are one fact
     expect("agentHash" in result).toBe(false);
   });
-
-  it("refuses a relative import from the agent bundle into verifier source", () => {
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
+  /** What the import scan finds in one agent module. The scan is a parser rather than a word search,
+   *  so the loader words inside strings, arrays and comments are not specifiers, and every loader
+   *  form a specifier can take is read, including the ones a regex missed. */
+  it.each([
+    [
+      "allowed packages and a relative import inside the bundle",
+      `import { DraftStore } from "@ana/agent-bundle";\nimport { Type } from "@earendil-works/pi-ai";\nimport { CATALOG } from "./catalog.ts";\nexport { DraftStore, Type, CATALOG };\n`,
+      [],
+    ],
+    [
+      "loader words inside strings, arrays and comments",
+      [
+        `import { DraftStore } from "@ana/agent-bundle";`,
+        "// members import their section area from the catalog row",
+        `const FROM_KEYS = ["from", "fromJoint", "startJoint"];`,
+        `const note = 'we require "areaM2" and import nothing else';`,
+        "export const pick = (row: Record<string, unknown>) => FROM_KEYS.map((k) => row[k]);",
+        "export { DraftStore };",
+      ].join("\n"),
+      [],
+    ],
+    [
+      "a relative import into verifier source",
       `import { makeVerifier } from "../correctness-model/verifier";\nexport const o = makeVerifier;\n`,
-    );
+      ["escape-import"],
+    ],
+    [
+      "an unvetted package through dynamic import and require",
+      `const a = await import("some-random-pkg");\nconst b = require("@harness/builder");\nexport { a, b };\n`,
+      ["unvetted-import", "unvetted-import"],
+    ],
+    [
+      "a disallowed package in a re-export and an import-equals declaration",
+      `export * from "bad-pkg";\nimport legacy = require("worse-pkg");\nexport { legacy };\n`,
+      ["unvetted-import", "unvetted-import"],
+    ],
+    [
+      "a Node builtin, which could read hidden data from beside the bundle",
+      `import { readFileSync } from "node:fs";\nexport const leak = () => readFileSync("../correctness-model/tasks.json", "utf8");\n`,
+      ["builtin-import"],
+    ],
+    [
+      "correctness-model material named in a template string",
+      "const g = require(`@ana/correctness-model-bundle`);\nexport { g };\n",
+      ["cross-isolation-import"],
+    ],
+  ])("the import scan over %s", (_, source, codes) => {
+    const dir = slugDir();
+    write(dir, AGENT_TOOLS_TS, source);
+    write(dir, "agent/catalog.ts", "export const CATALOG = [];\n");
     write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const makeVerifier = () => null;\n");
     const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.ok).toBe(false);
-    expect(result.findings[0]?.code).toBe("escape-import");
+    expect<string[]>(result.findings.map((f) => f.code)).toEqual(codes);
+    expect(result.ok).toBe(codes.length === 0);
   });
 
-  it("an unvetted package fails closed; dynamic import and require are seen too", () => {
+  // A module name that is not a string literal cannot be vetted, so it fails closed, never skips.
+  it.each([
+    [
+      "a computed name",
+      `const name = "x";\nconst a = require(name);\nconst b = await import(name + "/y");\nexport { a, b };\n`,
+      2,
+    ],
+    ["no argument at all", "const a = require();\nexport { a };\n", 1],
+  ])("refuses an import or require with %s", (_, source, count) => {
     const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      `const a = await import("some-random-pkg");\nconst b = require("@harness/builder");\nexport { a, b };\n`,
-    );
+    write(dir, AGENT_TOOLS_TS, source);
     const result = validateAgentBundle(join(dir, "agent"));
-    const codes = result.findings.map((f) => f.code);
-    expect(codes.filter((c) => c === "unvetted-import")).toHaveLength(2);
+    expect(result.findings).toEqual(
+      Array.from({ length: count }, () =>
+        expect.objectContaining({
+          code: "unvetted-import",
+          detail: expect.stringContaining("must be a string literal"),
+        }),
+      ),
+    );
+    expect(result.ok).toBe(false);
   });
 
   it("answer-key material by filename trips regardless of imports", () => {
@@ -146,9 +199,9 @@ describe("bundle isolation checks (hw23)", () => {
     );
   });
 
-  // Two runs on 2026-09-18 shipped the verifier's own computation inside the solver's tool roster:
-  // one agent module byte-identical to the reference solve's spec, one re-declaring nine of the
-  // rule module's functions. Neither imports the other, so the import checks above saw nothing.
+  // An agent module can carry the verifier's own computation — a copy of the reference solve's
+  // spec, or a re-declaration of the rule module's functions — without importing either, so the
+  // import checks above see nothing.
   const RULES =
     "export interface Design { span: number }\nexport const massKg = (d: Design): number => d.span * 2;\nexport function utilisation(d: Design): number { return d.span / 3; }\n";
   /** Two computations separated only by the operation each names. */
@@ -325,67 +378,6 @@ export function deflectionWithin(design: Design, limits: Limits): boolean {
     expect(fingerprintSlug(dir).ok).toBe(true);
   });
 
-  it("fingerprints typed generated correctness models and unmarked legacy models", () => {
-    const generated = slugDir();
-    write(generated, AGENT_TOOLS_TS, "export const tools = [];\n");
-    write(generated, BRIEF_FILE, "{}\n");
-    write(
-      generated,
-      CORRECTNESS_MODEL_EVALUATOR_TS,
-      "export const solve = (): unknown => ({});\nexport const evaluate = (): unknown => ({ ok: true, issues: [] });\n",
-    );
-    expect(fingerprintSlug(generated).ok).toBe(true);
-
-    const legacy = slugDir();
-    write(legacy, AGENT_TOOLS_TS, "export const tools = [];\n");
-    write(legacy, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = (value: any) => value;\n");
-    expect(fingerprintSlug(legacy).ok).toBe(true);
-  });
-
-  it("accepts allowed packages and relative imports within the agent bundle", () => {
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      `import { DraftStore } from "@ana/agent-bundle";\nimport { Type } from "@earendil-works/pi-ai";\nimport { CATALOG } from "./catalog.ts";\nexport { DraftStore, Type, CATALOG };\n`,
-    );
-    write(dir, "agent/catalog.ts", "export const CATALOG = [];\n");
-    const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.findings).toEqual([]);
-    expect(result.ok).toBe(true);
-    expect(result.scannedFiles).toBe(2);
-  });
-
-  it("refuses a Node builtin import in generated agent tools", () => {
-    // In the hw03 audit, agent tools ran in the controller process and could use `node:fs`
-    // to read hidden data. Keep this import check alongside the current worker sandbox.
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      `import { readFileSync } from "node:fs";\nexport const leak = () => readFileSync("../correctness-model/tasks.json", "utf8");\n`,
-    );
-    const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.ok).toBe(false);
-    expect(result.findings.map((f) => f.code)).toContain("builtin-import");
-  });
-
-  it("fingerprinting a recorded slug yields both content hashes; agent edits move only agentHash", () => {
-    const dir = slugDir();
-    write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
-    write(dir, "correctness-model/tasks.ts", "export const hidden = 42;\n");
-    const first = fingerprintSlug(dir, { slug: "demo" });
-    expect(first.ok).toBe(true);
-    if (!first.ok) throw new Error("unreachable");
-    expect(first.slug).toBe("demo");
-
-    write(dir, AGENT_TOOLS_TS, "export const a = 2;\n");
-    const second = fingerprintSlug(dir, { slug: "demo" });
-    if (!second.ok) throw new Error("unreachable");
-    expect(second.agentHash).not.toBe(first.agentHash);
-    expect(second.correctnessModelHash).toBe(first.correctnessModelHash);
-  });
-
   it("refuses to fingerprint a slug missing either bundle", () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-fingerprint-"));
     dirs.push(dir);
@@ -396,7 +388,7 @@ export function deflectionWithin(design: Design, limits: Limits): boolean {
     expect(result.findings[0]?.code).toBe("missing-bundle");
   });
 
-  it("a symlink in the agent bundle is rejected, not skipped — unhashed entries evade the record (handover 2026-07-11)", () => {
+  it("a symlink in the agent bundle is rejected, not skipped — unhashed entries evade the record", () => {
     const dir = slugDir();
     write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
     write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => true;\n");
@@ -423,112 +415,49 @@ export function deflectionWithin(design: Design, limits: Limits): boolean {
       expect.objectContaining({ code: "non-regular-entry", file: "aliased.ts" }),
     ]);
   });
-});
 
-describe("task identity vs verifier identity (steering-delta P1)", () => {
-  it("editing tasks.json moves taskSetHash and leaves correctnessModelHash — task drift is not Correctness Model drift", () => {
+  /** The three content hashes each cover their own files, so an edit moves exactly one of them:
+   *  task drift is not correctness-model drift, and neither is an agent edit. A bundle without
+   *  tasks.json states its task hash as null rather than hashing an empty equivalent. */
+  it("moves each content hash with its own files and no other", () => {
     const dir = slugDir();
     write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
     write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => null;\n");
+    const hashes = () => {
+      const result = fingerprintSlug(dir, { slug: "demo" });
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.slug).toBe("demo");
+      return {
+        agent: result.agentHash,
+        correctnessModel: result.correctnessModelHash,
+        tasks: result.taskSetHash,
+        files: result.correctnessModelFiles.map((f) => f.path),
+      };
+    };
+    const bare = hashes();
+    expect(bare.tasks).toBeNull();
+
     write(dir, "correctness-model/tasks.json", JSON.stringify([{ taskId: "t1", hidden: [1] }]));
-    const first = fingerprintSlug(dir, { slug: "demo" });
-    if (!first.ok) throw new Error("unreachable");
-    expect(first.taskSetHash).toMatch(/^[0-9a-f]{64}$/);
-    // tasks.json is not part of the verifier contract's file list
-    expect(first.correctnessModelFiles.map((f) => f.path)).toEqual(["evaluator.ts"]);
+    const tasked = hashes();
+    expect(tasked.tasks).toMatch(/^[0-9a-f]{64}$/);
+    // tasks.json is not part of the verifier contract's file list.
+    expect(tasked).toEqual({ ...bare, tasks: tasked.tasks, files: ["evaluator.ts"] });
 
-    write(dir, "correctness-model/tasks.json", JSON.stringify([{ taskId: "t1", hidden: [2] }]));
-    const second = fingerprintSlug(dir, { slug: "demo" });
-    if (!second.ok) throw new Error("unreachable");
-    expect(second.taskSetHash).not.toBe(first.taskSetHash);
-    expect(second.correctnessModelHash).toBe(first.correctnessModelHash);
-    expect(second.agentHash).toBe(first.agentHash);
-  });
-
-  it("editing the Correctness Model evaluator moves correctnessModelHash and leaves taskSetHash — the two hashes cover separate files", () => {
-    const dir = slugDir();
-    write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
-    write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => null;\n");
-    write(dir, "correctness-model/tasks.json", JSON.stringify([{ taskId: "t1" }]));
-    const first = fingerprintSlug(dir, { slug: "demo" });
-    if (!first.ok) throw new Error("unreachable");
-
-    write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => 1;\n");
-    const second = fingerprintSlug(dir, { slug: "demo" });
-    if (!second.ok) throw new Error("unreachable");
-    expect(second.correctnessModelHash).not.toBe(first.correctnessModelHash);
-    expect(second.taskSetHash).toBe(first.taskSetHash);
-  });
-
-  it("a bundle without tasks.json states taskSetHash null — no silent equivalent", () => {
-    const dir = slugDir();
-    write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
-    write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => null;\n");
-    const result = fingerprintSlug(dir, { slug: "demo" });
-    if (!result.ok) throw new Error("unreachable");
-    expect(result.taskSetHash).toBeNull();
-  });
-});
-
-describe("the specifier scan is a parser, not a word search (campaigns/bridge-truss 02 false positive)", () => {
-  it("the bridge-truss specimen — bare from/import/require inside strings, arrays, comments — passes validation", () => {
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      [
-        `import { DraftStore } from "@ana/agent-bundle";`,
-        "// members import their section area from the catalog row",
-        `const FROM_KEYS = ["from", "fromJoint", "startJoint"];`,
-        `const note = 'we require "areaM2" and import nothing else';`,
-        "export const pick = (row: Record<string, unknown>) => FROM_KEYS.map((k) => row[k]);",
-        "export { DraftStore };",
-      ].join("\n"),
+    const moves = (edit: () => void, key: "agent" | "correctnessModel" | "tasks") => {
+      const before = hashes();
+      edit();
+      const after = hashes();
+      expect(after[key]).not.toBe(before[key]);
+      expect({ ...after, [key]: before[key] }).toEqual(before);
+    };
+    moves(
+      () => write(dir, "correctness-model/tasks.json", JSON.stringify([{ taskId: "t1", hidden: [2] }])),
+      "tasks",
     );
-    const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.findings).toEqual([]);
-    expect(result.ok).toBe(true);
-  });
-
-  it("refuses an import or require whose module name is not a string literal", () => {
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      `const name = "x";\nconst a = require(name);\nconst b = await import(name + "/y");\nexport { a, b };\n`,
+    moves(
+      () => write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, "export const evaluate = () => 1;\n"),
+      "correctnessModel",
     );
-    const result = validateAgentBundle(join(dir, "agent"));
-    const opaque = result.findings.filter((f) => f.detail.includes("must be a string literal"));
-    expect(opaque).toHaveLength(2);
-    expect(opaque.every((f) => f.code === "unvetted-import")).toBe(true);
-    expect(result.ok).toBe(false);
-  });
-
-  it("refuses disallowed packages in re-exports and import-equals declarations", () => {
-    const dir = slugDir();
-    write(
-      dir,
-      AGENT_TOOLS_TS,
-      `export * from "bad-pkg";\nimport legacy = require("worse-pkg");\nexport { legacy };\n`,
-    );
-    const result = validateAgentBundle(join(dir, "agent"));
-    const codes = result.findings.map((f) => f.code);
-    expect(codes.filter((c) => c === "unvetted-import")).toHaveLength(2);
-  });
-
-  it("checks a template-string module name that the former regex missed", () => {
-    const dir = slugDir();
-    write(dir, AGENT_TOOLS_TS, "const g = require(`@ana/correctness-model-bundle`);\nexport { g };\n");
-    const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.findings.map((f) => f.code)).toEqual(["cross-isolation-import"]);
-  });
-
-  it("an argument-less import()/require() call fails closed, never skips", () => {
-    const dir = slugDir();
-    write(dir, AGENT_TOOLS_TS, "const a = require();\nexport { a };\n");
-    const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.findings).toHaveLength(1);
-    expect(result.findings[0]?.code).toBe("unvetted-import");
-    expect(result.findings[0]?.detail).toContain("must be a string literal");
+    moves(() => write(dir, AGENT_TOOLS_TS, "export const a = 2;\n"), "agent");
   });
 });

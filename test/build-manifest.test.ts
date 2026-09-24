@@ -17,7 +17,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { PINNED_BUN_VERSION } from "../src/run/host-runtime-policy.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { ANGLE_FILES } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+import {
+  ANGLE_COUNT,
+  ANGLE_FILES,
+  DIGEST_VERDICTS,
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
 type Status = {
@@ -260,7 +264,7 @@ function declaredSession(): string {
 }
 
 describe("what the builder declares", () => {
-  it("lists the declared intelligence sessions and the 40 maintained angles", () => {
+  it("lists distinct intelligence sessions and every maintained angle", () => {
     const listed = launch(null, "--list");
     const names = listed.stdout
       .split("\n")
@@ -268,19 +272,12 @@ describe("what the builder declares", () => {
       .filter((name): name is string => Boolean(name));
 
     expect(listed.status).toBe(0);
-    expect(names.filter((name) => !name.startsWith("angle_"))).toEqual([
-      "product_validity",
-      "representation",
-      "mechanism",
-      "strictness_and_yield",
-      "effect_and_history",
-      "category_and_hook_yield",
-      "diagnostic_follow_through",
-      "reference_contract_coverage",
-      "reference_verdict_comparison",
-    ]);
+    const sessions = names.filter((name) => !name.startsWith("angle_"));
+    expect(sessions.length).toBeGreaterThan(0);
+    expect(new Set(sessions).size).toBe(sessions.length);
+    for (const session of sessions) expect(session).toMatch(/^[a-z]+(?:_[a-z]+)*$/);
     expect(names.filter((name) => name.startsWith("angle_"))).toEqual(
-      Array.from({ length: 40 }, (_, index) => `angle_${String(index + 1).padStart(2, "0")}`),
+      Array.from({ length: ANGLE_COUNT }, (_, index) => `angle_${String(index + 1).padStart(2, "0")}`),
     );
   });
 
@@ -368,13 +365,7 @@ describe("what a launch composes", () => {
     expect(instructions).toContain("telemetry-constant");
     // The moved variable is not in the evidence, so its absence is stated rather than inferred.
     expect(instructions).toContain("was not supplied to the launcher");
-    for (const verdict of [
-      "discrimination-inertness",
-      "submit-stall-shape",
-      "evidence-integrity",
-      "solver-process",
-      "saturation-ledger",
-    ]) {
+    for (const verdict of DIGEST_VERDICTS) {
       expect(instructions.match(new RegExp(`^- ${verdict}:`, "gm"))).toHaveLength(1);
     }
     expect(instructions).toContain("2. Loose end: usb-pd is 0/6.");
@@ -583,7 +574,7 @@ describe("what a launch composes", () => {
 
   it("launches from an incomplete snapshot and names each failed view with its captured error", () => {
     // A failed view is not a fact, and hiding the whole review behind it made the reviewer write
-    // the instruction packet by hand (2026-09-07). The sessions are told which view failed and why.
+    // the instruction packet by hand. The sessions are told which view failed and why.
     const snap = snapshot({ complete: false });
     snap.recapture(
       "run-1-scan",

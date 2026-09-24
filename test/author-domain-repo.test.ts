@@ -53,6 +53,7 @@ import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safegua
 import { runtimeProcess } from "../src/meta/process.ts";
 const TOOLCHAIN = ".toolchain";
 const AGENT_TOOLS_TS = "agent/tools.ts";
+const STARTER_ROOT = join(import.meta.dir, "../starters/pi-built-harness");
 
 const tmp = () => mkdtempSync(join(tmpdir(), "ana-domain-repo-"));
 
@@ -170,18 +171,7 @@ describe("the domain workspace repository", () => {
 
   it("relocates a uv console launcher, whose interpreter is single-quoted, into the repair tools", () => {
     const seed = tmp();
-    seedBundles(seed);
-    const bin = join(seed, ".toolchain/venv/bin");
-    mkdirSync(bin, { recursive: true });
-    writeFileSync(join(seed, ".toolchain/venv/pyvenv.cfg"), "home = /host\n");
-    writeFileSync(join(bin, "python3"), "#!/bin/sh\n");
-    const python = join(realpathSync(bin), "python3");
-    // The header uv writes for a console script, which is what numpy's f2py carries.
-    writeFileSync(
-      join(bin, "f2py"),
-      `#!/bin/sh\n'''exec' '${python}' "$0" "$@"\n' '''\nfrom numpy.f2py.f2py2e import main\n`,
-    );
-    chmodSync(join(bin, "f2py"), 0o755);
+    const python = seedWithUvVenv(seed, "/host");
     const dir = tmp();
     initWorkspace(dir, seed, true);
     const owned = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
@@ -198,6 +188,9 @@ describe("the domain workspace repository", () => {
     const copied = outside.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
     expect(copied[0]).toContain("launchersRewritten=1 singleQuoted=1");
+    // Nothing was dropped, so the line says so and names no first drop.
+    expect(copied[0]).toContain("dropped=0");
+    expect(copied[0]).not.toContain("droppedFirst");
     expect(outside.lines().some((line) => line.includes("55-rebuild-seed-venv-home-in-adopted-tree"))).toBe(
       false,
     );
@@ -309,21 +302,7 @@ describe("the domain workspace repository", () => {
     expect(copied[0]).toContain("dropped=1 droppedFirst=venv/bin/f2py");
   });
 
-  it("says nothing about drops when every copied file stands on its own", () => {
-    const seed = tmp();
-    seedBundles(seed);
-    mkdirSync(join(seed, TOOLCHAIN));
-    writeFileSync(join(seed, ".toolchain/plain"), '#!/bin/sh\nexec cat "$@"\n');
-    chmodSync(join(seed, ".toolchain/plain"), 0o755);
-    const log = safeguardLog();
-    initWorkspace(tmp(), seed, true, log.context);
-    const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
-    expect(copied).toHaveLength(1);
-    expect(copied[0]).toContain("dropped=0");
-    expect(copied[0]).not.toContain("droppedFirst");
-  });
-
-  it.if(buildsMachO)("moves a Mach-O install name into the copy, which run e6e332 refused instead", () => {
+  it.if(buildsMachO)("moves a Mach-O install name into the copy rather than refusing the seed", () => {
     const seed = tmp();
     seedBundles(seed);
     const tools = join(seed, TOOLCHAIN);
@@ -348,29 +327,13 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     const first = initWorkspace(dir);
     expect(first.created).toBe(true);
-    expect(existsSync(join(dir, ".git"))).toBe(true);
-    expect(readFileSync(join(dir, "MEMORY.md"), "utf8")).toContain("Builder memory");
-    expect(readFileSync(join(dir, "SCRATCHPAD.md"), "utf8")).toContain("Scratchpad");
-    const starter = readFileSync(join(dir, "STARTER.md"), "utf8");
-    expect(starter).toContain("# Build the requested harness");
-    const references = ["starter-pack/contract.md", "starter-pack/examples.md", "starter-pack/add-ons.json"];
-    for (const path of references) {
-      expect(readFileSync(join(dir, path), "utf8")).toBe(
-        readFileSync(new URL(`../starters/pi-built-harness/${path}`, import.meta.url), "utf8"),
+    const starterFiles = [...new Bun.Glob("**/*").scanSync({ cwd: STARTER_ROOT, dot: true })];
+    const matchesStarter = (path: string) =>
+      expect(readFileSync(join(dir, path), "utf8"), path).toBe(
+        readFileSync(join(STARTER_ROOT, path), "utf8"),
       );
-    }
-    // Public engine authoring belongs here; protected verifier evidence and answer material do not.
-    expect(starter).not.toMatch(
-      /\banswer key\b|\bexpected artifact\b|\bverifier (?:stdout|stderr|source)\b/i,
-    );
-    const toolsSource = readFileSync(join(dir, AGENT_TOOLS_TS), "utf8");
-    expect(toolsSource).toContain("createDomainHarness");
-    expect(toolsSource).not.toMatch(/projectArtifact|projectDraftFiles/);
-    expect(JSON.parse(readFileSync(join(dir, "agent/tools-spec.json"), "utf8"))).toEqual({
-      presets: ["files"],
-      tools: [],
-    });
-    expect(existsSync(join(dir, "correctness-model/evaluator.ts"))).toBe(true);
+    for (const path of starterFiles) matchesStarter(path);
+    for (const path of ["MEMORY.md", "SCRATCHPAD.md"]) expect(existsSync(join(dir, path)), path).toBe(true);
     const addOns = parseJsonAs<Record<string, string[]>>(
       readFileSync(join(dir, "starter-pack/add-ons.json"), "utf8"),
     );
@@ -378,41 +341,27 @@ describe("the domain workspace repository", () => {
     // added to `built-presets.ts` and not to this file is invisible to the Builder, which
     // STARTER.md tells to select nothing absent from here, and the solver loses that tool.
     expect(addOns).toEqual(Object.fromEntries(BUILT_PRESET_IDS.map((id) => [id, presetToolNames([id])])));
+    // Git carries exactly the candidate contract and the memory files; the starter reference stays
+    // on disk for reading, so an edit or helper beside it can never enter a candidate diff.
     const tracked = gitOut(dir, ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n");
-    expect(tracked).toEqual(
-      expect.arrayContaining([
-        "MEMORY.md",
-        "SCRATCHPAD.md",
-        "agent/tools-spec.json",
-        AGENT_TOOLS_TS,
-        "correctness-model/brief.json",
-        "correctness-model/tasks.json",
-        "correctness-model/controls.json",
-        "correctness-model/evaluator.ts",
-      ]),
+    const references = starterFiles.filter(
+      (path) => path === "STARTER.md" || path.startsWith("starter-pack/"),
     );
-    // Starter reference stays on disk for reading but out of tracking: git carries exactly the
-    // candidate contract, so an edit or helper beside the starter can never enter a candidate diff.
-    expect(tracked).not.toContain("STARTER.md");
-    expect(tracked.some((path) => path.startsWith("starter-pack/"))).toBe(false);
+    expect(tracked.sort()).toEqual(
+      [...starterFiles.filter((path) => !references.includes(path)), "MEMORY.md", "SCRATCHPAD.md"].sort(),
+    );
     expect(await loadBuiltStarterFactory(dir)).toBeTypeOf("function");
     expect(workspaceStatus(dir)).toEqual({ clean: true, dirtyPaths: [] });
     beginIteration(dir, "01-t");
     expect(workspaceHead(dir)).toBe(first.head);
-    expect(readFileSync(join(dir, AGENT_TOOLS_TS), "utf8")).toContain("createDomainHarness");
-    expect(readFileSync(join(dir, "correctness-model/evaluator.ts"), "utf8")).toContain(
-      "Specialise the Pi Starter Pack",
-    );
-    for (const path of ["STARTER.md", ...references]) writeFileSync(join(dir, path), "stale reference\n");
+    for (const path of starterFiles) matchesStarter(path);
+    // A resume refreshes the untracked references and leaves the candidate's own edits alone.
+    for (const path of references) writeFileSync(join(dir, path), "stale reference\n");
     writeFileSync(join(dir, AGENT_TOOLS_TS), "export const currentCandidate = true;\n");
     const again = initWorkspace(dir);
     expect(again.created).toBe(false);
     expect(again.head).toBe(first.head);
-    for (const path of ["STARTER.md", ...references]) {
-      expect(readFileSync(join(dir, path), "utf8")).toBe(
-        readFileSync(new URL(`../starters/pi-built-harness/${path}`, import.meta.url), "utf8"),
-      );
-    }
+    for (const path of references) matchesStarter(path);
     expect(readFileSync(join(dir, AGENT_TOOLS_TS), "utf8")).toContain("currentCandidate");
   });
 

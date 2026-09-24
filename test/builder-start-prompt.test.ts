@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { readFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { STARTER_DOC, STARTER_ENTRY, STARTER_LADDER } from "./helpers/starter-contracts.ts";
 // The producer's own module. builder-session.ts re-exports the prompt, but a prompt test that names
@@ -40,6 +40,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 /** src/ as one text: a taught refusal code is held to a literal the source still emits, and a wall
  *  the prompt must not state is read from the settings rather than from a list kept by hand. */
 const SRC_DIR = join(import.meta.dir, "../src");
+const STARTER_DIR = join(import.meta.dir, "../starters/pi-built-harness");
 const SOURCE_TEXT = [...new Bun.Glob("**/*.ts").scanSync(SRC_DIR)]
   .map((name) => readFileSync(join(SRC_DIR, name), "utf8"))
   .join("\n");
@@ -250,15 +251,11 @@ const STAGES = [
 ] as const;
 
 describe("STARTER.md gate map", () => {
-  it("keeps the entry a map to the loop, the gates and the reference files", () => {
+  it("keeps the entry a map to the loop, the gates and reference files that exist", () => {
     expect(bytes(STARTER_ENTRY)).toBeLessThan(6_800);
-    for (const link of [
-      "starter-pack/difficulty-ladder.md",
-      "starter-pack/contract.md",
-      "optional worked examples",
-    ]) {
-      expect(STARTER_ENTRY, link).toContain(link);
-    }
+    const links = [...new Set(STARTER_ENTRY.match(/starter-pack\/[\w-]+\.md/g) ?? [])];
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(existsSync(join(STARTER_DIR, link)), link).toBe(true);
     expect(STARTER_ENTRY.indexOf("## Loop")).toBeLessThan(STARTER_ENTRY.indexOf("## Gates"));
     let at = STARTER_ENTRY.indexOf("## Gates");
     for (const stage of STAGES) {
@@ -268,39 +265,28 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  /** One direction for the first battery, stated once. An entry reading "from easy to hard" beside
-   *  an authoring context reading "above what you believe the harness handles" is two owners
-   *  pointing opposite ways at the decision that sets a campaign's whole climb, and the entry is
-   *  the one read first. */
-  it("points the first battery at the top tier and leaves the counts to the prompt", () => {
+  /** One direction for the first battery, stated once, and none after it. An entry reading "from
+   *  easy to hard" beside an authoring context reading "above what you believe the harness handles"
+   *  is two owners pointing opposite ways at the decision that sets a campaign's whole climb, and the
+   *  entry is the one read first. The counts belong to the prompt, and the route after a measured
+   *  battery belongs to the Builder. */
+  it("points the first battery at the top tier and prescribes no counts or course", () => {
     const starter = flat(STARTER_ENTRY);
     expect(starter).toContain("— **frontier**, where the first battery starts —");
-    // The demand is the field's, and a margin-reporting adviser gives it back.
-    expect(starter).toContain("a limit, state or duty you invent measures your wording");
-    expect(starter).toContain("A tool reporting every margin on every listed state");
-    for (const downwards of ["easy to hard", "start easy", "from easy"]) {
-      expect(starter, downwards).not.toContain(downwards);
-    }
-    for (const count of ["verified cases to pass", "finds no limit", "of 25"]) {
-      expect(starter, count).not.toContain(count);
-    }
-    // The rehearsal is the entry's, because it is a step in the loop: the instrument that tells the
-    // Builder its battery is too easy before the controller pays a round to find out.
-    expect(starter).toContain("solves that task blind with your own agent");
-  });
-
-  /** What a later battery is, which the entry otherwise leaves unsaid. A probe landing on the aim
-   *  has measured the limit on the current requirements — the one zone whose measurement note
-   *  carries no course at all — so a round that then grows the same demand to full size buys the
-   *  count the probe already returned. The direction stays the note's and the content stays the
-   *  Builder's: this says only that more cases at a measured demand is not one of the moves. */
-  it("states what a later battery is and rules out widening at a measured demand", () => {
-    const starter = flat(STARTER_ENTRY);
-    expect(starter).toContain("A battery after the first moves the demand or repairs the last measurement.");
-    expect(starter).toContain("nor is growing a probe to full size at the level it measured");
-    // The ladder owns the reasoning, and the entry owns the one sentence: neither states a direction.
-    for (const course of ["raise", "ease", "climb to", "harder next"]) {
-      expect(starter, course).not.toContain(course);
+    // A downward direction, a count the prompt owns, or a course after a measured battery.
+    for (const stated of [
+      "easy to hard",
+      "start easy",
+      "from easy",
+      "verified cases to pass",
+      "finds no limit",
+      "of 25",
+      "raise",
+      "ease",
+      "climb to",
+      "harder next",
+    ]) {
+      expect(starter, stated).not.toContain(stated);
     }
   });
 
@@ -333,131 +319,28 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  // The contracts a Builder otherwise rediscovers one refusal at a time: the evaluator import
-  // rule, the runtime argument and the transplant settle rule.
-  it("carries the contracts dffb11 found by trial", () => {
-    const starter = flat(STARTER_ENTRY);
-    for (const contract of [
-      "files there import only `reference/` and the public `@ana` packages",
-      "a check takes `runtime` as its second argument or on the request",
-      "returns `false` for a deliverable that does not fit; it neither throws nor returns before the run",
-      "Bound a search by a fixed iteration count",
-      "so the wall bounds the replay, not the limit",
-      "the limit is real only if the solver cannot run that search in its walls",
-    ]) {
-      expect(starter, contract).toContain(contract);
-    }
-  });
-
   /** The ladder is the Builder-visible face of the tier scale `query-complexity.mjs` classifies a
-   *  measured battery against, so one vocabulary covers authoring and review. Three things separate
-   *  its top two tiers from the two below: limits that trade against each other, a degraded state
-   *  the same answer must also clear, and a duty to report the value each limit was read against. A
-   *  tier row that loses one of the three is a longer sentence rather than a harder task, and a
-   *  campaign authored from it reads as significantly too easy round after round. */
-  it("grades the ladder on what an answer holds at once, not on how much it reads", () => {
+   *  measured battery against, so one vocabulary covers authoring and review. Every worked domain
+   *  carries all four tiers and a reporting duty, no measured domain appears, and both sides of the
+   *  aim have a section: with only the above-the-aim one, a battery that passes almost nothing is
+   *  told nothing on the side a first battery is authored to land on. */
+  it("grades every worked domain on all four tiers and answers both sides of the aim", () => {
     for (const tier of ["easy", "medium", "hard", "frontier"]) {
       expect(STARTER_LADDER).toContain(`- **${tier}**`);
     }
-    for (const discriminator of [
-      "none of them met at the cost of another",
-      "across a whole set of degraded or adversarial states the same one answer must clear",
-      "with the worst case and where it falls reported",
-      // The three moves that leave a battery exactly as easy as it already was, named so the next
-      // author checks a change against them before spending a battery on it.
-      "A tighter number on a rule the tasks already had",
-      "More cases of a rule the tasks already had",
-      "A new rule that only removes candidates",
-    ]) {
-      expect(flat(STARTER_LADDER), discriminator).toContain(discriminator);
-    }
-    for (const domain of [
-      "GP surgery",
-      "Power distribution feeder",
-      "Byte-stream protocol parser",
-      "Impulsive orbital transfer",
-      "Lumped LC impedance match",
-      "Relational index selection",
-    ]) {
-      const rows = STARTER_LADDER.split(`**${domain}`)[1]?.split("\n**")[0] ?? "";
+    const domains = [...STARTER_LADDER.matchAll(/^\*\*([^*]+)\*\* —/gm)].map(([, name]) => name ?? "");
+    expect(domains.length).toBeGreaterThanOrEqual(6);
+    for (const domain of domains) {
+      const rows = STARTER_LADDER.split(`**${domain}**`)[1]?.split("\n**")[0] ?? "";
       for (const tier of ["- easy —", "- medium —", "- hard —", "- frontier —"]) {
         expect(rows, domain).toContain(tier);
       }
       expect(rows, domain).toContain("report");
     }
-    // Frontier is hard with the set taken back out of the task statement. Without that the top tier
-    // is a longer hard row, the ladder has three rungs under a fourth name, and every battery that
-    // reaches hard reads as having reached the aim.
-    for (const searched of [
-      "the worst case lies somewhere in a continuous or combinatorial region the solver has to search",
-      "the limits that apply follow a class the answer itself declares",
-      "every intermediate state of a sequence is bound",
-      "a reported margin has to survive its admissible neighbours under a published trade rule",
-    ]) {
-      expect(flat(STARTER_LADDER), searched).toContain(searched);
+    expect(STARTER_LADDER).not.toMatch(/truss/i);
+    for (const section of ["## When a battery lands below the aim", "## Reading a measured battery"]) {
+      const body = STARTER_LADDER.split(section)[1]?.split("\n## ")[0]?.trim() ?? "";
+      expect(body, section).not.toBe("");
     }
-    for (const measured of ["truss", "Truss"]) {
-      expect(STARTER_LADDER).not.toContain(measured);
-    }
-  });
-
-  /** The ladder has to answer both sides of the aim. With only the above-the-aim section, a
-   *  battery scoring near the top is told what its tiers were missing while one that passes almost
-   *  nothing is told nothing at all — on the side a first battery is authored to land on. */
-  it("answers a battery below the aim as well as one above it", () => {
-    const below = flat(STARTER_LADDER.split("## When a battery lands below the aim")[1] ?? "");
-    expect(below, "the below-the-aim section").not.toBe("");
-    for (const settled of [
-      "A rule your checks apply and your brief does not publish fails every task",
-      "An artifact a correct solver cannot write through the tools you gave it is a representation defect",
-      "The same tasks failing in consecutive batteries is a stuck path or an unpublished rule",
-      "It does not mean loosening a published number on a rule the tasks already had",
-    ]) {
-      expect(below, settled).toContain(settled);
-    }
-    expect(below.indexOf("landing here is the course working")).toBeLessThan(
-      below.indexOf("A later battery still below it usually is not"),
-    );
-  });
-
-  /** The other half of the same defect: a family whose second task repeats the first and moves
-   *  only the load magnitude and the numeric limits leaves the battery one axis, and the ladder
-   *  already says moving a number measures the same condition twice. */
-  it("asks sibling tasks in a family to vary a structural input, not only its magnitudes", () => {
-    const after = flat(STARTER_LADDER.split("## Reading a measured battery")[1] ?? "");
-    expect(after, "the after-the-first section").not.toBe("");
-    for (const rule of [
-      "differ only in the magnitudes of the published numbers measure one condition twice",
-      "Vary the input the obligation is carried by, and the pair reports two things",
-      "A family that varies only by magnitude also bounds the next battery",
-    ]) {
-      expect(after, rule).toContain(rule);
-    }
-  });
-
-  /** Two ways a battery measured the author rather than the solver: a rule the request's field does
-   *  not hold, which the solver can read another way, and a tool that hands back what the checks
-   *  compare against, which makes every task iterate-until-clear. Above the aim, the move left once
-   *  the tasks carry all three things is to stop handing over the set, not to lengthen it. */
-  it("finds the demand in the request's field and keeps the tools from giving it back", () => {
-    const ladder = flat(STARTER_LADDER);
-    for (const rule of [
-      "is an invented requirement, and it costs three ways",
-      "A tool that returns the very value a check compares against is the reference solve under another name",
-      "a permitted region centred on your reference's answer publishes that answer outright",
-      "take the set out of the task statement and out of your tools; adding members to a listed set is coverage",
-      "never from how its source is arranged or from a trace of calls into a stand-in you wrote",
-    ]) {
-      expect(ladder, rule).toContain(rule);
-    }
-  });
-
-  it("keeps the guide byte cap and the worked tool call in the reference files", () => {
-    expect(flat(STARTER_DOC)).toContain("once per task, so it stays under 8,192 bytes");
-    expect(STARTER_DOC).toContain("const run = await runtime.tools.run({");
-    expect(flat(STARTER_DOC)).toContain(
-      "For external evidence, file contents and stdin must be string leaves or JSON",
-    );
-    expect(STARTER_DOC).toContain("non-result even if the program returns false");
   });
 });

@@ -10,8 +10,8 @@ export const SHA256 = /^[0-9a-f]{64}$/;
 export const GIT_SHA = /^[0-9a-f]{40}$/;
 
 /** Semantic angles the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
-export const ANGLE_COUNT = 36;
-export const ANGLE_FILES = ["review-angles.md", "review-angles-boundaries.md"];
+export const ANGLE_COUNT = 40;
+export const ANGLE_FILES = ["review-angles.md", "review-angles-boundaries.md", "review-angles-handoffs.md"];
 
 // These sessions must retain their own evidence boundary even under explicit grouping.
 export const ISOLATED_ANGLES = new Map([

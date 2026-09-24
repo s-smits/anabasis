@@ -378,7 +378,7 @@ describe("archive scaffold", () => {
     });
     expect(built.predictions[2]?.dependencyWalk.evidencePointers).toHaveLength(1);
     expect(built.predictions[0]?.dependencyWalk).toMatchObject({ walked: false, closed: false });
-    expect(built.angleStates).toHaveLength(36);
+    expect(built.angleStates).toHaveLength(40);
     expect(built.angleStates[4]).toMatchObject({ angle: 5, state: "inconclusive", session: "angle_05" });
     expect(built.angleStates[5]).toMatchObject({ angle: 6, state: "unobservable", session: "not-launched" });
     expect(built.sessionStates.map((row) => row.id)).toEqual(["session_30", "angle_05"]);
@@ -486,7 +486,7 @@ describe("deterministic lane catalogue", () => {
   it("gives every lane a unique name and a label of at most three words", () => {
     const names = lanes.map((lane) => lane.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(11);
+    expect(names).toHaveLength(12);
     for (const lane of lanes) expect(lane.label.split(" ").length).toBeLessThanOrEqual(3);
     expect(lanes.flatMap((lane) => (lane.collect === true ? [lane.name] : []))).toEqual([
       "snapshot",
@@ -498,9 +498,9 @@ describe("deterministic lane catalogue", () => {
 
   it("selects by rank, by name and by --all, and refuses a token the catalogue does not carry", () => {
     expect(select({ lanes: "5,yield" })?.map((lane) => lane.name)).toEqual(["climb", "yield"]);
-    expect(select({}, ["all"])).toHaveLength(11);
+    expect(select({}, ["all"])).toHaveLength(12);
     expect(select({})).toBeNull();
-    expect(() => select({ lanes: "12" })).toThrow("no lane 12");
+    expect(() => select({ lanes: "13" })).toThrow("no lane 13");
     expect(() => select({ lanes: "velocity" })).toThrow("no lane velocity");
     expect(() => select({ lanes: "" })).toThrow("no lane");
   });
@@ -516,11 +516,12 @@ describe("deterministic lane catalogue", () => {
 
   it("prints one numbered row per lane and marks the four collect runs", () => {
     const rows: string[] = renderLanes().split("\n");
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(13);
     expect(rows[1]).toContain(" 1  snapshot");
     expect(rows[8]).toContain(" 8  timeline");
     expect(rows[9]).toContain(" 9  walls");
-    expect(rows[11]).toContain("11  archive");
+    expect(rows[10]).toContain("10  handoff");
+    expect(rows[12]).toContain("12  archive");
     expect(rows.filter((row) => row.includes("also run by collect"))).toHaveLength(4);
   });
 });

@@ -38,7 +38,7 @@ it("adds each diagnostic lane once without reducing the numbered-angle allocatio
     [null, 0, 2],
     ["category_and_hook_yield,5", 0, 3],
     [null, 4, 6],
-    [null, 36, 38],
+    [null, 40, 42],
   ] as const) {
     const sessions: { name: string; angleNumbers?: number[] }[] = resolveSessions({
       ...input,

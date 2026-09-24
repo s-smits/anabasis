@@ -1,6 +1,6 @@
 # Deterministic lanes
 
-Eleven readers, one question each, no provider call. `review-angles.md` holds the semantic angles a
+Twelve readers, one question each, no provider call. `review-angles.md` holds the semantic angles a
 paid sweep spends on; this file holds what a local read already answers, so a live run can be
 assessed without one. Every lane is selected by rank or by name:
 
@@ -24,9 +24,9 @@ size picks the set:
 
 | tier | the run | lanes | semantic lanes to start from |
 | --- | --- | --- | --- |
-| `probe` | under two hours, or no case has scored yet | `climb,yield,posture,timeline,walls` | 2 |
-| `standard` | a scored battery, under twelve hours and under three epochs | all eleven | 4 |
-| `deep` | twelve hours or more, three epochs or more, or three batteries | all eleven | 8 |
+| `probe` | under two hours, or no case has scored yet | `climb,yield,posture,timeline,walls,handoff` | 2 |
+| `standard` | a scored battery, under twelve hours and under three epochs | all twelve | 4 |
+| `deep` | twelve hours or more, three epochs or more, or three batteries | all twelve | 8 |
 
 `probe` withholds only the six lanes that open the measured checkout or an archive, which is the
 one expensive thing a read does and which a battery that scored nothing gives nothing to read. The
@@ -43,11 +43,12 @@ tier is a default: `--lanes` and `--all` select whatever is asked for.
 | 7 | `posture` | what the Builder was doing before each submit, against the corpus refusal rate | Builder prose rows |
 | 8 | `timeline` | where the run's wall-clock went, which hooks and steering fired, and where each slot stopped progressing | `observability/<runId>.jsonl`, plus Builder, solver and review prose |
 | 9 | `walls` | which of the harness's own declared budgets bound its solves, and which never came near | every version's `agent/config.yaml` against `case-record.jsonl` and `case-result.json` |
-| 10 | `recurrence` | which findings this lane has already raised on earlier runs | `notes/runs` archives |
-| 11 | `archive` | whether a finished archive satisfies its own contract | one `notes/runs` archive |
+| 10 | `handoff` | what each round handed the next and whether it was used: channel census, target calibration, triage agreement, same-task joins (angles 37–40) | observability kickoff prompts, each epoch's path record and execution records, advice, diagnosis and epoch-review files, decision rows, case `public-task.json` |
+| 11 | `recurrence` | which findings this lane has already raised on earlier runs | `notes/runs` archives |
+| 12 | `archive` | whether a finished archive satisfies its own contract | one `notes/runs` archive |
 
-Lanes 1 to 4 are the four `collect` runs, because the paid lanes consume their output. Lanes 10 and
-11 need an archive, which only `finish` writes, so they skip on a live run.
+Lanes 1 to 4 are the four `collect` runs, because the paid lanes consume their output. Lanes 11 and
+12 need an archive, which only `finish` writes, so they skip on a live run.
 
 ## What the lanes cannot do
 
@@ -70,6 +71,11 @@ Lanes 1 to 4 are the four `collect` runs, because the paid lanes consume their o
 - `walls` reads the case's wall clock, which includes provider latency and every queue it waited in.
   A case that passed at a wall is not a defect; a case that reached one without passing is a
   truncated solve, not a settled capability failure.
+- `handoff` finds a served channel by a sentence the current source renders, so a marker it does not
+  find on an older prompt is `not found`, not proof the channel was absent. It sees reads through
+  the path record and custom calls only: a file opened through `bash` records its working
+  directory alone, so each round prints its bash count as the unobservable remainder. Its triage
+  side and its "moved no check" probe count are leads for angle 39, never a verdict on the check.
 - A lane's verdict is deterministic evidence, never a claim. The verifier still owns every pass.
 
 ## Not lanes

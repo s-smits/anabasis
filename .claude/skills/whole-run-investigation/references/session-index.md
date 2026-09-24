@@ -1,8 +1,9 @@
 # Whole-run investigation session index
 
 One line per session. Read this file to choose sessions; read the named body in
-[review-angles.md](review-angles.md) (1–31) or
-[review-angles-boundaries.md](review-angles-boundaries.md) (32–36). The manifest combines those
+[review-angles.md](review-angles.md) (1–31),
+[review-angles-boundaries.md](review-angles-boundaries.md) (32–36) or
+[review-angles-handoffs.md](review-angles-handoffs.md) (37–40). The manifest combines those
 bodies and refuses a number or title that differs from this index. Full review gives each numbered
 angle and both diagnostic lanes an independent Luna Max session; the triggers below govern depth,
 or lane selection when the operator explicitly asks for targeted work.
@@ -16,7 +17,7 @@ Selection shorthand, used by `build-manifest.mjs --sessions`:
 --sessions mechanism,15 one intelligence session and the isolated trace session
 --sessions category_and_hook_yield category/hook use and value after the primary census
 --diagnostics           category/hook yield plus diagnostic follow-through
---auto 36 --diagnostics default full review: 36 independent angles plus two diagnostic lanes
+--auto 40 --diagnostics default full review: 40 independent angles plus two diagnostic lanes
 --auto 9 --diagnostics  nine numbered-angle groups plus the two diagnostic lanes
 ```
 
@@ -108,7 +109,7 @@ consumer-hardware reference implementation. Activate only for that domain, with
 angle 19's 2x2. Activate only for that domain, and only once an adapter between the artifact shape
 and the reference entry point is proved.
 
-## Semantic angles 1-36 — the subagent sessions
+## Semantic angles 1-40 — the subagent sessions
 
 **1. Starter and kernel contract coherence.** Does what the starter teaches match what the kernel
 accepts? Activate on any 0/N battery, an artifact-write failure, or a changed starter or kernel.
@@ -271,6 +272,22 @@ Activate on repairs or claimed review benefit; 9 retains routing and delivery.
 publicly valid artifacts before reading verifier internals or other oracle reports, then execute
 them. Always alone. Activate on constructible tasks or suspicious valid-source rejection;
 5/6 retain wrong-artifact corpora and 19/20 retain recorded user-artifact judgement.
+
+**37. Round hand-off census.** Which channels one round hands the next were present, served, read
+back through a tool call and acted on? Name the cheapest alternative for each served, unread one.
+Activate on two or more authoring rounds; 9 keeps routing, 34 sufficiency and 24 memory.
+
+**38. Difficulty calibration loop.** Does the declared target's error shrink round to round, and was
+rehearsal or trace evidence opened before each battery was authored? Activate on a second targeted
+battery or any rehearsal; 10, 17 and 21 keep agreement, lineage and task-change meaning.
+
+**39. Harness-versus-evaluation triage hand-off.** Per failing family, did diagnosis, Epoch Reviewer
+and advice packet agree on the owning side, and did the successor repair it, in time? Activate on
+any counted advice issue; 3, 26 and 35 keep traces, admission and same-defect closure.
+
+**40. Same-task repair measurement.** Did an issue's state change rest on the same public inputs or
+on family names alone? Join per-family input digests across each repair. Activate on consecutive
+batteries with an advice packet between; 35 keeps the repair and 21 the task-change meaning.
 
 ## Deterministic session 30
 

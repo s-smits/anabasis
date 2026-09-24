@@ -13,7 +13,7 @@ answers it from the recorded rows. A climb question starts at [references/climb.
 
 ## The order
 
-**The deterministic read comes first, always, and it chooses the rest.** Eleven local readers cost
+**The deterministic read comes first, always, and it chooses the rest.** Twelve local readers cost
 nothing but compute, and between them they already name the run's size, its three denominators,
 what moved between batteries, which of its own budgets bound it, what each slot was doing and what
 the digest flagged. A paid lane opened before that read spends on a question the read would have
@@ -35,9 +35,9 @@ question. `wri.mjs brief --out <review>` re-renders it later.
 
 | tier | the run | lanes | semantic lanes to start from |
 | --- | --- | --- | --- |
-| `probe` | under two hours, or no case has scored yet | the five that read campaign bytes alone | 2 |
-| `standard` | a scored battery, under twelve hours and under three epochs | all eleven | 4 |
-| `deep` | twelve hours or more, three epochs or more, or three batteries | all eleven | 8 |
+| `probe` | under two hours, or no case has scored yet | the six that read campaign bytes alone | 2 |
+| `standard` | a scored battery, under twelve hours and under three epochs | all twelve | 4 |
+| `deep` | twelve hours or more, three epochs or more, or three batteries | all twelve | 8 |
 
 The tier is a default and not a gate. `--lanes` and `--all` still select whatever is asked for, a
 run the operator calls important earns the lanes its questions need rather than the ones its clock
@@ -62,12 +62,13 @@ brief gets used.
 Read the [question index](CHECKLIST.md) to identify uncertainty, then the
 [session index](references/session-index.md) for relevant methods. Load
 [core angle bodies](references/review-angles.md) and
-[boundary angle bodies](references/review-angles-boundaries.md) only for admitted work; full mode
-reads both. These are views of one review, not checklists to complete repeatedly. Targeted work
+[boundary angle bodies](references/review-angles-boundaries.md) and
+[hand-off angle bodies](references/review-angles-handoffs.md) only for admitted work; full mode
+reads all three. These are views of one review, not checklists to complete repeatedly. Targeted work
 records considered questions and material omissions. Broad work adds consequential independent
-challenges. Full work covers A–I, eight digest verdicts, all 36 numbered angles and both diagnostic
+challenges. Full work covers A–I, eight digest verdicts, all 40 numbered angles and both diagnostic
 lanes, plus deterministic session 30 when source-ready. Record an inactive lane's result explicitly.
-That full sweep is 38 independent semantic sessions before any warranted intelligence or reference
+That full sweep is 42 independent semantic sessions before any warranted intelligence or reference
 challenge, which is what "all" costs; it is the ceiling, not the default.
 
 Honour an explicit supported model, effort and grouping override through the matching transport.
@@ -85,7 +86,7 @@ bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs launch 
 
 `review` is the "all" path, for a run the operator asked to sweep whole: it reads every
 deterministic lane, prints the brief and then launches the full sweep — collection, the angle-15
-packet, the source delta, the run overview and the detached Luna launch (36 angles plus both
+packet, the source delta, the run overview and the detached Luna launch (40 angles plus both
 diagnostic lanes, `max`). It prints the brief before it spends, but it does not wait for a reader
 to use it, so reach for it only when the answer is already "every lane":
 
@@ -175,7 +176,7 @@ Collection and triage are separate. A clean command exit proves a readable repor
 run. The manifest lists every view's status and triage owner. The primary keeps identities,
 denominators, digest and product evolution, and all views without a launched specialist.
 Use the two diagnostic lanes below for their distinct questions; sharing a view with the primary
-is intentional, but do not ask both to recount it. These named lanes supplement the 36 numbered
+is intentional, but do not ask both to recount it. These named lanes supplement the 40 numbered
 angles without renumbering them or merging the isolated angle-15 trace challenge.
 
 | triage owner | inputs to digest | question to settle |
@@ -357,7 +358,9 @@ other challengers' conclusions. Aggregate run facts do not replace a public-only
 
 Angles 32/33 are boundary questions; 34/35/36 split useful public feedback, same-defect repair and
 valid alternatives from 12/9/6 respectively, whose parents retain confidentiality,
-routing/delivery and the independent wrong-artifact corpus. Numbers are never reused: a retired
+routing/delivery and the independent wrong-artifact corpus. Angles 37–40 follow what one round
+hands the next — channel use, calibration, triage and same-task repair — and each starts from the
+`handoff` lane's table. Numbers are never reused: a retired
 lane keeps its number and reads `no-opportunity`. `scripts/catalogue-shape.mjs` is the one
 declaration of the current shape; the manifest, report, compose and archive validators read it,
 and the archive validator refuses an archive written under an older shape.
@@ -392,7 +395,7 @@ Use one procedure revision for this skill, index, angle bodies and manifest pars
 bun .claude/skills/whole-run-investigation/scripts/build-manifest.mjs --list
 bun .claude/skills/whole-run-investigation/scripts/build-manifest.mjs \
   --snapshot <absolute dir> --worktree <measured-source checkout> \
-  --auto 36 --diagnostics --out <absolute dir> --transport luna --effort max --stress
+  --auto 40 --diagnostics --out <absolute dir> --transport luna --effort max --stress
 ```
 
 `--diagnostics` prepares the category/hook and diagnostic-follow-through lanes, without launching

@@ -1,8 +1,9 @@
 # Whole-run investigation review angles
 
 This file holds deterministic rows A–I and semantic angles 1–31. Continue with
-[review-angles-boundaries.md](review-angles-boundaries.md) for 32–36; the manifest reads both in
-order. Read both files for full review, or the selected blocks for explicit targeted work.
+[review-angles-boundaries.md](review-angles-boundaries.md) for 32–36 and
+[review-angles-handoffs.md](review-angles-handoffs.md) for 37–40; the manifest reads all three in
+order. Read all three files for full review, or the selected blocks for explicit targeted work.
 Keep each numbered heading once and deterministic session 30 outside the catalogue.
 
 ## Deterministic facts and independent semantic questions

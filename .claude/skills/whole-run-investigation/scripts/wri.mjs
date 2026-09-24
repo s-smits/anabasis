@@ -9,9 +9,9 @@
 //   bun wri.mjs brief  --out <abs review dir>
 //   bun wri.mjs review  <target> --out <abs review dir> [launch options]
 //   bun wri.mjs collect <target> --out <abs review dir>
-//   bun wri.mjs launch  --out <abs review dir> [--lanes 36 | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
+//   bun wri.mjs launch  --out <abs review dir> [--lanes 40 | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
 //   bun wri.mjs finish  --out <abs review dir>
-//   bun wri.mjs delta | climb | yield | timeline | walls  <target> [--run <runId>] [--json] [--out <abs file>]
+//   bun wri.mjs delta | climb | yield | timeline | walls | handoff  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
 //              walls [--battery <runId>]
 //
@@ -19,7 +19,7 @@
 // by rank or by name, and with none named it sizes the run first and reads what that size earns
 // (brief.mjs owns both the sizing and the digest). Every lane's output is captured to
 // `<review>/<lane>.txt` and the command prints one bounded brief instead, because the whole read is
-// the size of a paid lane's context. The five lanes that read in-process are also subcommands of
+// the size of a paid lane's context. The six lanes that read in-process are also subcommands of
 // their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
 // `review` reads every lane, prints the brief and then launches the full sweep, which is the "all"
 // path; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for.
@@ -165,6 +165,14 @@ export const LANES = [
     read: async (c) => {
       const { buildWalls, renderWalls } = await import("./walls.mjs");
       return shown(buildWalls({ campaign: c.campaign, runId: c.battery }), renderWalls);
+    },
+  },
+  {
+    name: "handoff",
+    label: "round hand-offs",
+    read: async (c) => {
+      const { buildHandoffs, renderHandoffs } = await import("./handoffs.mjs");
+      return shown(buildHandoffs({ campaign: c.campaign, runId: c.runId }), renderHandoffs);
     },
   },
   {
@@ -467,7 +475,7 @@ function launch(args, state = loadState(absolute(args, "out"))) {
     throw new Error(`${lanesDir} already holds a launch; use a fresh --out or trash the lanes directory`);
   }
   const sessions = args.value("sessions");
-  const lanes = sessions ? sessions.split(",").length : Number(args.value("lanes", "36"));
+  const lanes = sessions ? sessions.split(",").length : Number(args.value("lanes", "40"));
   const select = sessions ? ["--sessions", sessions] : ["--auto", String(lanes)];
   const cmd = [
     BUN,

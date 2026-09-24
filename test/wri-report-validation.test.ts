@@ -308,9 +308,9 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     expect(incompleteResult.stderr).toContain("cover every active angle exactly once");
   });
 
-  it("requires all 36 angles and refuses omission of the valid-alternative lane", () => {
+  it("requires all 40 angles and refuses omission of the valid-alternative lane", () => {
     const f = fixture();
-    const tasks = Array.from({ length: 36 }, (_, index) => {
+    const tasks = Array.from({ length: 40 }, (_, index) => {
       const number = String(index + 1).padStart(2, "0");
       const name = `angle_${number}`;
       writeFileSync(join(f.output, `${name}.md`), `## ${name}\n\nBounded finding.\n`);

@@ -1,7 +1,8 @@
 ## Boundary and repair angles
 
-These are angles 32–36 of the same catalogue as [review-angles.md](review-angles.md).
-The manifest reads both files in order. Full review includes each lane independently;
+These are angles 32–36 of the same catalogue as [review-angles.md](review-angles.md), continued
+by [review-angles-handoffs.md](review-angles-handoffs.md) for 37–40. The manifest reads all three
+files in order. Full review includes each lane independently;
 the triggers below select useful depth and govern selection only for explicit targeted work.
 Use exact measured identities and existing verified joins. Report an absent opportunity or
 unobservable property explicitly. Never change historical scores or controller-owned artifacts.

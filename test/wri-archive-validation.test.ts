@@ -204,7 +204,7 @@ function review() {
     bundle: "bundle-1",
     taskSet: "task-set-1",
   };
-  const angleStates = Array.from({ length: 36 }, (_, index) => ({
+  const angleStates = Array.from({ length: 40 }, (_, index) => ({
     angle: index + 1,
     state: "N/A",
     session: `angle_${String(index + 1).padStart(2, "0")}`,
@@ -645,7 +645,7 @@ describe("WRI four-file archive contract", () => {
       expect.arrayContaining([
         "deterministicRows must contain A-I exactly once and in order",
         "digestVerdicts must contain the 8 canonical verdicts in order",
-        "angleStates must contain angles 1-36 exactly once and in order",
+        "angleStates must contain angles 1-40 exactly once and in order",
       ]),
     );
   });

@@ -155,7 +155,7 @@ describe("how big is this run", () => {
   });
 
   it("selects the named lanes for a tier that names some, and every lane for one that does not", () => {
-    expect(lanesForScope({ lanes: null })).toHaveLength(11);
+    expect(lanesForScope({ lanes: null })).toHaveLength(12);
     expect(lanesForScope({ lanes: CAMPAIGN_LANES }).map((lane: { name: string }) => lane.name)).toEqual(
       CAMPAIGN_LANES,
     );

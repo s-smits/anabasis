@@ -25,7 +25,7 @@ export const LANE_LINES = 60;
 
 /** The lanes that read recorded campaign bytes alone. The other six open the measured checkout or
  *  an archive, which is work worth doing once a battery has scored something. */
-export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls"];
+export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls", "handoff"];
 
 /** This run's case counts by battery, through the shared case-count owner. A later battery's rows
  *  carry the run id with its canonical iteration suffix (`…-i02`), which `isControllerBatteryRunId`

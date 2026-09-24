@@ -10,7 +10,7 @@ import { BATTERY_FILES, type FingerprintEvidence, batteryHash } from "./fingerpr
 
 /** Executed-vs-fingerprinted drift, snapshot tampering, or a copy that failed integrity: always a product
  *  integrity fact, never an environment blocker. */
-export class BundleSnapshotIntegrityError extends Error {
+class BundleSnapshotIntegrityError extends Error {
   constructor(detail: string) {
     super(`EXECUTED_BUNDLE_DRIFT: ${detail}`);
     this.name = "BundleSnapshotIntegrityError";

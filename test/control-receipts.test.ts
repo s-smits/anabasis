@@ -275,7 +275,7 @@ describe("control receipts", () => {
       [TASK],
       { brief: BRIEF },
     );
-    // A cascade that includes the expected check is attributed (2026-09-14): the check rejected it.
+    // A cascade that includes the expected check is attributed: the check rejected it.
     expect(multiple.claimable).toBe(true);
     expect(multiple.rejectsAttributed).toBe(1);
     expect(multiple.controlReceipts[1]?.observedBlockingCheckIds).toEqual(["intrinsic-check", "other-check"]);
@@ -471,8 +471,8 @@ describe("control receipts", () => {
   ] as const)(
     "grounds a sandbox refusal retried as %s on the attempt the runner settled",
     async (retry, code) => {
-      // Review of 2026-09-14: grounding read the first matching host row, so a retry that timed out,
-      // crashed or threw was still charged to the environment through attempt 1's sandbox row.
+      // Grounding that read the first matching host row would charge a retry that timed out,
+      // crashed or threw to the environment through attempt 1's sandbox row.
       const verifier = fakeToolHost((attempt) =>
         attempt === 1 ? "sandbox" : retry === "throw" ? "executed" : retry,
       );
@@ -541,8 +541,8 @@ describe("control receipts", () => {
   });
 
   it("admits the unbound-run and cleanup findings in corpus order, whichever lane settles first", async () => {
-    // Review of 2026-09-13: the unbound-run finding was pushed while the lanes were still racing
-    // and the stop's cleanup finding before ordered admission, so their order followed lane
+    // Pushing the unbound-run finding while the lanes were still racing, and the stop's cleanup
+    // finding before ordered admission, would make their order follow lane
     // timing. Here the stopping control comes first in the corpus and settles last.
     const verifier = fakeToolHost(() => "executed", 1);
     const stopping = {
@@ -656,8 +656,7 @@ describe("control receipts", () => {
     });
   });
 
-  // A claim compares its recorded summary against totals recalculated from the receipts. The
-  // comparison lived in a module of its own until 2026-09-18, where it was one 21-branch boolean.
+  // A claim compares its recorded summary against totals recalculated from the receipts.
   it("matches a recorded discrimination summary against recalculated totals", () => {
     const derived = {
       acceptsPassed: 2,
@@ -699,7 +698,7 @@ describe("control receipts", () => {
     // checkIds are model-authored. The derived tally has a null prototype, so a count under
     // "__proto__" is an own property rather than a write that no-ops through the setter — and the
     // comparison has to read it that way too. A whole-record stableJson refuses a null-prototype
-    // object outright, which is how the rewrite first lost this on 2026-09-18.
+    // object outright, so a comparison built on it would lose this count.
     const protoKey = "__proto__";
     const attributedCheckIds: Record<string, number> = Object.create(null);
     attributedCheckIds[protoKey] = 1;

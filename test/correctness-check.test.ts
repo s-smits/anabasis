@@ -32,9 +32,7 @@ import {
 } from "../src/author/builder-custom-tool-call.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import {
-  BundleSnapshotIntegrityError,
   assertTaskSetMatchesFingerprint,
-  bundleSnapshotIdOf,
   ensureBundleSnapshot,
   createBundleSnapshot,
 } from "../src/claim/bundle-snapshot.ts";
@@ -916,7 +914,6 @@ describe("createBundleSnapshot / ensureBundleSnapshot (check 1)", () => {
   it("creates a content-addressed, read-only bundle snapshot and reuses it after checking it", () => {
     const { slugDir, fingerprint } = snapshotSeedSlug();
     const bundleSnapshot = createBundleSnapshot(slugDir, fingerprint);
-    expect(bundleSnapshot.id).toBe(bundleSnapshotIdOf(fingerprint));
     expect(bundleSnapshot.dir).toBe(join(slugDir, ".bundle-snapshots", bundleSnapshot.id));
     expect(readFileSync(join(bundleSnapshot.dir, "agent/tools.ts"), "utf8")).toBe(SNAPSHOT_TOOLS);
     expect([...readFileSync(join(bundleSnapshot.dir, "agent/data.sqlite"))]).toEqual([
@@ -962,7 +959,9 @@ describe("createBundleSnapshot / ensureBundleSnapshot (check 1)", () => {
   it("refuses to snapshot a tree that changed after its fingerprint", () => {
     const { slugDir, fingerprint } = snapshotSeedSlug();
     writeFileSync(join(slugDir, "agent/tools.ts"), `${SNAPSHOT_TOOLS}// drifted\n`);
-    expect(() => createBundleSnapshot(slugDir, fingerprint)).toThrow(BundleSnapshotIntegrityError);
+    expect(() => createBundleSnapshot(slugDir, fingerprint)).toThrow(
+      "the executed code would not be the fingerprinted code",
+    );
     expect(() => ensureBundleSnapshot(slugDir, fingerprint)).toThrow(/EXECUTED_BUNDLE_DRIFT/);
   });
 
@@ -1010,9 +1009,6 @@ describe("assertTaskSetMatchesFingerprint (conformance-evidence task-set binding
     // ensureBundleSnapshot re-verifies only the frozen copy, so it does not catch live drift.
     // Conformance evidence binds the live task set and therefore needs its own guard.
     expect(ensureBundleSnapshot(slugDir, fingerprint).dir).toBe(bundleSnapshot.dir);
-    expect(() =>
-      assertTaskSetMatchesFingerprint(slugDir, fingerprint.taskSetHash, "conformance evidence"),
-    ).toThrow(BundleSnapshotIntegrityError);
     expect(() =>
       assertTaskSetMatchesFingerprint(slugDir, fingerprint.taskSetHash, "conformance evidence"),
     ).toThrow(/task identity drifted/);

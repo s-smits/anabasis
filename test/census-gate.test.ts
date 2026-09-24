@@ -131,10 +131,9 @@ describe("the census gate", () => {
   it.concurrent("hands a workspace package that diverts @ana resolution back to the Builder with its path", async () => {
     const iterationDir = join(SCRATCH_ROOT, "census-shadow-dir");
     const slugDir = join(iterationDir, "workspace");
-    // Run 52's package replacement: a workspace package diverts resolution (an empty @ana scope
-    // directory does not — Node keeps walking up past it). The package sits inside the workspace,
-    // so the Builder wrote it and the Builder can remove it: run50-opus (2026-09-02) ended after
-    // one authoring turn when a similar replacement, a tsconfig `paths` shim, was classified as an environment failure.
+    // A workspace package diverts resolution (an empty @ana scope directory does not: resolution
+    // keeps walking up past it). The package sits inside the workspace, so the Builder wrote it and
+    // the Builder can remove it; classifying it as an environment failure would end authoring.
     const shadow = join(slugDir, "node_modules", "@ana", "agent-bundle");
     mkdirSync(shadow, { recursive: true });
     writeFileSync(join(shadow, "package.json"), '{"name":"@ana/agent-bundle","exports":{".":"./index.ts"}}');
@@ -273,7 +272,7 @@ describe("the census gate", () => {
     expect(existsSync(join(iterationDir, "environment-non-result.json"))).toBe(false);
   });
 
-  it.concurrent("refuses a bundle whose @ana walk-up cannot resolve at all, as run w29's could not", async () => {
+  it.concurrent("refuses a bundle whose @ana walk-up cannot resolve at all", async () => {
     const iterationDir = join(SCRATCH_ROOT, "census-unresolvable");
     const slugDir = join(iterationDir, "workspace");
     const shadow = join(slugDir, "node_modules", "@ana", "agent-bundle");

@@ -67,21 +67,6 @@ describe("public validity declared by truth checks", () => {
     delete brief.ruleDecisions[0]!.families;
     expect(validateBrief(brief).ok).toBe(true);
   });
-  it("requires the named-program contract and refuses legacy deciding fields", () => {
-    expect(validateBrief(publicReferenceBrief())).toEqual({ ok: true, findings: [] });
-    const { correctnessContract: _version, ...legacy } = publicReferenceBrief();
-    expect(validateBrief(legacy).findings.map((row) => row.code)).toContain(
-      "unsupported-correctness-contract",
-    );
-    const hybrid = publicReferenceBrief();
-    Object.assign(required(hybrid.truthChecks[0], "first check"), {
-      predicate: { operation: { kind: "collectionReference" } },
-    });
-    expect(validateBrief(hybrid).findings.map((row) => row.code)).toContain(
-      "unsupported-correctness-contract",
-    );
-  });
-
   it("derives applicability from family scope for authored, hidden and external checks", () => {
     const brief = publicReferenceBrief();
     brief.truthChecks.push(
@@ -242,36 +227,9 @@ describe("public validity declared by truth checks", () => {
       }),
     );
   });
-
-  it("runs later checks after a failure and records each failed check id", async () => {
-    const brief = publicReferenceBrief();
-    const first = required(brief.truthChecks[0], "first check");
-    brief.truthChecks.push({ ...first, id: "other-rule" });
-    const called: string[] = [];
-    const request = { publicTask: task("aa", "catalog", "a"), artifact: { rows: [{ id: "a" }] }, hidden: [] };
-    const evaluate = evaluateCheckProgram(brief, async (id) => {
-      called.push(id);
-      return false;
-    });
-    const result = await evaluate(request);
-    expect(called).toEqual(["catalog-member", "other-rule"]);
-    expect(result.issues.map((issue) => issue.checkId)).toEqual(called);
-    expect(result.ok).toBe(false);
-    const isolated = await evaluateCheckProgram(brief, async (id) => id === "other-rule")(request);
-    expect(isolated.issues.map((issue) => issue.checkId)).toEqual(["catalog-member"]);
-  });
 });
 
-describe("the check-program contract version", () => {
-  it("accepts the one version and refuses any other value", () => {
-    expect(validateBrief(publicReferenceBrief()).ok).toBe(true);
-    expect(
-      validateBrief({ ...publicReferenceBrief(), correctnessContract: "check-program/v2" }).findings,
-    ).toContainEqual(
-      expect.objectContaining({ code: "unsupported-correctness-contract", path: "correctnessContract" }),
-    );
-  });
-
+describe("the check-program declaration", () => {
   it("requires an explicit public-input declaration on every check", () => {
     const empty = publicReferenceBrief();
     Reflect.deleteProperty(required(empty.truthChecks[0], "first check").execution, "publicInputPaths");

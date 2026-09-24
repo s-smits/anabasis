@@ -12,11 +12,7 @@ import { join } from "../src/meta/path.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import * as subprocess from "../src/meta/subprocess.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
-import {
-  closeVerifierLifetime,
-  createVerifierLifetime,
-  VerifierOperationalStop,
-} from "../src/verify/verifier-lifetime.ts";
+import { closeVerifierLifetime, createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { launchConfinedChild } from "../src/verify/verifier-lifetime-process.ts";
 import { double } from "./helpers/doubles.ts";
 import { campaignVerifierLifetime } from "../src/run/verifier-lifetime.ts";
@@ -24,6 +20,7 @@ import * as runLifetime from "../src/run/verifier-lifetime.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
 import { campaignBudgetGate, setTurnBudget } from "../src/run/campaign-budget.ts";
 
+const CLEANUP_PENDING = "verifier process cleanup is incomplete";
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -100,7 +97,7 @@ describe("verifier settlement", () => {
         const closed = await scope.close();
         expect(closed.cleanup?.state).toBe(mode === "unreaped" ? "pending" : "complete");
         if (mode === "unreaped") {
-          expect(() => f.lifetime.assertUsable()).toThrow(VerifierOperationalStop);
+          expect(() => f.lifetime.assertUsable()).toThrow(CLEANUP_PENDING);
           expect((await scope.port.run({ toolId: "true", checkId: "late" })).executed).toBe(false);
           expect(spawn).toHaveBeenCalledTimes(1);
           expect(unref).toHaveBeenCalledTimes(1);
@@ -140,10 +137,10 @@ describe("durable verifier ownership", () => {
         { slug: "direct", domain: "truss", expectedTasks: 25 },
         { repoRoot: f.root, kickoff: "Build a truss harness." },
       );
-      if (fail) await expect(built).rejects.toThrow();
+      if (fail) await expect(built).rejects.toThrow("epochs.json: unreadable");
       else expect((await built).adopted).toBe(false);
       expect(close).toHaveBeenCalledTimes(1);
-      expect(() => f.lifetime.assertUsable()).toThrow(VerifierOperationalStop);
+      expect(() => f.lifetime.assertUsable()).toThrow("the verifier lifetime is closed");
     } finally {
       create.mockRestore();
       close.mockRestore();
@@ -163,7 +160,7 @@ describe("durable verifier ownership", () => {
       }[kind];
       const owner = createVerifierLifetime({ root });
       const lease = owner.begin({ role: "tool" });
-      expect(() => campaignVerifierLifetime(campaign, "next", domain)).toThrow(VerifierOperationalStop);
+      expect(() => campaignVerifierLifetime(campaign, "next", domain)).toThrow(CLEANUP_PENDING);
       expect(existsSync(lease.id)).toBe(true);
     },
   );
@@ -171,9 +168,9 @@ describe("durable verifier ownership", () => {
   it("closes direct ownership and preserves an existing primary failure", async () => {
     const f = fixture();
     f.lifetime.begin({ role: "tool" });
-    await expect(closeVerifierLifetime(f.lifetime, "clean")).rejects.toBeInstanceOf(VerifierOperationalStop);
+    await expect(closeVerifierLifetime(f.lifetime, "clean")).rejects.toThrow(CLEANUP_PENDING);
     await closeVerifierLifetime(f.lifetime, "failed");
-    expect(() => f.lifetime.assertUsable()).toThrow(VerifierOperationalStop);
+    expect(() => f.lifetime.assertUsable()).toThrow("the verifier lifetime is closed");
   });
   it("retains live or unknown groups and recovers only an exact cell, without sending a signal", async () => {
     const f = fixture();

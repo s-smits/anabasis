@@ -64,6 +64,8 @@ test("every applicable program runs after a failed check and the host records it
   expect(calls).toEqual(["a", "b"]);
   expect(result.issues.map((issue) => issue.checkId)).toEqual(["a", "b"]);
   expect(result.checkReceipts?.map((row) => row.checkId)).toEqual(["a", "b"]);
+  const partial = await evaluateCheckProgram(brief([check("a"), check("b")]), (id) => id === "b")(request);
+  expect(partial.issues.map((issue) => issue.checkId)).toEqual(["a"]);
 });
 
 test("a check cannot read another check's artifact, public input or hidden operand", async () => {
@@ -130,7 +132,7 @@ test("family scope is explicit and absence of required hidden data cannot skip a
         { checkId: "hidden", expectation: 1 },
       ],
     }),
-  ).toThrow();
+  ).toThrow("check-hidden-operand-missing: hidden");
 });
 
 test("non-Boolean authored output cannot manufacture an aggregate verdict", async () => {
@@ -237,9 +239,12 @@ test("local runtime doubles obey the host's declared operand boundary before any
 
 test("new manifests refuse legacy algorithms and malformed execution declarations", () => {
   expect(validateBrief(MATCHING_BRIEF).ok).toBe(true);
-  expect(validateBrief({ ...MATCHING_BRIEF, correctnessContract: undefined }).findings[0]?.code).toBe(
-    "unsupported-correctness-contract",
-  );
+  for (const correctnessContract of [undefined, "check-program/v2"]) {
+    expect(validateBrief({ ...MATCHING_BRIEF, correctnessContract }).findings[0]).toMatchObject({
+      code: "unsupported-correctness-contract",
+      path: "correctnessContract",
+    });
+  }
   for (const old of ["predicate", "grounding", "publicInputPaths"]) {
     const value = structuredClone(MATCHING_BRIEF);
     Object.assign(value.truthChecks[0]!, { [old]: {} });

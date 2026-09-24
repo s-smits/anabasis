@@ -73,8 +73,7 @@ describe("which task a control is evaluated against", () => {
     };
     // The lone accept must pass, so the only fact under test is the request shape.
     await runControls(recording, { accept: [accept], reject: [] }, [controlTask], { brief: BRIEF });
-    // Exactly the measured-case shape: publicTask, artifact, hidden, and no mode discriminant
-    // (falsifier-claude-007, completed 2026-08-07).
+    // Exactly the measured-case shape: publicTask, artifact, hidden, and no mode discriminant.
     expect(seen).toEqual([
       {
         publicTask: { taskId: "t-ctl", family: "controls", publicInput: {} },

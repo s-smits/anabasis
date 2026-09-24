@@ -4,7 +4,7 @@
 // scheduler, so whatever this reader returns is what the next Builder session is told. Four
 // separate rules can stop a packet, and each stops it for a different reason that the recorded
 // lineage has to name — a review that cannot tell "no packet" from "a packet that routed nothing"
-// reads the run wrongly, which is what run w19 did.
+// reads the run wrongly.
 //
 // The rules, in the order the reader applies them: a feedback policy other than the current one,
 // an evaluation identity that moved, a packet with no feedback at all, and a reuse allowance
@@ -96,8 +96,7 @@ describe("what the next build is told", () => {
   });
 
   it("separates a packet that routed nothing from no packet, by naming the digest it read", () => {
-    // Run w19 recorded `consumedEvidenceDigests: null` for both, and the review could not tell
-    // an empty agenda from an absent one.
+    // Recording null for both would leave a review unable to tell an empty agenda from an absent one.
     const root = repo();
     store(root, packet({ feedback: [] }));
     expect(read(root)).toEqual({ priorEvidence: null, lineage: { digest: DIGEST, reason: "no-feedback" } });
@@ -123,28 +122,15 @@ describe("the rules that stop a packet", () => {
 });
 
 describe("whether the evaluation that labelled the findings is the adopted one", () => {
-  it("keeps a half that only one side recorded, since that proves no mismatch", () => {
+  it.each([
+    ["keeps a half only one side recorded, which proves no mismatch", ["a", null], [null, "b"], null],
+    ["names the scoring program when it moved", ["a", "t"], ["b", "t"], "scoringHash"],
+    ["names the task set when it moved", ["a", "t"], ["a", "u"], "taskSetHash"],
+    ["reports the scoring program first when both moved", ["a", "t"], ["b", "u"], "scoringHash"],
+  ] as const)("%s", (_title, [scoringHash, taskSetHash], [otherScoring, otherTasks], moved) => {
     expect(
-      movedIdentity({ scoringHash: "a", taskSetHash: null }, { scoringHash: null, taskSetHash: "b" }),
-    ).toBeNull();
-  });
-
-  it("names the scoring program when it is the half that moved", () => {
-    expect(
-      movedIdentity({ scoringHash: "a", taskSetHash: "t" }, { scoringHash: "b", taskSetHash: "t" }),
-    ).toBe("scoringHash");
-  });
-
-  it("names the task set when it is the half that moved", () => {
-    expect(
-      movedIdentity({ scoringHash: "a", taskSetHash: "t" }, { scoringHash: "a", taskSetHash: "u" }),
-    ).toBe("taskSetHash");
-  });
-
-  it("reports the scoring program first when both halves moved", () => {
-    expect(
-      movedIdentity({ scoringHash: "a", taskSetHash: "t" }, { scoringHash: "b", taskSetHash: "u" }),
-    ).toBe("scoringHash");
+      movedIdentity({ scoringHash, taskSetHash }, { scoringHash: otherScoring, taskSetHash: otherTasks }),
+    ).toBe(moved);
   });
 
   it("holds a packet measured under an evaluation this tree never adopted", () => {

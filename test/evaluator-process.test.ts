@@ -11,7 +11,6 @@ import {
 import { TOOL_TIMEOUT_CEILING_MS, createVerifierHost } from "../src/verify/host.ts";
 import { loadCorrectnessModel } from "../src/truth/contracts.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-evaluator-process-"));
 const LIFETIME = createVerifierLifetime({ root: join(ROOT, "lifetime") });
@@ -141,7 +140,7 @@ describe("generated evaluation in a confined child", () => {
     try {
       await expect(
         (await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST, { tools: scope.port }),
-      ).rejects.toBeInstanceOf(VerifierContractError);
+      ).rejects.toThrow("tool run refused: stdin is not a string leaf of the artifact or public task");
     } finally {
       await scope.close();
     }

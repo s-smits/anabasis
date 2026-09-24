@@ -20,6 +20,7 @@ import { type TracePointer, tracePointerPath, verifyTracePointers } from "./case
 import { isSafePathSegment } from "../meta/path-segment.ts";
 import { type JsonValue, isNumber, isObject, isString } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
+import { isControllerBatteryRunId } from "../run/controller-battery-record-policy.ts";
 
 /** The same vocabulary the operator projection always reported, now shared by every reader. */
 export type TraceReadState = "recorded" | "no-trace-pointer" | "trace-missing" | "trace-drifted";
@@ -154,6 +155,20 @@ export function campaignTraceRoots(campaignDir: string): string[] {
     }
   }
   return roots;
+}
+
+/** The run directories a controller run's batteries left under the campaign's trace roots — the
+ *  default product tree and every retained, candidate or promoted tree beside it. Every root is
+ *  read, because a battery measured under a retained version looks entirely absent to a reader
+ *  watching only the default product's `runs/`. Only the run's canonical iteration ids match. */
+export function batteryRunDirs(campaignDir: string, runId: string): string[] {
+  return campaignTraceRoots(campaignDir).flatMap((root) => {
+    const runs = join(root, "runs");
+    if (!directDirectory(runs, root)) return [];
+    return readdirSync(runs)
+      .filter((name) => isControllerBatteryRunId(runId, name))
+      .map((name) => join(runs, name));
+  });
 }
 
 /** Campaign-relative verified read: probe the conventional roots for the first pointer's path,

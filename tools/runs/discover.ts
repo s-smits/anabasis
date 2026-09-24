@@ -158,6 +158,12 @@ export function latestRun(campaignDir: string): RunLocation | null {
   return runsByOpening(campaignDir)[0] ?? null;
 }
 
+/** Every campaign's run by this id. A run id is unique inside one campaign only, so the caller
+ *  decides what two matches mean. */
+export function findRun(repoRoot: string, runId: string): RunLocation[] {
+  return recordedRuns(repoRoot).filter((run) => run.runId === runId);
+}
+
 /**
  * Campaign and run from one folder: `<campaign>`, `<campaign>/controller` or
  * `<campaign>/controller/<runId>`. An explicit run must agree with a folder that already names one,

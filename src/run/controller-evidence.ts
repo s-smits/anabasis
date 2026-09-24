@@ -66,7 +66,7 @@ import { readJsonFile } from "../meta/completed-json.ts";
 
 /** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
  *  reader compares them by hand. */
-const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
+export const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
 const CAMPAIGN_TERMINAL_SCHEMA = "campaign-terminal/v4";
 
 export interface ControllerRunState {

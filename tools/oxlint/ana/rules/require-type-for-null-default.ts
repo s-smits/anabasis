@@ -21,9 +21,9 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
  * invisible, so `values.campaigns === null` is again a comparison with one answer. Only a property
  * the same file assigns is reported: a record whose `null` is the value it keeps is exactly typed
  * already. Either declaration answers it — a `@type` over the whole literal, or a cast on the one
- * value. The cast is the form that scales: `select-best-runs.mjs` builds a settings record of
- * twelve properties of which five are `null`, and annotating the object would mean restating the
- * seven the author never had to write down.
+ * value. The cast is the form that scales: for a settings record of twelve properties of which
+ * five are `null`, annotating the object would mean restating the seven the author never had to
+ * write down.
  *
  * A TypeScript file is not reported. It can annotate, and the two `.ts` parameters that looked
  * like this shape — `toolTree = null` in `built-bash.ts` and `publicArtifactSchema = null` in

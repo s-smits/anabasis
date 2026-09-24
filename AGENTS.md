@@ -200,7 +200,7 @@ with no capability rate and no difficulty strike. An unproven served-model ident
 identity claim, and that is all it does: it does not reclassify a scored case as an environment
 non-result.
 
-During R&D, explicit Codex or Claude credit exhaustion is a normal operational interruption:
+During the beta, explicit Codex or Claude credit exhaustion is a normal operational interruption:
 preserve the recorded results and classify the affected work from its receipts. That applies only
 where the provider explicitly reports exhaustion. A generic 429, a timeout, a crash, an authoring
 stall or an unexplained refusal is not proof of no credits — investigate what actually failed.
@@ -1091,7 +1091,7 @@ lint, source-policy or complexity fails, the pre-push hook lists each finding as
 
 | Changed files | While editing | Delivery proof |
 | --- | --- | --- |
-| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Normal push repeats the diff check and skips the gate |
+| Surrounding documentation only | `--scope minimal`, then `git diff --check` and read the diff | Commit locally and hold it; the operator approves the push, which repeats the diff check and skips the gate |
 | Test or source | `scripts/worktree.sh run <dir> bun run test -- <owning-paths...>` | One normal push runs the composed gate |
 | Intentional dependency change | One unfrozen install at the root, review manifest plus lock | Frozen install, then source delivery |
 | Stack checkpoint with publication | Union of affected owning checks | One multi-ref push from the clean top runs the gate |
@@ -1166,12 +1166,51 @@ dependencies, and only then minimum new code. Preserve trust validation, data-lo
 security, accessibility and requested behaviour. Reuse the focused checks and the ordinary gate.
 If no useful cut remains, say "already the smallest honest form".
 
+### Versions
+
+Anabasis is in beta. It left alpha on 2026-09-24 (operator decision), and it stays below `1.0.0`
+until the operator cuts that release. The repository follows Semantic Versioning, and a version has one owner: a `vMAJOR.MINOR.PATCH`
+tag on a commit of `main`, published as the GitHub release of the same name with
+`gh release create v<X.Y.Z> --target <full sha>`. Nothing in the tree has a version of its own: the
+root `package.json` carries none, and the `version` in `packages/ui/package.json` follows the
+repository's, so a release commit sets it to the number the tag will carry. `v0.0.1` marks `main`
+at `fae8fdb`, the state before PR #7 landed, where the UI package still read `0.1.0` (operator
+decision 2026-09-24).
+
+The operator decides when a version is cut and which part moves, and an agent never bumps one on
+its own initiative, not even after landing a stack. An incremental release moves the patch number
+(`0.0.1` to `0.0.2`), a bigger one the minor number (`0.0.2` to `0.1.0`), and a breaking one, the
+operator's "proud" release, the major number (`0.1.0` to `1.0.0`), each resetting the parts to its
+right. When asked, tag the exact commit the operator names, or current `origin/main` when none is
+named, and say which commit that was, because local `main` can hold documentation commits that
+were never pushed.
+
 ### Where changes go
 
-Surrounding files go directly to main: `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md`.
-Those are exactly the paths the pre-push hook excludes when it decides a push is
-documentation-only, after which it runs `git diff --check` alone. **Skill and helper scripts are
-not in that set.** A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
+Surrounding files are `README.md`, `AGENTS.md`, `docs/**` and `.claude/**/*.md` — exactly the
+paths the pre-push hook excludes when it decides a push is documentation-only, after which it runs
+`git diff --check` alone. **Commit them locally and leave them there until the operator approves
+the push** (operator decision 2026-09-23). Until then they went straight to main, on the reasoning
+that a note carries no gate and so costs nothing to publish. What that missed is that the gate was
+never the thing standing between a document and its readers — a source change is read by a test, a
+reviewer or a failing build before anyone believes it, and a document is read by nobody. So the
+cheapest path to publication belonged to exactly the files whose only check is someone reading
+them, and on 2026-09-23 two of them were written and pushed inside one turn. Commit the work, say
+where it is and what it claims, and let the operator decide whether it goes out. The approval is
+for the change in front of them and does not carry to the next one.
+
+Ask for it in the reply that reports the work, in a line beside everything else that reply is
+already saying. This is not a question that blocks the turn, so it does not earn an interruption or
+a round trip of its own: finish, report, and name the push as the one thing left. That keeps the
+rule from costing what it was meant to save, which is the operator's attention.
+
+Nothing enforces this. The hook will push a documentation commit as readily as it ever did, and
+`git diff --check` is the whole of what it asks, so this is a standing operator decision held by
+discipline rather than a gate — worth saying plainly, because a rule this file cannot point to a
+consumer for is one a reader should know is unenforced.
+
+**Skill and helper scripts are not in that set**, for publication or for checks.
+A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
 delivery, and how much of the composed gate reaches one depends on the script. `ROOTS` in
 `tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint reads every
 one of them. The suite reaches a script only through a test that imports it: `bun run test`

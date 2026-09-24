@@ -11,6 +11,7 @@ import { readCaseRecord } from "../src/claim/case-record.ts";
 import { EPOCH_REVIEW_SCHEMA, measuredConditionOf } from "../src/review/epoch-review-findings.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
+import { LIMIT_MARGIN_SCHEMA, limitMarginFile, readLimitMargin } from "../src/run/limit-margin.ts";
 import { MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixture.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
@@ -150,7 +151,7 @@ describe("measureHarness", () => {
   it.concurrent("drives one battery through measurement and records its claim and case rows", async () => {
     const repo = scaffoldRepo(join(SCRATCH_ROOT, "e2e-spec"), { toolsSpec: true, conformance: true });
     const seen = new Set<string>();
-    const started: string[] = [];
+    let started = 0;
     const result = await measure({
       runId: "m4-e2e",
       repoRoot: repo,
@@ -163,11 +164,13 @@ describe("measureHarness", () => {
       createVerifier: () => fullFakeHost(),
       isolationProbe: () => probeEvidence(true),
       sessionProbe: async () => builtSession(),
-      onBatteryStart: (runId) => started.push(runId),
+      onBatteryStart: () => {
+        started += 1;
+      },
     });
     // One battery, one run id: the measured id is the base id, with no variant suffix.
     expect(result.runId).toBe("m4-e2e");
-    expect(started).toEqual(["m4-e2e"]);
+    expect(started).toBe(1);
     expect(result.isolation.strength).toBe("physical");
     expect(existsSync(join(repo, "domains", "bridge-truss", "runs", "m4-e2e-repair-off"))).toBe(false);
     expect(existsSync(join(repo, "domains", "bridge-truss", "runs", "m4-e2e-repair-on"))).toBe(false);
@@ -265,6 +268,19 @@ describe("measureHarness", () => {
     const rederived = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
     expect(hashJsonBytes(rederived)).toBe(admitted.digest);
     expect(admitFindings(repo, rederived, hostFindings(repo, rederived)).feedback).toEqual(admitted.feedback);
+    // The limit margin is computed from hidden operands and reference artifacts, so it is protected
+    // too: the measure step records it host-side, and changing only its numbers moves neither the
+    // analysis digest nor the admitted feedback.
+    const marginPath = limitMarginFile(join(repo, "campaigns", "bridge-truss"), "m4-e2e");
+    expect(readLimitMargin(marginPath)?.schema).toBe(LIMIT_MARGIN_SCHEMA);
+    const margin = JSON.parse(readFileSync(marginPath, "utf8"));
+    margin.families = [{ family: "secret-margin", tasks: 1, paired: 9, within1pct: 9, within5pct: 9 }];
+    writeFileSync(marginPath, JSON.stringify(margin));
+    const afterMargin = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
+    expect(hashJsonBytes(afterMargin)).toBe(admitted.digest);
+    const marginFeedback = admitFindings(repo, afterMargin, hostFindings(repo, afterMargin)).feedback;
+    expect(marginFeedback).toEqual(admitted.feedback);
+    expect(JSON.stringify(marginFeedback)).not.toContain("secret-margin");
     // An unrecorded verifier file inside the recorded run directory invalidates the evidence. The
     // analysis refuses it instead of silently omitting the file.
     const protectedTrace = join(repo, "domains", "bridge-truss", "runs", "m4-e2e", "cases");

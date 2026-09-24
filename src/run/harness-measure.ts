@@ -27,7 +27,6 @@ import { loadRepoEnv } from "../backends/env.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { builtCapabilities, piBuiltReadAllowRoots, resolvePiBuiltRuntime } from "../backends/pi-built.ts";
-import { requireSlotSupport } from "../backends/project-backends.ts";
 import { type ResolvedSlots, backendPinOf, resolveSlots } from "../backends/resolve.ts";
 import { type SessionProfileEvidence, composedIsolation } from "../backends/session-isolation.ts";
 import { CASE_RECORD_FILE, type CaseIsolationEvidence, type RunCondition } from "../claim/case-record.ts";
@@ -49,6 +48,7 @@ import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import { builtBatteryRuntime, builtSolveIsolation } from "./built-agent-runtime.ts";
 import { type WrittenRunClaim, claimsDirFor, writeRunClaim } from "./claim-write.ts";
+import { limitMarginFile } from "./limit-margin.ts";
 import { assertSupportedHostRuntime } from "./host-runtime-policy.ts";
 import { judgeSessionFor } from "../review/review-session.ts";
 import {
@@ -93,9 +93,9 @@ export interface HarnessMeasureOptions {
   /** Census judge tri-state: undefined resolves the configured judge slot, null is explicitly
    *  disabled, a session is a test injection. */
   judge?: JudgeSession | null;
-  /** Called with the battery's runId immediately before it runs, so the caller can record a
-   *  started battery identity that later steps cannot erase. */
-  onBatteryStart?: (runId: string) => void;
+  /** Called immediately before the battery runs, so the caller can record that this round measured
+   *  in a way later steps cannot erase. */
+  onBatteryStart?: () => void;
   experimentAuthoring?: ExperimentAuthoring;
   tasks?: BuildTask[];
   /** Run-bound diagnostic channel supplied by the full-run controller. */
@@ -162,13 +162,6 @@ export function resolveBuiltSlot(
   processEnv: OptionalEnvValues = Bun.env,
 ): ResolvedSlots {
   const slots = resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
-  requireSlotSupport(
-    "built",
-    slots.built.kind,
-    slots.built.source,
-    slug,
-    "a verified battery needs process isolation proven by an executed read-deny check, and that transport has none — add one to it, or pin an isolated transport",
-  );
   // Report an unconfigured review slot before measurement rather than after it. Run 15 measured
   // 50 cases before the missing reviewer became apparent in its recorded `judge: "off"` condition.
   // An explicit `disabled` is the operator's choice and needs no warning; `unconfigured` is a
@@ -389,7 +382,7 @@ export async function measureHarness(
     );
   }
   const contract = await resolveMeasureInterface(manifest, options);
-  options.onBatteryStart?.(options.runId);
+  options.onBatteryStart?.();
   const claim = await measureResolvedBattery(contract, manifest, options);
   // The recorded disposition of the battery, read back from its own record.
   const record = batteryPath(contract.slugDir, options.runId);
@@ -445,6 +438,7 @@ async function measureBattery(runId: string, ctx: MeasureBatteryContext): Promis
     slug,
     slugDir,
     claimsDir: claimsDirFor(ctx.repoRoot, slug),
+    limitMarginPath: limitMarginFile(campaignDir(ctx.repoRoot, slug), runId),
     runId,
     isolation: ctx.isolation.strength,
     conformance: ctx.conformance,

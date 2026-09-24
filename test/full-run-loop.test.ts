@@ -233,7 +233,7 @@ describe("the order the endings are read in", () => {
       measuringDeps([]),
     );
     expect(outcome.rounds).toHaveLength(1);
-    expect(outcome.rounds[0]?.batteryRunIds).toEqual(["r1"]);
+    expect(outcome.rounds[0]?.measured).toBe(true);
     expect(loopTerminalCode(required(outcome.terminal, "terminal"))).toBe("operator-interrupted");
   });
 });
@@ -261,26 +261,25 @@ describe("what each round leaves behind", () => {
     );
     const last = required(outcome.rounds.at(-1), "last round");
     expect(last.terminal).not.toBeNull();
-    expect(last.batteryRunIds).toEqual([last.runId]);
+    expect(last.measured).toBe(true);
     const recorded = JSON.parse(
       readFileSync(join(root, "campaigns", SLUG, "controller", "r1", "terminal.json"), "utf8"),
     );
-    expect(recorded.iterations.at(-1).batteryRunIds).toEqual([last.runId]);
+    expect(recorded.iterations.at(-1)).toMatchObject({ runId: last.runId, measured: true });
+    // The terminal carries no copy of what the iterations and the case rows already say.
+    expect(recorded).not.toHaveProperty("denominator");
+    expect(recorded).not.toHaveProperty("lastIteration");
   });
 
-  it("keeps battery ids sorted and unique when one round measures twice", async () => {
+  it("records one measured round when its battery start is reported twice", async () => {
     const root = repo();
     let batteries = 0;
     const deps = double<FullRunDeps>({
       ...measuringDeps([]),
-      drive: async (
-        _manifest: AskManifest,
-        options: { runId: string; onBatteryStart?: (id: string) => void },
-      ) => {
+      drive: async (_manifest: AskManifest, options: { runId: string; onBatteryStart?: () => void }) => {
         batteries += 1;
-        options.onBatteryStart?.("b-second");
-        options.onBatteryStart?.("a-first");
-        options.onBatteryStart?.("a-first");
+        options.onBatteryStart?.();
+        options.onBatteryStart?.();
         return double({
           runId: options.runId,
           verdicts: { measured: true, claimCreated: true, ready: false },
@@ -294,7 +293,7 @@ describe("what each round leaves behind", () => {
       deps,
     );
     expect(batteries).toBe(1);
-    expect(outcome.rounds[0]?.batteryRunIds).toEqual(["a-first", "b-second"]);
+    expect(outcome.rounds.map((round) => [round.runId, round.measured])).toEqual([["r1", true]]);
   });
 
   it("cites evidence only on a terminal with something to cite", async () => {
@@ -306,7 +305,7 @@ describe("what each round leaves behind", () => {
     );
     // A round that did not end the run cites nothing, and says so by absence rather than by an
     // empty list, which reads as "cited nothing" in the recorded row.
-    expect(outcome.rounds[0]?.terminalEvidence).toBeNull();
+    expect(outcome.rounds[0]).not.toHaveProperty("terminalEvidence");
     const recorded = JSON.parse(
       readFileSync(join(root, "campaigns", SLUG, "controller", "r1", "terminal.json"), "utf8"),
     );

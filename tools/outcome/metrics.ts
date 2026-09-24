@@ -36,6 +36,7 @@ import {
   mergeToolStats,
 } from "./trace-facts.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
+import { type LimitMarginFamily, limitMarginFile, readLimitMargin } from "../../src/run/limit-margin.ts";
 import { isRecord, isString } from "../../src/meta/json-shape.ts";
 
 const OUTCOME_METRICS_SCHEMA = "outcome-metrics/v4";
@@ -73,9 +74,18 @@ export interface ClaimFacts {
 
 /** One battery's metrics. Case rows are keyed by BATTERY run id (`<run>-<variant>`); variants are never
  *  pooled — each battery is its own condition and gets its own denominator. */
+/** One family's row of the limit-margin table, with the within-5% share stated beside its count. */
+interface LimitMarginRow extends LimitMarginFamily {
+  shareWithin5pct: number | null;
+  reading: string;
+}
+
 export interface OutcomeMetrics {
   runId: string;
   claim: ClaimFacts;
+  /** Host-only margin of hidden numeric limits against the claim-time reference solve, by family;
+   *  null when no claim-time witness recorded one. The pairing is heuristic and says so. */
+  limitMargin: { pairing: string; families: LimitMarginRow[] } | null;
   identity: {
     backendPins: string[];
     builderIds: string[];
@@ -397,6 +407,25 @@ function claimFacts(campaignDir: string, runId: string): ClaimFacts {
   };
 }
 
+/** The recorded limit margin as a per-family table. Each row states its within-5% count as a share
+ *  of the paired limits in words, so a reader of the JSON sees the proportion without dividing. */
+function limitMarginTable(campaignDir: string, runId: string): OutcomeMetrics["limitMargin"] {
+  const recorded = readLimitMargin(limitMarginFile(campaignDir, runId));
+  if (recorded === null) return null;
+  return {
+    pairing: recorded.pairing,
+    families: recorded.families.map((row) => {
+      const share = row.paired === 0 ? null : row.within5pct / row.paired;
+      const percent = share === null ? "no paired limits" : `${Math.round(share * 100)}%`;
+      return {
+        ...row,
+        shareWithin5pct: share,
+        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.unpaired} unpaired, over ${row.tasks} task(s); heuristic pairing`,
+      };
+    }),
+  };
+}
+
 function batteryMetrics(
   rows: readonly CaseRecordRow[],
   runId: string,
@@ -415,6 +444,7 @@ function batteryMetrics(
   return {
     runId,
     claim: claimFacts(campaignDir, runId),
+    limitMargin: limitMarginTable(campaignDir, runId),
     identity: {
       backendPins: sorted(rows.map((r) => r.backendPin)),
       builderIds: sorted(rows.map((r) => r.builderId)),

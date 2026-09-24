@@ -1,4 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { join } from "../src/meta/path.ts";
+import {
+  DIFFICULTY_DECISION_SCHEMA,
+  type DifficultyDecisionEvidence,
+} from "../src/run/difficulty-decision.ts";
+import { type RunEnd, climbRunEnd, provenanceRunEnd, runEndAtClose } from "../src/run/run-end.ts";
+import type { ClimbReadout } from "../src/run/climb-readout.ts";
+import type { ControllerEvidence } from "../src/run/controller-evidence.ts";
+import { sharedPackRunEnd } from "../tools/outcome/shared-pack.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double, required } from "./helpers/doubles.ts";
 import type { BuilderToolsReport } from "../tools/outcome/builder-tools.ts";
 import type { OutcomeMetrics, OutcomeReport } from "../tools/outcome/metrics.ts";
@@ -482,5 +493,226 @@ describe("the evidence-bound campaign scorecard", () => {
     // row is still the last one in run order, same as before this fix.
     const scorecard = scorecardFromReports(builderReport(), null, "run-1");
     expect(scorecard.reach?.lastAuthoring).toMatchObject({ epoch: "epoch-one", ordinal: 2 });
+  });
+});
+
+describe("the run-end numbers", () => {
+  afterAll(cleanupScratch);
+
+  type Target = NonNullable<DifficultyDecisionEvidence["difficulty"]["rows"][number]["target"]>;
+  const row = (
+    runId: string,
+    createdAt: string,
+    zone: string | null,
+    target: Target | null = null,
+    planDigest: string | null = null,
+  ) => ({
+    runId,
+    createdAt,
+    zone,
+    passed: zone === null ? null : 4,
+    verified: 20,
+    target,
+    calibration: null,
+    experiment: planDigest === null ? null : { proposal: { digest: planDigest, predictions: [] } },
+  });
+  const decision = (schema: string, rows: Array<ReturnType<typeof row>>) =>
+    JSON.stringify({
+      schema,
+      runId: "r",
+      slug: "s",
+      digest: "d",
+      frame: "f",
+      difficulty: { band: [0.2, 0.5], rows },
+    });
+
+  it("reads the newest current decision, oldest battery first, and leaves an older schema unread", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
+    const target: Target = { comparator: "at-most", verifiedPasses: 3, result: "missed", missedBy: 1 };
+    writeFileSync(
+      join(dir, "difficulty-decisions", "a.json"),
+      decision(DIFFICULTY_DECISION_SCHEMA, [
+        row("b2", "2026-09-02", "on-aim", target),
+        row("b1", "2026-09-01", "too-easy"),
+      ]),
+    );
+    writeFileSync(
+      join(dir, "difficulty-decisions", "b.json"),
+      decision(DIFFICULTY_DECISION_SCHEMA, [row("b1", "2026-09-01", "too-easy")]),
+    );
+    writeFileSync(
+      join(dir, "difficulty-decisions", "c.json"),
+      decision("difficulty-decision/v5", [row("b9", "2026-09-09", "on-aim")]),
+    );
+    const climb = climbRunEnd(dir);
+    expect(climb?.readFrom).toBe(join("difficulty-decisions", "a.json"));
+    expect(climb?.batteries.map((battery) => battery.runId)).toEqual(["b1", "b2"]);
+    expect([climb?.onAim, climb?.placed]).toEqual([1, 2]);
+    expect(climb?.batteries[1]?.target).toEqual(target);
+    expect(climb?.batteries[0]).not.toHaveProperty("target");
+  });
+
+  it("counts a check as beside packages only when a tool it names ran with packages", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "claims"), { recursive: true });
+    const statement = {
+      groundings: [
+        { checkId: "a", kind: "external-verifier", adapterId: "frame" },
+        { checkId: "b", kind: "authored", adapterId: null, requiredToolIds: ["frame"] },
+        { checkId: "c", kind: "authored", adapterId: null, requiredToolIds: ["bare"] },
+        { checkId: "d", kind: "intrinsic", adapterId: null },
+      ],
+      verifierTools: [
+        { toolId: "frame", packages: ["openseespy==3.5.1"] },
+        { toolId: "bare", packages: [] },
+      ],
+    };
+    writeFileSync(join(dir, "claims", "b1.json"), JSON.stringify({ claim: { ok: true, statement } }));
+    expect(provenanceRunEnd(dir, "b1")?.byKind).toEqual({
+      "external-verifier": { checks: 1, withPackages: 1 },
+      authored: { checks: 2, withPackages: 1 },
+      intrinsic: { checks: 1, withPackages: 0 },
+    });
+    expect(provenanceRunEnd(dir, "absent")).toBeNull();
+  });
+
+  it("reads a fresh readout at the terminal and counts provenance for this run's batteries alone", () => {
+    const dir = scratchDir("run-end-");
+    mkdirSync(join(dir, "claims"), { recursive: true });
+    const statement = {
+      groundings: [{ checkId: "a", kind: "authored", adapterId: null, requiredToolIds: ["frame"] }],
+      verifierTools: [{ toolId: "frame", packages: ["openseespy==3.5.1"] }],
+    };
+    for (const runId of ["mine-i01", "sibling-i01"]) {
+      writeFileSync(join(dir, "claims", `${runId}.json`), JSON.stringify({ claim: { ok: true, statement } }));
+    }
+    const readout = double<ClimbReadout>({
+      band: [0.2, 0.5],
+      rows: [row("mine-i01", "2026-09-01", "on-aim")],
+    });
+    const recorded = runEndAtClose(dir, () => readout, ["mine-i01"]);
+    expect(recorded).toMatchObject({ climb: { readFrom: "terminal", onAim: 1, placed: 1 } });
+    expect("provenance" in recorded ? recorded.provenance.map((battery) => battery.runId) : null).toEqual([
+      "mine-i01",
+    ]);
+    // A readout that cannot be read still leaves a terminal to write, naming why it has no numbers.
+    expect(
+      runEndAtClose(dir, () => {
+        throw new Error("no adopted product");
+      }, []),
+    ).toEqual({ unreadable: "no adopted product" });
+    expect(runEndAtClose(dir, undefined, [])).toEqual({ climb: null, provenance: [] });
+  });
+
+  it("reports the numbers the terminal recorded over a live reading, with the limit margin per family", () => {
+    const recorded: RunEnd = {
+      climb: { readFrom: "terminal", band: [0.2, 0.5], onAim: 1, placed: 1, batteries: [] },
+      provenance: [],
+    };
+    const live: RunEnd = { climb: null, provenance: [] };
+    const margin = double<NonNullable<OutcomeMetrics["limitMargin"]>>({
+      pairing: "nearest",
+      families: [{ family: "roofs", paired: 4, within5pct: 3 }],
+    });
+    const outcome = {
+      schema: "outcome-metrics/v4",
+      selector: "run-1",
+      controller: double<ControllerEvidence>({ state: "recorded", runEnd: recorded }),
+      caseRecord: "absent",
+      bundle: null,
+      promotions: [],
+      batteries: {
+        "run-1-i01": double<OutcomeMetrics>({
+          runId: "run-1-i01",
+          limitMargin: margin,
+          cases: {
+            total: 4,
+            verified: 4,
+            passed: 3,
+            failed: 1,
+            unaccepted: 0,
+            nonResults: { total: 0, byKind: {}, environmentOwnedKinds: [] },
+          },
+          telemetry: double<OutcomeMetrics["telemetry"]>({
+            recorded: 0,
+            meanTurns: null,
+            meanToolCalls: null,
+            inputTokens: null,
+            outputTokens: null,
+            costUsd: null,
+          }),
+        }),
+      },
+    } satisfies OutcomeReport;
+    const scorecard = scorecardFromReports(builderReport(), outcome, "run-1", {
+      live: () => live,
+      sharedPack: { state: "no-shared-pack" },
+    });
+    expect(scorecard.runEnd).toMatchObject({ readFrom: "terminal", climb: recorded.climb });
+    expect(scorecard.runEnd?.limitMargin).toEqual([{ runId: "run-1-i01", ...margin }]);
+    expect(scorecard.runEnd?.sharedPack).toEqual({ state: "no-shared-pack" });
+    // An unfinished run has no terminal yet, so the live reading stands in for it.
+    const unfinished = { ...outcome, controller: double<ControllerEvidence>({ state: "unfinished" }) };
+    expect(
+      scorecardFromReports(builderReport(), unfinished, "run-1", {
+        live: () => live,
+        sharedPack: { state: "no-shared-pack" },
+      }).runEnd?.readFrom,
+    ).toBe("live");
+  });
+
+  it("reads the off-loop shared-pack grades for this run, and says there is none without a series", () => {
+    const campaign = join(scratchDir("run-end-"), "truss-campaign");
+    const series = scratchDir("run-end-series-");
+    mkdirSync(join(series, "grades", "veryhard"), { recursive: true });
+    writeFileSync(
+      join(series, "INDEX.json"),
+      JSON.stringify({
+        schema: "anabasis-harness-cycles/v1",
+        campaign: "truss-campaign",
+        run: "run-1",
+        cycles: {
+          "7": { commit: "c".repeat(40), version: "run-1-i03" },
+          "0": { commit: "d".repeat(40), version: null },
+        },
+      }),
+    );
+    writeFileSync(
+      join(series, "grades", "veryhard", "summary.json"),
+      JSON.stringify({
+        schema: "cycle-grades/v1",
+        sweep: "veryhard",
+        queries: "round4-veryhard",
+        verifierSource: "e".repeat(40),
+        byCycle: { "7": { verified: 25, passed: 11, unaccepted: 0, wallTimeOut: 0, nonResults: 0 } },
+      }),
+    );
+    expect(sharedPackRunEnd(null, campaign, "run-1")).toEqual({ state: "no-shared-pack" });
+    expect(sharedPackRunEnd(series, campaign, "run-1")).toEqual({
+      state: "recorded",
+      series,
+      sweeps: [
+        {
+          sweep: "veryhard",
+          queries: "round4-veryhard",
+          verifierSource: "e".repeat(40),
+          cycles: [
+            {
+              cycle: 7,
+              commit: "c".repeat(40),
+              version: "run-1-i03",
+              verified: 25,
+              passed: 11,
+              unaccepted: 0,
+              wallTimeOut: 0,
+              nonResults: 0,
+            },
+          ],
+        },
+      ],
+    });
+    // A series that measured another run's harness is not this run's score.
+    expect(() => sharedPackRunEnd(series, campaign, "run-2")).toThrow(/run-1/);
   });
 });

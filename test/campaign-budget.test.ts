@@ -3,44 +3,40 @@ import { existsSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
-import {
-  CampaignBudgetExhausted,
-  campaignBudgetGate,
-  loadBudget,
-  setTurnBudget,
-} from "../src/run/campaign-budget.ts";
-import { ControllerLedger } from "../src/run/controller-ledger.ts";
-import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
-import { joinControllerBudgetEvidence } from "../src/run/campaign-budget-evidence.ts";
+import { campaignBudgetGate, setTurnBudget } from "../src/run/campaign-budget.ts";
+import { CampaignBudgetExhausted, ControllerLedger, loadBudget } from "../src/run/controller-ledger.ts";
+import { ProviderResourceBudget, joinBudgetEvidence } from "../src/run/provider-resource-budget.ts";
 const tmp = () => mkdtempSync(join(tmpdir(), "ana-campaign-budget-"));
 
 describe("the campaign spend budget", () => {
-  it("refuses a budget join whose two sides are not both the recorded schema", () => {
+  it("joins one run's opening and terminal budget rows only when the terminal spent forward", () => {
     const row = { turnBudget: 2, turnsUsed: 1, status: "active" as const };
-    const opening = { schema: "campaign-opening/v2" as const, budget: row };
-    const terminal = { schema: "campaign-terminal/v2" as const, budget: row };
-    expect(joinControllerBudgetEvidence("opening", "terminal", opening, terminal)).toEqual(row);
+    const joinTerminal = (terminal: typeof row) =>
+      joinBudgetEvidence({
+        openingPath: "opening",
+        terminalPath: "terminal",
+        opening: { budget: row, providerResourceBudget: null },
+        terminal: { budget: terminal, providerResourceBudget: null },
+      }).budget;
+    expect(joinTerminal(row)).toEqual(row);
     // A spend below the opening snapshot is the same run disagreeing with itself.
-    expect(() =>
-      joinControllerBudgetEvidence("opening", "terminal", opening, {
-        ...terminal,
-        budget: { ...row, turnsUsed: 0 },
-      }),
-    ).toThrow(/budget spend is lower than the opening snapshot/);
-    expect(() =>
-      joinControllerBudgetEvidence("opening", "terminal", opening, { schema: "campaign-terminal/v3" }),
-    ).toThrow(/opening and terminal budget evidence versions disagree/);
+    expect(() => joinTerminal({ ...row, turnsUsed: 0 })).toThrow(
+      /budget spend is lower than the opening snapshot/,
+    );
+    expect(() => joinTerminal({ ...row, turnBudget: 3 })).toThrow(/budget cap disagrees with opening budget/);
   });
 
-  it("reads historical rows without creating state and refuses to continue them", () => {
+  it("reads an unwritten campaign as unspent and refuses a pre-ledger budget row", () => {
     const root = tmp();
     expect(loadBudget(root)).toEqual({ turnBudget: null, turnsUsed: 0, status: "active" });
     expect(existsSync(join(root, "controller.sqlite"))).toBe(false);
+    // The pre-ledger budget.json carried the spend itself. The current one names the ledger's
+    // identity, so reading the old shape as a budget would misread the current one; it is refused.
     writeFileSync(
       join(root, "budget.json"),
       JSON.stringify({ turnBudget: 5, turnsUsed: 3, status: "active", decided: true, timeUsedSeconds: 1736 }),
     );
-    expect(loadBudget(root).turnsUsed).toBe(3);
+    expect(() => loadBudget(root)).toThrow(/predates the controller ledger/);
     expect(() => campaignBudgetGate(root)).toThrow(/predates the controller ledger/);
     expect(existsSync(join(root, "controller.sqlite"))).toBe(false);
   });

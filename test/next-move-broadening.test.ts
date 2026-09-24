@@ -221,7 +221,6 @@ async function assertRebuildRound(
     budget: { status: () => "active" },
     blockedRounds: 0,
     authoringStall: null,
-    stalledMeasureRounds: 0,
   };
   for (let round = 1; round <= AUTHORING_STALL_LIMIT; round += 1) {
     loop.authoringStall = nextUnresolvedAuthoringStall(loop.authoringStall, failed);

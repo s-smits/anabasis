@@ -39,7 +39,9 @@ const USAGE = [
   "usage:",
   "  outcome <campaignDir> <runId> [--bundle <agentDir>]   metrics projection (default)",
   "  outcome <campaignDir> <runId> --scan                  deterministic anomaly findings",
-  "  outcome <campaignDir> <runId> --scorecard             evidence-bound campaign scorecard",
+  "  outcome <campaignDir> <runId> --scorecard [--pack <seriesDir>]",
+  "                                                       evidence-bound campaign scorecard; --pack",
+  "                                                       names the cycle series graded off-loop",
   "  outcome <campaignDir> --builder                       Harness Builder tool census",
   "  outcome --builder-journeys <campaignDir[::epoch[::cutoff]]> [...]",
   "                                                       cross-campaign tool intent journeys",
@@ -72,6 +74,7 @@ type Mode =
 interface Args {
   positional: string[];
   bundle: string | null;
+  pack: string | null;
   mode: Mode | null;
   target: string | null;
   result: CaseResult | null;
@@ -90,6 +93,7 @@ interface Args {
 
 const VALUE_FLAGS = new Set([
   "--bundle",
+  "--pack",
   "--trace",
   "--case",
   "--result",
@@ -124,6 +128,7 @@ function setMode(args: Args, mode: Mode): void {
 
 function assignValue(args: Args, flag: string, value: string): void {
   if (flag === "--bundle") args.bundle = value;
+  else if (flag === "--pack") args.pack = value;
   else if (flag === "--trace" || flag === "--case") {
     setMode(args, flag === "--trace" ? "trace" : "case");
     args.target = value;
@@ -156,6 +161,7 @@ function parseArgs(argv: readonly string[]): Args {
   const args: Args = {
     positional: [],
     bundle: null,
+    pack: null,
     mode: null,
     target: null,
     result: null,
@@ -214,6 +220,7 @@ function assertValidFilters(args: Args, mode: Mode): void {
   if (args.bundle !== null && !["metrics", "scan", "scorecard"].includes(mode)) {
     throw new Error(`--bundle needs metrics, --scan, or --scorecard\n\n${USAGE}`);
   }
+  if (args.pack !== null && mode !== "scorecard") throw new Error(`--pack needs --scorecard\n\n${USAGE}`);
   assertKnownFilter(args.result, ["pass", "fail", "unaccepted", "non-result"], "case result");
   assertKnownFilter(
     args.telemetry,
@@ -296,7 +303,7 @@ function render(args: Args): string {
   }
   if (mode === "judge") return JSON.stringify(judgeReport(campaignDir, selector), null, 2);
   if (mode === "scorecard") {
-    return JSON.stringify(campaignScorecard(campaignDir, selector, args.bundle), null, 2);
+    return JSON.stringify(campaignScorecard(campaignDir, selector, args.bundle, args.pack), null, 2);
   }
   const report = outcomeReport(campaignDir, selector, args.bundle);
   return JSON.stringify(mode === "scan" ? scanOutcome(report) : report, null, 2);

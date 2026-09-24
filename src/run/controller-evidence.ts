@@ -16,19 +16,14 @@ import type { FullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
 import { assertSupportedHostRuntime, hostRuntimeIdentity } from "./host-runtime-policy.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
-import { type CampaignBudget, loadBudget } from "./campaign-budget.ts";
-import {
-  CAMPAIGN_OPENING_SCHEMA,
-  CAMPAIGN_TERMINAL_SCHEMA,
-  joinControllerBudgetEvidence,
-} from "./campaign-budget-evidence.ts";
+import { type CampaignBudget, loadBudget } from "./controller-ledger.ts";
 import {
   type ControllerAbortClause,
   type SavedStopClause,
   savedStopClause,
 } from "./controller-stop-evidence.ts";
 import { controllerAbortClause } from "./controller-abort-clause.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
+import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isBoolean, isObject, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import {
   controllerEvidenceDir as evidenceDir,
@@ -40,15 +35,17 @@ import {
 import {
   type ProviderResourceBudget,
   type ProviderResourceBudgetSnapshot,
-  joinProviderResourceBudgetEvidence,
+  joinBudgetEvidence,
 } from "./provider-resource-budget.ts";
-import { controllerDenominator, type Denominator } from "./controller-denominator.ts";
+import { controllerDenominator, type Denominator, measuredRunIds } from "./controller-denominator.ts";
 import {
   controllerIterationRunId,
   missingFinalRecordOwner,
   verifyAdmittedBatteryRecords,
 } from "./controller-battery-record-policy.ts";
 import type { VerifierCleanup, VerifierLifetime } from "../verify/verifier-lifetime.ts";
+import type { ClimbReadout } from "./climb-readout.ts";
+import { type RecordedRunEnd, runEndAtClose } from "./run-end.ts";
 
 export type { Denominator } from "./controller-denominator.ts";
 
@@ -59,6 +56,11 @@ export {
 } from "./controller-lineage.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
+
+/** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
+ *  reader compares them by hand. */
+const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
+const CAMPAIGN_TERMINAL_SCHEMA = "campaign-terminal/v4";
 
 export interface ControllerRunState {
   opening: { digest: string; epoch: CampaignEpochEvidence; runId: string } | null;
@@ -73,6 +75,9 @@ export interface ControllerRunState {
    *  opening to record a terminal against. The loop sets it once the epoch inputs are resolved;
    *  a failure before that point still belongs to the launch, which owns its own refusals. */
   openIfUnopened?: () => void;
+  /** The climb readout at the close, for the run-end numbers. The loop sets it once it knows the
+   *  run's product and backend pin; a run that closes before then records no climb. */
+  readClimb?: () => ClimbReadout | null;
 }
 
 type ControllerIteration = {
@@ -83,9 +88,9 @@ type ControllerIteration = {
   /** Evidence paths for a `candidate-held` terminal: the recorded promotion row. Absent for every
    * other outcome. */
   terminalEvidence?: string[];
-  batteryRunIds: string[];
-  /** Chronological last admission; the list remains sorted for stable evidence identity. */
-  lastBatteryRunId: string | null;
+  /** Whether this round measured a battery. A battery always runs under its iteration's own run id,
+   *  so the flag is the whole of what a list of battery ids could say. */
+  measured: boolean;
 };
 
 export interface PreparedControllerTerminal {
@@ -95,16 +100,19 @@ export interface PreparedControllerTerminal {
   openingDigest: string;
   iterations: ControllerIteration[];
   absentSteps: string[];
-  lastIteration: string | null;
   outcome: "completed" | "aborted";
   /** Typed abort owner, recorded beside the prose reason so no reader re-parses the prefix. Null
    *  only on a completed run; `writeControllerTerminal` refuses a null on an abort. */
   abortClause: ControllerAbortClause | null;
   terminalReason: string;
+  /** Derived for the close line and never written: every reader recomputes it from the case rows. */
   denominator: Denominator;
   /** Campaign budget row at record; the run's own charge is this minus the opening snapshot. */
   budget: CampaignBudget;
   providerResourceBudget: ProviderResourceBudgetSnapshot | null;
+  /** The run-end numbers, recorded here once so the outcome report reads them rather than
+   *  deriving them again from records that later runs keep adding to. */
+  runEnd: RecordedRunEnd;
   verifierCleanup?: VerifierCleanup;
 }
 
@@ -129,6 +137,7 @@ export type ControllerEvidence =
       /** An empty list proves the opening observed none. */
       abandonedRuns: string[];
       lastIteration: string | null;
+      /** The measured iterations' run ids, which are their batteries' run ids. */
       batteryRunIds: string[];
       denominator: Denominator;
       /** The opening and terminal snapshots this run bound to each other. */
@@ -137,6 +146,7 @@ export type ControllerEvidence =
         opening: ProviderResourceBudgetSnapshot;
         terminal: ProviderResourceBudgetSnapshot;
       } | null;
+      runEnd: RecordedRunEnd;
       evidence: { opening: string; terminal: string };
     };
 
@@ -158,14 +168,13 @@ type RawControllerTerminal = {
   source?: JsonValue;
   lock?: { token?: JsonValue; ownedAtRecord?: JsonValue } | null;
   iterations?: JsonValue;
-  lastIteration?: JsonValue;
-  denominator?: JsonValue;
   outcome?: JsonValue;
   terminalReason?: JsonValue;
   abortClause?: JsonValue;
   budget?: JsonValue;
   providerResourceBudget?: JsonValue;
   verifierCleanup?: JsonValue;
+  runEnd?: JsonValue;
 };
 
 type ControllerTerminalIdentity = { token: string };
@@ -275,7 +284,7 @@ export function controllerOpeningHandler(
   };
 }
 
-/** Snapshot the exact iteration and denominator set while this controller still owns the lock. */
+/** Snapshot the exact iteration set while this controller still owns the lock. */
 export function prepareControllerTerminal(input: {
   repoRoot: string;
   projectId: string;
@@ -285,12 +294,10 @@ export function prepareControllerTerminal(input: {
   failure: unknown;
   providerBudget?: ProviderResourceBudget;
   verifierCleanup?: VerifierCleanup;
+  readClimb?: ControllerRunState["readClimb"];
 }): PreparedControllerTerminal {
   const campaign = campaignDir(input.repoRoot, input.projectId);
-  const iterations = input.iterations.map((iteration) => ({
-    ...iteration,
-    batteryRunIds: [...iteration.batteryRunIds].sort(),
-  }));
+  const iterations = input.iterations.map((iteration) => ({ ...iteration }));
   const last = iterations.at(-1) ?? null;
   const path = join(evidenceDir(campaign, input.opening.runId), TERMINAL_FILE);
   if (existsSync(path)) throw new Error(`${path}: controller terminal evidence already exists`);
@@ -315,17 +322,14 @@ export function prepareControllerTerminal(input: {
     openingDigest: input.opening.digest,
     iterations,
     absentSteps: [...input.absentSteps],
-    lastIteration: last?.runId ?? null,
     outcome,
     abortClause,
     terminalReason:
       outcome === "completed" ? (last?.terminal ?? "completed") : `${abortClause}: ${abortReason}`,
-    denominator: controllerDenominator(
-      campaign,
-      iterations.flatMap(({ batteryRunIds }) => batteryRunIds),
-    ),
+    denominator: controllerDenominator(campaign, measuredRunIds(iterations)),
     budget: loadBudget(campaign),
     providerResourceBudget: input.providerBudget?.terminalSnapshot() ?? null,
+    runEnd: runEndAtClose(campaign, input.readClimb, measuredRunIds(iterations)),
     ...keyIfDefined("verifierCleanup", input.verifierCleanup),
   };
 }
@@ -353,14 +357,13 @@ export function writeControllerTerminal(
     openingDigest: prepared.openingDigest,
     iterations: prepared.iterations,
     absentSteps: prepared.absentSteps,
-    lastIteration: prepared.lastIteration,
     outcome: prepared.outcome,
     abortClause: prepared.abortClause,
     terminalReason: prepared.terminalReason,
     lock,
-    denominator: prepared.denominator,
     budget: prepared.budget,
     providerResourceBudget: prepared.providerResourceBudget,
+    runEnd: prepared.runEnd,
     ...keyIfDefined("verifierCleanup", prepared.verifierCleanup),
   });
   return writtenAt;
@@ -380,6 +383,20 @@ function readVerifierCleanup(value: JsonValue | undefined): VerifierCleanup | un
     }
   }
   throw new Error("terminal verifierCleanup is malformed");
+}
+
+/** The run-end numbers as the terminal recorded them. The writer is this module, so the check is
+ *  of shape only: either the two recorded fields, or the reason the close could not read them. */
+function readRunEnd(terminalPath: string, value: JsonValue | undefined): RecordedRunEnd {
+  if (
+    isRecord(value) &&
+    (isString(value.unreadable) ||
+      (Array.isArray(value.provenance) && (value.climb === null || isRecord(value.climb))))
+  ) {
+    // SAFETY: shape checked above against the two forms writeControllerTerminal records.
+    return value as RecordedRunEnd;
+  }
+  throw new Error(`${terminalPath}: runEnd is malformed`);
 }
 
 function sourceIdentityIsValid(value: JsonValue | undefined): boolean {
@@ -419,15 +436,14 @@ function readAbandonedRuns(openingPath: string, selector: string, value: JsonVal
   return runIds;
 }
 
-/** The row's own fields, before the battery ids are checked against its run. The declared
- *  partial is read only where this predicate proves the kind. */
+/** The row's own fields. The declared partial is read only where this predicate proves the kind. */
 function iterationRowWellFormed(
   entry: JsonValue,
   row: Partial<ControllerIteration>,
   index: number,
   selector: string,
 ): row is Partial<ControllerIteration> &
-  Pick<ControllerIteration, "runId" | "terminal" | "buildClauses" | "batteryRunIds" | "lastBatteryRunId"> {
+  Pick<ControllerIteration, "runId" | "terminal" | "buildClauses" | "measured"> {
   return !(
     !isObject(entry) ||
     !isString(row.runId) ||
@@ -435,9 +451,7 @@ function iterationRowWellFormed(
     (row.terminal !== null && !isString(row.terminal)) ||
     !Array.isArray(row.buildClauses) ||
     row.buildClauses.some((clause) => !isString(clause)) ||
-    !Array.isArray(row.batteryRunIds) ||
-    row.batteryRunIds.some((runId) => !isString(runId) || runId === "") ||
-    (row.lastBatteryRunId !== null && !isString(row.lastBatteryRunId))
+    !isBoolean(row.measured)
   );
 }
 
@@ -449,24 +463,11 @@ function readIterations(terminalPath: string, selector: string, value: JsonValue
     if (!iterationRowWellFormed(entry, row, index, selector)) {
       throw new Error(`${terminalPath}: iterations[${index}] is malformed`);
     }
-    // An iteration measures one battery, under its own run id.
-    const batteryRunIds = [...row.batteryRunIds];
-    if (batteryRunIds.some((runId) => runId !== row.runId)) {
-      throw new Error(`${terminalPath}: iterations[${index}] names a battery outside its exact run`);
-    }
-    if (batteryRunIds.length > 1) {
-      throw new Error(`${terminalPath}: iterations[${index}] batteryRunIds must be sorted and unique`);
-    }
-    const lastBatteryRunId = row.lastBatteryRunId;
-    if (lastBatteryRunId !== (batteryRunIds[0] ?? null)) {
-      throw new Error(`${terminalPath}: iterations[${index}] last battery was not admitted`);
-    }
     return {
       runId: row.runId,
       terminal: row.terminal,
       buildClauses: [...row.buildClauses],
-      batteryRunIds,
-      lastBatteryRunId,
+      measured: row.measured,
     };
   });
 }
@@ -519,7 +520,6 @@ function terminalMatchesOpening(
   opening: RawControllerOpening,
 ): terminal is RawControllerTerminal & { lock: { token: string } } {
   return !(
-    terminal?.schema !== CAMPAIGN_TERMINAL_SCHEMA ||
     terminal.openingDigest !== hashJsonValue(opening) ||
     terminal.epoch !== opening.epoch?.key ||
     hashJsonValue(terminal.source) !== hashJsonValue(opening.source) ||
@@ -541,17 +541,15 @@ function assertControllerTerminalIdentity(
   if (!openingIsForRun(campaign, opening, selector)) {
     throw new Error(`${openingPath}: not the ${CAMPAIGN_OPENING_SCHEMA} evidence for ${selector}`);
   }
+  if (terminal?.schema !== CAMPAIGN_TERMINAL_SCHEMA) {
+    throw new Error(
+      `${terminalPath}: recorded under ${capturedJsonStringify(terminal?.schema ?? null)}, and this reader takes ${CAMPAIGN_TERMINAL_SCHEMA} alone`,
+    );
+  }
   if (!terminalMatchesOpening(terminal, opening)) {
     throw new Error(`${terminalPath}: terminal identity disagrees with its opening evidence`);
   }
   return { token: terminal.lock.token };
-}
-
-/** The case rows are the authority and the terminal must agree with them. A recorded refusal
- *  (`invalid`) carries no count, so the rows answer for it. */
-function terminalDenominatorAgrees(recorded: unknown, expected: Denominator): boolean {
-  if (isRecord(recorded) && recorded.state === "invalid") return true;
-  return hashJsonValue(recorded) === hashJsonValue(expected);
 }
 
 export function readControllerEvidence(campaign: string, selector: string): ControllerEvidence {
@@ -586,32 +584,21 @@ export function readControllerEvidence(campaign: string, selector: string): Cont
   if (lockToken(join(campaign, CONTROLLER_LOCK_FILE), "<unreadable>") === terminalIdentity.token) {
     throw new Error(`${terminalPath}: controller lock from the recorded terminal remains held`);
   }
-  const budget = joinControllerBudgetEvidence(openingPath, terminalPath, opening, terminal);
-  const providerResourceBudget = joinProviderResourceBudgetEvidence({
+  const { budget, providerResourceBudget } = joinBudgetEvidence({
     openingPath,
     terminalPath,
-    opening: opening.providerResourceBudget,
-    terminal: terminal.providerResourceBudget,
+    opening,
+    terminal,
   });
   const iterations = readIterations(terminalPath, selector, terminal.iterations ?? null);
-  const lastIteration = iterations.at(-1)?.runId ?? null;
-  if (terminal.lastIteration !== lastIteration) {
-    throw new Error(`${terminalPath}: lastIteration disagrees with the recorded iterations`);
-  }
   // Authenticate the controller-owned abort before it can relax the battery-record join. One final
   // active battery may stay unrecorded; every earlier battery and every completed terminal is strict.
   const savedStop = savedStopClause(terminalPath, terminal, iterations.at(-1)?.terminal ?? "completed");
   const { clause: abortClause, reason: terminalReason } = savedStop;
-  const batteryRunIds = iterations.flatMap((iteration) => iteration.batteryRunIds);
-  if (new Set(batteryRunIds).size !== batteryRunIds.length) {
-    throw new Error(`${terminalPath}: a battery run is bound to more than one iteration`);
-  }
-  // `denominator` answers from this run's own battery set, so a recorded pre-battery absence
-  // survives a sibling run creating the campaign case record later.
-  const expected = controllerDenominator(campaign, batteryRunIds);
-  if (!terminalDenominatorAgrees(terminal.denominator, expected)) {
-    throw new Error(`${terminalPath}: terminal denominator disagrees with the case record`);
-  }
+  // The denominator answers from this run's own battery set, so a run that measured nothing stays
+  // absent after a sibling run creates the campaign case record.
+  const batteryRunIds = measuredRunIds(iterations);
+  const denominator = controllerDenominator(campaign, batteryRunIds);
   // Both owners are joined above; wording alone cannot exempt a missing record.
   const providerCapExhausted =
     providerResourceBudget !== null &&
@@ -622,7 +609,7 @@ export function readControllerEvidence(campaign: string, selector: string): Cont
     abortClause,
     providerCapExhausted,
   });
-  if (expected.state === "recorded") {
+  if (denominator.state === "recorded") {
     verifyAdmittedBatteryRecords(campaign, terminalPath, iterations, missingRecordOwner);
   }
   return {
@@ -632,11 +619,12 @@ export function readControllerEvidence(campaign: string, selector: string): Cont
     abortClause,
     ...keyIfDefined("verifierCleanup", readVerifierCleanup(terminal.verifierCleanup)),
     abandonedRuns,
-    lastIteration,
+    lastIteration: iterations.at(-1)?.runId ?? null,
     batteryRunIds,
-    denominator: expected,
+    denominator,
     budget,
     providerResourceBudget,
+    runEnd: readRunEnd(terminalPath, terminal.runEnd),
     evidence: {
       opening: join("controller", selector, OPENING_FILE),
       terminal: join("controller", selector, TERMINAL_FILE),

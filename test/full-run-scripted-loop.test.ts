@@ -135,10 +135,9 @@ describe("the whole loop through the Builder runtime interface, with no provider
     expect(outcome.terminal).toMatch(/^operator-interrupted: round cap 1 reached/);
     const round = outcome.rounds[0];
     if (round === undefined) throw new Error("the loop recorded no round");
-    expect(drives).toEqual(round.batteryRunIds);
-    expect(round.batteryRunIds).toHaveLength(1);
-    const batteryRunId = round.batteryRunIds[0];
-    if (batteryRunId === undefined) throw new Error("the round recorded no battery");
+    expect(round.measured).toBe(true);
+    expect(drives).toEqual([round.runId]);
+    const batteryRunId = round.runId;
 
     // The adopted product is a retained immutable version holding the scripted bytes.
     const product = selectedProductDir(root, SLUG);
@@ -196,9 +195,56 @@ describe("the whole loop through the Builder runtime interface, with no provider
     );
     expect(prompts).toHaveLength(1);
     expect(outcome.rounds.map((round) => [round.move, round.build])).toEqual([["build", "build-failed"]]);
-    expect(outcome.rounds[0]?.batteryRunIds).toEqual([]);
+    expect(outcome.rounds[0]?.measured).toBe(false);
     expect(existsSync(join(campaignDir(root, SLUG), "versions"))).toBe(false);
     const claims = claimsDirFor(root, SLUG);
     expect(existsSync(claims) ? readdirSync(claims) : []).toEqual([]);
   }, 60_000);
+
+  it("mounts a working harness_reset on a reopen of the adopted product, and a refusing one elsewhere", async () => {
+    const root = scratchRepo();
+    const starterTools = readFileSync(
+      join(import.meta.dir, "../starters/pi-built-harness/agent/tools.ts"),
+      "utf8",
+    );
+    const toolsNow = (workspace: string) => readFileSync(join(workspace, "agent/tools.ts"), "utf8");
+    const outcomeOf = (result: { details?: unknown }) =>
+      /* SAFETY: harness_reset returns this detail shape on every call. */
+      (result.details as { receipt: { outcome: string } }).receipt.outcome;
+    const seen: Record<string, string | boolean | number> = {};
+    let round = -1;
+    const turn: ScriptedTurn = async (ctx) => {
+      if (ctx.turn === 1) round += 1;
+      if (ctx.turn !== 1) return "nothing further this round";
+      if (round === 0) {
+        uppercaseFixture(ctx.workspace, false, false, TASKS);
+        seen.buildReset = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+        seen.buildKeptTools = toolsNow(ctx.workspace) !== starterTools;
+        await ctx.call("submit", {});
+        return "submitted the uppercase bundle";
+      }
+      // The reopen opens on the adopted bytes; nothing is reset until the Builder asks.
+      seen.seededTools = toolsNow(ctx.workspace) !== starterTools;
+      seen.first = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+      seen.resetTools = toolsNow(ctx.workspace) === starterTools;
+      const tasks: unknown = JSON.parse(
+        readFileSync(join(ctx.workspace, "correctness-model/tasks.json"), "utf8"),
+      );
+      seen.keptTasks = Array.isArray(tasks) ? tasks.length : -1;
+      seen.second = outcomeOf(await ctx.call("harness_reset", { scope: "agent" }));
+      return "reset the tooling and stopped";
+    };
+    const { repoRoot, ...runArgs } = args(root, "reset", 2, 1);
+    const outcome = await runFullRun(runArgs, repoRoot, scriptedDeps(turn));
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild"]);
+    expect(seen).toEqual({
+      buildReset: "refused",
+      buildKeptTools: true,
+      seededTools: true,
+      first: "completed",
+      resetTools: true,
+      keptTasks: TASKS,
+      second: "refused",
+    });
+  }, 120_000);
 });

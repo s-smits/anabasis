@@ -18,9 +18,12 @@ const MALFORMED_CASES: Array<[string, JsonValue]> = [
   ["a reordered list", ["run-b", "run-a"]],
 ];
 
+const RUN_END = { climb: null, provenance: [] };
+
 function controllerFixture(
   abandonedRuns: JsonValue | typeof ABSENT = [],
   verifierCleanup?: JsonValue,
+  terminalSchema = "campaign-terminal/v4",
 ): string {
   const root = mkdtempSync(join(tmpdir(), "ana-controller-abandoned-runs-"));
   roots.push(root);
@@ -52,18 +55,17 @@ function controllerFixture(
   writeFileSync(
     join(controllerDir, "terminal.json"),
     JSON.stringify({
-      schema: "campaign-terminal/v2",
+      schema: terminalSchema,
       budget,
       openingDigest: hashJsonValue(opening),
       source,
       epoch,
       lock: { token: "recorded-token", ownedAtRecord: true },
       iterations: [],
-      lastIteration: null,
       outcome: "completed",
       abortClause: null,
       terminalReason: "completed",
-      denominator: { state: "absent" },
+      runEnd: RUN_END,
       ...keyIfDefined("verifierCleanup", verifierCleanup),
     }),
   );
@@ -93,6 +95,13 @@ describe("controller abandoned-run evidence", () => {
       abandonedRuns: [],
     });
     expect(() => readControllerEvidence(controllerFixture(ABSENT), RUN)).toThrow(/abandonedRuns/);
+  });
+
+  it("reads back the run-end numbers the terminal recorded, and refuses a terminal from before them", () => {
+    expect(readControllerEvidence(controllerFixture([]), RUN)).toMatchObject({ runEnd: RUN_END });
+    expect(() =>
+      readControllerEvidence(controllerFixture([], undefined, "campaign-terminal/v3"), RUN),
+    ).toThrow(/campaign-terminal\/v3.*campaign-terminal\/v4/);
   });
 
   it("returns the authenticated sorted predecessor list", () => {

@@ -15,12 +15,9 @@ import { measuredProductDir } from "./product-versions.ts";
  *  the rounds before the signal were measured, and the signal says nothing about them. */
 type MissingFinalRecordOwner = "provider-resource-budget" | "operator-signal";
 
-/** The part of a controller iteration this join reads: its id and the batteries it admitted. */
-type AdmittedIteration = {
-  runId: string;
-  batteryRunIds: string[];
-  lastBatteryRunId: string | null;
-};
+/** The part of a controller iteration this join reads: its id, which is also its battery's run id,
+ *  and whether it measured one. */
+type AdmittedIteration = { runId: string; measured: boolean };
 
 export function missingFinalRecordOwner(input: {
   outcome: unknown;
@@ -50,18 +47,12 @@ export function isControllerBatteryRunId(selector: string, batteryRunId: string)
 
 /** Resolve a battery's record from the owners that may have placed it: the iteration's candidate
  *  directory and the adopted tree. An iteration measures one battery, under its own run id. */
-function admittedBatteryRecordPaths(
-  repoRoot: string,
-  slug: string,
-  iterationRunId: string,
-  batteryRunId: string,
-): string[] {
-  if (batteryRunId !== iterationRunId) return [];
-  const version = measuredProductDir(repoRoot, slug, batteryRunId);
-  if (version !== null) return [batteryPath(version, batteryRunId)];
+function admittedBatteryRecordPaths(repoRoot: string, slug: string, runId: string): string[] {
+  const version = measuredProductDir(repoRoot, slug, runId);
+  if (version !== null) return [batteryPath(version, runId)];
   return [
-    batteryPath(join(campaignDir(repoRoot, slug), "candidates", iterationRunId), batteryRunId),
-    batteryPath(defaultProductDir(repoRoot, slug), batteryRunId),
+    batteryPath(join(campaignDir(repoRoot, slug), "candidates", runId), runId),
+    batteryPath(defaultProductDir(repoRoot, slug), runId),
   ];
 }
 
@@ -81,38 +72,32 @@ export function verifyAdmittedBatteryRecords(
   for (const { row } of readCaseRecord(join(campaign, CASE_RECORD_FILE))) {
     rowCounts.set(row.runId, (rowCounts.get(row.runId) ?? 0) + 1);
   }
-  // Only the final iteration's own battery, admitted last and with no rows, may lack its record, once.
+  // Only the final iteration's own battery, with no rows, may lack its record.
   const final = iterations.at(-1);
-  let excused = finalRecordOwner === null || final === undefined ? null : final.lastBatteryRunId;
   for (const iteration of iterations) {
-    for (const runId of iteration.batteryRunIds) {
-      const rows = rowCounts.get(runId) ?? 0;
-      const records = admittedBatteryRecordPaths(repoRoot, slug, iteration.runId, runId).filter((path) =>
-        existsSync(path),
-      );
-      // The record's case count must equal the record's rows for that run id, and a zero-row battery
-      // may only carry a skipped-precase disposition.
-      for (const path of records) {
-        const { caseCount, disposition } = readBatteryJoinSlice(path);
-        if (caseCount !== rows) {
-          throw new Error(
-            `${terminalPath}: battery ${runId} recorded ${String(caseCount)} cases, record holds ${String(rows)} rows`,
-          );
-        }
-        if (rows === 0 && disposition !== "skipped-precase") {
-          throw new Error(
-            `${terminalPath}: battery ${runId} has zero case rows but its record says "${disposition}"`,
-          );
-        }
+    if (!iteration.measured) continue;
+    const { runId } = iteration;
+    const rows = rowCounts.get(runId) ?? 0;
+    const records = admittedBatteryRecordPaths(repoRoot, slug, runId).filter((path) => existsSync(path));
+    // The record's case count must equal the record's rows for that run id, and a zero-row battery
+    // may only carry a skipped-precase disposition.
+    for (const path of records) {
+      const { caseCount, disposition } = readBatteryJoinSlice(path);
+      if (caseCount !== rows) {
+        throw new Error(
+          `${terminalPath}: battery ${runId} recorded ${String(caseCount)} cases, record holds ${String(rows)} rows`,
+        );
       }
-      if (records.length > 0) continue;
-      if (iteration === final && runId === excused && rows === 0) {
-        excused = null;
-        continue;
+      if (rows === 0 && disposition !== "skipped-precase") {
+        throw new Error(
+          `${terminalPath}: battery ${runId} has zero case rows but its record says "${disposition}"`,
+        );
       }
-      throw new Error(
-        `${terminalPath}: battery ${runId} has no record at any derived path (battery record missing)`,
-      );
     }
+    if (records.length > 0) continue;
+    if (finalRecordOwner !== null && iteration === final && rows === 0) continue;
+    throw new Error(
+      `${terminalPath}: battery ${runId} has no record at any derived path (battery record missing)`,
+    );
   }
 }

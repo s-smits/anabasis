@@ -3,7 +3,10 @@ import { BuilderConversation } from "../author/builder-conversation.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
-import { resolve } from "../meta/path.ts";
+import { join, resolve } from "../meta/path.ts";
+import { readClimbReadout } from "./climb-readout.ts";
+import { claimsDirFor } from "./claim-write.ts";
+import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
@@ -42,7 +45,6 @@ import {
   loopTerminal,
   nextUnresolvedAuthoringStall,
   nextBlockedRounds,
-  nextStalledMeasureRounds,
   runIteration,
   terminalEvidenceFor,
 } from "./full-run-round.ts";
@@ -72,18 +74,14 @@ export interface FullRunDeps {
 export { readAdmission } from "./admission.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
-/** One controller round and its terminal decision. */
-interface FullRunRound {
-  runId: string;
+type ControllerIteration = ControllerRunState["iterations"][number];
+
+/** One controller round as the terminal records it, with the decision that round took. */
+type FullRunRound = ControllerIteration & {
   move: NextMove["move"];
   build: FullRunOutcome["build"];
   promotion: PromotionEvidence["decision"] | null;
-  terminal: string | null;
-  buildClauses: string[];
-  /** Campaign-relative evidence paths behind a candidate-held terminal; null otherwise. */
-  terminalEvidence: string[] | null;
-  batteryRunIds: string[];
-}
+};
 
 export interface FullRunOutcome {
   slug: string;
@@ -263,46 +261,32 @@ function roundReporter(
 
 function recordRound(
   rounds: FullRunRound[],
-  pending: ControllerRunState["iterations"][number],
+  pending: ControllerIteration,
   terminal: string | null,
   result: IterationResult,
   slug: string,
 ): void {
-  const recorded: FullRunRound = {
-    runId: pending.runId,
+  pending.terminal = terminal;
+  pending.buildClauses = [...result.buildClauses];
+  // Only a terminal with something to cite carries evidence; every other round leaves the recorded
+  // iteration row without the key rather than writing an empty list that reads as "cited nothing".
+  const cited = terminalEvidenceFor(terminal, result, slug);
+  if (cited !== null) pending.terminalEvidence = cited;
+  rounds.push({
+    ...pending,
     move: result.decision.move,
     build: result.build,
     promotion: result.steps.promotion?.decision ?? null,
-    terminal,
-    buildClauses: [...result.buildClauses],
-    terminalEvidence: terminalEvidenceFor(terminal, result, slug),
-    batteryRunIds: [...pending.batteryRunIds],
-  };
-  rounds.push(recorded);
-  Object.assign(pending, {
-    terminal: recorded.terminal,
-    buildClauses: recorded.buildClauses,
-    batteryRunIds: recorded.batteryRunIds,
   });
-  // Only a terminal with something to cite carries evidence; every other round leaves the recorded
-  // iteration row without the key rather than writing an empty list that reads as "cited nothing".
-  if (recorded.terminalEvidence !== null) pending.terminalEvidence = recorded.terminalEvidence;
-}
-
-function recordBatteryRun(iteration: ControllerRunState["iterations"][number], runId: string): void {
-  if (!iteration.batteryRunIds.includes(runId)) iteration.batteryRunIds.push(runId);
-  iteration.batteryRunIds.sort();
-  iteration.lastBatteryRunId = runId;
 }
 
 function startIteration(state: ControllerRunState, baseRunId: string, round: number) {
   const runId = controllerIterationRunId(baseRunId, round);
-  const pending: ControllerRunState["iterations"][number] = {
+  const pending: ControllerIteration = {
     runId,
     terminal: null,
     buildClauses: [] satisfies string[],
-    batteryRunIds: [] satisfies string[],
-    lastBatteryRunId: null,
+    measured: false,
   };
   state.iterations.push(pending);
   return [runId, pending] as const;
@@ -375,6 +359,14 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   state.openIfUnopened = () => {
     if (state.opening === null) openRun(baseKickoff, undefined);
   };
+  // A fresh readout at the close, so the terminal counts a last battery no later decision saw.
+  state.readClimb = () =>
+    readClimbReadout(
+      selectedProductDir(repoRoot, manifest.slug),
+      runPin,
+      claimsDirFor(repoRoot, manifest.slug),
+      join(repoRoot, FROZEN_MANIFEST_PATH),
+    );
   state.verifierLifetime = campaignVerifierLifetime(
     campaignDir(repoRoot, manifest.slug),
     baseRunId,
@@ -383,7 +375,6 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   const rounds: FullRunRound[] = [];
   const loopStartedMs = Date.now();
   let blockedRounds = 0,
-    stalledMeasureRounds = 0,
     completed: IterationResult | null = null;
   let authoringStall: UnresolvedAuthoringStall | null = null;
   for (let round = 1; ; round += 1) {
@@ -411,19 +402,19 @@ async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
       builderConversation,
       stopRequested,
       absentSteps,
-      recordBatteryRun: (batteryRunId) => recordBatteryRun(pendingIteration, batteryRunId),
+      markMeasured: () => {
+        pendingIteration.measured = true;
+      },
       ...keysIf(round === 1, () => ({ onOpening: openRun })),
       report: roundReporter(project, manifest.slug, round, roundLimit, runId),
     });
     completed = result;
     blockedRounds = nextBlockedRounds(blockedRounds, result);
     authoringStall = nextUnresolvedAuthoringStall(authoringStall, result);
-    stalledMeasureRounds = nextStalledMeasureRounds(stalledMeasureRounds, result);
     const curriculumTerminal = loopTerminal(result, {
       budget,
       blockedRounds,
       authoringStall,
-      stalledMeasureRounds,
     });
     const terminal =
       curriculumTerminal ??

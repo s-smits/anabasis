@@ -58,6 +58,7 @@ import { toolNonResultCode } from "../author/tool-non-result.ts";
 import { toolRunFailureDetail } from "./census-gate.ts";
 import { assertRunIdSafe, loadRecordedTasks } from "./run-driver.ts";
 import { sourceStillFrozen } from "./source-identity.ts";
+import { writeLimitMargin } from "./limit-margin.ts";
 import { parseJsonAs, capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isBoolean, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -69,6 +70,10 @@ interface WriteRunClaimOptions {
   slugDir: string;
   /** Where this function writes claim evidence, one file per runId. */
   claimsDir: string;
+  /** Where the host-only limit margin for this battery goes (limit-margin.ts). It is computed from
+   *  the claim-time witness's reference artifacts and the hidden operands, so it stays out of the
+   *  claim, which several readers open for model-visible facts. */
+  limitMarginPath: string;
   /** The recorded battery to write from. */
   runId: string;
   /** The disclosed isolation strength the battery was verified under. */
@@ -445,6 +450,13 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
       2,
     ),
   );
+  // Written after the claim and read by nothing that decides: the operator's outcome report is its
+  // only reader. Brief and tasks already validated above, before the claim could be created.
+  writeLimitMargin(options.limitMarginPath, runId, {
+    brief: validatedBrief(slugDir),
+    tasks: loadRecordedTasks(slugDir),
+    solvability,
+  });
 
   return {
     runId,

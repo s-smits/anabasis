@@ -10,7 +10,12 @@ import { capturedStructuredClone } from "../meta/json-runtime.ts";
 import type { AgentSession, RunTurnOptions, TurnUsage } from "../backends/backend-types.ts";
 import { asRecord, isNumber, type JsonObject } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { ControllerLedger, CampaignBudgetExhausted } from "./controller-ledger.ts";
+import {
+  type CampaignBudget,
+  CampaignBudgetExhausted,
+  ControllerLedger,
+  assertCampaignBudget,
+} from "./controller-ledger.ts";
 
 const PROVIDER_RESOURCE_ROLES = ["builder", "built", "review"] as const;
 type ProviderResourceRole = (typeof PROVIDER_RESOURCE_ROLES)[number];
@@ -37,6 +42,17 @@ type JoinedProviderResourceBudget = {
   opening: ProviderResourceBudgetSnapshot;
   terminal: ProviderResourceBudgetSnapshot;
 } | null;
+
+/** One run's two snapshots of the controller ledger, taken at its opening and at its terminal:
+ *  the campaign budget row and the run's own provider budget. Both come from the one ledger at two
+ *  moments, so the terminal may only have spent more under the same caps, and the run's charge is
+ *  the difference. */
+type LedgerSnapshots = { budget?: unknown; providerResourceBudget?: unknown };
+
+interface JoinedBudgetEvidence {
+  budget: CampaignBudget;
+  providerResourceBudget: JoinedProviderResourceBudget;
+}
 
 const STOP_CAUSES = new WeakSet<Error>();
 
@@ -126,13 +142,38 @@ function assertUsage(value: unknown, used: number, path: string): ProviderResour
 }
 
 /** Join the immutable opening and terminal projections at the controller evidence boundary. */
-export function joinProviderResourceBudgetEvidence(input: {
+export function joinBudgetEvidence(input: {
   openingPath: string;
   terminalPath: string;
-  opening: unknown;
-  terminal: unknown;
-}): JoinedProviderResourceBudget {
-  const { openingPath, terminalPath, opening, terminal } = input;
+  opening: LedgerSnapshots;
+  terminal: LedgerSnapshots;
+}): JoinedBudgetEvidence {
+  const { openingPath, terminalPath } = input;
+  const openingBudget = assertCampaignBudget(input.opening.budget, `${openingPath}.budget`);
+  const budget = assertCampaignBudget(input.terminal.budget, `${terminalPath}.budget`);
+  if (openingBudget.turnBudget !== budget.turnBudget) {
+    throw new Error(`${terminalPath}: budget cap disagrees with opening budget`);
+  }
+  if (budget.turnsUsed < openingBudget.turnsUsed) {
+    throw new Error(`${terminalPath}: budget spend is lower than the opening snapshot`);
+  }
+  return {
+    budget,
+    providerResourceBudget: joinProviderSnapshots(
+      openingPath,
+      terminalPath,
+      input.opening.providerResourceBudget,
+      input.terminal.providerResourceBudget,
+    ),
+  };
+}
+
+function joinProviderSnapshots(
+  openingPath: string,
+  terminalPath: string,
+  opening: unknown,
+  terminal: unknown,
+): JoinedProviderResourceBudget {
   if ((opening === undefined || opening === null) && (terminal === undefined || terminal === null)) {
     return null;
   }

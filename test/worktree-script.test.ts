@@ -271,7 +271,11 @@ describe("the Bun-owned worktree launcher", () => {
       // A tree some command is standing in is named, and its dependencies are left alone: that
       // running command is the one reader a marker mismatch cannot speak for.
       writeFileSync(join(target, marker), "other-dependencies\n");
-      const standing = Bun.spawn(["bash", "-c", `cd ${target} && sleep 20`], {
+      // `list` names such a command by the tree on its command line, so the shell has to stay the
+      // process holding it. Bash 5.1 and later exec the last command of a `-c` and-list in place of
+      // the shell, which left Linux with a bare `sleep 20` and nothing naming the tree, while macOS's
+      // Bash 3.2 kept the shell; a trailing `true` keeps it on both.
+      const standing = Bun.spawn(["bash", "-c", `cd ${target} && sleep 20 && true`], {
         stdio: ["ignore", "ignore", "ignore"],
       });
       try {

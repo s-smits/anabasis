@@ -194,7 +194,7 @@ with no capability rate and no difficulty strike. An unproven served-model ident
 identity claim, and that is all it does: it does not reclassify a scored case as an environment
 non-result.
 
-During R&D, explicit Codex or Claude credit exhaustion is a normal operational interruption:
+During the beta, explicit Codex or Claude credit exhaustion is a normal operational interruption:
 preserve the recorded results and classify the affected work from its receipts. That applies only
 where the provider explicitly reports exhaustion. A generic 429, a timeout, a crash, an authoring
 stall or an unexplained refusal is not proof of no credits — investigate what actually failed.
@@ -1067,7 +1067,8 @@ If no useful cut remains, say "already the smallest honest form".
 
 ### Versions
 
-The repository follows Semantic Versioning, and a version has one owner: a `vMAJOR.MINOR.PATCH`
+Anabasis is in beta. It left alpha on 2026-09-24 (operator decision), and it stays below `1.0.0`
+until the operator cuts that release. The repository follows Semantic Versioning, and a version has one owner: a `vMAJOR.MINOR.PATCH`
 tag on a commit of `main`, published as the GitHub release of the same name with
 `gh release create v<X.Y.Z> --target <full sha>`. Nothing in the tree has a version of its own: the
 root `package.json` carries none, and the `version` in `packages/ui/package.json` follows the

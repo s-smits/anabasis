@@ -9,16 +9,19 @@
 export const SHA256 = /^[0-9a-f]{64}$/;
 export const GIT_SHA = /^[0-9a-f]{40}$/;
 
-/** Semantic angles the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
-export const ANGLE_COUNT = 40;
-export const ANGLE_FILES = ["review-angles.md", "review-angles-boundaries.md", "review-angles-handoffs.md"];
+/** Semantic lanes the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
+export const ANGLE_COUNT = 26;
+export const ANGLE_FILES = ["review-angles.md"];
 
-// These sessions must retain their own evidence boundary even under explicit grouping.
+// These two lanes keep their own evidence boundary even under explicit grouping, and launch only
+// when their deterministic trigger has fired. Their numbers are owned here and nowhere else.
+export const PUBLIC_ONLY_LANE = 7;
+export const TRACE_CHALLENGE_LANE = 23;
 export const ISOLATED_ANGLES = new Map([
-  [15, "carries the private trace-challenge packet"],
-  [36, "derives its valid-alternative corpus before reading verifier internals"],
+  [PUBLIC_ONLY_LANE, "freezes its public-only alternative corpus before reading verifier internals"],
+  [TRACE_CHALLENGE_LANE, "carries the private trace-challenge packet"],
 ]);
-export const MIN_AUTO_SESSIONS = ISOLATED_ANGLES.size + 2; // two more seats separate blinded pairs
+export const MIN_AUTO_SESSIONS = ISOLATED_ANGLES.size + 1; // one seat for the open lanes
 
 /** Deterministic rows the primary reviewer settles, in catalogue order, with their titles. */
 export const DETERMINISTIC_ROW_TITLES = {
@@ -34,23 +37,19 @@ export const DETERMINISTIC_ROW_TITLES = {
 };
 export const DETERMINISTIC_ROWS = Object.keys(DETERMINISTIC_ROW_TITLES);
 
-/** Digest verdicts, in ledger order. The last three are settled by blocks of `digest.mjs`. */
+/** Digest verdicts, in ledger order. Each is settled by one block of `digest.mjs`. */
 export const DIGEST_VERDICTS = [
   "discrimination-inertness",
   "submit-stall-shape",
   "evidence-integrity",
   "solver-process",
-  "saturation-ledger",
   "check-informativeness",
   "family-wise-coverage",
   "role-spend-and-censoring",
+  "band-placement",
+  "rehearsal-ledger",
+  "toolchain-retention",
 ];
-
-/** The registry of diagnostic lanes and the deterministic views each one owns. */
-export const DIAGNOSTIC_INPUTS = new Map([
-  ["category_and_hook_yield", ["timeline"]],
-  ["diagnostic_follow_through", ["scan", "builder", "review-yield"]],
-]);
 
 export function angleNumbers() {
   return Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);

@@ -1,15 +1,15 @@
-// What one round hands the next, and whether the next round used it. Angles 37 to 40 of the
-// catalogue each start from one table here, so their paid lanes spend on the question rather than
-// on rebuilding the join:
+// What one round hands the next, and whether the next round used it. Four lanes of the catalogue
+// each start from one table here, so their paid lanes spend on the question rather than on
+// rebuilding the join:
 //
-//   37  round hand-off census — per round and per channel, whether the channel's bytes were present,
-//       served in the kickoff prompt, read back through a tool call, and acted on;
-//   38  difficulty calibration — rehearsals, declared target against verified passes, and whether
-//       rehearsal or trace evidence was opened before the battery was authored;
-//   39  triage hand-off — per failing family, what the diagnosis, the Epoch Reviewer and the advice
-//       packet said, and which side of the product the successor battery actually moved;
-//   40  same-task repair — per family, whether consecutive batteries measured the same public inputs,
-//       and which advice issue states moved on a comparison of family names alone.
+//   lane 17  round hand-off census — per round and per channel, whether the channel's bytes were
+//            present, served in the kickoff prompt, read back through a tool call, and acted on;
+//   lane 10  difficulty calibration — rehearsals, declared target against verified passes, and
+//            whether rehearsal or trace evidence was opened before the battery was authored;
+//   lane 15  triage hand-off — per failing family, what the Epoch Reviewer and the advice packet
+//            said, and which side of the product the successor battery actually moved;
+//   lane 18  same-task repair — per family, whether consecutive batteries measured the same public
+//            inputs, and which advice issue states moved on a comparison of family names alone.
 //
 //   bun wri.mjs handoff <target> [--json] [--out <abs file>]
 //
@@ -20,7 +20,9 @@
 // directory, so every round states its bash count beside the reads as the unobservable remainder.
 // A field an older source never recorded is `null` and printed as unobservable, never as zero.
 import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
+import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
@@ -51,7 +53,7 @@ const EVALUATION_OWNERS = new Set([
  * The channels a round can hand the next. `marker` is a sentence the current source renders into
  * the kickoff (grep-confirmed at the owner named beside it); `read` names the tool evidence that
  * counts as opening the channel, or null when no tool re-serves it; `alternative` is the cheapest
- * route a served-but-unread channel could take instead, stated as a candidate for angle 37 to test.
+ * route a served-but-unread channel could take instead, stated as a candidate for lane 17 to test.
  */
 export const CHANNELS = [
   // src/run/battery-sizing.ts
@@ -160,16 +162,19 @@ function batteriesOf(campaign, runId) {
     .sort((a, b) => a.at - b.at);
 }
 
-/** Each battery's difficulty row, from whichever decision file recorded it last. */
+/** Each battery's difficulty row, from whichever decision file recorded it last. A decision under
+ *  any other schema is refused by name: its rows carry another shape, and reading them as this one
+ *  would put a placement in the table that the controller never made. */
 function decisionRows(campaign) {
   const dir = join(campaign, "difficulty-decisions");
   const byRun = new Map();
   if (!existsSync(dir)) return byRun;
   for (const name of readdirSync(dir).sort()) {
     const decision = readJsonFileOrNull(join(dir, name));
-    for (const row of records(
-      isRecord(decision) && isRecord(decision.difficulty) ? decision.difficulty.rows : [],
-    )) {
+    if (!isRecord(decision) || decision.schema !== DIFFICULTY_DECISION_SCHEMA) {
+      throw new Error(`difficulty-decisions/${name} is not ${DIFFICULTY_DECISION_SCHEMA}`);
+    }
+    for (const row of records(isRecord(decision.difficulty) ? decision.difficulty.rows : [])) {
       if (isString(row.runId)) byRun.set(row.runId, row);
     }
   }
@@ -190,12 +195,19 @@ function authoringReviewTimes(campaign) {
     .sort((a, b) => a - b);
 }
 
-/** Every Builder session an epoch recorded, with its calls placed on the wall clock. */
+/** Every Builder session an epoch recorded, with its calls placed on the wall clock. A record under
+ *  another schema is refused by name rather than read for the fields that happen to match. */
 function sessionsOf(epochDir) {
   return readdirSync(epochDir)
     .filter((name) => /^builder-execution(-\d+)?\.json$/.test(name))
-    .map((name) => readJsonFileOrNull(join(epochDir, name)))
-    .filter((record) => isRecord(record) && isString(record.writtenAt) && isNumber(record.durationMs))
+    .map((name) => {
+      const record = readJsonFileOrNull(join(epochDir, name));
+      if (!isRecord(record) || record.schema !== BUILDER_EXECUTION_SCHEMA) {
+        throw new Error(`${basename(epochDir)}/${name} is not ${BUILDER_EXECUTION_SCHEMA}`);
+      }
+      return record;
+    })
+    .filter((record) => isString(record.writtenAt) && isNumber(record.durationMs))
     .map((record) => {
       const start = Date.parse(record.writtenAt) - record.durationMs;
       const at = (row) => (isNumber(row.startedAtMs) ? start + row.startedAtMs : null);
@@ -315,7 +327,7 @@ function actedOf(round, name) {
   return null;
 }
 
-/** Angle 37: one row per round, one cell per channel. */
+/** Lane 17: one row per round, one cell per channel. */
 function census(campaign, rounds) {
   return rounds.map((round) => {
     const text = round.prompts.join("\n");
@@ -367,7 +379,7 @@ function errorTrend(errors) {
   return errors.every((e) => e === errors[0]) ? "flat" : "not-shrinking";
 }
 
-/** Angle 38: per round, the rehearsals, the declared target against the verified count, and the
+/** Lane 10: per round, the rehearsals, the declared target against the verified count, and the
  *  evidence the round opened before it committed to a battery. */
 function calibration(rounds, rows) {
   const out = rounds.map((round) => {
@@ -441,7 +453,7 @@ function reviewOf(campaign, battery, issueId) {
   };
 }
 
-/** Angle 39: per failing family, the triage each component recorded and the side the successor moved. */
+/** Lane 15: per failing family, the triage each component recorded and the side the successor moved. */
 function triage(campaign, batteries, rows, rounds, reviewTimes) {
   const families = batteries.flatMap((battery, index) => {
     const packet = analysis(campaign, battery.runId, "rebuild-advice");
@@ -528,7 +540,7 @@ export function classifyFamily(before, after) {
   return shared === after.length && before.length === after.length ? "identical-tasks" : "partially-shared";
 }
 
-/** Angle 40: consecutive batteries joined per family on public-input digests, and the advice
+/** Lane 18: consecutive batteries joined per family on public-input digests, and the advice
  *  transitions each join carried. */
 function sameTask(campaign, batteries) {
   const inputs = new Map(batteries.map((b) => [b.runId, tasksOf(campaign, b.runId)]));
@@ -603,7 +615,7 @@ const mark = (fact, letter) => (fact === null ? "·" : fact ? letter : "-");
 
 function renderCensus(report) {
   const lines = [
-    "37 round hand-off census (P present, S served, R read back, A acted; · no channel or no proxy)",
+    "lane 17 round hand-off census (P present, S served, R read back, A acted; · no channel or no proxy)",
   ];
   lines.push(`  ${"channel".padEnd(15)}${report.census.map((r) => `r${r.round}`.padEnd(6)).join("")}`);
   for (const [i, channel] of CHANNELS.entries()) {
@@ -630,7 +642,7 @@ function renderCensus(report) {
 }
 
 function renderCalibration({ calibration: c }) {
-  const lines = ["38 difficulty calibration"];
+  const lines = ["lane 10 difficulty calibration"];
   for (const r of c.rounds) {
     const target = r.target === null ? "no target" : `${r.target.comparator} ${r.target.verifiedPasses}`;
     const b = r.beforeAuthoring;
@@ -645,7 +657,7 @@ function renderCalibration({ calibration: c }) {
 }
 
 function renderTriage({ triage: t }) {
-  const lines = ["39 triage hand-off"];
+  const lines = ["lane 15 triage hand-off"];
   if (t.families.length === 0) lines.push("  no failing family in any advice packet");
   for (const f of t.families) {
     const d =
@@ -668,7 +680,7 @@ function renderTriage({ triage: t }) {
 }
 
 function renderSameTask({ sameTask: s }) {
-  const lines = ["40 same-task repair"];
+  const lines = ["lane 18 same-task repair"];
   for (const pair of s.pairs) {
     const head = `  ${short(pair.before)} -> ${short(pair.after)}:`;
     if (pair.families === null) {

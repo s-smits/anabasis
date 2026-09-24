@@ -10,7 +10,7 @@ import { isAbsolute } from "#src/meta/path.ts";
 import { canonicalJson } from "#src/meta/stable-json.ts";
 import { GIT_SHA, SHA256 } from "./catalogue-shape.mjs";
 
-export const ARCHIVE_SCHEMA = "wri-archive/v1";
+export const ARCHIVE_SCHEMA = "wri-archive/v2";
 export const ARCHIVE_FILES = ["main_synthesis.md", "luna_syntheses.md", "digest.md", "review.json"];
 export const [MAIN, LUNA, DIGEST, REVIEW] = ARCHIVE_FILES;
 export const ARCHIVE_PATHS = new Set(ARCHIVE_FILES);
@@ -23,7 +23,6 @@ export const MAIN_HEADINGS = [
   "## Deterministic rows",
   "## Independent reviews and limits",
   "## Climb meaning and continuity",
-  "## CL-F reconciliation",
   "## Prediction ledger",
   "## Safeguards",
   "### Safeguards T0",

@@ -10,6 +10,10 @@ import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   CAMPAIGN_LANES,
   LANE_LINES,
+  DEFAULT_LANES,
+  LANE_FOR_TRIGGER,
+  lanesForTrigger,
+  laneSuggestions,
   renderBrief,
   runScope,
   tierOf,
@@ -110,7 +114,7 @@ describe("how big is this run", () => {
       tierOf({ hours: 6, epochs: 1, batteries: 1, scored: true }),
       tierOf({ hours: 20, epochs: 4, batteries: 5, scored: true }),
     ].map((row) => row.semanticLanes);
-    expect(counts).toEqual([2, 4, 8]);
+    expect(counts).toEqual([4, 8, 14]);
   });
 
   it("counts a live run's elapsed hours to now and its batteries by their own run ids", () => {
@@ -201,7 +205,7 @@ describe("what the read said", () => {
     expect(brief).toContain(`${RUN}  [standard]`);
     expect(brief).toContain("1 verified, 0 unaccepted, 0 non-result");
     expect(brief).toContain("terminal: completed — completed");
-    expect(brief).toContain("about 4 semantic lanes");
+    expect(brief).toContain("about 8 semantic lanes");
   });
 
   it("says outright when the snapshot lane flagged nothing, rather than leaving the section empty", () => {
@@ -231,5 +235,69 @@ describe("what the read said", () => {
     const brief = renderBrief(reviewDir);
     expect(brief).toContain("digest FAMILY UNMOVED all-pass x3: FAMILY UNMOVED all-pass: alpha 5/5");
     expect(brief).toContain("scan repeated-condition x2");
+    // A family row names no lane in the catalogue, so the standard tier's default set is named.
+    expect(brief).toContain("no trigger starts a lane; the standard default set is 1,5,8,9,12,14,24,25");
+    expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25");
+  });
+
+  it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {
+    expect(lanesForTrigger("OFF-AIM STREAK (lane 10)")).toEqual([10]);
+    expect(lanesForTrigger("TARGET MISSED (lane 10)")).toEqual([10]);
+    expect(lanesForTrigger("REPEATED CONDITION (lane 20)")).toEqual([20]);
+    expect(lanesForTrigger("MEMORY OVER READ CAP (lane 26)")).toEqual([26]);
+    // The one unsuffixed trigger argues for two lanes, and a qualifier after its text still matches.
+    expect(lanesForTrigger("UNTRIPPED IN SHIPPING (3 rules)")).toEqual([5, 6]);
+    expect(lanesForTrigger("FAMILY UNMOVED all-pass")).toEqual([]);
+    // A trigger that merely begins with a known name is not that trigger.
+    expect(lanesForTrigger("UNTRIPPED IN SHIPPINGS")).toEqual([]);
+    // Every suffixed key names the lane its own suffix says.
+    for (const [trigger, lanes] of LANE_FOR_TRIGGER) {
+      const suffix = /\(lane (\d+)\)$/.exec(trigger);
+      if (suffix !== null) expect(lanes).toEqual([Number(suffix[1])]);
+    }
+    const suggested = laneSuggestions(
+      [
+        { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
+        { name: "OFF-AIM STREAK (lane 10)", rows: 2, examples: [] },
+        { name: "UNTRIPPED IN SHIPPING", rows: 1, examples: [] },
+        { name: "AGGREGATE HIDES FAMILY", rows: 1, examples: [] },
+      ],
+      "probe",
+    );
+    expect(suggested).toEqual({
+      lanes: [
+        { lane: 5, triggers: ["UNTRIPPED IN SHIPPING"] },
+        { lane: 6, triggers: ["UNTRIPPED IN SHIPPING"] },
+        { lane: 10, triggers: ["OFF-AIM STREAK (lane 10)"] },
+        { lane: 24, triggers: ["EXPLICIT ALLOWANCE WAIT (lane 24)"] },
+      ],
+      defaulted: false,
+      sessions: "5,6,10,24",
+    });
+    // With no trigger picking, each tier's default set is named, and each tier keeps the one below.
+    expect(laneSuggestions([], "probe")).toEqual({ lanes: [], defaulted: true, sessions: "5,8,12,25" });
+    expect(laneSuggestions([], "deep").sessions).toBe("1,2,5,6,8,9,10,11,12,13,14,22,24,25");
+    expect(DEFAULT_LANES.standard).toEqual(expect.arrayContaining(DEFAULT_LANES.probe));
+    expect(DEFAULT_LANES.deep).toEqual(expect.arrayContaining(DEFAULT_LANES.standard));
+    expect(DEFAULT_LANES.deep).toHaveLength(14);
+  });
+
+  it("prints the lanes the triggers start under their own heading in the brief", () => {
+    const reviewDir = reviewWith([], {});
+    writeFileSync(
+      join(reviewDir, "overview.json"),
+      json({
+        schema: "wri-run-overview/v1",
+        digestTriggers: [
+          { name: "OFF-AIM STREAK (lane 10)", rows: 3, examples: ["OFF-AIM STREAK (lane 10): 3 under aim"] },
+          { name: "EXPLICIT ALLOWANCE WAIT (lane 24)", rows: 1, examples: [] },
+        ],
+        scanFindings: [],
+      }),
+    );
+    const brief = renderBrief(reviewDir);
+    expect(brief).toContain(
+      "== lanes the triggers start\n  lane 10: OFF-AIM STREAK (lane 10)\n  lane 24: EXPLICIT ALLOWANCE WAIT (lane 24)\n  launch --sessions 10,24",
+    );
   });
 });

@@ -1,39 +1,51 @@
-// Report ownership and instructions, separated from the already-full manifest composer.
+// The report contract every lane writes to and the validator reads back, kept beside the snapshot
+// and reporting instructions so the composer and the validator cannot drift apart.
 import { resolve } from "#src/meta/path.ts";
-import { DIAGNOSTIC_INPUTS } from "./catalogue-shape.mjs";
+import { PUBLIC_ONLY_LANE, TRACE_CHALLENGE_LANE } from "./catalogue-shape.mjs";
 
-export function diagnosticTaskLines(name) {
-  const inputs = DIAGNOSTIC_INPUTS.get(name);
-  return inputs
-    ? [
-        `assignedDiagnosticInputs: ${inputs.join(",")}`,
-        "Give every assigned input exactly one table row: | input | disposition | reason and evidence |.",
-        "Use the exact input label and investigate, no-action or unobservable. No blank reasons; missing inputs are unobservable, never omitted.",
-        "The collector checks coverage only. Justify no-action from contents, and connect each investigation to its consumer and next decision.",
-      ]
-    : [];
+/** The `###` subsections every lane section carries, each exactly once, in this order. */
+export const REPORT_SECTIONS = ["Started from", "Evidence read", "Findings", "Not established"];
+
+/** Owners a finding may name: the controller's closed `FeedbackOwner` set, plus the two the lane
+ *  table routes to and the controller cannot (`controller-source`, `judge`). */
+export const FINDING_OWNERS = [
+  "brief",
+  "tests",
+  "instructions",
+  "tools-spec",
+  "accept-controls",
+  "controls",
+  "correctness-model",
+  "fingerprint",
+  "environment",
+  "controller-source",
+  "judge",
+];
+
+export function reportSectionLines() {
+  return [
+    `Under each of your \`## lane_NN\` headings write these \`###\` subsections, each exactly once and in this order: ${REPORT_SECTIONS.map((section) => `\`### ${section}\``).join(", ")}.`,
+    "`### Started from` names the deterministic trigger the lane started from, quoted from the assignment.",
+    "`### Evidence read` lists every evidence path you read, one per line.",
+    "`### Findings` holds either the single word `none` or one entry per finding, each carrying a line",
+    `\`owner: <owner>\` where the owner is one of ${FINDING_OWNERS.join(", ")}; an entry without an owner is rejected at collection.`,
+    "`### Not established` states what the lane could not settle and why, and is never empty.",
+  ];
 }
 
-export function snapshotLines(snapshot, sessions) {
-  const owner = (label) =>
-    [...DIAGNOSTIC_INPUTS].find(
-      ([session, inputs]) =>
-        sessions.some((selected) => selected.name === session) &&
-        inputs.some((input) => label === input || label === `${snapshot.runId}-${input}`),
-    )?.[0] ?? "primary";
+export function snapshotLines(snapshot) {
   return [
     "## Snapshot directory",
     "",
-    `\`${snapshot.dir}\` holds these views. Every view has one triage owner; shared reading is allowed.`,
+    `\`${snapshot.dir}\` holds these views. The primary reviewer triages every view; lanes read them.`,
     "",
-    "| view | captured status | triage owner |",
-    "|---|---|---|",
-    ...snapshot.status.views.map((view) => `| \`${view.file}\` | ${view.status} | ${owner(view.label)} |`),
+    "| view | captured status |",
+    "|---|---|",
+    ...snapshot.status.views.map((view) => `| \`${view.file}\` | ${view.status} |`),
     "",
-    "The primary records a disposition for every primary-owned view and reconciles the specialists' input dispositions.",
     "An unavailable view is an evidence gap. A readable view is not a clean verdict; inspect its contents.",
     "",
-    "If angle 15 is assigned, its task carries the private trace-challenge path. Other sessions must not read or receive that packet.",
+    `If lane ${TRACE_CHALLENGE_LANE} is assigned, its task carries the private trace-challenge path. Other sessions must not read or receive that packet.`,
     ...(snapshot.failedViews.length > 0
       ? [
           "Unavailable views, not empty. Each failed when the snapshot was taken; the captured error is quoted so",
@@ -42,7 +54,7 @@ export function snapshotLines(snapshot, sessions) {
         ]
       : []),
     "",
-    "Read the snapshot first, except for a public-first independent challenge: freeze its public derivation before reading verdicts or verifier material. Refresh only assigned views.",
+    `Read the snapshot first, except for lane ${PUBLIC_ONLY_LANE}: it freezes its public-only corpus before reading verdicts or verifier material. Refresh only assigned views.`,
   ];
 }
 
@@ -56,11 +68,12 @@ export function reportingLines() {
     "Every total carries its own reported/from denominator. Reconcile hand-derived counts against",
     "the default view; report a disagreement as the finding. Missing stays missing, never zero. Use",
     "the archive states `pending`, `pass`, `fail`, `N/A`, `stale`, `unobservable`; unobservable is",
-    "never a pass. Write one clearly separated section per assigned session. Put findings first, each",
-    "with verdict (defect | risk | fine), one owner, evidence path and denominator; then what the run",
-    "proved, left unproved and what you did not inspect. Never quote protected verifier detail:",
-    "stdout/stderr, issue/remedy text, generated counterexamples, reference artifacts or per-task",
-    "failure locations. Safe totals and evidence paths only.",
+    "never a pass. Write one clearly separated section per assigned lane. Each finding carries a",
+    "verdict (defect | risk | fine), one owner, an evidence path and a denominator. Never quote",
+    "protected verifier detail: stdout/stderr, issue/remedy text, generated counterexamples,",
+    "reference artifacts or per-task failure locations. Safe totals and evidence paths only.",
+    "",
+    ...reportSectionLines(),
     "",
   ];
 }

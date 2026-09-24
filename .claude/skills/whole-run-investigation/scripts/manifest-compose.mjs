@@ -11,27 +11,58 @@ import { join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
 import { CommandFailure } from "#skills/main/cli.ts";
-import { DIAGNOSTIC_INPUTS, DIGEST_VERDICTS, leafPrompt, SHA256 as SHA_256 } from "./catalogue-shape.mjs";
 import {
-  BLINDED_PAIRS,
+  DIGEST_VERDICTS,
+  ISOLATED_ANGLES,
+  leafPrompt,
+  PUBLIC_ONLY_LANE,
+  SHA256 as SHA_256,
+  TRACE_CHALLENGE_LANE,
+} from "./catalogue-shape.mjs";
+import {
   ORIENTATION_HEADING,
-  angleSessions,
+  deterministicRowProblem,
   factsBlock,
   manifestFail,
   orientationProblems,
-  parseSessionSpec,
   parseNotes,
+  parseSessionSpec,
   partitionAngles,
+  sessionGroupName,
 } from "./manifest-inputs.mjs";
-
-import { diagnosticTaskLines, snapshotLines, reportingLines } from "./manifest-reporting.mjs";
+import { reportingLines, snapshotLines } from "./manifest-reporting.mjs";
 import { renderSharedInstructions } from "./shared-instructions.mjs";
-import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 
 const LAUNCH_RECORD_WAIT_MS = 30_000;
+const ISOLATION_RULE =
+  "You are an isolated lane: do not read another session's output, worktree scratch or report, " +
+  "and derive your answer independently; agreement is evidence only when reached separately.";
 
-function autoSessions({ autoCount, notesPath, angles, declared }) {
+const pad = (number) => String(number).padStart(2, "0");
+
+/** The refusal an isolated lane earns when it is selected before its deterministic trigger fired. */
+function untriggeredProblem(lane, gate) {
+  const state = gate.get(lane.number);
+  if (!ISOLATED_ANGLES.has(lane.number) || state.fired) return null;
+  return `isolated-lane-untriggered: lane ${lane.number} ${ISOLATED_ANGLES.get(lane.number)} and launches only when its trigger fired; ${state.reason}`;
+}
+
+function laneSession(name, lanes, direction = "") {
+  return {
+    name,
+    custom: false,
+    title:
+      lanes.length === 1
+        ? lanes[0].title
+        : `lanes ${pad(lanes[0].number)}-${pad(lanes.at(-1).number)} (${lanes.length} standing lanes)`,
+    direction,
+    bodyParts: lanes.map((lane) => lane.body),
+    lanes: lanes.map((lane) => ({ number: lane.number, trigger: lane.trigger })),
+  };
+}
+
+function autoSessions({ autoCount, notesPath, declared, gate }) {
   let orientations = [];
   if (notesPath) {
     const parsed = parseNotes(resolve(notesPath));
@@ -44,32 +75,15 @@ function autoSessions({ autoCount, notesPath, angles, declared }) {
       "build-manifest: no orientation supplied; sessions orient only from verified controller facts",
     );
   }
-  const angleRows = [...angleSessions(angles).values()].sort((a, b) => a.number - b.number);
-  const { groups, mixed } = partitionAngles(angleRows, autoCount);
-  const pad = (number) => String(number).padStart(2, "0");
-  const sessions = groups.map((group, index) => {
-    const numbers = group.map((angle) => angle.number);
-    const single = group.length === 1 && !mixed;
-    const name = single
-      ? `angle_${pad(numbers[0])}`
-      : mixed
-        ? `angles_group${index + 1}of${groups.length}`
-        : `angles_${pad(numbers[0])}_${pad(numbers.at(-1))}`;
-    const existing = declared.get(name);
-    if (existing && existing.kind !== "angle") {
-      manifestFail(`auto group name \`${name}\` collides with a declared ${existing.kind} session`);
-    }
-    const span = mixed ? numbers.map(pad).join(", ") : `${pad(numbers[0])}-${pad(numbers.at(-1))}`;
-    return {
-      name,
-      custom: false,
-      title: single ? group[0].title : `angles ${span} (${group.length} standing angles)`,
-      direction: "",
-      bodyParts: group.map((angle) => angle.body),
-      trigger: null,
-      angleNumbers: numbers,
-    };
+  const lanes = [...declared.values()].sort((a, b) => a.number - b.number);
+  const launchable = lanes.filter((lane) => {
+    const problem = untriggeredProblem(lane, gate);
+    if (problem !== null) console.error(`build-manifest: ${problem}`);
+    return problem === null;
   });
+  const sessions = partitionAngles(launchable, autoCount).map((group) =>
+    laneSession(sessionGroupName(group.map((lane) => ({ name: lane.name, session: lane }))), group),
+  );
   return { sessions, orientations };
 }
 
@@ -80,16 +94,16 @@ function customSession(name, note) {
     title: name,
     direction: note,
     bodyParts: [
-      "This task has no standing angle body. Stay inside the question above; a section outside it is",
+      "This task has no standing lane body. Stay inside the question above; a section outside it is",
       "out of scope and is dropped during collection.",
     ],
-    trigger: null,
+    lanes: [],
   };
 }
 
-// `--sessions` selects declared sessions by number, range or name. Notes stay optional: an orientation
-// block alone is enough, and a `## <session>` heading adds direction to a session already selected.
-function specSessions({ sessionsSpec, notesPath, declared, referenceNames, consumerHardware }) {
+// `--sessions` selects declared lanes by number or range. Notes stay optional: an orientation block
+// alone is enough, and a `## <session>` heading adds direction to a session already selected.
+function specSessions({ sessionsSpec, notesPath, declared, gate }) {
   const { groups, problems } = parseSessionSpec(sessionsSpec, declared);
   let orientations = [];
   const directions = new Map();
@@ -111,32 +125,17 @@ function specSessions({ sessionsSpec, notesPath, declared, referenceNames, consu
     }
   }
   const sessions = groups.map((group) => {
-    const numbers = group.members
-      .filter((member) => member.session.kind === "angle")
-      .map((member) => member.session.number);
-    if (group.members.some((member) => referenceNames.has(member.name)) && !consumerHardware) {
-      problems.push(
-        `\`${group.name}\` needs --consumer-hardware so the launcher pins the reference revision`,
-      );
+    const lanes = group.members.map((member) => member.session);
+    for (const lane of lanes) {
+      const problem = untriggeredProblem(lane, gate);
+      if (problem !== null) problems.push(problem);
     }
-    const title =
-      group.members.length === 1
-        ? group.members[0].session.title
-        : `angles ${numbers.map((number) => String(number).padStart(2, "0")).join(", ")} (${numbers.length} standing angles)`;
-    return {
-      name: group.name,
-      custom: false,
-      title,
-      direction: directions.get(group.name) ?? "",
-      bodyParts: group.members.map((member) => member.session.body),
-      trigger: group.members.length === 1 ? group.members[0].session.trigger : null,
-      angleNumbers: numbers.length > 0 ? numbers : undefined,
-    };
+    return laneSession(group.name, lanes, directions.get(group.name) ?? "");
   });
   return { sessions, orientations, problems };
 }
 
-function manualSessions({ notesPath, declared, retired, referenceNames, consumerHardware }) {
+function manualSessions({ notesPath, declared, gate }) {
   const parsed = parseNotes(resolve(notesPath));
   if (parsed.notes.length === 0) manifestFail("the notes file declares no session heading");
   const sessions = [];
@@ -144,56 +143,33 @@ function manualSessions({ notesPath, declared, retired, referenceNames, consumer
   for (const { name, note, custom } of parsed.notes) {
     const session = declared.get(name);
     if (custom) {
-      if (session) problems.push(`\`custom:${name}\` collides with the declared session \`${name}\``);
+      if (session) problems.push(`\`custom:${name}\` collides with the declared lane \`${name}\``);
       if (!note.trim()) problems.push(`\`custom:${name}\` has no task text`);
       sessions.push(customSession(name, note));
       continue;
     }
-    const row = /^(?:row|angle)_([a-h])$/i.exec(name);
-    if (row && retired.has(row[1].toUpperCase())) {
-      const retiredRow = retired.get(row[1].toUpperCase());
-      problems.push(
-        `row ${row[1].toUpperCase()} is settled by deterministic preflight (owner: ${retiredRow.owner})`,
-      );
+    const rowProblem = deterministicRowProblem(name);
+    if (rowProblem !== null) {
+      problems.push(rowProblem);
       continue;
     }
     if (!session) {
-      problems.push(`unknown session \`${name}\` — run with --list to see the declared names`);
+      problems.push(`unknown lane \`${name}\` — run with --list to see the declared names`);
       continue;
     }
     if (!note.trim()) problems.push(`\`${name}\` has no direction under its heading`);
-    if (referenceNames.has(name) && !consumerHardware) {
-      problems.push(`\`${name}\` needs --consumer-hardware so the launcher pins the reference revision`);
-    }
-    sessions.push({
-      name,
-      custom: false,
-      title: session.title,
-      direction: note,
-      bodyParts: [session.body],
-      trigger: session.trigger,
-      angleNumbers: session.kind === "angle" ? [session.number] : undefined,
-    });
+    const untriggered = untriggeredProblem(session, gate);
+    if (untriggered !== null) problems.push(untriggered);
+    sessions.push(laneSession(name, [session], note));
   }
   return { sessions, orientations: parsed.orientations, problems };
 }
 
-function validateSessionSet({
-  sessions,
-  orientations,
-  problems,
-  referenceNames,
-  consumerHardware,
-  autoCount,
-  sessionsSpec,
-}) {
+function validateSessionSet({ sessions, orientations, problems, autoCount, sessionsSpec }) {
   const seen = new Set();
   for (const session of sessions) {
     if (seen.has(session.name)) problems.push(`duplicate session heading: ${session.name}`);
     seen.add(session.name);
-  }
-  if (consumerHardware && ![...seen].some((name) => referenceNames.has(name))) {
-    problems.push("--consumer-hardware was passed but no reference session is launched");
   }
   const orientationIssues = orientationProblems(orientations);
   let orientationText;
@@ -213,56 +189,19 @@ export function resolveSessions(requested) {
   if (requested.declared.has(ORIENTATION_HEADING)) {
     manifestFail(`this tree declares the reserved session name \`${ORIENTATION_HEADING}\``);
   }
-  const diagnosticSpec = [...DIAGNOSTIC_INPUTS.keys()].join(",");
-  const input =
-    requested.diagnostics &&
-    !requested.sessionsSpec &&
-    !requested.autoCount &&
-    (!requested.notesPath || parseNotes(resolve(requested.notesPath)).notes.length === 0)
-      ? { ...requested, sessionsSpec: diagnosticSpec }
-      : requested;
-  const result = input.sessionsSpec
-    ? specSessions(input)
-    : input.autoCount > 0
-      ? autoSessions(input)
-      : manualSessions(input);
-  if (input.diagnostics) {
-    const extra = specSessions({ ...input, sessionsSpec: diagnosticSpec, notesPath: null });
-    result.sessions.push(
-      ...extra.sessions.filter(
-        (session) => !result.sessions.some((existing) => existing.name === session.name),
-      ),
-    );
-    result.problems = [...(result.problems ?? []), ...extra.problems];
-  }
-  return validateSessionSet({ ...input, ...result, problems: result.problems ?? [] });
-}
-
-function referenceLines(reference) {
-  if (!reference) return [];
-  return [
-    "## Reference implementation (consumer hardware)",
-    "",
-    `The pinned reference tree is \`${reference.root}\` at revision \`${reference.revision}\`` +
-      `${reference.dirty ? " (DIRTY at pin time — report this in every reference finding)" : " (clean)"}. ` +
-      "Cite this revision; do not re-resolve it. Only reference sessions read this tree. It is " +
-      "diagnostic, never authority: a disagreement is a symmetric question and a reason to inspect " +
-      "the verifier, never to re-score a case. Reference-derived detail is protected like verifier " +
-      "detail and must never be proposed for a Builder, judge or other model-visible text.",
-    "",
-  ];
+  const result = requested.sessionsSpec
+    ? specSessions(requested)
+    : requested.autoCount > 0
+      ? autoSessions(requested)
+      : manualSessions(requested);
+  return validateSessionSet({ ...requested, ...result, problems: result.problems ?? [] });
 }
 
 function admissionLines(sessions, mode) {
   const rows = sessions.map((session) => {
-    const angles = session.angleNumbers?.length ? session.angleNumbers.join(",") : "none";
-    const trigger = session.trigger ?? "none recorded";
-    const reason = session.custom
-      ? "directed task"
-      : session.angleNumbers?.length
-        ? "standing angle"
-        : "intelligence task";
-    return `- ${session.name}: mode=${mode}; state=active; identity=${session.name}; angles=${angles}; trigger=${trigger}; reason=${reason}`;
+    const lanes = session.lanes.length > 0 ? session.lanes.map((lane) => lane.number).join(",") : "none";
+    const reason = session.custom ? "directed task" : "standing lane";
+    return `- ${session.name}: mode=${mode}; state=active; identity=${session.name}; lanes=${lanes}; reason=${reason}`;
   });
   const verdicts = DIGEST_VERDICTS.map(
     (name) =>
@@ -272,7 +211,7 @@ function admissionLines(sessions, mode) {
     "## Progressive admission and deterministic ledger",
     "",
     `Admission mode: ${mode}. These rows are the launch ledger; do not widen or silently replace them.`,
-    "In exhaustive mode every assigned angle must report; its trigger selects depth, not omission.",
+    "In exhaustive mode every assigned lane must report; its trigger selects depth, not omission.",
     ...rows,
     "",
     "Digest verdicts are deterministic rows, not model assignments:",
@@ -313,7 +252,7 @@ export function composeInstructions(input) {
   const { snapshot, sessions } = input;
   const assignments = sessions.map((session) =>
     session.custom
-      ? `- \`${session.name}\` — directed contradiction task (no standing angle)`
+      ? `- \`${session.name}\` — directed contradiction task (no standing lane)`
       : `- \`${session.name}\` — assignedSession: ${session.title}`,
   );
   const lines = [
@@ -354,7 +293,6 @@ export function composeInstructions(input) {
       ? ["## The moved variable and prior state", "", input.contextText, ""].join("\n")
       : "The moved variable for this run was not supplied to the launcher. Do not infer it from\n" +
         "evidence; treat it as an open identity question.\n",
-    ...referenceLines(input.reference),
     "## Assignments in this launch",
     "",
     "Report headings outside your own assignment are invalid and dropped during collection.",
@@ -362,7 +300,7 @@ export function composeInstructions(input) {
     ...assignments,
     "",
     ...admissionLines(sessions, input.reviewMode ?? "targeted"),
-    ...snapshotLines(snapshot, sessions),
+    ...snapshotLines(snapshot),
     "",
     ...commandLines(input),
     "",
@@ -371,19 +309,16 @@ export function composeInstructions(input) {
   return lines.filter((line) => line !== null).join("\n");
 }
 
-/** These lanes freeze a public-only judgement before joining outcomes. Shared orientation,
- * scan and even aggregate verdicts are evidence from the other side of that boundary. */
+/** The public-only lane freezes its judgement before joining outcomes. Shared orientation, scan and
+ *  even aggregate verdicts are evidence from the other side of that boundary. */
 export function publicOnlySession(session) {
-  return (
-    session.name === "reference_verdict_comparison" ||
-    session.angleNumbers?.some((number) => [19, 20, 36].includes(number)) === true
-  );
+  return session.lanes.some((lane) => lane.number === PUBLIC_ONLY_LANE);
 }
 
 export function publicReviewInstructions(input) {
   return [
     "# Independent public-only review",
-    "This evidence boundary applies to angles 19, 20, 36 and reference_verdict_comparison; other assignments use their own context below.",
+    `This evidence boundary applies to lane ${PUBLIC_ONLY_LANE}; other assignments use their own context below.`,
     `Measured source: \`${input.revision}\` in \`${input.worktree}\`.`,
     `Campaign: \`${input.campaign}\`; run: \`${input.runId}\`.`,
     `Capture: \`${input.snapshot.status.capturedAt}\`.`,
@@ -394,58 +329,23 @@ export function publicReviewInstructions(input) {
     "Do not read shared instructions, orientation, prior syntheses, scan, digest, case verdicts, controls,",
     "hidden expectations, evaluator/reference implementation, private traces or another reviewer's reports.",
     "Inspect only public fields when a storage file also contains protected fields; prefer recorded public-task.json.",
-    "Freeze the public calculation or valid-alternative corpus and its identities before any permitted later join.",
+    "Freeze the public corpus of valid alternatives and plausibly wrong artifacts, with its identities, before any permitted later join.",
     "If forbidden information was already exposed, disclose contamination and do not claim a blinded result.",
     `Runtime: Bun ${input.bunPin}, \`${input.bun}\`. Web access: ${input.webAccess ? "available" : "unavailable"}.`,
-    ...referenceLines(input.reference),
     "Report only your assigned headings, method, frozen input identities, denominators, findings and limits.",
     "Join recorded verdicts only after freezing the independent result and only when your assignment permits it.",
     "Never quote protected verifier output, private counterexamples or per-task failure locations in the report.",
+    ...reportingLines(),
   ].join("\n");
-}
-
-function partnerSessions(sessions) {
-  const sessionOfAngle = new Map();
-  for (const session of sessions) {
-    for (const number of session.angleNumbers ?? []) {
-      sessionOfAngle.set(`angle_${String(number).padStart(2, "0")}`, session);
-    }
-  }
-  const partners = new Map();
-  for (const [a, b] of BLINDED_PAIRS) {
-    const first = sessionOfAngle.get(a);
-    const second = sessionOfAngle.get(b);
-    if (first && second && first !== second) {
-      partners.set(first.name, second.name);
-      partners.set(second.name, first.name);
-    }
-  }
-  return partners;
-}
-
-function referenceBlindNote(session, seen, referenceNames, partner) {
-  const inGroup =
-    referenceNames.has(session.name) || [19, 20].some((number) => session.angleNumbers?.includes(number));
-  if (!inGroup || ![...seen].some((name) => referenceNames.has(name))) return null;
-  const unread = [...seen].filter(
-    (name) =>
-      name !== session.name &&
-      name !== partner &&
-      (referenceNames.has(name) || name === "angle_19" || name === "angle_20"),
-  );
-  return unread.length > 0
-    ? `Do not read the output, worktree scratch or report of ${unread.map((name) => `\`${name}\``).join(", ")} ` +
-        "before your own report is written; reach the reference comparison separately from their verdicts."
-    : null;
 }
 
 function taskParts(session) {
   const assignment = [`assignedSession: ${session.name}`];
-  assignment.push(...diagnosticTaskLines(session.name));
-  if (session.angleNumbers?.length) {
-    assignment.push(
-      `assignedAngles: ${session.angleNumbers.map((number) => String(number).padStart(2, "0")).join(", ")}`,
-    );
+  if (session.lanes.length > 0) {
+    assignment.push(`assignedLanes: ${session.lanes.map((lane) => pad(lane.number)).join(", ")}`);
+    for (const lane of session.lanes) {
+      assignment.push(`startsFrom: lane ${pad(lane.number)}: ${lane.trigger}`);
+    }
   }
   if (session.custom) {
     return [
@@ -458,36 +358,13 @@ function taskParts(session) {
       session.direction,
     ];
   }
-  if (session.direction && !session.angleNumbers?.length) {
-    return [
-      ...assignment,
-      `expectedHeading: ## ${session.name}`,
-      "",
-      `Report exactly one section headed \`## ${session.name}\`; headings outside this assignment are dropped during collection.`,
-      "",
-      session.direction,
-      "",
-      ...session.bodyParts,
-    ];
-  }
-  if (!session.angleNumbers?.length) {
-    return [
-      ...assignment,
-      "assignmentKind: standing session",
-      `expectedHeading: ## ${session.name}`,
-      "",
-      `Report exactly one section headed \`## ${session.name}\`; headings outside this assignment are dropped during collection.`,
-      "",
-      ...session.bodyParts,
-    ];
-  }
   return [
     ...assignment,
     "assignmentKind: grouped semantic review",
     "",
-    "Report one clearly separated section per assigned angle, each headed exactly `## angle_NN`",
-    "using the two-digit angle numbers below; headings outside your assignment are dropped",
-    "during collection.",
+    "Report one clearly separated section per assigned lane, each headed exactly `## lane_NN`",
+    "using the two-digit lane numbers above; headings outside your assignment are dropped",
+    "during collection. Quote the `startsFrom:` line of each lane under its `### Started from`.",
     "",
     ...(session.direction ? [session.direction, ""] : []),
     session.bodyParts.join("\n\n"),
@@ -500,109 +377,112 @@ function verifiedTraceChallenge(challengeDir, expected = null) {
   const telemetryPath = join(challengeDir, "trace-telemetry.json");
   const packetPath = join(challengeDir, "trace-challenge-packet.json");
   const promptPath = join(challengeDir, "trace-challenge-prompt.md");
-  if (!existsSync(statusPath)) manifestFail("angle 15 is assigned but its trace-challenge status is missing");
+  if (!existsSync(statusPath)) {
+    manifestFail(`lane ${TRACE_CHALLENGE_LANE} is assigned but its trace-challenge status is missing`);
+  }
   let status;
   try {
     status = readJsonFile(statusPath);
   } catch (error) {
-    manifestFail(`angle 15 trace-challenge status is unreadable: ${error.message}`);
+    manifestFail(`lane ${TRACE_CHALLENGE_LANE} trace-challenge status is unreadable: ${error.message}`);
   }
   if (status?.schema !== "whole-run-trace-challenge-status/v1" || status.complete !== true) {
-    manifestFail("angle 15 requires a complete whole-run trace-challenge packet");
+    manifestFail(`lane ${TRACE_CHALLENGE_LANE} requires a complete whole-run trace-challenge packet`);
   }
   if (expected !== null) {
     if (status.campaign !== expected.campaign) {
-      manifestFail("angle 15 trace-challenge campaign does not match the canonical campaign path");
+      manifestFail(
+        `lane ${TRACE_CHALLENGE_LANE} trace-challenge campaign does not match the canonical campaign path`,
+      );
     }
     if (status.runId !== expected.runId) {
-      manifestFail("angle 15 trace-challenge runId does not match the launch identity");
+      manifestFail(`lane ${TRACE_CHALLENGE_LANE} trace-challenge runId does not match the launch identity`);
     }
   }
   if (!SHA_256.test(String(status.telemetrySha256 ?? ""))) {
-    manifestFail("angle 15 trace-challenge telemetry has no concrete sha256");
+    manifestFail(`lane ${TRACE_CHALLENGE_LANE} trace-challenge telemetry has no concrete sha256`);
   }
   if (!existsSync(telemetryPath) || !existsSync(packetPath) || !existsSync(promptPath)) {
-    manifestFail("angle 15 trace-challenge requires both telemetry and the redacted packet");
+    manifestFail(
+      `lane ${TRACE_CHALLENGE_LANE} trace-challenge requires both telemetry and the redacted packet`,
+    );
   }
   if (status.telemetry !== telemetryPath || status.packet !== packetPath || status.prompt !== promptPath) {
-    manifestFail("angle 15 trace-challenge status paths do not name its canonical packet files");
+    manifestFail(
+      `lane ${TRACE_CHALLENGE_LANE} trace-challenge status paths do not name its canonical packet files`,
+    );
   }
-  const telemetry = readFileSync(telemetryPath);
-  const actualTelemetry = sha256(telemetry);
-  if (actualTelemetry !== status.telemetrySha256) {
-    manifestFail("angle 15 trace-challenge telemetry digest does not match its status record");
+  if (sha256(readFileSync(telemetryPath)) !== status.telemetrySha256) {
+    manifestFail(
+      `lane ${TRACE_CHALLENGE_LANE} trace-challenge telemetry digest does not match its status record`,
+    );
   }
   if (!SHA_256.test(String(status.packetSha256 ?? ""))) {
-    manifestFail("angle 15 trace-challenge packet has no concrete sha256");
+    manifestFail(`lane ${TRACE_CHALLENGE_LANE} trace-challenge packet has no concrete sha256`);
   }
-  const packet = readFileSync(packetPath);
-  const actualPacket = sha256(packet);
-  if (actualPacket !== status.packetSha256) {
-    manifestFail("angle 15 trace-challenge packet digest does not match its status record");
+  if (sha256(readFileSync(packetPath)) !== status.packetSha256) {
+    manifestFail(
+      `lane ${TRACE_CHALLENGE_LANE} trace-challenge packet digest does not match its status record`,
+    );
   }
   return { statusPath, telemetryPath, packetPath, promptPath };
 }
 
+/** The isolation rules an isolated lane's task carries, one per lane, beside its lane body. */
+function isolationLines(session, challenge) {
+  const numbers = session.lanes.map((lane) => lane.number);
+  const lines = [];
+  if (numbers.some((number) => ISOLATED_ANGLES.has(number))) lines.push("", ISOLATION_RULE);
+  if (numbers.includes(TRACE_CHALLENGE_LANE)) {
+    lines.push(
+      "",
+      `Private lane ${TRACE_CHALLENGE_LANE} trace evidence: read \`${challenge.telemetryPath}\`, \`${challenge.packetPath}\` and ` +
+        `\`${challenge.promptPath}\` only after checking telemetry and packet sha256 values in \`${challenge.statusPath}\`. ` +
+        `This is read-only evidence: never run the trace-challenge writer. The packet is assigned only to lane ${TRACE_CHALLENGE_LANE}; do not disclose or read it for another session.`,
+    );
+  }
+  if (numbers.includes(PUBLIC_ONLY_LANE)) {
+    lines.push(
+      "",
+      `Lane ${PUBLIC_ONLY_LANE} freezes its public-only corpus of valid alternatives and plausibly wrong artifacts, with ` +
+        "their identities, before reading any verdict, verifier source, control, hidden expectation or " +
+        "other lane's report; only then run the corpus through the recorded verifier and report the 2x2.",
+    );
+  }
+  return lines;
+}
+
 /** @param {string | null} [challengeDir]
  *  @param {{ campaign: string, runId: string, reviewMode: string } | null} [challengeIdentity] */
-export function composeTasks(sessions, seen, referenceNames, challengeDir = null, challengeIdentity = null) {
-  const partners = partnerSessions(sessions);
-  const angle15Session = sessions.find((session) => session.angleNumbers?.includes(15));
+export function composeTasks(sessions, challengeDir = null, challengeIdentity = null) {
+  const traceSession = sessions.find((session) =>
+    session.lanes.some((lane) => lane.number === TRACE_CHALLENGE_LANE),
+  );
   const challenge =
-    angle15Session === undefined
+    traceSession === undefined
       ? null
       : challengeDir === null
-        ? manifestFail("angle 15 is assigned but no trace-challenge directory was supplied")
+        ? manifestFail(
+            `lane ${TRACE_CHALLENGE_LANE} is assigned but no trace-challenge directory was supplied`,
+          )
         : verifiedTraceChallenge(challengeDir, challengeIdentity);
   const admissionMode = challengeIdentity?.reviewMode ?? "targeted";
   return sessions.map((session) => {
-    const publicOnly = publicOnlySession(session);
-    const parts = taskParts(publicOnly ? { ...session, direction: "" } : session);
-    if (session.trigger && !publicOnly) {
-      parts.push("", `Activation trigger recorded for this launch: ${session.trigger}`);
-    }
-    const partner = partners.get(session.name);
-    if (partner) {
-      parts.push(
-        "",
-        `You are the blinded counterpart of \`${partner}\`, which is running now on the same question ` +
-          "by a different method. Do not read its output, worktree scratch or report. Derive your " +
-          "answer independently; agreement is evidence only when reached separately.",
-      );
-    }
-    const referenceNote = referenceBlindNote(session, seen, referenceNames, partner);
-    if (hasText(referenceNote)) parts.push("", referenceNote);
-    if (challenge && session === angle15Session) {
-      parts.push(
-        "",
-        `Private angle 15 trace evidence: read \`${challenge.telemetryPath}\`, \`${challenge.packetPath}\` and ` +
-          `\`${challenge.promptPath}\` only after checking telemetry and packet sha256 values in \`${challenge.statusPath}\`. ` +
-          "This is read-only evidence: never run the trace-challenge writer. The packet is assigned only to angle 15; do not disclose or read it for another session.",
-      );
-    }
+    const parts = taskParts(publicOnlySession(session) ? { ...session, direction: "" } : session);
+    parts.push(...isolationLines(session, challenge));
     return {
       name: session.name,
       task: parts.join("\n"),
       admission: {
-        schema: "wri-progressive-admission/v1",
+        schema: "wri-progressive-admission/v2",
         mode: admissionMode,
         state: "active",
         identityKey: session.name,
-        angles: [...(session.angleNumbers ?? [])],
-        trigger: session.trigger ?? null,
+        lanes: session.lanes.map((lane) => lane.number),
+        triggers: session.lanes.map((lane) => lane.trigger),
       },
     };
   });
-}
-
-function stressArgs(tasks, stress) {
-  if (!stress) return [];
-  if (tasks.length <= 15) {
-    manifestFail("--stress is reserved for an explicitly requested 16-50-session launch");
-  }
-  if (tasks.length > 50) manifestFail("--stress allows at most 50 sessions");
-  console.log("\nexplicit stress launch: the operator supplied --stress for this 16-50-session manifest.");
-  return ["--stress"];
 }
 
 function writeNativePrompts(outPath, instructions, tasks) {
@@ -617,7 +497,7 @@ function writeNativePrompts(outPath, instructions, tasks) {
   console.log(`\nnative transport: ${promptsDir} (${tasks.length} self-contained prompts)`);
 }
 
-function lunaArgs({ launcherPath, bun, tasksPath, instructionsPath, worktree, effort, stress, outputDir }) {
+function lunaArgs({ launcherPath, bun, tasksPath, instructionsPath, worktree, effort, outputDir }) {
   return [
     bun,
     "--no-env-file",
@@ -630,7 +510,6 @@ function lunaArgs({ launcherPath, bun, tasksPath, instructionsPath, worktree, ef
     worktree,
     "--output-dir",
     outputDir,
-    ...stress,
     "--reasoning-effort",
     effort,
   ];
@@ -647,7 +526,6 @@ function writeCodexTasks(outPath, instructions, tasks) {
 
 export function writeAndDispatch(input) {
   const outPath = resolve(input.outDir);
-  const stress = stressArgs(input.tasks, input.stress === true);
   mkdirSync(outPath, { recursive: true });
   const instructionsPath = join(outPath, "instructions.md");
   const tasksPath = join(outPath, "tasks.json");
@@ -699,7 +577,7 @@ export function writeAndDispatch(input) {
     return;
   }
   const outputDir = join(outPath, "luna-output");
-  const args = lunaArgs({ ...input, tasksPath: launcherTasksPath, instructionsPath, stress, outputDir });
+  const args = lunaArgs({ ...input, tasksPath: launcherTasksPath, instructionsPath, outputDir });
   console.log(`\nlaunch:\n${args.slice(0, 3).join(" ")} ${args.slice(3).join(" ")}`);
   if (!input.launch) return;
   if (!existsSync(input.launcherPath)) manifestFail(`no Luna launcher at ${input.launcherPath}`);

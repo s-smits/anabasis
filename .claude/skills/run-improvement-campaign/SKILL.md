@@ -566,7 +566,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to H, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic angles, at most five lanes, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
+| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |

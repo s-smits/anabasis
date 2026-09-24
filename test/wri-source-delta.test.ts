@@ -88,8 +88,8 @@ describe("source-delta reach", () => {
     expect(delta.modelVisibleChanged).toEqual(["starters/card.md"]);
 
     const text = renderSourceDelta(delta);
-    expect(text).toContain("UNREACHED CHANGED SAFEGUARDS (angle 31 trigger): new-one");
-    expect(text).toContain("MODEL-VISIBLE SURFACE CHANGED (angle 12 trigger): starters/card.md");
+    expect(text).toContain("UNREACHED CHANGED SAFEGUARDS (lane 21): new-one");
+    expect(text).toContain("MODEL-VISIBLE SURFACE CHANGED (lane 21): starters/card.md");
     expect(text).not.toContain("safeguardTriggered(");
   });
 

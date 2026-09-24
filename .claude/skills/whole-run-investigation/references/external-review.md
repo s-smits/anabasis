@@ -19,8 +19,8 @@ non-result denominators. An incomplete comparison stays incomplete; never launch
 merely to fill its missing side.
 
 Protected verifier detail, raw traces, hidden truth, reference artifacts and per-task failure
-locations stay out of the export. Keep the private Epoch Reviewer and blinded WRI lanes on their
-own evidence paths. An external analyst does not gain their access by being called a verifier.
+locations stay out of the export. Keep the private Epoch Reviewer and the isolated WRI lanes 7
+and 23 on their own evidence paths. An external analyst does not gain their access by being called a verifier.
 
 Sending or uploading needs the user's action-specific authority; otherwise leave a local draft.
 Use the available interface and verify its actual model/settings. On retrieval, use read-only

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The run's solve traces, read once: a bounded, verifier-blind packet for the angle 15 reviewer and
+ * The run's solve traces, read once: a bounded, verifier-blind packet for the lane 23 reviewer and
  * the deterministic telemetry it reads first. Both come from the case record's digest-bound,
  * redacted trace projection; nothing here opens provider rollouts, prompt bodies, raw tool
  * arguments, verifier output or reference artifacts. The digest's solver-process block reads its
@@ -18,6 +18,7 @@ import {
   type CaseOutcome,
   type CaseRecordRow,
   type StoredCaseRow,
+  CASE_RECORD_FILE,
   classifyCaseOutcome,
   readCaseRecord,
   verifyTracePointers,
@@ -393,7 +394,7 @@ function readTerminalTrace(row: CaseRecordRow, campaignDir: string, roots: reado
 }
 
 export function collect({ campaignDir, runId, outDir, maxChars }: CollectInput) {
-  const caseRecord = join(campaignDir, "case-record.jsonl");
+  const caseRecord = join(campaignDir, CASE_RECORD_FILE);
   const rows = readCaseRecord(caseRecord).filter((stored) =>
     isControllerBatteryRunId(runId, stored.row.runId),
   );

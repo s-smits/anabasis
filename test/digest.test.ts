@@ -1,67 +1,30 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.mjs";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { recordDigestBattery } from "./helpers/digest-battery.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
+import {
+  executionRecord,
+  experimentProposal,
+  submitCall,
+  trialCall,
+} from "./helpers/builder-execution-record.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
+import type { TurnRetryRow } from "../src/author/builder-execution.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import type { BuilderSubmitAttempt } from "../src/author/builder-execution.ts";
 
 type DigestFixture = { campaign: string; domainsRoot: string };
-
-/** A complete `builder-execution/v6` record, since the digest reads through the strict reader. The
- *  submit rows take the writer's defaults, and the record stores the rows alone, as the writer does. */
-function executionRecord(rows: Array<Partial<BuilderSubmitAttempt>>, calls = 0): string {
-  const submits = rows.map(
-    (row, index): BuilderSubmitAttempt => ({
-      ordinal: index + 1,
-      turn: index + 1,
-      atMs: (index + 1) * 1000,
-      kind: "candidate",
-      outcome: "accepted",
-      stage: row.outcome === undefined || row.outcome === "accepted" ? null : "validation",
-      commit: "c".repeat(40),
-      findingsDigest: row.outcome === undefined || row.outcome === "accepted" ? null : `digest-${index + 1}`,
-      findingCodes: [],
-      repeatedFindings: index === 0 ? null : false,
-      findingsDelta: index === 0 ? null : { carried: 0, resolved: 0, introduced: 0 },
-      workspaceChanged: index === 0 ? null : true,
-      treeFirstSubmittedAsAttempt: null,
-      terminal: false,
-      ...row,
-    }),
-  );
-  return JSON.stringify({
-    schema: "builder-execution/v6",
-    backend: "claude",
-    runtimeIdentity: null,
-    turns: 0,
-    durationMs: 0,
-    toolCalls: {
-      total: calls,
-      failed: 0,
-      byName: calls === 0 ? {} : { bash: calls },
-      custom: calls,
-      native: 0,
-    },
-    usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 0, estimatedTurns: 0 },
-    firstToolMs: null,
-    submits,
-    turnRetries: [],
-    authoringReviews: [],
-    failedByName: {},
-    partialTurn: null,
-    failedCalls: [],
-    failedCallsOmitted: 0,
-    customCalls: [],
-    customCallsOmitted: 0,
-    outcome: "recorded",
-    writtenAt: "2026-08-25T00:00:00.000Z",
-  });
-}
 
 afterAll(cleanupScratch);
 
@@ -269,7 +232,7 @@ describe("digest", () => {
           decision: {
             action: "placed",
             rationale: "5/6, Wilson interval [0.436, 0.970] against target range [0.2, 0.5]",
-            placement: { passes: 5, n: 6, zone: "over-aim" },
+            placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
           },
           admitted: 1,
           excluded: [{ runId: "r2", reason: "claim refused" }],
@@ -290,7 +253,9 @@ describe("digest", () => {
       }),
     );
     const digest = digestOf(paths);
-    expect(digest).toContain("placed-0: action placed over-aim · admitted 1 excluded 1");
+    expect(digest).toContain(
+      "placed-0: action placed over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1",
+    );
     expect(digest).toContain("unplaced-1: action no-difficulty-evidence · admitted 0 excluded 0");
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });
@@ -305,6 +270,8 @@ describe("digest", () => {
       "no schema",
     ],
     ["a v3 record", { schema: "difficulty-decision/v3", runId: "old-0" }, "difficulty-decision/v3"],
+    ["a v4 record", { schema: "difficulty-decision/v4", runId: "old-4" }, "difficulty-decision/v4"],
+    ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
@@ -325,16 +292,17 @@ describe("digest", () => {
         join(dir, "0.json"),
         JSON.stringify({
           schema: "difficulty-decision/v6",
-          // run-4 graded 1 and passed 1, so a decision that called it significantly
-          // too easy and got a perfect battery back is angle 27's question.
+          // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
+          // perfect battery back is lane 5's question.
           runId: "run-4",
           difficulty: { decision: { action: "placed", placement: { zone } }, admitted: 1, excluded: [] },
         }),
       );
       return digestOf(paths);
     };
-    expect(perfect("too-easy")).toContain("PERFECT BATTERY AFTER CLIMB (angle 27 trigger): run-4 1/1");
-    expect(perfect("on-aim")).not.toContain("PERFECT BATTERY AFTER CLIMB");
+    expect(perfect("too-easy")).toContain("PERFECT BATTERY OVER AIM (lane 5): run-4 1/1");
+    expect(perfect("over-aim")).toContain("PERFECT BATTERY OVER AIM (lane 5): run-4 1/1");
+    expect(perfect("on-aim")).not.toContain("PERFECT BATTERY OVER AIM");
   });
 
   it("reads the recorded check table, submits, decisions and roster, and never verifier issue text", () => {
@@ -348,7 +316,7 @@ describe("digest", () => {
     expect(digest).toContain("topFindingsDigest aaaa1111 x2");
     expect(digest).not.toContain("surviving pairs");
     // An absent decisions directory says no decision was recorded, not that the selector never ran.
-    expect(digest).toContain("no recorded difficulty decisions: no climb decision was recorded");
+    expect(digest).toContain("no recorded difficulty decisions: no placement was recorded");
     expect(digest).not.toContain("never ran");
     // Each half of the check table names the terminal ledger and the exact tree it came from.
     expect(digest).toContain("graded oracle rows: 2 (from 2 terminal case rows)");
@@ -358,7 +326,7 @@ describe("digest", () => {
     // A repeated candidate evaluator is flagged when the noun precedes the judging verb.
     expect(digest).toContain("judge_pin_choice");
     expect(digest).toContain(
-      "ORACLE-PREVIEW SUSPECT: repeated per-case candidate evaluation via public tool",
+      "CHECK TOOL IN SOLVER TRACE (lane 23): judge_pin_choice repeated per-case candidate evaluation via public tool",
     );
     // Rule 4: verifier issue text never crosses into the digest.
     expect(digest).not.toContain("secret-verifier-detail-7731");
@@ -531,7 +499,7 @@ describe("digest", () => {
     expect(digest).toContain("measured candidate fullrun-i02");
     expect(digest).toContain("accept 2 · reject 1");
     expect(digest).toContain("tool roster read from measured candidate fullrun-i02");
-    expect(digest).not.toContain("ORACLE-PREVIEW SUSPECT");
+    expect(digest).not.toContain("CHECK TOOL IN SOLVER TRACE");
     expect(digest).not.toContain("fallback: adopted-tree");
   });
 
@@ -642,7 +610,7 @@ describe("digest", () => {
 
   // The ledgers digest-ledgers.mjs reads. Each case writes the recorded shape a real
   // campaign carries and checks the trigger row a lane is admitted on, plus its nearest quiet shape.
-  it("classifies provider non-results as censoring and flags a decision read on a censored battery", () => {
+  it("classifies provider-typed non-results as censoring and reads the Builder's allowance waits", () => {
     const paths = fixture();
     const domain = join(paths.domainsRoot, "demo-slug");
     const record = (
@@ -675,8 +643,6 @@ describe("digest", () => {
           },
         })),
       });
-    // The controller's own allowance wording. "Out of extra usage" is a provider non-result but not
-    // an exhausted allowance there, since a mislabelled entrypoint produces it too.
     battery([
       "You've hit your weekly limit · resets Sep 12 at 8am (Europe/Amsterdam)",
       "not attempted: the battery stopped scheduling after 5 consecutive provider non-results",
@@ -697,31 +663,55 @@ describe("digest", () => {
         },
       }),
     );
+    // The Builder transport's own retry rows: one reason is the provider's allowance clause and
+    // the other a generic limit, and only the first is printed as an explicit allowance wait.
+    const retry = (turn: number, reason: string, waitMs: number): TurnRetryRow => ({
+      role: "builder",
+      turn,
+      attempt: 1,
+      of: 3,
+      status: "failed",
+      reason,
+      waitMs,
+    });
+    writeFileSync(
+      join(paths.campaign, "epoch-aa", "builder-execution.json"),
+      executionRecord([{}], 0, {
+        turnRetries: [
+          retry(3, "You've hit your weekly limit · resets Sep 12 at 8am", 600_000),
+          retry(4, "429 too many requests", 60_000),
+        ],
+      }),
+    );
 
     const digest = digestOf(paths);
-    expect(digest).toContain("REVIEW TURNS EXCEED SOLVER TURNS (angle 28 trigger): review 10 > built 5");
+    expect(digest).toContain("REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review 10 > built 5");
+    expect(digest).toContain('absent step "epoch review"');
+    const censoredRow =
+      "run-2: graded 0 · provider non-results 2 · first 2026-09-08T00:00:00.000Z last 2026-09-08T00:01:30.000Z" +
+      " · CENSORED (provider non-results; the typed kind is the evidence, the message is not)";
+    expect(digest).toContain(censoredRow);
+    expect(digest).toContain("DECISION ON CENSORED BATTERY (lane 24): run-3 placed read run-2");
+    expect(digest).toContain("epoch-aa/builder-execution.json: turn retries 2 · waited 11 min in total");
     expect(digest).toContain(
-      "EXPLICIT PROVIDER EXHAUSTION — operational interruption, not a harness defect (AGENTS.md)",
+      "EXPLICIT ALLOWANCE WAIT (lane 24): epoch-aa/builder-execution.json turn 3 attempt 1/3 failed waited 10 min (explicit allowance)",
     );
     expect(digest).toContain(
-      "run-2: graded 0 · provider non-results 2 (explicit-exhaustion 1, not-attempted 1)",
+      "turn retry: epoch-aa/builder-execution.json turn 4 attempt 1/3 failed waited 1 min (other reason; not proof of exhaustion)",
     );
-    expect(digest).toContain("CENSORED (explicit exhaustion; 1 not attempted after it)");
-    expect(digest).toContain("DECISION ON CENSORED BATTERY (angle 28 trigger): run-3 placed read run-2");
-    expect(digest).toContain("classification: explicit exhaustion censors the denominator");
+    expect(digest.split("EXPLICIT ALLOWANCE WAIT").length).toBe(2);
+    // No exhaustion verdict is read out of free text: the typed kind is the whole evidence.
+    expect(digest).not.toMatch(
+      /EXPLICIT PROVIDER EXHAUSTION|classification:|PROVIDER NON-RESULTS UNEXPLAINED|explicit-exhaustion/,
+    );
 
-    // A generic limit is not exhaustion: the row asks for an investigation and no censoring claim.
+    // A generic message under the same typed kind censors exactly the same way.
     battery(["429 too many requests", "socket hang up"]);
     record({ builder: 5, built: 10, review: 5 }, "epoch review — 429 too many requests");
     const generic = digestOf(paths);
     expect(generic).toContain("run-1: provider turns 20 of cap 21 · builder 5 · built 10 · review 5");
     expect(generic).not.toContain("REVIEW TURNS EXCEED SOLVER TURNS");
-    expect(generic).toContain(
-      'absent step "epoch review": generic 429/rate limit — investigate the actual failure; not proof of exhaustion',
-    );
-    expect(generic).toContain("run-2: graded 0 · provider non-results 2 (generic-limit 1, other 1)");
-    expect(generic).toContain("PROVIDER NON-RESULTS UNEXPLAINED");
-    expect(generic).not.toContain("classification: explicit exhaustion");
+    expect(generic).toContain(censoredRow);
 
     // A terminal the controller reader refuses prints no role counts or steps it cannot vouch for.
     const terminal = join(paths.campaign, "controller", "run-1", "terminal.json");
@@ -731,6 +721,190 @@ describe("digest", () => {
     expect(refused).toContain("run-1: CONTROLLER EVIDENCE REFUSED — ");
     expect(refused).not.toContain("run-1: provider turns");
     expect(refused).not.toContain('absent step "epoch review"');
+  });
+
+  it("counts an advisory finding's recurrence over measured reviews by kind and declared check", () => {
+    const paths = fixture();
+    const analysis = join(paths.campaign, "analysis");
+    mkdirSync(analysis, { recursive: true });
+    const review = (label: string, findings: unknown[]) =>
+      writeFileSync(
+        join(analysis, `${label}-epoch-review.json`),
+        JSON.stringify({ schema: EPOCH_REVIEW_SCHEMA, status: "completed", findings, reads: [] }),
+      );
+    const advisory = {
+      kind: "harness-defect",
+      severity: "advisory",
+      checkId: "alpha-check",
+      proposedOwner: "brief",
+    };
+    review("run-1", [advisory]);
+    const once = digestOf(paths);
+    expect(once).toContain("run-1: epoch review completed · findings 1 · unrouted 0 · reads 0");
+    expect(once).not.toContain("ADVISORY FINDING RECURS UNROUTED");
+    // An authoring checkpoint reads the same bytes a measured review reads, so it is no recurrence.
+    review("authoring-01a0b788-f000-7000-8000-000000000000", [advisory]);
+    expect(digestOf(paths)).not.toContain("ADVISORY FINDING RECURS UNROUTED");
+    review("run-2", [advisory, { kind: "harness-defect", severity: "advisory" }]);
+    const twice = digestOf(paths);
+    expect(twice).toContain(
+      "ADVISORY FINDING RECURS UNROUTED (lane 14): harness-defect alpha-check advisory in 2 measured reviews (run-1, run-2)",
+    );
+    expect(twice).toContain("advisory findings naming no check: 1 (no recurrence identity)");
+    // A review of another schema is refused by name rather than read for its findings.
+    writeFileSync(
+      join(analysis, "run-3-epoch-review.json"),
+      JSON.stringify({ status: "completed", findings: [advisory], reads: [] }),
+    );
+    const refused = digestOf(paths);
+    expect(refused).toContain(`run-3: epoch review refused, not ${EPOCH_REVIEW_SCHEMA}`);
+    expect(refused).toContain("advisory in 2 measured reviews (run-1, run-2)");
+  });
+
+  it("joins each rehearsal to the accepted submit's candidate and reads the declared target against it", () => {
+    const paths = fixture();
+    const candidate = "c".repeat(64);
+    for (const [n, taskId] of [
+      [1, "t1"],
+      [2, "t2"],
+    ] as const) {
+      mkdirSync(join(paths.campaign, "epoch-aa", "rehearsals", `rehearsal-${n}`, "cases", taskId), {
+        recursive: true,
+      });
+    }
+    const write = (submitted: string, verifiedPasses: number) =>
+      writeFileSync(
+        join(paths.campaign, "epoch-aa", "builder-execution.json"),
+        executionRecord(
+          [{ experimentProposal: experimentProposal({ comparator: "at-most", verifiedPasses }) }],
+          0,
+          {
+            customCalls: [
+              trialCall(1, "t1", candidate, "pass"),
+              trialCall(2, "t2", candidate, "not-run"),
+              submitCall(3, submitted),
+            ],
+          },
+        ),
+      );
+    write(candidate, 0);
+    const digest = digestOf(paths);
+    expect(digest).toContain(
+      "epoch-aa/builder-execution.json: rehearsals 2 (pass 1, not-run 1) · accepted submits 1",
+    );
+    expect(digest).not.toContain("rehearsal case directories");
+    expect(digest).toContain("REHEARSAL NOT-RUN (lane 9): 1 of 2 rehearsals reached no verdict");
+    expect(digest).not.toContain("SUBMITTED BYTES NEVER REHEARSED");
+    // A pass the rehearsal already recorded on the frozen bytes is a verified pass the battery will
+    // find again, so an at-most 0 target is contradicted before the battery runs.
+    expect(digest).toContain(
+      "REHEARSAL CONTRADICTS TARGET (lane 11): epoch-aa declared at-most 0 verified passes; 1 rehearsal pass(es) on the submitted bytes already exceed it (1 > 0)",
+    );
+    write(candidate, 1);
+    expect(digestOf(paths)).toContain(
+      "target at-most 1 · rehearsal passes on the submitted bytes 1 · not contradicted",
+    );
+    // Rehearsals of other bytes say nothing about the candidate the submit froze.
+    write("d".repeat(64), 0);
+    const other = digestOf(paths);
+    expect(other).toContain(
+      "SUBMITTED BYTES NEVER REHEARSED (lane 11): epoch-aa candidate dddddddddddddddd · 2 rehearsal(s) on other bytes",
+    );
+    expect(other).not.toContain("REHEARSAL CONTRADICTS TARGET");
+    rmSync(join(paths.campaign, "epoch-aa", "rehearsals", "rehearsal-2"), { recursive: true });
+    expect(digestOf(paths)).toContain("rehearsal case directories 1 against 2 recorded call(s)");
+  });
+
+  it("reads each retained version's toolchain shape and the claim's wrapper-only tool digests", () => {
+    const paths = fixture();
+    const versions = join(paths.campaign, "versions");
+    const real = join(paths.campaign, "epoch-aa", "workspace", ".toolchain");
+    const gone = join(paths.campaign, "gone", ".toolchain");
+    mkdirSync(real, { recursive: true });
+    mkdirSync(join(versions, "v1"), { recursive: true });
+    symlinkSync(real, join(versions, "v1", ".toolchain"));
+    mkdirSync(join(versions, "v2", ".toolchain"), { recursive: true });
+    mkdirSync(join(versions, "v3"), { recursive: true });
+    symlinkSync(gone, join(versions, "v3", ".toolchain"));
+    writeFileSync(
+      join(paths.campaign, "claims", "run-1.json"),
+      JSON.stringify({
+        claim: {
+          statement: {
+            groundings: [{ checkId: "alpha-check", kind: "intrinsic", adapterId: null }],
+            verifierEnvironmentHash: null,
+            verifierTools: [
+              { toolId: "gcc", kind: "binary", source: "host", interpreter: null, digest: "x" },
+              {
+                toolId: "wrap",
+                kind: "script",
+                source: "workspace-toolchain",
+                interpreter: "bash",
+                digest: "y",
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const digest = digestOf(paths);
+    expect(digest).toContain(`VERSION TOOLCHAIN IS A SYMLINK (lane 2): versions/v1/.toolchain → ${real}`);
+    expect(digest).not.toContain("VERSION TOOLCHAIN DANGLING (lane 2): versions/v1/");
+    expect(digest).toContain("versions/v2/.toolchain: real directory");
+    expect(digest).not.toContain("VERSION TOOLCHAIN IS A SYMLINK (lane 2): versions/v2/");
+    expect(digest).toContain(
+      `VERSION TOOLCHAIN DANGLING (lane 2): versions/v3/.toolchain → ${gone} resolves to nothing`,
+    );
+    expect(digest).toContain("run-1: verifier tools 2 · binaries 1 · scripts 1");
+    expect(digest).toContain(
+      "WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 wrap (workspace-toolchain, interpreter bash)",
+    );
+    expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 gcc");
+  });
+
+  it("reads an off-aim streak and a missed target from the recorded readout rows", () => {
+    const paths = fixture();
+    const dir = join(paths.campaign, "difficulty-decisions");
+    mkdirSync(dir);
+    const decision = (name: string, runId: string, toAim: number, rows: unknown[]) =>
+      writeFileSync(
+        join(dir, `${name}.json`),
+        JSON.stringify({
+          schema: "difficulty-decision/v6",
+          runId,
+          difficulty: {
+            decision: {
+              action: "placed",
+              placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim },
+            },
+            admitted: 1,
+            excluded: [],
+            rows,
+          },
+        }),
+      );
+    decision("0", "d1", -2, [
+      {
+        runId: "run-1",
+        passed: 5,
+        verified: 6,
+        zone: "over-aim",
+        target: { comparator: "at-most", verifiedPasses: 2, result: "missed", missedBy: 3 },
+      },
+    ]);
+    const one = digestOf(paths);
+    expect(one).toContain("  run-1: target at-most 2 · passed 5/6 · missed");
+    expect(one).toContain(
+      "TARGET MISSED (lane 10): run-1 declared at-most 2 verified passes and measured 5, missed by 3",
+    );
+    expect(one).not.toContain("OFF-AIM STREAK");
+    decision("1", "d2", -2, []);
+    expect(digestOf(paths)).toContain(
+      "OFF-AIM STREAK (lane 10): 2 consecutive placements above the aim (d1, d2)",
+    );
+    // A placement that crossed the aim ends the streak, and one placement on a side is no streak.
+    decision("1", "d2", 1, []);
+    expect(digestOf(paths)).not.toContain("OFF-AIM STREAK");
   });
 
   it("separates attested, unattested and no-turn identity rows and flags a served model off the pin", () => {
@@ -771,7 +945,7 @@ describe("digest", () => {
     );
   });
 
-  it("settles the judge census inventory and triggers angle 2 on a recorded disagreement", () => {
+  it("settles the judge census inventory and triggers lane 16 on a recorded disagreement", () => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
@@ -792,7 +966,7 @@ describe("digest", () => {
     writeFileSync(join(paths.campaign, "analysis", "run-1-judges.json"), judges(0));
     const quiet = digestOf(paths);
     expect(quiet).toContain("run-1: judge on · census battery 2 · disagreements 0/2 · exit completed");
-    expect(quiet).toContain("angle 2: no trigger");
+    expect(quiet).toContain("lane 16: no census recorded a Judge/verifier disagreement");
     // The census carries no controls by construction, so neither a controls column nor an alarm
     // about their absence tells a reader anything: src/truth/judge.ts writes a constant zero.
     expect(quiet).not.toContain("JUDGE CENSUS WITHOUT CONTROLS");
@@ -800,7 +974,7 @@ describe("digest", () => {
 
     // One disagreement in six must still trigger; a validated-only trigger would hide it.
     writeFileSync(join(paths.campaign, "analysis", "run-1-judges.json"), judges(1));
-    expect(digestOf(paths)).toContain("CENSUS WITH DISAGREEMENT (angle 2 trigger): 1 census(es)");
+    expect(digestOf(paths)).toContain("CENSUS WITH DISAGREEMENT (lane 16): 1 census(es)");
 
     // A record the judge-reviews writer did not produce is refused by name, not read as a census.
     writeFileSync(
@@ -829,6 +1003,9 @@ describe("digest", () => {
       ...["a", "b", "c", "d", "e"].map((id) => row("run-1", `s${id}`, "spatial", false)),
       ...["a", "b"].map((id) => row("run-2", `s${id}`, "spatial", false)),
       row("run-2", "pa", "planar", true),
+      // run-4 carries a manifest-verified battery of the same task set under the same pin as run-1;
+      // run-2 carries none, so its condition is unobservable rather than distinct.
+      row("run-4", "sa", "spatial", false),
     ]);
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     writeFileSync(
@@ -847,11 +1024,14 @@ describe("digest", () => {
     expect(digest).toContain("run-1: 12/17");
     expect(digest).toMatch(/spatial\s+0\/5\s+\[[0-9.]+,[0-9.]+\]\s+all-fail AGGREGATE HIDES FAMILY/);
     expect(digest).toContain("FAMILY UNMOVED all-fail: spatial 0/5 → 0/2 (run-1 → run-2)");
-    expect(digest).toContain("REPEATED CONDITION (angle 18 trigger): run-1, run-2");
+    expect(digest).toContain("REPEATED CONDITION (lane 20): run-1, run-4");
+    expect(digest).toContain("run-2: task set unobservable — no manifest-verified battery record");
     expect(digest).toContain(
       "run-1: admitted 2 ((none) 1, correctness-model 1) · refused 0 · feedback owners {correctness-model} · policy epoch-review/v3",
     );
-    expect(digest).toContain("FINDINGS WITHOUT PROPOSED OWNER: 1 of 2 admitted findings name no owner");
+    expect(digest).toContain(
+      "FINDINGS WITHOUT PROPOSED OWNER (lane 14): 1 of 2 admitted findings name no owner",
+    );
   });
 
   it("each measured product keeps its check corpus, join targets and case denominator", () => {

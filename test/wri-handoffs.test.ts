@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
@@ -84,7 +84,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
       submit.experimentProposal = { target: { comparator: "at-most", verifiedPasses: round.target } };
     }
     const record: JsonObject = {
-      schema: "builder-execution/v5",
+      schema: "builder-execution/v6",
       writtenAt: new Date(round.start + hour).toISOString(),
       durationMs: hour,
       customCalls: [
@@ -131,6 +131,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     write(join(dir, "claims", `${claim.runId}.json`), { schema: "run-claim/v1", ...claim });
   }
   write(join(dir, "difficulty-decisions", `${SECOND}-x.json`), {
+    schema: "difficulty-decision/v6",
     difficulty: {
       rows: [
         { runId: RUN, passed: 1, verified: 3, unaccepted: 0, zone: "on-aim", target: null, operation: null },
@@ -262,6 +263,20 @@ describe("round hand-offs", () => {
     const older = buildHandoffs({ campaign: campaign({ toolCalls: false }), runId: RUN });
     expect(older.census[0].bashCalls).toBeNull();
     expect(renderHandoffs(older)).toContain("bash unobservable");
+  });
+
+  it("refuses an execution record or a difficulty decision of another schema by name", () => {
+    const stale = campaign();
+    const record = join(stale, "epoch-aaaaaaaaaaaa", "builder-execution.json");
+    write(record, { ...JSON.parse(readFileSync(record, "utf8")), schema: "builder-execution/v5" });
+    expect(() => buildHandoffs({ campaign: stale, runId: RUN })).toThrow(
+      "epoch-aaaaaaaaaaaa/builder-execution.json is not builder-execution/v6",
+    );
+    const unversioned = campaign();
+    write(join(unversioned, "difficulty-decisions", `${SECOND}-x.json`), { difficulty: { rows: [] } });
+    expect(() => buildHandoffs({ campaign: unversioned, runId: RUN })).toThrow(
+      `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v6`,
+    );
   });
 
   it("refuses to invent a round for a campaign with neither epochs nor claims", () => {

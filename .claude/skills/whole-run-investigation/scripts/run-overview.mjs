@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // One editable run overview for every review lane. `buildOverview` derives it from recorded bytes
 // (snapshot status and the terminal trace-review read through the controller's strict reader, harness evolution, digest trigger rows, scan findings and
-// the category/hook census) so the lanes get the same orientation even when the default outcome
+// the timeline stalls) so the lanes get the same orientation even when the default outcome
 // view refused the run. It is the byte source for `shared-instructions.json` (see
 // shared-instructions.mjs), which is the file the primary edits before launch; `wri.mjs collect`
 // writes both.

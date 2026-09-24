@@ -1,25 +1,29 @@
-// Review-component yield: did each advisory Review component's output reach something the
-// controller recorded? Two components exist, the diagnosis reader behind the Repair Engineer row
-// and the Epoch Reviewer, and each gets one row per measured iteration plus a verdict. The primary
-// reviewer reads the table before angles 3, 9 and 26. Campaign JSON only; nothing executes.
+// Review-component yield: did each advisory component's output reach something the controller
+// recorded? Three components exist. The Epoch Reviewer gets one row per measured iteration,
+// joining its public findings into the recorded admission and rebuild advice (read first by lanes
+// 12 and 14). The diagnosis reader gets one row per measured iteration too, joining each recorded
+// reading into the advice issue it was offered for (read first by lane 25). The Builder's own
+// rehearsal instrument, `harness_trial`, gets one row per epoch, joining each rehearsal to the
+// candidate the accepted submit froze (read first by lane 11). Campaign JSON only; nothing
+// executes.
 //
-// Current schemas only. A row joins the producer's public projection and complete diagnosis bytes
-// into the recorded admission and rebuild advice; matching an owner alone proves no use, and
-// retention in advice is not repair benefit, which needs later Builder and measurement evidence.
-// An iteration whose diagnosis or epoch-review file carries another schema fails its component,
-// visibly, rather than being read through a reader for a loop that no longer exists. The analysis
-// file only lists and orders the iterations; its own schema is not this reader's concern.
+// Current schemas only. Matching an owner alone proves no use, and retention in advice is not
+// repair benefit, which needs later Builder and measurement evidence. An iteration whose
+// epoch-review, diagnosis or execution file carries another schema fails its component, visibly,
+// rather than being read through a reader for a loop that no longer exists. The analysis file only
+// lists and orders the iterations; its own schema is not this reader's concern.
 import { existsSync, readdirSync, statSync } from "#src/meta/filesystem.ts";
-import { join } from "#src/meta/path.ts";
+import { basename, join } from "#src/meta/path.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { publicEpochReview } from "#src/review/epoch-review-public.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { REBUILD_ADVICE_SCHEMA } from "#src/author/rebuild-advice.ts";
-import { hashJsonValue } from "#src/meta/stable-json.ts";
-import { redactProviderDiagnostic } from "#src/backends/diagnostic-redaction.ts";
+import { campaignEpochs } from "#src/author/campaign-epoch.ts";
+import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
-import { DIAGNOSIS_READING_SCHEMA as DIAGNOSIS_SCHEMA } from "#src/review/diagnosis-reader.ts";
+import { hashJsonValue } from "#src/meta/stable-json.ts";
+import { DIAGNOSIS_READING_SCHEMA } from "#src/review/diagnosis-reader.ts";
 
 export const REVIEW_YIELD_SCHEMA = "wri-review-yield-report/v1";
 const EMPTY = { iterations: null, opportunities: null, outputs: null, consumed: null, changed: null };
@@ -66,6 +70,97 @@ function admittedEpochFindings(projected, admitted) {
   return hits;
 }
 
+/** The harness_trial and accepted-submit rows of one execution record, in call order. */
+function trialCalls(record) {
+  const calls = Array.isArray(record.customCalls) ? record.customCalls : [];
+  const trials = [];
+  const submits = [];
+  for (const call of calls) {
+    if (!isRecord(call)) continue;
+    const semantic = isRecord(call.semantic) ? call.semantic : {};
+    const candidateId = isString(semantic.candidateId) ? semantic.candidateId : null;
+    if (call.tool === "harness_trial") {
+      trials.push({ sequence: call.sequence, candidateId, verdict: semantic.truthVerdict ?? null });
+    } else if (call.tool === "submit" && semantic.outcome === "accepted") {
+      submits.push({ sequence: call.sequence, candidateId });
+    }
+  }
+  return { trials, submits };
+}
+
+/**
+ * One epoch's rehearsal use, over every execution record the epoch holds. The rehearsal is
+ * consumed when the accepted submit's candidate was rehearsed, and it changed something when a
+ * failed or not-run rehearsal was followed by another rehearsal or by a submit, since that is the
+ * order in which a Builder reads a verdict and acts on it.
+ */
+function trialRow(epochDir) {
+  const epoch = basename(epochDir);
+  const read = readExecutionEvidenceDetails(epochDir);
+  if (read.unavailable.length > 0) throw new Error(`${epoch}: ${read.unavailable.join("; ")}`);
+  // The tasks the epoch's workspace battery declares are the rehearsal opportunity.
+  const tasks = readJsonFileOrNull(join(epochDir, "workspace", "correctness-model", "tasks.json"));
+  const rows = Array.isArray(tasks) ? tasks : Array.isArray(tasks?.tasks) ? tasks.tasks : null;
+  const opportunities = rows === null ? null : rows.length;
+  const trials = [];
+  const submits = [];
+  for (const record of read.records) {
+    const calls = trialCalls(record);
+    trials.push(...calls.trials);
+    submits.push(...calls.submits);
+  }
+  if (read.records.length === 0) {
+    const note = "no execution record; rehearsal use unobservable";
+    return {
+      runId: epoch,
+      opportunity: null,
+      output: null,
+      consumer: null,
+      changed: null,
+      unknown: true,
+      note,
+    };
+  }
+  const rehearsed = new Set(
+    trials.flatMap((trial) => (trial.candidateId === null ? [] : [trial.candidateId])),
+  );
+  const consumedSubmit = submits.find(
+    (submit) => submit.candidateId !== null && rehearsed.has(submit.candidateId),
+  );
+  const acted = trials.some(
+    (trial, index) =>
+      (trial.verdict === "fail" || trial.verdict === "not-run") &&
+      (index < trials.length - 1 || submits.some((submit) => submit.sequence > trial.sequence)),
+  );
+  const verdicts = {};
+  for (const trial of trials) {
+    verdicts[trial.verdict ?? "unrecorded"] = (verdicts[trial.verdict ?? "unrecorded"] ?? 0) + 1;
+  }
+  return {
+    runId: epoch,
+    opportunity: opportunities === null ? null : opportunities > 0,
+    output: trials.length > 0 ? { rehearsals: trials.length, verdicts } : null,
+    consumer:
+      consumedSubmit === undefined
+        ? null
+        : {
+            path: "builder-execution.json",
+            field: "customCalls[].semantic.candidateId",
+            value: consumedSubmit.candidateId,
+          },
+    changed: acted,
+    note:
+      submits.length === 0
+        ? `${trials.length} rehearsal(s), no accepted submit`
+        : `${trials.length} rehearsal(s); accepted submit ${consumedSubmit === undefined ? "was not" : "was"} rehearsed`,
+  };
+}
+
+/**
+ * One measured iteration's diagnosis reading: which offered issues the reader diagnosed or
+ * explicitly declined, and whether each reading reached the rebuild advice as the exact bytes the
+ * reader recorded, under the issue it was offered for.
+ */
 function diagnosisRow(campaignDir, runId) {
   const evidence = readAnalysis(campaignDir, runId, "diagnoses");
   if (evidence === null) {
@@ -80,48 +175,42 @@ function diagnosisRow(campaignDir, runId) {
     };
   }
   if (
-    evidence.schema !== DIAGNOSIS_SCHEMA ||
+    evidence.schema !== DIAGNOSIS_READING_SCHEMA ||
     !Array.isArray(evidence.offered) ||
     !Array.isArray(evidence.diagnoses) ||
     !Array.isArray(evidence.abstentions)
   ) {
-    throw new Error(`${runId}: diagnosis evidence is not ${DIAGNOSIS_SCHEMA}`);
+    throw new Error(`${runId}: diagnosis evidence is not ${DIAGNOSIS_READING_SCHEMA}`);
   }
   const issues = adviceIssues(campaignDir, runId);
   const offered = new Set(evidence.offered);
-  // One reading may cover several issues, so coverage is counted in issues, not in readings.
-  const covered = (row) => (isRecord(row) && Array.isArray(row.issueIds) ? row.issueIds : []);
-  const diagnosed = new Set(evidence.diagnoses.flatMap(covered).filter((id) => offered.has(id)));
-  const abstained = new Set(
-    evidence.abstentions.flatMap(covered).filter((id) => offered.has(id) && !diagnosed.has(id)),
-  );
-  const attached =
-    issues === null
-      ? null
-      : evidence.diagnoses
-          .filter((row) => isRecord(row.diagnosis) && row.diagnosis.runId === runId)
-          .flatMap((row) =>
-            covered(row).filter(
-              (id) =>
-                offered.has(id) &&
-                issues.some(
-                  (issue) =>
-                    issue.id === id &&
-                    isRecord(issue.diagnosis) &&
-                    hashJsonValue(issue.diagnosis) === hashJsonValue(row.diagnosis),
-                ),
-            ),
-          ).length;
+  // One reading may cover several issues, so coverage is counted in issues, not in readings, and
+  // only over the issues the reader was actually offered.
+  const offeredIn = (row) =>
+    isRecord(row) && Array.isArray(row.issueIds) ? row.issueIds.filter((id) => offered.has(id)) : [];
+  const diagnosed = new Set(evidence.diagnoses.flatMap(offeredIn));
+  const abstained = new Set();
+  for (const id of evidence.abstentions.flatMap(offeredIn)) {
+    if (!diagnosed.has(id)) abstained.add(id);
+  }
+  // Retained means the advice carries the reader's own diagnosis bytes under that issue; a
+  // reworded or re-attributed diagnosis is another reading, not this one consumed.
+  const retained = (row) => {
+    if (!isRecord(row.diagnosis) || row.diagnosis.runId !== runId) return [];
+    const digest = hashJsonValue(row.diagnosis);
+    return offeredIn(row).filter((id) =>
+      issues.some(
+        (issue) => issue.id === id && isRecord(issue.diagnosis) && hashJsonValue(issue.diagnosis) === digest,
+      ),
+    );
+  };
+  const attached = issues === null ? null : evidence.diagnoses.flatMap(retained).length;
   return {
     runId,
     offered: evidence.offered.length,
     diagnosed: diagnosed.size,
     abstained: abstained.size,
     unresolved: [...offered].filter((id) => !diagnosed.has(id) && !abstained.has(id)).length,
-    readerText:
-      evidence.error === null && isString(evidence.readerText)
-        ? redactProviderDiagnostic(evidence.readerText, 4_000)
-        : null,
     opportunity: evidence.offered.length > 0,
     output:
       evidence.diagnoses.length > 0
@@ -241,6 +330,16 @@ function diagnosisReasons(rows) {
   return [`current issue readings ${diagnosed}/${offered} offered; advice retention is not repair benefit`];
 }
 
+function trialReasons(rows) {
+  const rehearsals = rows.reduce((sum, row) => sum + (row.output?.rehearsals ?? 0), 0);
+  const notRun = rows.reduce((sum, row) => sum + (row.output?.verdicts?.["not-run"] ?? 0), 0);
+  const unrehearsed = rows.filter((row) => row.consumer === null && row.output !== null).length;
+  if (rows.length === 0) return [];
+  return [
+    `rehearsals ${rehearsals} across ${rows.length} epoch(s), not-run ${notRun}; epochs whose accepted submit was never rehearsed: ${unrehearsed}`,
+  ];
+}
+
 function epochReasons(rows) {
   const statuses = {};
   const perCondition = {};
@@ -260,7 +359,7 @@ function epochReasons(rows) {
   const repeated = Object.values(perCondition).filter((n) => n > 1).length;
   return [
     `statuses: ${tally.join(", ") || "none"}`,
-    `measured-iteration findings ${findings}, of which without a proposed owner ${unowned}; actual routes belong to admission feedback, and authoring reviews to digest block 4d`,
+    `measured-iteration findings ${findings}, of which without a proposed owner ${unowned}; actual routes belong to admission feedback, and recurrence to digest block 4d`,
     ...(repeated > 0 ? [`review conditions repeated: ${repeated}`] : []),
   ];
 }
@@ -288,20 +387,31 @@ function verdictFrom(summary) {
   return "not-consumed";
 }
 
-function collect(readRow, reasonsOf) {
+function collect(rowsOf, reasonsOf) {
   return (campaignDir) => {
-    const runs = iterationRunIds(campaignDir).map((runId) => readRow(campaignDir, runId));
+    const runs = rowsOf(campaignDir);
     const summary = summarise(runs);
     return { verdict: verdictFrom(summary), summary, reasons: reasonsOf(runs), runs };
   };
 }
 
-export const repairEngineer = collect(diagnosisRow, diagnosisReasons);
-export const epochReviewer = collect(epochRow, epochReasons);
+export const epochReviewer = collect(
+  (campaignDir) => iterationRunIds(campaignDir).map((runId) => epochRow(campaignDir, runId)),
+  epochReasons,
+);
+export const diagnosisReader = collect(
+  (campaignDir) => iterationRunIds(campaignDir).map((runId) => diagnosisRow(campaignDir, runId)),
+  diagnosisReasons,
+);
+export const harnessTrial = collect(
+  (campaignDir) => campaignEpochs(campaignDir).map((epoch) => trialRow(join(campaignDir, epoch))),
+  trialReasons,
+);
 
 const COMPONENTS = [
-  ["repair-engineer", repairEngineer, "angles 3 and 9"],
-  ["epoch-reviewer", epochReviewer, "angle 26"],
+  ["epoch-reviewer", epochReviewer, "lanes 12 and 14"],
+  ["diagnosis-reader", diagnosisReader, "lane 25"],
+  ["harness-trial", harnessTrial, "lane 11"],
 ];
 
 /** One component's result, or a typed failure row; a component that throws hides no other. */

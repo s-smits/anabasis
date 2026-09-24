@@ -54,6 +54,9 @@ import {
   SHA256,
 } from "./catalogue-shape.mjs";
 
+/** The archive shape this validator reads. An archive written under the previous shape carried a
+ *  source-readiness session and a forty-angle catalogue, and is refused by name rather than read. */
+const REFUSED_SCHEMAS = new Map([["wri-archive/v1", "the previous archive shape"]]);
 /** The runtime log, whose filename is never a safeguard identity. */
 const SAFEGUARDS_LOG_STEM = SAFEGUARDS_LOG_FILE.replace(/\.txt$/, "");
 const isLogName = (value) => value === SAFEGUARDS_LOG_STEM || value === SAFEGUARDS_LOG_FILE;
@@ -82,12 +85,8 @@ const SAFEGUARD_STATUSES = states("opportunity", "fired", "not-fired", "no-oppor
 const RUNTIME_RECEIPT_STATES = states("present", "absent", "not-applicable", "inconclusive");
 const RUNTIME_ACTION_STATES = states("diagnostic-only", "routed", "held", "not-applicable", "inconclusive");
 const RUNTIME_BACKTRACK_STATES = states("preserved", "not-needed", "required", "inconclusive");
-const READINESS_VOCABULARY = states(
-  "source-ready-no-level-decisions",
-  "source-ready-level-decisions",
-  "source-not-ready",
-  "unobservable",
-);
+/** Angle sessions the primary settles itself, which no session row is owed for. */
+const PRIMARY_SESSIONS = states("primary-deterministic", "not-launched");
 
 export class ArchiveValidationError extends Error {
   constructor(issues) {
@@ -95,11 +94,6 @@ export class ArchiveValidationError extends Error {
     this.name = "ArchiveValidationError";
     this.issues = issues;
   }
-}
-
-/** A source-relative path that cannot leave the measured worktree or name a hidden file there. */
-function safeSourcePath(path) {
-  return !isAbsolute(path) && !path.includes("\\") && !path.includes("..") && !path.startsWith(".");
 }
 
 /** The bytes of one regular file in the measured worktree, or null when it is absent. */
@@ -175,63 +169,14 @@ function reviewCoverage(review, identityRow, issues) {
     oneOf(row.state, `sessionStates[${index}].state`, SESSION_STATES, issues);
     pointers(row.evidencePointers, `sessionStates[${index}].evidencePointers`, issues);
   });
-  if (!sessionIds.has("session_30")) issues.push("sessionStates must include session_30");
-  const session30 = sessions.find((value) => asRecord(value)?.id === "session_30");
-  if (session30) session30Readiness(session30, identityRow, issues);
-}
-
-/** `session_30` is the source-readiness session: contract CL-F, plus a witness naming the source
- *  file, revision and digest it was read at and the producer and consumer symbols it found
- *  there. The measured worktree is opened to check that those two symbols are really in it. */
-function session30Readiness(session30, identityRow, issues) {
-  const row = asRecord(session30);
-  const label = "sessionStates.session_30";
-  const applicabilities = states("applicable", "not-applicable", "inconclusive");
-  const applicability = oneOf(row.applicability, `${label}.applicability`, applicabilities, issues);
-  requiredString(row.contract, `${label}.contract`, issues);
-  if (row.contract !== "CL-F") issues.push(`${label}.contract must be CL-F`);
-  const witnessLabel = `${label}.readinessWitness`;
-  const witness = requiredRecord(row.readinessWitness, witnessLabel, issues);
-  if (!witness) return;
-  const sourceFile = requiredString(witness.sourceFile, `${witnessLabel}.sourceFile`, issues);
-  if (sourceFile && !safeSourcePath(sourceFile)) {
-    issues.push(`${witnessLabel}.sourceFile must be a safe source-relative path`);
-  }
-  const symbols = {
-    producerSymbol: requiredString(witness.producerSymbol, `${witnessLabel}.producerSymbol`, issues),
-    consumerSymbol: requiredString(witness.consumerSymbol, `${witnessLabel}.consumerSymbol`, issues),
-  };
-  requiredString(witness.sourceRevision, `${witnessLabel}.sourceRevision`, issues, GIT_SHA);
-  requiredString(witness.sourceDigest, `${witnessLabel}.sourceDigest`, issues, SHA256);
-  if (identityRow && witness.sourceRevision !== identityRow.sourceRevision) {
-    issues.push(`${witnessLabel}.sourceRevision differs from measured source`);
-  }
-  const bytes = sourceFile && identityRow?.worktree ? measuredFile(identityRow, sourceFile) : undefined;
-  if (bytes === null) issues.push(`${witnessLabel}.sourceFile is absent from the measured worktree`);
-  if (bytes) {
-    const sourceText = bytes.toString("utf8");
-    if (witness.sourceDigest !== sha256(sourceText)) {
-      issues.push(`${witnessLabel}.sourceDigest does not match the measured source file`);
+  // Every launched angle is keyed to a session row; an angle naming a session that has no row
+  // would carry a verdict nothing in the archive can be held to.
+  angles.forEach((value, index) => {
+    const session = asRecord(value)?.session;
+    if (isString(session) && !PRIMARY_SESSIONS.has(session) && !sessionIds.has(session)) {
+      issues.push(`angleStates[${index}].session ${session} has no sessionStates row`);
     }
-    for (const [key, symbol] of Object.entries(symbols)) {
-      // The symbol must be declared as a function or a binding, not merely mentioned.
-      const declaration = new RegExp(
-        `(?:export\\s+)?(?:async\\s+)?function\\s+${symbol}\\b|(?:export\\s+)?(?:const|let|var)\\s+${symbol}\\s*[=:]`,
-      );
-      if (symbol && !declaration.test(sourceText)) {
-        issues.push(`${witnessLabel}.${key} is absent from the measured source file`);
-      }
-    }
-  }
-  oneOf(witness.vocabulary, `${witnessLabel}.vocabulary`, READINESS_VOCABULARY, issues);
-  nonNegativeInt(witness.difficultyDecisionCount, `${witnessLabel}.difficultyDecisionCount`, issues);
-  pointers(witness.evidencePointers, `${witnessLabel}.evidencePointers`, issues);
-  if (applicability === "applicable" && witness.vocabulary === "unobservable") {
-    issues.push("applicable CL-F requires a source-readiness vocabulary witness");
-  }
-  if (witness.vocabulary === "source-ready-no-level-decisions" && witness.difficultyDecisionCount !== 0) {
-    issues.push("source-ready-no-level-decisions requires zero level decisions");
-  }
+  });
 }
 
 /** A refuted prediction's dependency walk: walked, closed, and naming its survivors. */
@@ -559,9 +504,13 @@ function censusCallerFile(value, label, identityRow, sourceCallers, issues) {
   const file = requiredRecord(value, label, issues);
   if (!file) return null;
   const relativeFile = requiredString(file.relativeFile, `${label}.relativeFile`, issues);
-  if (relativeFile && !safeSourcePath(relativeFile)) {
-    issues.push(`${label}.relativeFile must be a safe source-relative path`);
-  }
+  // A source-relative path that cannot leave the measured worktree or name a hidden file there.
+  const unsafe =
+    isAbsolute(relativeFile) ||
+    relativeFile.includes("\\") ||
+    relativeFile.includes("..") ||
+    relativeFile.startsWith(".");
+  if (relativeFile && unsafe) issues.push(`${label}.relativeFile must be a safe source-relative path`);
   const fileHash = requiredString(file.sha256, `${label}.sha256`, issues, SHA256);
   const declaredIds = new Set();
   requiredArray(file.ids, `${label}.ids`, issues).forEach((id, idIndex) => {
@@ -730,7 +679,14 @@ export function validateArchiveDirectory(archivePath) {
   const review = readArchive(archiveDir, issues);
   const reviewRecord = review === null ? null : requiredRecord(review, REVIEW, issues);
   if (!reviewRecord) throw new ArchiveValidationError(issues);
-  if (reviewRecord.schema !== ARCHIVE_SCHEMA) issues.push(`${REVIEW} schema must be ${ARCHIVE_SCHEMA}`);
+  const refused = REFUSED_SCHEMAS.get(reviewRecord.schema);
+  if (refused !== undefined) {
+    issues.push(
+      `${REVIEW} schema ${reviewRecord.schema} is ${refused} and is refused; rewrite it as ${ARCHIVE_SCHEMA}`,
+    );
+  } else if (reviewRecord.schema !== ARCHIVE_SCHEMA) {
+    issues.push(`${REVIEW} schema must be ${ARCHIVE_SCHEMA}`);
+  }
   const identityRow = identity(reviewRecord, issues);
   const stage = lifecycle(reviewRecord, issues);
   procedureIdentity(reviewRecord, identityRow, issues);

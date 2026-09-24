@@ -17,6 +17,7 @@ import { SAFEGUARD_STDERR_PREFIX, parseSafeguardLog, safeguardLogFile } from "#s
 import {
   ADJUDICATED_ROUTES,
   ANCHOR,
+  ARCHIVE_SCHEMA,
   DIGEST,
   headingSlug,
   LUNA,
@@ -37,14 +38,16 @@ import {
 /** Effect evidence per prediction status, in the states `validate-archive.mjs` accepts. */
 const EFFECT_STATES = { sufficed: "observed", refuted: "not-observed", partial: "partial" };
 const LANE_STATES = { completed: "complete", failed: "failed", "not-launched": "inactive" };
+/** The primary's verdicts file. A file of another schema is refused, never read around. */
+const VERDICTS_SCHEMA = "wri-verdicts/v1";
 
 const readJson = (path) => (existsSync(path) ? readJsonFile(path) : null);
 /** The verdicts template: every state starts inconclusive so validation fails until the primary decides. */
 function verdictsTemplate(runId, laneNames) {
   const angles = {};
   for (const name of laneNames) {
-    if (/^angle_\d{2}$/.test(name)) {
-      angles[Number(name.slice(6))] = {
+    if (/^lane_\d{2}$/.test(name)) {
+      angles[Number(name.slice(5))] = {
         state: "inconclusive",
         reason: "lane report not yet adjudicated",
         anchor: "#findings",
@@ -52,21 +55,12 @@ function verdictsTemplate(runId, laneNames) {
     }
   }
   return {
-    schema: "wri-verdicts/v1",
+    schema: VERDICTS_SCHEMA,
     runId,
     identity: { epoch: null, taskSet: null, bundle: null },
     deterministicRows: Object.fromEntries(DETERMINISTIC_ROWS.map((id) => [id, "inconclusive"])),
     digestVerdicts: Object.fromEntries(DIGEST_VERDICTS.map((id) => [id, "inconclusive"])),
     angles,
-    session30: {
-      applicability: "inconclusive",
-      // Trees before 2026-09-21 name climb-history.ts, readClimbBatteries and climbLedgerRows.
-      sourceFile: "src/run/climb-readout.ts",
-      producerSymbol: "readClimbReadout",
-      consumerSymbol: "climbReadout",
-      vocabulary: "unobservable",
-      difficultyDecisionCount: 0,
-    },
     extraSessions: [],
     predictions: [],
     safeguards: { stderrLog: null, stderrOnlyIds: [], reconciliation: null, independentReviews: {} },
@@ -116,15 +110,13 @@ function laneRows(inputs) {
   return inputs.tasks.map((task) => {
     const result = results.get(task.name) ?? null;
     const reportPath = join(inputs.outputDir, `${task.name}.md`);
-    const angles = (/^assignedAngles:\s*(.+)$/m.exec(task.task)?.[1] ?? "").split(",").flatMap((value) => {
+    const angles = (/^assignedLanes:\s*(.+)$/m.exec(task.task)?.[1] ?? "").split(",").flatMap((value) => {
       const trimmed = value.trim();
       return trimmed === "" ? [] : [trimmed];
     });
-    const diagnosticInputs = /^assignedDiagnosticInputs:\s*(.+)$/m.exec(task.task)?.[1]?.trim() ?? "";
     return {
       name: task.name,
       angles,
-      diagnosticInputs,
       mode: task.admission?.mode ?? "targeted",
       status: result?.status ?? "not-launched",
       failureKind: result?.failureKind ?? null,
@@ -148,7 +140,7 @@ function collectionTable(lanes, inputs) {
   ];
   for (const lane of lanes) {
     lines.push(
-      `| ${lane.name} | ${lane.angles.join(", ") || lane.diagnosticInputs || "-"} | ${lane.status}${lane.failureKind ? ` (${lane.failureKind})` : ""} | ${lane.threadId ?? "-"} | ${lane.durationMs === null ? "-" : Math.round(lane.durationMs / 1000)} | ${lane.reportSha256 ?? "-"} |`,
+      `| ${lane.name} | ${lane.angles.join(", ") || "-"} | ${lane.status}${lane.failureKind ? ` (${lane.failureKind})` : ""} | ${lane.threadId ?? "-"} | ${lane.durationMs === null ? "-" : Math.round(lane.durationMs / 1000)} | ${lane.reportSha256 ?? "-"} |`,
     );
   }
   return lines;
@@ -338,44 +330,21 @@ function angleRows(lanes, verdicts, ptr, shortIdentity) {
   });
 }
 
-function sessionRows(lanes, inputs, verdicts, ptr, identity) {
-  const s30 = verdicts.session30;
-  const witnessPath = join(inputs.repo, s30.sourceFile);
-  const witnessDigest = existsSync(witnessPath) ? sha256(readFileSync(witnessPath, "utf8")) : "0".repeat(64);
-  const rows = [
-    {
-      id: "session_30",
-      state: s30.applicability === "applicable" ? "complete" : "inconclusive",
-      applicability: s30.applicability,
-      contract: "CL-F",
-      readinessWitness: {
-        sourceFile: s30.sourceFile,
-        producerSymbol: s30.producerSymbol,
-        consumerSymbol: s30.consumerSymbol,
-        sourceRevision: identity.sourceRevision,
-        sourceDigest: witnessDigest,
-        vocabulary: s30.vocabulary,
-        difficultyDecisionCount: s30.difficultyDecisionCount,
-        evidencePointers: [ptr("#cl-f-reconciliation")],
-      },
-      evidencePointers: [ptr("#cl-f-reconciliation")],
-    },
-  ];
-  for (const lane of lanes) {
-    rows.push({
-      id: lane.name,
-      state: LANE_STATES[lane.status] ?? "partial",
-      evidencePointers: [ptr("#collection", LUNA), ptr(`#${lane.name}`, LUNA)],
-      model: inputs.launch?.model ?? null,
-      effort: inputs.launch?.reasoningEffort ?? null,
-      transport: "luna-sessions",
-      threadId: lane.threadId,
-      reportSha256: lane.reportSha256,
-      promptSha256: lane.promptSha256,
-      assignedAngles: lane.angles,
-      assignedDiagnosticInputs: lane.diagnosticInputs,
-    });
-  }
+/** One session row per launched lane, keyed by the lane's session name, plus any extra session
+ *  the primary recorded in verdicts.json. */
+function sessionRows(lanes, inputs, verdicts, ptr) {
+  const rows = lanes.map((lane) => ({
+    id: lane.name,
+    state: LANE_STATES[lane.status] ?? "partial",
+    evidencePointers: [ptr("#collection", LUNA), ptr(`#${lane.name}`, LUNA)],
+    model: inputs.launch?.model ?? null,
+    effort: inputs.launch?.reasoningEffort ?? null,
+    transport: "luna-sessions",
+    threadId: lane.threadId,
+    reportSha256: lane.reportSha256,
+    promptSha256: lane.promptSha256,
+    assignedLanes: lane.angles,
+  }));
   for (const extra of verdicts.extraSessions ?? []) {
     rows.push({ ...extra, evidencePointers: [ptr(extra.anchor ?? ANCHOR.reviews)] });
   }
@@ -651,7 +620,7 @@ function buildReview(inputs, verdicts, lanes, archiveDir) {
   const safeguards = safeguardRows(inputs, verdicts, ptr, identity, shortIdentity);
   const handoff = verdicts.learningHandoff ?? {};
   return {
-    schema: "wri-archive/v1",
+    schema: ARCHIVE_SCHEMA,
     authority: "advisory",
     status: "investigation-complete",
     identity,
@@ -688,7 +657,7 @@ function buildReview(inputs, verdicts, lanes, archiveDir) {
       evidencePointers: [ptr("#deterministic-rows"), ptr(digestAnchor, DIGEST)],
     })),
     angleStates: angleRows(lanes, verdicts, ptr, shortIdentity),
-    sessionStates: sessionRows(lanes, inputs, verdicts, ptr, identity),
+    sessionStates: sessionRows(lanes, inputs, verdicts, ptr),
     predictions: predictionRows(
       verdicts,
       ptr,
@@ -763,6 +732,9 @@ export function scaffoldArchive(reviewDir) {
     );
   }
   const verdicts = readJson(verdictsPath);
+  if (verdicts.schema !== VERDICTS_SCHEMA) {
+    throw new Error(`${verdictsPath} is not a ${VERDICTS_SCHEMA} file; trash it and run finish again`);
+  }
   writeFileSync(join(archiveDir, LUNA), lunaSyntheses(lanes, inputs));
   const digestPath = join(inputs.snapshotDir, DIGEST);
   // The digest prints padded tables; the archive copy drops trailing spaces so the documentation diff check accepts it.

@@ -70,7 +70,7 @@ enter capability rates.
 ## 2. Bind the five main syntheses
 
 For exactly the five selected rows, resolve `notes/runs/<runName>/review.json` and
-`main_synthesis.md` from that local `notes/runs/`. Bind only a `wri-archive/v1` packet whose run ID and full
+`main_synthesis.md` from that local `notes/runs/`. Bind only a `wri-archive/v2` packet whose run ID and full
 40-character source revision match the run; any other packet is `synthesis-missing`. Hash the
 synthesis bytes. Do not silently replace a missing finalist with rank six.
 

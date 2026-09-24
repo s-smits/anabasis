@@ -192,7 +192,7 @@ describe("observation stream readers", () => {
 });
 
 describe("CLI launch guidance", () => {
-  it("emits zsh-safe coverage guidance with the frozen environment keys", () => {
+  it("emits coverage guidance that bash and zsh both parse, with the frozen environment keys", () => {
     const runDir = mkdtempSync(join(tmpdir(), "ana run-triage-"));
     scratch.push(runDir);
     mkdirSync(join(runDir, "campaigns", "demo"), { recursive: true });
@@ -209,8 +209,11 @@ describe("CLI launch guidance", () => {
     expect(map).toBeDefined();
     if (map === undefined) return;
     const command = map.slice(1, -1);
-    const syntax = spawnSync("/bin/zsh", ["-n", "-c", `: ${command}`]);
-    expect(syntax.status).toBe(0);
+    // The guidance is quoted for zsh, which the Darwin launcher runs; Linux launches through bash.
+    // Double-quoted escapes read the same in both, so bash is checked everywhere and zsh where it ships.
+    for (const shell of process.platform === "darwin" ? ["bash", "zsh"] : ["bash"]) {
+      expect([shell, spawnSync(shell, ["-n", "-c", `: ${command}`]).status]).toEqual([shell, 0]);
+    }
     expect(command).not.toContain("<dir>");
 
     const assignments = [...command.matchAll(/--env "([^"]+)"/g)].map((match) => match[1]);

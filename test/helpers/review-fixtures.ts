@@ -24,6 +24,16 @@ import { double } from "./doubles.ts";
 export const BEAMS = adviceIssueId("verified-fail", "beams", null);
 export const JOINTS = adviceIssueId("unaccepted", "joints", null);
 
+/** The condition every fixture battery measured under: one family's public inputs, the scoring
+ *  program and the Built model and resource condition. An issue ages towards fixed only across
+ *  batteries that share all three, so a test that means a different condition says which part
+ *  moved. */
+export const MEASURED_UNDER = {
+  publicInputs: "1".repeat(64),
+  scoringHash: "2".repeat(64),
+  measuredCondition: "3".repeat(64),
+} as const;
+
 /** A statement a reviewed artifact makes, used where a test needs prose a judge could cite. */
 export const DEMO =
   "a layout split into two support-anchored components passes the m + r = 2j count and the singularity test";
@@ -68,6 +78,8 @@ export function issue(overrides: Partial<AdviceIssue> = {}): AdviceIssue {
     absentBatteries: 0,
     returned: false,
     retired: false,
+    observedUnder: { ...MEASURED_UNDER },
+    unmeasured: [],
     diagnosis: null,
     dispute: null,
     ...overrides,
@@ -79,8 +91,20 @@ export function advicePacket(issues: AdviceIssue[]): RebuildAdvicePacket {
     schema: REBUILD_ADVICE_SCHEMA,
     slug: "truss",
     runId: "r2",
+    backendPin: "codex:built-model:high",
     analysisDigest: "d".repeat(64),
-    families: [{ family: "beams", verified: 5, passed: 3, unaccepted: 0, nonResults: 0 }],
+    scoringHash: MEASURED_UNDER.scoringHash,
+    measuredCondition: MEASURED_UNDER.measuredCondition,
+    families: [
+      {
+        family: "beams",
+        verified: 5,
+        passed: 3,
+        unaccepted: 0,
+        nonResults: 0,
+        publicInputs: MEASURED_UNDER.publicInputs,
+      },
+    ],
     blockingByCheck: {},
     applicableByCheck: {},
     issues,

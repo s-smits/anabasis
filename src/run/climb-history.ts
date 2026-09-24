@@ -311,6 +311,14 @@ export function readClimbBatteries(
   return { history, admitted: history.filter((row) => row.excludedReason === null), excluded };
 }
 
+/** The one retained directory holding `runId`, or null when none or several do. */
+export function retainedRunDir(domainDir: string, runId: string): string | null {
+  const matches = productHistoryDirs(domainDir)
+    .map((dir) => join(dir, "runs", runId))
+    .filter(existsSync);
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
 export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
   if (excluded.length === 0) return null;
   const byReason = new Map<string, string[]>();
@@ -336,11 +344,8 @@ export function publicTaskProjection(
   if (caseIds.length === 0) return { refusal: "no verified case identifiers" };
   const ids = caseIds.filter((id): id is string => id !== null);
   if (ids.length !== caseIds.length) return { refusal: "a verified case states no task identifier" };
-  const matches = productHistoryDirs(domainDir)
-    .map((dir) => join(dir, "runs", runId))
-    .filter(existsSync);
-  const runDir = matches[0];
-  if (matches.length !== 1 || runDir === undefined) {
+  const runDir = retainedRunDir(domainDir, runId);
+  if (runDir === null) {
     return { refusal: "the admitted battery has no unique retained run directory" };
   }
   const violations = verifyRunDir(runDir);
@@ -349,6 +354,16 @@ export function publicTaskProjection(
   if (extra.length > 0) {
     return { refusal: `${extra.length} case projection(s) beyond the verified case rows — refused as extra` };
   }
+  return recordedPublicTasks(runDir, ids, violations);
+}
+
+/** The public tasks one run directory recorded for `ids`, each read through the evidence log and
+ *  bound to its case identity, and refused whole when any one cannot be vouched for. */
+export function recordedPublicTasks(
+  runDir: string,
+  ids: readonly string[],
+  violations = verifyRunDir(runDir),
+): { tasks: unknown[] } | { refusal: string } {
   const tasks: unknown[] = [];
   for (const id of ids) {
     const recorded = recordedEvidence(runDir, `cases/${id}/public-task.json`, violations);

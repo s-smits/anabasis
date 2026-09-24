@@ -43,6 +43,7 @@ import {
   readLatestRebuildAdvice,
   rebuildAdvicePath,
 } from "../author/rebuild-advice.ts";
+import { batteryCondition } from "../author/issue-condition.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
@@ -111,6 +112,7 @@ export async function analyseStep(
   // The register as it stands before this battery: the epoch reviewer is offered the issues that
   // are still standing so it can dispute one, and the derived packet below re-reads the same file.
   const standing = readLatestRebuildAdvice(repoRoot, slug);
+  const condition = batteryCondition(analysis, measuredDir);
   // Per-run admission records the analysis. The latest admission for the next build is
   // published by the run driver after product selection: a held candidate's
   // packet stays recorded here and never seeds the next build against the tree it failed to
@@ -130,9 +132,12 @@ export async function analyseStep(
       ...reviewFindings,
     ]);
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });
-    const derived = attachIssueReadings(deriveRebuildAdvice(analysis, judges, admission, standing), {
-      disputes,
-    });
+    const derived = attachIssueReadings(
+      deriveRebuildAdvice(analysis, judges, admission, standing, condition),
+      {
+        disputes,
+      },
+    );
     writeCompleted(rebuildAdvicePath(repoRoot, slug, runId), derived);
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), derived);
     return { admission, derived };

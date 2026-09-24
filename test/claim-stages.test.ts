@@ -2,56 +2,53 @@
  * Claim stages: adoption starts the evidence at build-admissible, stages advance one at a time and
  * never regress, activation is terminal, and a tree recording none states nothing and writes nothing.
  */
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { afterAll, expect, it } from "bun:test";
+import { existsSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, expect, it } from "bun:test";
 import {
+  CLAIM_STAGES_FILE,
   type ClaimStage,
   advanceClaimStage,
   claimStage,
   readClaimStages,
   recordMeasurement,
 } from "../src/run/claim-stages.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
-const scratch: string[] = [];
-afterEach(() => {
-  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
-function adoptDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "ana-claim-stages-"));
-  scratch.push(dir);
-  return dir;
-}
+const adoptDir = (): string => scratchDir("ana-claim-stages-");
 
 function record(dir: string, ...recorded: ClaimStage[]): void {
   writeFileSync(
-    join(dir, "claim-stages.json"),
+    join(dir, CLAIM_STAGES_FILE),
     JSON.stringify({ slug: "x", steps: recorded.map((stage) => ({ stage, at: "t", evidence: "e" })) }),
   );
 }
 
 it("a tree recording no claim stages states nothing and admits only build-admissible", () => {
   const dir = adoptDir();
-  expect(readClaimStages(dir)).toBeNull();
   expect(claimStage(dir)).toBeNull();
   expect(() => advanceClaimStage(dir, "measured", "r1")).toThrow(
     /only admissible next claim stage is "build-admissible"/,
   );
-  expect(
-    advanceClaimStage(dir, "build-admissible", "conformance.json", "2026-07-26T00:00:00Z").steps,
-  ).toEqual([{ stage: "build-admissible", at: "2026-07-26T00:00:00Z", evidence: "conformance.json" }]);
+  expect(advanceClaimStage(dir, "build-admissible", "conformance.json").steps).toEqual([
+    { stage: "build-admissible", at: expect.any(String), evidence: "conformance.json" },
+  ]);
 });
 
-it("refuses evidence with no steps and evidence whose step is not the stage its position names", () => {
+it.each<[string, ClaimStage[], RegExp]>([
+  ["no steps", [], /not claim-stage evidence/],
+  ["a first step that is not build-admissible", ["ready"], /one at a time from build-admissible/],
+  [
+    "a step that repeats its predecessor",
+    ["build-admissible", "measured", "measured"],
+    /step 2 must be \{stage: "claim-created"/,
+  ],
+])("refuses recorded evidence with %s", (_, stages, message) => {
   const dir = adoptDir();
-  record(dir);
-  expect(() => claimStage(dir)).toThrow(/not claim-stage evidence/);
-  record(dir, "ready");
-  expect(() => claimStage(dir)).toThrow(/one at a time from build-admissible/);
-  record(dir, "build-admissible", "measured", "measured");
-  expect(() => claimStage(dir)).toThrow(/step 2 must be \{stage: "claim-created"/);
+  record(dir, ...stages);
+  expect(() => claimStage(dir)).toThrow(message);
 });
 
 it("advances one stage at a time: skipping, regressing and re-activating all refuse", () => {
@@ -69,35 +66,28 @@ it("advances one stage at a time: skipping, regressing and re-activating all ref
   expect(() => advanceClaimStage(dir, "activated", "twice")).toThrow(/activated is terminal/);
 });
 
-it("folds one measurement into the stages it earned and stops at the first it did not", () => {
+it("folds a measurement into the stages it earned, stops at the first it did not, and never regresses", () => {
   const dir = adoptDir();
   advanceClaimStage(dir, "build-admissible", "adopt");
-  expect(recordMeasurement(dir, { runId: "r1", measured: true, claimCreated: false, ready: false })).toBe(
+  expect(recordMeasurement(dir, { runId: "r1", measured: true, claimCreated: false, ready: true })).toBe(
     "measured",
   );
   expect(recordMeasurement(dir, { runId: "r2", measured: true, claimCreated: true, ready: true })).toBe(
     "ready",
   );
-  expect(readClaimStages(dir)?.steps).toEqual([
-    { stage: "build-admissible", at: expect.any(String), evidence: "adopt" },
-    { stage: "measured", at: expect.any(String), evidence: "r1" },
-    { stage: "claim-created", at: expect.any(String), evidence: "r2" },
-    { stage: "ready", at: expect.any(String), evidence: "r2" },
+  expect(recordMeasurement(dir, { runId: "r3", measured: false, claimCreated: false, ready: false })).toBe(
+    "ready",
+  );
+  expect(readClaimStages(dir)?.steps.map((step) => [step.stage, step.evidence])).toEqual([
+    ["build-admissible", "adopt"],
+    ["measured", "r1"],
+    ["claim-created", "r2"],
+    ["ready", "r2"],
   ]);
 });
 
-it("never regresses a measured tree and records nothing for a tree without claim stages", () => {
+it("records nothing for a tree without claim stages", () => {
   const dir = adoptDir();
-  record(dir, "build-admissible", "measured", "claim-created", "ready");
-  expect(recordMeasurement(dir, { runId: "r9", measured: false, claimCreated: false, ready: false })).toBe(
-    "ready",
-  );
-  expect(recordMeasurement(dir, { runId: "r9", measured: true, claimCreated: true, ready: true })).toBe(
-    "ready",
-  );
-  const empty = adoptDir();
-  expect(
-    recordMeasurement(empty, { runId: "r1", measured: true, claimCreated: true, ready: true }),
-  ).toBeNull();
-  expect(existsSync(join(empty, "claim-stages.json"))).toBe(false);
+  expect(recordMeasurement(dir, { runId: "r1", measured: true, claimCreated: true, ready: true })).toBeNull();
+  expect(existsSync(join(dir, CLAIM_STAGES_FILE))).toBe(false);
 });

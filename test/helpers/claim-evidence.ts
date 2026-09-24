@@ -11,7 +11,12 @@
  */
 import type { Claim, NonClaimable } from "../../src/claim/claim.ts";
 import { Claim as ClaimClass } from "../../src/claim/claim.ts";
-import type { ClaimCreationInput, ClaimEvidence, ScoredCase } from "../../src/claim/claim-evidence.ts";
+import type {
+  ClaimClause,
+  ClaimCreationInput,
+  ClaimEvidence,
+  ScoredCase,
+} from "../../src/claim/claim-evidence.ts";
 import type {
   RuntimeIdentityCaseEvidence,
   RuntimeModelIdentity,
@@ -85,9 +90,34 @@ export function discriminatedChecks(...checkIds: string[]): ClaimEvidence["discr
   return { claimable: true, findings: [], attributedCheckIds: Object.fromEntries(attributed) };
 }
 
+/** A run that reached its terminal event with `verified` scored cases beside the given non-results. */
+export function terminal(
+  verified: number,
+  nonResults: Record<string, number> = {},
+  reason = "complete",
+): ClaimEvidence["runStatus"] {
+  return { state: "terminal", reason, verified, nonResults };
+}
+
+/** Firing counts per check: how often it fired and how many verified cases it applied to, out of
+ *  `verified` artifacts that reached the verifier. */
+export function firing(
+  firedByCheck: Record<string, number>,
+  applicableByCheck: Record<string, number>,
+  verified = 4,
+): ClaimEvidence["truthCheckFiring"] {
+  return {
+    firedByCheck,
+    executedByCheck: {},
+    blockingByCheck: {},
+    applicableByCheck,
+    verifierVerifiedCount: verified,
+  };
+}
+
 export function greenEvidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvidence {
   return {
-    runStatus: { state: "terminal", reason: "complete", verified: 4, nonResults: {} },
+    runStatus: terminal(4),
     staleness: { stale: false, hashes: ["h1"] },
     discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 1 } },
     backendPin: "codex/gpt-5.5",
@@ -102,13 +132,7 @@ export function greenEvidence(overrides: Partial<ClaimEvidence> = {}): ClaimEvid
     },
     grounding: { declared: [AUTHORED_C1], execution: NO_EXTERNAL_EXECUTION },
     // c1 fired on all four verified cases, which keeps the never-fired clause inert on the green path.
-    truthCheckFiring: {
-      firedByCheck: { c1: 4 },
-      executedByCheck: {},
-      blockingByCheck: {},
-      applicableByCheck: { c1: 4 },
-      verifierVerifiedCount: 4,
-    },
+    truthCheckFiring: firing({ c1: 4 }, { c1: 4 }),
     judge: { judge: "off" },
     ...overrides,
   };
@@ -127,9 +151,20 @@ export function clauseNames(result: Claim | NonClaimable): string[] {
   return result.ok ? [] : result.clauses.map((c) => c.clause);
 }
 
+/** One named clause of a refusal, or undefined when the result carries no such clause. */
+export function clauseOf(result: Claim | NonClaimable, name: string): ClaimClause | undefined {
+  return result.ok ? undefined : result.clauses.find((c) => c.clause === name);
+}
+
 /** One clause's recorded detail, or "" when the result carries no such clause. */
 export function clauseDetail(result: Claim | NonClaimable, name: string): string {
-  return result.ok ? "" : (result.clauses.find((c) => c.clause === name)?.detail ?? "");
+  return clauseOf(result, name)?.detail ?? "";
+}
+
+/** The statement of a written claim; a refusal fails the test with its clause names. */
+export function statementOf(result: Claim | NonClaimable): Claim["statement"] {
+  if (!result.ok) throw new Error(`expected a written claim, got [${clauseNames(result).join(", ")}]`);
+  return result.statement;
 }
 
 /** A complete census for GREEN_SCORE under a Claude pin: one completed turn per case, a distinct

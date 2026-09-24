@@ -9,7 +9,7 @@ import { createSolvabilityStageCache } from "../src/truth/solvability-stages.ts"
 import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
 import type { VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
-import type { VerifierExecutionEvidence, VerifierHostHandle } from "../src/verify/verifier-port.ts";
+import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
 import { double, required } from "./helpers/doubles.ts";
 import {
   GOOD_VERIFIER,
@@ -24,6 +24,7 @@ import {
   testLifetime,
 } from "./helpers/solvability-specimen.ts";
 import { familyFixture } from "./helpers/solvability-families.ts";
+import { overrideHost } from "./helpers/host-override.ts";
 
 /** Counts reference-solve children through the protected lifetime every child must lease. */
 function countingLifetime() {
@@ -146,13 +147,12 @@ describe("remembered F2 stages", () => {
           outcome: "sandbox",
         }),
       );
-    const failing: VerifierHostHandle = {
-      ...countingHost(evaluateLog()),
+    const failing = overrideHost({
       openSubject: (subject) => {
         if (subject.subjectId.startsWith("family:")) throw outage(subject.subjectId);
         return createVerifierHost().openSubject(subject);
       },
-    };
+    });
     await expect(
       probe({ verifierLifetime: counted.lifetime, createVerifier: () => failing })(fixture, stages),
     ).rejects.toBeInstanceOf(VerifierExecutionNonResult);

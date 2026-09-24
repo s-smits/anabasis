@@ -1,7 +1,12 @@
 /**
  * The tools an external check is allowed to name: a declared tool that resolves nowhere, one whose
  * digest matches the candidate's own source, and one handed its program as an argument are each
- * refused. A check that did name a real installed tool must have run it for its witness to count.
+ * refused by the witness. A check that did name a real installed tool must have run it for its
+ * witness to count, and a host outage under it stays the host's.
+ *
+ * Which owner each refusal reaches is the census gate's projection, pinned once in
+ * `solvability-gate.test.ts`; the one gate call kept here proves the refusal that skips F2 reaches
+ * the author alone.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch } from "./helpers/scratch.ts";
@@ -44,7 +49,7 @@ describe("the tools an external check is allowed to name", () => {
   const externalSpec = (tool: string, verifier = NO_ENGINE_VERIFIER): SpecimenSpec => ({ verifier, tool });
 
   it.concurrent("names a declared tool that resolves nowhere and runs no witness against it", async () => {
-    // 2026-08-23: 25 witnesses charged to the product for a verifier that never started.
+    // Charging the product a witness per task for a verifier that never started says nothing.
     const fixture = specimen(externalSpec("ana-no-such-tool"));
     const result = await witness(fixture);
 
@@ -52,10 +57,10 @@ describe("the tools an external check is allowed to name", () => {
     expect(result.findings[0]).toMatchObject({ path: "correctness-model/brief.json" });
     expect(result.findings[0]?.detail).toContain("ana-no-such-tool");
     expect(result.evidence).toBeNull();
-    const feedback = await gate(fixture, result);
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
-    expect(feedback[0]?.findings?.map((finding) => finding.code)).toEqual(["SOLVABILITY_TOOL_MISSING"]);
+    // With no evidence the gate reports the refusal alone, not a second census failure beside it.
+    expect(await gate(fixture, result)).toMatchObject([
+      { owner: "correctness-model", severity: "blocking", findings: [{ code: "SOLVABILITY_TOOL_MISSING" }] },
+    ]);
   });
 
   it.concurrent("refuses a self-authored tool before constructing a verifier or running F2 witnesses", async () => {
@@ -75,10 +80,6 @@ describe("the tools an external check is allowed to name", () => {
     expect(verifierCreations).toBe(0);
     expect(log.calls).toBe(0);
     expect(result.evidence).toBeNull();
-    const feedback = await gate(fixture, result);
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "brief", severity: "blocking" });
-    expect(feedback[0]?.findings?.map((finding) => finding.code)).toEqual(["SOLVABILITY_TOOL_SELF_AUTHORED"]);
   });
 
   it.concurrent("refuses an external check that hands its program to the interpreter as an argument, after the witnesses ran", async () => {
@@ -105,9 +106,6 @@ export const checks = { answer: async ({ artifact, publicTask }, runtime) => {
     expect(codes(result)).toEqual(["solvability-tool-program-argument"]);
     expect(result.findings[0]?.detail).toContain("answer (interp, ");
     expect(result.evidence?.toolRuns).toBe(BASE_TASKS.length);
-    expect(
-      (await gate(fixture, result)).some((row) => row.owner === "brief" && row.severity === "blocking"),
-    ).toBe(true);
   });
 
   it.concurrent("runs a declared authored tool through the real F2 input and verifier path", async () => {

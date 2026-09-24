@@ -38,9 +38,6 @@ function starterClosingWith(termination: GeneratedToolWorkerEvidence["terminatio
   });
 }
 
-// ---------------------------------------------------------------------------------------------
-// The specimen: one description of a whole candidate.
-
 afterAll(cleanupScratch);
 
 describe("the representation the submission path must express", () => {
@@ -61,10 +58,10 @@ describe("the representation the submission path must express", () => {
     ]);
   });
 
-  it.concurrent("holds a truth-correct reference artifact to the compiled public submission schema (run 81)", async () => {
-    // Run 81's L3 shape: the accept corpus certifies an empty object, so the compiled submission
-    // schema at $.design is an empty closed object. The reference returns a populated design that
-    // evaluates true and passes the root check, yet no solver could ever submit it.
+  it.concurrent("holds a truth-correct reference artifact to the compiled public submission schema", async () => {
+    // The accept corpus certifies an empty object, so the compiled submission schema at $.design is
+    // an empty closed object. The reference returns a populated design that evaluates true and
+    // passes the root check, yet no solver could ever submit it.
     const fixture = specimen({
       verifier: solving('return { answer: task.publicInput.expected, design: { part: "cpu" } };').replace(
         "export const checks = { answer:",
@@ -119,18 +116,30 @@ describe("the representation the submission path must express", () => {
     );
   });
 
+  const HOST_NON_RESULT = {
+    status: "non-result" as const,
+    row: { nonResultKind: "submission-path-host", failureOwner: "environment", failureKind: null },
+    finding: {
+      code: "solvability-submission-path-host-non-result",
+      owner: "environment",
+      classification: "submission-path-host",
+    },
+  };
+  // A worker wall is the host's, whatever the bytes; a worker that answered its handshake and then
+  // broke the protocol is the product's representation, whatever the host.
   it.concurrent.each([
     {
-      wall: "ready",
+      worker: "timing out before its ready handshake",
       starter: () =>
         starterThatNeverOpened({
           kind: "runtime",
           message: "generated-tool worker timed out before its ready handshake",
           deadline: true,
         }),
+      expected: HOST_NON_RESULT,
     },
     {
-      wall: "close",
+      worker: "timing out during close",
       starter: () =>
         starterClosingWith({
           status: "non-result",
@@ -138,56 +147,36 @@ describe("the representation the submission path must express", () => {
           message: "generated-tool worker did not close within 1000ms",
           deadline: true,
         }),
+      expected: HOST_NON_RESULT,
     },
-  ])("classifies a submission worker $wall timeout as an environment non-result", async ({ starter }) => {
-    // Run 51 round 2: a worker timed out at startup and another during close, while the same
-    // adopted bytes passed 25/25 before and after. Both were classified representation defects.
+    {
+      worker: "closing with pending requests after its handshake",
+      starter: () =>
+        starterClosingWith({
+          status: "non-result",
+          kind: "protocol",
+          message: "generated-tool worker closed with pending requests",
+        }),
+      expected: {
+        status: "failed" as const,
+        row: { nonResultKind: null, failureOwner: "product", failureKind: "representation-defect" },
+        finding: {
+          code: "solvability-representation-defect",
+          owner: "bh-representation",
+          classification: "generated-toolset-contract",
+        },
+      },
+    },
+  ])("classifies a submission worker $worker", async ({ starter, expected }) => {
     const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
       createSolvabilityStarter: starter(),
     });
 
-    expect(statuses(result)).toEqual(["non-result", "non-result"]);
-    expect(
-      result.evidence?.cases.every(
-        (row) =>
-          row.nonResultKind === "submission-path-host" &&
-          row.failureOwner === "environment" &&
-          row.failureKind === null,
-      ),
-    ).toBe(true);
+    expect(statuses(result)).toEqual([expected.status, expected.status]);
+    expect(result.evidence?.cases).toMatchObject([expected.row, expected.row]);
+    const { classification, ...finding } = expected.finding;
     expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: "solvability-submission-path-host-non-result",
-        owner: "environment",
-        disclosure: expect.objectContaining({ classification: "submission-path-host" }),
-      }),
-    );
-  });
-
-  it.concurrent("keeps a worker that answered its handshake and then broke the protocol a representation defect", async () => {
-    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
-      createSolvabilityStarter: starterClosingWith({
-        status: "non-result",
-        kind: "protocol",
-        message: "generated-tool worker closed with pending requests",
-      }),
-    });
-
-    expect(statuses(result)).toEqual(["failed", "failed"]);
-    expect(
-      result.evidence?.cases.every(
-        (row) =>
-          row.nonResultKind === null &&
-          row.failureKind === "representation-defect" &&
-          row.failureOwner === "product",
-      ),
-    ).toBe(true);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: "solvability-representation-defect",
-        owner: "bh-representation",
-        disclosure: expect.objectContaining({ classification: "generated-toolset-contract" }),
-      }),
+      expect.objectContaining({ ...finding, disclosure: expect.objectContaining({ classification }) }),
     );
   });
 });

@@ -16,7 +16,7 @@ import {
   summarizeJudge,
 } from "../src/truth/judge.ts";
 import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
-import { RATIONALE_MAX } from "../src/truth/judge-drivers.ts";
+import { RATIONALE_MAX, errorText } from "../src/truth/judge-drivers.ts";
 import { double, required, scriptedSession } from "./helpers/doubles.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
@@ -98,6 +98,10 @@ const subjects = (count: number, verifierVerdict = true): JudgeCensusSubject[] =
   );
 
 describe("Judge verdict schema", () => {
+  it("bounds a transport error to the diagnostic limit in bytes and marks the cut", () => {
+    expect(errorText(new Error("z".repeat(600)))).toBe(`${"z".repeat(500)} […100 bytes omitted]`);
+  });
+
   it("accepts one typed verdict through the only output method", async () => {
     let opened = 0;
     const judge = sessionJudge({

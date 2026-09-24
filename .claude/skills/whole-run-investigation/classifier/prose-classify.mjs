@@ -7,6 +7,7 @@
 // score input. Codex sessions supply reasoning summaries and messages; Claude sessions supply
 // messages only, because the SDK delivers their thinking blocks with empty text.
 //   bun prose-classify.mjs <builder-prose.jsonl | epoch-dir | campaign-dir> [--run <runId>] [--json] [--min-margin 0.5] [--batch 16] [--window 5]
+import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { env, pipeline } from "@huggingface/transformers";
 import { homedir } from "#src/meta/os.ts";
@@ -373,8 +374,8 @@ export function segmentsOf(text) {
 }
 
 /** A short, whitespace-collapsed opening of one row, for checking a label in place. */
-export const excerptOf = (text, chars = 140) =>
-  text.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().slice(0, chars);
+export const excerptOf = (text, bytes = 140) =>
+  boundText(text.replace(/\*\*/g, "").replace(/\s+/g, " "), bytes).shown;
 
 const rowKey = (row) => `${row.epoch} ${row.session} ${row.sequence}`;
 const label = (row) => row.class + (row.lowMargin ? "?" : "");

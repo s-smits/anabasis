@@ -6,6 +6,7 @@
  *
  *   bun run triage -- --run-dir /abs/run-worktree [--slug s] [--range a..b] [--coverage dir] [--out f.md]
  */
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { writeFileSync } from "../../src/meta/filesystem.ts";
 import { basename, resolve } from "../../src/meta/path.ts";
 import { type ChangedFn, type FnCount, diffIntersection, readV8Coverage } from "./coverage.ts";
@@ -81,7 +82,7 @@ function timelineSection(runDir: string): string[] {
   const rows = log.map((line, i) => {
     const prev = Date.parse(log[i - 1]?.at ?? line.at);
     const mins = ((Date.parse(line.at) - prev) / 60000).toFixed(1);
-    return `${line.at}  (+${mins}m)  ${line.text.slice(0, 150)}`;
+    return `${line.at}  (+${mins}m)  ${boundText(line.text, 150).shown}`;
   });
   return ["## Timeline (run log)", "", ...fence(rows), ""];
 }

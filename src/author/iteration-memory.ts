@@ -19,6 +19,7 @@
  * finding detail does not either: an identifier and its path are enough to say "you already
  * produced this".
  */
+import { boundText } from "../meta/bounded-text.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { ITERATION_FILE, listIterationDirs } from "../builder/campaign-iterations.ts";
@@ -39,6 +40,9 @@ const LOOKBACK = 4;
 
 /** Bound historical reminders; current blocking feedback has its own complete delivery. */
 const MAX_REFUSALS = 12;
+
+/** Bytes kept of a recorded proposal's gap and of its change, each. */
+const PROPOSAL_FIELD_BYTES = 240;
 
 /** A completed pass with its memory label: `NN` in this epoch, `epoch-<key>/NN` in an earlier one,
  *  since ordinals restart at 01 in every epoch. */
@@ -118,22 +122,17 @@ function summarise({ evidence, label }: CompletedPass): string {
     .map(([session, count]) => `${session} x${count}`);
   const retries = retried.length === 0 ? "" : ` (retried ${retried.join(", ")})`;
   const proposal = parseExperimentSubmission(evidence.experimentProposal);
-  const target =
-    proposal === null
-      ? ""
-      : `, target ${proposal.target.comparator} ${proposal.target.verifiedPasses} verified passes`;
+  if (proposal === null) return `${label} ${evidence.outcome}${where}${focus}${retries}`;
+  const target = `, target ${proposal.target.comparator} ${proposal.target.verifiedPasses} verified passes`;
   const admitted =
     evidence.experimentScope === undefined
       ? "not admitted"
       : `admitted as ${evidence.experimentScope.actual}`;
-  const proposed =
-    proposal === null
-      ? ""
-      : `; proposed ${proposal.scope} scope, gap "${clip(proposal.gap)}", change "${clip(proposal.change)}"${target}; ${admitted}`;
+  const gap = boundText(proposal.gap, PROPOSAL_FIELD_BYTES).shown;
+  const change = boundText(proposal.change, PROPOSAL_FIELD_BYTES).shown;
+  const proposed = `; proposed ${proposal.scope} scope, gap "${gap}", change "${change}"${target}; ${admitted}`;
   return `${label} ${evidence.outcome}${where}${focus}${retries}${proposed}`;
 }
-
-const clip = (text: string): string => (text.length > 240 ? `${text.slice(0, 240)}…` : text);
 
 /**
  * Distinct author-projected labels from every owner in a pass. Projection keeps unmarked

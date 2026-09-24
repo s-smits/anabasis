@@ -15,12 +15,12 @@ import { WRITER_BINDING_SENTENCE } from "../solve/published-margin.ts";
 import { type ContractFinding, controllerValidatedFinding, controllerValidatedFindings } from "./brief.ts";
 import type { ToolsSpec } from "./tools-spec.ts";
 import { GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
-/** Enough of a description to recognise which text is meant, without carrying a 4,000-character
- *  tool description into a finding the author already holds both files for. */
-function descriptionExcerpt(text: string): string {
-  return text.length <= 120 ? text : `${text.slice(0, 117)}...`;
-}
+/** Bytes of each description a finding quotes: enough to recognise which text is meant, without
+ *  carrying a 4,000-character tool description into a finding the author already holds both files
+ *  for. */
+const DESCRIPTION_EXCERPT_BYTES = 120;
 
 /**
  * The spec owns what each tool does, accepts and returns, so the finding is written against
@@ -48,7 +48,7 @@ export function toolDescriptionParityFindings(
         {
           code: "tools-description-drift",
           path: `agent/tools.ts#${declared.name}`,
-          detail: `tool "${declared.name}" serves the description "${descriptionExcerpt(authored)}" but agent/tools-spec.json declares "${descriptionExcerpt(declared.description)}"; the agent reads the served text, so it must state what the contract declares`,
+          detail: `tool "${declared.name}" serves the description "${boundText(authored, DESCRIPTION_EXCERPT_BYTES).shown}" but agent/tools-spec.json declares "${boundText(declared.description, DESCRIPTION_EXCERPT_BYTES).shown}"; the agent reads the served text, so it must state what the contract declares`,
         },
       ];
     }),

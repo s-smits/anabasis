@@ -76,9 +76,11 @@ describe("a site's id", () => {
     expect(siteId("anti-slop/no-runtime-typeof", [first])).not.toBe(siteId("ana/no-deep-nesting", [first]));
   });
 
-  it("carries an excerpt a reviewer can read, cut at a hundred characters", () => {
+  it("carries an excerpt a reviewer can read, cut at a hundred bytes", () => {
     expect(siteExcerpt([first])).toBe(first.text);
-    expect(siteExcerpt([{ path: "a", text: "x".repeat(150) }])).toHaveLength(100);
+    expect(siteExcerpt([{ path: "a", text: "x".repeat(150) }])).toBe(
+      `${"x".repeat(100)} […50 bytes omitted]`,
+    );
   });
 });
 

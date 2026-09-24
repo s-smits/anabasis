@@ -495,6 +495,18 @@ describe("a solve compiled into steps", () => {
     expect(cut.text).toContain(prefix);
   });
 
+  test("a long result preview is cut to its byte bound on a whole code point and says what it left out", () => {
+    // Each é is two UTF-8 bytes, so the 240-byte bound holds 120 of the 200.
+    const solve = compileSolve(
+      "c03",
+      "fail",
+      trace([{ tool: "bash", ok: true, result: "é".repeat(200) }], 1),
+      WALLS,
+      "none",
+    );
+    expect(solve.text).toContain(`→ ${"é".repeat(120)} […160 bytes omitted]`);
+  });
+
   test("a missing trace compiles to nothing citable", () => {
     const solve = compileSolve("c02", "unaccepted", null, WALLS, "none");
     expect(solve.refs.size).toBe(0);

@@ -31,6 +31,7 @@ import { isObject, isRecord, isString } from "../meta/json-shape.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { denyProcessExecution, type ExecWall } from "./generated-tool-exec-wall.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 const nativeWrite = runtimeProcess.stdout.write.bind(runtimeProcess.stdout);
 const nativeStdin = Bun.stdin.stream();
@@ -150,7 +151,7 @@ function nonResult(kind: "runtime" | "protocol" | "sandbox", error: string): voi
 }
 
 function errorText(cause: unknown): string {
-  return errorMessage(cause).slice(0, 800);
+  return boundText(errorMessage(cause), 800).shown;
 }
 
 function refusalCode(error: unknown): string | null {
@@ -209,12 +210,11 @@ async function networkProbe(port: number): Promise<GeneratedToolProbeOutcome> {
   } catch (error) {
     const code = refusalCode(error);
     if (code !== null) return { status: "proved", code };
-    const text = errorMessage(error);
     // A canary is listening on this port, so an ECONNREFUSED means something else consumed the
     // connection attempt rather than that the sandbox denied network access.
     return {
       status: "non-result",
-      detail: `unclassified connect failure (${text.slice(0, 200)})`,
+      detail: `unclassified connect failure (${boundText(errorMessage(error), 200).shown})`,
     };
   }
 }

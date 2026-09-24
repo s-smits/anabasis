@@ -21,6 +21,7 @@ import {
   terminateAndReapProcessGroupId,
 } from "../meta/subprocess.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 type PiChild = ReturnType<typeof spawnUnderSolveIsolation>;
 type Done = Extract<PiWire.PiBuiltChildMessage, { type: "done" }>;
@@ -170,7 +171,7 @@ function dispatchTool(
         type: "tool_result",
         id: message.id,
         ok: false,
-        error: errorMessage(error).slice(0, 800),
+        error: boundText(errorMessage(error), 800).shown,
       });
     });
 }

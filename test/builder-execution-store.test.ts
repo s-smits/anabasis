@@ -20,7 +20,7 @@ import {
   submitProjection,
 } from "../src/author/builder-execution.ts";
 import { builderExecutionEvidenceWriter } from "../src/author/builder-execution-writer.ts";
-import { MAX_PROSE_CHARS, proseSidecarPath } from "../src/author/builder-prose.ts";
+import { proseRowCap, proseSidecarPath } from "../src/author/builder-prose.ts";
 import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import type { AgentTurnEvent, AgentTurnResult } from "../src/backends/backend-types.ts";
 import { PiPromptRecord } from "../src/backends/pi-session.ts";
@@ -60,6 +60,9 @@ function campaign() {
   mkdirSync(epochDir, { recursive: true });
   return { root, epochDir };
 }
+
+/** The bound a message or reasoning row is cut to. */
+const CAP = proseRowCap("reasoning");
 
 /** One session's whole life: a fresh writer that claims its file on the first write. */
 const writeSession = (epochDir: string, evidence: BuilderExecutionEvidence) =>
@@ -144,7 +147,9 @@ describe("the prose sidecar", () => {
     const turn = (assistantText: string) =>
       recorder.turnCompleted(double<AgentTurnResult>({ status: "completed", assistantText }));
     turn("the completed-message fallback must not duplicate this turn");
-    recorder.reasoning("x".repeat(MAX_PROSE_CHARS + 10));
+    recorder.reasoning("x".repeat(CAP + 10));
+    // A cut that lands on the blank line between two paragraphs ends the row at the first one.
+    recorder.reasoning(`${"y".repeat(CAP - 1)}\n\n${"z".repeat(100)}`);
     // A transport with no completed-message event has its returned text retained once.
     turn("A transport with no message event still has a final message.");
     writeSession(epochDir, recorder.finish("in-flight"));
@@ -158,7 +163,7 @@ describe("the prose sidecar", () => {
       schema: "builder-prose-capture/v1",
       captureId: header.captureId,
       file: "builder-prose.jsonl",
-      rows: 5,
+      rows: 6,
       omitted: 0,
     });
     expect(header).toEqual({ ...record.proseCapture, executionFile: FIRST });
@@ -167,10 +172,12 @@ describe("the prose sidecar", () => {
       [2, 1, "message", false],
       [3, 1, "message", false],
       [4, 2, "reasoning", true],
-      [5, 2, "message", false],
+      [5, 2, "reasoning", true],
+      [6, 2, "message", false],
     ]);
-    expect([rows[3].chars, rows[3].text.length]).toEqual([MAX_PROSE_CHARS + 10, MAX_PROSE_CHARS]);
-    expect(rows[4].text).toBe("A transport with no message event still has a final message.");
+    expect([rows[3].chars, rows[3].text.length]).toEqual([CAP + 10, CAP]);
+    expect([rows[4].chars, rows[4].text]).toEqual([CAP + 101, "y".repeat(CAP - 1)]);
+    expect(rows[5].text).toBe("A transport with no message event still has a final message.");
     expect(rows[0].schema).toBe("builder-prose/v2");
   });
 
@@ -181,7 +188,7 @@ describe("the prose sidecar", () => {
     );
     record.cliCompaction(200_000);
     record.cliCompaction(210_000);
-    const long = `Summary: ${"s".repeat(MAX_PROSE_CHARS * 3)}`;
+    const long = `Summary: ${"s".repeat(CAP * 3)}`;
     record.cliCompactionSummary("first");
     record.cliCompactionSummary(long);
     record.cliCompactionSummary("no compaction left to own this");

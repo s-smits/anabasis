@@ -24,6 +24,7 @@
  * TypeScript is resolved from the target repo's node_modules.
  */
 import { exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { gitMaybe } from "#skills/main/git.ts";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
@@ -324,7 +325,6 @@ function audienceOf(relFile) {
 }
 
 const sha8 = (s) => sha256(s).slice(0, 8);
-const trunc = (s, n) => (s.length <= n ? s : `${s.slice(0, n)}…`);
 const oneLine = (s) => s.replace(/\s+/g, " ").trim();
 
 function sourceFiles() {
@@ -733,7 +733,7 @@ function collect() {
             audience: audienceOf(rel),
             line: line + 1,
             holder: holder?.name ?? "(unnamed)",
-            preview: trunc(oneLine(raw), 140),
+            preview: boundText(oneLine(raw), 140).shown,
           });
         }
       }
@@ -800,7 +800,7 @@ function render(surfaces, misses) {
         ? "delivered whole (verify)"
         : s.guards.length === 0
           ? "always"
-          : trunc(s.guards.map((g) => g.text).join(" · "), 60);
+          : boundText(s.guards.map((g) => g.text).join(" · "), 60).shown;
     out.push(
       `| \`${mdCell(s.name)}\` | ${mdCell(s.audience)} | ${mdCell(`${s.file}:${s.line}`)} | ${mdCell(when)} | ${s.bytes} |`,
     );

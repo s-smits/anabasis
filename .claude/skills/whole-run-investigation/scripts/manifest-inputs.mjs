@@ -1,3 +1,4 @@
+import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readFileSync, realpathSync } from "#src/meta/filesystem.ts";
 import { isBoolean, isString } from "#src/meta/json-shape.ts";
@@ -444,7 +445,7 @@ function capturedErrorHead(path) {
     lines.find((line) => /exited \d+/.test(line)) ??
     lines.at(-1) ??
     "no captured output";
-  return head.length > 240 ? `${head.slice(0, 237)}...` : head;
+  return boundText(head, 240).shown;
 }
 
 /** @param {string | null} [expectedWorktree] */

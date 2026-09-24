@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "../meta/filesystem.ts";
 import { tmpdir } from "../meta/os.ts";
 import { basename, dirname, join, relative } from "../meta/path.ts";
 import { runIsolated } from "./candidate-isolation-runtime.ts";
-import { formatSize, type truncateTail } from "./pi-coding/truncate.ts";
+import { formatSize, type truncateTail } from "../meta/truncate.ts";
 import type { BuilderIsolation } from "./tools.ts";
 
 export async function stageAndCopy(

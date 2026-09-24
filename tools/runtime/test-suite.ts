@@ -42,6 +42,7 @@
  * Around the command: one fresh temporary root, and a check that every explicitly named test file
  * exists, since Bun treats an unknown path as a filter and would silently run only its neighbours.
  */
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "../../src/meta/filesystem.ts";
 import { availableParallelism, loadavg, tmpdir } from "../../src/meta/os.ts";
 import { join, resolve } from "../../src/meta/path.ts";
@@ -345,7 +346,7 @@ async function describeTree(pid: number): Promise<number[]> {
   )
     .trimEnd()
     .split("\n")
-    .map((line) => line.slice(0, 240));
+    .map((line) => boundText(line, 240).shown);
   console.error(`idle-wall: descendants when the wall fired (pid, %cpu, command):\n${lines.join("\n")}`);
   return [...descendants];
 }

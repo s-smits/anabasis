@@ -14,6 +14,7 @@
 // Usage:
 //   REPO=/abs/worktree bun coverage-harvest.mjs /abs/out [concurrency] [timeoutSec]
 
+import { boundText } from "#src/meta/bounded-text.ts";
 import { mkdir, readdir } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
 import { exitWith, parseOrDie } from "#skills/main/cli.ts";
@@ -73,7 +74,7 @@ async function run(relFile, index) {
     ms,
     timedOut: outcome.timedOut,
     tests,
-    err: outcome.timedOut ? "" : outcome.stderr.slice(-2000),
+    err: outcome.timedOut ? "" : boundText(outcome.stderr, 2000, "tail").shown,
   };
 }
 

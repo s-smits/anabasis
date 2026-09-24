@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/fi
 import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { checkBundleArtifact } from "../src/run/bundle-entry.ts";
-import { publicTaskVerdict } from "../src/truth/verdict-binding.ts";
+import { blockingIssueSummary, publicTaskVerdict } from "../src/truth/verdict-binding.ts";
 import { writeMatchingSlug } from "./helpers/matching-fixture.ts";
 
 const roots: string[] = [];
@@ -76,4 +76,13 @@ it("projects the five public fields, sorted, and nothing the record carries besi
   );
   expect(ungraded.failedCheckIds).toEqual([]);
   expect(ungraded.nonResultKind).toBe("sandbox");
+});
+
+it("bounds each blocking message in the operator summary and marks what it left out", () => {
+  const summary = blockingIssueSummary({
+    ok: false,
+    issues: [{ checkId: "span-check", message: "y".repeat(200) }],
+    checkReceipts: [],
+  });
+  expect(summary).toBe(`[span-check] ${"y".repeat(180)} […20 bytes omitted]`);
 });

@@ -10,7 +10,7 @@ import { isBoolean, isNumber, isRecord, isString } from "#src/meta/json-shape.ts
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { campaignEpochOrder } from "#src/author/campaign-epoch.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "#src/author/builder-execution.ts";
-import { MAX_PROSE_CHARS, proseSidecarPath } from "#src/author/builder-prose.ts";
+import { proseRowCap, proseSidecarPath } from "#src/author/builder-prose.ts";
 import { CASE_RECORD_FILE, classifyCaseOutcome, readCaseRecord } from "#src/claim/case-record.ts";
 import { campaignTraceRoots, readVerifiedTraceUnder } from "#src/claim/trace-read.ts";
 import { campaignRuns, openedAt } from "#tools/runs/discover.ts";
@@ -82,7 +82,7 @@ function validateRow(row, index, label) {
   if (!validInteger(row.chars, 1) || !isString(row.text) || row.text.length === 0) {
     throw new Error(`${at}: invalid text length`);
   }
-  if (row.text !== row.text.trim() || row.text.length > MAX_PROSE_CHARS) {
+  if (row.text !== row.text.trim() || row.text.length > proseRowCap(row.kind)) {
     throw new Error(`${at}: text is untrimmed or over the capture bound`);
   }
   if (

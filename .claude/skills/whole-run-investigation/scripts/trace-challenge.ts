@@ -10,6 +10,7 @@
  * usage:
  *   bun trace-challenge.ts --campaign <absolute campaign dir> --run <runId> [--out <dir>] [--max-chars <n>]
  */
+import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
@@ -164,7 +165,7 @@ export function renderTraceRecord(
   ];
   const turns = trace.turns.map((turn) => {
     const preview = isString(turn.assistantPreview)
-      ? turn.assistantPreview.replace(/\s+/g, " ").trim().slice(0, 240)
+      ? boundText(turn.assistantPreview.replace(/\s+/g, " "), 240).shown
       : "";
     const stop = text(turn.stopReason) || "<none>";
     return `turn=${text(turn.turn)} status=${text(turn.status)} stopReason=${stop} assistantPreview=${preview || "<empty>"}`;
@@ -182,27 +183,15 @@ export function renderTraceRecord(
 
 const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
 
-function tailBytes(value: string, maxBytes: number): string {
-  if (maxBytes <= 0) return "";
-  const bytes = new TextEncoder().encode(value);
-  if (bytes.length <= maxBytes) return value;
-  let result = new TextDecoder().decode(bytes.subarray(bytes.length - maxBytes));
-  // A byte slice can start inside a UTF-8 code point; decoding then inserts a replacement character
-  // whose encoded form is longer than the requested tail. Trim that replacement until the cap is
-  // true in bytes, not just in JavaScript code units.
-  while (byteLength(result) > maxBytes) result = result.slice(1);
-  return result;
-}
-
 function clipRecord(value: string, maxBytes: number) {
   if (byteLength(value) <= maxBytes) return { text: value, clipped: false };
   const firstBreak = value.indexOf("\n");
   const header = firstBreak === -1 ? value : value.slice(0, firstBreak);
   const marker = "\n[record tail selected; earlier retained preview omitted]\n";
   const headBytes = byteLength(header + marker);
-  if (headBytes >= maxBytes) return { text: tailBytes(value, maxBytes), clipped: true };
+  if (headBytes >= maxBytes) return { text: boundText(value, maxBytes, "tail").text, clipped: true };
   return {
-    text: header + marker + tailBytes(value.slice(firstBreak + 1), maxBytes - headBytes),
+    text: header + marker + boundText(value.slice(firstBreak + 1), maxBytes - headBytes, "tail").text,
     clipped: true,
   };
 }

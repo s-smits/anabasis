@@ -9,7 +9,7 @@
  * the text.
  */
 import { asRecord, isNumber, isString } from "../meta/json-shape.ts";
-import { truncateLine } from "./pi-coding/truncate.ts";
+import { truncateLine } from "../meta/truncate.ts";
 
 /** What one solve spent, read off its trace. Minutes sum each turn's elapsed time, or the time an
  *  open turn had run when the trace was taken; cost is null when no turn reported one, because an

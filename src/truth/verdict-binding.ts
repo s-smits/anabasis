@@ -3,6 +3,7 @@
  * summary of why an accept was rejected. One owner, used by controls and measured cases alike.
  */
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 /**
  * The public reading of one graded task: what the verifier decided and which declared checks it
@@ -66,7 +67,7 @@ export function publicTaskVerdict(
 export function blockingIssueSummary(result: CorrectnessModelResult, cap = 3): string {
   const blocking = result.issues;
   if (blocking.length === 0) return "no blocking issue recorded (ok:false without one is itself a defect)";
-  const parts = blocking.slice(0, cap).map((i) => `[${i.checkId}] ${i.message.slice(0, 180)}`);
+  const parts = blocking.slice(0, cap).map((i) => `[${i.checkId}] ${boundText(i.message, 180).shown}`);
   const more = blocking.length > cap ? ` (+${blocking.length - cap} more)` : "";
   return `${parts.join("; ")}${more}`;
 }

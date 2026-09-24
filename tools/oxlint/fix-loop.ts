@@ -41,6 +41,7 @@
  *     --report=/abs/report.json --tree=/abs/worktree [--rounds=8] \
  *     -- --predicate=hasText:textOr:src/meta/text.ts
  */
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { existsSync, readFileSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { join } from "../../src/meta/path.ts";
@@ -169,7 +170,7 @@ function findingsIn(text: string, pattern: RegExp): Finding[] {
       path: found[1] ?? "",
       line: Number(found[2]),
       source: found[3] ?? "",
-      message: (found[4] ?? "").slice(0, 100),
+      message: boundText(found[4] ?? "", 100).shown,
     });
   }
   return out;
@@ -187,7 +188,9 @@ function findingsFrom(cmd: readonly string[], pattern: RegExp): Finding[] {
   const { text, failed } = runIn(cmd);
   const found = findingsIn(text, pattern);
   if (failed && found.length === 0) {
-    throw new Error(`${cmd.join(" ")} failed without naming a finding:\n${text.slice(-2000)}`);
+    throw new Error(
+      `${cmd.join(" ")} failed without naming a finding:\n${boundText(text, 2000, "tail").shown}`,
+    );
   }
   return found;
 }
@@ -203,7 +206,9 @@ function findingsFrom(cmd: readonly string[], pattern: RegExp): Finding[] {
 function sizePolicy(): Sized {
   const { text } = runIn([BUN, "tools/loc/source-policy.ts"]);
   if (!POLICY_SETTLED.test(text)) {
-    throw new Error(`source-policy failed without reaching a verdict:\n${text.slice(-2000)}`);
+    throw new Error(
+      `source-policy failed without reaching a verdict:\n${boundText(text, 2000, "tail").shown}`,
+    );
   }
   const fat = new Set<string>();
   for (const row of text.split("\n")) {
@@ -237,7 +242,9 @@ export function verdict(round: number, findings: number, policy: Sized["policy"]
 /** One step whose only correct exit is zero: the fixer itself, and the formatter it hands to. */
 function mustRun(cmd: readonly string[]): Ran {
   const ran = runIn(cmd);
-  if (ran.failed) throw new Error(`${cmd.join(" ")} exited non-zero:\n${ran.text.slice(-2000)}`);
+  if (ran.failed) {
+    throw new Error(`${cmd.join(" ")} exited non-zero:\n${boundText(ran.text, 2000, "tail").shown}`);
+  }
   return ran;
 }
 

@@ -7,7 +7,10 @@ import { runtimeProcess } from "../meta/process.ts";
 import { denyProcessExecution } from "../solve/generated-tool-exec-wall.ts";
 import type { CheckFn, CheckRuntime } from "./correctness-model-contract.ts";
 import type { ToolRunResult } from "../verify/verifier-port.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import {
+  EVALUATOR_DETAIL_MARKER_BYTES,
+  EVALUATOR_DETAIL_MAX_BYTES,
   EVALUATOR_FRAME_MAX_BYTES,
   type EvaluatorChildMessage,
   type EvaluatorParentMessage,
@@ -45,7 +48,10 @@ function fail(error?: unknown): void {
   end({
     type: "error",
     kind: "generated",
-    detail: (error instanceof Error ? engine + error.message : "child refused").slice(0, 4096),
+    detail: boundText(
+      error instanceof Error ? engine + error.message : "child refused",
+      EVALUATOR_DETAIL_MAX_BYTES - EVALUATOR_DETAIL_MARKER_BYTES,
+    ).shown,
   });
 }
 

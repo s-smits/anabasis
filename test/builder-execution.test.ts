@@ -279,7 +279,7 @@ describe("the failed-call rows", () => {
     expect(evidence.failedByName).toEqual({ commandExecution: 61 });
     expect(JSON.stringify(evidence)).not.toContain("sk-live-");
     expect(rows[0]?.request).toContain("[redacted]");
-    expect(rows[0]?.error?.length).toBe(200);
+    expect(rows[0]?.error).toBe(`${"x".repeat(200)} […3800 bytes omitted]`);
     // A transport that carried no arguments and no result text says so instead of recording "".
     expect(rows[1]).toMatchObject({ request: null, error: null });
   });

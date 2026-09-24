@@ -4,6 +4,7 @@ import { tmpdir } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
 import { attachJsonlLineReader } from "../../vendor/pi-built/jsonl.ts";
 import { hashBundle } from "../claim/bundle-hash.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { capturedStructuredClone, capturedJsonStringify, capturedJsonParse } from "../meta/json-runtime.ts";
@@ -241,7 +242,7 @@ export class WorkerClient {
     this.exited = Promise.all([this.processExited, stdoutDone, stderrDone])
       .then(([result]) => {
         if (!this.expectedClose) {
-          const detail = stderr.trim() === "" ? "" : `: ${stderr.trim().slice(0, 800)}`;
+          const detail = stderr.trim() === "" ? "" : `: ${boundText(stderr, 800).shown}`;
           this.fail(
             this.nonResult(
               exitOwner(this.handshake, result),

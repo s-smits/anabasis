@@ -19,6 +19,7 @@
 //
 // Shard across several MIRROR copies to run candidates in parallel; one mirror
 // cannot host two shards, because they would overwrite each other's faults.
+import { boundText } from "#src/meta/bounded-text.ts";
 import { mkdir, readdir, realpathSync, rm } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
 import { exitWith, parseOrDie } from "#skills/main/cli.ts";
@@ -191,7 +192,7 @@ async function runBunTests(files) {
     // A signalled child has no exit code; a run that did not finish is a run error either way.
     const outcome = classifyBunTestProcess(run.status ?? 1, output);
     if (outcome === "run-error") {
-      return { completed: false, failed, diagnostic: `${file}: ${output.trim().slice(-2_000)}` };
+      return { completed: false, failed, diagnostic: `${file}: ${boundText(output, 2_000, "tail").shown}` };
     }
     if (outcome === "failed") failed.add(file);
   }

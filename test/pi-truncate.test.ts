@@ -1,10 +1,10 @@
 // Copied verbatim from pi-mono packages/agent/test/harness/truncate.test.ts at 086c32e74 (main,
-// 2026-08-15), with only the import path repointed. src/builder/pi-coding/truncate.ts is the
+// 2026-08-15), with only the import path repointed. src/meta/truncate.ts is the
 // matching upstream file re-pinned at the same revision; before the re-pin, two of these nine
 // cases failed on trailing-newline handling that upstream fixed after the original copy was taken.
 
 import { describe, expect, it } from "bun:test";
-import { truncateHead, truncateTail } from "../src/builder/pi-coding/truncate.ts";
+import { truncateHead, truncateTail } from "../src/meta/truncate.ts";
 
 // The Built Harness's file and bash tools come live from the pinned registry package
 // @earendil-works/pi-agent-core, while this vendored copy serves the Builder's bash tail. The two

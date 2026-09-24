@@ -21,11 +21,13 @@
 import type { CaseOutcome } from "../claim/case-record.ts";
 import type { ReadCaseTrace } from "../claim/trace-read.ts";
 import { isNumber, isString, type JsonValue } from "../meta/json-shape.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
-const RESULT_CHARS = 240;
-const ARGS_CHARS = 240;
-const TURN_ERROR_CHARS = 400;
-const FINAL_TEXT_CHARS = 240;
+/** UTF-8 bytes shown of a result preview, a call's arguments, a turn error and the final text. */
+const RESULT_BYTES = 240;
+const ARGS_BYTES = 240;
+const TURN_ERROR_BYTES = 400;
+const FINAL_TEXT_BYTES = 240;
 /** A solve of at most this many steps is shown whole. */
 const WHOLE_STEPS = 16;
 const HEAD_STEPS = 4;
@@ -59,8 +61,6 @@ type Step = {
 
 type Group = { first: number; last: number; step: Step };
 
-const clip = (text: string, chars: number) => (text.length <= chars ? text : `${text.slice(0, chars)} […]`);
-
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 
 function stepOf(call: Record<string, JsonValue>): Step {
@@ -73,8 +73,10 @@ function stepOf(call: Record<string, JsonValue>): Step {
       : "";
   const turn = isNumber(call.turn) ? ` turn ${call.turn}` : "";
   const time = isNumber(call.timingMs) ? ` ${(call.timingMs / 1000).toFixed(1)}s` : "";
-  const args = isString(call.argsExcerpt) ? ` | args: ${clip(oneLine(call.argsExcerpt), ARGS_CHARS)}` : "";
-  const result = clip(oneLine(said), RESULT_CHARS) || "(no result recorded)";
+  const args = isString(call.argsExcerpt)
+    ? ` | args: ${boundText(oneLine(call.argsExcerpt), ARGS_BYTES).shown}`
+    : "";
+  const result = boundText(oneLine(said), RESULT_BYTES).shown || "(no result recorded)";
   return {
     tool,
     status,
@@ -125,7 +127,7 @@ function turnFacts(trace: ReadCaseTrace) {
     turnError:
       failed === undefined || !isString(failed.errorMessage)
         ? null
-        : `turn ${isNumber(failed.turn) ? failed.turn : "?"}: ${clip(oneLine(failed.errorMessage), TURN_ERROR_CHARS)}`,
+        : `turn ${isNumber(failed.turn) ? failed.turn : "?"}: ${boundText(oneLine(failed.errorMessage), TURN_ERROR_BYTES).shown}`,
   };
 }
 
@@ -148,7 +150,7 @@ function endLine(trace: ReadCaseTrace, walls: SolveWalls, submission: Submission
     ...reached,
     `accepted submission: ${submission === "accepted" ? "yes" : "no"}`,
     ...(facts.turnError === null ? [] : [`turn error ${facts.turnError}`]),
-    `final text: ${clip(facts.finalText, FINAL_TEXT_CHARS) || "(none recorded)"}`,
+    `final text: ${boundText(facts.finalText, FINAL_TEXT_BYTES).shown || "(none recorded)"}`,
   ];
   return { line: parts.join("; "), hit };
 }

@@ -39,6 +39,7 @@ import { isRecord } from "../meta/json-shape.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import {
   type AgentSession,
   type AgentTurnEvent,
@@ -69,9 +70,10 @@ const DEFAULT_TURN_CAP_MS = 3_600_000;
 /** How long an interrupted prompt may take to settle before the turn reports it aborted anyway. */
 const ABORT_SETTLE_MS = 2_000;
 
-/** A tool result preview: enough of an error for trace-capture's `resultExcerpt`, a line otherwise. */
-const ERROR_PREVIEW_CHARS = 2_000;
-const RESULT_PREVIEW_CHARS = 200;
+/** A tool result preview, in UTF-8 bytes: enough of an error for trace-capture's `resultExcerpt`,
+ *  a line otherwise. */
+const ERROR_PREVIEW_BYTES = 2_000;
+const RESULT_PREVIEW_BYTES = 200;
 
 /** A tool any slot may register: the Builder's file tools, a review reader's, the Judge's verdict. */
 export type PiTool = AgentTool | AgentTool<never>;
@@ -103,14 +105,16 @@ interface HostSessionInput {
  * A short, whitespace-collapsed preview of a tool result's text, for trace logging only. An
  * overlong preview keeps both ends with a marker between them, because a failing command reports
  * its error last -- "exit code 1" after pages of build output -- and a head-only slice would show
- * exactly the part before the error and nothing of the error itself.
+ * exactly the part before the error and nothing of the error itself. The head is half the bound,
+ * and the tail is the other half cut from what follows the head, so the tail's omission marker
+ * counts exactly the bytes the middle lost.
  */
-function previewText(text: string, limit: number): string {
+function previewText(text: string, maxBytes: number): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= limit) return collapsed;
-  if (limit <= 3) return collapsed.slice(0, limit);
-  const head = Math.ceil((limit - 3) / 2);
-  return `${collapsed.slice(0, head)} … ${collapsed.slice(collapsed.length - (limit - 3 - head))}`;
+  const whole = boundText(collapsed, maxBytes);
+  if (!whole.truncated) return whole.text;
+  const head = boundText(collapsed, Math.ceil(maxBytes / 2)).text;
+  return `${head} ${boundText(collapsed.slice(head.length), Math.floor(maxBytes / 2), "tail").shown}`;
 }
 
 /**
@@ -333,7 +337,7 @@ export class PiPromptRecord {
     if (event.isError) this.tally(this.failedByName, event.toolName);
     const result =
       /* SAFETY: pi emits the executed tool's own AgentToolResult on tool_execution_end; only its content is read. */ event.result as AgentToolResult<unknown>;
-    const bound = event.isError ? ERROR_PREVIEW_CHARS : RESULT_PREVIEW_CHARS;
+    const bound = event.isError ? ERROR_PREVIEW_BYTES : RESULT_PREVIEW_BYTES;
     const preview = previewText(contentText(result.content), bound);
     this.emit({
       type: "tool_ended",

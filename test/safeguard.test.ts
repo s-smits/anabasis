@@ -37,6 +37,7 @@ describe("safeguard log", () => {
     expect(lines[0]).toContain("| 5-zero-tool-battery | first line with noise");
     // Keep each detail on one bounded line so the log remains easy to search.
     expect(lines[1]?.length).toBeLessThan(600);
+    expect(lines[1]).toEndWith(`| ${"x".repeat(500)} […400 bytes omitted]`);
     expect(lines[0]).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 

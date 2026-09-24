@@ -44,6 +44,7 @@ import {
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
 import { BRIEF_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 export const EPOCH_REVIEW_SCHEMA = "epoch-review/v4";
 /** Product identity; review procedure belongs to the review request. */
@@ -665,7 +666,7 @@ export function recordFindingTool(
       }
       const issueId = byPrefix.get(parsed.disputes);
       if (issueId !== undefined && !state.disputes.some((row) => row.issueId === issueId)) {
-        state.disputes.push({ issueId, reason: parsed.claim.slice(0, 300) });
+        state.disputes.push({ issueId, reason: boundText(parsed.claim, 300).shown });
       }
       return Promise.resolve(
         readerToolText(

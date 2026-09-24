@@ -27,6 +27,7 @@ import {
   snapshotReadRootPath,
 } from "./read-root-attestation.ts";
 import { asError } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { surroundingSandbox } from "./wall-policy.ts";
 
 export const LINUX_BWRAP_ID = "linux-bwrap/v1" as const;
@@ -252,7 +253,7 @@ export function classifyBwrapRefusal(stderr: string, bwrapPath?: string): string
     .find((line) => line !== "");
   return detail === undefined
     ? "bubblewrap refused its baseline policy"
-    : `bubblewrap refused its baseline policy: ${detail.slice(0, 200)}`;
+    : `bubblewrap refused its baseline policy: ${boundText(detail, 200).shown}`;
 }
 
 /** Hash the binary and prove its namespace, once per unchanged binary; a failed canary is the

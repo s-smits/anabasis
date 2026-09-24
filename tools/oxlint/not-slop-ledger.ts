@@ -29,6 +29,7 @@
  * diffs one row per answer, and `.gitattributes` merges it by union: two branches answering two
  * sites never conflict. `bun run not-slop` writes and prunes it; nothing reads it but the code here.
  */
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { sha256 } from "../../src/meta/digest.ts";
 import anaPlugin from "./ana/index.ts";
 import antiSlopPlugin from "./anti-slop/index.ts";
@@ -45,8 +46,8 @@ export const TREE_RULE_PREFIX = "tree/";
 /** Words a reason needs before it is one: "fine" and "not slop" say nothing a reviewer can check. */
 const REASON_WORDS = 3;
 
-/** Characters of the hashed text a row carries, which is enough to recognise the site. */
-const EXCERPT_LENGTH = 100;
+/** UTF-8 bytes of the hashed text a row carries, which is enough to recognise the site. */
+const EXCERPT_BYTES = 100;
 
 const ID = /^[0-9a-f]{12}$/u;
 
@@ -111,7 +112,7 @@ export function siteExcerpt(places: readonly Place[]): string {
       .map((place) => place.text)
       .join(" "),
   );
-  return text.length > EXCERPT_LENGTH ? `${text.slice(0, EXCERPT_LENGTH - 1)}…` : text;
+  return boundText(text, EXCERPT_BYTES).shown;
 }
 
 /**

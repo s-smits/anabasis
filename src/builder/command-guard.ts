@@ -27,6 +27,7 @@ import { isRegularFile } from "../verify/exact-read-attestation.ts";
 import { delimiter, isAbsolute, join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { asRecord, isString } from "../meta/json-shape.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { DCG_RULES, acceptedSpelling } from "../solve/dcg-rules.ts";
@@ -75,7 +76,8 @@ export const BUILDER_REFUSAL_CLOSE =
 const ACTIONABLE_LINE = /^(?:BLOCKED by |Reason: |Rule: )/;
 const RULE_ID = /^Rule: (\S+)/;
 const UNKNOWN_LAYOUT_LINES = 8;
-const UNKNOWN_LAYOUT_CHARS = 1000;
+/** The UTF-8 bytes of the guard's own text a refusal repeats. */
+const UNKNOWN_LAYOUT_BYTES = 1000;
 
 /**
  * Refusals the session may override, because the wall already bounds what they could destroy
@@ -312,9 +314,9 @@ export function builderRefusal(reason: string, rules: readonly string[] = DCG_RU
     kept.length > 0 ? kept : lines.filter((line) => line.trim() !== "").slice(0, UNKNOWN_LAYOUT_LINES);
   const ruleId = kept.map((line) => RULE_ID.exec(line)?.[1] ?? null).find((id) => id !== null) ?? null;
   const accepted = ruleId === null ? null : acceptedSpelling(ruleId, rules);
-  // One character cap over whichever branch was shown: a guard may write a long line in either layout.
+  // One byte cap over whichever branch was shown: a guard may write a long line in either layout.
   return [
-    shown.join("\n").slice(0, UNKNOWN_LAYOUT_CHARS),
+    boundText(shown.join("\n"), UNKNOWN_LAYOUT_BYTES).shown,
     ...(accepted === null ? [] : [`Accepted: ${accepted}`]),
     BUILDER_REFUSAL_CLOSE,
   ].join("\n");

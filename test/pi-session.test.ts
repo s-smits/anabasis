@@ -200,6 +200,20 @@ describe("openHostSession events", () => {
       total: 1,
     });
   });
+
+  it("previews an overlong result by both ends, counting the bytes the middle lost", async () => {
+    const { events } = await turn(
+      [
+        fauxAssistantMessage(fauxToolCall("probe", { q: "x" }, { id: "c1" }), { stopReason: "toolUse" }),
+        fauxAssistantMessage("done"),
+      ],
+      [probe(async () => `start ${"a".repeat(300)}\n\n${"b".repeat(300)} exit code 1`)],
+    );
+    const ended = events.find((event) => event.type === "tool_ended");
+    expect(ended?.type === "tool_ended" ? ended.resultPreview : undefined).toBe(
+      `start ${"a".repeat(94)} […419 bytes omitted] ${"b".repeat(88)} exit code 1`,
+    );
+  });
 });
 
 describe("HostSession.dispose", () => {

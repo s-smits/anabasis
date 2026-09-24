@@ -35,7 +35,7 @@ import {
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import { type PublicSourceBroker, PublicSourceFailure, acquirePublicSource } from "./public-source.ts";
 import { readWindow } from "./read-window.ts";
-import { truncateTail } from "./pi-coding/truncate.ts";
+import { truncateTail } from "../meta/truncate.ts";
 import { cutOutputNotice } from "./tool-write.ts";
 import {
   VerifierWorkshopRequestRefusal,

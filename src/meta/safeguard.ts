@@ -24,6 +24,7 @@
 import { appendFileSync, mkdirSync, opendirSync } from "./filesystem.ts";
 import { tmpdir } from "./os.ts";
 import { join } from "./path.ts";
+import { boundText } from "./bounded-text.ts";
 
 export const SAFEGUARDS_LOG_FILE = "SAFEGUARDS_LOG.txt";
 
@@ -88,8 +89,8 @@ export interface SafeguardContext {
   readonly logDir: string;
 }
 
-/** Keep each call on one short, searchable line. */
-const DETAIL_MAX_CHARS = 500;
+/** Keep each call on one short, searchable line: at most this many UTF-8 bytes of detail. */
+const DETAIL_MAX_BYTES = 500;
 
 const TEMP_SCAN_CAP = 5000;
 const TEMP_SCRATCH_CEILING = 1000;
@@ -144,7 +145,7 @@ export function createSafeguardContext(logDir: string): SafeguardContext {
  *  arbitrary directory instead would put durable receipts where no campaign reader ever looks,
  *  which is how an observation ends up recorded and still invisible. */
 export function safeguardTriggered(name: string, detail: string, context?: SafeguardContext): void {
-  const flat = detail.replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX_CHARS);
+  const flat = boundText(detail.replace(/\s+/g, " "), DETAIL_MAX_BYTES).shown;
   const line = `${new Date().toISOString()} | ${name} | ${flat}`;
   try {
     console.error(`${SAFEGUARD_STDERR_PREFIX}${line}`);

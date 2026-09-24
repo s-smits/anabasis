@@ -251,6 +251,9 @@ describe("bubblewrap refusal classification", () => {
       "bwrap: Can't mount proc on /newroot/proc: Operation not permitted\n",
     );
     expect(reason).toContain("Can't mount proc");
+    expect(classifyBwrapRefusal(`\nbwrap: ${"y".repeat(300)}\nsecond line\n`)).toBe(
+      `bubblewrap refused its baseline policy: bwrap: ${"y".repeat(193)} […107 bytes omitted]`,
+    );
   });
 });
 

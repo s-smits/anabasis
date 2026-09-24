@@ -193,6 +193,14 @@ describe("the plan evidence", () => {
     ]);
   });
 
+  it("bounds a long quoted line in the view and marks what it left out", () => {
+    const dir = workspace(PLAN);
+    writeFileSync(join(dir, "MEMORY.md"), `# Memory\n\n## Risk\n${"r".repeat(400)}\n`);
+    expect(new PlanEvidence(dir, null).view()).toContain(
+      `MEMORY.md risk: ${"r".repeat(320)} […80 bytes omitted]\n`,
+    );
+  });
+
   it("names a refused or missing plan in the view instead of reading it", () => {
     expect(new PlanEvidence(workspace(), null).view()).toStartWith(
       "Round plan: EXPERIMENT.json is not written yet.",

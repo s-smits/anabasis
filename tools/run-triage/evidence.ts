@@ -4,6 +4,7 @@
  * the run tree: the report describes the saved run without repairing it. Counts come
  * from typed fields; free text is carried only where the public run log already showed it.
  */
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { campaignRoot } from "../../src/meta/campaign-root.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
 import { basename, join } from "../../src/meta/path.ts";
@@ -184,7 +185,7 @@ export function loopNarrative(camp: string): NarrativeRow[] {
       phase: d.phase ?? "",
       state: d.state ?? "",
       level: d.level ?? "",
-      summary: (d.summary ?? d.claim ?? "").replace(/\s+/g, " ").slice(0, 220),
+      summary: boundText((d.summary ?? d.claim ?? "").replace(/\s+/g, " "), 220).shown,
     });
   }
   return rows;

@@ -63,11 +63,13 @@ const OPERAND_FLAGS = new Set([
   "--cwd",
 ]);
 const IDLE_WALL_SECONDS = 180;
-/** Bun prints no `(pass)` line when any of these is set, as a quieter mode for agents, and
- *  `runWalled` counts a file as reported only from its result lines. Inherited from an agent's
+/** Bun prints no `(pass)` line when any of the first three is set, as a quieter mode for agents,
+ *  and `runWalled` counts a file as reported only from its result lines. Inherited from an agent's
  *  shell, every passing file read as unreported, so no clock-only, crowded-host or idle-wall rerun
- *  could run. The suite owns the output it parses, so its child never sees them. */
-const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID"]);
+ *  could run. `GITHUB_ACTIONS` does the same from the other side: Bun then heads each file with
+ *  `::group::` and reports a failure as an `::error` annotation, neither of which the parser reads.
+ *  The suite owns the output it parses, so its child never sees them. */
+const AGENT_MARKERS = new Set(["CLAUDECODE", "AGENT", "REPL_ID", "GITHUB_ACTIONS"]);
 
 const PER_TEST_WALL_MS = 60_000;
 const COMMON_FLAGS = [

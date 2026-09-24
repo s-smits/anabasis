@@ -432,11 +432,12 @@ it("excluded by the filter", () => { throw new Error("the rerun dropped the requ
     }
   }, 60_000);
 
-  it("runs a file a clock failed again when launched by an agent, which tells Bun to hide passes", async () => {
-    // Bun prints no `(pass)` line when `CLAUDECODE`, `AGENT` or `REPL_ID` is set, and the suite
-    // counts a file as reported only from its result lines. Inherited from an agent's shell, every
-    // passing file then read as unreported and the clock-only rerun never ran. The baseline strips
-    // these variables from this process, so the case sets them again for the suite it spawns.
+  it("runs a file a clock failed again when launched by an agent or CI, which change Bun's output", async () => {
+    // Bun prints no `(pass)` line when `CLAUDECODE`, `AGENT` or `REPL_ID` is set, and under
+    // `GITHUB_ACTIONS` it heads each file with `::group::` and reports a failure as an annotation.
+    // The suite counts a file as reported only from its plain result lines, so inherited from an
+    // agent's shell or a CI runner, every file read as unreported and the clock-only rerun never
+    // ran. The baseline strips these variables from this process, so the case sets them again.
     const host = scratchDir("ana-suite-parallel-");
     const fixture = join(host, "fixture"),
       marker = join(host, "first-run");
@@ -463,6 +464,7 @@ it("times out once, then passes", async () => {
         CLAUDECODE: "1",
         AGENT: "1",
         REPL_ID: "1",
+        GITHUB_ACTIONS: "true",
       },
       stdout: "ignore",
       stderr: "pipe",

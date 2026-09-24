@@ -334,7 +334,10 @@ async function runWalled(
   // outlive the kill. An interrupt reaching the suite is forwarded to the group before exiting.
   const child = Bun.spawn(command, {
     cwd: REPO_ROOT,
-    env: { ...Bun.env, ANA_TEST_TMPDIR: temporaryRoot },
+    // `AGENT=0` because Bun detects an agent session (`CLAUDECODE`, `AGENT`, `REPL_ID`) and then
+    // prints failures alone: no header and no `(pass)` line for a file that passed, so every such
+    // file reads as never reported and a clock-only failure is refused its rerun.
+    env: { ...Bun.env, ANA_TEST_TMPDIR: temporaryRoot, AGENT: "0" },
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",

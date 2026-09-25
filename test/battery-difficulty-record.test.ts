@@ -162,14 +162,12 @@ describe("the changed subset the next difficulty decision reads", () => {
       // 0 of 5 alone has Wilson interval [0, 0.434]; diluted by the unchanged 20/20 it reads 20/25.
       if (movedN === 0) {
         expect(decision).toMatchObject({
-          action: "no-difficulty-evidence",
+          placement: null,
           rationale: expect.stringContaining("the deciding sample of 0/0"),
         });
       } else {
-        expect(decision).toMatchObject({
-          action: "placed",
-          rationale: expect.stringContaining("[0.000, 0.434]"),
-        });
+        expect(decision.placement).not.toBeNull();
+        expect(decision.rationale).toContain("[0.000, 0.434]");
       }
     },
     60_000,
@@ -198,7 +196,7 @@ describe("the family tally", () => {
     // A solver that never submits hits the no-accepted-submission branch: pass false, truthOk
     // null, nothing verified. The attempt still enters the tally (climb dive F5); keeping it there
     // does not make an entirely unaccepted battery difficulty evidence, which decideDifficulty
-    // sets aside on the refusal count instead.
+    // places nowhere instead.
     const idle: Solver = async () => ({ turns: 1, completedTurns: 1, errors: [] });
     await makeVerify({
       solver: idle,

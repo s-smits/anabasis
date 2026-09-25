@@ -8,17 +8,16 @@
  * in a fifth place — they disagree, and one battery reads as a near-perfect score in one paragraph
  * and a failure in the next. The words belong to `climb-readout-frame.ts`; this module only counts.
  *
- * Three recorded shapes set the pooled rate aside, each with the public count it rests on:
+ * A battery whose every attempt was refused at submission is placed nowhere, because it would
+ * otherwise read as a battery of verified failures and can end a run as curriculum infeasibility in
+ * a single round. Once any case is verified, refused attempts stay in `n` as fails, since hard tasks
+ * may fail through refused submissions.
  *
- * - every attempt refused at submission, which otherwise reads as a battery of verified failures
- *   and can end a run as curriculum infeasibility in a single round. Once any case is verified,
- *   refused attempts stay in `n` as fails, since hard tasks may fail through refused submissions;
- * - the same failing core in both of the last two batteries of one task set, which otherwise reads
- *   as a stable pass rate while the same cases fail every time;
- * - one family significantly too easy beside another significantly too hard.
- *
- * Otherwise the battery is placed on the band, and `placeOnBand` owns every comparison. The interval
- * owns sample size, so a thin sample lands in range rather than being discarded.
+ * Every other battery is placed on the band, and `placeOnBand` owns every comparison. The interval
+ * owns sample size, so a thin sample lands in range rather than being discarded. Two shapes are
+ * stated beside the placement and never instead of it, because a battery can show either and still
+ * land in a zone: the same failing core in both of the last two batteries of one task set, and one
+ * family significantly too easy beside another significantly too hard.
  */
 import { type BandPlacement, aimCounts, bandLandmarks, placeOnBand } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";
@@ -43,23 +42,20 @@ import {
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { FRAME, fill } from "./climb-readout-frame.ts";
 
-/** Which decision was taken: `placed` carries the band placement, and the other three name a
- *  recorded shape whose pooled rate is not difficulty evidence. The zone is the placement's. */
-export type ClimbAction = "placed" | "no-difficulty-evidence" | "repeated-failure-set" | "family-conflict";
-
-type Decided = {
+export type DifficultyDecision = {
   rationale: string;
   /** Every battery this decision derives from, by content address: replayable evidence. */
   evidence: Array<{ runId: string; batterySha256: string }>;
+  /** Null when no battery is recorded, when every attempt was refused at submission, or when
+   *  `placeOnBand` could not place the deciding sample. */
+  placement: BandPlacement | null;
+  /** The attempts refused at submission, when that is why the placement is null. */
+  refused?: number;
+  /** The failing core the last two batteries of one task set share, when there is one. */
+  repeated?: { cases: number; scores: [string, string] };
+  /** A family significantly too easy beside one significantly too hard, when there are both. */
+  conflict?: { easy: string; hard: string };
 };
-
-/** `refused` is optional because two of the three `no-difficulty-evidence` branches have no count to
- *  state: no battery is recorded, or the sample cannot be placed. */
-export type DifficultyDecision =
-  | (Decided & { action: "placed"; placement: BandPlacement })
-  | (Decided & { action: "no-difficulty-evidence"; refused?: number })
-  | (Decided & { action: "repeated-failure-set"; repeated: { cases: number; scores: [string, string] } })
-  | (Decided & { action: "family-conflict"; conflict: { easy: string; hard: string } });
 
 /** The author's declared target against what its battery recorded. */
 type TargetReading = {
@@ -87,11 +83,9 @@ type ReadoutRow = {
   nonResults: number;
   /** Null when the claim was refused, like `passed`: its passes are not evidence either. */
   deciding: ReturnType<typeof decidingSample> | null;
-  /** The decision that round took, read over the admitted batteries up to it: a zone when it was
-   *  placed, otherwise the recorded shape that set its pooled rate aside. Both null when the claim
-   *  was refused. */
+  /** Where that round's decision placed it, read over the admitted batteries up to it; null when
+   *  the decision placed it nowhere or the claim was refused. */
   zone: BandPlacement["zone"] | null;
-  setAside: Exclude<ClimbAction, "placed"> | null;
   aim: [number, number] | null;
   toAim: number | null;
   wilson: [number, number] | null;
@@ -160,76 +154,58 @@ export function decideDifficulty(
   const [lo, hi] = band;
   const base = { evidence: batteries.map(({ runId, batterySha256 }) => ({ runId, batterySha256 })) };
   const latest = batteries.at(-1);
-  if (latest === undefined) {
-    return { ...base, action: "no-difficulty-evidence", rationale: FRAME.decision.none };
-  }
+  if (latest === undefined) return { ...base, placement: null, rationale: FRAME.decision.none };
   if (latest.n > 0 && latest.unaccepted === latest.n) {
     return {
       ...base,
-      action: "no-difficulty-evidence",
+      placement: null,
       rationale: fill(FRAME.decision.refused, { n: latest.n }),
       refused: latest.n,
     };
   }
   const prior = batteries.at(-2);
   const repeated = prior === undefined ? 0 : repeatedFailureCount(prior, latest);
-  if (prior !== undefined && repeated > 0) {
-    const scores: [string, string] = [`${prior.passed}/${prior.n}`, `${latest.passed}/${latest.n}`];
-    return {
-      ...base,
-      action: "repeated-failure-set",
-      rationale: fill(FRAME.decision.repeated, { cases: repeated, scores: scores.join(" then ") }),
-      repeated: { cases: repeated, scores },
-    };
-  }
   const conflict = familyConflict(latest, band);
-  if (conflict !== null) {
-    return {
-      ...base,
-      action: "family-conflict",
-      rationale: fill(FRAME.decision.conflict, {
-        easy: conflict.easy.item,
-        floor: conflict.easy.lo.toFixed(3),
-        hard: conflict.hard.item,
-        ceiling: conflict.hard.hi.toFixed(3),
+  const facts = {
+    ...(prior !== undefined &&
+      repeated > 0 && {
+        repeated: {
+          cases: repeated,
+          scores: [`${prior.passed}/${prior.n}`, `${latest.passed}/${latest.n}`] satisfies [string, string],
+        },
       }),
-      conflict: { easy: conflict.easy.item, hard: conflict.hard.item },
-    };
-  }
+    ...(conflict !== null && { conflict }),
+  };
   const sample = decidingSample(latest);
   const placement = placeOnBand(sample.passes, sample.n, band);
-  if (placement === null) {
-    return {
-      ...base,
-      action: "no-difficulty-evidence",
-      rationale: fill(FRAME.decision.unplaced, { passes: sample.passes, n: sample.n, lo, hi }),
-    };
-  }
   return {
     ...base,
-    action: "placed",
-    rationale: fill(FRAME.decision.placed, {
-      passes: placement.passes,
-      n: placement.n,
-      wlo: placement.lo.toFixed(3),
-      whi: placement.hi.toFixed(3),
-      lo,
-      hi,
-      zone: READING[placement.zone],
-    }),
+    ...facts,
     placement,
+    rationale:
+      placement === null
+        ? fill(FRAME.decision.unplaced, { passes: sample.passes, n: sample.n, lo, hi })
+        : fill(FRAME.decision.placed, {
+            passes: placement.passes,
+            n: placement.n,
+            wlo: placement.lo.toFixed(3),
+            whi: placement.hi.toFixed(3),
+            lo,
+            hi,
+            zone: READING[placement.zone],
+          }),
   };
 }
 
 /** One family placed entirely above the band while another lies entirely below it. A blank name or
  *  an unmeasurable row has no placement, so absent family rows never read as a conflict. */
-function familyConflict(latest: ClimbBattery, band: [number, number]) {
+function familyConflict(latest: ClimbBattery, band: [number, number]): { easy: string; hard: string } | null {
   const rated = latest.measured.items.flatMap((item) => {
     const placement = item.item.trim() === "" ? null : placeOnBand(item.passes, item.attempts, band);
-    return placement === null ? [] : [{ item: item.item, ...placement }];
+    return placement === null ? [] : [{ item: item.item, zone: placement.zone }];
   });
-  const easy = rated.find((row) => row.zone === "too-easy");
-  const hard = rated.find((row) => row.zone === "too-hard");
+  const easy = rated.find((row) => row.zone === "too-easy")?.item;
+  const hard = rated.find((row) => row.zone === "too-hard")?.item;
   return easy === undefined || hard === undefined ? null : { easy, hard };
 }
 
@@ -291,7 +267,7 @@ function readoutRow(
           calibration: row.authoring.calibration,
         }
       : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, calibration: null };
-  const placement = decision?.action === "placed" ? decision.placement : null;
+  const placement = decision?.placement ?? null;
   return {
     runId: row.battery.runId,
     createdAt: row.createdAt,
@@ -305,7 +281,6 @@ function readoutRow(
     nonResults: row.authoring.caseIds.length - row.battery.n,
     deciding: admitted.deciding,
     zone: placement?.zone ?? null,
-    setAside: decision === undefined || decision.action === "placed" ? null : decision.action,
     aim: placement?.aim ?? null,
     toAim: placement?.toAim ?? null,
     wilson: placement === null ? null : [Number(placement.lo.toFixed(3)), Number(placement.hi.toFixed(3))],
@@ -322,7 +297,7 @@ function readoutRow(
 
 /**
  * The trailing rounds that ended on one side of the aim, newest first. Each admitted row is read
- * through the decision that round took, so a set-aside or an on-aim battery ends the run; a row
+ * through the decision that round took, so an unplaced or an on-aim battery ends the run; a row
  * whose claim was refused counts once a placement older than it is found, which keeps a refusal
  * behind a battery that later landed on the aim out of this run of misses. Refusals alone are a
  * different failure with a different owner, so they return null. A row without a recorded product
@@ -346,9 +321,9 @@ function offAimAllowance(
       pending.push(row.harnessId);
       continue;
     }
-    const decision = decisions.get(row.battery.runId);
-    if (decision?.action !== "placed" || decision.placement.toAim === 0) break;
-    const rowSide = decision.placement.toAim < 0 ? "above" : "below";
+    const placement = decisions.get(row.battery.runId)?.placement ?? null;
+    if (placement === null || placement.toAim === 0) break;
+    const rowSide = placement.toAim < 0 ? "above" : "below";
     if (side !== null && rowSide !== side) break;
     side = rowSide;
     placedRows.push(row);
@@ -438,9 +413,7 @@ function tableLine(row: ReadoutRow): string {
     count(row.unaccepted),
     count(row.nonResults),
     row.deciding === null ? "—" : `${row.deciding.passes}/${row.deciding.n} ${row.deciding.population}`,
-    row.claimRefusal === null
-      ? (row.zone ?? row.setAside ?? "unplaced")
-      : `claim refused: ${row.claimRefusal}`,
+    row.claimRefusal === null ? (row.zone ?? "unplaced") : `claim refused: ${row.claimRefusal}`,
     row.toAim === null ? "—" : `${row.toAim > 0 ? "+" : ""}${row.toAim}`,
     row.aim === null ? "—" : `${row.aim[0]}–${row.aim[1]}`,
     targetCell(row.target),
@@ -493,13 +466,24 @@ function calibrationLine(readout: ClimbReadout): string | null {
   });
 }
 
+/** The reading, then the facts stated beside it. A repeated failing core points at the ladder's
+ *  below-the-aim section unless the reading already did. */
 function readingLines(readout: ClimbReadout): string[] {
-  const { decision, band } = readout;
-  if (decision.action !== "placed") {
-    const below = decision.action === "repeated-failure-set" ? ` ${FRAME.readout.belowLadder}` : "";
-    return [`${fill(FRAME.readout.setAside, { rationale: decision.rationale })}${below}`];
-  }
-  const { placement } = decision;
+  const { placement, rationale, repeated, conflict } = readout.decision;
+  const pointedBelow = placement !== null && placement.toAim > 0;
+  return [
+    ...(placement === null ? [fill(FRAME.readout.unplaced, { rationale })] : placedLines(readout, placement)),
+    ...(repeated === undefined
+      ? []
+      : [
+          `${fill(FRAME.readout.repeated, { cases: repeated.cases, scores: repeated.scores.join(" then ") })}${pointedBelow ? "" : ` ${FRAME.readout.belowLadder}`}`,
+        ]),
+    ...(conflict === undefined ? [] : [fill(FRAME.readout.conflict, conflict)]),
+  ];
+}
+
+function placedLines(readout: ClimbReadout, placement: BandPlacement): string[] {
+  const { band } = readout;
   const latest = readout.rows.find((row) => row.claimRefusal === null);
   const population = latest?.deciding?.population ?? "whole-battery";
   const ladder =

@@ -146,10 +146,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
     });
     expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
-    expect(selected.readout?.decision).toMatchObject({
-      action: "placed",
-      placement: { zone: "too-easy" },
-    });
+    expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
     expect(selected.decision).not.toHaveProperty("final");
     expect(selected.kickoff).toBe("assign parts to slots");
     expect(selected.decision.reopenKey).toMatch(/^experiment:[a-f0-9]{64}$/);

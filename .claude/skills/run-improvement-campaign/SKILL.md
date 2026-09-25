@@ -225,7 +225,7 @@ Every `stop` row carries the move it implies, printed in brackets before the run
 | `overhaul` | the measurement failed, not a detail inside it | rebuild the product or the battery; there is nothing inside to patch |
 
 `overhaul` fires on a battery whose scored cases are all unaccepted
-(AGENTS.md's `no-difficulty-evidence`: no capability rate, no difficulty strike, nothing to patch
+(a battery placed nowhere: no capability rate, no difficulty strike, nothing to patch
 against), and on five typed non-results in a row — rule 6's threshold for stopping the schedule.
 A completed run that verified cases carries no act at all.
 
@@ -271,8 +271,8 @@ are the only visible sign of what the Builder is doing.
 
 ### Read the climb, not only the score
 
-The watch also reads `difficulty-decisions/`, the controller's own `ClimbAction` per battery, and
-prints one row as each lands: `battery run-i02: placed, 24/25 too-easy`. This is the half a score
+The watch also reads `difficulty-decisions/`, the controller's own placement per battery, and
+prints one row as each lands: `battery run-i02: 24/25 too-easy`. This is the half a score
 cannot show. A high score says the battery was easy; only the decision says whether the next one
 asks for more, and only a run of them says whether asking worked.
 
@@ -281,10 +281,9 @@ asks for more, and only a run of them says whether asking worked.
   `--run` continuation can decide one battery twice. Campaign `3fd52f9e-28` recorded seven such
   placements while its Builder moved only published magnitudes. Rebuild what the tasks demand, not
   their numbers.
-- a `placed` decision moves by its zone: `too-hard` is `reserved`, and the other four zones are the
-  band reading its own score, printed as `info`. Of the other three actions,
-  **`repeated-failure-set`** and **`family-conflict`** are `surgical` and **`no-difficulty-evidence`**
-  is `overhaul`.
+- a decision stating **repeated failures** or a **family conflict** is `surgical`, and one placed
+  nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
+  four zones are the band reading its own score, printed as `info`.
 
 The decision reads the score. `wri.mjs climb` reads the other side of the same question — the
 task bytes — and unlike the decision it works on a battery that has not scored yet:
@@ -312,7 +311,7 @@ The tier histogram held at `easy 0  medium 9  hard 6  frontier 0` for three batt
 at the fourth. Those three — eighteen solver cases at roughly fifty minutes each — bought no
 difficulty evidence, and the score could not say so: all three read 6/6, which reads identically
 whether the tasks moved or not. A campaign whose last two edges are `restated`, `adjusted` or
-`widened` is not climbing, whatever its `ClimbAction` says. Read the edge before writing the round
+`widened` is not climbing, whatever its zone says. Read the edge before writing the round
 up, and do not describe a battery as adding a constraint class until this reader shows the checks
 that carry it.
 
@@ -334,7 +333,7 @@ again, since the page was never delivered.
 
 | you want to know | read | not |
 | --- | --- | --- |
-| whether the next battery will be asked for more | `difficulty-decisions/`, the `ClimbAction` the watch prints | the score |
+| whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
 | whether the tasks actually got harder | `wri.mjs climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
 | whether the Builder read a starter file | the authored `EXPERIMENT.json` and the bundle bytes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |

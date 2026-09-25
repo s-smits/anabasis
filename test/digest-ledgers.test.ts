@@ -130,12 +130,12 @@ test("a turn retry is an explicit allowance wait on the provider's own clause al
   const censored = roleSpendLines({
     ...options,
     tallies: batteryTallies([caseRecordRow("t1", "f", { runId: "run", ...providerNonResult })]),
-    decisions: [{ runId: "next", action: "placed", evidenceRunIds: ["run"] }],
+    decisions: [{ runId: "next", zone: "on-aim", evidenceRunIds: ["run"] }],
   }).join("\n");
   expect(censored).toContain(
     "run: graded 0 · provider non-results 1 · first ? last ? · CENSORED (provider non-results; the typed kind is the evidence, the message is not)",
   );
-  expect(censored).toContain("DECISION ON CENSORED BATTERY (lane 24): next placed read run");
+  expect(censored).toContain("DECISION ON CENSORED BATTERY (lane 24): next on-aim read run");
 });
 
 test("an epoch review counts a finding unrouted only when the author router gives it no owner", async () => {

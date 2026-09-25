@@ -31,11 +31,10 @@ Inside the readout, read these fields and nothing looser:
 
 | field | what it says |
 |---|---|
-| `decision` | `placed`, or one of the three set-aside shapes `no-difficulty-evidence`, `repeated-failure-set`, `family-conflict`, whose pooled rate is not difficulty evidence |
+| `decision` | `placement`, null when the deciding sample had no verified case or too few to land on the aim; `repeated` when the same cases failed in the last two batteries of one task set, and `conflict` when one family sat above the band and another below it, each stated beside the placement |
 | a row's `zone` | `placeOnBand` (`src/claim/battery-difficulty.ts`): `too-hard`, `under-aim`, `on-aim`, `over-aim` or `too-easy`; the two outer zones are Wilson-significant, the inner three are the point count against the aim |
 | a row's `toAim` | signed distance in verified passes from the aim; negative is above it |
 | a row's `wilson` | the interval at `REPORTING_Z` (`src/claim/estimation.ts`), the only sample-size owner |
-| a row's `setAside` | the set-aside action when the round was not placed |
 | `admitted` and `excluded` | what `admitBattery` let in and what `excludedSummary` names; an excluded battery is the usual reason a climb looks stalled |
 | `allowance` | the `OffAimAllowance`: `rounds` on one `side` of the aim, how many `placed` and how many `refused` |
 | a row's target | the Builder's `EXPERIMENT.json` `{comparator, verifiedPasses}` with `result` `met`, `missed`, `undetermined` or `unadmitted`, and `missedBy` when missed |

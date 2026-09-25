@@ -339,7 +339,7 @@ export function observeNextMove(
    *  difficulty-decisions/, which the campaign watcher reads, but a live reader of the stream saw
    *  the word "rebuild" and never the score it answered — the run's most consequential decision
    *  arriving as a bare verb. */
-  difficulty?: { evidence: string; action: string; rationale: string } | null,
+  difficulty?: { evidence: string; zone: string | null; rationale: string } | null,
 ): void {
   observer.steering({
     authority: "deterministic",
@@ -350,7 +350,7 @@ export function observeNextMove(
   observer.steering({
     authority: "evidence-observation",
     owner: "climb",
-    claim: `${difficulty.action}: ${difficulty.rationale}`,
+    claim: `${difficulty.zone ?? "unplaced"}: ${difficulty.rationale}`,
     evidence: [difficulty.evidence],
   });
 }

@@ -105,7 +105,7 @@ broke its protocol is a representation defect.
 partition of `case-record.jsonl` through the shared classifier in `src/claim/case-record.ts`, with
 `truthOk` and `pass` left `null` where unknown. Only verified cases enter a capability rate; zero
 verified cases give an operational result and no capability result at all; an entirely unaccepted
-battery is `no-difficulty-evidence`. Say whether an unaccepted submit sits inside or outside each
+battery is placed nowhere. Say whether an unaccepted submit sits inside or outside each
 denominator and name the owner of that answer. Join each admitted battery to its own
 `battery.json` through `readBatteryJoinSlice` (`src/truth/battery-record.ts`): `skipped-precase`
 is the only recorded zero-row disposition, an absent record is absent evidence, and a
@@ -332,7 +332,7 @@ The question is whether the Builder's prediction gets better round over round. E
 submit carries an `experimentProposal`, and `EXPERIMENT.json` declares `target{comparator,
 verifiedPasses}`, `families[]` with a level and move each, and per-task `predictions[]`
 (`src/author/experiment-plan.ts`). Each battery's `difficulty-decisions/<runId>-<digest>.json`
-(`difficulty-decision/v6`) records the `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the
+(`difficulty-decision/v7`) records the `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the
 Wilson interval, the target's `result` and `missedBy`, and the `allowance` with its `rounds` and
 `side`. The battery contract's own sentences are `FRAME` in `src/run/climb-readout-frame.ts`, so
 compare per round, in claim `createdAt` order, the counts the Builder was told (first battery,

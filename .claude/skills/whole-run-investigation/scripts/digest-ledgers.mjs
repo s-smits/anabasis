@@ -102,7 +102,8 @@ export function readDifficultyDecisions(campaign) {
     const decision = isRecord(counters.decision) ? counters.decision : {};
     rows.push({
       runId: isString(record.runId) ? record.runId : name,
-      action: isString(decision.action) ? decision.action : null,
+      repeated: isRecord(decision.repeated),
+      conflict: isRecord(decision.conflict),
       placement: placementOf(decision),
       // Where the decision placed the battery it read, repeated at the top level because the
       // check-informativeness block keys its perfect-battery lead on it.
@@ -131,17 +132,17 @@ function sideOf(placement) {
 
 function decisionLine(row) {
   const placement = row.placement;
-  const head = `${row.runId}: action ${row.action ?? "?"}`;
   const placed =
     placement === null
-      ? ""
+      ? " unplaced"
       : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
         ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
+  const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
   const allowance =
     row.allowance === null
       ? ""
       : ` · allowance ${row.allowance.rounds ?? "?"} round(s) ${row.allowance.side ?? "?"} over ${row.allowance.products ?? "?"} product(s)`;
-  return `${head}${placed} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
+  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
 }
 
 /** The longest run of consecutive placements on one off-aim side, ending at its last member. */
@@ -576,7 +577,7 @@ function censoringLines({ tallies, batteryOf, decisions }) {
     const hit = decision.evidenceRunIds.filter((runId) => censored.includes(runId));
     if (hit.length > 0) {
       lines.push(
-        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.action ?? "?"} read ${hit.join(", ")}`,
+        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.zone ?? "unplaced"} read ${hit.join(", ")}`,
       );
     }
   }

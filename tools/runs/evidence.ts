@@ -141,16 +141,20 @@ export interface ClaimFacts {
   clauses: string[];
 }
 
-/** One recorded climb decision, as the difficulty evidence states it. The action, rationale, frame
- *  and admitted count are not nullable, because v5 declares them mandatory; a record claiming v5
- *  without them is damaged rather than older, and is refused beside the older ones. */
+/** One recorded climb decision, as the difficulty evidence states it. The rationale, frame and
+ *  admitted count are not nullable, because the schema declares them mandatory; a record claiming
+ *  the current schema without them is damaged rather than older, and is refused beside the older
+ *  ones. */
 interface DifficultyFacts {
   runId: string;
-  action: string;
   rationale: string;
-  /** How the band placed the battery, which only a `placed` decision carries; null for the three
-   *  actions that set the pooled rate aside. */
+  /** How the band placed the battery; null when the deciding sample had no verified case or too
+   *  few cases to land on the aim. */
   placement: { passes: number; n: number; zone: BandZone } | null;
+  /** The same cases failed in both of the last two batteries of one task set. */
+  repeated: boolean;
+  /** One family sat entirely above the band while another sat entirely below it. */
+  conflict: boolean;
   /** Admitted batteries behind the decision. */
   admitted: number;
   /** The battery run ids the decision derives from, in recorded order. */
@@ -519,12 +523,11 @@ function evidenceRunIds(decision: JsonObject | null): string[] | null {
   return ids;
 }
 
-/** One v5 record's facts, or null when a field v5 declares mandatory is missing. A `placed`
- *  decision without a recognised zone is incomplete for the same reason. */
+/** One record's facts, or null when a field the schema declares mandatory is missing. A placement
+ *  without a recognised zone is incomplete for the same reason. */
 function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
   const difficulty = nested(raw, "difficulty");
   const decision = nested(difficulty, "decision");
-  const action = stringOr(decision?.action);
   const rationale = stringOr(decision?.rationale);
   const frame = stringOr(raw.frame);
   const admitted = numberOr(difficulty?.admitted);
@@ -533,16 +536,15 @@ function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
   const zone = stringOr(placed?.zone);
   const passes = numberOr(placed?.passes);
   const n = numberOr(placed?.n);
-  if (action === null || rationale === null || frame === null || admitted === null || evidence === null) {
-    return null;
-  }
+  if (rationale === null || frame === null || admitted === null || evidence === null) return null;
   const placement = isBandZone(zone) && passes !== null && n !== null ? { passes, n, zone } : null;
-  if (action === "placed" && placement === null) return null;
+  if (placed !== null && placement === null) return null;
   return {
     runId,
-    action,
     rationale,
-    placement: action === "placed" ? placement : null,
+    placement,
+    repeated: nested(decision, "repeated") !== null,
+    conflict: nested(decision, "conflict") !== null,
     admitted,
     evidenceRunIds: evidence,
     frame,

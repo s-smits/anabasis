@@ -208,7 +208,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
       ? null
       : {
           evidence: relative(repoRoot, placement.path),
-          action: placement.evidence.difficulty.decision.action,
+          zone: placement.evidence.difficulty.decision.placement?.zone ?? null,
           rationale: placement.evidence.difficulty.decision.rationale,
         },
   );

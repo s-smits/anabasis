@@ -348,15 +348,12 @@ describe("watch", () => {
 });
 
 describe("watch rows over one reading", () => {
-  const decision = (
-    runId: string,
-    action: string,
-    zone: "too-easy" | "too-hard" | "on-aim" | null = null,
-  ) => ({
+  const decision = (runId: string, zone: "too-easy" | "too-hard" | "on-aim" | null, conflict = false) => ({
     runId,
-    action,
     rationale: "",
     placement: zone === null ? null : { passes: 1, n: 25, zone },
+    repeated: false,
+    conflict,
     admitted: 1,
     evidenceRunIds: [runId],
     frame: "f",
@@ -367,23 +364,23 @@ describe("watch rows over one reading", () => {
     const first = {
       ...base,
       difficulty: {
-        rows: [decision("b1", "placed", "on-aim"), decision("b2", "family-conflict")],
+        rows: [decision("b1", "on-aim"), decision("b2", "too-easy", true)],
         refused: [],
       },
     };
     expect(deviations(null, first).filter((row) => row.detail.startsWith("battery b"))).toEqual([
-      { runId: RUN, level: "stop", act: "surgical", detail: "battery b2: family-conflict" },
+      { runId: RUN, level: "stop", act: "surgical", detail: "battery b2: 1/25 too-easy, family conflict" },
     ]);
     const next = {
       ...first,
-      difficulty: { rows: [...first.difficulty.rows, decision("b3", "placed", "too-hard")], refused: ["x"] },
+      difficulty: { rows: [...first.difficulty.rows, decision("b3", "too-hard")], refused: ["x"] },
     };
     const rows = deviations(first, next);
     expect(rows).toContainEqual({
       runId: RUN,
       level: "stop",
       act: "reserved",
-      detail: "battery b3: placed, 1/25 too-hard",
+      detail: "battery b3: 1/25 too-hard",
     });
     expect(rows.map((row) => row.detail)).toContain(
       "1 climb decision(s) recorded under a schema this reader does not open",

@@ -512,7 +512,7 @@ describe("the off-aim allowance, read from recorded batteries", () => {
     expect(readout(roundsTree(rounds)).allowance).toMatchObject(allowance);
   });
 
-  it("reads a set-aside round as the end of the run, since it was not placed off the aim", () => {
+  it("reads an unplaced round as the end of the run, since it was not placed off the aim", () => {
     // Every attempt refused at submission is no difficulty evidence, not a battery below the aim.
     const tree = roundsTree([{ passed: above }, { passed: above }]);
     writeBattery(
@@ -522,8 +522,8 @@ describe("the off-aim allowance, read from recorded batteries", () => {
       "2026-09-09T00:00:00Z",
     );
     const seen = readout(tree);
-    expect(seen.decision.action).toBe("no-difficulty-evidence");
-    expect(seen.rows[0]).toMatchObject({ runId: "r9", zone: null, setAside: "no-difficulty-evidence" });
+    expect(seen.decision.placement).toBeNull();
+    expect(seen.rows[0]).toMatchObject({ runId: "r9", zone: null });
     expect(seen.allowance).toBeNull();
   });
 

@@ -103,7 +103,6 @@ export function readDifficulty(
     return excludedRun === null || reason === null ? [] : [`${excludedRun}: ${reason}`];
   });
   return {
-    action: text(decision.action),
     standing: text(object(decision.placement)?.zone),
     rationale: text(decision.rationale),
     admitted: number(record?.admitted),

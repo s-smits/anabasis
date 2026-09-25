@@ -59,15 +59,11 @@ export const FRAME = {
     "on-aim": "on the calibration target",
     "over-aim": "in range, above the aim; the limit is not yet measured",
   },
-  /** Why the round's decision was taken, recorded on the decision and rendered as its reading. */
+  /** The decision's rationale: where the battery landed, or why it landed nowhere. */
   decision: {
     none: "no battery is recorded; run one before reading difficulty",
     refused:
       "all {n} attempts were refused at submission admission — zero cases were truth-verified, so this battery carries no difficulty evidence; a wall of rejections is a harness or environment defect (a writer tool the artifact schema refuses, a broken verifier, a crash) at least as often as a hard curriculum",
-    repeated:
-      "the same {cases} case(s) failed in both of the last two batteries of one recorded task set ({scores}) — a failing core that persists between batteries is a stuck harness, not a difficulty level, so the aggregate rate is not difficulty evidence",
-    conflict:
-      'family "{easy}" sits entirely above the band (Wilson floor {floor}) while family "{hard}" sits entirely below it (Wilson ceiling {ceiling}) — one battery covers a saturated family and an infeasible one, so the aggregate rate is not difficulty evidence; the families need separate changes',
     unplaced:
       "the deciding sample of {passes}/{n} cannot be placed against target range [{lo}, {hi}], so this battery carries no difficulty evidence",
     placed: "{passes}/{n}, Wilson interval [{wlo}, {whi}] against target range [{lo}, {hi}]: {zone}",
@@ -82,7 +78,7 @@ export const FRAME = {
     legend:
       "Rows are newest first. `product` and `taskSet` alias the recorded product and task-set identities, P1, T1 and so on in order of first appearance. `passed` is out of `verified`; `unaccepted` attempts produced no accepted submission and `nonResults` failed in the environment. `deciding` is the sample the row is read over, and `target` is the author's declared prediction with its result. `effort` is the most any one case of that battery spent — model turns, wall-clock minutes and tool calls, over the cases that recorded a solver block — to read against the walls its agent/config.yaml declares; a measure no case recorded reads the same em dash an absent value reads, never a zero.",
     zones:
-      "`zone` is where each battery landed against `aim`, read over `deciding` — the changed public-input subset when one was recorded, the whole battery otherwise — and `toAim` is how many passing cases from that aim it was, negative above it. `too-easy` and `over-aim` are both above the aim, `too-hard` and `under-aim` both below it; `on-aim` reached the calibration target, which by itself proves no limit. A row with `setAside` instead of a zone recorded a shape whose pooled rate is not difficulty evidence.",
+      "`zone` is where each battery landed against `aim`, read over `deciding` — the changed public-input subset when one was recorded, the whole battery otherwise — and `toAim` is how many passing cases from that aim it was, negative above it. `too-easy` and `over-aim` are both above the aim, `too-hard` and `under-aim` both below it; `on-aim` reached the calibration target, which by itself proves no limit. A row with no zone had no truth-verified case in its deciding sample, or too few cases for any pass count to land on the aim.",
     omittedRows: "{count} older row(s) are not shown here.",
     proposal:
       "Latest proposal ({runId}, {operation}): gap — {gap} Change — {change} Expected — {expectedResult} Target — {target}.",
@@ -92,7 +88,11 @@ export const FRAME = {
       "The result tests the declared pass-count target, not causal benefit or increased task demand. Correctness-model file changes identify bundle movement; their scoring semantics remain unproven.",
     reading:
       "Reading: the deciding sample ({population}) passed {passes} of {n} (Wilson interval [{wlo}, {whi}], target range [{blo}, {bhi}], aim {lo} to {hi} of {n}): {zone}.",
-    setAside: "Reading: {rationale}.",
+    unplaced: "Reading: {rationale}.",
+    repeated:
+      "The same {cases} cases failed in both of the last two batteries of one recorded task set ({scores}). A failing core that persists between batteries is as often a stuck harness as a difficulty level, and the zone above counts it either way.",
+    conflict:
+      'Family "{easy}" sits entirely above the band while family "{hard}" sits entirely below it, so the pooled rate averages a saturated family with an infeasible one; the families need separate changes.',
     belowLadder:
       'Read "When a battery lands below the aim" in starter-pack/difficulty-ladder.md first: a rule the checks apply and the brief does not publish, and an answer the writer cannot express, both read exactly like difficulty from here.',
     aboveLadder:

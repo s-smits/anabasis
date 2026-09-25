@@ -1,8 +1,8 @@
 /**
  * One reading per recorded battery, and every rendering reads that same one. The reading is where a
  * battery's sample, its placement on the band and its declared target are settled, so most of what
- * is pinned below is what must not be settled quietly: a battery refused whole takes its own row
- * instead of being placed as too hard, a claim-refused battery stays in the table with its refusal
+ * is pinned below is what must not be settled quietly: a battery refused whole is placed nowhere
+ * instead of as too hard, a repeated failing core is stated beside its zone rather than instead of it, a claim-refused battery stays in the table with its refusal
  * and counts inside the allowance, and every non-result counts in the prediction's favour before a
  * target is called missed.
  *
@@ -28,7 +28,7 @@ import {
   renderBatteryContract,
   renderReadout,
 } from "../src/run/climb-readout.ts";
-import { FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
+import { FRAME, FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
 import type { ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
@@ -176,21 +176,42 @@ describe("one reading per battery", () => {
     });
   });
 
-  it("sets a battery refused whole aside in its own row instead of placing it too hard", () => {
+  it("places a battery refused whole nowhere instead of placing it too hard", () => {
     const readout = readoutOf(
       row("r1", 0, { passed: 3, n: 10 }),
       row("r2", 1, { passed: 0, n: 25, unaccepted: 25 }),
     );
-    expect(readout.rows.map((item) => [item.runId, item.zone, item.setAside])).toEqual([
-      ["r2", null, "no-difficulty-evidence"],
-      ["r1", "on-aim", null],
+    expect(readout.rows.map((item) => [item.runId, item.zone])).toEqual([
+      ["r2", null],
+      ["r1", "on-aim"],
     ]);
     const text = render(readout);
-    expect(text).toContain("| no-difficulty-evidence |");
+    expect(text).toContain("| unplaced |");
     expect(text).not.toContain("| too-hard |");
     expect(text).toContain("Reading: all 25 attempts were refused at submission admission");
-    // A set-aside round ends the allowance's run of misses.
+    // An unplaced round ends the allowance's run of misses.
     expect(readout.allowance).toBeNull();
+  });
+
+  it("states a repeated failing core beside the zone, and counts the round in the streak", () => {
+    const failed = ["core-a", "core-b"];
+    const readout = readoutOf(
+      row("r1", 0, { passed: 8, n: 10, failed }),
+      row("r2", 1, { passed: 8, n: 10, failed }),
+    );
+    expect(readout.decision).toMatchObject({
+      placement: { zone: "over-aim" },
+      repeated: { cases: 2, scores: ["8/10", "8/10"] },
+    });
+    const text = render(readout);
+    expect(text).toContain("| over-aim |");
+    expect(text).toContain(
+      "The same 2 cases failed in both of the last two batteries of one recorded task set (8/10 then 8/10).",
+    );
+    // The reading points above the aim, so the repeat carries the below-the-aim pointer itself.
+    expect(text).toContain(FRAME.readout.belowLadder);
+    expect(text).not.toContain("core-a");
+    expect(readout.allowance).toMatchObject({ rounds: 2, placed: 2, side: "above" });
   });
 
   it("keeps a claim-refused battery in the table with its refusal, and counts it inside the allowance", () => {
@@ -214,7 +235,6 @@ describe("one reading per battery", () => {
       passed: null,
       deciding: null,
       zone: null,
-      setAside: null,
       families: null,
       effort: null,
       claimRefusal: "verifier environment unbound",
@@ -427,7 +447,7 @@ describe("rendering", () => {
     const declared: [number, number] = [0.6, 0.9];
     const battery = row("r1", 0, { passed: 4, n: 5 });
     const readout = climbReadout(historyOf(battery), declared, () => null);
-    expect(readout.decision).toMatchObject({ action: "placed", placement: { zone: "on-aim", aim: [3, 4] } });
+    expect(readout.decision).toMatchObject({ placement: { zone: "on-aim", aim: [3, 4] } });
     const text = render(readout);
     expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): on the calibration target.");
     expect(renderBatteryContract(5, 5, declared, true)).toContain("Aim for 3 to 4 of 5");

@@ -429,8 +429,8 @@ function aimLine(
   if (zone === null || aim === null || toAim === null || deciding === null || wilson === null) {
     const decided = readout.decision.evidence.at(-1)?.runId === runId;
     return decided
-      ? fill(FRAME.readout.setAside, { rationale: readout.decision.rationale })
-      : `Aim: the climb readout set this battery's rate aside as ${row.setAside ?? "unplaced"}; read the counts alone.`;
+      ? fill(FRAME.readout.unplaced, { rationale: readout.decision.rationale })
+      : "Aim: the climb readout placed no zone for this battery; read the counts alone.";
   }
   const reading = fill(FRAME.readout.reading, {
     population: deciding.population,

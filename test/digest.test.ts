@@ -225,12 +225,11 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
           decision: {
-            action: "placed",
             rationale: "5/6, Wilson interval [0.436, 0.970] against target range [0.2, 0.5]",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
           },
@@ -243,26 +242,24 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "unplaced-1",
         difficulty: {
-          decision: { action: "no-difficulty-evidence", rationale: "no batteries recorded" },
+          decision: { placement: null, rationale: "no batteries recorded" },
           admitted: 0,
           excluded: [],
         },
       }),
     );
     const digest = digestOf(paths);
-    expect(digest).toContain(
-      "placed-0: action placed over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1",
-    );
-    expect(digest).toContain("unplaced-1: action no-difficulty-evidence · admitted 0 excluded 0");
+    expect(digest).toContain("placed-0: over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1");
+    expect(digest).toContain("unplaced-1: unplaced · admitted 0 excluded 0");
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });
 
-  // Only the version separates a retired meaning from a current one, since `placed` is spelled the same
-  // in both vocabularies. A refusal must not read as the empty-section sentence either: absence says read
-  // the controller's decision reasons, refusal says read the campaign with the tree that wrote it.
+  // Only the version separates a retired meaning from a current one, since a placement is spelled the
+  // same in both vocabularies. A refusal must not read as the empty-section sentence either: absence says
+  // read the controller's decision reasons, refusal says read the campaign with the tree that wrote it.
   it.each([
     [
       "an unversioned pre-v5 record",
@@ -272,12 +269,13 @@ describe("digest", () => {
     ["a v3 record", { schema: "difficulty-decision/v3", runId: "old-0" }, "difficulty-decision/v3"],
     ["a v4 record", { schema: "difficulty-decision/v4", runId: "old-4" }, "difficulty-decision/v4"],
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
+    ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v6 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v7 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -291,11 +289,11 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v6",
+          schema: "difficulty-decision/v7",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
-          difficulty: { decision: { action: "placed", placement: { zone } }, admitted: 1, excluded: [] },
+          difficulty: { decision: { placement: { zone } }, admitted: 1, excluded: [] },
         }),
       );
       return digestOf(paths);
@@ -656,10 +654,10 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "run-3",
         difficulty: {
-          decision: { action: "placed", placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
+          decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
         },
       }),
     );
@@ -691,7 +689,7 @@ describe("digest", () => {
       "run-2: graded 0 · provider non-results 2 · first 2026-09-08T00:00:00.000Z last 2026-09-08T00:01:30.000Z" +
       " · CENSORED (provider non-results; the typed kind is the evidence, the message is not)";
     expect(digest).toContain(censoredRow);
-    expect(digest).toContain("DECISION ON CENSORED BATTERY (lane 24): run-3 placed read run-2");
+    expect(digest).toContain("DECISION ON CENSORED BATTERY (lane 24): run-3 on-aim read run-2");
     expect(digest).toContain("epoch-aa/builder-execution.json: turn retries 2 · waited 11 min in total");
     expect(digest).toContain(
       "EXPLICIT ALLOWANCE WAIT (lane 24): epoch-aa/builder-execution.json turn 3 attempt 1/3 failed waited 10 min (explicit allowance)",
@@ -870,13 +868,10 @@ describe("digest", () => {
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v6",
+          schema: "difficulty-decision/v7",
           runId,
           difficulty: {
-            decision: {
-              action: "placed",
-              placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim },
-            },
+            decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
             admitted: 1,
             excluded: [],
             rows,

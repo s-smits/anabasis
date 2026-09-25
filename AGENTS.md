@@ -130,7 +130,7 @@ and each is here because moving it cost something.
     count that would find no limit and the aim, per size; a continuation never states the first
     count. Every sentence it and the climb readout send is a line of `FRAME`
     (`src/run/climb-readout-frame.ts`), and `FRAME_REVISION` is recorded in
-    `difficulty-decision/v6`, so rewording one is a new recorded condition. The readout states each
+    `difficulty-decision/v7`, so rewording one is a new recorded condition. The readout states each
     family's solve effort (median and most minutes against `solve_minutes`, median tool calls) and
     scores the plan's per-task predictions, but never reads effort as difficulty: within a battery
     it does not separate passes from fails. Useful adopted work is retained.
@@ -194,8 +194,8 @@ window in the comparison.
 
 Report the identities, and report verified, unaccepted and non-result counts separately. Difficulty
 gets its own denominator: once any case is truth-verified, door-rejected attempts count as
-difficulty failures. A battery that is entirely unaccepted is `no-difficulty-evidence` — rebuild,
-with no capability rate and no difficulty strike. An unproven served-model identity refuses the
+difficulty failures. A battery that is entirely unaccepted is placed nowhere — rebuild, with no
+capability rate and no difficulty strike. An unproven served-model identity refuses the
 identity claim, and that is all it does: it does not reclassify a scored case as an environment
 non-result.
 
@@ -640,13 +640,13 @@ live evidence.
     re-exports them and owns the decisions taken from them. A fresh product measures **probe
     batteries of 5 to 10 tasks**, sized by the Builder, until one of them passes some but not all
     of its scored cases; only then the requested size. An out-of-range size fails rather than being clamped, because a silently changed size is
-    a silently changed measurement condition. `ClimbAction` is `placed | no-difficulty-evidence |
-    repeated-failure-set | family-conflict`: one name for a decision that has a band placement, and
-    three for recorded shapes whose rate is not difficulty evidence. The reading itself belongs to
-    `placement.zone`, which `placeOnBand` has already decided. `climb`, `hold-limit` and `ease`
-    were a second, lossier encoding of those five zones, and every consumer either re-switched on
-    the zone or tested `=== "climb"`, which is `zone === "too-easy"` spelled differently
-    (2026-09-18). No source file and no row of `thresholds.frozen.yaml` carries the
+    a silently changed measurement condition. A difficulty decision carries
+    `placement: BandPlacement | null`, null when its deciding sample holds no verified case or
+    `placeOnBand` refused it, and states a repeated failure set or a family conflict as a fact
+    beside the placement rather than in place of it. Until `difficulty-decision/v7` those two shapes
+    were actions that set the zone aside, so a battery whose same cases failed twice was placed
+    nowhere and dropped out of the off-aim streak however far above the aim it read. The reading
+    itself belongs to `placement.zone`, which `placeOnBand` has already decided. No source file and no row of `thresholds.frozen.yaml` carries the
     `climb.limitHoldRounds = 4` this contract used to cite, and that absence is the design prior
     rather than a defect — the route after a battery at the limit belongs to the Builder.
 

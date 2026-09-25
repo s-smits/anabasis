@@ -202,7 +202,7 @@ function decisionsOf(root: string): Record<string, string> {
     readdirSync(dir).map((name) => {
       const recorded = parseJsonAs<DifficultyDecisionEvidence>(readFileSync(join(dir, name), "utf8"));
       const { decision } = recorded.difficulty;
-      return [recorded.runId, decision.action === "placed" ? decision.placement.zone : decision.action];
+      return [recorded.runId, decision.placement?.zone ?? "unplaced"];
     }),
   );
 }
@@ -326,8 +326,8 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
     // sample the note quotes, so stream and note cannot tell two stories about one battery.
     const climb = observations(root).flatMap(([, row]) => (row.owner === "climb" ? [row.claim] : []));
     expect(climb.slice(0, 2)).toEqual([
-      "placed: 6/6, Wilson interval [0.610, 1.000] against target range [0.2, 0.5]: significantly too easy",
-      "placed: 0/2, Wilson interval [0.000, 0.658] against target range [0.2, 0.5]: in range, below the aim",
+      "too-easy: 6/6, Wilson interval [0.610, 1.000] against target range [0.2, 0.5]: significantly too easy",
+      "under-aim: 0/2, Wilson interval [0.000, 0.658] against target range [0.2, 0.5]: in range, below the aim",
     ]);
 
     // Every span the run opened also settled, success included: a reader of a live stream sees an

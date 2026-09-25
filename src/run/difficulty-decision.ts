@@ -7,13 +7,13 @@ import type { ClimbReadout } from "./climb-readout.ts";
 import { FRAME_REVISION } from "./climb-readout-frame.ts";
 
 /**
- * The one schema `recordDifficultyDecision` writes, and so the only one a reader opens. The climb
- * vocabulary was replaced without every word changing — `placed` and `repeated-failure-set`
- * belong to both the retired set and the current one — so a record written under an earlier schema
- * can carry a current action word and have meant something else by it. Nothing inside the record
- * separates those two cases, which leaves the declared version as the whole of the evidence.
+ * The one schema `recordDifficultyDecision` writes, and so the only one a reader opens. A record
+ * written under an earlier schema can carry a field of the same name that meant something else:
+ * v6 set a battery with a repeated failing core aside with no placement, where v7 places it and
+ * states the core beside the placement. Nothing inside the record separates those two cases, which
+ * leaves the declared version as the whole of the evidence.
  */
-export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v6";
+export const DIFFICULTY_DECISION_SCHEMA = "difficulty-decision/v7";
 
 export type DifficultyDecisionEvidence = {
   schema: typeof DIFFICULTY_DECISION_SCHEMA;

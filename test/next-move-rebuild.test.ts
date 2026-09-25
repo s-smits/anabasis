@@ -48,7 +48,7 @@ function streak(
 ): ClimbReadout {
   return {
     band: [0.2, 0.5],
-    decision: { action: "no-difficulty-evidence", rationale: "fixture", evidence: [] },
+    decision: { placement: null, rationale: "fixture", evidence: [] },
     admitted: placed,
     excluded: Array.from({ length: excluded }, (_, i) => ({
       runId: `r${String(i)}`,

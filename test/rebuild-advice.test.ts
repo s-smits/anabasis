@@ -235,7 +235,7 @@ describe("what one battery observes", () => {
     expect(result.issues.every((row) => issueStatusWord(row) === "active")).toBe(true);
   });
 
-  it("reads Judge disagreements in both directions as advisory rows, with no census standing", () => {
+  it("reads confirmed Judge disagreements in both directions as advisory rows, and drops unconfirmed ones", () => {
     const contested = [
       {
         taskId: "t2",
@@ -245,7 +245,7 @@ describe("what one battery observes", () => {
         evidence: "e.json",
         rules: [],
         rationale: null,
-        confirmed: false,
+        confirmed: true,
         checkIds: [],
         artifact: "a.json",
       },
@@ -256,6 +256,18 @@ describe("what one battery observes", () => {
         verifier: true,
         evidence: "e.json",
         rules: [],
+        rationale: null,
+        confirmed: true,
+        checkIds: [],
+        artifact: "a.json",
+      },
+      {
+        taskId: "t3",
+        family: "trusses",
+        judge: false,
+        verifier: true,
+        evidence: "e.json",
+        rules: ["mass within the cap"],
         rationale: null,
         confirmed: false,
         checkIds: [],
@@ -280,7 +292,13 @@ describe("what one battery observes", () => {
         ["judge-failed-verifier-passed", "joints"],
       ]),
     );
-    expect(reviewed.judge).toEqual({ exit: "advisory", reason, contestedFamilies: ["beams", "joints"] });
+    // An unconfirmed disagreement stays in the Judge census line but raises no issue.
+    expect(reviewed.issues.some((row) => row.family === "trusses")).toBe(false);
+    expect(reviewed.judge).toEqual({
+      exit: "advisory",
+      reason,
+      contestedFamilies: ["beams", "joints", "trusses"],
+    });
     // A battery with no Judge review contributes no Judge row.
     const unreviewed = derive(
       analysis([caseRow("t1"), caseRow("t2", { truthOk: false, pass: false })]),

@@ -10,11 +10,50 @@ import { join } from "../src/meta/path.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
+import { scoringClosureHash } from "../src/claim/scoring-closure.ts";
 import { type ContextBinding, createContextTool, RehearsalTraces } from "../src/builder/context-tool.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import { readClimbBatteries } from "../src/run/climb-history.ts";
 import { measuredSolverTraces } from "../src/run/solver-traces.ts";
 
+/** A brief publishing one limit, `$.limits.massKg`, that the artifact reports at `$.report.massKg`. */
+const BRIEF = {
+  slug: "d",
+  domain: "d",
+  correctnessContract: "check-program/v1",
+  decisions: ["covers single-span trusses"],
+  gates: ["mass is within the published budget"],
+  joins: [],
+  artifactSchema: [{ name: "report", "shape": "object" }],
+  designRuleConstants: [{ name: "massBudgetKg", value: 2171.4, authority: "a", citation: "c" }],
+  ruleDecisions: [{ id: "r1", visibility: "public", statement: "mass is at most the budget" }],
+  truthChecks: [
+    {
+      id: "mass",
+      assertion: "reported mass is at most the published budget",
+      citedDecisionIds: ["r1"],
+      numericBoundaries: [
+        {
+          publicInputPath: "$.limits.massKg",
+          constantName: "massBudgetKg",
+          artifactPath: "$.report.massKg",
+          direction: "atMost",
+        },
+      ],
+      execution: {
+        families: "all",
+        artifactPaths: ["$.report"],
+        publicInputPaths: ["$.limits"],
+        hidden: "none",
+        evidence: { kind: "authored" },
+      },
+    },
+  ],
+};
+
+/** One recorded battery: t0 passed, t1 failed, t2 was a non-result, and t3 passed with no artifact
+ *  recorded. Each case carries a solver trace, its submitted artifact and the protected files a run
+ *  records beside it, filled from `secret`; the product's hidden tasks and reference are too. */
 const PIN = "test/pin";
 const scratch: string[] = [];
 afterEach(() => {
@@ -116,32 +155,51 @@ describe("the context tool", () => {
   });
 });
 
-/** One recorded battery: t0 passed, t1 failed. Each case carries a solver trace and the protected
- *  files a run records beside it, filled from `secret`. */
 function recordedTree(secret: string): string {
   const tree = tmp();
   const runId = "r1";
+  const model = join(tree, "correctness-model");
+  mkdirSync(join(model, "reference"), { recursive: true });
+  writeFileSync(join(model, "brief.json"), JSON.stringify(BRIEF));
+  writeFileSync(join(model, "tasks.json"), JSON.stringify({ tasks: [{ taskId: "t0", hidden: [secret] }] }));
+  writeFileSync(join(model, "reference", "index.ts"), `export const designs = ${JSON.stringify(secret)};\n`);
   const evidence = new EvidenceLog(join(tree, "runs", runId));
   evidence.write("battery.json", {
     runId,
     backendPin: PIN,
     thresholdManifestDigest: "digest-a",
     condition: { variant: "shipping" },
-    bundleSnapshot: { agentHash: "agent-a", correctnessModelHash: "correctnessModel-a" },
+    bundleSnapshot: { agentHash: "agent-a", scoringHash: scoringClosureHash(model) },
     execution: { tools: {}, verifierEnvironmentHash: null },
     cases: [
       { taskId: "t0", pass: true, acceptedSubmit: true },
       { taskId: "t1", pass: false, acceptedSubmit: true },
+      { taskId: "t2", pass: null, acceptedSubmit: true },
+      { taskId: "t3", pass: true, acceptedSubmit: true },
     ],
     measured: { items: [] },
   });
-  for (const taskId of ["t0", "t1"]) {
+  evidence.write("f2.json", { referenceArtifact: secret });
+  for (const taskId of ["t0", "t1", "t2", "t3"]) {
     evidence.write(`cases/${taskId}/trace.json`, {
       turns: [{ turn: 1, timingMs: 90_000, costUsd: 0.25, assistantPreview: `solving ${taskId}` }],
       toolCalls: [{ turn: 1, toolName: "bash", timingMs: 4_000, resultPreview: "wrote answer.json" }],
       verifierStdout: `${secret} in the trace`,
     });
-    evidence.write(`cases/${taskId}/verifier.json`, { stdout: secret, issues: [secret] });
+    evidence.write(`cases/${taskId}/public-task.json`, {
+      taskId,
+      family: "frame",
+      publicTaskDigest: `digest-${taskId}`,
+      publicTask: { taskId, family: "frame", publicInput: { limits: { massKg: 2171.4 } } },
+    });
+    if (taskId !== "t3") {
+      evidence.write(`cases/${taskId}/artifact.json`, { report: { massKg: 2160.912 } });
+    }
+    evidence.write(`cases/${taskId}/verifier.json`, {
+      stdout: secret,
+      issues: [secret],
+      checks: [{ checkId: "mass", ok: true, detail: secret }],
+    });
     evidence.write(`cases/${taskId}/oracle.json`, { expectation: secret });
     evidence.write(`cases/${taskId}/judge.json`, { verdict: "fail", reason: secret });
   }
@@ -159,13 +217,23 @@ function recordedTree(secret: string): string {
   return tree;
 }
 
-async function tracesOf(tree: string): Promise<{ ids: string[]; text: string }> {
+/** The traces source over `tree`, with `afterAdmission` run between reading the battery history and
+ *  listing the documents: the history is read once per round, so bytes can change in between. */
+async function tracesOf(
+  tree: string,
+  afterAdmission: (caseDir: string) => void = () => {},
+): Promise<{ ids: string[]; text: string; artifact: string }> {
   const { admitted } = readClimbBatteries(tree, PIN, join(tree, "claims"));
+  afterAdmission(join(tree, "runs", "r1", "cases", "t0"));
   const docs = measuredSolverTraces(tree, admitted);
   const bound = binding({ traces: () => docs });
+  const artifactId = "traces/r1/t0/artifact";
   return {
     ids: docs.map((doc) => doc.id),
     text: (await ask(bound, { depth: "page", id: "traces/r1/t0" })).text,
+    artifact: docs.some((doc) => doc.id === artifactId)
+      ? (await ask(bound, { depth: "page", id: artifactId })).text
+      : "",
   };
 }
 
@@ -181,11 +249,36 @@ describe("the round plan document", () => {
 });
 
 describe("the traces source", () => {
-  it("offers the passing case's solve with its effort, and never a failing one", async () => {
-    const { ids, text } = await tracesOf(recordedTree("secret-verifier-a"));
-    expect(ids).toEqual(["traces/r1/t0"]);
+  it("offers each passing case's solve and recorded artifact, and never a failing one or a non-result", async () => {
+    const { ids, text, artifact } = await tracesOf(recordedTree("secret-verifier-a"));
+    expect(ids).toEqual(["traces/r1/t0", "traces/r1/t0/artifact", "traces/r1/t3"]);
     expect(text).toContain("t0 in r1: passed in 1.5 of 120 solve minutes (1%), 1 tool call, $0.25.");
     expect(text).toContain("turn 1 call bash 4s: wrote answer.json");
+    const [served = "", margins] = artifact.split("\n\nPublished limits");
+    const [head, , ...body] = served.split("\n");
+    expect(head).toStartWith(
+      "traces/r1/t0/artifact the artifact the passing solve of t0 submitted in battery r1",
+    );
+    expect(JSON.parse(body.join("\n"))).toEqual({
+      runId: "r1",
+      publicTask: { taskId: "t0", family: "frame", publicInput: { limits: { massKg: 2171.4 } } },
+      submittedArtifact: { report: { massKg: 2160.912 } },
+    });
+    // The solver's own margin lines, against the limit the brief it was scored under publishes.
+    expect(margins).toBe(
+      ", measured on the artifact this solve submitted:\n- massBudgetKg: 2160.912, at most 2171.4; 10.488 to spare (0.4830063553%).",
+    );
+  });
+
+  it("states no margin once the brief no longer matches the battery's scoring program", async () => {
+    const tree = recordedTree("s");
+    writeFileSync(
+      join(tree, "correctness-model", "brief.json"),
+      JSON.stringify({ ...BRIEF, gates: ["moved"] }),
+    );
+    const { artifact } = await tracesOf(tree);
+    expect(artifact).toContain('"massKg": 2160.912');
+    expect(artifact).not.toContain("Published limits");
   });
 
   // Rule 4's mechanical test: change only protected verifier detail and the answer must not move.
@@ -193,6 +286,17 @@ describe("the traces source", () => {
     const a = await tracesOf(recordedTree("secret-verifier-a"));
     const b = await tracesOf(recordedTree("secret-verifier-b"));
     expect(sha256(b.text)).toBe(sha256(a.text));
-    expect(a.text).not.toContain("secret-verifier");
+    expect(sha256(b.artifact)).toBe(sha256(a.artifact));
+    expect(a.artifact).not.toBe("");
+    expect(`${a.text}${a.artifact}`).not.toContain("secret-verifier");
+  });
+
+  it("offers no artifact whose bytes changed or went missing after they were recorded", async () => {
+    const tampered = await tracesOf(recordedTree("s"), (caseDir) =>
+      writeFileSync(join(caseDir, "artifact.json"), '{"design":{"members":["forged"]}}'),
+    );
+    expect(tampered.ids).toEqual(["traces/r1/t0", "traces/r1/t3"]);
+    const missing = await tracesOf(recordedTree("s"), (caseDir) => rmSync(join(caseDir, "artifact.json")));
+    expect(missing.ids).toEqual(["traces/r1/t0", "traces/r1/t3"]);
   });
 });

@@ -5,7 +5,7 @@
  * admission cases in experiment-freeze.test.ts).
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
@@ -21,6 +21,7 @@ import {
   repeatedMoveDetail,
 } from "../src/author/experiment-plan.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { brief } from "./helpers/starter-contracts.ts";
 
 const PLAN: ExperimentPlan = {
   schema: "experiment-plan/v2",
@@ -40,6 +41,8 @@ const PLAN: ExperimentPlan = {
 };
 
 const CONTRADICTED_T1 = "Advice: rehearsal verdicts contradict 1 prediction(s): t1 predicted 0.1 and passed.";
+const staleAdvice = (taskIds: string) =>
+  `Advice: rehearsed only at bytes that have since changed, so counted towards neither the target nor the predictions: ${taskIds}.`;
 
 /** The plan with one field removed, as `jq 'del(.field)'` would leave it. */
 const without = (field: keyof ExperimentPlan): JsonValue =>
@@ -61,6 +64,39 @@ const pass = (taskId: string) => ({
   toolCalls: 9,
   costUsd: 0.4,
 });
+
+const task = (taskId: string, limit: number) => ({
+  taskId,
+  family: "span",
+  publicInput: { limit },
+  hidden: [],
+});
+
+/** Gives `dir` the two-bundle layout holding t1 and t2 at `limit`, and an agent guide saying `guide`. */
+function bundle(dir: string, limit: number, guide = "Solve it."): void {
+  mkdirSync(join(dir, "agent"), { recursive: true });
+  mkdirSync(join(dir, "correctness-model"), { recursive: true });
+  writeFileSync(join(dir, "agent", "BUILT_AGENTS.md"), guide);
+  writeFileSync(
+    join(dir, "correctness-model", "tasks.json"),
+    JSON.stringify([task("t1", limit), task("t2", limit)]),
+  );
+}
+
+/** Installs `.toolchain/bin/grader` in `dir`, a script exiting with `status`. */
+function grader(dir: string, status: number): void {
+  const tool = join(dir, ".toolchain", "bin", "grader");
+  mkdirSync(join(dir, ".toolchain", "bin"), { recursive: true });
+  writeFileSync(tool, `#!/bin/sh\nexit ${String(status)}\n`);
+  chmodSync(tool, 0o755);
+}
+
+/** A workspace holding PLAN beside a bundle whose tasks load, so its rehearsals can count. */
+function planned(): string {
+  const dir = workspace(PLAN);
+  bundle(dir, 10);
+  return dir;
+}
 
 afterAll(cleanupScratch);
 
@@ -131,15 +167,34 @@ describe("the plan reader", () => {
 
 describe("the plan evidence", () => {
   it("advises when rehearsals contradict a prediction or already pass the at-most target", () => {
-    const contradicted = new PlanEvidence(workspace(PLAN), null);
+    const contradicted = new PlanEvidence(planned(), null);
     expect(contradicted.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
     expect(contradicted.record(pass("t2"))[0]).toBe(
       "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
     );
     // A target the rehearsals meet and a prediction the verdict does not contradict advise nothing.
-    expect(new PlanEvidence(workspace(PLAN), null).record(pass("t2"))).toEqual([]);
+    expect(new PlanEvidence(planned(), null).record(pass("t2"))).toEqual([]);
     // Without a readable plan there is nothing to advise against.
     expect(new PlanEvidence(workspace(), null).record(pass("t1"))).toEqual([]);
+  });
+
+  // Run 371f8f round 2 declared at most 5 of 7 against an aim of 2 to 3, and only the readout after
+  // its battery said so. The advice says it while the plan can still change.
+  it("advises when the target lies above the aim of the battery as it stands", () => {
+    const seven = (verifiedPasses: number) => {
+      const dir = workspace({ ...PLAN, target: { comparator: "at-most", verifiedPasses } });
+      bundle(dir, 10);
+      const ids = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
+      writeFileSync(
+        join(dir, "correctness-model", "tasks.json"),
+        JSON.stringify(ids.map((id) => task(id, 10))),
+      );
+      return new PlanEvidence(dir, null).advice();
+    };
+    expect(seven(5)).toEqual([
+      "Advice: the target, at-most 5 verified passes, lies above the aim of 2 to 3 of 7, so a battery meeting it would find no limit.",
+    ]);
+    expect(seven(3)).toEqual([]);
   });
 
   it("scores predictions against verdicts, and nothing when no prediction was scored", () => {
@@ -157,7 +212,7 @@ describe("the plan evidence", () => {
   });
 
   it("writes the evidence file outside the workspace and renders one compact view", () => {
-    const dir = workspace(PLAN);
+    const dir = planned();
     mkdirSync(join(dir, "starter-pack"));
     writeFileSync(
       join(dir, "starter-pack", "difficulty-ladder.md"),
@@ -176,7 +231,7 @@ describe("the plan evidence", () => {
       CONTRADICTED_T1,
     ]);
     expect(JSON.parse(readFileSync(join(rehearsals, "experiment-evidence-2.json"), "utf8"))).toMatchObject({
-      schema: "experiment-evidence/v1",
+      schema: "experiment-evidence/v2",
       planDigest: hashJsonValue(PLAN),
       predictionScore: { scored: 1, brier: 0.81, expected: 0.1, observed: 1 },
     });
@@ -191,6 +246,64 @@ describe("the plan evidence", () => {
       "MEMORY.md risk: The span family may still be one call.",
       "Full files: EXPERIMENT.json, MEMORY.md and starter-pack/difficulty-ladder.md; the context tool searches them with the round's history and traces.",
     ]);
+  });
+
+  // A tightened task is a different question from the one its earlier rehearsal answered, so that
+  // verdict stops counting and is named instead of silently calibrating what would be submitted.
+  it("counts a rehearsal at the task's current bytes and names one at earlier bytes as stale", () => {
+    const dir = planned();
+    const evidence = new PlanEvidence(dir, null);
+    expect(evidence.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
+
+    bundle(dir, 4, "Solve it within the tighter limit.");
+    expect(evidence.advice()).toEqual([staleAdvice("t1")]);
+    expect(evidence.view().split("\n")).toContain(staleAdvice("t1"));
+    expect(evidence.record(pass("t2"))).toEqual([staleAdvice("t1")]);
+
+    // Tasks that do not load leave the current bytes unknown rather than changed: nothing counts,
+    // not even a rehearsal recorded while they were unreadable, and no task is called stale.
+    writeFileSync(join(dir, "correctness-model", "tasks.json"), "{ not json");
+    const unknown =
+      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target or the predictions until they do.";
+    expect(evidence.record(pass("t1"))).toEqual([unknown]);
+    expect(evidence.view().split("\n")).toContain(unknown);
+
+    // Back at the first bytes, the first t1 verdict counts again and t2's stays stale.
+    bundle(dir, 10);
+    expect(evidence.advice()).toEqual([CONTRADICTED_T1, staleAdvice("t2")]);
+  });
+
+  // The identity covers what grades the solve and not only what the solver reads: neither the
+  // task's hidden operand nor an installed tool the brief requires is in the public projection or
+  // the bundle fingerprint.
+  it.each<[string, (dir: string) => void, (dir: string) => void]>([
+    [
+      "a hidden operand",
+      () => undefined,
+      (dir) =>
+        writeFileSync(
+          join(dir, "correctness-model", "tasks.json"),
+          JSON.stringify([{ ...task("t1", 10), hidden: [{ checkId: "c", operand: 3 }] }, task("t2", 10)]),
+        ),
+    ],
+    [
+      "an installed tool",
+      (dir) => {
+        const declared = brief("## The worked domain");
+        const [first] = declared.truthChecks;
+        if (first !== undefined) first.execution.requiredToolIds = ["grader"];
+        writeFileSync(join(dir, "correctness-model", "brief.json"), JSON.stringify(declared));
+        grader(dir, 0);
+      },
+      (dir) => grader(dir, 1),
+    ],
+  ])("stops counting a rehearsal once only %s moved", (_title, arrange, change) => {
+    const dir = planned();
+    arrange(dir);
+    const evidence = new PlanEvidence(dir, null);
+    expect(evidence.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
+    change(dir);
+    expect(evidence.advice()).toEqual([staleAdvice("t1")]);
   });
 
   it("bounds a long quoted line in the view and marks what it left out", () => {

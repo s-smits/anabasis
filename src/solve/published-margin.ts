@@ -128,13 +128,17 @@ function marginLine(reading: MarginReading): string {
 }
 
 /**
- * The margin table the solver reads, stated once here. Empty when the harness declared no complete
+ * The margin table the solver reads on its prepared answer, and the Builder beside each passing
+ * artifact the context tool serves, stated once here. Empty when the harness declared no complete
  * boundary, so a domain that publishes none carries no sentence about them either.
  */
-export function renderMargins(readings: readonly MarginReading[]): string {
+export function renderMargins(
+  readings: readonly MarginReading[],
+  answer = "the answer you just prepared",
+): string {
   if (readings.length === 0) return "";
   const worst = readings.some((reading) => reading.breached)
     ? "\nThis answer is not yet sendable as it stands: a published limit it reports against is breached."
     : "";
-  return `\n\nPublished limits, measured on the answer you just prepared:\n${readings.map((reading) => `- ${marginLine(reading)}`).join("\n")}${worst}`;
+  return `\n\nPublished limits, measured on ${answer}:\n${readings.map((reading) => `- ${marginLine(reading)}`).join("\n")}${worst}`;
 }

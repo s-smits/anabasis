@@ -17,7 +17,7 @@ thing to correct.
 | solver turns, shell walls | `SETTINGS.solver` (`src/truth/harness-config.ts`) | 24 turns, shell 300 s, 900 s at most; `agent/config.yaml` may raise each up to ten times |
 | verifier walls | `SETTINGS.gate`, read by `src/verify/host.ts`, `src/truth/evaluator-process.ts`, `src/run/census-gate.ts` | tool run 300 s, check with its runs 600 s, census 30 min |
 | Builder bash | `ISOLATED_TIMEOUT_MS` (`src/builder/candidate-isolation-runtime.ts`), `BASH_TIMEOUT_MAX_MS` (`src/builder/bash-install-env.ts`) | 10 min default, 2 h at most, for builds |
-| trial bounds | `MAX_CALLS` (`src/builder/harness-trial.ts`) | 16 calls, 30 s verifier deadline |
+| trial bounds | `MAX_REHEARSALS` (`src/builder/harness-trial.ts`) | 6 rehearsals a round, graded under the battery's own `check_seconds` and `tool_run_seconds` |
 | control calibration | `publicRuleFindings` (`src/truth/controls.ts`) | at least 5 accepts and 5 rejects; one accept per applicable check-by-family cell; one attributed reject per applicable check and per family, one reject may serve both |
 | session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `unchangedCandidateStrikes` 3, `noopSubmitStrikes` 3, `stalledFindingsRepeats` 8 |
 

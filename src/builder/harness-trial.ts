@@ -36,7 +36,6 @@ import { authorFindingOverview } from "./author-feedback.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import {
-  REHEARSAL_VERIFIER_DEADLINE_MS,
   type SolveCaseEvidence,
   type SolvedCase,
   rehearseCase,
@@ -515,7 +514,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and a ${REHEARSAL_VERIFIER_DEADLINE_MS / 1000}-second total verifier deadline over the accepted bytes. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {

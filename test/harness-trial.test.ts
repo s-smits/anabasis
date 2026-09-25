@@ -38,10 +38,10 @@ import type { RehearsalRow } from "../src/author/experiment-plan.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
 import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
-import { REHEARSAL_VERIFIER_DEADLINE_MS } from "../src/truth/solve-case.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,
+  MATCHING_EVALUATOR_SOURCE,
   MATCHING_OPERATING_GUIDE,
   writeMatchingBuildFixture,
 } from "./helpers/matching-fixture.ts";
@@ -535,9 +535,7 @@ describe("what one round of rehearsals costs", () => {
     expect(blocked.stage).toBe("budget");
     expect(isString(blocked.nextAction) ? blocked.nextAction : "").not.toMatch(/\bDecide\b/);
     expect(tool.description).toContain(`At most ${String(solves)} rehearsals per round`);
-    expect(tool.description).toContain(
-      `${String(REHEARSAL_VERIFIER_DEADLINE_MS / 1000)}-second total verifier deadline`,
-    );
+    expect(tool.description).toContain("the same per-check wall your agent/config.yaml sets for the battery");
   }, 120_000);
 
   it("charges nothing for a call that never reached a solve", async () => {
@@ -587,6 +585,41 @@ describe("what one round of rehearsals costs", () => {
       "Across this round your solver has now passed 2 of 2 graded rehearsals",
     );
     expect(asRecord(second.validation)?.round).toEqual({ graded: 2, passed: 2, passedInOneTurn: 2 });
+  }, 60_000);
+});
+
+describe("the wall a rehearsal grades under", () => {
+  /** One check that runs past the fixed 30-second total the rehearsal used to grade under, and well
+   *  inside the default `check_seconds`, so only a wall read from the harness's own config lets it
+   *  finish. */
+  const SLOW_CHECK_MS = 31_000;
+  function slowWorkspace(config?: string): string {
+    const dir = workspace();
+    const slow = MATCHING_EVALUATOR_SOURCE.replace(
+      '"parts-assigned": ({artifact, hidden}: Request): boolean => {',
+      `"parts-assigned": ({artifact, hidden}: Request): boolean => {\n    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${String(SLOW_CHECK_MS)});`,
+    );
+    expect(slow).not.toBe(MATCHING_EVALUATOR_SOURCE);
+    writeFileSync(join(dir, "correctness-model/evaluator.ts"), slow);
+    if (config !== undefined) writeFileSync(join(dir, "agent/config.yaml"), config);
+    return dir;
+  }
+
+  it("grades a check that outlasts thirty seconds under the default check wall", async () => {
+    const { tool } = round(slowWorkspace(), assigningSolver(RIGHT_SLOT));
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body.truth).toEqual({ verdict: "pass" });
+    expectWithinCensus(body);
+  }, 120_000);
+
+  it("stops the same check at the check wall the harness declares", async () => {
+    const { tool } = round(slowWorkspace("gate:\n  check_seconds: 1\n"), assigningSolver(RIGHT_SLOT));
+    const body = modelVisible(await rehearse(tool));
+
+    expect(body.status).toBe("non-result");
+    expect(body.truth).toEqual({ verdict: "not-run" });
+    expectWithinCensus(body);
   }, 60_000);
 });
 

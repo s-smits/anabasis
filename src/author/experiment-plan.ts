@@ -5,9 +5,9 @@
  * result, a pass-count target, each family's ladder level and the move that puts it there, and a
  * predicted pass probability per task. The controller writes the other file, `experiment-evidence.json`
  * under the campaign directory, which the Builder can neither read nor write directly: every
- * rehearsal's aggregate verdict, what the solve spent and how the plan's predictions scored against
- * those verdicts. It sits outside the workspace, so it is in no candidate diff, no fingerprint and
- * no `scoringHash`.
+ * rehearsal's aggregate verdict, what the solve spent, the bytes it solved and how the plan's
+ * predictions scored against the verdicts that still describe the tasks as they stand. It sits
+ * outside the workspace, so it is in no candidate diff, no fingerprint and no `scoringHash`.
  *
  * The plan used to be read in four places with three shapes of its own — a capture, a submission
  * parse, a recorded-authoring check and a readout — and its change prose was read against the
@@ -24,7 +24,7 @@
  */
 import { Type, type Static } from "typebox";
 import { Check as validateSchema } from "typebox/value";
-import { BATTERY_FILES, type FingerprintEvidence } from "../claim/fingerprint.ts";
+import { BATTERY_FILES, type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
 import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import {
@@ -44,11 +44,18 @@ import { join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { effortPhrase, type SolveEffort } from "../builder/solver-trace-text.ts";
-import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
+import { type ContractFinding, controllerValidatedFinding, requiredToolsOf } from "../truth/brief.ts";
+import { readValidatedBrief } from "../truth/public-resources.ts";
+import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { resolveToolInventory } from "../verify/tool-inventory.ts";
+import type { BuildTask } from "../truth/tasks.ts";
+import { loadRecordedTasks } from "../run/run-driver.ts";
+import { aimCounts } from "../claim/battery-difficulty.ts";
+import { POLICY } from "../critic/policy.ts";
 import { EXPERIMENT_FILE, MEMORY_FILE } from "./builder-memory.ts";
 
 const PLAN_SCHEMA = "experiment-plan/v2";
-export const EVIDENCE_SCHEMA = "experiment-evidence/v1";
+export const EVIDENCE_SCHEMA = "experiment-evidence/v2";
 export const EVIDENCE_STEM = "experiment-evidence";
 const TEXT_MAX_BYTES = 2_000;
 const MOVE_MAX_BYTES = 300;
@@ -130,6 +137,9 @@ export type RehearsalRow = SolveEffort & {
   verdict: "pass" | "fail" | "not-run";
   wallMinutes: number;
 };
+
+/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded. */
+type RecordedRehearsal = RehearsalRow & { bytes: string | null };
 
 export type PredictionScore = { scored: number; brier: number; expected: number; observed: number };
 
@@ -361,22 +371,61 @@ export function predictionScore(
   };
 }
 
-const rehearsalVerdicts = (rows: readonly RehearsalRow[]) =>
+/** The digest each workspace task would be rehearsed at now: the whole task row with its hidden
+ *  operands, the scoring program, the agent and the tools the brief requires as they resolve, so a
+ *  verdict stops counting once any of them moves. Null when the bundle does not fingerprint or its
+ *  tasks do not load, because an identity that cannot be read is unknown rather than changed. */
+function rehearsalBytes(workspace: string): ReadonlyMap<string, string> | null {
+  const fingerprint = fingerprintSlug(workspace);
+  if (!fingerprint.ok) return null;
+  let tasks: BuildTask[];
+  try {
+    tasks = loadRecordedTasks(workspace);
+  } catch {
+    return null;
+  }
+  const checks = readValidatedBrief(workspace)?.truthChecks ?? [];
+  const toolIds = checks.flatMap((check) => requiredToolsOf(check.execution));
+  const { inventory } = resolveToolInventory({ toolIds, toolTree: bundleSnapshotToolTree(workspace) });
+  // Identity and bytes, not location: a workspace carried to a new pass keeps its rehearsals.
+  const tools = Object.values(inventory).map(({ id, digest }) => [id, digest]);
+  const { scoringHash, agentHash } = fingerprint;
+  return new Map(tasks.map((task) => [task.taskId, hashJsonValue([task, scoringHash, agentHash, tools])]));
+}
+
+/** Each task's latest graded verdict, among the rehearsals whose recorded bytes are known and equal
+ *  the bytes it holds now; none counts while the current bytes are unknown. */
+const rehearsalVerdicts = (rows: readonly RecordedRehearsal[], now: ReadonlyMap<string, string> | null) =>
   new Map(
     rows.flatMap(
       (row): Array<[string, boolean]> =>
-        row.verdict === "not-run" ? [] : [[row.taskId, row.verdict === "pass"]],
+        row.verdict === "not-run" || row.bytes === null || row.bytes !== now?.get(row.taskId)
+          ? []
+          : [[row.taskId, row.verdict === "pass"]],
     ),
   );
 
-/** Where the plan and the rehearsals disagree, as advice only: rehearsal passes past an at-most
- *  target, and a prediction the verdict contradicts. Neither refuses anything, because a rehearsal
- *  is one blind solve and the measured battery is the evidence. */
-function planAdvice(plan: ExperimentPlan, rows: readonly RehearsalRow[]): string[] {
-  const verdicts = rehearsalVerdicts(rows);
+/** Where the plan and the rehearsals disagree, as advice only: a target above the aim, which the
+ *  readout would otherwise say only after a battery measured it, rehearsal passes past an at-most
+ *  target, a prediction the verdict contradicts, and tasks rehearsed only at bytes since changed.
+ *  None refuses anything, because a rehearsal is one blind solve and the measured battery is the
+ *  evidence. */
+function planAdvice(
+  plan: ExperimentPlan,
+  rows: readonly RecordedRehearsal[],
+  now: ReadonlyMap<string, string> | null,
+): string[] {
+  const verdicts = rehearsalVerdicts(rows, now);
   const passed = [...verdicts].flatMap(([taskId, pass]) => (pass ? [taskId] : []));
   const advice: string[] = [];
   const { comparator, verifiedPasses } = plan.target;
+  const slots = now?.size ?? 0;
+  const [lo, hi] = aimCounts(slots, POLICY.climb.band);
+  if (slots > 0 && hi >= lo && verifiedPasses > hi) {
+    advice.push(
+      `Advice: the target, ${comparator} ${verifiedPasses} verified passes, lies above the aim of ${lo} to ${hi} of ${slots}, so a battery meeting it would find no limit.`,
+    );
+  }
   if (comparator === "at-most" && passed.length > verifiedPasses) {
     advice.push(
       `Advice: rehearsals already passed ${passed.length} distinct task(s) (${passed.join(", ")}) against a target of at most ${verifiedPasses} verified passes.`,
@@ -390,6 +439,18 @@ function planAdvice(plan: ExperimentPlan, rows: readonly RehearsalRow[]): string
   if (contradicted.length > 0) {
     advice.push(
       `Advice: rehearsal verdicts contradict ${contradicted.length} prediction(s): ${contradicted.join("; ")}.`,
+    );
+  }
+  const stale = new Set(
+    rows.flatMap((row) => (verdicts.has(row.taskId) || row.verdict === "not-run" ? [] : [row.taskId])),
+  );
+  if (now === null && rows.some((row) => row.verdict !== "not-run")) {
+    advice.push(
+      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target or the predictions until they do.",
+    );
+  } else if (stale.size > 0) {
+    advice.push(
+      `Advice: rehearsed only at bytes that have since changed, so counted towards neither the target nor the predictions: ${[...stale].join(", ")}.`,
     );
   }
   return advice;
@@ -411,10 +472,10 @@ export function currentPlan(workspace: string): ExperimentSubmission | null {
 
 /** The controller's evidence about the round plan: every rehearsal of the round, written through to
  *  its own `experiment-evidence*.json` in `dir` after each one, beside the prediction score the
- *  current plan earns against them. One object per round, held by the controller and read by the
- *  plan view; a null `dir` keeps the rows in memory only. */
+ *  current plan earns against those still at their task's current bytes. One object per round,
+ *  held by the controller and read by the plan view; a null `dir` keeps the rows in memory only. */
 export class PlanEvidence {
-  private readonly rows: RehearsalRow[] = [];
+  private readonly rows: RecordedRehearsal[] = [];
   private path: string | undefined;
 
   constructor(
@@ -424,7 +485,8 @@ export class PlanEvidence {
 
   /** Records one rehearsal and returns the plan's advice after it. */
   record(row: RehearsalRow): string[] {
-    this.rows.push(row);
+    const now = rehearsalBytes(this.workspace);
+    this.rows.push({ ...row, bytes: now?.get(row.taskId) ?? null });
     const plan = currentPlan(this.workspace);
     if (this.dir !== null) {
       mkdirSync(this.dir, { recursive: true });
@@ -434,10 +496,10 @@ export class PlanEvidence {
         planDigest: plan?.digest ?? null,
         rehearsals: this.rows,
         predictionScore:
-          plan === null ? null : predictionScore(plan.predictions, rehearsalVerdicts(this.rows)),
+          plan === null ? null : predictionScore(plan.predictions, rehearsalVerdicts(this.rows, now)),
       });
     }
-    return plan === null ? [] : planAdvice(plan, this.rows);
+    return plan === null ? [] : planAdvice(plan, this.rows, now);
   }
 
   list(): readonly RehearsalRow[] {
@@ -447,7 +509,7 @@ export class PlanEvidence {
   /** The advice the current plan earns against this round's rehearsals. */
   advice(): string[] {
     const plan = currentPlan(this.workspace);
-    return plan === null ? [] : planAdvice(plan, this.rows);
+    return plan === null ? [] : planAdvice(plan, this.rows, rehearsalBytes(this.workspace));
   }
 
   view(): string {
@@ -487,7 +549,7 @@ function riskLine(workspace: string): string | null {
   return line === undefined || line.startsWith("## ") ? null : clip(line);
 }
 
-function planLines(workspace: string, rows: readonly RehearsalRow[]): string[] {
+function planLines(workspace: string, rows: readonly RecordedRehearsal[]): string[] {
   if (!existsSync(join(workspace, EXPERIMENT_FILE))) {
     return [`Round plan: ${EXPERIMENT_FILE} is not written yet. ${PLAN_TEMPLATE}`];
   }
@@ -502,7 +564,7 @@ function planLines(workspace: string, rows: readonly RehearsalRow[]): string[] {
   return [
     `Round plan (${PLAN_SCHEMA}, ${plan.scope} scope): target ${plan.target.comparator} ${plan.target.verifiedPasses} verified passes; ${plan.predictions.length} task prediction(s) summing to ${Math.round(expected * 10) / 10} expected passes.`,
     `Families: ${plan.families.map((row) => `${row.family} at ${row.level} — ${clip(row.move)}`).join("; ")}.`,
-    ...planAdvice(plan, rows),
+    ...planAdvice(plan, rows, rehearsalBytes(workspace)),
   ];
 }
 
@@ -519,7 +581,7 @@ function rehearsalLines(rows: readonly RehearsalRow[]): string[] {
  *  the target, each family's level and move, the prediction total, this round's rehearsals with
  *  their effort as plain facts, any advice, the ladder's frontier row, the MEMORY.md risk line and
  *  where the full files are. */
-function renderPlanView(workspace: string, rows: readonly RehearsalRow[]): string {
+function renderPlanView(workspace: string, rows: readonly RecordedRehearsal[]): string {
   const frontier = frontierRow(workspace);
   const risk = riskLine(workspace);
   return [

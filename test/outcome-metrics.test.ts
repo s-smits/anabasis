@@ -328,7 +328,15 @@ describe("the claim a battery carries", () => {
   it("tables the host-only limit margin by family with the within-5% share beside its count", () => {
     const c = measured();
     expect(c.battery().limitMargin).toBeNull();
-    const row = { family: "alpha", tasks: 3, paired: 8, within1pct: 2, within5pct: 6, unpaired: 1 };
+    const row = {
+      family: "alpha",
+      limits: "hidden",
+      tasks: 3,
+      paired: 8,
+      within1pct: 2,
+      within5pct: 6,
+      unpaired: 1,
+    };
     mkdirSync(join(c.dir, "analysis"), { recursive: true });
     writeFileSync(
       limitMarginFile(c.dir, RUN),
@@ -343,7 +351,7 @@ describe("the claim a battery carries", () => {
     expect(table?.pairing).toMatch(/^heuristic pairing/);
     expect(table?.families[0]).toMatchObject({ ...row, shareWithin5pct: 0.75 });
     expect(table?.families[0]?.reading).toBe(
-      "alpha: 6 of 8 paired limits within 5% of the reference (75%), 2 within 1%, 1 unpaired, over 3 task(s); heuristic pairing",
+      "alpha: 6 of 8 paired hidden limits within 5% of the reference (75%), 2 within 1%, 1 unpaired, over 3 task(s); heuristic pairing",
     );
   });
 });

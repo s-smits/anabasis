@@ -196,10 +196,10 @@ describe("the Built harness instructions", () => {
     expect(prompt).toContain("Save it before you change it");
     expect(prompt).toContain("120 minutes");
     expect(prompt).toContain("Where a requirement is a numeric limit");
-    // 19 of 19 recorded truss answers of 2026-09-17 breached a published limit by their own
-    // reported numbers. The prompt used to ask the solver to compare each reported value with each
-    // published requirement, and to hold margin where its own model only approximated one;
-    // readMargins measures that on the prepared answer instead, so the clauses are gone.
+    // Asking the solver to compare each reported value with each published requirement, and to
+    // hold margin where its own model only approximated one, did not stop answers breaching a
+    // published limit by their own numbers; readMargins measures that on the prepared answer
+    // instead, so the clauses are gone.
     for (const asked of ["keep margin on every limit", "compare each result", "Do not submit an answer"]) {
       expect(prompt).not.toContain(asked);
     }
@@ -243,9 +243,8 @@ describe("the solve loop", () => {
   });
 
   it("closes the case span it opened, so the stream says how the case ended", async () => {
-    // Run c1d2a7 opened 28 measured-case spans and closed none: every case start reached the
-    // stream and no case outcome did, so a reader watching a live battery could not say which
-    // case was still running, how any of them settled, or how long one took.
+    // A span opened and never closed leaves a reader of a live battery unable to say which case
+    // is still running, how any of them settled, or how long one took.
     const root = realpathSync(mkdtempSync(join(tmpdir(), "ana-case-span-")));
     await solve([WRITE, SUBMIT, SUBMIT_AGAIN], { observer: createRunObserver(root, "demo", "run-01") });
     const stream = readFileSync(join(root, "campaigns", "demo", "observability", "run-01.jsonl"), "utf8")
@@ -261,19 +260,21 @@ describe("the solve loop", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  // Truss cases irregular-supports-01 and -02 (2026-09-17) failed on turn one after 17 and 21 tool
-  // calls, then ended with 11 of 12 turns unused and nothing submitted. The agent keeps its
-  // messages and tool results, so one more prompt continues the same solve — and the turn that
-  // produced nothing is not one of the solver's turns.
+  // A turn that fails after many tool calls would otherwise end the solve with its turns unused
+  // and nothing submitted. The agent keeps its messages and tool results, so one more prompt
+  // continues the same solve — and the turn that produced nothing is not one of the solver's turns.
   // The one permitted turn is also the last, so its first submit sends rather than answering with
   // the time left (submit-time-left.ts): a second submit would never get a turn.
-  it("retries a failed turn without spending a solving turn", async () => {
+  it("retries a failed turn without spending a solving turn, keeping the provider's own words", async () => {
     const { outcome, accepted } = await solve(
       [{ stopReason: "error", errorMessage: "the model declined to continue" }, WRITE, SUBMIT],
       { maxTurns: 1 },
     );
     expect(accepted).toBe(true);
     expect(outcome).toMatchObject({ turns: 2, completedTurns: 1, toolCalls: 2 });
+    expect(outcome.errors).toContain("turn 1 failed");
+    // The synthesised marker alone says nothing about the cause.
+    expect(outcome.trace?.turns[0]?.errorMessage).toBe("the model declined to continue");
   });
 
   // The session retries a transient provider error inside the prompt, as pi's own loop does, so the
@@ -286,16 +287,6 @@ describe("the solve loop", () => {
     expect(accepted).toBe(true);
     expect(outcome).toMatchObject({ turns: 1, completedTurns: 1, toolCalls: 2 });
     expect(outcome.errors).toEqual([]);
-  });
-
-  it("records the provider's own words for a turn that did not complete", async () => {
-    const { outcome } = await solve(
-      [{ stopReason: "error", errorMessage: "the model declined to continue" }, WRITE, SUBMIT],
-      { maxTurns: 4 },
-    );
-    expect(outcome.errors).toContain("turn 1 failed");
-    // The synthesised marker alone told the c03 reader nothing about the cause.
-    expect(outcome.trace?.turns[0]?.errorMessage).toBe("the model declined to continue");
   });
 
   // A quota refusal is not transient, so the session does not retry it and the turn fails at once.
@@ -313,8 +304,8 @@ describe("the solve loop", () => {
     expect(outcome.nonResult).toMatchObject({ kind: "provider" });
   });
 
-  // The login is read at each solve start. A Codex login that expired mid-battery threw out of the
-  // solver, which left the case's tool worker open and gave the case no row.
+  // The login is read at each solve start. A login that expires mid-battery must not throw out of
+  // the solver, which would leave the case's tool worker open and give the case no row.
   it("records a login refused at the solve's start as that case's provider non-result", async () => {
     const refused = new EnvironmentRefusal(
       "Codex authentication is unavailable (auth.json access token is expired)",
@@ -371,9 +362,9 @@ describe("the solve loop", () => {
 });
 
 describe("the whole-solve wall", () => {
-  // Truss run 406cca's resilient-bridge-h was cut after 18 traced tool calls and recorded as a
-  // runtime non-result with zero tool calls, leaving the difficulty denominator. Running out of
-  // time is the attempt's own result, and the answer prepared before the cut is still submitted.
+  // Recording a cut solve as a runtime non-result with zero tool calls would drop it from the
+  // difficulty denominator. Running out of time is the attempt's own result, and the answer
+  // prepared before the cut is still submitted.
   const busy = Array.from({ length: 40 }, (_, index) => call(`busy-${String(index)}`, "slow_read"));
 
   it("ends an unsubmitted solve as its own unaccepted attempt, with the calls it made", async () => {
@@ -397,12 +388,10 @@ describe("the whole-solve wall", () => {
     expect(outcome.runtimeBoundary?.modelWorker.termination).toMatchObject({ status: "solve-wall" });
   });
 
-  // Run de8b40's canopy-02 completed its first turn, opened a second and met the wall there. The
-  // identities travelled only in the worker's `done` message, which a cut solve never sends, so
-  // the case recorded one completed turn beside zero identities. The claim reads that pair as an
-  // identity defect: it refused the whole battery on `runtime-model-identity-unproven` with three
-  // verified passes inside it. A turn is attested by the message that reports it, so a cut costs
-  // the attestation of the open turn alone.
+  // A cut solve never sends the worker's `done` message, so identities carried only there would
+  // leave a completed turn beside zero identities, which the claim reads as an identity defect
+  // (`runtime-model-identity-unproven`) over the whole battery. A turn is attested by the message
+  // that reports it, so a cut costs the attestation of the open turn alone.
   it("attests the turns that completed before the cut", async () => {
     const { outcome } = await solve([{ text: "planning" }, ...busy], {
       maxTurns: 3,

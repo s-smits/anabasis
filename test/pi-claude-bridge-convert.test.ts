@@ -14,8 +14,6 @@ import type { ContentBlock, Message as SessionMessage, ToolResultBlock, ToolUseB
  * only text, images and tool calls have a counterpart — but two things have to hold
  * on the other side: every tool result still names the call it answers, and no turn
  * arrives empty, because the API rejects both.
- *
- * Nothing tested this file before. These cases are what the session sees.
  */
 
 const usage = {
@@ -84,34 +82,24 @@ describe("messageContentToText", () => {
   // A whole pi image block: the function reads `type` and `text` and nothing else.
   const image = { type: "image", data: "AAAA", mimeType: "image/png" };
 
-  it("passes a string through unchanged", () => {
-    expect(messageContentToText("already text")).toBe("already text");
-  });
-
-  it("joins the text blocks with a newline and skips the images", () => {
-    expect(
-      messageContentToText([{ type: "text", text: "first" }, image, { type: "text", text: "second" }]),
-    ).toBe("first\nsecond");
-  });
-
-  it("names a block kind it cannot render, in place", () => {
-    expect(
-      messageContentToText([
-        { type: "text", text: "before" },
-        { type: "document" },
-        { type: "text", text: "after" },
-      ]),
-    ).toBe("before\n[document]\nafter");
-  });
-
-  it("returns nothing when no block carried text, whatever else was there", () => {
-    expect(messageContentToText([{ type: "document" }, { type: "video" }])).toBe("");
-    expect(messageContentToText([image])).toBe("");
-    expect(messageContentToText([])).toBe("");
-  });
-
-  it("treats an empty text block as no text", () => {
-    expect(messageContentToText([{ type: "text", text: "" }])).toBe("");
+  it.each<[string, Parameters<typeof messageContentToText>[0], string]>([
+    ["passes a string through unchanged", "already text", "already text"],
+    [
+      "joins the text blocks with a newline and skips the images",
+      [{ type: "text", text: "first" }, image, { type: "text", text: "second" }],
+      "first\nsecond",
+    ],
+    [
+      "names a block kind it cannot render, in place",
+      [{ type: "text", text: "before" }, { type: "document" }, { type: "text", text: "after" }],
+      "before\n[document]\nafter",
+    ],
+    ["returns nothing when no block carried text", [{ type: "document" }, { type: "video" }], ""],
+    ["returns nothing for an image alone", [image], ""],
+    ["returns nothing for no blocks", [], ""],
+    ["treats an empty text block as no text", [{ type: "text", text: "" }], ""],
+  ])("%s", (_case, content, text) => {
+    expect(messageContentToText(content)).toBe(text);
   });
 });
 
@@ -121,9 +109,13 @@ describe("convertPiMessages: user turns", () => {
     expect(anthropicMessages).toStrictEqual([{ role: "user", content: "hello" }]);
   });
 
-  it("replaces an empty message rather than sending nothing", () => {
-    // The API rejects an empty user turn, so the placeholder is the message.
-    expect(converted([user("")])[0]?.content).toBe("[empty]");
+  // The API rejects an empty user turn, so a placeholder is the message.
+  it.each<[string, PiMessage["content"], string]>([
+    ["an empty message", "", "[empty]"],
+    ["no blocks at all", [], "[empty]"],
+    ["an image that carries no data", [{ type: "image", data: "", mimeType: "" }], "[image]"],
+  ])("replaces %s with a placeholder rather than sending nothing", (_case, content, placeholder) => {
+    expect(converted([user(content)])[0]?.content).toBe(placeholder);
   });
 
   it("keeps text and image blocks in the order they were written", () => {
@@ -138,15 +130,6 @@ describe("convertPiMessages: user turns", () => {
       { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
     ]);
   });
-
-  it("drops an image that carries no data and says one was there", () => {
-    const anthropicMessages = converted([user([{ type: "image", data: "", mimeType: "" }])]);
-    expect(anthropicMessages[0]?.content).toBe("[image]");
-  });
-
-  it("says the turn was empty when it held no blocks at all", () => {
-    expect(converted([user([])])[0]?.content).toBe("[empty]");
-  });
 });
 
 describe("convertPiMessages: assistant turns", () => {
@@ -155,39 +138,36 @@ describe("convertPiMessages: assistant turns", () => {
     expect(blocks(anthropicMessages[0]!)).toStrictEqual([{ type: "text", text: "done" }]);
   });
 
-  it("replays a thinking block only with the signature the API will verify", () => {
-    const signed = converted([assistant([{ type: "thinking", thinking: "why", thinkingSignature: "sig" }])]);
-    expect(blocks(signed[0]!)).toStrictEqual([{ type: "thinking", thinking: "why", signature: "sig" }]);
-
-    const unsigned = converted([assistant([{ type: "thinking", thinking: "why" }])]);
-    expect(blocks(unsigned[0]!)).toStrictEqual([{ type: "text", text: "[incompatible content omitted]" }]);
-  });
-
-  it("drops a signed thinking block that another provider produced", () => {
-    const other = converted([
-      assistant([{ type: "thinking", thinking: "why", thinkingSignature: "sig" }], {
-        provider: "openai",
-        api: "openai-completions",
-      }),
-    ]);
-    expect(blocks(other[0]!)).toStrictEqual([{ type: "text", text: "[incompatible content omitted]" }]);
-  });
-
-  it("keeps a signed thinking block from any provider speaking the Anthropic API", () => {
-    const viaApi = converted([
-      assistant([{ type: "thinking", thinking: "why", thinkingSignature: "sig" }], {
-        provider: "openrouter",
-        api: "anthropic",
-      }),
-    ]);
-    expect(blocks(viaApi[0]!)[0]?.type).toBe("thinking");
-  });
-
-  it("never leaves an assistant turn with no content", () => {
-    const anthropicMessages = converted([assistant([])]);
-    expect(blocks(anthropicMessages[0]!)).toStrictEqual([
-      { type: "text", text: "[incompatible content omitted]" },
-    ]);
+  const omitted: ContentBlock[] = [{ type: "text", text: "[incompatible content omitted]" }];
+  const signed = { type: "thinking", thinking: "why", thinkingSignature: "sig" };
+  it.each<[string, unknown[], { provider?: string; api?: string }, ContentBlock[]]>([
+    [
+      "replays a signed thinking block",
+      [signed],
+      {},
+      [{ type: "thinking", thinking: "why", signature: "sig" }],
+    ],
+    [
+      "omits a thinking block with no signature to verify",
+      [{ type: "thinking", thinking: "why" }],
+      {},
+      omitted,
+    ],
+    [
+      "omits a signed thinking block another provider produced",
+      [signed],
+      { provider: "openai", api: "openai-completions" },
+      omitted,
+    ],
+    [
+      "replays a signed thinking block from any provider speaking the Anthropic API",
+      [signed],
+      { provider: "openrouter", api: "anthropic" },
+      [{ type: "thinking", thinking: "why", signature: "sig" }],
+    ],
+    ["never leaves an assistant turn with no content", [], {}, omitted],
+  ])("%s", (_case, content, overrides, expected) => {
+    expect(blocks(converted([assistant(content, overrides)])[0]!)).toStrictEqual(expected);
   });
 
   it("gives a tool call the name the CLI knows it by", () => {
@@ -257,18 +237,12 @@ describe("convertPiMessages: tool results", () => {
 });
 
 describe("tool ids the session file can hold", () => {
-  it("replaces the characters the id may not contain", () => {
-    const anthropicMessages = converted([
-      assistant([{ type: "toolCall", id: "call:1/a", name: "read", arguments: {} }]),
-    ]);
-    expect(toolUses(anthropicMessages[0]!)[0]?.id).toBe("call_1_a");
-  });
-
-  it("leaves an id that is already legal exactly as it was", () => {
-    const anthropicMessages = converted([
-      assistant([{ type: "toolCall", id: "toolu_01AbC-9", name: "read", arguments: {} }]),
-    ]);
-    expect(toolUses(anthropicMessages[0]!)[0]?.id).toBe("toolu_01AbC-9");
+  it.each([
+    ["replaces the characters the id may not contain", "call:1/a", "call_1_a"],
+    ["leaves an id that is already legal exactly as it was", "toolu_01AbC-9", "toolu_01AbC-9"],
+  ])("%s", (_case, id, legal) => {
+    const anthropicMessages = converted([assistant([{ type: "toolCall", id, name: "read", arguments: {} }])]);
+    expect(toolUses(anthropicMessages[0]!)[0]?.id).toBe(legal);
   });
 
   it("gives one pi id one session id, wherever it appears", () => {
@@ -307,8 +281,8 @@ describe("tool ids the session file can hold", () => {
   });
 
   it("answers parallel calls in one turn, so the repair keeps every result", () => {
-    // One user turn per result let the repair keep the first and replace the second with
-    // "[no tool result recorded]": every rewrite of pi6's Builder lost its parallel results.
+    // With one user turn per result, the repair keeps the first and replaces the second with
+    // "[no tool result recorded]", so every rewrite would lose its parallel results.
     const anthropicMessages = repairToolPairing(
       converted([
         assistant([

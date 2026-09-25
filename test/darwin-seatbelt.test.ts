@@ -110,6 +110,17 @@ function launch(f: ReturnType<typeof fixture>) {
   };
 }
 
+/** A prepared plan, or the case fails naming why the host refused one. */
+function prepared(input: Parameters<typeof prepareDarwinSeatbelt>[0]) {
+  const plan = prepareDarwinSeatbelt(input);
+  if ("unsupported" in plan) throw new Error(plan.unsupported);
+  return plan;
+}
+
+/** The launch of one attested command, the shape the re-attestation cases change a byte under. */
+const attested = (f: ReturnType<typeof fixture>, command: string) =>
+  prepared({ ...launch(f), resolvedCommand: command, engineArgs: [], attestedFiles: [command] });
+
 describe("Darwin verifier Seatbelt policy identity", () => {
   it.concurrent("orders imported profile records by code point before hashing stable JSON", () => {
     const f = fixture();
@@ -119,12 +130,7 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     writeFileSync(umlautProfile, "(version 1)\n(allow umlaut-profile)");
     writeFileSync(f.systemProfile, '(version 1)\n(import "z.sb")\n(import "ä.sb")');
 
-    const support = darwinSeatbeltSupport({
-      platform: "darwin",
-      sandboxExecPath: f.executable,
-      systemProfilePath: f.systemProfile,
-      outerSandboxed: false,
-    });
+    const support = darwinSeatbeltSupport(f.runtime);
     const records = [f.systemProfile, zProfile, umlautProfile]
       .map((path) => ({ path: realpathSync.native(path), sha256: sha256(readFileSync(path)) }))
       .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
@@ -163,8 +169,7 @@ describe("Darwin verifier Seatbelt policy identity", () => {
 
   it.concurrent("binds imported system.sb bytes while normalising the private workdir path", () => {
     const f = fixture();
-    const first = prepareDarwinSeatbelt(launch(f));
-    if ("unsupported" in first) throw new Error(first.unsupported);
+    const first = prepared(launch(f));
     expect(first.profile).toContain("(deny default)");
     expect(first.profile).toContain('(import "system.sb")');
     expect(first.profile).toContain("(deny network*)");
@@ -172,21 +177,18 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     expect(first.policyHash).toMatch(/^[0-9a-f]{64}$/);
 
     writeFileSync(f.importedProfile, "(version 1)\n(allow imported-fixture-v2)");
-    const second = prepareDarwinSeatbelt(launch(f));
-    if ("unsupported" in second) throw new Error(second.unsupported);
+    const second = prepared(launch(f));
     expect(second.policyHash).not.toBe(first.policyHash);
 
     // A file inside a declared root is a grant, not a bound input: writing one leaves the policy
     // identity alone, so a toolchain that writes to its own directory does not move the identity
     // of the run reading it.
     writeFileSync(join(f.readable, "truth.dat"), "changed truth input");
-    const third = prepareDarwinSeatbelt(launch(f));
-    if ("unsupported" in third) throw new Error(third.unsupported);
+    const third = prepared(launch(f));
     expect(third.policyHash).toBe(second.policyHash);
 
     writeFileSync(f.executable, "fixture executable v2");
-    const fourth = prepareDarwinSeatbelt(launch(f));
-    if ("unsupported" in fourth) throw new Error(fourth.unsupported);
+    const fourth = prepared(launch(f));
     expect(fourth.policyHash).not.toBe(third.policyHash);
   });
 
@@ -216,16 +218,8 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     const internal = join(f.readable, "libtool.0.so");
     writeFileSync(internal, "internal library");
     symlinkSync("libtool.0.so", join(f.readable, "libtool.so"));
-    const input = {
-      runtime: f.runtime,
-      workdir: f.workdir,
-      resolvedCommand: Bun.argv[0]!,
-      engineArgs: [],
-      attestedFiles: [],
-      sandboxReadRoots: [f.readable],
-    };
-    const internalPlan = prepareDarwinSeatbelt(input);
-    if ("unsupported" in internalPlan) throw new Error(internalPlan.unsupported);
+    const input = launch(f);
+    const internalPlan = prepared(input);
     expect(internalPlan.policyHash).toMatch(/^[0-9a-f]{64}$/);
 
     // A toolchain can contain many symlinks and create its own indexes, caches and build
@@ -237,16 +231,14 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     writeFileSync(outside, "outside");
     const escape = join(f.readable, "escape");
     symlinkSync(outside, escape);
-    const escapingPlan = prepareDarwinSeatbelt(input);
-    if ("unsupported" in escapingPlan) throw new Error(escapingPlan.unsupported);
+    const escapingPlan = prepared(input);
     expect(escapingPlan.policyHash).toBe(internalPlan.policyHash);
     expect(escapingPlan.readRoots).toEqual([realpathSync.native(f.readable)]);
     expect(escapingPlan.profile).not.toContain(outside);
 
     // A dangling link grants nothing, so it cannot disqualify the installation that contains it.
     rmSync(outside);
-    const danglingPlan = prepareDarwinSeatbelt(input);
-    if ("unsupported" in danglingPlan) throw new Error(danglingPlan.unsupported);
+    const danglingPlan = prepared(input);
     expect(danglingPlan.policyHash).toBe(internalPlan.policyHash);
   });
 
@@ -255,18 +247,9 @@ describe("Darwin verifier Seatbelt policy identity", () => {
       const f = fixture();
       const delegated = join(f.root, "delegated-tool");
       writeFileSync(delegated, "delegated-v1");
-      const runtime = f.runtime;
-      const plan = prepareDarwinSeatbelt({
-        runtime,
-        workdir: f.workdir,
-        resolvedCommand: delegated,
-        engineArgs: [],
-        attestedFiles: [delegated],
-        sandboxReadRoots: [f.readable],
-      });
-      if ("unsupported" in plan) throw new Error(plan.unsupported);
-      expect(verifyDarwinSeatbeltPlan(plan, runtime)).toBeNull();
-      return { f, delegated, plan, runtime };
+      const plan = attested(f, delegated);
+      expect(verifyDarwinSeatbeltPlan(plan, f.runtime)).toBeNull();
+      return { f, delegated, plan, runtime: f.runtime };
     };
 
     const command = make();
@@ -289,22 +272,14 @@ describe("Darwin verifier Seatbelt policy identity", () => {
 
   // The test above detects changed sandbox files. Here the host cannot read those files
   // again, so it cannot establish whether they changed. That is an environment failure.
-  // Treating unreadable files as changed bytes refused /usr/bin/cc on a loaded host
-  // and invalidated two batteries on 2026-09-03.
+  // Treating unreadable files as changed bytes would refuse a host compiler on a loaded host and
+  // invalidate every battery that used it.
   it.concurrent("distinguishes unavailable sandbox files from files whose bytes changed", () => {
     const f = fixture();
     const command = join(f.root, "command");
     writeFileSync(command, "command-v1");
     const runtime = f.runtime;
-    const plan = prepareDarwinSeatbelt({
-      runtime,
-      workdir: f.workdir,
-      resolvedCommand: command,
-      engineArgs: [],
-      attestedFiles: [command],
-      sandboxReadRoots: [f.readable],
-    });
-    if ("unsupported" in plan) throw new Error(plan.unsupported);
+    const plan = attested(f, command);
     expect(verifyDarwinSeatbeltPlan(plan, runtime)).toBeNull();
 
     expect(
@@ -336,15 +311,7 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     const runtimeLink = join(f.root, "runtime");
     symlinkSync("runtime-v1", runtimeLink);
     const runtime = f.runtime;
-    const plan = prepareDarwinSeatbelt({
-      runtime,
-      workdir: f.workdir,
-      resolvedCommand: join(runtimeLink, "engine"),
-      engineArgs: [],
-      attestedFiles: [join(runtimeLink, "engine")],
-      sandboxReadRoots: [f.readable],
-    });
-    if ("unsupported" in plan) throw new Error(plan.unsupported);
+    const plan = attested(f, join(runtimeLink, "engine"));
     expect(verifyDarwinSeatbeltPlan(plan, runtime)).toBeNull();
 
     unlinkSync(runtimeLink);
@@ -360,7 +327,7 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     async () => {
       const workdir = mkdtempSync(join(tmpdir(), "ana-seatbelt-preflight-"));
       dirs.push(workdir);
-      const plan = prepareDarwinSeatbelt({
+      const plan = prepared({
         runtime: { outerSandboxed: false },
         workdir,
         resolvedCommand: Bun.argv[0]!,
@@ -368,7 +335,6 @@ describe("Darwin verifier Seatbelt policy identity", () => {
         attestedFiles: [],
         sandboxReadRoots: [],
       });
-      if ("unsupported" in plan) throw new Error(plan.unsupported);
       expect(await applyDarwinSeatbeltPlan(plan)).toEqual({ ok: true });
     },
   );
@@ -377,20 +343,7 @@ describe("Darwin verifier Seatbelt policy identity", () => {
     const f = fixture();
     writeFileSync(f.executable, "#!/bin/sh\nsleep 60\n");
     chmodSync(f.executable, 0o755);
-    const plan = prepareDarwinSeatbelt({
-      runtime: {
-        platform: "darwin",
-        sandboxExecPath: f.executable,
-        systemProfilePath: f.systemProfile,
-        outerSandboxed: false,
-      },
-      workdir: f.workdir,
-      resolvedCommand: Bun.argv[0]!,
-      engineArgs: ["-e", "void 0"],
-      attestedFiles: [],
-      sandboxReadRoots: [],
-    });
-    if ("unsupported" in plan) throw new Error(plan.unsupported);
+    const plan = prepared({ ...launch(f), sandboxReadRoots: [] });
     const started = performance.now();
     expect(await applyDarwinSeatbeltPlan(plan, 500)).toEqual({
       ok: false,
@@ -403,9 +356,8 @@ describe("Darwin verifier Seatbelt policy identity", () => {
 
 /**
  * The platform baseline, exercised on the real mechanism rather than asserted from the profile
- * text. Before 2026-08-18 an engine could start a second binary and not read it, so a compiler
- * spawned by a checker died on its own toolchain and the checker reported that as a failed
- * submission.
+ * text. An engine that can start a second binary but not read it leaves a compiler spawned by a
+ * checker dying on its own toolchain, which the checker reports as a failed submission.
  */
 describe("Darwin verifier platform read baseline", () => {
   const onDarwin = runtimeProcess.platform === "darwin" && darwinSeatbeltSupport({}).ok;
@@ -446,15 +398,13 @@ console.log(JSON.stringify({ status: r.exitCode, output: await Bun.file(${JSON.s
     );
     const environment = { PATH: "/usr/bin:/bin", TMPDIR: workdir, OPENSSL_CONF: "/dev/null" };
     // Exactly what an engine declaring no sandboxReadRoots of its own receives.
-    const plan = prepareDarwinSeatbelt({
+    const plan = prepared({
       workdir,
       resolvedCommand: realpathSync.native(Bun.argv[0]!),
       engineArgs: [script],
       attestedFiles: [],
       sandboxReadRoots: [],
     });
-    expect("unsupported" in plan).toBe(false);
-    if ("unsupported" in plan) return;
     expect(await applyDarwinSeatbeltPlan(plan)).toEqual({ ok: true });
     const run = await spawnText(plan.command, plan.args, {
       cwd: workdir,
@@ -488,15 +438,13 @@ catch (error) { console.log("REFUSED:" + String(error.code)); }
 `,
     );
     const environment = { PATH: "/usr/bin:/bin", TMPDIR: workdir };
-    const plan = prepareDarwinSeatbelt({
+    const plan = prepared({
       workdir,
       resolvedCommand: realpathSync.native(Bun.argv[0]!),
       engineArgs: [script],
       attestedFiles: [],
       sandboxReadRoots: [],
     });
-    expect("unsupported" in plan).toBe(false);
-    if ("unsupported" in plan) return;
     const run = await spawnText(plan.command, plan.args, {
       cwd: workdir,
       env: environment,
@@ -507,10 +455,9 @@ catch (error) { console.log("REFUSED:" + String(error.code)); }
 
   it("keeps a concurrent verification cell denied without a writable grant", () => {
     const f = fixture();
-    const base = launch(f);
-    const prepared = prepareDarwinSeatbelt(base);
-    if ("unsupported" in prepared) throw new Error("unsupported");
-    const cellRules = prepared.profile.split("\n").filter((line) => line.includes("ana-cell-"));
+    const cellRules = prepared(launch(f))
+      .profile.split("\n")
+      .filter((line) => line.includes("ana-cell-"));
     expect(cellRules).toHaveLength(1);
     expect(cellRules[0]).toContain("(deny ");
   });

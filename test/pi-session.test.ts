@@ -25,10 +25,21 @@ import {
   getCurrentTools,
   registerSessionResourceCleanup,
 } from "@earendil-works/pi-ai";
-import type { AgentTurnEvent } from "../src/backends/backend-types.ts";
+import type { AgentTurnEvent, AgentTurnResult } from "../src/backends/backend-types.ts";
 import type { PiSlotRuntime } from "../src/backends/pi-providers.ts";
 import { type PiTool, openHostSession, piSessionPolicy, settledStatus } from "../src/backends/pi-session.ts";
+import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { double, toolDouble } from "./helpers/doubles.ts";
+
+/** What one request saw of the conversation it was sent. */
+type Seen = {
+  prompt: string;
+  tools: string[];
+  systemMessages: number;
+  userMessages: number;
+  summarised: boolean;
+  stale: boolean;
+};
 
 const SLOT: PiSlotRuntime = {
   profile: { provider: "openrouter", transport: "openrouter", model: "faux-host", thinkingLevel: "off" },
@@ -56,12 +67,48 @@ function probe(result: () => Promise<string>): PiTool {
   });
 }
 
-async function turn(fakeResponses: AssistantMessage[], tools: readonly PiTool[] = []) {
+const named = (name: string) => toolDouble({ name, execute: async () => ({ content: [], details: null }) });
+
+/** One turn on a fresh session. `stopAfterMs` has the caller abort it, `turnTimeoutMs` caps it. */
+async function turn(
+  fakeResponses: AssistantMessage[],
+  tools: readonly PiTool[] = [],
+  stop: { stopAfterMs?: number; turnTimeoutMs?: number } = {},
+) {
   const session = await openHostSession({ slot: SLOT, tools, systemPrompt: "framing", fakeResponses });
   const events: AgentTurnEvent[] = [];
-  const result = await session.runTurn({ prompt: "go", onEvent: (event) => events.push(event) });
+  const controller = new AbortController();
+  if (stop.stopAfterMs !== undefined) setTimeout(() => controller.abort(), stop.stopAfterMs);
+  const result = await session.runTurn({
+    prompt: "go",
+    onEvent: (event) => events.push(event),
+    signal: controller.signal,
+    ...keyIfDefined("turnTimeoutMs", stop.turnTimeoutMs),
+  });
   await session.dispose();
   return { result, events };
+}
+
+function v2Identity(result: AgentTurnResult) {
+  const identity = result.runtimeIdentity;
+  if (identity?.schema !== "runtime-model-identity/v2") throw new Error("expected a v2 identity");
+  return identity;
+}
+
+function watching(seen: Seen[], answer: string): AssistantMessage {
+  return double<AssistantMessage>(((context) => {
+    const { messages } = context;
+    const text = JSON.stringify(messages);
+    seen.push({
+      prompt: getCurrentSystemPrompt(messages),
+      tools: getCurrentTools(messages).map((tool) => tool.name),
+      systemMessages: messages.filter((message) => message.role === "system").length,
+      userMessages: messages.filter((message) => message.role === "user").length,
+      summarised: text.includes("SUMMARY-OF-ROUND-ONE"),
+      stale: text.includes("first framing"),
+    });
+    return fauxAssistantMessage(answer);
+  }) satisfies FauxResponseFactory);
 }
 
 describe("openHostSession events", () => {
@@ -125,11 +172,9 @@ describe("openHostSession events", () => {
     expect(result.assistantText).toBe("calling probe\ndone");
     expect(result.finalText).toBe("done");
     expect(result.toolCalls).toEqual({ byName: { probe: 1 }, failedByName: {}, failed: 0, total: 1 });
-    expect(result.runtimeIdentity?.schema).toBe("runtime-model-identity/v2");
-    const identity = result.runtimeIdentity;
-    if (identity?.schema !== "runtime-model-identity/v2") throw new Error("expected a v2 identity");
-    expect(identity.provider.id).toBe("openrouter");
-    expect(identity.agentRuntime.sessionId).toMatch(/^pi-/);
+    const identity = v2Identity(result);
+    expect(identity.provider).toMatchObject({ id: "openrouter" });
+    expect(identity.agentRuntime).toMatchObject({ sessionId: expect.stringMatching(/^pi-/) });
   });
 
   it("records a throwing tool as a failed call with the error in its preview", async () => {
@@ -274,22 +319,7 @@ describe("openHostSession turn status", () => {
   });
 
   it("aborts a turn at its cap and names the cap", async () => {
-    const { result, events } = await (async () => {
-      const session = await openHostSession({
-        slot: SLOT,
-        tools: [],
-        systemPrompt: "framing",
-        fakeResponses: [UNTIL_ABORTED],
-      });
-      const seen: AgentTurnEvent[] = [];
-      const settled = await session.runTurn({
-        prompt: "go",
-        turnTimeoutMs: 50,
-        onEvent: (event) => seen.push(event),
-      });
-      await session.dispose();
-      return { result: settled, events: seen };
-    })();
+    const { result, events } = await turn([UNTIL_ABORTED], [], { turnTimeoutMs: 50 });
     expect(result.status).toBe("aborted");
     expect(result.errorMessages?.[0]).toBe("the turn reached its 50 ms cap");
     expect(events.at(-1)).toMatchObject({ type: "turn_ended", stopReason: "aborted" });
@@ -318,20 +348,11 @@ describe("openHostSession turn status", () => {
   it("attests the model that answered before the caller stopped the turn", async () => {
     const served = { ...fauxAssistantMessage(fauxToolCall("probe", { q: "x" }), { stopReason: "toolUse" }) };
     served.responseModel = "served-model";
-    const session = await openHostSession({
-      slot: SLOT,
-      tools: [probe(async () => "probe result")],
-      systemPrompt: "framing",
-      fakeResponses: [served, UNTIL_ABORTED],
+    const { result } = await turn([served, UNTIL_ABORTED], [probe(async () => "probe result")], {
+      stopAfterMs: 20,
     });
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
-    const result = await session.runTurn({ prompt: "go", signal: controller.signal });
-    await session.dispose();
     expect(result.status).toBe("aborted");
-    const identity = result.runtimeIdentity;
-    if (identity?.schema !== "runtime-model-identity/v2") throw new Error("expected a v2 identity");
-    expect(identity.provider.model).toBe("served-model");
+    expect(v2Identity(result).provider).toMatchObject({ model: "served-model" });
   });
 
   it("attests the Codex route's response id when no model was named, and nothing when nothing answered", async () => {
@@ -339,24 +360,11 @@ describe("openHostSession turn status", () => {
       stopReason: "toolUse",
       responseId: "resp_1",
     });
-    const stop = async (fakeResponses: AssistantMessage[]) => {
-      const session = await openHostSession({
-        slot: SLOT,
-        tools: [probe(async () => "probe result")],
-        systemPrompt: "framing",
-        fakeResponses,
-      });
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 20);
-      const result = await session.runTurn({ prompt: "go", signal: controller.signal });
-      await session.dispose();
-      return result;
-    };
+    const stop = async (fakeResponses: AssistantMessage[]) =>
+      (await turn(fakeResponses, [probe(async () => "probe result")], { stopAfterMs: 20 })).result;
     const idOnly = await stop([answered, UNTIL_ABORTED]);
     expect(idOnly.status).toBe("aborted");
-    const identity = idOnly.runtimeIdentity;
-    if (identity?.schema !== "runtime-model-identity/v2") throw new Error("expected a v2 identity");
-    expect(identity.provider).toMatchObject({ model: null, resultId: "resp_1" });
+    expect(v2Identity(idOnly).provider).toMatchObject({ model: null, resultId: "resp_1" });
     const unanswered = await stop([UNTIL_ABORTED]);
     expect(unanswered.status).toBe("aborted");
     expect(unanswered.runtimeIdentity).toBeUndefined();
@@ -373,23 +381,6 @@ describe("openHostSession turn status", () => {
 });
 
 describe("HostSession.configure", () => {
-  type Seen = { prompt: string; tools: string[]; systemMessages: number; userMessages: number };
-
-  function watching(seen: Seen[], answer: string): AssistantMessage {
-    return double<AssistantMessage>(((context) => {
-      const { messages } = context;
-      seen.push({
-        prompt: getCurrentSystemPrompt(messages),
-        tools: getCurrentTools(messages).map((tool) => tool.name),
-        systemMessages: messages.filter((message) => message.role === "system").length,
-        userMessages: messages.filter((message) => message.role === "user").length,
-      });
-      return fauxAssistantMessage(answer);
-    }) satisfies FauxResponseFactory);
-  }
-
-  const named = (name: string) => toolDouble({ name, execute: async () => ({ content: [], details: null }) });
-
   it("runs the next prompt on the new tools and framing, in the same conversation", async () => {
     const seen: Seen[] = [];
     const session = await openHostSession({
@@ -405,7 +396,7 @@ describe("HostSession.configure", () => {
 
     // The kept transcript carries round one; pi announces the new roster and the framing section
     // is replaced by one more system message.
-    expect(seen).toEqual([
+    expect(seen).toMatchObject([
       { prompt: "first framing", tools: ["read"], systemMessages: 1, userMessages: 1 },
       { prompt: "second framing", tools: ["read", "submit"], systemMessages: 3, userMessages: 2 },
     ]);
@@ -453,30 +444,6 @@ describe("HostSession compaction", () => {
   // provider counts four characters a token, so each bulk prompt is 62,500 tokens.
   const BULK = "x".repeat(250_000);
   const SUMMARY = fauxAssistantMessage("SUMMARY-OF-ROUND-ONE");
-  type Seen = {
-    prompt: string;
-    tools: string[];
-    systemMessages: number;
-    summarised: boolean;
-    stale: boolean;
-  };
-
-  function watching(seen: Seen[], answer: string): AssistantMessage {
-    return double<AssistantMessage>(((context) => {
-      const { messages } = context;
-      const text = JSON.stringify(messages);
-      seen.push({
-        prompt: getCurrentSystemPrompt(messages),
-        tools: getCurrentTools(messages).map((tool) => tool.name),
-        systemMessages: messages.filter((message) => message.role === "system").length,
-        summarised: text.includes("SUMMARY-OF-ROUND-ONE"),
-        stale: text.includes("first framing"),
-      });
-      return fauxAssistantMessage(answer);
-    }) satisfies FauxResponseFactory);
-  }
-
-  const named = (name: string) => toolDouble({ name, execute: async () => ({ content: [], details: null }) });
   const AFTER = {
     prompt: "second framing",
     tools: ["read", "submit"],
@@ -500,7 +467,7 @@ describe("HostSession compaction", () => {
     await session.dispose();
 
     expect(compacting.compactions?.map(({ compacted }) => compacted)).toEqual([true]);
-    expect(seen.at(-1)).toEqual(AFTER);
+    expect(seen.at(-1)).toMatchObject(AFTER);
   });
 
   it("replays the current framing when an overflow compacts and retries the turn", async () => {
@@ -518,7 +485,7 @@ describe("HostSession compaction", () => {
     await session.dispose();
 
     expect(retried.status).toBe("completed");
-    expect(seen.at(-1)).toEqual(AFTER);
+    expect(seen.at(-1)).toMatchObject(AFTER);
   });
 
   async function cancelledWhileCompacting(stop: "signal" | "timeout") {
@@ -554,19 +521,14 @@ describe("HostSession compaction", () => {
     };
   }
 
-  it("starts no request and no tool once the caller cancels during pre-prompt compaction", async () => {
-    expect(await cancelledWhileCompacting("signal")).toEqual({
-      status: "aborted",
-      calls: [],
-      compactions: [false],
-    });
-  });
-
-  it("starts no request and no tool once the turn cap stops pre-prompt compaction", async () => {
-    expect(await cancelledWhileCompacting("timeout")).toEqual({
-      status: "aborted",
-      calls: [],
-      compactions: [false],
-    });
-  });
+  it.each(["signal", "timeout"] as const)(
+    "starts no request and no tool once a cancel (%s) stops pre-prompt compaction",
+    async (stop) => {
+      expect(await cancelledWhileCompacting(stop)).toEqual({
+        status: "aborted",
+        calls: [],
+        compactions: [false],
+      });
+    },
+  );
 });

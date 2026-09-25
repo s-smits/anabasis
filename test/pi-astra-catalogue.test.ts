@@ -7,20 +7,24 @@ import { piModelSelection } from "../src/backends/pi-providers.ts";
 import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 
+/** Open the confined Codex worker for Astra at one level, with a login that is never used. */
+const preflightAstra = (thinkingLevel: "off" | "low" | "medium") =>
+  preflightPiBuilt({
+    profile: { provider: "openai-codex", transport: "codex", model: "gpt-6-astra", thinkingLevel },
+    auth: async () => ({
+      type: "oauth",
+      access: "header.payload.signature",
+      refresh: "",
+      expires: Date.now() + 3_600_000,
+    }),
+    policy: builtSolveIsolation(runtimeProcess.cwd()),
+  });
+
 describe("Astra through the installed Pi catalogue", () => {
   it.each(["low", "medium"] as const)(
     "opens the confined Codex worker at %s without a model turn",
     async (thinkingLevel) => {
-      const evidence = await preflightPiBuilt({
-        profile: { provider: "openai-codex", transport: "codex", model: "gpt-6-astra", thinkingLevel },
-        auth: async () => ({
-          type: "oauth",
-          access: "header.payload.signature",
-          refresh: "",
-          expires: Date.now() + 3_600_000,
-        }),
-        policy: builtSolveIsolation(runtimeProcess.cwd()),
-      });
+      const evidence = await preflightAstra(thinkingLevel);
       expect(evidence.modelSelection).toEqual({
         resolvedModel: "gpt-6-astra",
         effort: thinkingLevel,
@@ -33,18 +37,7 @@ describe("Astra through the installed Pi catalogue", () => {
   );
 
   it("refuses disabled reasoning before an Astra turn", async () => {
-    await expect(
-      preflightPiBuilt({
-        profile: { provider: "openai-codex", transport: "codex", model: "gpt-6-astra", thinkingLevel: "off" },
-        auth: async () => ({
-          type: "oauth",
-          access: "header.payload.signature",
-          refresh: "",
-          expires: Date.now() + 3_600_000,
-        }),
-        policy: builtSolveIsolation(runtimeProcess.cwd()),
-      }),
-    ).rejects.toThrow("unsupported reasoning effort: off");
+    await expect(preflightAstra("off")).rejects.toThrow("unsupported reasoning effort: off");
   }, 60_000);
 
   it.each([
@@ -62,23 +55,18 @@ describe("Astra through the installed Pi catalogue", () => {
     ).toThrow(`unsupported reasoning effort: ${row.level}`);
   });
 
-  it("keeps a level the transport serves under its own name", () => {
+  it.each([
+    { transport: "codex", provider: "openai-codex", model: "gpt-5.6-sol", level: "medium" },
+    { transport: "claude", provider: "anthropic", model: "claude-sonnet-5", level: "xhigh" },
+  ] as const)("keeps $level on $model, which its transport serves under its own name", (row) => {
     expect(
       piModelSelection({
-        provider: "openai-codex",
-        transport: "codex",
-        model: "gpt-5.6-sol",
-        thinkingLevel: "medium",
+        provider: row.provider,
+        transport: row.transport,
+        model: row.model,
+        thinkingLevel: row.level,
       }),
-    ).toMatchObject({ effort: "medium" });
-    expect(
-      piModelSelection({
-        provider: "anthropic",
-        transport: "claude",
-        model: "claude-sonnet-5",
-        thinkingLevel: "xhigh",
-      }),
-    ).toMatchObject({ effort: "xhigh" });
+    ).toMatchObject({ effort: row.level });
   });
 
   it("carries tool calls, medium effort and the new cache format through Responses", async () => {

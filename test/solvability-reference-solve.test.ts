@@ -130,7 +130,6 @@ describe("solvability tied to the checked bundle snapshot", () => {
     expect(result.evidence?.cases[1]).toMatchObject({
       status: "non-result",
       nonResultKind: "sandbox",
-      failureOwner: "environment",
     });
     expect(result.findings.filter((finding) => finding.code === "verifier-cleanup-pending")).toHaveLength(1);
     await expect(gate(fixture, result, { verifierLifetime: lifetime })).rejects.toBeInstanceOf(
@@ -329,9 +328,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
 
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(codes(result)).toContain(row.code);
-    expect(
-      result.evidence?.cases.every((c) => c.nonResultKind === null && c.failureOwner === "product"),
-    ).toBe(true);
+    expect(result.evidence?.cases.every((c) => c.nonResultKind === null)).toBe(true);
     if (row.error !== null) expect(failure(result)).toMatch(row.error);
     if (row.classification !== null) {
       expect(result.findings).toContainEqual(
@@ -400,7 +397,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "crashes after ready",
       verifier: asyncSolve("process.exit(17);"),
       options: { referenceSolveTimeoutMs: 2_000 },
-      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      expected: { status: "failed", nonResultKind: null },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-crash" },
     },
     {
@@ -410,14 +407,14 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "hangs after ready",
       verifier: asyncSolve("return await new Promise(() => { setInterval(() => {}, 60_000); });"),
       options: { referenceSolveTimeoutMs: 750 },
-      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      expected: { status: "failed", nonResultKind: null },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-timeout" },
     },
     {
       child: "cannot spawn at all",
       verifier: GOOD_VERIFIER,
       options: { referenceSolveExecutable: join(scratchDir("ana-reference-absent-"), "missing-node-binary") },
-      expected: { status: "non-result", nonResultKind: "reference-solve-host", failureOwner: "environment" },
+      expected: { status: "non-result", nonResultKind: "reference-solve-host" },
       finding: {
         code: "solvability-reference-solve-host-non-result",
         classification: "reference-solve-host",

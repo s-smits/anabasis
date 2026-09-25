@@ -21,13 +21,7 @@ import { join } from "../meta/path.ts";
 import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
-import {
-  BUILDER_OWNED,
-  ownerTier,
-  ownerWritableFiles,
-  routableOwner,
-  routableOwnerOf,
-} from "../author/feedback-routing.ts";
+import { BUILDER_OWNED, ownerTier, ownerWritableFiles, routableOwnerOf } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
@@ -140,6 +134,7 @@ const DEMONSTRATION_MIN_CHARS = 40;
 const CITATIONS_UNBOUND =
   "citations must quote passages actually returned by read_source; read the source and retry";
 const SEVERITY_REQUIRED = "severity must explicitly be advisory or blocking";
+const KIND_AND_CLAIM_REQUIRED = "kind and claim are required";
 
 /** Everything one `record_finding` call offers, as the rules below read it. The raw `args` stay
  *  beside the parsed values because two rules ask whether a field was supplied at all, which a
@@ -160,7 +155,15 @@ interface FindingCase {
 type FindingRule = (subject: FindingCase) => string | null;
 
 type FindingSeverity = "advisory" | "blocking";
-type FindingVerdict = { why: string } | { severity: FindingSeverity };
+const FINDING_KINDS = [
+  "harness-defect",
+  "curriculum-defect",
+  "controller-defect",
+  "hardness",
+  "diagnosis-uncertain",
+] as const satisfies readonly AnalysisFinding["kind"][];
+type FindingKind = (typeof FINDING_KINDS)[number];
+type FindingVerdict = { why: string } | { severity: FindingSeverity; kind: FindingKind };
 
 /** The public identities a finding may name, and how often each defect identity recurred. */
 type FindingPriors = {
@@ -288,7 +291,7 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  control and over one changed field, and the row records what they decided. The reviewer still
  *  owes the demonstration, the citations and the one-reopen cap. */
 function admitSeverity(
-  kind: string,
+  kind: FindingKind,
   proposedOwner: ReturnType<typeof routableOwnerOf>,
   chosen: FindingSeverity,
   host: { blockingAlready: boolean; recurrences: number; demonstrated: boolean; probeBacked: boolean },
@@ -301,14 +304,6 @@ function admitSeverity(
   if (host.probeBacked) return chosen;
   return proposedOwner !== null && ownerTier(proposedOwner) === "agent" ? "advisory" : chosen;
 }
-
-const FINDING_KINDS = [
-  "harness-defect",
-  "curriculum-defect",
-  "controller-defect",
-  "hardness",
-  "diagnosis-uncertain",
-] as const;
 
 export function briefIdentities(root: string): BriefIdentities {
   const names = (value: JsonValue | undefined, key: string): string[] =>
@@ -338,7 +333,7 @@ function findingArgs(args: Record<string, JsonValue>) {
   const chosen = read("severity");
   const severity: FindingSeverity | null = chosen === "advisory" || chosen === "blocking" ? chosen : null;
   return {
-    kind: read("kind"),
+    kind: FINDING_KINDS.find((known) => known === args.kind) ?? null,
     claim: read("claim").trim(),
     owner: optional("owner"),
     severity,
@@ -437,10 +432,7 @@ const publicInput: FindingRule = ({ parsed, taskIds }) => {
 const FINDING_RULES: readonly FindingRule[] = [
   ({ state }) =>
     state.findings.length >= MAX_FINDINGS ? `a review records at most ${MAX_FINDINGS} findings` : null,
-  ({ parsed }) =>
-    FINDING_KINDS.some((known) => known === parsed.kind) && parsed.claim !== ""
-      ? null
-      : "kind and claim are required",
+  ({ parsed }) => (parsed.kind !== null && parsed.claim !== "" ? null : KIND_AND_CLAIM_REQUIRED),
   ({ parsed }) => (parsed.severity === null ? SEVERITY_REQUIRED : null),
   ({ parsed, taskIds }) =>
     taskIds.some((taskId) => mentionsTask(parsed.claim, taskId))
@@ -477,11 +469,11 @@ function findingVerdict(subject: FindingCase): FindingVerdict {
     const why = rule(subject);
     if (why !== null) return { why };
   }
-  // A rule above already refused a missing severity; this repeat carries that into the type rather
-  // than deciding anything. Both spellings read the same constant so they cannot drift apart.
-  return subject.parsed.severity === null
-    ? { why: SEVERITY_REQUIRED }
-    : { severity: subject.parsed.severity };
+  // Rules above already refused a missing kind or severity; these repeats carry that into the type
+  // rather than deciding anything. Each pair reads one constant so the two cannot drift apart.
+  const { kind, severity } = subject.parsed;
+  if (kind === null) return { why: KIND_AND_CLAIM_REQUIRED };
+  return severity === null ? { why: SEVERITY_REQUIRED } : { severity, kind };
 }
 
 /** The finding as the campaign record keeps it. The demonstration, the citations and the probe
@@ -491,13 +483,14 @@ function findingVerdict(subject: FindingCase): FindingVerdict {
  *  author may read, and the projection had no other way to reach it. */
 function recordedFinding(
   subject: FindingCase,
+  kind: FindingKind,
   admitted: FindingSeverity,
   probes: readonly ReviewProbeRow[],
   evidencePath: string,
 ): AnalysisFinding {
   const { parsed, citations, owner } = subject;
   return {
-    kind: /* SAFETY: the second rule proved `kind` is one of FINDING_KINDS, every member of which is an AnalysisFindingKind. */ parsed.kind as AnalysisFinding["kind"],
+    kind,
     claim:
       (parsed.demonstration === null
         ? parsed.claim
@@ -610,7 +603,7 @@ export function recordFindingTool(
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
   const recurring = priors.recurring ?? new Map<string, number>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
-  const owners = [...BUILDER_OWNED].filter(routableOwner);
+  const owners = [...BUILDER_OWNED];
   // Each owner's writable files, so the reviewer sees what an owner covers before choosing one.
   // This exposes existing file ownership rather than copying routing policy into the description.
   const surfaces = owners
@@ -650,13 +643,13 @@ export function recordFindingTool(
         parsed.kind === "harness-defect" && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
-      const admitted = admitSeverity(parsed.kind, subject.owner, verdict.severity, {
+      const admitted = admitSeverity(verdict.kind, subject.owner, verdict.severity, {
         blockingAlready,
         recurrences,
         demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
         probeBacked: probes.length > 0,
       });
-      state.findings.push(recordedFinding(subject, admitted, probes, evidencePath));
+      state.findings.push(recordedFinding(subject, verdict.kind, admitted, probes, evidencePath));
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,
@@ -670,7 +663,7 @@ export function recordFindingTool(
       }
       return Promise.resolve(
         readerToolText(
-          `recorded ${parsed.kind} as ${admitted}${issueId === undefined ? "" : `, disputing issue ${parsed.disputes}`}`,
+          `recorded ${verdict.kind} as ${admitted}${issueId === undefined ? "" : `, disputing issue ${parsed.disputes}`}`,
         ),
       );
     },

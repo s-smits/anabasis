@@ -161,7 +161,7 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
  *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
  *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */
 export function probeCitationRefusal(
-  kind: string,
+  kind: string | null,
   state: ProbeState,
   cited: JsonValue | undefined,
 ): string | null {

@@ -70,10 +70,11 @@ kickoff → brief → tests → tools-spec → instructions → accept-controls
        → controls → correctness-model → environment → fingerprint
 ```
 
-`SessionBuildStage` in `src/author/campaign-types.ts` retains these validation and reporting
-labels. They are not a sequence of separate model sessions: the Builder authors the whole bundle
-in one persistent session. `instructions` identifies the operating guide; `correctness-model`
-identifies the evaluator. A finding filed against `verifier` reaches no routable owner.
+After the kickoff these are the feedback owners of `FEEDBACK_OWNERS` in
+`src/author/campaign-types.ts`, drawn in authoring order. They are not a sequence of separate model
+sessions: the Builder authors the whole bundle in one persistent session. `instructions` identifies
+the operating guide; `correctness-model` identifies the evaluator. A finding filed against
+`verifier` reaches no routable owner.
 
 The Builder inspects, writes and rehearses its bundle, then submits one captured candidate. A turn
 that spends `AUTHOR_FIRST_TOOL_CALLS` (16 in `src/author/author-first.ts`) tool calls without

@@ -38,22 +38,20 @@ function builderReport(): BuilderToolsReport {
               dir: "01-domain",
               outcome: "build-failed",
               focusOwner: "correctness-model",
-              repairOwner: null,
               findingsHash: "same",
               semanticFindingsHash: null,
               workspaceCommit: "a".repeat(40),
-              sessions: [{ stage: "brief", state: "accepted", attempts: 1 }],
+              attempts: { brief: 1 },
             },
             {
               ordinal: 2,
               dir: "02-domain",
               outcome: "build-failed",
               focusOwner: null,
-              repairOwner: "correctness-model",
               findingsHash: "same",
               semanticFindingsHash: null,
               workspaceCommit: "b".repeat(40),
-              sessions: [{ stage: "brief", state: "accepted", attempts: 2 }],
+              attempts: { brief: 2 },
             },
           ],
           nonResults: [],
@@ -222,7 +220,6 @@ describe("the evidence-bound campaign scorecard", () => {
       iterations: 2,
       callsBySession: { brief: 3 },
       repeatedFindingHashes: ["same"],
-      reauthoredAcceptedSessions: { brief: 1 },
     });
     expect(scorecard).not.toHaveProperty("runtimeEfficiency");
     expect(scorecard.evidence).not.toHaveProperty("cases");

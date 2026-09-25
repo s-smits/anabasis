@@ -19,7 +19,7 @@ import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { isAbsolute, join, relative } from "../meta/path.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
-import { authorSessionOwner } from "./finding-owner.ts";
+import { authorSessionOwner, findingSeverity } from "./finding-owner.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
 import { checkerUnboundFinding } from "./checker-unbound.ts";
 import {
@@ -37,7 +37,6 @@ import { controllerValidatedFindings } from "../truth/brief.ts";
 import { type BundleSnapshotFact, batteryPath } from "../truth/battery-record.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import type { NoRouteReason } from "./finding-owner.ts";
 
 export type CaseEvidence = CaseVerdict & {
   taskId: string;
@@ -177,13 +176,9 @@ export interface AdmittedEvidence {
   refused: Array<{ finding: AnalysisFinding; reason: string }>;
   /** Author-session routed findings as campaign feedback for iteration N+1. */
   feedback: CampaignFeedback[];
-  /** One controller-owned route result for every admitted finding, including no-route reasons. */
-  findingRoutes: AdmissionFindingRoute[];
+  /** One controller-owned route result for every admitted finding; a null owner routed nowhere. */
+  findingRoutes: Array<{ findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner | null }>;
 }
-
-type AdmissionFindingRoute =
-  | { findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner }
-  | { findingDigest: string; kind: AnalysisFindingKind; owner: null; reason: NoRouteReason };
 
 /** The subject one finding named, in the public authoring identities it carries: its declared
  *  check, else the host rule that produced it, else a path naming a place *below* a declared root.
@@ -407,17 +402,9 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   return findings;
 }
 
-/** Which findings demand a reopen by default: a diagnosed defect is blocking unless its producer
- *  explicitly said advisory, while hardness and every disclosure, the Judge's included, stay
- *  advisory because their next move belongs to someone better calibrated than the finding. */
-export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["severity"] {
-  const defect = finding.kind === "harness-defect" || finding.kind === "curriculum-defect";
-  return defect ? (finding.severity ?? "blocking") : "advisory";
-}
-
 /** Controller admission: the shape is typed, the citations must exist on disk, and only findings
  *  that route to an author session become campaign feedback. Everything else stays disclosed in the
- *  recorded packet with its typed no-route reason rather than disappearing at the partition, and an
+ *  recorded packet with a null route rather than disappearing at the partition, and an
  *  aggregate no-route row may still enter rebuild advice from there. */
 export function admitFindings(
   repoRoot: string,
@@ -436,16 +423,11 @@ export function admitFindings(
   // Content identity of the packet — what iteration N+1 records as consumed.
   const digest = hashJsonBytes(analysis);
   const routed: Array<{ finding: AnalysisFinding; owner: FeedbackOwner }> = [];
-  const findingRoutes: AdmissionFindingRoute[] = [];
+  const findingRoutes: AdmittedEvidence["findingRoutes"] = [];
   for (const finding of admitted) {
-    const route = authorSessionOwner(finding);
-    const findingDigest = hashJsonValue(finding);
-    if (route.owner === null) {
-      findingRoutes.push({ findingDigest, kind: finding.kind, owner: null, reason: route.reason });
-    } else {
-      findingRoutes.push({ findingDigest, kind: finding.kind, owner: route.owner });
-      routed.push({ finding, owner: route.owner });
-    }
+    const owner = authorSessionOwner(finding);
+    findingRoutes.push({ findingDigest: hashJsonValue(finding), kind: finding.kind, owner });
+    if (owner !== null) routed.push({ finding, owner });
   }
   const feedback: CampaignFeedback[] = routed.map(({ finding, owner }) => ({
     owner,

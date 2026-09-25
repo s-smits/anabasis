@@ -505,7 +505,7 @@ describe("the Judge exit is advice only", () => {
     // Families are authoring identities; task ids are failure locations and never leave the record.
     expect(finding.claim).toContain("families: deck, truss");
     expect(finding.claim).not.toMatch(/t[0-9]/);
-    expect(authorSessionOwner(finding)).toEqual({ owner: null, reason: "judge-advisory-only" });
+    expect(authorSessionOwner(finding)).toBeNull();
     const admitted = admitFindings(root, analysis, result.findings);
     expect(admitted.refused).toEqual([]);
     expect(admitted.feedback).toEqual([]);

@@ -13,7 +13,6 @@
 import type {
   AdmissionLineage,
   DiagnosisInput,
-  FeedbackOwner,
   IterationEvidence,
   PriorEvidence,
   BuiltHarness,
@@ -32,26 +31,17 @@ export function decorateIterationEvidence(
     first: boolean;
     /** Whether the invocation resumed any campaign feedback (`memory.carried`). */
     hasResumedCarry: boolean;
-    repairOwner: FeedbackOwner | null;
     workspaceChange: NonNullable<IterationEvidence["workspaceChange"]>;
     declaredDiagnosis?: DiagnosisInput;
     priorEvidence?: PriorEvidence;
     admissionLineage?: AdmissionLineage;
   },
 ): IterationEvidence {
-  const {
-    first,
-    hasResumedCarry,
-    repairOwner,
-    workspaceChange,
-    declaredDiagnosis,
-    priorEvidence,
-    admissionLineage,
-  } = input;
+  const { first, hasResumedCarry, workspaceChange, declaredDiagnosis, priorEvidence, admissionLineage } =
+    input;
   const decorated: IterationEvidence = {
     ...evidence,
     source: SOURCE_IDENTITY,
-    repairOwner,
     workspaceChange,
     diagnosisInput:
       !first || hasResumedCarry

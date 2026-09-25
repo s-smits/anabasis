@@ -32,13 +32,8 @@ describe("the complete repair agenda", () => {
       AnalysisFinding,
       "claim" | "evidence" | "proposedOwner"
     >;
-    expect(authorSessionOwner({ ...base, kind: "judge-disagreement" })).toEqual({
-      owner: null,
-      reason: "judge-advisory-only",
-    });
-    expect(authorSessionOwner({ ...base, kind: "harness-defect", proposedOwner: "tests" })).toEqual({
-      owner: "tests",
-    });
+    expect(authorSessionOwner({ ...base, kind: "judge-disagreement" })).toBeNull();
+    expect(authorSessionOwner({ ...base, kind: "harness-defect", proposedOwner: "tests" })).toBe("tests");
   });
 
   it("preserves admitted severity and public findings while private-only changes leave author text identical", () => {
@@ -149,14 +144,11 @@ describe("the complete repair agenda", () => {
     }
   });
 
-  it("keeps earlier findings after a failed attempt, including its own owner", () => {
-    const pending = [row("tests"), row("correctness-model")];
-    const failure = double<Parameters<typeof settleUnresolved>[1]>({
-      outcome: "build-failed",
-      repairOwner: "tests",
-      feedback: [row("brief")],
+  it("settles an iteration to its own blocking rows", () => {
+    const blocked = double<Parameters<typeof settleUnresolved>[0]>({
+      outcome: "gates-blocked",
+      feedback: [row("brief"), row("brief"), { ...row("tests"), severity: "advisory" }],
     });
-    expect(settleUnresolved(pending, failure)).toEqual([...pending, row("brief")]);
-    expect(settleUnresolved(pending, { ...failure, outcome: "gates-blocked" })).toEqual([row("brief")]);
+    expect(settleUnresolved(blocked)).toEqual([row("brief")]);
   });
 });

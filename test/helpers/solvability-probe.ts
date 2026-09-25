@@ -30,7 +30,6 @@ export function solvabilityCase(spec: CaseSpec) {
     artifact: spec.artifact ?? null,
     status,
     nonResultKind: status === "non-result" ? "reference-solve-host" : null,
-    failureOwner: status === "passed" ? null : status === "non-result" ? "environment" : "product",
     failureKind: spec.failureKind ?? null,
     submissionPath: null,
     referenceSolve: null,

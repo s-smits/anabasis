@@ -127,10 +127,6 @@ interface PhaseEvent {
 interface IterationEvent {
   ordinal: number;
   outcome: string;
-  /** The gate stage the iteration settled at, `null` when it reached none. The stderr line has
-   *  always named it; without it here a reader sees that the iterations were blocked and not whether
-   *  they all stopped at one stage or each at a different one. */
-  stage: string | null;
   focusOwner: string | null;
   findingsHash: string | null;
 }
@@ -182,13 +178,7 @@ interface ObservedFinding {
 
 interface CampaignProgressOptionsResult {
   onPhase(phase: string, ok: boolean, attempts: number): void;
-  onIteration(evidence: {
-    ordinal: number;
-    dir: string;
-    outcome: string;
-    stage: string | null;
-    focusOwner: string | null;
-  }): void;
+  onIteration(evidence: { ordinal: number; dir: string; outcome: string; focusOwner: string | null }): void;
 }
 
 function safeSegment(label: string, value: string): void {
@@ -291,12 +281,7 @@ export function createRunObserver(repoRoot: string, slug: string, runId: string)
       return emit({ type: "phase-transition", kind: "span", level: levelOf(event.state), parentId }, event);
     },
     iteration(event) {
-      const level: ObservationLevel =
-        event.outcome === "build-failed"
-          ? "error"
-          : event.outcome === "gates-blocked"
-            ? "warning"
-            : "default";
+      const level: ObservationLevel = event.outcome === "gates-blocked" ? "warning" : "default";
       return emit({ type: "iteration-settled", kind: "event", level, parentId }, event);
     },
     turnTools(event) {
@@ -435,7 +420,6 @@ export function campaignProgressOptions(slug: string): CampaignProgressOptionsRe
     onIteration: (evidence) =>
       fullrunLine(
         `${slug}: iteration ${evidence.ordinal} (${evidence.dir}) ${evidence.outcome}` +
-          (evidence.stage === null ? "" : ` at ${evidence.stage}`) +
           (evidence.focusOwner === null ? "" : `, focus ${evidence.focusOwner}`),
       ),
   };

@@ -67,7 +67,6 @@ const SOLVABILITY: SolvabilityEvidence = {
     failedCheckIds: [],
     predicateFailures: [],
     nonResultKind: null,
-    failureOwner: null,
     failureKind: null,
     referenceSolve: null,
     submissionPath: {

@@ -13,7 +13,7 @@ import type {
   CampaignFeedback,
   IterationEvidence,
 } from "../author/campaign-types.ts";
-import { feedbackOwner, routableOwner } from "../author/feedback-routing.ts";
+import { feedbackOwner } from "../author/feedback-routing.ts";
 // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
 // import { POLICY } from "../critic/policy.ts";
 // import { findingsRepeatRun, repeatedFindingsFinding } from "./candidate-memory.ts";
@@ -41,11 +41,10 @@ interface GateSettlementInput {
 }
 
 /** The terminal clause a gate run's blocking rows force whether or not an iteration records them:
- *  a blocking row no author can repair ends the session. */
+ *  a blocking environment row ends the session, because no author can repair it. */
 export function gateTerminalClause(feedback: readonly CampaignFeedback[]): CampaignClause | null {
-  const blocking = feedback.filter((row) => row.severity === "blocking");
-  if (blocking.every((row) => routableOwner(row.owner))) return null;
-  return blocking.some((row) => row.owner === "environment") ? "environment-blocked" : "repair-unroutable";
+  const envBlocked = feedback.some((row) => row.severity === "blocking" && row.owner === "environment");
+  return envBlocked ? "environment-blocked" : null;
 }
 
 export function settleGateRun(input: GateSettlementInput): IterationStep {
@@ -63,7 +62,6 @@ export function settleGateRun(input: GateSettlementInput): IterationStep {
         ordinal,
         dir,
         outcome: "fingerprinted",
-        stage: null,
         focusOwner: null,
         attempts,
         findingsHash: null,
@@ -76,12 +74,11 @@ export function settleGateRun(input: GateSettlementInput): IterationStep {
   // claim, the finding codes and paths and the identifiers quoted inside an author-projected detail
   // belong in it; the detail text itself does not, because a per-execution record id sitting there
   // makes an identical diagnosis read as new work round after round.
-  const findingsHash = semanticFindingsIdentity(blocking, null);
+  const findingsHash = semanticFindingsIdentity(blocking);
   const evidence: IterationEvidence = {
     ordinal,
     dir,
     outcome: "gates-blocked",
-    stage: null,
     focusOwner: feedbackOwner(blocking),
     attempts,
     findingsHash,

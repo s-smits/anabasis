@@ -78,7 +78,6 @@ interface CampaignScorecard {
     iterations: number;
     callsBySession: Record<string, number>;
     repeatedFindingHashes: string[];
-    reauthoredAcceptedSessions: Record<string, number>;
   };
   runtimeEfficiency?: {
     batteries: Array<{
@@ -145,13 +144,12 @@ function repeatHash(
   return row === undefined ? null : (row.semanticFindingsHash ?? row.findingsHash);
 }
 
-function authoringAxis(
-  builder: BuilderToolsReport,
-  authoring: readonly AuthoringRow[],
-): CampaignScorecard["authoringEfficiency"] {
+function authoringAxis(authoring: readonly AuthoringRow[]): CampaignScorecard["authoringEfficiency"] {
   if (authoring.length === 0) return undefined;
   const calls = authoring.flatMap(({ iteration }) =>
-    iteration.sessions.flatMap((session) => Array.from({ length: session.attempts }, () => session.stage)),
+    Object.entries(iteration.attempts).flatMap(([session, count]) =>
+      Array.from({ length: count }, () => session),
+    ),
   );
   const repeatedHashes = Object.entries(
     countBy(
@@ -165,16 +163,10 @@ function authoringAxis(
     .filter(([, count]) => count > 1)
     .map(([hash]) => hash)
     .sort();
-  const reauthored = builder.epochs.flatMap((epoch) =>
-    epoch.authoring.iterations
-      .slice(1)
-      .flatMap((iteration) => iteration.sessions.filter((session) => session.state === "accepted")),
-  );
   return {
     iterations: authoring.length,
-    callsBySession: countBy(calls, (stage) => stage),
+    callsBySession: countBy(calls, (session) => session),
     repeatedFindingHashes: repeatedHashes,
-    reauthoredAcceptedSessions: countBy(reauthored, (session) => session.stage),
   };
 }
 
@@ -387,7 +379,7 @@ export function scorecardFromReports(
   );
   const batteries = outcome === null ? [] : Object.values(outcome.batteries);
   const reach = reachAxis(authoring, batteries, outcome?.controller ?? null, parentsAxis(builder));
-  const efficiency = authoringAxis(builder, authoring);
+  const efficiency = authoringAxis(authoring);
   const runtime = runtimeAxis(batteries);
   const learning = learningYieldAxis(builder);
   const runEnd = runEndSection(outcome, batteries, sources);

@@ -323,7 +323,6 @@ function coverageFindings(
 //       findings.push({
 //         code: "tasks-structural-variation-shortfall",
 //         path: "tasks",
-//         owner: "task-curriculum",
 //         detail: `family "${family}" needs at least two distinct values at one shared publicInput path declared by its applicable truth checks. Vary a condition the verifier uses; labels and undeclared metadata do not qualify. Declared coverage does not prove semantic difficulty`,
 //       });
 //     }

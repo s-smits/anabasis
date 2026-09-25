@@ -32,7 +32,7 @@
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
-import { authorSessionOwner } from "../analyse/finding-owner.ts";
+import { authorSessionOwner, findingSeverity } from "../analyse/finding-owner.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -41,7 +41,6 @@ import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
 import {
-  findingSeverity,
   namedSubject,
   type AdmittedEvidence,
   type AnalysisFinding,
@@ -555,7 +554,7 @@ export function deriveRebuildAdvice(
           finding.subject === undefined &&
           finding.kind !== "judge-disagreement" &&
           finding.kind !== "controller-defect" &&
-          authorSessionOwner(finding).owner === null,
+          authorSessionOwner(finding) === null,
       )
       .map((finding) => {
         const identity = unownedDiagnosisIdentity(finding);

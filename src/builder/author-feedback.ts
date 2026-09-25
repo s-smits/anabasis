@@ -31,7 +31,7 @@ export type AuthorCheckStage = "bundle" | "validation" | "conformance" | "gates"
 interface AuthorRefusalIdentity {
   attempt: number;
   turn: number;
-  stage: "bundle" | "validation" | "gates";
+  stage: AuthorCheckStage;
   commit: string;
 }
 export interface AuthorFeedbackQuery {

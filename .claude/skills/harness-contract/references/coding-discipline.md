@@ -7,7 +7,7 @@ Formerly the `harness-builder-coding-discipline` skill; `harness-contract` owns 
 
 1. Read `AGENTS.md`, the explicit plan, and the relevant source and tests.
 2. Trace definitions and consumers. Do not guess an interface.
-3. Name the failure and its owner in `src/meta/owner.ts`.
+3. Name the failure and the file that owns it.
 4. Make the smallest coherent edit at that owner.
 5. Prove the changed behaviour where a real consumer uses it.
 

@@ -9,7 +9,6 @@ import {
   VERIFIER_CONTRACT_HINTS,
   type VerifierContractCode,
 } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import type { OwnerLayer } from "../meta/owner.ts";
 /**
  * The brief contract, authored by the Builder and checked by `validateBrief` during candidate
  * validation. The same requirements apply to every backend.
@@ -185,9 +184,6 @@ export type ContractFinding = {
   /** The public control or task id this row repeats for, quoted in `detail`. Author feedback folds
    *  rows that read the same apart from it into one repair; the producer states it, no reader guesses. */
   subject?: string;
-  /** Optional finding-level attribution when a terminal phase retains evidence owned by more
-   * than one layer. The producer attaches it; evidence readers never infer it from prose. */
-  owner?: OwnerLayer;
 };
 
 type UndisclosedFinding = Omit<ContractFinding, "disclosure">;

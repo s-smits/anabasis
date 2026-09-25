@@ -11,18 +11,6 @@ import type { ToolsSpec } from "../truth/tools-spec.ts";
 import type { ExperimentSubmission } from "./experiment-plan.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
-export type SessionBuildStage =
-  | "kickoff"
-  | "brief"
-  | "tests"
-  | "tools-spec"
-  | "instructions"
-  | "accept-controls"
-  | "controls"
-  | "correctness-model"
-  | "environment"
-  | "fingerprint";
-
 export interface BuiltHarness {
   brief: Brief;
   battery: TaskBattery;
@@ -34,7 +22,7 @@ export interface BuiltHarness {
 }
 
 // Every owner here must be one some route can actually select. `routableOwnerOf` returns a key of
-// `OWNER_FILES` or null, so an owner absent from that table can only arrive as a literal, and two
+// `OWNERS` or null, so an owner absent from that table can only arrive as a literal, and two
 // that arrived neither way -- `judge` and `unknown` -- have gone. An owner nothing produces still
 // widens every exhaustive switch over this type and still reads to the next author as a route that
 // exists, which is the cost a closed set is supposed to avoid paying.
@@ -82,7 +70,7 @@ export type AdmissionLineage = {
   reason: "no-feedback" | "agenda-consumed" | "evaluation-identity-unadopted";
 };
 
-type IterationOutcome = "fingerprinted" | "gates-blocked" | "build-failed";
+type IterationOutcome = "fingerprinted" | "gates-blocked";
 
 export type IterationEvidence = {
   experimentProposal?: ExperimentSubmission;
@@ -90,7 +78,6 @@ export type IterationEvidence = {
   ordinal: number;
   dir: string;
   outcome: IterationOutcome;
-  stage: SessionBuildStage | null;
   focusOwner: FeedbackOwner | null;
   attempts: Record<string, number>;
   findingsHash: string | null;
@@ -108,7 +95,6 @@ export type IterationEvidence = {
   admissionLineage?: AdmissionLineage;
   diagnosisInput?: DiagnosisInput | null;
   source?: SourceIdentity | null;
-  repairOwner?: FeedbackOwner | null;
   workspaceChange?: WorkspaceChange;
 };
 
@@ -117,7 +103,6 @@ export type CampaignClause =
   | "improvement-memory-missing"
   | "environment-blocked"
   | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
-  | "repair-unroutable"
   | "carried-battery-unreadable" // a battery exists but cannot be read; do not compare it
   | "carried-exam-drift"
   // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall

@@ -288,7 +288,6 @@ describe("the admission a repair earns", () => {
     expect(gateCalls).toBe(2);
     expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
     expect(outcome.iterations[1]).toMatchObject({
-      repairOwner: null,
       workspaceChange: {
         baseCommit: outcome.iterations[0]?.workspaceChange?.baseCommit,
         changedPaths: expect.arrayContaining(["agent/tools.ts", "agent/BUILT_AGENTS.md"]),
@@ -328,7 +327,6 @@ describe("the admission a repair earns", () => {
     );
     expect(outcome.buildAdmissible).toBe(true);
     expect(outcome.iterations[0]).toMatchObject({
-      repairOwner: null,
       workspaceChange: { changedPaths: expect.arrayContaining(changed) },
     });
   });
@@ -435,7 +433,6 @@ describe("the admission a repair earns", () => {
       experimentScope: { actual: "build", freeze: null },
     });
     expect(censusRuns).toBe(1);
-    expect(outcome.iterations[0]).toMatchObject({ repairOwner: null });
     expect(prompt).toContain("- controls (correctness-model/controls.json):");
     expect(prompt).toContain("- correctness-model (correctness-model/evaluator.ts):");
   });

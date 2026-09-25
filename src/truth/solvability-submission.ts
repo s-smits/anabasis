@@ -39,7 +39,7 @@ type SolvabilitySubmissionResult =
 type SolvabilitySubmissionPathFailure = Exclude<SolvabilitySubmissionResult, { status: "accepted" }>;
 
 /** One reference artifact's submission result, before any truth verdict exists. A failed outcome
- *  already carries its whole attribution — owner, kind and the author-visible classification — so a
+ *  already carries its whole attribution — kind and the author-visible classification — so a
  *  reader never has to infer who owns the failure from the message text. */
 export interface SolvabilitySubmissionOutcome {
   artifactJson: string | null;
@@ -47,7 +47,6 @@ export interface SolvabilitySubmissionOutcome {
   error: string | null;
   authorClassification: GeneratedExecutionClassification | null;
   nonResultKind: SolvabilityCaseEvidence["nonResultKind"];
-  failureOwner: SolvabilityCaseEvidence["failureOwner"];
   failureKind: SolvabilityCaseEvidence["failureKind"];
 }
 
@@ -58,7 +57,6 @@ export const UNATTRIBUTED: SolvabilitySubmissionOutcome = {
   error: null,
   authorClassification: null,
   nonResultKind: null,
-  failureOwner: null,
   failureKind: null,
 };
 
@@ -90,14 +88,11 @@ type StarterOpener = () => Promise<OpenedStarter>;
 function refusal(
   error: string,
   authorClassification: GeneratedExecutionClassification,
-  attribution: Partial<
-    Pick<SolvabilitySubmissionOutcome, "failureKind" | "nonResultKind" | "failureOwner">
-  > = {},
+  attribution: Partial<Pick<SolvabilitySubmissionOutcome, "failureKind" | "nonResultKind">> = {},
   artifactJson: string | null = null,
 ): SolvabilitySubmissionOutcome {
   return {
     ...UNATTRIBUTED,
-    failureOwner: "product",
     ...attribution,
     error,
     authorClassification,
@@ -505,7 +500,7 @@ export async function submitSolvabilityReferenceArtifact(
     return refusal(
       traversed.detail,
       "submission-path-host",
-      { nonResultKind: "submission-path-host", failureOwner: "environment" },
+      { nonResultKind: "submission-path-host" },
       serialized,
     );
   }

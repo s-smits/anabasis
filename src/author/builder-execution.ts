@@ -27,7 +27,7 @@ import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
-import { codeDelta } from "../builder/author-feedback.ts";
+import { type AuthorCheckStage, codeDelta } from "../builder/author-feedback.ts";
 import {
   CUSTOM_TOOL_NAMES,
   bareCustomToolName,
@@ -67,7 +67,7 @@ export interface BuilderSubmitAttempt {
   atMs: number;
   outcome: "accepted" | "refused";
   /** Which submission stage refused; null on acceptance. */
-  stage: "bundle" | "validation" | "gates" | null;
+  stage: AuthorCheckStage | null;
   /** The workspace commit at which the controller completed this submission. */
   commit: string;
   /** Content identity of the two contract roots at that commit, as `candidateTreeIdentity` reads
@@ -295,7 +295,7 @@ export function findingsDigest(findings: readonly ContractFinding[]): string {
   return hashJsonValue(findings.map((f) => ({ code: f.code, path: projectFindingForAuthor(f).path })));
 }
 
-/** The repeat identity of one refusal: stage, gate owner and claim, sorted finding codes and
+/** The repeat identity of one refusal: gate owner and claim, sorted finding codes and
  *  author-projected paths, and the quoted ids named in the projected detail. Raw per-finding free
  *  text is excluded, because it cannot carry an identity: a finding detail that names its own record
  *  UUID gives five byte-identical gate rounds five different hashes, and the stall detector then
@@ -310,9 +310,8 @@ export function findingsDigest(findings: readonly ContractFinding[]): string {
  *
  *  The controller and the outcome reader share this one rule, so the same refusal cannot read as
  *  progress in the loop and as a repeat in the census. */
-export function semanticFindingsIdentity(gates: readonly SemanticGate[], stage: string | null): string {
+export function semanticFindingsIdentity(gates: readonly SemanticGate[]): string {
   return hashJsonValue({
-    stage,
     gates: gates
       .map(({ owner, claim, findings = [] }) => {
         const projected = findings.map((finding) => projectFindingForAuthor({ detail: "", ...finding }));

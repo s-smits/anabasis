@@ -60,7 +60,6 @@ function caseOf(taskId: string, artifact: JsonValue): SolvabilityCaseEvidence {
     artifact,
     status: "passed",
     nonResultKind: null,
-    failureOwner: null,
     failureKind: null,
     submissionPath: null,
     referenceSolve: null,

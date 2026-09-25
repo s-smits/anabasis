@@ -107,7 +107,7 @@ exit ${options.sshExit ?? 0}
   const ossRoot = options.scoped === true ? join(hostShareRoot, ".oss") : join(share, "t-c1.oss");
   mkdirSync(iterationDir, { recursive: true });
   mkdirSync(ossRoot, { recursive: true });
-  const binding = { repoRoot, slug: "t", epochDir, iterationDir, ossRoot, sharedCellRoot: hostShareRoot };
+  const binding = { repoRoot, epochDir, iterationDir, ossRoot, sharedCellRoot: hostShareRoot };
   const cell: VmWorkshopCell = { name, user: name, keyPath, hostShareRoot };
   if (options.scoped === true) cell.guestShareRoot = "/srv/share/t-c1";
   return {

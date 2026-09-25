@@ -1,7 +1,7 @@
 /**
  * What deriveCandidateIsolation grants and refuses before any sandbox exists: the public
- * declarations it projects, the adopted epoch it opens read-only, the tool tree it follows through
- * a moved link, the .oss cell, network access, and the bundle contract it reads from the barrels.
+ * declarations it projects, the linked epoch tool tree it opens read-only, the adopted tree it keeps
+ * closed to a workspace holding its own copy, the .oss cell, network access, and the bundle contract it reads from the barrels.
  * A decision here is a path decision; OS enforcement is proved in the two executed files.
  */
 import { afterAll, describe, expect, it } from "bun:test";
@@ -49,7 +49,7 @@ describe("policy derivation", () => {
     mkdirSync(ossRoot);
     try {
       const derived = deriveCandidateIsolation(
-        { repoRoot: actualRoot, epochDir, iterationDir, ossRoot, slug: "public-contract" },
+        { repoRoot: actualRoot, epochDir, iterationDir, ossRoot },
         "author",
       );
       const projected = policyReadGrant(derived);
@@ -82,23 +82,23 @@ describe("policy derivation", () => {
     }
   });
 
-  it("reads the adopted epoch's tools without granting its source, writes or a redirected tool tree", () => {
+  it("reads a tool tree linked into another epoch without granting its source, writes or a redirected link", () => {
     const fixture = makeFixtureRepo("adopted-tools");
     const old = join(dirname(fixture.binding.epochDir), "epoch-old", "workspace");
     const tools = join(old, TOOLCHAIN);
     seedFile(join(tools, "engine"), "PUBLIC-TOOL");
     seedFile(join(old, "correctness-model", "evaluator.ts"), "PRIVATE");
-    const adopted = join(fixture.repoRoot, "domains", fixture.binding.slug);
-    mkdirSync(adopted, { recursive: true });
-    symlinkSync(tools, join(adopted, TOOLCHAIN));
+    const workspaceTools = join(fixture.binding.iterationDir, TOOLCHAIN);
+    rmSync(workspaceTools, { recursive: true, force: true });
+    symlinkSync(tools, workspaceTools);
     const granted = deriveCandidateIsolation(fixture.binding, "author");
     expect(granted.allow.read).toContainEqual({ kind: "subpath", path: tools, id: "adopted-toolchain" });
     expect(granted.allow.write.some((rule) => rule.path === tools)).toBe(false);
     expect(
       deriveCandidateIsolation(fixture.binding, "workshop").allow.read.some((rule) => rule.path === tools),
     ).toBe(false);
-    rmSync(join(adopted, TOOLCHAIN));
-    symlinkSync(join(old, "correctness-model"), join(adopted, TOOLCHAIN));
+    rmSync(workspaceTools);
+    symlinkSync(join(old, "correctness-model"), workspaceTools);
     expect(
       deriveCandidateIsolation(fixture.binding, "author").allow.read.some(
         (rule) => rule.id === "adopted-toolchain",
@@ -133,7 +133,7 @@ describe("policy derivation", () => {
     expect(guardPath(linked, "write", "write", join(sibling, "engine.cfg")).decision).toBe("deny");
   });
 
-  it("grants the workspace's own tool-tree link target when a later adoption moved the domain link", () => {
+  it("grants the tree a linked workspace was seeded with, and no adopted tree to a workspace that copied its own", () => {
     // truss-sol 2026-09-05: the correction workspace kept the tree it was seeded with while the
     // domain link moved on, and `.toolchain/bun` through the workspace link was denied.
     const fixture = makeFixtureRepo("correction-tools");
@@ -142,33 +142,32 @@ describe("policy derivation", () => {
     const later = join(campaign, "epoch-later", "workspace", TOOLCHAIN);
     seedFile(join(seeded, "bun"), "RUNTIME");
     seedFile(join(later, "bun"), "RUNTIME");
-    const adopted = join(fixture.repoRoot, "domains", fixture.binding.slug);
+    const adopted = join(fixture.repoRoot, "domains", "hw");
     mkdirSync(adopted, { recursive: true });
     symlinkSync(later, join(adopted, TOOLCHAIN));
     const workspaceTools = join(fixture.binding.iterationDir, TOOLCHAIN);
     rmSync(workspaceTools, { recursive: true, force: true });
     symlinkSync(seeded, workspaceTools);
+    const adoptedGrants = (derived: ReturnType<typeof deriveCandidateIsolation>) =>
+      derived.allow.read.filter((rule) => rule.id === "adopted-toolchain").map((rule) => rule.path);
     const derived = deriveCandidateIsolation(fixture.binding, "author");
-    const granted = derived.allow.read.filter((rule) => rule.id === "adopted-toolchain");
-    expect(granted.map((rule) => rule.path).sort()).toEqual([later, seeded].sort());
+    expect(adoptedGrants(derived)).toEqual([seeded]);
     // Every backend's host tools consume this same derived for the resolved tool paths.
     expect(guardPath(derived, "read", "read", join(seeded, "bun")).decision).toBe("allow");
-    expect(guardPath(derived, "read", "read", join(later, "bun")).decision).toBe("allow");
-    // Hostile: a workspace whose .toolchain is its own directory grants nothing beyond the domain link.
+    // Hostile: the domain link's tree is not the workspace's, so the shell is not handed it either.
+    expect(guardPath(derived, "read", "read", join(later, "bun")).decision).toBe("deny");
+    // Hostile: a workspace that copied its tree reads the tree it was copied from no better than the
+    // solver and the verifier do, so a copied file still naming that tree fails here first.
     rmSync(workspaceTools);
     seedFile(join(workspaceTools, "bun"), "RUNTIME");
-    const own = deriveCandidateIsolation(fixture.binding, "author").allow.read.filter(
-      (rule) => rule.id === "adopted-toolchain",
-    );
-    expect(own.map((rule) => rule.path)).toEqual([later]);
+    const copied = deriveCandidateIsolation(fixture.binding, "author");
+    expect(adoptedGrants(copied)).toEqual([]);
+    expect(guardPath(copied, "read", "read", join(later, "bun")).decision).toBe("deny");
     // Hostile: a workspace link re-pointed outside the campaign's epoch tool trees grants nothing.
     rmSync(workspaceTools, { recursive: true, force: true });
     symlinkSync(join(campaign, "epoch-later", "workspace", "correctness-model"), workspaceTools);
     seedFile(join(campaign, "epoch-later", "workspace", "correctness-model", "evaluator.ts"), "PRIVATE");
-    const repointed = deriveCandidateIsolation(fixture.binding, "author").allow.read.filter(
-      (rule) => rule.id === "adopted-toolchain",
-    );
-    expect(repointed.map((rule) => rule.path)).toEqual([later]);
+    expect(adoptedGrants(deriveCandidateIsolation(fixture.binding, "author"))).toEqual([]);
   });
 
   it("returns the same digest for the same binding and unchanged filesystem", () => {
@@ -254,7 +253,6 @@ describe("policy derivation", () => {
     const linked = deriveCandidateIsolation(
       {
         repoRoot: sourceRoot,
-        slug: "hw",
         epochDir: lexicalEpoch,
         iterationDir: join(lexicalEpoch, "workspace"),
         ossRoot: join(lexicalEpoch, ".oss"),

@@ -219,6 +219,45 @@ describe("the bytes the host hands back", () => {
     expect(fx.host.executedBindings()).toEqual([]);
   });
 
+  it("hands back no answer when the tool's shell could not execute or find its program", async () => {
+    // A wrapper whose `exec` the cell refuses leaves the shell's 126 and nothing on stdout; read as
+    // an answer, every accept control the check runs through it becomes a rejected artifact.
+    const fx = hostFixture({
+      "refused-tool": ["exec /dev/null"],
+      "missing-tool": ['/nonexistent/python "$@"'],
+    });
+    for (const [toolId, code] of [
+      ["refused-tool", 126],
+      ["missing-tool", 127],
+    ] as const) {
+      const out = await runOnce(fx.host, subject({}), { toolId, checkId: "c" });
+      expect(out).toMatchObject({ executed: false, stdout: "", exitCode: code });
+      expect(out.nonResult?.kind).toBe("protocol");
+      expect(out.evidence.nonResultReason).toContain(`exited ${String(code)} without writing stdout`);
+    }
+
+    // The same codes after an answer, and an ordinary rejection with nothing printed, are answers.
+    const answered = hostFixture({
+      "late-tool": ["printf 'verdict: fail'", "exit 126"],
+      "quiet-tool": ["exit 1"],
+      "stderr-126": [String.raw`printf 'candidate rejected after check ran\n' 1>&2`, "exit 126"],
+      "stderr-127": [String.raw`printf 'candidate rejected after check ran\n' 1>&2`, "exit 127"],
+    });
+    // A checker that ran and chose 126 or 127 itself, saying so on stderr alone, still answered.
+    for (const [toolId, code] of [
+      ["stderr-126", 126],
+      ["stderr-127", 127],
+    ] as const) {
+      const out = await runOnce(answered.host, subject({}), { toolId, checkId: "c" });
+      expect(out).toMatchObject({ executed: true, exitCode: code, stdout: "" });
+      expect(out.stderr).toContain("candidate rejected after check ran");
+    }
+    const late = await runOnce(answered.host, subject({}), { toolId: "late-tool", checkId: "c" });
+    expect(late).toMatchObject({ executed: true, exitCode: 126, stdout: "verdict: fail" });
+    const quiet = await runOnce(answered.host, subject({}), { toolId: "quiet-tool", checkId: "c" });
+    expect(quiet).toMatchObject({ executed: true, exitCode: 1, stdout: "" });
+  });
+
   it("keeps stdout whole at the cap and the last of stderr past its own", async () => {
     const fx = hostFixture({
       "chatty-tool": [

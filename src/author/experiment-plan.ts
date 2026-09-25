@@ -52,8 +52,6 @@ import { EXPERIMENT_FILE, MEMORY_FILE } from "./builder-memory.ts";
 const PLAN_SCHEMA = "experiment-plan/v2";
 export const EVIDENCE_SCHEMA = "experiment-evidence/v3";
 export const EVIDENCE_STEM = "experiment-evidence";
-const TEXT_MAX_BYTES = 2_000;
-const MOVE_MAX_BYTES = 300;
 const PLAN_MAX_BYTES = 16_384;
 /** Bytes kept of each free-text line the compact view quotes. */
 const VIEW_MAX_BYTES = 320;
@@ -133,17 +131,14 @@ const refusal = (code: string, detail: string) => ({
   findings: [controllerValidatedFinding({ code, path: EXPERIMENT_FILE, detail })],
 });
 
-const blankOrOver = (text: string, max: number) =>
-  text.trim() === "" || new TextEncoder().encode(text).byteLength > max;
-
-/** Whatever `readPlan` refuses beyond the schema: blank or oversized text and a family or task
- *  named twice, which would give one name two moves or two predictions. */
+/** Whatever `readPlan` refuses beyond the schema: blank text and a family or task named twice,
+ *  which would give one name two moves or two predictions. */
 function planTextRefusal(plan: ExperimentPlan): string | null {
-  if ([plan.gap, plan.change, plan.expectedResult].some((field) => blankOrOver(field, TEXT_MAX_BYTES))) {
-    return `gap, change and expectedResult each hold 1 to ${TEXT_MAX_BYTES.toLocaleString("en-US")} UTF-8 bytes.`;
+  if ([plan.gap, plan.change, plan.expectedResult].some((field) => field.trim() === "")) {
+    return "gap, change and expectedResult each hold some text.";
   }
-  if (plan.families.some((row) => row.family.trim() === "" || blankOrOver(row.move, MOVE_MAX_BYTES))) {
-    return `Each family names itself and states its move in 1 to ${MOVE_MAX_BYTES} UTF-8 bytes.`;
+  if (plan.families.some((row) => row.family.trim() === "" || row.move.trim() === "")) {
+    return "Each family names itself and states its move.";
   }
   const families = plan.families.map((row) => row.family.trim());
   const tasks = plan.predictions.map((row) => row.taskId);

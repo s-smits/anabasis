@@ -121,6 +121,7 @@ describe("the plan reader", () => {
       "experiment-proposal-shape",
       /from 0 to 1/,
     ],
+    ["a blank gap", { ...PLAN, gap: " " }, "experiment-proposal-shape", /each hold some text/],
     [
       "a family twice",
       { ...PLAN, families: [...PLAN.families.slice(0, 1), ...PLAN.families.slice(0, 1)] },
@@ -144,6 +145,17 @@ describe("the plan reader", () => {
     expect(captured.ok ? [] : captured.findings.map((row) => [row.code, row.detail])).toEqual([
       [code, expect.stringMatching(detail)],
     ]);
+  });
+
+  // The file's own ceiling bounds the plan, so a long field is read rather than sent back to be
+  // trimmed: trimming changes the wording and no decision.
+  it("reads a gap and a move longer than any view shows", () => {
+    const long = {
+      ...PLAN,
+      gap: "g".repeat(4_000),
+      families: [{ family: "span", level: "frontier", move: "m".repeat(600) }],
+    };
+    expect(captureExperimentSubmission(workspace(long)).ok).toBe(true);
   });
 
   it("refuses an unreadable file by its read code", () => {

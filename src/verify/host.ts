@@ -14,8 +14,8 @@
  *
  * A run that exits and completes cleanup is `executed`, whatever the exit code, because a compiler
  * that rejects the artifact has answered and the evaluator reads that answer. Missing tool, wall
- * refusal, changed tool bytes, timeout, spawn failure and stdout past the host's cap are typed
- * non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
+ * refusal, changed tool bytes, timeout, spawn failure, a program the tool's shell could not execute
+ * and stdout past the host's cap are typed non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
  * answer, because the runner reads these rows directly (`src/truth/tool-runs.ts`).
  */
 import {
@@ -86,6 +86,8 @@ export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
 export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
 const STDOUT_MAX_BYTES = 1024 * 1024;
+/** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
+const SHELL_COULD_NOT_RUN = new Set<number | null>([126, 127]);
 const STDERR_MAX_BYTES = 256 * 1024;
 /** UTF-8 bytes of stderr's end kept in the evidence row as `stderrTail`. */
 const STDERR_TAIL_BYTES = 2000;
@@ -402,6 +404,15 @@ function settledToolResult(
       run,
       "crash",
       `tool "${toolId}" ended by signal ${String(signal ?? wrappedSignal)} before exiting`,
+    );
+  }
+  // 126 and 127 are the shell's own codes for a program it could not execute or could not find, so
+  // with nothing on stdout the program the tool names never ran and there is no answer to read.
+  if (SHELL_COULD_NOT_RUN.has(run.exitCode) && run.stdoutBytes === 0 && run.toolSource !== "cell") {
+    return nonResult(
+      run,
+      "protocol",
+      `tool "${toolId}" exited ${String(run.exitCode)} without writing stdout, the shell's code for a program it could not execute (126) or find (127); inside the cell that is usually an interpreter the wall will not run, such as a virtualenv python linked out of .toolchain`,
     );
   }
   // A check handed the first megabyte of a longer document reads a different answer rather than a

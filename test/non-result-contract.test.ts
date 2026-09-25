@@ -170,6 +170,13 @@ describe("the wording that routes a dead provider out of the score", () => {
     // recorded pass:false, and its empty runtime identity voided the whole 24-case battery.
     "WebSocket closed 1006 Connection ended",
     "api_error status 429: too many requests; retry later",
+    // A revoked OpenAI key answers a Built turn with this wording and no status code, so a solve
+    // it cut off after one tool call read as the solver's own miss.
+    "Incorrect API key provided: sk-***. You can find your API key at https://platform.openai.com/account/api-keys.",
+    // The same revoked login read this way once a fresh login had replaced it, and an expired
+    // token reads the third way; neither names a status code either.
+    "Encountered invalidated oauth token for user, failing request",
+    "Provided authentication token is expired.",
   ])("types %j as a provider non-result", (message) => {
     expect(RUNTIME_NON_RESULT_MESSAGE.test(message)).toBe(true);
     expect(runtimeNonResultReason([message, "turn 1 failed"])).toBe(message);

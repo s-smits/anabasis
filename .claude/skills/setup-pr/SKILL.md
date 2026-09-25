@@ -89,11 +89,11 @@ copy over patterns". A red commit followed by its repair teaches them to push re
   holds reverts, retunings, fix-on-fix commits or dozens of small steps, rewrite it into a few
   coherent commits. The operator's words (09-24): split it "in 5 to 20 groups … don't show any
   reverts or failure … so we have a clear overview of the intent of each commit instead of 120
-  commits which are scattered around and reverted and tuned". Then "2 to 10 commits per PR" for an
-  81-commit batch split into six themed PRs (09-24), and "re-group commits more logically, 2-4
-  commits" for PR #25 (09-25). A single small change becomes one commit ("simplify + squash the
-  commit", 09-25). So scale with the PR: one commit for one change, two to four for a themed PR,
-  and at most about ten; beyond that, the work is several PRs.
+  commits which are scattered around and reverted and tuned". The operator's standing rule
+  (09-25) is to check whether the commits can be more structured, each with a clear intent: one
+  or two commits for a smaller PR, and five to ten for a bigger one. These are ranges to aim
+  for, not quotas. A bigger PR squeezed into three or four commits hides its themes just as a
+  long history of small steps does. Beyond about ten, the work is several PRs.
 
 How to regroup without losing anything:
 
@@ -165,11 +165,11 @@ it. Without one, the title is a plain imperative sentence that says what the PR 
 commit subjects ("Refuse a push that leaves an open pull request listing commits that are not its
 own").
 
-**The body is short and easy to understand.** On 09-25 the operator asked to "rewrite the PR Body
-to make it 50% simpler and easier to understand and shorter", and #25's went from 1,988 words to
-811. On 09-23 the ask was to write it "more natural like 'it occurred that the data such as … was
-not transferred properly. Even though …'", which became the specimen in AGENTS.md "Writing
-style". Follow that section; the shape that landed on #25 is:
+**Check whether the body can be simpler.** That is the standing ask (09-25), and it is a
+judgement rather than a word count. Cut what a reader does not need to review the change, and
+keep what they do. On 09-23 the ask was to write it "more natural like 'it occurred that the
+data such as … was not transferred properly. Even though …'", which became the specimen in
+AGENTS.md "Writing style". Follow that section; the shape that landed on #25 is:
 
 1. An opening paragraph that says what was wrong in plain words, raises the reader's own objection
    and answers it, with the evidence number that made the case.
@@ -227,11 +227,13 @@ fixed and landed bottom to top ("go from bottom to top right, that's most effici
   as it is, make the fix the next commit directly on top". It was replaced by folding the fix
   into its commit, and the compose merges of 09-05 went with it.
 - **One squashed commit is not the target either.** On 09-22 and 09-23 the ask was to "squash all
-  commits" and "squash all pr7 commits into one". From 09-24 it became grouping by intent: 5 to
-  20 groups for a long history, 2 to 10 per PR, and 2 to 4 on #25.
+  commits" and "squash all pr7 commits into one". From 09-24 it became grouping by intent, and on
+  09-25 the operator relaxed a stricter count to one or two commits for a smaller PR and five to
+  ten for a bigger one.
 - **Stacked branches carried other PRs' code three times**, the last on 09-25, which produced the
   #24 edge check.
-- **A body can be too long.** #25's was cut 60% on 09-25.
+- **A body can be too long.** #25's was cut 60% on 09-25. The lasting rule is to check whether it
+  can be simpler, not to hit a word count.
 - **Documentation stopped going straight to main.** On 09-23 it went to held-until-approved, after
   two notes were written and pushed within one turn.
 - **Growth sold as an overhaul drew "OOF"** on 09-24, which is where the net-zero budget comes from.

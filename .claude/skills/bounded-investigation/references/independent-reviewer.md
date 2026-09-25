@@ -15,7 +15,7 @@ Read `AGENTS.md`, the active operator plan and exact source identity first. For 
 start with its recorded cases and public inputs through the measured source's reader; then
 trace the producer and consumer. For a code change, start with the diff and live consumer,
 then exercise the owning positive and hostile cases. Read summaries and PR prose after the
-evidence they interpret. Use `run-outcome-review` and its `references/case-rows.md` for case classification and reads.
+evidence they interpret. Use `whole-run-investigation`'s `references/outcome-review.md` for case classification and reads.
 
 Comments and plans do not replace callers.
 

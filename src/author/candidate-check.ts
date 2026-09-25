@@ -56,10 +56,8 @@ import {
 } from "../truth/tools-spec.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import { commitAll } from "./domain-repo.ts";
+import { commitAll, fileRevisions } from "./domain-repo.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
-import { hostTool } from "../meta/host-tool.ts";
-import { CAPTURE_MAX_BYTES, decodeOutput, runSyncOrThrow, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { type ExperimentSubmission, captureExperimentSubmission } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
@@ -313,32 +311,19 @@ function guideFindings(workspace: string, battery: TaskBattery | null): Contract
 
 /** Every tool name the tools spec declared in the history of `commit`. Git is the Builder's memory,
  *  and the only record of which words were once tools. The walk starts at the commit the candidate
- *  was captured at, never at HEAD, because the Builder can commit while a check runs and a commit's
- *  ancestry never changes. `git log` writes each revision that added or changed the spec as the
- *  `cat-file --batch` request for its blob, so one process answers for every revision, each blob a
- *  header line carrying its byte size followed by that many bytes. The filter names what to keep
- *  because git's excluding `d` drops the root commit too. A revision committed half-written is not
- *  JSON and names no tools. */
+ *  was captured at, never at HEAD, because the Builder can commit while a check runs. A revision
+ *  committed half-written is not JSON and names no tools. */
 function historicalToolNames(workspace: string, commit: string): Set<string> {
-  const git = [hostTool("git"), "-C", workspace];
-  const input = runTextSyncOrThrow(
-    [...git, "log", `--format=%H:${TOOLS_SPEC_FILE}`, "--diff-filter=AMT", commit, "--", TOOLS_SPEC_FILE],
-    { maxBuffer: CAPTURE_MAX_BYTES },
-  );
-  const blobs = runSyncOrThrow([...git, "cat-file", "--batch"], { input, maxBuffer: CAPTURE_MAX_BYTES });
   const names: unknown[] = [];
-  for (let at = 0; at < blobs.length; ) {
-    const header = blobs.indexOf(10, at);
-    const end = header + 1 + Number(decodeOutput(blobs.subarray(at, header)).split(" ")[2]);
+  for (const text of fileRevisions(workspace, commit, TOOLS_SPEC_FILE)) {
     try {
-      const spec = capturedJsonParse(decodeOutput(blobs.subarray(header + 1, end)));
+      const spec = capturedJsonParse(text);
       if (isRecord(spec) && Array.isArray(spec.tools)) {
         names.push(...spec.tools.filter(isRecord).map((tool) => tool.name));
       }
     } catch {
       // Half-written: the revisions around it still name their tools.
     }
-    at = end + 1;
   }
   return new Set(names.filter(isString));
 }

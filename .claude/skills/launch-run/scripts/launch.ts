@@ -12,18 +12,19 @@ import {
   statfsSync,
   symlinkSync,
   writeFileSync,
-} from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { homedir } from "node:os";
-import { parseEnv } from "node:util";
+} from "#src/meta/filesystem.ts";
+import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { homedir } from "#src/meta/os.ts";
+import { parseEnv } from "#src/meta/env-parser.ts";
 import {
   CONDITIONS,
   DEFAULT_DISK_MIN_GIB,
   HELP,
+  LAUNCH_ARGUMENTS,
   PRESETS,
   fullrunArgs,
+  launchOptions,
   openingProblems,
-  parseOptions,
   planRuns,
   record,
   requestIdentity,
@@ -37,17 +38,27 @@ import {
 import { serviceManager, type ServiceManager } from "./service.ts";
 import { STOP_RECEIPT_PATH } from "./stop.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { gitText } from "#skills/main/git.ts";
+import { openRecordedRun, type RecordedRun } from "#skills/main/run.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { hasText } from "#src/meta/text.ts";
+import { campaignRoot } from "#src/meta/campaign-root.ts";
 import { CODEX_AUTH_FILE } from "#src/backends/login-state.ts";
-import { OPENING_FILE, TERMINAL_FILE } from "#src/run/controller-lineage.ts";
-import { readJsonFile } from "#src/meta/completed-json.ts";
+import { OPENING_FILE } from "#src/run/controller-lineage.ts";
 import { WORKTREE_SCRIPT } from "#tools/dependency-identity.ts";
 import { LAUNCH_RECEIPT_PATH } from "#tools/runs/discover.ts";
 
 const REPO = resolve(import.meta.dirname, "../../../..");
 const WORKTREE = join(REPO, WORKTREE_SCRIPT);
+const SKILLS = resolve(import.meta.dirname, "../..");
+/** The stop timer and what it imports from the skills tree, relative to `SKILLS`; the first runs. */
+const STOP_TIMER_FILES = [
+  "launch-run/scripts/stop.ts",
+  "launch-run/scripts/service.ts",
+  "main/cli.ts",
+] as const;
 type Environment = Record<string, string | undefined>;
 interface CommandOptions {
   cwd?: string;
@@ -91,7 +102,7 @@ interface Opened {
 type LaunchResult =
   | ({ runId: string; source: string; condition: RunPlan["condition"]; log: string } & Opened)
   | { runId: string; error: string; log: string };
-export const runCommand: Command = async (
+export const spawnCommand: Command = async (
   argv,
   { cwd = REPO, env = process.env, quiet = false, log, check = true } = {},
 ) => {
@@ -116,19 +127,18 @@ export const runCommand: Command = async (
   }
 };
 
-async function resolveSource(source: string, command: Command): Promise<string> {
+/** The full commit `--source` names in the launcher's checkout, fetching a PR head or origin first. */
+function resolveSource(source: string): string {
   let ref = source;
   if (source.startsWith("pr:")) {
     const number = source.slice(3);
     if (!/^[1-9]\d*$/.test(number)) throw new Error("--source pr:<number> requires a positive PR number");
     ref = `refs/remotes/origin/pr/${number}`;
-    await command(["git", "fetch", "origin", `pull/${number}/head:${ref}`]);
+    gitText(REPO, "fetch", "origin", `pull/${number}/head:${ref}`);
   } else if (/^(origin\/|refs\/remotes\/origin\/)/.test(source)) {
-    await command(["git", "fetch", "origin", "--quiet"]);
+    gitText(REPO, "fetch", "origin", "--quiet");
   }
-  return (
-    await command(["git", "rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`], { quiet: true })
-  ).out;
+  return gitText(REPO, "rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`);
 }
 
 export function readCredentials(
@@ -203,7 +213,7 @@ export function prepareEnvironment(
 export async function inspectTarget(
   plan: RunPlan & { environment: Environment },
   options: LaunchOptions,
-  command: Command = runCommand,
+  command: Command = spawnCommand,
 ) {
   const args = [
     "custom",
@@ -291,7 +301,7 @@ async function prepare(
   });
 }
 
-export function findOpening(plan: RunPlan, root = join(plan.dir, "campaigns")): string | null {
+export function findOpening(plan: RunPlan, root = campaignRoot(plan.dir)): string | null {
   if (!existsSync(root)) return null;
   const matches = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -315,6 +325,40 @@ async function launcherRunning(
   return service.code === 0 && manager.running(service.out);
 }
 
+/**
+ * The project of an opening that records exactly this launch and has not closed. The opening and
+ * any terminal are read through `openRecordedRun`, so a terminal counts only as the controller's
+ * strict reader states it; one that reader refuses still closes the startup, and says why.
+ */
+function openedProject(plan: OpeningPlan, path: string): string {
+  let run: RecordedRun;
+  try {
+    run = openRecordedRun(resolve(dirname(path), "../.."), plan.runId);
+  } catch (error) {
+    throw new Error(`${plan.runId}: opening mismatch: ${errorMessage(error)}; inspect ${path}`, {
+      cause: error,
+    });
+  }
+  const problems = openingProblems(run.opening, plan);
+  if (problems.length > 0) {
+    throw new Error(`${plan.runId}: opening mismatch: ${problems.join(", ")}; inspect ${path}`);
+  }
+  const { controller, controllerError } = run;
+  if (controller?.state === "recorded") {
+    throw new Error(`${plan.runId}: startup closed: ${controller.terminalReason}; ${run.controllerDir}`);
+  }
+  if (controller === null) {
+    throw new Error(
+      `${plan.runId}: startup not confirmed; the controller's reader refuses this run's evidence: ${controllerError}`,
+    );
+  }
+  const project = record(run.opening.project).id;
+  if (!isString(project)) {
+    throw new Error(`${plan.runId}: the opening carries no project id; inspect ${path}`);
+  }
+  return project;
+}
+
 export async function checkOpening(
   plan: OpeningPlan,
   command: Command,
@@ -327,27 +371,12 @@ export async function checkOpening(
   for (let i = 0; i < attempts; i += 1) {
     const path = findOpening(plan);
     if (hasText(path)) {
-      const opening = record(readJsonFile(path)),
-        problems = openingProblems(opening, plan);
-      if (problems.length > 0) {
-        throw new Error(`${plan.runId}: opening mismatch: ${problems.join(", ")}; inspect ${path}`);
-      }
       await sleep(1000); // An opening can precede an immediate worker exit.
-      const terminalPath = join(dirname(path), TERMINAL_FILE);
-      if (existsSync(terminalPath)) {
-        const terminal = record(readJsonFile(terminalPath));
-        const closed =
-          [terminal.terminalReason, terminal.outcome].find(isString) ?? "no terminal reason recorded";
-        throw new Error(`${plan.runId}: startup closed: ${closed}; ${terminalPath}`);
-      }
+      const project = openedProject(plan, path);
       if (!(await launcherRunning(plan, command, manager))) {
         throw new Error(
           `${plan.runId}: opening exists but launcher is no longer running; inspect ${plan.log}`,
         );
-      }
-      const project = record(opening.project).id;
-      if (!isString(project)) {
-        throw new Error(`${plan.runId}: the opening carries no project id; inspect ${path}`);
       }
       return {
         project,
@@ -382,21 +411,22 @@ function writeReport(plan: PreparedRun, status: string, extra: JsonObject = {}):
 
 /** The stop timer outlives this launcher's worktree, which is disposable, so it runs a copy of this
  *  skill's stop script staged in the run worktree. The copy keeps the launcher's bytes: a launch
- *  procedure comes from main, never from the revision being measured. */
+ *  procedure comes from main, never from the revision being measured. The copy keeps the skills
+ *  tree's layout, so the stop script's relative import of `main/cli.ts` finds the launcher's parser. */
 function stageStopTimer(runDir: string): string {
   const staged = join(runDir, ".scratch/quick-run/stop-timer");
-  mkdirSync(staged, { recursive: true });
-  for (const name of ["stop.ts", "service.ts"]) {
-    copyFileSync(join(import.meta.dirname, name), join(staged, name));
+  for (const file of STOP_TIMER_FILES) {
+    mkdirSync(dirname(join(staged, file)), { recursive: true });
+    copyFileSync(join(SKILLS, file), join(staged, file));
   }
-  return join(staged, "stop.ts");
+  return join(staged, STOP_TIMER_FILES[0]);
 }
 
 export async function launchBatch(
   plans: RunPlan[],
   options: LaunchOptions,
   context: Context,
-  command: Command = runCommand,
+  command: Command = spawnCommand,
 ): Promise<LaunchResult[]> {
   const prepared: PreparedRun[] = [];
   for (const plan of plans) prepared.push(await prepare(plan, options, context, command));
@@ -499,24 +529,23 @@ export async function launchBatch(
   return results;
 }
 
-export async function main(argv: string[]): Promise<number> {
-  const options = parseOptions(argv);
-  if (options.help === true) {
+const die: ExitWith = exitWith("launch-run");
+
+export async function main(argv: readonly string[]): Promise<number> {
+  const options = launchOptions(parseOrDie(die, LAUNCH_ARGUMENTS, argv), die);
+  if (options.help) {
     console.log(HELP);
     return 0;
   }
-  if (options.list === true) {
+  if (options.list) {
     console.log(JSON.stringify(PRESETS, null, 2));
     return 0;
   }
-  const common = (
-    await runCommand(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], { quiet: true })
-  ).out;
-  const mainRepo = dirname(common),
+  const mainRepo = dirname(gitText(REPO, "rev-parse", "--path-format=absolute", "--git-common-dir")),
     parent = options["output-dir"] ?? dirname(mainRepo);
   const suffix = `${new Date().toISOString().replace(/[-:.]/g, "")}-${crypto.randomUUID().slice(0, 6)}`;
   const plans = planRuns(options, parent, suffix);
-  if (options["dry-run"] === true) {
+  if (options["dry-run"]) {
     console.log(
       JSON.stringify(
         {
@@ -539,7 +568,7 @@ export async function main(argv: string[]): Promise<number> {
   if (Bun.version !== readFileSync(join(REPO, ".bun-version"), "utf8").trim()) {
     throw new Error("run with the pinned Bun version");
   }
-  const campaigns = join(mainRepo, "campaigns");
+  const campaigns = campaignRoot(mainRepo);
   const disk = statfsSync(existsSync(campaigns) ? campaigns : mainRepo);
   if (disk.bavail * disk.bsize < DEFAULT_DISK_MIN_GIB * 1024 ** 3) {
     throw new Error(`less than ${DEFAULT_DISK_MIN_GIB} GiB free on the shared run volume`);
@@ -548,7 +577,7 @@ export async function main(argv: string[]): Promise<number> {
     if (existsSync(plan.dir)) {
       throw new Error(`run directory already exists: ${plan.dir}; choose a fresh run id`);
     }
-    if (hasText(findOpening(plan, join(mainRepo, "campaigns")))) {
+    if (hasText(findOpening(plan, campaignRoot(mainRepo)))) {
       throw new Error(`${plan.runId}: an opening already exists; choose a fresh run id`);
     }
   }
@@ -560,7 +589,7 @@ export async function main(argv: string[]): Promise<number> {
     const kind = CONDITIONS[condition].kind;
     credentials[kind] ??= readCredentials({ ...options, condition, conditions: [condition] }, mainRepo);
   }
-  const commit = await resolveSource(options.source, runCommand);
+  const commit = resolveSource(options.source);
   console.log(
     `${plans.length} run(s), ${options.condition}, ${options.budget} provider turns each; source ${commit}`,
   );
@@ -582,7 +611,6 @@ if (import.meta.main) {
   try {
     process.exitCode = await main(Bun.argv.slice(2));
   } catch (error) {
-    console.error(`launch-run: ${errorMessage(error)}`);
-    process.exitCode = 1;
+    die(errorMessage(error), 1);
   }
 }

@@ -18,9 +18,8 @@
 
 import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
-import { runSync, decodeOutput } from "#src/meta/subprocess.ts";
-import { hostTool } from "#src/meta/host-tool.ts";
-import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { gitMaybe } from "#skills/main/git.ts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
@@ -143,8 +142,8 @@ export function parseSynthesis(
 }
 
 function git(args: string[]): GitResult {
-  const result = runSync([hostTool("git"), "-C", tree, ...args], { cwd: tree, env: Bun.env });
-  return { ok: result.exitCode === 0, out: decodeOutput(result.stdout).trim() };
+  const out = gitMaybe(tree, ...args);
+  return { ok: out !== null, out: out ?? "" };
 }
 
 /** Reports ancestry against local HEAD and origin/main. These facts alone do not establish a

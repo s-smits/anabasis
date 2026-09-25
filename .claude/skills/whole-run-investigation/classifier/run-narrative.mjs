@@ -1,7 +1,7 @@
 // What each slot of a run was doing along the run clock, and where it stopped making progress.
 //
-// `posture` already answers "which posture dominated this session, and does the corpus say that
-// posture precedes a refusal". This asks a different question: at which minute, in which recorded
+// `posture` already answers "which posture dominated this session, and what did it say before each
+// submit". This asks a different question: at which minute, in which recorded
 // phase, did a slot lose the thread. Three slots reach one clock by three routes, none of them a
 // guess and none of them an order join:
 //
@@ -25,18 +25,20 @@ import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { isSafePathSegment } from "#src/meta/path-segment.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
+import { exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import {
   DEFAULTS,
   DRIFT_RUN,
   classifyTarget,
   consecutive,
   cosine,
+  dominant,
   driftRuns,
   modelEmbed,
 } from "./prose-classify.mjs";
 import { isString } from "#src/meta/json-shape.ts";
-import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
+import { readJsonFile } from "#src/meta/completed-json.ts";
+import { emitReport as emitTo } from "#skills/main/output.ts";
 
 export const NARRATIVE_SCHEMA = "wri-run-narrative/v1";
 /** Two finding claims at or above this cosine say the same thing in different words. Measured on
@@ -50,20 +52,12 @@ export const RESTATED_COSINE = 0.93;
 const AUTHORING_RE =
   /^authoring-([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})-epoch-review\.json$/i;
 
-const VALUE_FLAGS = new Set(["--run", "--out", "--min-margin", "--drift-run"]);
-
 const stamp = (ms) => (ms === null ? null : new Date(ms).toISOString());
 
 /** The millisecond a UUIDv7 was minted, which is its leading 48 bits. */
 export function uuidV7Ms(uuid) {
   const hex = uuid.replace(/-/g, "");
   return Number.parseInt(hex.slice(0, 12), 16);
-}
-
-function dominant(units) {
-  const counts = new Map();
-  for (const unit of units) counts.set(unit.class, (counts.get(unit.class) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? null;
 }
 
 /** One stretch, carrying where it sits rather than what caused it. `atMs` is the first unit's own
@@ -84,104 +78,87 @@ function stretch(found, units, where, slot, window) {
   };
 }
 
-/** Builder prose, grouped by authoring session and placed by that session's absolute start. */
+/** Units grouped by `keyOf`, each group opened once with its own clock window, ordered by that
+ *  window and searched for stretches. Builder prose groups by authoring session and is placed by
+ *  that session's absolute start; solver prose groups by case, and since a turn has no recorded
+ *  time the case window is the placement and the turn number the location inside it. */
+function groupSlot(rows, { slot, run, keyOf, open, unit }) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const group = groups.get(key) ?? open(row);
+    group.units.push(unit(row, group));
+    groups.set(key, group);
+  }
+  const ordered = [...groups.values()].sort((a, b) => (a.startedMs ?? 0) - (b.startedMs ?? 0));
+  const drift = [];
+  for (const group of ordered) {
+    group.dominant = dominant(group.units);
+    group.drift = driftRuns(group.units, { run });
+    const window = { startedMs: group.startedMs, endedMs: group.endedMs };
+    for (const found of group.drift) drift.push(stretch(found, group.units, group.where, slot, window));
+  }
+  return { groups: ordered, units: ordered.reduce((sum, group) => sum + group.units.length, 0), drift };
+}
+
+const labelOf = (row) => ({ kind: row.kind, class: row.class, margin: row.margin, lowMargin: row.lowMargin });
+const parsedMs = (value) => {
+  const ms = Date.parse(value ?? "");
+  return Number.isFinite(ms) ? ms : null;
+};
+
 function builderSlot(posture, run) {
   const captures = new Map(
     posture.input.captures.map((capture) => [`${capture.epoch}\u0000${capture.session}`, capture]),
   );
-  const groups = new Map();
-  for (const row of posture.rows) {
-    const key = `${row.epoch}\u0000${row.session}`;
-    const capture = captures.get(key);
-    const startedMs = capture?.startedMs ?? null;
-    const group = groups.get(key) ?? {
-      epoch: row.epoch,
-      session: row.session,
-      where: `${row.epoch}/s${String(row.session).padStart(2, "0")}`,
-      anchor: startedMs === null ? "unanchored" : "execution-record",
-      startedMs,
-      endedMs: capture?.endedMs ?? null,
-      units: [],
-    };
-    group.units.push({
+  const keyOf = (row) => `${row.epoch}\u0000${row.session}`;
+  const { groups, ...rest } = groupSlot(posture.rows, {
+    slot: "builder",
+    run,
+    keyOf,
+    open: (row) => {
+      const capture = captures.get(keyOf(row));
+      const startedMs = capture?.startedMs ?? null;
+      return {
+        epoch: row.epoch,
+        session: row.session,
+        where: `${row.epoch}/s${String(row.session).padStart(2, "0")}`,
+        anchor: startedMs === null ? "unanchored" : "execution-record",
+        startedMs,
+        endedMs: capture?.endedMs ?? null,
+        units: [],
+      };
+    },
+    unit: (row, group) => ({
       sequence: row.sequence,
       turn: row.turn,
       offsetMs: row.atMs,
-      atMs: startedMs === null ? null : startedMs + row.atMs,
-      kind: row.kind,
-      class: row.class,
-      margin: row.margin,
-      lowMargin: row.lowMargin,
-    });
-    groups.set(key, group);
-  }
-  const sessions = [...groups.values()].sort((a, b) => (a.startedMs ?? 0) - (b.startedMs ?? 0));
-  const drift = [];
-  for (const session of sessions) {
-    session.dominant = dominant(session.units);
-    session.drift = driftRuns(session.units, { run });
-    for (const found of session.drift) {
-      drift.push(
-        stretch(found, session.units, session.where, "builder", {
-          startedMs: session.startedMs,
-          endedMs: session.endedMs,
-        }),
-      );
-    }
-  }
-  return { sessions, units: sessions.reduce((sum, session) => sum + session.units.length, 0), drift };
+      atMs: group.startedMs === null ? null : group.startedMs + row.atMs,
+      ...labelOf(row),
+    }),
+  });
+  return { sessions: groups, ...rest };
 }
 
-/** Solver prose, grouped by case. A turn has no recorded time, so the case window is the placement
- *  and the turn number is the location inside it. */
 function builtSlot(posture, run) {
   if (posture.solves === null) return { cases: [], units: 0, drift: [] };
   const windows = new Map((posture.solveInput.cases ?? []).map((entry) => [entry.taskId, entry]));
-  const groups = new Map();
-  for (const row of posture.solveRows) {
-    const group = groups.get(row.taskId) ?? {
+  const { groups, ...rest } = groupSlot(posture.solveRows, {
+    slot: "built",
+    run,
+    keyOf: (row) => row.taskId,
+    open: (row) => ({
       taskId: row.taskId,
+      where: row.taskId,
       family: row.family,
       outcome: row.outcome,
+      startedMs: parsedMs(windows.get(row.taskId)?.startedAt),
+      endedMs: parsedMs(windows.get(row.taskId)?.endedAt),
       units: [],
-    };
-    group.units.push({
-      sequence: null,
-      turn: row.turn,
-      atMs: null,
-      kind: row.kind,
-      class: row.class,
-      margin: row.margin,
-      lowMargin: row.lowMargin,
-    });
-    groups.set(row.taskId, group);
-  }
-  const cases = [...groups.values()]
-    .map((group) => {
-      const entry = windows.get(group.taskId);
-      const startedMs = Date.parse(entry?.startedAt ?? "");
-      const endedMs = Date.parse(entry?.endedAt ?? "");
-      return {
-        ...group,
-        startedMs: Number.isFinite(startedMs) ? startedMs : null,
-        endedMs: Number.isFinite(endedMs) ? endedMs : null,
-      };
-    })
-    .sort((a, b) => (a.startedMs ?? 0) - (b.startedMs ?? 0));
-  const drift = [];
-  for (const entry of cases) {
-    entry.dominant = dominant(entry.units);
-    entry.drift = driftRuns(entry.units, { run });
-    for (const found of entry.drift) {
-      drift.push(
-        stretch(found, entry.units, entry.taskId, "built", {
-          startedMs: entry.startedMs,
-          endedMs: entry.endedMs,
-        }),
-      );
-    }
-  }
-  return { cases, units: cases.reduce((sum, entry) => sum + entry.units.length, 0), drift };
+    }),
+    unit: (row) => ({ sequence: null, turn: row.turn, atMs: null, ...labelOf(row) }),
+  });
+  return { cases: groups.map(({ where: _where, ...entry }) => entry), ...rest };
 }
 
 function reviewRecords(campaign, sessions) {
@@ -222,7 +199,10 @@ function reviewRecords(campaign, sessions) {
 
 /** Reviews in the order they ran, with each finding marked a repeat of the earliest review that
  *  already made it. A reviewer that keeps restating a claim the build never acted on is the review
- *  slot's own version of losing the thread. */
+ *  slot's own version of losing the thread. Each record gains its units and repeat count here, after
+ *  `reviewRecords` built it, which is why the shape is stated rather than inferred.
+ *  @returns {Promise<{ reviews: { reviewId: string, atMs: number, where: string, status: string | null,
+ *    probes: number, units: object[], repeats: number }[], units: number, drift: ReturnType<typeof stretch>[] }>} */
 async function reviewSlot(campaign, sessions, embedder, run) {
   const records = reviewRecords(campaign, sessions);
   const claims = records.flatMap((record) => record.findings.map((finding) => finding.claim));
@@ -262,6 +242,8 @@ async function reviewSlot(campaign, sessions, embedder, run) {
   return { reviews: records.map(({ findings: _findings, ...record }) => record), units: units.length, drift };
 }
 
+/** @param {{ campaign: string, runId: string, embed?: (texts: string[]) => Promise<number[][]>,
+ *    minMargin?: number, batchSize?: number, run?: number }} options */
 export async function buildNarrative({
   campaign,
   runId,
@@ -356,47 +338,36 @@ export function renderNarrative(narrative) {
   return lines.join("\n");
 }
 
-function arg(name) {
-  const index = runtimeProcess.argv.indexOf(`--${name}`);
-  return index >= 0 ? runtimeProcess.argv[index + 1] : undefined;
-}
-
 /**
- * The `<campaign dir> --run <runId>` a report script is invoked with, or `usage` and exit 2 when
- * either is missing. An argument after one of `valueFlags` is that flag's value, not the campaign.
+ * The `<campaign dir> --run <runId>` a report script is invoked with, parsed strictly beside the
+ * `--out <file>` and `--json` every report takes and the script's own `extra` options.
  */
-export function campaignRunArgs(valueFlags, usage) {
-  const argv = runtimeProcess.argv.slice(2);
-  const runId = arg("run");
-  const campaign = argv.find(
-    (value, index) => !value.startsWith("--") && !valueFlags.has(argv[index - 1] ?? ""),
-  );
-  if (campaign === undefined || runId === undefined) {
-    console.error(usage);
-    runtimeProcess.exit(2);
-  }
-  return { campaign, runId };
+export function campaignRunArgs(script, extra = {}) {
+  const die = exitWith(script);
+  const args = parseOrDie(die, {
+    values: ["run", "out", ...(extra.values ?? [])],
+    flags: ["json", ...(extra.flags ?? [])],
+    positionals: 1,
+  });
+  const [campaign] = args.positionals;
+  return { campaign, runId: requiredOption(die, args.single)("run"), args };
 }
 
 /** Write a report to `--out` when one is named, then print it as JSON under `--json` or rendered. */
-export function emitReport(report, render) {
-  const out = arg("out");
-  if (out !== undefined) writeJsonFile(resolve(out), report);
-  console.log(runtimeProcess.argv.includes("--json") ? JSON.stringify(report, null, 2) : render(report));
+export function emitReport(report, render, args) {
+  const out = args.single.get("out");
+  emitTo(report, { json: args.flags.has("json"), out: out === undefined ? null : resolve(out), render });
 }
 
 async function main() {
-  const { campaign, runId } = campaignRunArgs(
-    VALUE_FLAGS,
-    "usage: run-narrative.mjs <campaign dir> --run <runId> [--json] [--out <file>] [--drift-run N]",
-  );
-  const drift = arg("drift-run");
+  const { campaign, runId, args } = campaignRunArgs("run-narrative", { values: ["drift-run"] });
+  const drift = args.single.get("drift-run");
   const narrative = await buildNarrative({
     campaign,
     runId,
     ...keyIfDefined("run", drift === undefined ? undefined : Number(drift)),
   });
-  emitReport(narrative, renderNarrative);
+  emitReport(narrative, renderNarrative, args);
 }
 
 if (import.meta.main) await main();

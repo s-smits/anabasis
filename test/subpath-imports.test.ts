@@ -97,10 +97,13 @@ export const c = [a, b];
 });
 
 describe("the root manifest's subpath aliases", () => {
-  it("map each `#tree/*` onto `./tree/*`, the one shape every reader here assumes", () => {
+  it("map each `#name/*` onto one `./dir/*` tree, the one shape every reader here reads", () => {
     const entries = Object.entries(manifest.imports);
     expect(entries.length).toBeGreaterThan(0);
-    for (const [key, target] of entries) expect(target).toBe(`./${key.slice(1)}`);
+    for (const [key, target] of entries) {
+      expect(key).toMatch(/^#[^*]+\/\*$/u);
+      expect(target).toMatch(/^\.\/[^*]+\/\*$/u);
+    }
   });
 
   it("leave every nested package at its relative spelling, since an alias resolves in the nearest", () => {
@@ -141,5 +144,24 @@ describe("the tree scans read an alias as the module it names", () => {
       ]),
     );
     expect(rows.map((row) => row.detail)).toStrictEqual([]);
+  });
+
+  it("reads an alias onto a differently named tree the same way, and a bare pair as an identity", () => {
+    const probe = (specifier: string): string =>
+      [
+        `const { cli } = await target<typeof import("${specifier}")>(`,
+        '  ".claude/skills/main/cli-owner.ts",',
+        ");",
+        "",
+      ].join("\n");
+    const rows = (specifier: string) =>
+      identitiesWithoutOwner(
+        new Map([
+          ["a/probe.ts", probe(specifier)],
+          ["b/probe.ts", probe(specifier)],
+        ]),
+      ).map((row) => row.detail);
+    expect(rows("#skills/main/cli-owner.ts")).toStrictEqual([]);
+    expect(rows("#skills/main/other.ts")).not.toStrictEqual([]);
   });
 });

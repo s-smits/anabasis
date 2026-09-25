@@ -2,12 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import type {
-  Brief,
-  Structure,
-  Task,
-  TruthCheck,
-} from "../.claude/skills/whole-run-investigation/classifier/query-complexity.d.mts";
+import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
 import {
   ANCHOR_SHA256,
   STRUCTURE_KEYS,
@@ -29,18 +25,39 @@ import {
   sourceMovesOf,
   topTierOf,
   velocityOf,
+  placementOf,
   verdictOf,
-  wilson,
 } from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.mjs";
-import type {
-  Battery,
-  Edge,
-  VelocityReport,
-} from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.d.mts";
+
+/** The bundle fields these fixtures write. The module reads a bundle as parsed JSON, so the test
+ *  names the shape it authors rather than borrowing one from the reader. */
+interface TruthCheck {
+  id: string;
+  assertion: string;
+  citedDecisionIds: string[];
+  execution: {
+    families: "all" | string[];
+    artifactPaths: string[];
+    publicInputPaths: string[];
+    requiredToolIds?: string[];
+  };
+  numericBoundaries?: { publicInputPath: string; constantName: string }[];
+}
+interface Brief {
+  domain: string;
+  decisions: string[];
+  truthChecks: TruthCheck[];
+}
+interface Task {
+  taskId: string;
+  family: string;
+  publicInput: typeof HEAVY_INPUT | { limits: { mass: number } };
+}
+type Structure = ReturnType<typeof structureOf>;
 
 const dirs: string[] = [];
 /** The heavy task's public input, named so the fixture writer can take it without widening to
- *  `unknown`: `Task["publicInput"]` is open, and a parameter that admits it admits everything. */
+ *  `unknown`: a parameter that admits any public input admits everything. */
 const HEAVY_INPUT = { limits: { mass: 100 }, scenarios: [{ id: "s1" }, { id: "s2" }] };
 const heavy: Task = { taskId: "heavy-01", family: "heavy", publicInput: HEAVY_INPUT };
 const light: Task = { taskId: "light-01", family: "light", publicInput: { limits: { mass: 100 } } };
@@ -66,7 +83,8 @@ const write = (path: string, value: Brief | Task[] | typeof HEAVY_INPUT | { crea
 const wordsOf = (text: string): Set<string> => new Set(text.toLowerCase().match(/[a-z-]+/g) ?? []);
 const TIER_WORDS = TIER_ORDER.map((name) => {
   const words = new Set<string>();
-  for (const anchor of TIERS[name] ?? []) for (const word of wordsOf(anchor)) words.add(word);
+  const anchors = new Map(Object.entries(TIERS)).get(name) ?? [];
+  for (const anchor of anchors) for (const word of wordsOf(anchor)) words.add(word);
   return words;
 });
 
@@ -205,6 +223,12 @@ describe("query complexity", () => {
   });
 });
 
+/** Write rows the way the case-record writer does: one `{seq, row}` line each, seq from 1. */
+function writeCaseRecord(dir: string, rows: CaseRecordRow[]): void {
+  const lines = rows.map((row, index) => JSON.stringify({ seq: index + 1, row }));
+  writeFileSync(join(dir, "case-record.jsonl"), `${lines.join("\n")}\n`, "utf8");
+}
+
 describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
 
@@ -218,19 +242,40 @@ describe("climb velocity", () => {
     expect(numericDriftOf(reading(100), reading(110))).toEqual({ median: 0.1, moved: 1 });
   });
 
-  // Literally the same one: src/claim/estimation.ts owns it, at the z the frozen confidence
-  // declares. This script carried its own copy at a rounded 1.96 — a second answer to the very
-  // question it exists to report on.
+  const counts = (passed: number, verified: number, unaccepted = 0) => ({
+    passed,
+    verified,
+    unaccepted,
+    nonResult: 0,
+  });
+
+  // The placement is the controller's: its deciding sample, read by its band owner.
   it.concurrent("places a battery with the same interval the controller uses", () => {
-    expect(wilson(24, 25)?.lo).toBeCloseTo(0.8046, 4);
-    expect(wilson(24, 25)?.hi).toBeCloseTo(0.9929, 4);
-    expect(wilson(0, 0)).toBeNull();
+    expect(placementOf(counts(24, 25))).toMatchObject({ zone: "too-easy", population: "whole-battery" });
+    expect(placementOf(counts(24, 25))?.lo).toBeCloseTo(0.8046, 4);
+    expect(placementOf(counts(0, 0, 25))).toBeNull();
+  });
+
+  // Once any case is verified, a refused submit is a difficulty failure. Read as passed over
+  // verified, five passes beside twenty refused submits placed at a rate of 1, far above the band
+  // the controller placed that same battery on.
+  it.concurrent("keeps unaccepted attempts in the denominator, as the controller does", () => {
+    expect(placementOf(counts(5, 5, 20))).toMatchObject({ passes: 5, n: 25, rate: 0.2, zone: "on-aim" });
+  });
+
+  it.concurrent("reads the changed subset when the host recorded one", () => {
+    const measured = { items: [], changedSubset: { attempts: 5, passes: 0 } };
+    expect(placementOf(counts(20, 25), measured)).toMatchObject({
+      population: "changed-subset",
+      passes: 0,
+      n: 5,
+    });
   });
 
   it.concurrent("refuses a rate change it cannot draw from two verified batteries", () => {
-    const one = { batteries: [{ counts: { verified: 25 }, placement: wilson(24, 25) }] };
+    const one = { batteries: [{ counts: { verified: 25 }, placement: placementOf(counts(24, 25)) }] };
     expect(velocityOf(one)).toMatchObject({ reason: "one verified battery: a rate change needs two" });
-    expect(velocityOf({ batteries: [{ counts: { verified: 0 } }] })).toMatchObject({
+    expect(velocityOf({ batteries: [{ counts: { verified: 0 }, placement: null }] })).toMatchObject({
       reason: "no battery verified a case",
     });
   });
@@ -251,7 +296,7 @@ describe("climb velocity", () => {
       inputs: 0,
       scenarios: 0,
     };
-    const battery = (runId: string): Battery => ({
+    const battery = (runId: string) => ({
       runId,
       dir: runId,
       createdAt: null,
@@ -269,7 +314,7 @@ describe("climb velocity", () => {
       counts: { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 },
       placement: null,
     });
-    const report = (verdict: Edge["verdict"]): VelocityReport => ({
+    const report = (verdict: ReturnType<typeof verdictOf>) => ({
       schema: VELOCITY_SCHEMA,
       campaign: "/c",
       model: {},
@@ -306,8 +351,8 @@ describe("climb velocity", () => {
   it.concurrent("says a flat rate is flat rather than projecting a climb", () => {
     const flat = {
       batteries: [
-        { counts: { verified: 25 }, placement: wilson(24, 25) },
-        { counts: { verified: 14 }, placement: wilson(14, 14) },
+        { counts: { verified: 25 }, placement: placementOf(counts(24, 25)) },
+        { counts: { verified: 14 }, placement: placementOf(counts(14, 14)) },
       ],
     };
     expect(velocityOf(flat)).toMatchObject({
@@ -320,33 +365,30 @@ describe("climb velocity", () => {
   // reached no verdict either way: it has no rate, and the attempts belong in their own column.
   it.concurrent("separates an unaccepted attempt from a case the verifier failed", () => {
     const dir = temp("ana-climb-outcomes-");
-    const rows = [
-      { runId: "run-a", taskId: "t1", acceptedSubmit: true, pass: true, runtimeNonResult: null },
-      { runId: "run-a", taskId: "t2", acceptedSubmit: true, pass: false, runtimeNonResult: null },
-      { runId: "run-a", taskId: "t3", acceptedSubmit: false, pass: false, runtimeNonResult: null },
-      {
+    writeCaseRecord(dir, [
+      caseRecordRow("t1", "f", { runId: "run-a" }),
+      caseRecordRow("t2", "f", { runId: "run-a", truthOk: false, pass: false }),
+      caseRecordRow("t3", "f", { runId: "run-a", acceptedSubmit: false, truthOk: null, pass: false }),
+      caseRecordRow("t4", "f", {
         runId: "run-a",
-        taskId: "t4",
         acceptedSubmit: false,
+        truthOk: null,
         pass: null,
         runtimeNonResult: "provider stopped",
-      },
-    ].map((row) => JSON.stringify({ row }));
-    writeFileSync(join(dir, "case-record.jsonl"), `${rows.join("\n")}\n`, "utf8");
+        runtimeNonResultKind: "provider",
+      }),
+    ]);
     expect(outcomesOf(dir).get("run-a")).toEqual({ passed: 1, verified: 2, unaccepted: 1, nonResult: 1 });
   });
 
-  // A row recorded before `acceptedSubmit` existed carries a verdict, which is how the controller's
-  // own `countUnaccepted` reads it. Asking `=== true` moved every pre-field case into the unaccepted
-  // column instead, leaving a battery that scored 25 cases with nothing verified at all.
-  it.concurrent("reads a row that predates acceptedSubmit as the verdict it recorded", () => {
+  // The case record's writer has always stored `acceptedSubmit`, so a row without it is not an older
+  // spelling of a verdict but a row the writer never produced. Guessing true for it once read such a
+  // row as verified; the strict reader refuses it instead of choosing a column for it.
+  it.concurrent("refuses a row without acceptedSubmit rather than guessing its verdict", () => {
     const dir = temp("ana-climb-legacy-");
-    const rows = [
-      { runId: "run-a", taskId: "t1", pass: true, runtimeNonResult: null },
-      { runId: "run-a", taskId: "t2", pass: false, runtimeNonResult: null },
-    ].map((row) => JSON.stringify({ row }));
-    writeFileSync(join(dir, "case-record.jsonl"), `${rows.join("\n")}\n`, "utf8");
-    expect(outcomesOf(dir).get("run-a")).toEqual({ passed: 1, verified: 2, unaccepted: 0, nonResult: 0 });
+    const { acceptedSubmit: _dropped, ...row } = caseRecordRow("t1", "f", { runId: "run-a" });
+    writeFileSync(join(dir, "case-record.jsonl"), `${JSON.stringify({ seq: 1, row })}\n`, "utf8");
+    expect(() => outcomesOf(dir)).toThrow();
   });
 
   // A battery that fell down the tier order, and one that dropped a check, both read as `adjusted`
@@ -375,81 +417,65 @@ describe("climb velocity", () => {
     expect(topTierOf({ easy: 0, medium: 0, hard: 0, frontier: 0 })).toBeNull();
   });
 
-  it.concurrent("reads a campaign whose later battery only restates the first", async () => {
-    const dir = temp("ana-climb-campaign-");
-    for (const runId of ["run-a", "run-b"]) {
-      write(join(dir, "versions", runId, "correctness-model", "brief.json"), brief);
-      write(join(dir, "versions", runId, "correctness-model", "tasks.json"), [heavy, light]);
-      write(join(dir, "claims", `${runId}.json`), {
-        createdAt: runId === "run-a" ? "2026-09-01T00:00:00Z" : "2026-09-02T00:00:00Z",
-      });
+  const wider: Brief = {
+    ...brief,
+    truthChecks: [
+      ...brief.truthChecks,
+      check("mass-b", "the reported total stays under one published limit"),
+    ],
+  };
+
+  /** Two adopted versions a day apart, each with its brief and the same two tasks. */
+  function twoVersions(
+    prefix: string,
+    briefs: [Brief, Brief],
+    each?: (model: string, index: number) => void,
+  ) {
+    const dir = temp(prefix);
+    ["run-a", "run-b"].forEach((runId, index) => {
+      const model = join(dir, "versions", runId, "correctness-model");
+      write(join(model, "brief.json"), briefs[index] ?? brief);
+      write(join(model, "tasks.json"), [heavy, light]);
+      each?.(model, index);
+      write(join(dir, "claims", `${runId}.json`), { createdAt: `2026-09-0${index + 1}T00:00:00Z` });
+    });
+    return dir;
+  }
+
+  // A wider battery at the same tiers once read "escalated" as a rank-weighted total, which is the
+  // one verdict claiming the solver has something new to reason about; the reverse edge is narrowed.
+  it.concurrent.each([
+    ["restated", [brief, brief]],
+    ["widened", [brief, wider]],
+    ["narrowed", [wider, brief]],
+  ] as const)("calls an edge at unchanged tiers %s", async (verdict, briefs) => {
+    const dir = twoVersions(`ana-climb-${verdict}-`, [...briefs]);
+    if (verdict === "restated") {
+      writeCaseRecord(
+        dir,
+        [heavy, light].map((task) => caseRecordRow(task.taskId, "f", { runId: "run-a" })),
+      );
     }
-    const rows = [heavy, light].map((task) =>
-      JSON.stringify({
-        row: {
-          runId: "run-a",
-          taskId: task.taskId,
-          acceptedSubmit: true,
-          pass: true,
-          runtimeNonResult: null,
-        },
-      }),
-    );
-    writeFileSync(join(dir, "case-record.jsonl"), `${rows.join("\n")}\n`, "utf8");
     const report = await readCampaign(dir, { embed: fakeEmbed });
     expect(report.edges).toHaveLength(1);
-    expect(report.edges[0]).toMatchObject({ verdict: "restated", outcome: "unobservable" });
-    expect(report.edges[0]?.novelty?.mean).toBeCloseTo(0, 6);
-  });
-
-  // The same reasoning, one more time: a wider battery at the same tiers. Read as a rank-weighted
-  // total this edge said "escalated", which is the one verdict that claims the solver now has
-  // something new to reason about.
-  it.concurrent("calls a battery with one more check at its own tier widened, not escalated", async () => {
-    const dir = temp("ana-climb-widened-");
-    const wider: Brief = {
-      ...brief,
-      truthChecks: [
-        ...(brief.truthChecks ?? []),
-        check("mass-b", "the reported total stays under one published limit"),
-      ],
-    };
-    const versions: [string, Brief][] = [
-      ["run-a", brief],
-      ["run-b", wider],
-    ];
-    for (const [runId, authored] of versions) {
-      write(join(dir, "versions", runId, "correctness-model", "brief.json"), authored);
-      write(join(dir, "versions", runId, "correctness-model", "tasks.json"), [heavy, light]);
-      write(join(dir, "claims", `${runId}.json`), {
-        createdAt: runId === "run-a" ? "2026-09-01T00:00:00Z" : "2026-09-02T00:00:00Z",
-      });
-    }
-    const report = await readCampaign(dir, { embed: fakeEmbed });
-    expect(report.edges[0]).toMatchObject({ verdict: "widened" });
+    expect(report.edges[0]).toMatchObject({ verdict, outcome: "unobservable" });
+    if (verdict === "restated") expect(report.edges[0]?.novelty?.mean).toBeCloseTo(0, 6);
   });
 
   // Both task-side rows read brief.json and tasks.json only. The truss run published a new
   // requirement in rules.ts under an existing check, left evaluator.ts byte-identical, and the edge
   // read `novelty 0.0000 ... rules +0` — a renumbering. The digest row is what says otherwise.
   it.concurrent("names the correctness-model file that moved when brief and tasks did not", async () => {
-    const dir = temp("ana-climb-source-");
-    const versions = [
-      ["run-a", "export const LIMITS = 1;\n"],
-      ["run-b", "export const LIMITS = 1;\nexport const CLEARANCE = 0.05;\n"],
-    ] as const;
-    for (const [runId, rules] of versions) {
-      const model = join(dir, "versions", runId, "correctness-model");
-      write(join(model, "brief.json"), brief);
-      write(join(model, "tasks.json"), [heavy, light]);
-      writeFileSync(join(model, "rules.ts"), rules, "utf8");
+    const rules = [
+      "export const LIMITS = 1;\n",
+      "export const LIMITS = 1;\nexport const CLEARANCE = 0.05;\n",
+    ];
+    const dir = twoVersions("ana-climb-source-", [brief, brief], (model, index) => {
+      writeFileSync(join(model, "rules.ts"), rules[index] ?? "", "utf8");
       writeFileSync(join(model, "evaluator.ts"), "export const checks = [];\n", "utf8");
       mkdirSync(join(model, "reference"), { recursive: true });
       writeFileSync(join(model, "reference", "index.ts"), "export const solve = () => ({});\n", "utf8");
-      write(join(dir, "claims", `${runId}.json`), {
-        createdAt: runId === "run-a" ? "2026-09-01T00:00:00Z" : "2026-09-02T00:00:00Z",
-      });
-    }
+    });
     const report = await readCampaign(dir, { embed: fakeEmbed });
     // The verdict is deliberately unmoved: a digest cannot tell a requirement from a comment.
     expect(report.edges[0]).toMatchObject({
@@ -481,29 +507,5 @@ describe("climb velocity", () => {
     });
     // A battery whose bundle is gone reads no correctness model at all, and says nothing.
     expect(sourceMovesOf(join(dir, "versions", "absent"), join(dir, "versions", "gone"))).toBeNull();
-  });
-
-  it.concurrent("calls the same edge in reverse narrowed", async () => {
-    const dir = temp("ana-climb-narrowed-");
-    const wider: Brief = {
-      ...brief,
-      truthChecks: [
-        ...(brief.truthChecks ?? []),
-        check("mass-b", "the reported total stays under one published limit"),
-      ],
-    };
-    const versions: [string, Brief][] = [
-      ["run-a", wider],
-      ["run-b", brief],
-    ];
-    for (const [runId, authored] of versions) {
-      write(join(dir, "versions", runId, "correctness-model", "brief.json"), authored);
-      write(join(dir, "versions", runId, "correctness-model", "tasks.json"), [heavy, light]);
-      write(join(dir, "claims", `${runId}.json`), {
-        createdAt: runId === "run-a" ? "2026-09-01T00:00:00Z" : "2026-09-02T00:00:00Z",
-      });
-    }
-    const report = await readCampaign(dir, { embed: fakeEmbed });
-    expect(report.edges[0]).toMatchObject({ verdict: "narrowed" });
   });
 });

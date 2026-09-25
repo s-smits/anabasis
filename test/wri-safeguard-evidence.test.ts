@@ -17,8 +17,6 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
 import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
 import {
   ArchiveValidationError,

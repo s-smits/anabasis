@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { digestExecutableRoots } from "../src/run/source-identity.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
@@ -16,43 +24,6 @@ function temp(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   dirs.push(dir);
   return dir;
-}
-
-function sourceDigest(repo: string): string {
-  const listed = spawnSync(
-    "git",
-    [
-      "-C",
-      repo,
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      "src",
-      "starters",
-      "tools",
-      "vendor",
-      "package.json",
-      "bun.lock",
-      ".bun-version",
-      "thresholds.frozen.yaml",
-      "tsconfig.json",
-    ],
-    {},
-  ).stdout;
-  const paths = [...new Set(listed.split("\0").filter(Boolean))].sort();
-  const hash = new Bun.CryptoHasher("sha256");
-  for (const path of paths) {
-    hash.update(`\0${path}\0`);
-    try {
-      hash.update(readFileSync(join(repo, path)));
-    } catch {
-      hash.update("<absent>");
-    }
-  }
-  return hash.digest("hex");
 }
 
 afterEach(() => {
@@ -70,6 +41,7 @@ function fakeOutcomeRepo(source: string) {
   mkdirSync(join(campaign, "controller/44"), { recursive: true });
   writeFileSync(join(repo, "tools/outcome/cli.ts"), source);
   writeFileSync(join(repo, "package.json"), JSON.stringify({ engines: { bun: Bun.version } }));
+  writeFileSync(join(repo, ".bun-version"), `${Bun.version}\n`);
   for (const args of [
     ["init", "-q"],
     ["config", "user.email", "test@example.com"],
@@ -86,7 +58,7 @@ function fakeOutcomeRepo(source: string) {
     if (result.status !== 0) throw new Error(result.stderr);
   }
   const head = spawnSync("git", ["-C", repo, "rev-parse", "HEAD"], {}).stdout.trim();
-  const digest = sourceDigest(repo);
+  const digest = digestExecutableRoots(repo);
   writeFileSync(
     join(campaign, "controller/44/opening.json"),
     JSON.stringify({ runId: "44", source: { commit: head, dirty: false, sourceDigest: digest } }),
@@ -117,6 +89,7 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("SNAPSHOT INCOMPLETE");
     expect(manifest.complete).toBe(false);
+    expect(existsSync(join(out, "review-yield.md"))).toBe(true);
     expect(manifest.views).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "digest", status: "ok", runner: "in-process" }),
@@ -125,14 +98,29 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
           label: "review-yield",
           status: "ok",
           runner: "in-process",
+          args: ["review-yield.mjs:buildReviewYield"],
           required: true,
         }),
         expect.objectContaining({ label: "44-default", status: "failed" }),
         expect.objectContaining({ label: "44-scorecard", status: "empty" }),
-        expect.objectContaining({ label: "timeline", status: "unsupported" }),
+        expect.objectContaining({ label: "timeline", status: "unsupported", runner: "in-process" }),
         expect.objectContaining({ label: "44-case-task-1", status: "ok" }),
       ]),
     );
+  }, 30_000);
+
+  it.concurrent("says a posture command that exited non-zero failed as a command", () => {
+    const { repo, campaign } = fakeOutcomeRepo('console.log(JSON.stringify({ taskId: "task-1" }));\n');
+    // A damaged supersession record makes the classifier's epoch reader refuse, so its process exits
+    // non-zero; the console line has to say the command failed, not only that a failure was captured.
+    writeFileSync(join(campaign, "epochs.json"), "{");
+    const out = join(temp("ana-snapshot-"), "snapshot");
+    const result = spawnSync(
+      bunExecutable,
+      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
+      {},
+    );
+    expect(result.stdout).toContain("prose-posture ... FAILED (command failed, captured)");
   }, 30_000);
 
   it.concurrent("collects through the one-line CLI and uses the direct Bun runner for every view", () => {
@@ -268,5 +256,20 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
     expect(parents.lastCandidate).toBeNull();
     expect(parents.accepted).toBeNull();
     expect(parents.source).toContain("unavailable");
+  }, 30_000);
+  it("admits a checkout whose runtime pin was edited locally, hashing the pin as committed", () => {
+    // A review may retarget a historical checkout's pin at the Bun on PATH. The opening hashed the
+    // pin the run launched on, so the recaptured digest reads that file from HEAD, and the dirty
+    // test leaves it out. Hashing the edited disk bytes refuses the snapshot as source drift.
+    const { repo, campaign } = fakeOutcomeRepo('console.log(JSON.stringify({ taskId: "task-1" }));\n');
+    writeFileSync(join(repo, ".bun-version"), "0.0.0-local\n");
+    const out = join(temp("ana-snapshot-"), "snapshot");
+    const result = spawnSync(
+      bunExecutable,
+      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
+      {},
+    );
+    expect(result.stderr).not.toContain("does not match");
+    expect(result.status).toBe(0);
   }, 30_000);
 });

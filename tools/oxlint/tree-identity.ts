@@ -5,6 +5,7 @@
  * This is the largest of them and the only one that has to decide what counts as a name at all,
  * so it carries its own dials.
  */
+import manifest from "../../package.json" with { type: "json" };
 import { ownedElsewhere } from "./ana/shared/literal-owner.ts";
 import type { TreeFinding } from "./tree-findings.ts";
 
@@ -58,16 +59,19 @@ const IMPORT_LINE = /^\s*import\s|^\s*export\s+[*{]|\bfrom\s*"/u;
  */
 const INLINE_IMPORT = /\bimport\(\s*"((?:[^"\\\n]|\\.)*)"/gu;
 
+/** The root manifest's wildcard aliases as prefix pairs: `#skills/` names what `./.claude/skills/` names. */
+const ALIASES = Object.entries(manifest.imports).map(([key, target]) => ({
+  key: key.slice(0, -1),
+  tree: target.slice(2, -1),
+}));
+
 /**
  * A line turning a path into a file URL, which is the loader above without an `import()` to spell.
  *
- * `Bun.pathToFileURL(join(worktree, "src/meta/json-runtime.ts")).href` in `stage-run.mts` names a
- * module of the checkout being staged, for a child Bun process to import there, so the child's
- * script has no type position to carry a specifier. The path is the module system's name for that
- * file, and a rename fails the loader with the path in the message, which a constant would not
- * improve. On 2026-09-22 it was the one row of this shape, beside the `MODULE` constant of
- * `require-captured-json-runtime.ts`, which names the same path as the file its rule governs in
- * this tree. A path joined onto another root without the call is still read.
+ * `Bun.pathToFileURL(join(REPO_ROOT, "src/claim/case-record.ts")).href` names a module for a dynamic
+ * `import()` to load at runtime, so the line has no type position to carry a specifier. The path is
+ * the module system's name for that file, and a rename fails the loader with the path in the
+ * message, which a constant would not improve. A path joined onto another root without the call is still read.
  */
 const FILE_URL_LOADER = /\bpathToFileURL\(/u;
 
@@ -143,6 +147,12 @@ interface IdentitySpelling {
   typed: boolean;
 }
 
+/** The repository path an aliased specifier names, or the specifier itself when no alias applies. */
+function unaliased(specifier: string): string {
+  const alias = ALIASES.find((one) => specifier.startsWith(one.key));
+  return alias === undefined ? specifier : `${alias.tree}${specifier.slice(alias.key.length)}`;
+}
+
 /**
  * The lines of a literal the compiler takes a type from.
  *
@@ -207,9 +217,8 @@ function identitySpellings(path: string, text: string): IdentitySpelling[] {
   const lines = text.split("\n");
   const typedLines = typedLiteralLines(lines, text);
   const specifiers = [...text.matchAll(INLINE_IMPORT)].map((one) => one[1] ?? "");
-  // `#src/x.ts` names `src/x.ts`: the root manifest maps every `#tree/*` onto `./tree/*`.
   const moduleSpelling = (value: string): boolean =>
-    specifiers.some((one) => one === value || one === `#${value}` || one.endsWith(`/${value}`));
+    specifiers.some((one) => one === value || unaliased(one) === value || one.endsWith(`/${value}`));
   for (const [index, line] of lines.entries()) {
     if (IMPORT_LINE.test(line) || COMMENT_LINE.test(line) || FILE_URL_LOADER.test(line)) continue;
     const naming = OWNING_CONST.exec(line);

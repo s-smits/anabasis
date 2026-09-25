@@ -44,9 +44,13 @@ from.
   bait corpus or review standing.
 - The duplicate Wilson implementation. `wilsonZ` is still declared at `thresholds.frozen.yaml:70`
   with no source consumer; the one quantile is `REPORTING_Z` in `src/claim/estimation.ts`.
-  `minLevelN` was not removed: it is the battery-size floor (`src/run/battery-sizing.ts`) and the
-  thin-sample `widen` of the retired `difficulty-select.ts`. What went is the placement discard;
-  the readout (`src/run/climb-readout.ts`) places every admitted row it can size.
+  `minLevelN` went with it, and this list said otherwise until 2026-09-23. It claimed the name was
+  still the battery-size floor in `src/run/battery-sizing.ts`; that file declares no such symbol,
+  and the floor there is `POLICY.battery.floor`, which is 5. Nothing under `src` produces
+  `minLevelN` today — `climbThresholds` (`src/run/climb-history.ts`) is a `policyRow` whose schema
+  is `{band}`, and `policyRow` fills its record from the schema's own keys, so a yaml row cannot
+  add one. What went with the name is the placement discard; the readout
+  (`src/run/climb-readout.ts`) places every admitted row it can size.
 
 ## Three findings that are not copies of a constant
 

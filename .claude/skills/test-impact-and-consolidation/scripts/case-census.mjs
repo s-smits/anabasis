@@ -26,12 +26,17 @@
 import { existsSync, readdir } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
 
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 
-const argv = Bun.argv.slice(2);
-const asJson = argv.includes("--json");
-const repoFlag = argv.indexOf("--repo");
-const repo = (repoFlag >= 0 ? argv[repoFlag + 1] : undefined) ?? runtimeProcess.cwd();
+// check-fixtures.mjs imports this module, and its own arguments are not this script's.
+const ARGS = parseOrDie(
+  exitWith("case-census"),
+  { values: ["repo", "top"], flags: ["json"] },
+  import.meta.main ? Bun.argv.slice(2) : [],
+);
+const asJson = ARGS.flags.has("json");
+const repo = ARGS.single.get("repo") ?? runtimeProcess.cwd();
 
 const DIRS = ["test", "starters/pi-built-harness/correctness-model"];
 const EXTS = [".test.ts", ".test.tsx", ".test.js", ".test.jsx", ".spec.ts", ".spec.js"];
@@ -403,8 +408,7 @@ function printReport(report) {
 }
 
 function TOPN() {
-  const topArg = argv.indexOf("--top");
-  return topArg >= 0 ? Number(argv[topArg + 1]) : 20;
+  return ARGS.single.has("top") ? Number(ARGS.single.get("top")) : 20;
 }
 
 export { analyseSuite, buildReport, collectCases, scanCalls, skipRegion };

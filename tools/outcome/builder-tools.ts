@@ -22,9 +22,9 @@
  *
  * Read-only and intended for the operator. Like the metrics reader, it makes no run decision.
  */
-import { existsSync, readdirSync, statSync } from "../../src/meta/filesystem.ts";
+import { existsSync, statSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
-import { ITERATION_FILE } from "../../src/builder/campaign-iterations.ts";
+import { ITERATION_FILE, listIterationDirs } from "../../src/builder/campaign-iterations.ts";
 import {
   type AuthoringAttemptEvidence,
   type AuthoringSessionQuality,
@@ -34,7 +34,7 @@ import {
   type BuilderExecutionEvidence,
   semanticFindingsIdentity,
 } from "../../src/author/builder-execution.ts";
-import { campaignEpochOrder } from "../../src/author/campaign-epoch.ts";
+import { campaignEpochs } from "../../src/author/campaign-epoch.ts";
 import { type PathRecordRow, readPathRecordRows } from "../../src/builder/candidate-isolation-runtime.ts";
 import { BUILDER_TOOLS } from "../../src/builder/builder-tool-interface.ts";
 import {
@@ -294,40 +294,37 @@ function semanticFindingsHash(feedback: JsonValue | undefined, stage: string | n
 }
 
 function iterationAuthoring(epochDir: string): EpochToolCensus["authoring"]["iterations"] {
-  return readdirSync(epochDir)
-    .filter((name) => /^\d{2}-/.test(name) && statSync(join(epochDir, name)).isDirectory())
-    .sort()
-    .flatMap((dir) => {
-      const file = join(epochDir, dir, ITERATION_FILE);
-      if (!existsSync(file)) return [];
-      const row = plainRecord(readJsonFile(file));
-      const attempts = numberRecord(row?.attempts);
-      if (row === null || !Number.isInteger(row.ordinal) || !isString(row.outcome) || attempts === null) {
-        throw new Error(`${file}: not a completed authoring iteration evidence`);
-      }
-      const change = plainRecord(row.workspaceChange);
-      const sessions: AuthoringSessionQuality[] = Object.entries(attempts).map(([stage, count]) => ({
-        stage:
-          /* SAFETY: `attempts` is keyed by authoring stage where the evidence is written; a foreign key reads as an unknown stage in the census and changes no decision. */ stage as AuthoringSessionQuality["stage"],
-        state: row.outcome === "build-failed" && row.stage === stage ? "rejected" : "accepted",
-        attempts: count,
-      }));
-      return [
-        {
-          ordinal:
-            /* SAFETY: the check above threw unless `Number.isInteger(row.ordinal)`. */ row.ordinal as number,
-          dir,
-          outcome: row.outcome,
-          focusOwner: isString(row.focusOwner) ? row.focusOwner : null,
-          repairOwner: isString(row.repairOwner) ? row.repairOwner : null,
-          findingsHash: isString(row.findingsHash) ? row.findingsHash : null,
-          semanticFindingsHash: semanticFindingsHash(row.feedback, isString(row.stage) ? row.stage : null),
-          workspaceCommit: change !== null && isString(change.commit) ? change.commit : null,
-          sessions,
-          mtimeMs: statSync(file).mtimeMs,
-        },
-      ];
-    });
+  return listIterationDirs(epochDir).flatMap((dir) => {
+    const file = join(epochDir, dir, ITERATION_FILE);
+    if (!existsSync(file)) return [];
+    const row = plainRecord(readJsonFile(file));
+    const attempts = numberRecord(row?.attempts);
+    if (row === null || !Number.isInteger(row.ordinal) || !isString(row.outcome) || attempts === null) {
+      throw new Error(`${file}: not a completed authoring iteration evidence`);
+    }
+    const change = plainRecord(row.workspaceChange);
+    const sessions: AuthoringSessionQuality[] = Object.entries(attempts).map(([stage, count]) => ({
+      stage:
+        /* SAFETY: `attempts` is keyed by authoring stage where the evidence is written; a foreign key reads as an unknown stage in the census and changes no decision. */ stage as AuthoringSessionQuality["stage"],
+      state: row.outcome === "build-failed" && row.stage === stage ? "rejected" : "accepted",
+      attempts: count,
+    }));
+    return [
+      {
+        ordinal:
+          /* SAFETY: the check above threw unless `Number.isInteger(row.ordinal)`. */ row.ordinal as number,
+        dir,
+        outcome: row.outcome,
+        focusOwner: isString(row.focusOwner) ? row.focusOwner : null,
+        repairOwner: isString(row.repairOwner) ? row.repairOwner : null,
+        findingsHash: isString(row.findingsHash) ? row.findingsHash : null,
+        semanticFindingsHash: semanticFindingsHash(row.feedback, isString(row.stage) ? row.stage : null),
+        workspaceCommit: change !== null && isString(change.commit) ? change.commit : null,
+        sessions,
+        mtimeMs: statSync(file).mtimeMs,
+      },
+    ];
+  });
 }
 
 function epochCensus(campaignDir: string, epoch: string): EpochToolCensus {
@@ -518,17 +515,7 @@ export function builderCustomToolCensus(epochs: readonly EpochToolCensus[]): Bui
 
 /** Every epoch in controller order; an empty epoch remains a fact rather than disappearing. */
 export function builderToolsReport(campaignDir: string): BuilderToolsReport {
-  const unlisted = new Set(
-    existsSync(campaignDir)
-      ? readdirSync(campaignDir)
-          .filter((name) => name.startsWith("epoch-") && statSync(join(campaignDir, name)).isDirectory())
-          .sort()
-      : [],
-  );
-  // Controller order first, then whatever the directory holds that the order did not name.
-  const ordered: string[] = [];
-  for (const name of campaignEpochOrder(campaignDir)) if (unlisted.delete(name)) ordered.push(name);
-  const epochs = [...ordered, ...unlisted];
+  const epochs = campaignEpochs(campaignDir);
   const epochReports = epochs.map((epoch) => epochCensus(campaignDir, epoch));
   return {
     schema: BUILDER_TOOLS_SCHEMA,

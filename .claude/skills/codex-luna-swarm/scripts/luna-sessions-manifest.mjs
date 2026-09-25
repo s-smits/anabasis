@@ -17,6 +17,24 @@ const MAX_INSTRUCTION_BYTES = MAX_PROMPT_CHARACTERS * 4;
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_EVENT_PREFIX_BYTES = 1024 * 1024;
 
+const OPTIONS = {
+  values: [
+    "manifest",
+    "drain",
+    "output-dir",
+    "codex-bin",
+    "count",
+    "tasks-file",
+    "workdir",
+    "instructions-file",
+    "task-template",
+    "reasoning-effort",
+    "max-active",
+    "start-interval-ms",
+  ],
+  flags: ["ephemeral", "stress", "launch-only", "stop-hook", "help"],
+};
+
 function usage() {
   return [
     "Usage: luna-sessions --manifest <absolute-json-path> [options]",
@@ -37,42 +55,12 @@ function usage() {
   ].join("\n");
 }
 
-function parseArgs(argv) {
+/** The parsed options keyed as `output_dir` for `--output-dir`, with every flag present as a
+ *  boolean. The launcher parses `OPTIONS` through the shared strict parser first. */
+function optionsFrom({ single, flags }) {
   const parsed = { ephemeral: false, stress: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (["--ephemeral", "--stress", "--launch-only", "--stop-hook"].includes(arg)) {
-      const key = arg.slice(2).replaceAll("-", "_");
-      if (parsed[key]) throw new Error(`Duplicate argument: ${arg}`);
-      parsed[key] = true;
-    } else if (arg === "--help") {
-      parsed.help = true;
-    } else if (
-      [
-        "--manifest",
-        "--drain",
-        "--output-dir",
-        "--codex-bin",
-        "--count",
-        "--tasks-file",
-        "--workdir",
-        "--instructions-file",
-        "--task-template",
-        "--reasoning-effort",
-        "--max-active",
-        "--start-interval-ms",
-      ].includes(arg)
-    ) {
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) throw new Error(`Missing value for ${arg}`);
-      const key = arg.slice(2).replaceAll("-", "_");
-      if (parsed[key] !== undefined) throw new Error(`Duplicate argument: ${arg}`);
-      parsed[key] = value;
-      index += 1;
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
-  }
+  for (const [name, value] of single) parsed[name.replaceAll("-", "_")] = value;
+  for (const name of flags) parsed[name.replaceAll("-", "_")] = true;
   return parsed;
 }
 
@@ -280,7 +268,8 @@ export {
   MAX_MANIFEST_BYTES,
   MAX_EVENT_PREFIX_BYTES,
   usage,
-  parseArgs,
+  optionsFrom,
+  OPTIONS,
   normalizeReasoningEffort,
   quickManifest,
   launchPolicy,

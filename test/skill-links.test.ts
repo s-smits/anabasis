@@ -15,6 +15,8 @@ import { expect, test } from "bun:test";
 
 const repoRoot = normalize(join(import.meta.dir, ".."));
 const skillsRoot = join(repoRoot, ".claude", "skills");
+// `main` is the library every skill script imports from, not a skill, so it carries no SKILL.md.
+const LIBRARY_DIR = "main";
 const skillPathPattern = /\.claude\/skills\/([a-z0-9-]+)\//g;
 const linkPattern = /\]\(([^)\s#]+)(?:#[^)]*)?\)/g;
 
@@ -30,7 +32,7 @@ function markdownFilesUnder(root: string): string[] {
 
 function skillDirectories(): string[] {
   return readdirSync(skillsRoot)
-    .filter((entry) => statSync(join(skillsRoot, entry)).isDirectory())
+    .filter((entry) => entry !== LIBRARY_DIR && statSync(join(skillsRoot, entry)).isDirectory())
     .sort();
 }
 
@@ -89,7 +91,7 @@ test("every relative Markdown link under .claude/skills resolves", () => {
 });
 
 test("every .claude/skills/<name>/ path named by AGENTS.md, the state snapshot and test/ exists", () => {
-  const existing = new Set(skillDirectories());
+  const existing = new Set([...skillDirectories(), LIBRARY_DIR]);
   const files = [join(repoRoot, "AGENTS.md"), join(repoRoot, "notes", "current-state.md")].filter(existsSync);
   for (const entry of readdirSync(join(repoRoot, "test"))) {
     if (entry.endsWith(".ts") || entry.endsWith(".js")) files.push(join(repoRoot, "test", entry));

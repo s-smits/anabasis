@@ -6,7 +6,7 @@ description: "Get told the moment a live Builder session is blocked (five refuse
 # Builder blocking loop
 
 The improvement loop's watch step, narrowed to one question: is the Builder still getting closer to an
-accepted submit? One watcher owns detection (`run-improvement-campaign/scripts/watch.mjs`); this
+accepted submit? One watcher owns detection (`run-improvement-campaign/scripts/campaign.ts --state`); this
 skill owns what happens when it fires.
 
 ## Arm
@@ -14,8 +14,8 @@ skill owns what happens when it fires.
 One Monitor per wave, never a polling turn:
 
 ```sh
-bun .claude/skills/run-improvement-campaign/scripts/watch.mjs \
-  --campaigns <run-worktree>/campaigns --runs <runId> \
+bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
+  --campaigns <run-worktree>/campaigns --run <runId> \
   --state /private/tmp/ana-block-<runId>.json \
   --every 290 --stall-minutes 45 --max-seconds 21600
 ```
@@ -44,7 +44,7 @@ A row is a lead, not a verdict. Change a limit only with a new survey of recorde
 
 1. **Read the recorded bytes** named by the row: the newest `builder-execution*.json` submits
    (stage, `findingCodes`, `repeatedFindings`), `trials/*/environment-non-result.json`, the
-   safeguard log, then `status.mjs --campaigns <dir> --run <id> --json`. Builder prose comes last.
+   safeguard log, then `campaign.ts --campaigns <dir> --run <id> --json`. Builder prose comes last.
 2. **Name the owner.**
    - *environment*: a census or verifier wall, provider, sandbox. The fix belongs to the host
      path, never to the Builder.

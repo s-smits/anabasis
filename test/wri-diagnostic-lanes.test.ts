@@ -1,17 +1,15 @@
 import { expect, it } from "bun:test";
 import { readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { ANGLE_FILES, angleNumbers } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { intelligenceSessions, angleSessions } from "../.claude/skills/whole-run-investigation/scripts/manifest-inputs.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
+import {
+  ANGLE_FILES,
+  angleNumbers,
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+import {
+  intelligenceSessions,
+  angleSessions,
+} from "../.claude/skills/whole-run-investigation/scripts/manifest-inputs.mjs";
 import { resolveSessions } from "../.claude/skills/whole-run-investigation/scripts/manifest-compose.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
 import { snapshotLines } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.mjs";
 
 const skill = join(import.meta.dirname, "../.claude/skills/whole-run-investigation");
@@ -40,7 +38,7 @@ it("adds each diagnostic lane once without reducing the numbered-angle allocatio
     [null, 0, 2],
     ["category_and_hook_yield,5", 0, 3],
     [null, 4, 6],
-    [null, 36, 38],
+    [null, 40, 42],
   ] as const) {
     const sessions: { name: string; angleNumbers?: number[] }[] = resolveSessions({
       ...input,

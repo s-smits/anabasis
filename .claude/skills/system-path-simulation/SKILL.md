@@ -275,11 +275,10 @@ a relative path or an unknown option.
 | --- | --- |
 | `pick-run.mts` | list recorded runs from `notes/runs/` with ancestry, denominator and component facts for comparison |
 | `position-packet.mts` | the last 1–5 exchanges of the actor's own SDK transcript, verbatim under a labelled authored summary, with the source digest |
-| `stage-run.mts` | prepare one full-run condition: detached worktree, `node_modules` through the repository worktree helper, owned `.env` link, pins, exact project/run/request/source/slot identity, `launch.sh`, `condition.json`; `--opening` checks only fields the product writes in the named opening; it never launches |
 | `difficulty-watch.mts` | the authoring sequence and submit rows from recorded builder-execution records, codes only |
 | `predictions.mts` | `--hash`, `--verify`, `--resolve`, `--unresolved` on the prediction note |
 | `run-segment.mts`, `seed-kickoff.mts` | a seeded live segment over the production backend |
-| `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product under a new slug here, with the symlink and absolute-path audit and `seed.json`; `stage-run.mts` uses it |
+| `seed-campaign.mts` | clone a recorded campaign into a fresh tree, or republish its selected product under a new slug here, with the symlink and absolute-path audit and `seed.json` |
 | `run-condition.mts` | one real controller round over a seeded slug with each slot `live`, a scripted module or `capture`; wall, sampled process census, preregistration digest, `report.json` |
 | `judge-replay.mts` | the live Main Judge over recorded battery cases under the current prompt; verdicts and the vetoed rows |
 | `review-settle.mts` | the live Epoch Reviewer over a scratch copy of a recorded battery with vetoed rows to settle |

@@ -2,49 +2,21 @@
 // Join a completed Luna summary back to the WRI task manifest. This validates collection identity
 // and assigned angle headings; it does not adjudicate findings or turn session prose into evidence.
 
+import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
 import { capturedJsonParse } from "#src/meta/json-runtime.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { dirname, isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { ANGLE_COUNT, angleNumbers } from "./catalogue-shape.mjs";
+import { dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
+import { errorMessage } from "#src/meta/runtime-values.ts";
+import { CommandFailure, runCommand } from "#skills/main/cli.ts";
+import { emitReport } from "#skills/main/output.ts";
+import { ANGLE_COUNT, angleNumbers, leafPrompt, SHA256 } from "./catalogue-shape.mjs";
 import { hasText } from "#src/meta/text.ts";
-import { writeJsonFile } from "#src/meta/completed-json.ts";
+import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 
-const launchTypeBySummaryType = new Map([
-  ["luna_sessions.completed", "luna_sessions.launch"],
-  ["luna_lanes.completed", "luna_lanes.launch"],
-]);
-
-function parseArgs() {
-  const known = new Set(["--tasks", "--summary", "--out"]);
-  const values = new Map();
-  for (let index = 2; index < Bun.argv.length; index += 1) {
-    const name = Bun.argv[index];
-    if (!known.has(name)) throw new Error(`unknown argument: ${name}`);
-    if (values.has(name)) throw new Error(`duplicate argument: ${name}`);
-    const value = Bun.argv[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`missing value for ${name}`);
-    if (!isAbsolute(value)) throw new Error(`${name} must be an absolute path`);
-    values.set(name, value);
-    index += 1;
-  }
-  if (!values.has("--tasks") || !values.has("--summary")) {
-    throw new Error(
-      "usage: validate-reports.mjs --tasks <absolute tasks.json> --summary <absolute summary.json> [--out <absolute json>]",
-    );
-  }
-  const summaryPath = resolve(values.get("--summary"));
-  return {
-    tasksPath: resolve(values.get("--tasks")),
-    summaryPath,
-    outPath: resolve(values.get("--out") ?? `${dirname(summaryPath)}/wri-report-validation.json`),
-  };
-}
-
-function sha256(bytes) {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-}
+/** The record types luna-sessions.mjs writes when it opens and when it drains a collection. */
+const SUMMARY_TYPE = "luna_sessions.completed";
+const LAUNCH_TYPE = "luna_sessions.launch";
 
 function assignedAngles(task, index) {
   const matches = [...task.matchAll(/^assignedAngles:\s*(.+)$/gm)];
@@ -228,6 +200,12 @@ function expectedHeading(task, index) {
   return matches.length === 0 ? null : matches[0][1].trim();
 }
 
+/** Whether `rows` name exactly the tasks, in the tasks' order. */
+function sameNames(rows, tasks) {
+  const names = rows.map((row) => asRecord(row)?.name);
+  return names.length === tasks.length && names.every((name, index) => name === tasks[index].name);
+}
+
 function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
   const launchPath = join(outputDir, "launch.json");
   if (!existsSync(launchPath) || !statSync(launchPath).isFile()) {
@@ -244,16 +222,12 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
   } catch (error) {
     return {
       state: "invalid",
-      issues: [`launch.json is not valid JSON: ${error.message}`],
+      issues: [`launch.json is not valid JSON: ${errorMessage(error)}`],
       promptDigestsBound: false,
     };
   }
   const issues = [];
-  if (
-    !launch ||
-    launch.type !== launchTypeBySummaryType.get(summary.type) ||
-    !Array.isArray(launch.sessions)
-  ) {
+  if (!launch || launch.type !== LAUNCH_TYPE || !Array.isArray(launch.sessions)) {
     issues.push("launch.json is not a Luna launch record");
   }
   if (launch) {
@@ -267,10 +241,8 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
     }
     if (launchOutput !== outputDir) issues.push("launch.json outputDir differs from summary outputDir");
   }
-  const expected = tasks.map((task) => task.name);
   const sessions = launch?.sessions ?? [];
-  const names = sessions.map((session) => asRecord(session)?.name);
-  if (JSON.stringify(names) !== JSON.stringify(expected)) {
+  if (!sameNames(sessions, tasks)) {
     issues.push("launch session order/identity differs from tasks");
   }
   sessions.forEach((session, index) => {
@@ -286,7 +258,7 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
     if (!Array.isArray(row.ownedPaths) || row.ownedPaths.length > 0) {
       issues.push(`launch.sessions[${index}].ownedPaths must be an empty array`);
     }
-    if (!/^[0-9a-f]{64}$/.test(String(row.promptSha256 ?? ""))) {
+    if (!SHA256.test(String(row.promptSha256 ?? ""))) {
       issues.push(`launch.sessions[${index}].promptSha256 is missing or invalid`);
     }
   });
@@ -296,12 +268,12 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
   const sidecarPath = join(outputDir, "wri-launch-input.json");
   if (existsSync(sidecarPath) && statSync(sidecarPath).isFile()) {
     try {
-      input = asRecord(capturedJsonParse(readFileSync(sidecarPath).toString("utf8")));
+      input = asRecord(readJsonFile(sidecarPath));
       inputPath = sidecarPath;
     } catch (error) {
       return {
         state: "invalid",
-        issues: [`wri-launch-input.json is not valid JSON: ${error.message}`],
+        issues: [`wri-launch-input.json is not valid JSON: ${errorMessage(error)}`],
         promptDigestsBound: false,
       };
     }
@@ -313,7 +285,7 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
       if (realpathSync(input.tasksPath) !== realpathSync(tasksPath)) {
         issues.push("launch input tasksPath differs from supplied tasks.json path");
       }
-      const actual = sha256(readFileSync(input.tasksPath));
+      const actual = sha256OfFile(input.tasksPath);
       if (input.tasksSha256 !== actual) issues.push("launch input task digest differs from tasks.json");
       if (actual !== sha256(taskBytes)) {
         issues.push("launch input tasksPath bytes differ from supplied tasks.json");
@@ -340,7 +312,7 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
           issues.push("launcher task bytes differ from the WRI task projection");
         }
       } catch (error) {
-        issues.push(`launcher task file is not valid JSON: ${error.message}`);
+        issues.push(`launcher task file is not valid JSON: ${errorMessage(error)}`);
       }
     }
     if (
@@ -348,7 +320,7 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
       isAbsolute(input.instructionsPath) &&
       existsSync(input.instructionsPath)
     ) {
-      instructionsSha256 = sha256(readFileSync(input.instructionsPath));
+      instructionsSha256 = sha256OfFile(input.instructionsPath);
       if (input.instructionsSha256 !== instructionsSha256) {
         issues.push("launch input instruction digest is stale");
       }
@@ -364,9 +336,7 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
       });
     }
     if (Array.isArray(input.tasks)) {
-      const inputNames = input.tasks.map((task) => asRecord(task)?.name);
-      const expectedNames = tasks.map((task) => task.name);
-      if (JSON.stringify(inputNames) !== JSON.stringify(expectedNames)) {
+      if (!sameNames(input.tasks, tasks)) {
         issues.push("launch input task order/identity differs from supplied tasks");
       }
       input.tasks.forEach((value, index) => {
@@ -375,12 +345,12 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
           issues.push(`launch input task ${index} is not an object`);
           return;
         }
-        if (!/^[0-9a-f]{64}$/.test(String(task.taskSha256 ?? ""))) {
+        if (!SHA256.test(String(task.taskSha256 ?? ""))) {
           issues.push(`launch input task ${index} has no exact task digest`);
         } else if (task.taskSha256 !== sha256(new TextEncoder().encode(tasks[index]?.task ?? ""))) {
           issues.push(`launch input task ${index} digest differs from supplied task bytes`);
         }
-        if (!/^[0-9a-f]{64}$/.test(String(task.admissionSha256 ?? ""))) {
+        if (!SHA256.test(String(task.admissionSha256 ?? ""))) {
           issues.push(`launch input task ${index} has no exact admission digest`);
         } else if (
           task.admissionSha256 !== sha256(new TextEncoder().encode(JSON.stringify(tasks[index]?.admission)))
@@ -389,14 +359,13 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
         }
       });
     }
-    if (instructionsSha256 && input.instructionsSha256 === instructionsSha256 && Array.isArray(input.tasks)) {
+    if (
+      instructionsSha256 !== null &&
+      input.instructionsSha256 === instructionsSha256 &&
+      Array.isArray(input.tasks)
+    ) {
       const instructions = readFileSync(input.instructionsPath).toString("utf8").trim();
-      const promptHash = (task) =>
-        sha256(
-          new TextEncoder().encode(
-            `${instructions}\n\n${task.trim()}\n\nAuthority: read-only. Do not edit files or change external state.`,
-          ),
-        );
+      const promptHash = (task) => sha256(new TextEncoder().encode(leafPrompt(instructions, task)));
       sessions.forEach((session, index) => {
         const expectedHash = promptHash(tasks[index].task);
         if (asRecord(session)?.promptSha256 !== expectedHash) {
@@ -441,9 +410,7 @@ function validate(paths) {
   const summaryBytes = readFileSync(paths.summaryPath);
   const tasks = taskRows(capturedJsonParse(taskBytes.toString("utf8")));
   const summary = asRecord(capturedJsonParse(summaryBytes.toString("utf8")));
-  // luna-sessions.mjs writes `luna_sessions.completed`; summaries drained before 2026-09-07 carry the
-  // older `luna_lanes.completed` name and stay readable.
-  if (!summary || !launchTypeBySummaryType.has(summary.type) || !Array.isArray(summary.sessions)) {
+  if (!summary || summary.type !== SUMMARY_TYPE || !Array.isArray(summary.sessions)) {
     throw new Error("summary.json is not a completed Luna summary");
   }
   if (!isString(summary.outputDir) || !isAbsolute(summary.outputDir)) {
@@ -455,11 +422,10 @@ function validate(paths) {
   }
   const rows = [];
   const launch = launchBinding(outputDir, tasks, taskBytes, summary, paths.tasksPath);
-  const names = summary.sessions.map((session) => asRecord(session)?.name);
-  const expected = tasks.map((task) => task.name);
-  if (JSON.stringify(names) !== JSON.stringify(expected)) {
+  if (!sameNames(summary.sessions, tasks)) {
+    const names = summary.sessions.map((session) => asRecord(session)?.name);
     throw new Error(
-      `summary session order/identity differs from tasks: expected ${expected.join(", ")}; received ${names.join(", ")}`,
+      `summary session order/identity differs from tasks: expected ${tasks.map((task) => task.name).join(", ")}; received ${names.join(", ")}`,
     );
   }
   for (let index = 0; index < tasks.length; index += 1) {
@@ -508,30 +474,42 @@ function validate(paths) {
   };
 }
 
-let paths = null;
-try {
-  paths = parseArgs();
-  const result = validate(paths);
-  writeJsonFile(paths.outPath, result);
-  console.log(paths.outPath);
-  if (!result.complete) runtimeProcess.exitCode = 1;
-} catch (error) {
-  if (hasText(paths?.outPath)) {
-    try {
-      mkdirSync(dirname(paths.outPath), { recursive: true });
-      writeJsonFile(paths.outPath, {
-        schema: "wri-report-validation/v1",
-        tasksPath: paths.tasksPath,
-        summaryPath: paths.summaryPath,
-        complete: false,
-        launchBinding: { state: "invalid", reason: error.message, promptDigestsBound: false },
-        rows: [],
-        issues: [error.message],
-      });
-    } catch (receiptError) {
-      console.error(`validate-reports: could not write validation receipt: ${receiptError.message}`);
-    }
+/** The receipt always lands at `--out` (beside the summary by default), even for a collection that
+ *  could not be validated (exit 2), and the console names it; an incomplete one exits 1. */
+function validateCommand(args) {
+  const summaryPath = args.required("summary");
+  const paths = {
+    tasksPath: args.required("tasks"),
+    summaryPath,
+    outPath: args.value("out") ?? join(dirname(summaryPath), "wri-report-validation.json"),
+  };
+  mkdirSync(dirname(paths.outPath), { recursive: true });
+  let result;
+  try {
+    result = validate(paths);
+  } catch (error) {
+    const message = errorMessage(error);
+    writeJsonFile(paths.outPath, {
+      schema: "wri-report-validation/v1",
+      tasksPath: paths.tasksPath,
+      summaryPath: paths.summaryPath,
+      complete: false,
+      launchBinding: { state: "invalid", reason: message, promptDigestsBound: false },
+      rows: [],
+      issues: [message],
+    });
+    throw new CommandFailure(message, 2);
   }
-  console.error(`validate-reports: ${error.message}`);
-  runtimeProcess.exit(2);
+  emitReport(result, { json: false, out: paths.outPath, render: () => paths.outPath });
+  return result.complete ? 0 : 1;
 }
+
+await runCommand(
+  {
+    name: "validate-reports",
+    usage:
+      "usage: bun validate-reports.mjs --tasks <abs tasks.json> --summary <abs summary.json> [--out <abs file>]",
+    options: { tasks: "abs", summary: "abs", out: "abs" },
+  },
+  validateCommand,
+);

@@ -163,8 +163,8 @@ independent challenges and supported historical readers. A dormant week, a compl
 frequently passing check alone proves neither uselessness nor value. No use during one week with
 no eligible opportunity is deletion evidence; the BGE prose classifier was restored on
 2026-09-14 as the `prose-posture` collect view with a live consumer, a root dependency and tests.
-Its anchor set was checked against real excerpts and calibrated against recorded outcomes in
-`posture-priors.json`; Codex reasoning rows are gerund headlines, not sentences. Schema v5 made it
+Its anchor set was checked against real excerpts; Codex reasoning rows are gerund headlines, not
+sentences. Schema v5 made it
 required rather than optional and extended it to the Built solver's own case traces, graded each
 half's evidence against a row floor, and dropped rows from sessions the controller closed as typed
 non-results, after run `truss-opus-20260916T151117729Z-064960` classified a provider session-limit

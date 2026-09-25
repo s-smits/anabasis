@@ -43,7 +43,7 @@ import { readLatestRebuildAdvice } from "#src/author/rebuild-advice.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import type { ContestedCase } from "#src/analyse/judge-contested.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
 import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/truth/declared-projection.ts";
 

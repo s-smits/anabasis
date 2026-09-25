@@ -3,22 +3,35 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { CAMPAIGN_LANES, LANE_LINES, caseKind, renderBrief, runScope, tierOf } from "../.claude/skills/whole-run-investigation/scripts/brief.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
+import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { readEpochRecord, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
+import {
+  CAMPAIGN_LANES,
+  LANE_LINES,
+  renderBrief,
+  runScope,
+  tierOf,
+} from "../.claude/skills/whole-run-investigation/scripts/brief.mjs";
 import { lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const START = "2026-09-19T00:00:00.000Z";
+const BUDGET = { turnBudget: null, turnsUsed: 0, status: "active" };
 const dirs: string[] = [];
 
-interface CaseRow {
-  runId: string;
-  truthOk: boolean | null;
-  runtimeNonResult?: boolean;
-}
+const unaccepted = (runId: string): CaseRecordRow =>
+  caseRecordRow("t-unaccepted", "f", { runId, acceptedSubmit: false, truthOk: null, pass: false });
+const nonResult = (runId: string): CaseRecordRow =>
+  caseRecordRow("t-non-result", "f", {
+    runId,
+    acceptedSubmit: false,
+    truthOk: null,
+    pass: null,
+    runtimeNonResult: "provider: stream closed",
+    runtimeNonResultKind: "runtime",
+  });
 
 function temp(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -36,44 +49,56 @@ afterEach(() => {
 const json = (value: JsonValue) => `${JSON.stringify(value, null, 2)}\n`;
 
 /** A campaign holding one run's opening, its epochs and its own case rows. */
-function campaignWith(rows: CaseRow[], { epochs = 1, terminal = false } = {}): string {
+function campaignWith(rows: CaseRecordRow[], { epochs = 1, terminal = false } = {}): string {
   const campaign = temp("ana-brief-campaign-");
   const controller = join(campaign, "controller", RUN);
   mkdirSync(controller, { recursive: true });
-  writeFileSync(
-    join(controller, "opening.json"),
-    json({ writtenAt: START, source: { commit: "c".repeat(40) } }),
-  );
+  // Each new kickoff opens an epoch through the controller's own writer, so the count is the record's.
+  for (let at = 0; at < epochs; at += 1) selectCampaignEpoch(campaign, { kickoff: `one line ${at}` });
+  const epoch = readEpochRecord(campaign)?.current ?? null;
+  const opening = {
+    schema: "campaign-opening/v2",
+    writtenAt: START,
+    runId: RUN,
+    epoch: { key: epoch },
+    source: { commit: "c".repeat(40), dirty: false, sourceDigest: "d".repeat(64) },
+    continuation: null,
+    abandonedRuns: [],
+    budget: BUDGET,
+  };
+  writeFileSync(join(controller, "opening.json"), json(opening));
   if (terminal) {
+    // A terminal that admitted no battery, so its denominator is an absence and no battery seal
+    // is owed; the scope counts cases from the case record, which the terminal does not gate.
     writeFileSync(
       join(controller, "terminal.json"),
       json({
+        schema: "campaign-terminal/v4",
         writtenAt: "2026-09-19T03:00:00.000Z",
+        source: opening.source,
+        budget: BUDGET,
+        epoch,
+        openingDigest: hashJsonValue(opening),
+        iterations: [],
+        absentSteps: [],
         outcome: "completed",
-        terminalReason: "completed: the question settled",
+        abortClause: null,
+        terminalReason: "completed",
+        lock: { token: "recorded-lock", ownedAtRecord: true },
+        runEnd: { climb: null, provenance: [] },
       }),
     );
   }
   writeFileSync(
-    join(campaign, "epochs.json"),
-    json({ epochs: Array.from({ length: epochs }, (_, at) => ({ key: `epoch-${at}` })) }),
-  );
-  writeFileSync(
     join(campaign, "case-record.jsonl"),
-    rows.map((row, seq) => JSON.stringify({ seq, row })).join("\n"),
+    rows.map((row, at) => `${JSON.stringify({ seq: at + 1, row })}\n`).join(""),
   );
   return campaign;
 }
 
-const verified = (runId: string): CaseRow => ({ runId, truthOk: true });
+const verified = (runId: string): CaseRecordRow => caseRecordRow("t-verified", "f", { runId });
 
 describe("how big is this run", () => {
-  it("names the three case kinds in the order the contract sets", () => {
-    expect(caseKind({ runtimeNonResult: true, truthOk: true })).toBe("nonResult");
-    expect(caseKind({ truthOk: null })).toBe("unaccepted");
-    expect(caseKind({ truthOk: false })).toBe("verified");
-  });
-
   it("reads a probe tier while no case has scored, however long the run has been going", () => {
     const scope = tierOf({ hours: 40, epochs: 4, batteries: 2, scored: false });
     expect(scope.tier).toBe("probe");
@@ -104,9 +129,9 @@ describe("how big is this run", () => {
       [
         verified(RUN),
         verified(RUN),
-        { runId: `${RUN}-i02`, truthOk: null },
-        { runId: `${RUN}-i02`, truthOk: true, runtimeNonResult: true },
-        { runId: "other-run", truthOk: true },
+        unaccepted(`${RUN}-i02`),
+        nonResult(`${RUN}-i02`),
+        verified("other-run"),
       ],
       { epochs: 2 },
     );
@@ -122,14 +147,15 @@ describe("how big is this run", () => {
     const scope = runScope(campaignWith([verified(RUN)], { terminal: true }), RUN, {
       now: Date.parse("2026-09-19T15:00:00.000Z"),
     });
+    expect(scope.controllerError).toBeNull();
     expect(scope.live).toBe(false);
     expect(scope.hours).toBeCloseTo(3, 5);
-    expect(scope.terminal).toEqual({ outcome: "completed", reason: "completed: the question settled" });
+    expect(scope.terminal).toEqual({ outcome: "completed", reason: "completed" });
     expect(scope.tier).toBe("standard");
   });
 
   it("selects the named lanes for a tier that names some, and every lane for one that does not", () => {
-    expect(lanesForScope({ lanes: null })).toHaveLength(11);
+    expect(lanesForScope({ lanes: null })).toHaveLength(12);
     expect(lanesForScope({ lanes: CAMPAIGN_LANES }).map((lane: { name: string }) => lane.name)).toEqual(
       CAMPAIGN_LANES,
     );
@@ -185,7 +211,7 @@ describe("what the read said", () => {
     const brief = renderBrief(reviewWith([], {}));
     expect(brief).toContain(`${RUN}  [standard]`);
     expect(brief).toContain("1 verified, 0 unaccepted, 0 non-result");
-    expect(brief).toContain("completed: the question settled");
+    expect(brief).toContain("terminal: completed — completed");
     expect(brief).toContain("about 4 semantic lanes");
   });
 

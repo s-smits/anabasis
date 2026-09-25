@@ -1,9 +1,18 @@
 #!/usr/bin/env bun
 /** Execute against the selected product tree, never the helper's own source revision. */
-import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { CONDITIONS, fullrunArgs, parseOptions, planRuns, sourceIdentity } from "./options.ts";
+import { join, dirname } from "#src/meta/path.ts";
+import { tmpdir } from "#src/meta/os.ts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
+import {
+  CONDITIONS,
+  fullrunArgs,
+  LAUNCH_ARGUMENTS,
+  type LaunchOptions,
+  launchOptions,
+  planRuns,
+  sourceIdentity,
+} from "./options.ts";
+import { sha256 } from "#src/meta/digest.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
 const root = process.cwd();
@@ -12,11 +21,10 @@ async function target<T>(path: string): Promise<T> {
   // SAFETY: `T` is the caller's declaration of the interface it expects in the measured tree, whose
   // modules this helper never type-checks against. A tree that has moved a symbol elsewhere gives an
   // empty binding, which the call below fails on and the catch at the end of this file explains.
-  return (await import(pathToFileURL(join(root, path)).href)) as T;
+  return (await import(Bun.pathToFileURL(join(root, path)).href)) as T;
 }
 
-export async function probe(argv: string[]) {
-  const options = parseOptions(argv);
+export async function probe(options: LaunchOptions) {
   const plan = planRuns(options, dirname(root), "probe")[0];
   if (!plan || options.conditions.length !== 1 || options.names.length !== 1) {
     throw new Error("probe requires exactly one run");
@@ -35,7 +43,7 @@ export async function probe(argv: string[]) {
   const { hashJsonValue } =
     await target<typeof import("#src/meta/stable-json.ts")>("src/meta/stable-json.ts");
   const parsed = parseFullRunArgs(args);
-  const contextDigest = new Bun.CryptoHasher("sha256").update("[]").digest("hex");
+  const contextDigest = sha256("[]");
   const requestDigest = hashJsonBytes({ prompt: parsed.prompt, contextDigest });
   const commandDigest = hashJsonValue({ ...parsed, prompt: null, contextPaths: null, requestDigest });
   const { loadRepoEnv } = await target<typeof import("#src/backends/env.ts")>("src/backends/env.ts");
@@ -100,8 +108,10 @@ async function checkAllowance(
 }
 
 if (import.meta.main) {
+  const die: ExitWith = exitWith("launch-run probe");
+  const options = launchOptions(parseOrDie(die, LAUNCH_ARGUMENTS), die);
   try {
-    console.log(JSON.stringify(await probe(Bun.argv.slice(2))));
+    console.log(JSON.stringify(await probe(options)));
   } catch (error) {
     const message = errorMessage(error);
     // The product modules are imported from the launched tree by path, so a symbol that source has
@@ -110,11 +120,11 @@ if (import.meta.main) {
     // was `parseFullRunArgs`, split out of `full-run-launch.ts` by the launched source while the
     // launcher came from main. Nothing is spent when this happens, because the probe refuses before
     // the gate and before the allowance turn, so the hint only has to name the one remedy.
-    console.error(
+    die(
       message.includes(" is not a function")
         ? `${message} — if the launched source moved a module this launcher imports by path, run the launcher from a worktree at that source`
         : message,
+      1,
     );
-    process.exitCode = 1;
   }
 }

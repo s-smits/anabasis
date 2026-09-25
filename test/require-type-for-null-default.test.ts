@@ -11,9 +11,9 @@
  * pass found in September 2026. One `@param` restored each.
  *
  * Both declarations are admitted, because the object case has two honest spellings: a `@type` over
- * the literal, and a cast on the one value. The cast is what scales — `select-best-runs.mjs`
- * builds a record of twelve properties of which five are `null`, and annotating the object means
- * restating the seven the author never had to write down.
+ * the literal, and a cast on the one value. The cast is what scales — for a record of
+ * twelve properties of which five are `null`, annotating the object means restating the seven the
+ * author never had to write down.
  */
 import { describe, expect, it } from "bun:test";
 import { expectedLines, reportedLines } from "./helpers/oxlint-rule-fixture.ts";

@@ -1,5 +1,5 @@
 // Local embedding posture reader for one whole run. prose-input.mjs settles Builder capture
-// validity and solve-input.mjs settles Built-solver trace validity; this file labels every
+// validity and Built-solver trace validity; this file labels every
 // captured row with the nearest of a fixed anchor set and joins those labels to the two things
 // the run actually decided: each authoring submit's outcome, and each battery case's kind. A pinned model revision, fp32 weights and a
 // digested anchor set make one input classify the same way on every host; no provider is called
@@ -7,18 +7,21 @@
 // score input. Codex sessions supply reasoning summaries and messages; Claude sessions supply
 // messages only, because the SDK delivers their thinking blocks with empty text.
 //   bun prose-classify.mjs <builder-prose.jsonl | epoch-dir | campaign-dir> [--run <runId>] [--json] [--min-margin 0.5] [--batch 16] [--window 5]
-// posture-priors.mjs writes the corpus refusal rate per posture beside this file; a submit then
-// carries the rate for its dominant and last label, so a label reads as a measured prior.
-import { keyIfDefined } from "#src/meta/optional-key.ts";
+import { sha256 } from "#src/meta/digest.ts";
 import { env, pipeline } from "@huggingface/transformers";
-import { existsSync } from "#src/meta/filesystem.ts";
 import { homedir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
+import { parseCliArgs } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { NON_EVIDENCE_OUTCOMES, censusProse, publicCensus } from "./prose-input.mjs";
-import { censusSolves, hasCaseRecord, publicSolveCensus } from "./solve-input.mjs";
+import {
+  NON_EVIDENCE_OUTCOMES,
+  SOLVE_CENSUS_SCHEMA,
+  censusProse,
+  censusSolves,
+  hasCaseRecord,
+  publicCensus,
+} from "./prose-input.mjs";
 import { errorMessage } from "#src/meta/runtime-values.ts";
-import { readJsonFile } from "#src/meta/completed-json.ts";
 
 export const CLASSIFIER_SCHEMA = "run-prose-posture/v5";
 const DEFAULT_MODEL = "Xenova/bge-small-en-v1.5";
@@ -155,9 +158,6 @@ export const ADRIFT = new Set(["uncertain", "blocked-environment", "disputing-ve
  *  in a row and we know that location is off"). */
 export const DRIFT_RUN = 5;
 
-/** The builder backends an execution record may name; the priors keep one table per kind. */
-const BACKENDS = ["codex", "claude", "openrouter"];
-
 /** The three kinds a battery case can end as; each keeps its own denominator. */
 const CASE_OUTCOMES = ["verified", "unaccepted", "non-result"];
 
@@ -169,7 +169,7 @@ export const MODEL_REVISION = Bun.env.HB4_PROSE_MODEL_REVISION ?? DEFAULT_MODEL_
 export const CACHE_DIR =
   Bun.env.HB4_PROSE_CACHE_DIR ?? join(homedir(), ".cache", "huggingface", "transformers.js");
 
-export const ANCHOR_SHA256 = new Bun.CryptoHasher("sha256").update(JSON.stringify(CLASSES)).digest("hex");
+export const ANCHOR_SHA256 = sha256(JSON.stringify(CLASSES));
 export const cosine = (a, b) => a.reduce((sum, value, index) => sum + value * b[index], 0);
 const byCount = (a, b) => b.count - a.count || (a.class < b.class ? -1 : a.class > b.class ? 1 : 0);
 
@@ -354,49 +354,7 @@ function sessionSummaries(rows) {
   }));
 }
 
-/** Candidate submits from the execution record beside each captured sidecar, in record order,
- *  with the clock of every `correctness_check` that returned. The first anchor set carried a
- *  `claiming-done-without-evidence` class; it was dropped in v4 because an embedding is the wrong
- *  instrument for it. The execution record answers it outright: either the preview ran between
- *  this submit and the previous one or it did not. */
-function readSubmits(captures) {
-  const submits = [];
-  const checks = [];
-  for (const capture of captures) {
-    if (capture.rows === 0 || capture.dir === undefined) continue;
-    const path = join(capture.dir, capture.executionFile);
-    if (!existsSync(path)) continue;
-    const record = readJsonFile(path);
-    const backend = BACKENDS.find((kind) => kind === record.backend) ?? null;
-    for (const row of Array.isArray(record.submits) ? record.submits : []) {
-      if (row.kind === "controller-terminal" || !Number.isInteger(row.turn) || !Number.isInteger(row.atMs)) {
-        continue;
-      }
-      submits.push({
-        epoch: capture.epoch,
-        session: capture.session,
-        backend,
-        turn: row.turn,
-        atMs: row.atMs,
-        outcome: row.outcome ?? null,
-        stage: row.stage ?? null,
-      });
-    }
-    for (const call of Array.isArray(record.customCalls) ? record.customCalls : []) {
-      if (
-        call.tool !== "correctness_check" ||
-        call.dispatchOutcome !== "returned" ||
-        !Number.isInteger(call.startedAtMs)
-      ) {
-        continue;
-      }
-      checks.push({ epoch: capture.epoch, session: capture.session, atMs: call.startedAtMs });
-    }
-  }
-  return { submits, checks };
-}
-
-function dominant(rows) {
+export function dominant(rows) {
   return rows.length === 0 ? null : summarise(rows)[0].class;
 }
 
@@ -502,41 +460,6 @@ export function solvePosture(rows, cases) {
   return { cases: perCase, byOutcome };
 }
 
-/** Corpus refusal rates per posture, written by posture-priors.mjs and bound to the anchor digest. */
-export const PRIORS_FILE = join(import.meta.dirname, "posture-priors.json");
-
-function readPriors(file) {
-  if (!existsSync(file)) return { state: "absent" };
-  const priors = readJsonFile(file);
-  if (priors.anchorSha256 !== ANCHOR_SHA256) return { state: "stale", corpus: priors.corpus };
-  return {
-    state: "applied",
-    corpus: priors.corpus,
-    byDominant: priors.byDominant,
-    byLast: priors.byLast,
-    byBackend: priors.byBackend ?? {},
-  };
-}
-
-/** The submit's own backend table when the corpus has one, since Codex reasoning rows and
- *  Claude message rows refuse at different rates; the pooled table otherwise. */
-function withPriors(submits, priors) {
-  if (priors.state !== "applied") return submits;
-  return submits.map((submit) => {
-    const scoped = submit.backend === null ? undefined : priors.byBackend[submit.backend];
-    const byDominant = scoped?.dominant ?? priors.byDominant;
-    const byLast = scoped?.last ?? priors.byLast;
-    return {
-      ...submit,
-      prior: {
-        table: scoped ? submit.backend : "pooled",
-        dominant: byDominant[submit.dominant] ?? null,
-        last: byLast[submit.recent.at(-1)?.class] ?? null,
-      },
-    };
-  });
-}
-
 function labelBuilderRows(rows, verdicts, segments, minMargin) {
   let at = 0;
   return rows.map((row, index) => {
@@ -561,7 +484,10 @@ function labelBuilderRows(rows, verdicts, segments, minMargin) {
 
 /** Census, classify and join for one whole run. Rows carry labels and identities, never text; only
  *  the `recent` rows before each submit carry a short excerpt. Builder rows and solver rows are
- *  embedded in one pass, so the model loads once for both halves of the run. */
+ *  embedded in one pass, so the model loads once for both halves of the run.
+ *  @param {string} target
+ *  @param {{ embed?: (texts: string[]) => Promise<number[][]>, minMargin?: number, batchSize?: number,
+ *    window?: number, runId?: string }} [options] */
 export async function classifyTarget(
   target,
   {
@@ -569,7 +495,6 @@ export async function classifyTarget(
     minMargin = DEFAULTS.minMargin,
     batchSize = DEFAULTS.batchSize,
     window = DEFAULTS.window,
-    priorsFile = PRIORS_FILE,
     runId,
   } = {},
 ) {
@@ -580,12 +505,12 @@ export async function classifyTarget(
   const input = publicCensus(census);
   const solveInput =
     solveCensus === null
-      ? { schema: "built-solve-prose-census/v1", state: "no-case-record" }
-      : publicSolveCensus(solveCensus);
+      ? { schema: SOLVE_CENSUS_SCHEMA, state: "no-case-record" }
+      : publicCensus(solveCensus);
   if (!census.ok) return { schema: CLASSIFIER_SCHEMA, state: "integrity-failure", input, solveInput };
   // Builder rows a posture can be read from. A session the controller closed as a typed non-result
-  // authored nothing: its rows are the provider's own message. Run 064960's second epoch captured
-  // exactly one row, "You've hit your session limit", which the v4 reader labelled as reasoning.
+  // authored nothing: its rows are the provider's own message. Such a session can capture
+  // nothing but "You've hit your session limit", which an earlier reader labelled as reasoning.
   const evidence = census.rows.filter((row) => !NON_EVIDENCE_OUTCOMES.has(row.sessionOutcome));
   const excluded = census.rows.length - evidence.length;
   const solveSource = solveCensus?.rows ?? [];
@@ -619,10 +544,7 @@ export async function classifyTarget(
     };
   });
   const completed = Date.now();
-  const priors = readPriors(priorsFile);
-  const calibrationPriors = { state: priors.state, ...keyIfDefined("corpus", priors.corpus) };
   const excerpts = new Map(evidence.map((row) => [rowKey(row), excerptOf(row.text)]));
-  const { submits, checks } = readSubmits(census.captures);
   return {
     schema: CLASSIFIER_SCHEMA,
     state: "classified",
@@ -643,7 +565,6 @@ export async function classifyTarget(
       batchSize,
       window,
       floor: EVIDENCE_FLOOR,
-      priors: calibrationPriors,
     },
     timingMs: {
       loadModelAndAnchors: loaded - started,
@@ -657,7 +578,7 @@ export async function classifyTarget(
     },
     summary: summarise(rows),
     sessions: sessionSummaries(rows),
-    submits: withPriors(submitPosture(rows, submits, window, excerpts, checks), priors),
+    submits: submitPosture(rows, census.submits, window, excerpts, census.checks),
     solves: solveCensus === null ? null : solvePosture(solveRows, solveCensus.cases),
     rows,
     solveRows,
@@ -667,19 +588,12 @@ export async function classifyTarget(
 }
 
 const session = (row) => `${row.epoch}/s${String(row.session).padStart(2, "0")}`;
-const rate = (cell) =>
-  cell ? `${cell.refused}/${cell.refused + cell.accepted} refused in corpus` : "no corpus row";
 
 function renderSubmit(submit) {
   const head = `${session(submit)} t${submit.turn} @${(submit.atMs / 60000).toFixed(1)}m ${submit.outcome ?? "?"}${submit.stage ? ` (${submit.stage})` : ""}`;
   const lines = [
     `  ${head}: ${submit.rowsSincePrevious} rows since previous, dominant ${submit.dominant ?? "none"}, recent ${submit.recent.map(label).join(" → ") || "none"}`,
   ];
-  if (submit.prior) {
-    lines.push(
-      `    prior (${submit.prior.table} table): dominant ${rate(submit.prior.dominant)}; last label ${rate(submit.prior.last)}`,
-    );
-  }
   if (submit.repeatsRefusedPosture) lines.push("    same dominant posture as the previous refused submit");
   if (!submit.checkedSincePrevious) lines.push("    no correctness_check returned since the previous submit");
   lines.push(`    after: ${submit.after.rows} rows, dominant ${submit.after.dominant ?? "none"}`);
@@ -711,7 +625,7 @@ function renderSolves(solves) {
     );
   }
   // A case with a verified trace and no rows ran and said nothing; a case with no trace never ran.
-  const silent = solves.cases.filter((entry) => entry.rows === 0 && entry.trace === "verified").length;
+  const silent = solves.cases.filter((entry) => entry.rows === 0 && entry.trace === "recorded").length;
   const untraced = solves.cases.length - spoke.length - silent;
   if (silent > 0) lines.push(`  ${silent} case(s) ran and left no assistant text`);
   if (untraced > 0) {
@@ -736,7 +650,7 @@ export function renderPosture(result) {
   }
   lines.push(
     "",
-    `${result.rows.length} rows; model+anchors ${result.timingMs.loadModelAndAnchors} ms, classification ${result.timingMs.classify} ms; priors ${result.calibration.priors.state}`,
+    `${result.rows.length} rows; model+anchors ${result.timingMs.loadModelAndAnchors} ms, classification ${result.timingMs.classify} ms`,
   );
   lines.push(`evidence: Builder ${grade(result.evidence.builder)}; solver ${grade(result.evidence.solver)}`);
   if (result.evidence.excludedNonResultRows > 0) {
@@ -756,28 +670,20 @@ export function renderPosture(result) {
 }
 
 export function parseArgs(args) {
+  const { single, flags, positionals } = parseCliArgs(args, {
+    values: ["run", "min-margin", "batch", "window"],
+    flags: ["json"],
+    positionals: 1,
+  });
+  const numeric = (name, fallback) => (single.has(name) ? Number(single.get(name)) : fallback);
   const options = {
-    target: /** @type {string | undefined} */ (undefined),
-    json: false,
-    runId: /** @type {string | undefined} */ (undefined),
-    ...DEFAULTS,
+    target: positionals[0],
+    json: flags.has("json"),
+    runId: single.get("run"),
+    minMargin: numeric("min-margin", DEFAULTS.minMargin),
+    batchSize: numeric("batch", DEFAULTS.batchSize),
+    window: numeric("window", DEFAULTS.window),
   };
-  const numeric = { "--min-margin": "minMargin", "--batch": "batchSize", "--window": "window" };
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--json") options.json = true;
-    else if (arg === "--run") {
-      options.runId = args[(index += 1)];
-      if (options.runId === undefined) throw new Error("--run needs a value");
-    } else if (arg in numeric) {
-      const value = args[(index += 1)];
-      if (value === undefined) throw new Error(`${arg} needs a value`);
-      options[numeric[arg]] = Number(value);
-    } else if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
-    else if (options.target === undefined) options.target = arg;
-    else throw new Error(`unexpected argument: ${arg}`);
-  }
-  if (options.target === undefined) throw new Error("missing target");
   validMargin(options.minMargin);
   validPositiveInteger(options.batchSize, "--batch");
   validPositiveInteger(options.window, "--window");

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /** Operator timer only. Controller evidence remains owned by fullrun. */
-import { existsSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
-import { parseArgs } from "node:util";
+import { existsSync, writeFileSync } from "#src/meta/filesystem.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
+import { type CommandArgs, runCommand } from "../../main/cli.ts";
 import { serviceManager, type ServiceManager } from "./service.ts";
 
 interface StopPlan {
@@ -17,6 +17,8 @@ type Control = (args: string[]) => Promise<Result>;
 /** The worktree-relative receipt the timer writes; `launch.ts` waits on its `.ready` sibling
  *  and refuses to launch once the receipt itself exists. */
 export const STOP_RECEIPT_PATH = ".scratch/quick-run/stop.json";
+const USAGE =
+  "Usage: bun stop.ts --worktree /abs/run-worktree --run <runId> --service <service> --deadline <epoch ms> --grace <ms>";
 
 const label = (plan: StopPlan) => `ana.fullrun.${plan.runId}`;
 export function validateStopPlan(plan: StopPlan, manager: ServiceManager = serviceManager()): void {
@@ -86,23 +88,16 @@ export async function stopRun(
   return { outcome: "service-absent", service: plan.service };
 }
 
-if (import.meta.main) {
-  const { values } = parseArgs({
-    args: Bun.argv.slice(2),
-    options: {
-      worktree: { type: "string" },
-      run: { type: "string" },
-      service: { type: "string" },
-      deadline: { type: "string" },
-      grace: { type: "string" },
-    },
-  });
+/** Wait for the deadline, stop the run's service, and record the outcome beside the worktree. The
+ *  `.ready` sibling is written first, so the launcher knows the timer holds the run before it starts. */
+async function timer(args: CommandArgs): Promise<void> {
+  const whole = (name: string): number => args.int(name) ?? args.die(`--${name} is required`);
   const plan = {
-    dir: values.worktree ?? "",
-    runId: values.run ?? "",
-    service: values.service ?? "",
-    deadline: Number(values.deadline),
-    grace: Number(values.grace),
+    dir: args.required("worktree"),
+    runId: args.required("run"),
+    service: args.required("service"),
+    deadline: whole("deadline"),
+    grace: whole("grace"),
   };
   validateStopPlan(plan);
   const receipt = join(plan.dir, STOP_RECEIPT_PATH);
@@ -122,4 +117,15 @@ if (import.meta.main) {
     });
     throw error;
   }
+}
+
+if (import.meta.main) {
+  await runCommand(
+    {
+      name: "launch-run stop",
+      usage: USAGE,
+      options: { worktree: "abs", run: "text", service: "text", deadline: "int", grace: "int" },
+    },
+    timer,
+  );
 }

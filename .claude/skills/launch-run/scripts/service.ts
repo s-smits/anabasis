@@ -5,7 +5,7 @@
  * A launched run is addressed only through `service`, and a stop proves the loaded service belongs
  * to the run's own worktree before signalling it.
  */
-import { join } from "node:path";
+import { join } from "#src/meta/path.ts";
 
 export interface ServiceManager {
   name: "launchd" | "systemd";

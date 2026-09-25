@@ -150,6 +150,6 @@ describe("workspace change evidence", () => {
   it("refuses a missing workspace argument before calling Git", () => {
     const result = runTypeScript("workspace-changes.mts");
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toBe("workspace-changes: pass the workspace path\n");
+    expect(result.stderr).toBe("workspace-changes: expected 1 positional argument\n");
   });
 });

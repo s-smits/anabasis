@@ -17,8 +17,6 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { PINNED_BUN_VERSION } from "../src/run/host-runtime-policy.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
 import { ANGLE_FILES } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
@@ -33,6 +31,15 @@ type Status = {
   runtime: { version: string; executable: string };
   complete: boolean;
   views: View[];
+  facts?: { terminalAccounting: TerminalAccounting };
+};
+/** The part of trace-review's `terminalAccounting` projection the manifest renders. */
+type TerminalAccounting = {
+  controller: { state: string; error?: string };
+  outerCap?: number;
+  completedRounds?: number;
+  counts: { raw: number | null; real: number | null; controller: number | null };
+  parents?: { lastCandidate: string | null; adopted: string | null; accepted: string | null };
 };
 type Task = { name: string; task: string };
 
@@ -253,7 +260,7 @@ function declaredSession(): string {
 }
 
 describe("what the builder declares", () => {
-  it("lists the declared intelligence sessions and the 36 maintained angles", () => {
+  it("lists the declared intelligence sessions and the 40 maintained angles", () => {
     const listed = launch(null, "--list");
     const names = listed.stdout
       .split("\n")
@@ -273,11 +280,11 @@ describe("what the builder declares", () => {
       "reference_verdict_comparison",
     ]);
     expect(names.filter((name) => name.startsWith("angle_"))).toEqual(
-      Array.from({ length: 36 }, (_, index) => `angle_${String(index + 1).padStart(2, "0")}`),
+      Array.from({ length: 40 }, (_, index) => `angle_${String(index + 1).padStart(2, "0")}`),
     );
   });
 
-  it("requires the complete 45-row catalogue before parsing any active angle", () => {
+  it("requires the complete 49-row catalogue before parsing any active angle", () => {
     const missing = launch(
       null,
       "--list",
@@ -372,6 +379,44 @@ describe("what a launch composes", () => {
     }
     expect(instructions).toContain("2. Loose end: usb-pd is 0/6.");
     expect(instructions.indexOf("## Orientation")).toBeLessThan(instructions.indexOf("## Controller facts"));
+  });
+
+  it("states terminal accounting as trace-review projected it, and never sums it from the views", () => {
+    const snap = snapshot();
+    const unprojected = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    // The default view's battery holds 25 cases; a sum of it is not the controller's count.
+    expect(unprojected).toContain("raw not recorded; real not recorded; controller-terminal not recorded");
+    expect(unprojected).toContain("last candidate not recorded");
+
+    snap.amend((status) => {
+      status.facts = {
+        terminalAccounting: {
+          controller: { state: "refused", error: "terminal.json is not a recorded terminal" },
+          counts: { raw: null, real: null, controller: null },
+        },
+      };
+    });
+    const refused = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    expect(refused).toContain(
+      "Controller evidence refused by its strict reader: terminal.json is not a recorded terminal.",
+    );
+
+    snap.amend((status) => {
+      status.facts = {
+        terminalAccounting: {
+          controller: { state: "recorded" },
+          outerCap: 6,
+          completedRounds: 4,
+          counts: { raw: 50, real: 47, controller: 4 },
+          parents: { lastCandidate: "abc123", adopted: null, accepted: "def456" },
+        },
+      };
+    });
+    const recorded = launch(snap, "--notes", notes("## angle_05\nLook.\n")).instructions();
+    expect(recorded).toContain("outer-controller cap 6; completed controller rounds 4.");
+    expect(recorded).toContain("raw 50; real 47; controller-terminal 4.");
+    expect(recorded).toContain("last candidate abc123; adopted not recorded; accepted def456.");
+    expect(recorded).not.toContain("strict reader");
   });
 
   it("keeps outcome context out of public-only prompts across native and launcher transports", () => {
@@ -499,7 +544,7 @@ describe("what a launch composes", () => {
     const auto = launch(
       snapshot(),
       "--auto",
-      "36",
+      "40",
       "--diagnostics",
       "--stress",
       "--angles",
@@ -508,7 +553,7 @@ describe("what a launch composes", () => {
       notes(""),
     );
     expect(auto.status).toBe(0);
-    expect(auto.tasks()).toHaveLength(38);
+    expect(auto.tasks()).toHaveLength(42);
     expect(auto.task("angle_36")?.task).toContain("Before reading verifier source");
     expect(auto.task("angle_21")?.task).toContain("Between-battery meaning of a climb");
     expect(auto.task("angle_21")?.task).not.toContain("session 30");
@@ -594,6 +639,16 @@ describe("what a launch refuses", () => {
     expect(result.stderr).toContain("angle 15 carries the private trace-challenge packet");
     expect(result.stderr).toContain("angle 36 derives its valid-alternative corpus");
     expect(existsSync(result.out)).toBe(false);
+  });
+
+  it("refuses a misspelled flag and a relative --out before reading anything", () => {
+    const misspelled = launch(snapshot(), "--sesions", "4");
+    expect(misspelled.status).toBe(2);
+    expect(misspelled.stderr).toContain('unknown option "--sesions"');
+
+    const relative = launch(null, "--snapshot", "/x", "--worktree", "/x", "--out", "rel", "--sessions", "4");
+    expect(relative.status).toBe(2);
+    expect(relative.stderr).toContain("--out must be an absolute path");
   });
 
   it("rejects an auto review below the four-session independence minimum", () => {

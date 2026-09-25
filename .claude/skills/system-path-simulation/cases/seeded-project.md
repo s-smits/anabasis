@@ -29,7 +29,7 @@ Use the repository worktree helper for the exact source and its dependencies, th
 `scripts/seed-campaign.mts --into-root` for the campaign and domain bytes: it removes the copied
 controller lock, verifies the selected product through the production reader, lists every symlink
 that escapes the copy and every file that still names the source root, and writes `seed.json`.
-`stage-run.mts --seed-campaign` calls the same function. Copy nothing else by hand.
+Copy nothing else by hand.
 Do not copy `.env`, `.harness` configuration or credentials from another checkout to make it start.
 Resolve run configuration through its owning workflow and report any missing input.
 

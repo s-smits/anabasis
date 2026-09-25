@@ -1,23 +1,21 @@
 #!/usr/bin/env bun
 // How big is this run, and what did the deterministic read say. Two questions, one reader.
 //
-//   bun brief.mjs scope <campaign dir> --run <runId> [--json]
-//   bun brief.mjs show  --out <absolute review dir>
+// `wri.mjs scope` and `wri.mjs brief` are its commands.
 //
-// `scope` runs before the lanes and sizes the run from its own recorded bytes, so the read covers
+// The scope runs before the lanes and sizes the run from its own recorded bytes, so the read covers
 // a fifteen-hour three-epoch run and a forty-minute probe differently without anyone guessing.
-// `show` runs after them and renders one bounded digest of every capture, which is what a reader
+// The brief runs after them and renders one bounded digest of every capture, which is what a reader
 // opens instead of the lane output: a lane short enough is quoted whole, a long one is pointed at.
 // Nothing here decides anything. The tier picks a default lane set and names a starting number of
 // paid lanes; `--lanes` and `--all` still select whatever the reader asks for.
 
-import { existsSync, readFileSync, readdirSync } from "#src/meta/filesystem.ts";
-import { capturedJsonParse } from "#src/meta/json-runtime.ts";
-import { asRecord, isString } from "#src/meta/json-shape.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
+import { join } from "#src/meta/path.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
+import { readEpochRecord } from "#src/author/campaign-epoch.ts";
+import { readCaseCounts } from "#tools/runs/evidence.ts";
+import { openRecordedRun } from "#skills/main/run.ts";
 
 export const BRIEF_SCHEMA = "wri-brief/v1";
 
@@ -27,31 +25,20 @@ export const LANE_LINES = 60;
 
 /** The lanes that read recorded campaign bytes alone. The other six open the measured checkout or
  *  an archive, which is work worth doing once a battery has scored something. */
-export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls"];
+export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls", "handoff"];
 
-/** The recorded kind of one case row, in the closed order AGENTS.md sets: a typed environment
- *  failure first, then an attempt that reached no accepted submission, then a scored case. */
-export function caseKind(row) {
-  if (row.runtimeNonResult === true) return "nonResult";
-  if (row.truthOk === null || row.truthOk === undefined) return "unaccepted";
-  return "verified";
-}
-
-/** Case rows this run owns, by battery. A later battery's rows carry the run id with its own
- *  suffix (`…-i02`), so the prefix is the join and the exact value names the battery. */
+/** This run's case counts by battery, through the shared case-count owner. A later battery's rows
+ *  carry the run id with its canonical iteration suffix (`…-i02`), which `isControllerBatteryRunId`
+ *  joins; the exact value names the battery. A torn record refuses the scope rather than sizing a run from part of it. */
 function batteryRows(campaign, runId) {
-  const path = join(campaign, "case-record.jsonl");
-  if (!existsSync(path)) return new Map();
-  const batteries = new Map();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    if (line.trim() === "") continue;
-    const row = asRecord(capturedJsonParse(line)?.row);
-    if (!row || !isString(row.runId) || !row.runId.startsWith(runId)) continue;
-    const found = batteries.get(row.runId) ?? { verified: 0, unaccepted: 0, nonResult: 0 };
-    found[caseKind(row)] += 1;
-    batteries.set(row.runId, found);
-  }
-  return batteries;
+  const counts = readCaseCounts({ campaignDir: campaign, runId });
+  if (counts.unreadable !== null) throw new Error(`case record unreadable: ${counts.unreadable}`);
+  return new Map(
+    counts.batteries.map(({ runId: battery, tally }) => [
+      battery,
+      { verified: tally.verified, unaccepted: tally.unaccepted, nonResult: tally.nonResults },
+    ]),
+  );
 }
 
 /**
@@ -95,13 +82,11 @@ export function tierOf({ hours, epochs, batteries, scored }) {
 /** Size one run from its opening, its epochs and its own case rows. A run with no terminal is
  *  live, and its elapsed time is measured to now, which is a reading of this moment. */
 export function runScope(campaign, runId, { now = Date.now() } = {}) {
-  const dir = join(campaign, "controller", runId);
-  const opening = readJsonFileOrNull(join(dir, "opening.json"));
-  if (opening === null) throw new Error(`no readable opening.json under ${dir}`);
-  const terminal = readJsonFileOrNull(join(dir, "terminal.json"));
-  const startedMs = Date.parse(opening.writtenAt ?? "");
-  const endedAt = terminal === null ? null : (terminal.writtenAt ?? null);
-  const hours = ((endedAt === null ? now : Date.parse(endedAt)) - startedMs) / 3_600_000;
+  const { opening, controller, controllerError } = openRecordedRun(campaign, runId);
+  const startedAt = typeof opening.writtenAt === "string" ? opening.writtenAt : null;
+  const recorded = controller?.state === "recorded" ? controller : null;
+  const endedAt = recorded?.writtenAt ?? null;
+  const hours = ((endedAt === null ? now : Date.parse(endedAt)) - Date.parse(startedAt ?? "")) / 3_600_000;
   const batteries = batteryRows(campaign, runId);
   const cases = { verified: 0, unaccepted: 0, nonResult: 0 };
   for (const counts of batteries.values()) {
@@ -109,24 +94,21 @@ export function runScope(campaign, runId, { now = Date.now() } = {}) {
     cases.unaccepted += counts.unaccepted;
     cases.nonResult += counts.nonResult;
   }
-  const listedEpochs = readJsonFileOrNull(join(campaign, "epochs.json"))?.epochs;
-  const epochs = Array.isArray(listedEpochs) ? listedEpochs.length : null;
+  const epochs = readEpochRecord(campaign)?.epochs.length ?? null;
   const scope = { hours, epochs, batteries: batteries.size, scored: cases.verified > 0 };
   return {
     schema: BRIEF_SCHEMA,
     campaign,
     runId,
-    startedAt: opening.writtenAt ?? null,
+    startedAt,
     endedAt,
-    live: endedAt === null,
+    live: controller?.state === "unfinished",
     hours,
     epochs,
     batteries: [...batteries].map(([id, counts]) => ({ battery: id, ...counts })),
     cases,
-    terminal:
-      terminal === null
-        ? null
-        : { outcome: terminal.outcome ?? null, reason: terminal.terminalReason ?? null },
+    terminal: recorded === null ? null : { outcome: recorded.outcome, reason: recorded.terminalReason },
+    controllerError,
     ...tierOf(scope),
   };
 }
@@ -136,10 +118,14 @@ export function renderScope(scope) {
   const when = scope.live
     ? `live, ${scope.hours.toFixed(1)} h so far`
     : `ended after ${scope.hours.toFixed(1)} h`;
-  const end =
+  const recordedEnd =
     scope.terminal === null
       ? "no terminal recorded"
       : `${scope.terminal.outcome ?? "?"} — ${scope.terminal.reason ?? "no reason recorded"}`;
+  const end =
+    scope.controllerError === null
+      ? recordedEnd
+      : `controller evidence refused by its strict reader: ${scope.controllerError}`;
   return [
     `${scope.runId}  [${scope.tier}]`,
     `  campaign ${scope.campaign}`,
@@ -215,46 +201,4 @@ export function renderBrief(reviewDir) {
     "",
     ...pressing(reviewDir),
   ].join("\n\n");
-}
-
-/** The review directories under a root, newest first, for a reader who kept several. */
-export function reviewsUnder(root) {
-  if (!existsSync(root)) return [];
-  return readdirSync(root)
-    .filter((name) => existsSync(join(root, name, "wri-review.json")))
-    .sort()
-    .toReversed();
-}
-
-function main() {
-  const [command, ...rest] = Bun.argv.slice(2);
-  const positional = rest[0] !== undefined && !rest[0].startsWith("--") ? rest.shift() : null;
-  const value = (name) => {
-    const index = rest.indexOf(`--${name}`);
-    return index === -1 ? null : (rest[index + 1] ?? null);
-  };
-  if (command === "scope" && positional !== null) {
-    const scope = runScope(resolve(positional), value("run") ?? "");
-    console.log(rest.includes("--json") ? JSON.stringify(scope, null, 2) : renderScope(scope));
-    return;
-  }
-  if (command === "show") {
-    const out = value("out");
-    if (out === null || !isAbsolute(out)) throw new Error("--out must be an absolute review directory");
-    console.log(renderBrief(resolve(out)));
-    return;
-  }
-  console.error(
-    "usage: brief.mjs scope <campaign dir> --run <runId> [--json] | brief.mjs show --out <absolute review dir>",
-  );
-  runtimeProcess.exit(2);
-}
-
-if (import.meta.main) {
-  try {
-    main();
-  } catch (error) {
-    console.error(`brief: ${errorMessage(error)}`);
-    runtimeProcess.exit(1);
-  }
 }

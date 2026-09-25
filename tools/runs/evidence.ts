@@ -22,6 +22,9 @@ import {
   statSync,
 } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "../../src/run/difficulty-decision.ts";
+import { isControllerBatteryRunId } from "../../src/run/controller-battery-record-policy.ts";
+import type { BandZone } from "../../src/claim/battery-difficulty.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import {
   isBoolean,
@@ -45,6 +48,14 @@ import type { RunLocation } from "./discover.ts";
 
 const SLOT_ROLES = ["builder", "built", "review"] as const;
 type SlotRole = (typeof SLOT_ROLES)[number];
+
+const BAND_ZONES: ReadonlySet<string> = new Set<BandZone>([
+  "too-hard",
+  "under-aim",
+  "on-aim",
+  "over-aim",
+  "too-easy",
+]);
 
 export interface SlotFacts {
   role: SlotRole;
@@ -123,11 +134,32 @@ export interface ClaimFacts {
   clauses: string[];
 }
 
-/** One recorded climb decision, as the difficulty evidence states it. */
+/** One recorded climb decision, as the difficulty evidence states it. The action, rationale, frame
+ *  and admitted count are not nullable, because v5 declares them mandatory; a record claiming v5
+ *  without them is damaged rather than older, and is refused beside the older ones. */
 interface DifficultyFacts {
   runId: string;
-  action: string | null;
-  rationale: string | null;
+  action: string;
+  rationale: string;
+  /** How the band placed the battery, which only a `placed` decision carries; null for the three
+   *  actions that set the pooled rate aside. */
+  placement: { passes: number; n: number; zone: BandZone } | null;
+  /** Admitted batteries behind the decision. */
+  admitted: number;
+  /** The battery run ids the decision derives from, in recorded order. */
+  evidenceRunIds: string[];
+  /** The climb-readout frame the round's sentences were rendered from. The Builder that authored
+   *  this battery read those exact words about the band, so the revision names which guidance it
+   *  was answering. */
+  frame: string;
+}
+
+/** What one run's recorded climb decisions came to. `refused` holds the declared version of every
+ *  record this reader would not open, one entry each, so that a battery absent from the table is
+ *  visibly refused rather than reading like a battery that never ran. */
+export interface DifficultyDecisions {
+  rows: DifficultyFacts[];
+  refused: string[];
 }
 
 function readJson(path: string): JsonObject | null {
@@ -200,7 +232,7 @@ function roleTurns(terminal: JsonObject): Array<{ role: string; turns: number }>
   return rows;
 }
 
-function terminalFacts(terminal: JsonObject): TerminalFacts {
+export function terminalFacts(terminal: JsonObject): TerminalFacts {
   return {
     writtenAt: stringOr(terminal.writtenAt),
     outcome: stringOr(terminal.outcome),
@@ -359,11 +391,6 @@ export function lastRecordedWrite(evidence: RunEvidence): { at: string; source: 
   return best;
 }
 
-/** Whether a case row belongs to this run: the run itself or one of its numbered iterations. */
-export function belongsToRun(rowRunId: string, runId: string): boolean {
-  return rowRunId === runId || rowRunId.startsWith(`${runId}-`);
-}
-
 const EMPTY_COUNTS: CaseCounts = { tally: outcomeTally([]), batteries: [], unreadable: null };
 
 /** A campaign's case record is shared by every run in it, and a listing asks for each in turn. The
@@ -395,7 +422,7 @@ export function readCaseCounts(location: RunLocation): CaseCounts {
   const byBattery = new Map<string, CaseOutcome[]>();
   const mine: CaseOutcome[] = [];
   for (const stored of rows) {
-    if (!belongsToRun(stored.row.runId, location.runId)) continue;
+    if (!isControllerBatteryRunId(location.runId, stored.row.runId)) continue;
     const outcome = classifyCaseOutcome(stored.row);
     mine.push(outcome);
     const battery = byBattery.get(stored.row.runId) ?? [];
@@ -414,16 +441,14 @@ export function unfinishedInCampaign(runs: readonly RunLocation[], campaignDir: 
   return count;
 }
 
-function claimClauses(claim: JsonObject | null): string[] {
+/** The clause names of a claim's `ClaimClause` rows, the only shape `claim-evidence` writes. */
+export function claimClauses(claim: JsonObject | null): string[] {
   const rows = claim?.clauses;
   if (!Array.isArray(rows)) return [];
   const clauses: string[] = [];
   for (const row of rows) {
-    if (isString(row)) clauses.push(row);
-    else if (isRecord(row)) {
-      const code = stringOr(row.code) ?? stringOr(row.clause);
-      if (code !== null) clauses.push(code);
-    }
+    const clause = isRecord(row) ? stringOr(row.clause) : null;
+    if (clause !== null) clauses.push(clause);
   }
   return clauses;
 }
@@ -447,7 +472,12 @@ export function readClaims(location: RunLocation): ClaimFacts[] {
     }
     const runId = stringOr(raw?.runId);
     const createdAt = stringOr(raw?.createdAt);
-    if (raw === null || runId === null || createdAt === null || !belongsToRun(runId, location.runId)) {
+    if (
+      raw === null ||
+      runId === null ||
+      createdAt === null ||
+      !isControllerBatteryRunId(location.runId, runId)
+    ) {
       continue;
     }
     const ok = nested(raw, "claim")?.ok;
@@ -462,11 +492,63 @@ export function readClaims(location: RunLocation): ClaimFacts[] {
   return claims;
 }
 
-/** The climb decisions recorded for this run's batteries, in recorded battery order. */
-export function readDifficultyDecisions(location: RunLocation): DifficultyFacts[] {
-  const dir = join(location.campaignDir, "difficulty-decisions");
-  if (statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return [];
+function isBandZone(value: string | null): value is BandZone {
+  return value !== null && BAND_ZONES.has(value);
+}
+
+function evidenceRunIds(decision: JsonObject | null): string[] | null {
+  const rows = decision?.evidence;
+  if (!Array.isArray(rows)) return null;
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id = isRecord(row) ? stringOr(row.runId) : null;
+    if (id === null) return null;
+    ids.push(id);
+  }
+  return ids;
+}
+
+/** One v5 record's facts, or null when a field v5 declares mandatory is missing. A `placed`
+ *  decision without a recognised zone is incomplete for the same reason. */
+function decisionFacts(raw: JsonObject, runId: string): DifficultyFacts | null {
+  const difficulty = nested(raw, "difficulty");
+  const decision = nested(difficulty, "decision");
+  const action = stringOr(decision?.action);
+  const rationale = stringOr(decision?.rationale);
+  const frame = stringOr(raw.frame);
+  const admitted = numberOr(difficulty?.admitted);
+  const evidence = evidenceRunIds(decision);
+  const placed = nested(decision, "placement");
+  const zone = stringOr(placed?.zone);
+  const passes = numberOr(placed?.passes);
+  const n = numberOr(placed?.n);
+  if (action === null || rationale === null || frame === null || admitted === null || evidence === null) {
+    return null;
+  }
+  const placement = isBandZone(zone) && passes !== null && n !== null ? { passes, n, zone } : null;
+  if (action === "placed" && placement === null) return null;
+  return {
+    runId,
+    action,
+    rationale,
+    placement: action === "placed" ? placement : null,
+    admitted,
+    evidenceRunIds: evidence,
+    frame,
+  };
+}
+
+/**
+ * The climb decisions recorded for this run's batteries, in iteration order, taking
+ * `DIFFICULTY_DECISION_SCHEMA` and nothing else. An unreadable file is skipped in silence rather
+ * than refused, because the reader cannot tell whose run it belonged to and will not claim another
+ * run's damage for this one.
+ */
+export function readDifficultyDecisions(location: RunLocation): DifficultyDecisions {
   const rows: DifficultyFacts[] = [];
+  const refused: string[] = [];
+  const dir = join(location.campaignDir, "difficulty-decisions");
+  if (statSync(dir, { throwIfNoEntry: false })?.isDirectory() !== true) return { rows, refused };
   for (const entry of readdirSync(dir).sort()) {
     if (!entry.endsWith(".json")) continue;
     let raw: JsonObject | null;
@@ -476,13 +558,20 @@ export function readDifficultyDecisions(location: RunLocation): DifficultyFacts[
       continue;
     }
     const runId = stringOr(raw?.runId);
-    if (raw === null || runId === null || !belongsToRun(runId, location.runId)) continue;
-    const decision = nested(nested(raw, "difficulty"), "decision");
-    rows.push({
-      runId,
-      action: stringOr(decision?.action),
-      rationale: stringOr(decision?.rationale) ?? stringOr(raw.rationale),
-    });
+    if (raw === null || runId === null || !isControllerBatteryRunId(location.runId, runId)) continue;
+    const schema = stringOr(raw.schema);
+    if (schema !== DIFFICULTY_DECISION_SCHEMA) {
+      refused.push(schema ?? "no schema");
+      continue;
+    }
+    const facts = decisionFacts(raw, runId);
+    if (facts === null) refused.push(`${schema} incomplete`);
+    else rows.push(facts);
   }
-  return rows;
+  // The filename leads with the iteration id, whose two-digit padding sorts only to round 99; the
+  // round itself is the order, and the filename breaks a tie between two records of one round.
+  const round = (runId: string): number =>
+    runId === location.runId ? 1 : Number(runId.slice(location.runId.length + 2));
+  rows.sort((left, right) => round(left.runId) - round(right.runId));
+  return { rows, refused };
 }

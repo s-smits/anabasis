@@ -28,7 +28,7 @@ passed it; the real `fullrun` from the one-liner is the smallest slice that meas
 5. **Resolve** each row `sufficed`, `partial`, `refuted` or `untriggered` against the file it was
    scouted to, and give each refuted row one owner: setup, shared product code, generated
    candidate, or provider and host environment.
-6. **Stop only under `run-outcome-review`** and the stop section of `launch-run`. A provider
+6. **Stop only under `whole-run-investigation`'s outcome reference** and the stop section of `launch-run`. A provider
    non-result is not a product finding; relaunch after the allowance resets.
 
 ## What it proves

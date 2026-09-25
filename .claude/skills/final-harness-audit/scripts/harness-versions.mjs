@@ -16,11 +16,16 @@
  *   bun --no-env-file harness-versions.mjs <slug> --diff <ordinal|commit>   # name-status + diffstat vs parent
  *   bun --no-env-file harness-versions.mjs <slug> --files <ordinal|commit>  # bundle file sizes at that version
  */
-import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { runCommand } from "#skills/main/cli.ts";
+import { gitText } from "#skills/main/git.ts";
+import { campaignEpochs } from "#src/author/campaign-epoch.ts";
+import { ITERATION_FILE, listIterationDirs } from "#src/builder/campaign-iterations.ts";
 import { existsSync, readdirSync } from "#src/meta/filesystem.ts";
 import { join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { fingerprintSlug } from "#src/claim/fingerprint.ts";
+import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
+import { campaignDir as campaignDirOf, defaultProductDir } from "#src/meta/campaign-root.ts";
 import { caseVerdictDefect, classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
 import { readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
@@ -33,10 +38,6 @@ import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 export const HARNESS_EVOLUTION_SCHEMA = "harness-evolution/v1";
 
 const SHORT = (sha) => (isString(sha) && sha.length >= 12 ? sha.slice(0, 12) : "absent");
-
-function git(dir, args) {
-  return runTextSyncOrThrow(["git", "-C", dir, ...args], { maxBuffer: 64 * 1024 * 1024 });
-}
 
 function dirs(path) {
   try {
@@ -53,20 +54,18 @@ function dirs(path) {
  *  iteration evidence: the versions are then known by their fingerprint with the authoring history
  *  stated absent, instead of the epoch vanishing from the audit. */
 function epochsOf(campaignDir) {
-  return dirs(campaignDir)
-    .filter((name) => name.startsWith("epoch-"))
-    .map((name) => {
-      const dir = join(campaignDir, name);
-      const workspace = join(dir, "workspace");
-      return { id: name, dir, workspace, hasRepo: existsSync(join(workspace, ".git")) };
-    });
+  return campaignEpochs(campaignDir).map((name) => {
+    const dir = join(campaignDir, name);
+    const workspace = join(dir, "workspace");
+    return { id: name, dir, workspace, hasRepo: existsSync(join(workspace, ".git")) };
+  });
 }
 
 /** The iteration evidence of one epoch, keyed by the workspace commit each one completed. */
 function iterationsByCommit(epochDir) {
   const byCommit = new Map();
-  for (const name of dirs(epochDir)) {
-    const evidence = readJsonFileOrNull(join(epochDir, name, "iteration.json"));
+  for (const name of listIterationDirs(epochDir)) {
+    const evidence = readJsonFileOrNull(join(epochDir, name, ITERATION_FILE));
     if (evidence === null) continue;
     const commit = evidence.workspaceChange?.commit;
     if (isString(commit)) byCommit.set(commit, evidence);
@@ -81,7 +80,7 @@ function batteriesByBundleSnapshot(repoRoot, slug, campaignDir) {
   const index = new Map();
   const seenRuns = new Map();
   const gaps = [];
-  for (const root of new Set([join(repoRoot, "domains", slug), ...campaignTraceRoots(campaignDir)])) {
+  for (const root of new Set([defaultProductDir(repoRoot, slug), ...campaignTraceRoots(campaignDir)])) {
     for (const runId of dirs(join(root, "runs"))) {
       const runDir = join(root, "runs", runId);
       if (!existsSync(join(runDir, "battery.json"))) continue;
@@ -145,7 +144,7 @@ function batteriesByBundleSnapshot(repoRoot, slug, campaignDir) {
 /** Fingerprint the live domain bytes instead of taking the lexicographically last sidecar. Several
  *  bundle snapshots may survive, and directory order is not adoption evidence. */
 function currentBundleSnapshot(repoRoot, slug) {
-  const domain = join(repoRoot, "domains", slug);
+  const domain = defaultProductDir(repoRoot, slug);
   if (!existsSync(domain)) return { state: "absent", bundleSnapshotId: null, findings: [] };
   const fingerprint = fingerprintSlug(domain, { slug });
   return fingerprint.ok
@@ -157,17 +156,19 @@ function currentBundleSnapshot(repoRoot, slug) {
       };
 }
 
+/** The id the controller files a bundle snapshot under, or null for a record that states no
+ *  identity to file. The spelling is `bundleSnapshotIdOf`'s, so a snapshot with no task set joins
+ *  the battery that measured it; a local copy spelled that case "?" where the controller writes
+ *  "no-tasks", and the two never met. */
 function bundleSnapshotId(fingerprint) {
   if (fingerprint === null || fingerprint === undefined) return null;
-  if (
-    ![fingerprint.agentHash, fingerprint.correctnessModelHash].every(
-      (hash) => isString(hash) && hash.length >= 16,
-    )
-  ) {
-    return null;
-  }
-  const cut = (h) => (isString(h) ? h.slice(0, 16) : "?");
-  return `${cut(fingerprint.agentHash)}-${cut(fingerprint.correctnessModelHash)}-${cut(fingerprint.taskSetHash)}`;
+  const { agentHash, correctnessModelHash, taskSetHash } = fingerprint;
+  if (![agentHash, correctnessModelHash].every((hash) => isString(hash) && hash.length >= 16)) return null;
+  return bundleSnapshotIdOf({
+    agentHash,
+    correctnessModelHash,
+    taskSetHash: isString(taskSetHash) ? taskSetHash : null,
+  });
 }
 
 /** One row per version. With a workspace repo, each commit gets a row joined to iteration evidence.
@@ -178,8 +179,8 @@ function versionsOf(campaignDir, batteries) {
   for (const epoch of epochsOf(campaignDir)) {
     const iterations = iterationsByCommit(epoch.dir);
     if (!epoch.hasRepo) {
-      for (const name of dirs(epoch.dir)) {
-        const iteration = readJsonFileOrNull(join(epoch.dir, name, "iteration.json"));
+      for (const name of listIterationDirs(epoch.dir)) {
+        const iteration = readJsonFileOrNull(join(epoch.dir, name, ITERATION_FILE));
         if (iteration === null) continue;
         const fingerprint = iteration.fingerprint ?? null;
         rows.push({
@@ -213,7 +214,7 @@ function versionsOf(campaignDir, batteries) {
       }
       continue;
     }
-    const log = git(epoch.workspace, ["log", "--reverse", "--format=%H%x09%at%x09%s"]).trim();
+    const log = gitText(epoch.workspace, "log", "--reverse", "--format=%H%x09%at%x09%s").trim();
     let starterCommit = null;
     let previousCheckpoint = null;
     for (const line of log === "" ? [] : log.split("\n")) {
@@ -224,7 +225,7 @@ function versionsOf(campaignDir, batteries) {
       const iteration = iterations.get(commit) ?? null;
       const fingerprint = iteration?.fingerprint ?? null;
       const key = bundleSnapshotId(fingerprint);
-      const stat = git(epoch.workspace, ["show", "--stat", "--format=", commit]).trim().split("\n").at(-1);
+      const stat = gitText(epoch.workspace, "show", "--stat", "--format=", commit).trim().split("\n").at(-1);
       const row = {
         epoch: epoch.id,
         commit,
@@ -254,7 +255,7 @@ function versionsOf(campaignDir, batteries) {
         checkpoint: /** @type {ReturnType<typeof checkpointFacts> | null} */ (null),
       };
       if (iteration !== null && starterCommit !== null) {
-        row.checkpoint = checkpointFacts(git, epoch.workspace, row, starterCommit, previousCheckpoint);
+        row.checkpoint = checkpointFacts(epoch.workspace, row, starterCommit, previousCheckpoint);
         previousCheckpoint = row;
       }
       rows.push(row);
@@ -496,44 +497,35 @@ export function buildHarnessEvolution({ repoRoot, slug, campaignDir }) {
   };
 }
 
-function main(argv) {
-  const slug = argv.find((a) => !a.startsWith("--"));
-  if (slug === undefined) {
-    throw new Error(
-      "usage: harness-versions.mjs <slug> [--repo <path>] [--campaign <path>] [--diff N] [--files N] [--json]",
-    );
-  }
-  const flag = (name) => {
-    const i = argv.indexOf(`--${name}`);
-    return i === -1 ? null : (argv[i + 1] ?? null);
-  };
-  const repoRoot = resolve(flag("repo") ?? runtimeProcess.cwd());
-  const campaignDir = resolve(flag("campaign") ?? join(repoRoot, "campaigns", slug));
+function main(args) {
+  const [slug] = args.positionals;
+  const repoRoot = resolve(args.value("repo") ?? runtimeProcess.cwd());
+  const campaignDir = resolve(args.value("campaign") ?? campaignDirOf(repoRoot, slug));
   const audit = buildHarnessEvolution({ repoRoot, slug, campaignDir });
   const rows = audit.versions;
 
-  const diff = flag("diff");
-  const files = flag("files");
+  const diff = args.value("diff");
+  const files = args.value("files");
   if (diff !== null) {
     const row = resolveCommit(rows, diff);
-    const ws = join(repoRoot, "campaigns", slug, row.epoch, "workspace");
+    const ws = join(campaignDir, row.epoch, "workspace");
     console.log(`# ${row.subject}  (${SHORT(row.commit)})\n`);
-    console.log(git(ws, ["show", "--stat", "--name-status", "--format=", row.commit]));
+    console.log(gitText(ws, "show", "--stat", "--name-status", "--format=", row.commit));
     return;
   }
   if (files !== null) {
     const row = resolveCommit(rows, files);
-    const ws = join(repoRoot, "campaigns", slug, row.epoch, "workspace");
-    const tree = git(ws, ["ls-tree", "-r", "--name-only", row.commit]).trim().split("\n");
+    const ws = join(campaignDir, row.epoch, "workspace");
+    const tree = gitText(ws, "ls-tree", "-r", "--name-only", row.commit).trim().split("\n");
     console.log(`# bundle at ${row.subject} (${SHORT(row.commit)})\n`);
     for (const path of tree) {
-      const bytes = git(ws, ["show", `${row.commit}:${path}`]);
+      const bytes = gitText(ws, "show", `${row.commit}:${path}`);
       const nonblank = bytes.split("\n").filter((l) => l.trim() !== "").length;
       console.log(`${String(nonblank).padStart(6)}  ${path}`);
     }
     return;
   }
-  if (argv.includes("--json")) {
+  if (args.flag("json")) {
     console.log(JSON.stringify(audit, null, 2));
     return;
   }
@@ -559,10 +551,14 @@ function main(argv) {
 }
 
 if (import.meta.main) {
-  try {
-    main(Bun.argv.slice(2));
-  } catch (error) {
-    console.error(`harness-versions: ${errorMessage(error)}`);
-    runtimeProcess.exit(1);
-  }
+  await runCommand(
+    {
+      name: "harness-versions",
+      usage:
+        "usage: harness-versions.mjs <slug> [--repo <path>] [--campaign <path>] [--diff N] [--files N] [--json]",
+      options: { repo: "text", campaign: "text", diff: "text", files: "text", json: "flag" },
+      positionals: 1,
+    },
+    main,
+  );
 }

@@ -5,12 +5,15 @@
  * from a copy kept here, so a probe run measures the wall the product actually builds. A copy would
  * drift and then report a wall nobody ships.
  */
+import { campaignDir } from "#src/meta/campaign-root.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, join, resolve } from "#src/meta/path.ts";
 import { candidateIsolationProfile } from "#src/builder/candidate-isolation-profile.ts";
 import { deriveCandidateIsolation } from "#src/builder/candidate-isolation.ts";
 
-const root = resolve(Bun.argv[2] ?? "");
+const [rootArg = ""] = parseOrDie(exitWith("emit-profiles"), { positionals: 1 }).positionals;
+const root = resolve(rootArg);
 // The derivation reads the three vendor barrels and their one-hop closure, so the fixture carries
 // the same shape a real repository has. Anything absent here refuses rather than widening.
 const seed = {
@@ -22,7 +25,6 @@ const seed = {
   "vendor/correctness-model-prims/relational-join.ts": "export const relationalJoin = 1;\n",
   "package.json": "{}\n",
 };
-if (root === "") throw new Error("usage: emit-profiles.mts <fixture-repo-root>");
 
 for (const [path, body] of Object.entries(seed)) {
   const full = join(root, path);
@@ -30,7 +32,7 @@ for (const [path, body] of Object.entries(seed)) {
   writeFileSync(full, body);
 }
 
-const epochDir = join(root, "campaigns", "probe", "epoch-1");
+const epochDir = join(campaignDir(root, "probe"), "epoch-1");
 const binding = {
   repoRoot: root,
   slug: "probe",

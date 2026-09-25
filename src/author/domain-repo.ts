@@ -29,7 +29,7 @@ import { relocateToolLauncher } from "./toolchain-relocation.ts";
 import { type SafeguardContext, safeguardTriggered } from "../meta/safeguard.ts";
 import { hostTool } from "../meta/host-tool.ts";
 import { runtimeProcess } from "../meta/process.ts";
-import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../meta/subprocess.ts";
+import { CAPTURE_MAX_BYTES, decodeOutput, runSyncOrThrow, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { dirname, isAbsolute, join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
@@ -340,6 +340,29 @@ function headFromRefFiles(dir: string): string | null {
 
 export function workspaceHead(dir: string): string {
   return headFromRefFiles(dir) ?? git(dir, ["rev-parse", "HEAD"]);
+}
+
+/** The text of `path` at every revision in the history of `commit` that added or changed it, newest
+ *  first. A commit's ancestry never changes, so a caller that names one reads the same revisions
+ *  however the Builder commits meanwhile. `git log` writes each revision as the `cat-file --batch`
+ *  request for its blob, so one process answers for every revision, each blob a header line carrying
+ *  its byte size followed by that many bytes. The filter names what to keep because git's excluding
+ *  `d` drops the root commit too. */
+export function fileRevisions(dir: string, commit: string, path: string): string[] {
+  const requests = git(dir, ["log", `--format=%H:${path}`, "--diff-filter=AMT", commit, "--", path]);
+  if (requests === "") return [];
+  const blobs = runSyncOrThrow([hostTool("git"), "-C", dir, "cat-file", "--batch"], {
+    input: `${requests}\n`,
+    maxBuffer: CAPTURE_MAX_BYTES,
+  });
+  const texts: string[] = [];
+  for (let at = 0; at < blobs.length; ) {
+    const header = blobs.indexOf(10, at);
+    const end = header + 1 + Number(decodeOutput(blobs.subarray(at, header)).split(" ")[2]);
+    texts.push(decodeOutput(blobs.subarray(header + 1, end)));
+    at = end + 1;
+  }
+  return texts;
 }
 
 /** A content identity for a candidate that failed validation, taken from the committed tree objects

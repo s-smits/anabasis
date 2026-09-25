@@ -11,7 +11,8 @@ import { BUILDER_EXECUTION_EVIDENCE_FILE } from "../../src/author/builder-execut
 import { homedir } from "../../src/meta/os.ts";
 import { join } from "../../src/meta/path.ts";
 import { controllerDenominator } from "../../src/run/controller-denominator.ts";
-import type { CaseCounts, Observation, RunEvidence } from "./evidence.ts";
+import type { CaseCounts, DifficultyDecisions, Observation, RunEvidence } from "./evidence.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "../../src/run/difficulty-decision.ts";
 import { readClaims, readDifficultyDecisions, observabilityPath } from "./evidence.ts";
 import type { RunDetail, RunRow } from "./rows.ts";
 
@@ -138,6 +139,28 @@ function authoringLines(evidence: RunEvidence): string[] {
   ];
 }
 
+/**
+ * What the batteries above were decided under, and which of this run's records were left out of
+ * them. One frame revision covers every row, because a run is one controller process and
+ * `FRAME_REVISION` is computed once at import — so this names the sentences about the band that
+ * the Builder actually read, rather than comparing revisions that cannot differ here. The refusal
+ * line is the other half: a battery absent from the table because its record predates the current
+ * schema reads exactly like a battery that never ran, so the count and the versions are printed.
+ */
+function climbConditionLines(decisions: DifficultyDecisions): string[] {
+  const lines: string[] = [];
+  const frame = decisions.rows[0]?.frame;
+  if (frame !== undefined) lines.push(`  Climb wording: ${frame.slice(0, 12)}`);
+  if (decisions.refused.length > 0) {
+    const versions = [...new Set(decisions.refused)].sort().join(", ");
+    lines.push(
+      `  Climb records refused: ${decisions.refused.length} (${versions}) — not ${DIFFICULTY_DECISION_SCHEMA},`,
+      "  so their action words were chosen by code this reader cannot account for.",
+    );
+  }
+  return lines;
+}
+
 function batteryLines(detail: RunDetail): string[] {
   const claims = readClaims(detail.evidence.location);
   const decisions = readDifficultyDecisions(detail.evidence.location);
@@ -150,7 +173,7 @@ function batteryLines(detail: RunDetail): string[] {
   const rows = ordered.map((runId) => {
     const tally = counts.get(runId);
     const claim = claims.find((row) => row.runId === runId);
-    const decision = decisions.find((row) => row.runId === runId);
+    const decision = decisions.rows.find((row) => row.runId === runId);
     return [
       runId,
       claim?.createdAt ?? "no claim",
@@ -165,6 +188,7 @@ function batteryLines(detail: RunDetail): string[] {
     "",
     "Batteries (ordered by claim createdAt)",
     ...table(["BATTERY", "CLAIMED", "PASSED", "CLIMB", "RATIONALE"], rows).map((line) => `  ${line}`),
+    ...climbConditionLines(decisions),
   ];
 }
 

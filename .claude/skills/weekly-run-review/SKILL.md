@@ -1,6 +1,6 @@
 ---
 name: weekly-run-review
-description: Select, explain and publish the strongest Anabasis runs from one calendar week. Use for the weekly best-run Automation, top-three/top-five comparisons, and questions about what made a run good, what limited it, or what should happen next. It filters by duration, reuses WRI deterministic checks, reads published main syntheses, and challenges finalists with Luna xhigh.
+description: Select, explain and publish the strongest Anabasis runs from one calendar week. Use for the weekly best-run Automation, top-three/top-five comparisons, and questions about what made a run good, what limited it, or what should happen next. It filters by duration, reads every run through the controller's strict evidence and the outcome readers, reads published main syntheses, and challenges finalists with Luna xhigh.
 ---
 
 # Weekly Run Review
@@ -16,7 +16,7 @@ finalists. Evidence collection is read-only. The final publication owns only one
 - Never launch a product run, choose an experiment for the campaign owner, or change a pass.
 - The M/W/F full-run audit owns missing WRI analysis. This weekly flow records a missing synthesis;
   it does not launch WRI to fill the gap.
-- Luna reports are research. Reconcile material numbers against deterministic snapshots and the
+- Luna reports are research. Reconcile material numbers against the selection JSON and the
   cited recorded evidence before publishing them.
 - Never expose verifier issue/remedy text, counterexamples, reference artefacts, raw traces, task IDs,
   per-task failure locations or model reasoning.
@@ -26,32 +26,39 @@ contract.
 
 ## 1. Run the selector
 
-Start from a fresh worktree at the published main revision. The selector reads the WRI archives
-in the `--repo` checkout's local `notes/runs/`.
+Start from a fresh worktree at the published main revision. The selector reads the campaign tree
+of the `--repo` checkout's main checkout, and the WRI archives in the `--repo` checkout's local
+`notes/runs/`.
 
 ```sh
-bun --no-env-file .claude/skills/weekly-run-review/scripts/select-best-runs.mjs \
+bun --no-env-file .claude/skills/weekly-run-review/scripts/select-best-runs.ts \
   --repo /absolute/main/worktree \
   --week previous --timezone Europe/Oslo \
   --top 5 --min-duration-minutes 30 \
-  --snapshot-root /absolute/scratch/deterministic-snapshots \
   --out /absolute/scratch/weekly-selection.json \
-  --markdown /absolute/scratch/weekly-selection.md \
   --luna-manifest /absolute/scratch/luna-sessions.json \
-  --luna-instructions /absolute/scratch/luna-shared-instructions.md
+  > /absolute/scratch/weekly-selection.md
 ```
 
-The week is the previous Oslo Monday 00:00 to Monday 00:00, represented as a half-open UTC interval.
-Completed-run membership uses `terminal.writtenAt`; wall duration is terminal minus opening. A valid
-run exactly at 30 minutes is admitted. Shorter runs remain in the census but consume no WRI or Luna
-work. Unfinished, damaged and conflicting rows remain typed exclusions.
+`--out` records the selection as JSON (`weekly-best-run-selection/v2`), and the console prints the
+Markdown shortlist, or the same JSON under `--json`. `--luna-manifest` writes the launcher manifest
+and puts the shared instructions beside it as `luna-sessions.instructions.md`. `--now <ISO>` pins
+the census to an instant, and a terminal written after that instant is refused as
+`terminal-in-future`, so a pinned census stays that instant's census.
 
-The wrapper then invokes the exact source checkout's existing
-`whole-run-investigation/scripts/trace-review.mjs` once for every duration-eligible run. That collector
-owns nine fixed outcome CLI views: Builder, default metrics, scan, scorecard, warning observations and
-the four case partitions, plus the WRI digest and bounded case/trace readability samples. Require the
-snapshot manifest, every required view and every recorded byte/hash to agree. Do not reproduce these
-readers in the weekly skill.
+The week is the previous Oslo Monday 00:00 to Monday 00:00, represented as a half-open UTC interval.
+Completed-run membership uses the controller terminal's `writtenAt`; wall duration is terminal minus
+opening. A run exactly at the minimum duration is admitted. Shorter runs remain in the census but
+consume no WRI or Luna work, and unfinished runs are listed by their opening.
+
+Every run is read through the controller's own strict evidence reader. A run that reader refuses —
+a terminal that does not bind its opening, a lock without its token, a missing battery record — is
+listed with the controller's refusal and never re-read leniently, because a lenient reader would rank
+counts the controller will not stand behind. The seat facts of each duration-eligible run come in
+process from the outcome readers of the checkout the selector runs in: the metrics `bun run outcome`
+prints, and the scorecard's learning yield. A run whose controller recorded no case denominator is a
+`denominator-unrecorded` blocker rather than a row ranked at zero. Do not reproduce these readers in
+the weekly skill.
 
 The selector fills five seats from deterministic evidence before looking for a synthesis. The axes are
 candidate promotion, vertical completion, informative difficulty, operational yield and non-saturated
@@ -85,7 +92,7 @@ bun .agents/skills/codex-luna-swarm/scripts/luna-sessions.mjs \
 For five ready finalists the selector generates sixteen distinct sessions: two per run (mechanism and
 counterfactual) and six cross-run challenges (comparability, full vertical, difficulty, attributable
 improvement, decision yield, and blind best-run/action review). Do not pad the count. Do not launch the
-manifest unless its `launchAllowed` field is true; a blocked manifest contains no sessions. Drain
+manifest unless the selection's `luna.launchAllowed` is true; a blocked manifest contains no sessions. Drain
 completed reports with the launcher's
 `--drain` mode while it runs, then once after exit. A typed 429 permits one retry of missing sessions only,
 at lower concurrency and slower pacing. Treat any remaining transport failure as missing research.

@@ -21,6 +21,7 @@
 import { readFileSync } from "../meta/filesystem.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { hostTool } from "../meta/host-tool.ts";
+import { join } from "../meta/path.ts";
 import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../meta/subprocess.ts";
 
 export type SourceIdentity = {
@@ -63,35 +64,43 @@ function refreshIndexOnce(): void {
   });
 }
 
-function git(args: string[]): string {
+/** Untrimmed, because a file read through `git show` is hashed byte for byte. */
+function gitRaw(args: string[], repo = "."): string {
   // `--no-optional-locks`: the read-only capture never needs to refresh the index, and taking
   // `.git/index.lock` for that made concurrent captures in one work tree wait on each other.
   // A working tree larger than the cap ends as a thrown capture failure, never as a short read
   // that would digest to a wrong source identity.
-  return runTextSyncOrThrow([hostTool("git"), "--no-optional-locks", ...args], {
+  return runTextSyncOrThrow([hostTool("git"), "--no-optional-locks", "-C", repo, ...args], {
     maxBuffer: CAPTURE_MAX_BYTES,
-  }).trim();
+  });
 }
 
-function digestExecutableRoots(): string {
+function git(args: string[]): string {
+  return gitRaw(args).trim();
+}
+
+/**
+ * The `sourceDigest` of the checkout at `repo`, the working directory by default. A path named in
+ * `committed` is hashed as HEAD holds it rather than as the disk does: a review checkout may carry
+ * a local edit to its runtime pin so that it runs under the Bun at hand, and the identity it is
+ * compared with hashed the pin the run was launched on.
+ */
+export function digestExecutableRoots(repo = ".", committed: readonly string[] = []): string {
   // Tracked plus non-ignored untracked, so a new uncommitted module under a root counts as the
   // executed source it is while build outputs stay out through --exclude-standard. Sorted, so the
   // digest depends on the bytes rather than on git's listing order.
-  const listed = git([
-    "ls-files",
-    "-z",
-    "--cached",
-    "--others",
-    "--exclude-standard",
-    "--",
-    ...EXECUTABLE_ROOTS,
-  ]);
+  const listed = gitRaw(
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...EXECUTABLE_ROOTS],
+    repo,
+  );
   const paths = [...new Set(listed.split("\0").filter((entry) => entry.length > 0))].sort();
   const hash = new Bun.CryptoHasher("sha256");
   for (const path of paths) {
     hash.update(`\0${path}\0`);
     try {
-      hash.update(readFileSync(path));
+      hash.update(
+        committed.includes(path) ? gitRaw(["show", `HEAD:${path}`], repo) : readFileSync(join(repo, path)),
+      );
     } catch {
       // Tracked but deleted from the working tree, or unreadable: absence marks the digest
       // instead of hashing as though the file were still there unchanged.

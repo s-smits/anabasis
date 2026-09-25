@@ -1,7 +1,7 @@
 # Which rules fix, and which only report
 
-Fifty-four rules are registered: thirty-seven `ana` and seventeen `anti-slop`, every one of them
-`error`. **Fifteen carry a fixer. Thirty-nine report and leave the repair to the author.**
+Fifty-seven rules are registered: forty `ana` and seventeen `anti-slop`, every one of them
+`error`. **Fifteen carry a fixer. Forty-two report and leave the repair to the author.**
 
 That split is not an accident of effort, and it is not a backlog. This file says what a fixer has
 to be true of before it ships, which rules pass that test, which ones sit right on the edge and are
@@ -86,7 +86,7 @@ they are reversing a decision, and should say so.
 `no-repeated-string-literal`'s source half belongs on this list too; it is above because the rule as
 a whole ships a fixer.
 
-## The rest: thirty where the rule does not hold the repair
+## The rest: thirty-three where the rule does not hold the repair
 
 Not borderline. In each of these the missing piece is information the rule has no access to, and
 every one of them says so in its own doc comment — `test/oxlint-rule-contract.test.ts` refuses a
@@ -103,23 +103,27 @@ for a reason the rule states more precisely itself.
   `no-positional-boolean-parameter`, `prefer-entries-over-keys-lookup`. Which two words name the
   states, what the extracted function is called, what the entry's value is called — that is the
   change, not a step towards it.
-- **The repair is a structure the rule cannot choose** (9): `no-deep-nesting`, `no-tangled-ternary`,
+- **The repair is a structure the rule cannot choose** (11): `no-deep-nesting`, `no-tangled-ternary`,
   `no-inline-block-reducer`, `no-side-effect-in-predicate`, `prefer-lookup-over-equality-chain`,
   `no-reduce-accumulator-copy`, `no-arms-differing-in-one-term`, `no-hand-rolled-sleep`,
-  `no-single-use-const-chain`. Each
+  `no-single-use-const-chain`, `no-hand-read-argv`, `no-hand-read-controller-evidence`. Each
   offers two or three correct answers — guard clause or extraction, `Record` or `Map` or
   `satisfies`, mutating accumulator or pipeline, and for the sleep either of the two exact waits
-  or an admitted real clock — and which one a site wants is the reading.
+  or an admitted real clock, for an argument read the `runCommand` spec that declares the script's
+  options, and for a hand-read terminal the run selection `openRecordedRun` replaces as well — and
+  which one a site wants is the reading.
 - **The repair reaches other files** (5): `no-pass-through-wrapper`, `no-lifetime-outside-owner`,
   `no-module-mocking`, `no-object-parameters`, `no-inline-slop-answer`. Deleting the wrapper means
   editing every caller; moving a kill to its owner is two files and usually a deletion; an
   owner-provided parameter type is a new contract in another file and at every call; a disable
   comment's answer moves into a row of `not-slop.tsv`, under an id only a lint run computes and a
   reason only the author can check. A per-file fixer cannot do any of them.
-- **The repair changes a semantic the rule can only ask about** (2):
-  `prefer-flatmap-over-map-filter` and `no-transposed-argument`. `Boolean` drops `0`, `""` and
-  `false` along with `null` and `undefined`, so whether the `?? []` rewrite preserves the site's
-  meaning depends on what the map produces. Swapping two crossed arguments back is the same kind
+- **The repair changes a semantic the rule can only ask about** (3):
+  `prefer-flatmap-over-map-filter`, `no-transposed-argument` and `no-hand-spelled-git`. `Boolean`
+  drops `0`, `""` and `false` along with `null` and `undefined`, so whether the `?? []` rewrite
+  preserves the site's meaning depends on what the map produces. A hand-spelled git call has three
+  owner answers — exact bytes, trimmed text, or null where "no" is an answer — and a call reading
+  the exit status or passing `cwd` needs a reading of which it meant. Swapping two crossed arguments back is the same kind
   one step further: the call may be right and the caller's two bindings misnamed, or the
   declaration's order may be the thing to change, and all three repairs are one edit apart. This
   is a real kind and not a small group: the rewrite is available, correct at most sites, and wrong
@@ -337,7 +341,7 @@ enforceable, because a clean lint no longer means what it says. **Fifteen is the
 under the four conditions, not a target that was missed.**
 
 A report with no fixer is a working outcome and the majority outcome: the author is told exactly
-what is wrong and makes the call. That is what these thirty-nine are for.
+what is wrong and makes the call. That is what these forty-two are for.
 
 ## A fixer's finding has no answer
 

@@ -32,7 +32,7 @@ import { dirname, resolve } from "#src/meta/path.ts";
 
 import { prepareUserContext } from "#src/builder/user-context.ts";
 import { directKickoff } from "#src/run/direct-input.ts";
-import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 
 const die: ExitWith = exitWith("seed-kickoff");

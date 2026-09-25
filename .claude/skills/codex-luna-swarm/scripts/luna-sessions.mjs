@@ -7,10 +7,12 @@ import {
   absoluteExistingFile,
   normalizeManifest,
   normalizeReasoningEffort,
-  parseArgs,
+  OPTIONS,
+  optionsFrom,
   quickManifest,
   usage,
 } from "./luna-sessions-manifest.mjs";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import {
   drainReports,
   registerParentLaunch,
@@ -25,8 +27,8 @@ import { readJsonFile } from "#src/meta/completed-json.ts";
 /** The options that by themselves mean a direct launch rather than a manifest or a drain. */
 const QUICK_OPTION_NAMES = ["count", "tasks_file", "workdir", "instructions_file", "task_template"];
 
-async function main(argv) {
-  const options = parseArgs(argv);
+async function main() {
+  const options = optionsFrom(parseOrDie(exitWith("luna-sessions"), OPTIONS));
   if (options.stop_hook) {
     console.log(JSON.stringify(stopHook()));
     return 0;
@@ -113,7 +115,7 @@ async function main(argv) {
 }
 
 if (import.meta.main) {
-  main(Bun.argv.slice(2))
+  main()
     .then((code) => {
       runtimeProcess.exitCode = code;
     })
@@ -123,11 +125,4 @@ if (import.meta.main) {
     });
 }
 
-export {
-  drainReports,
-  normalizeReasoningEffort,
-  normalizeManifest,
-  parseArgs,
-  quickManifest,
-  runLunaSessions,
-};
+export { drainReports, normalizeReasoningEffort, normalizeManifest, quickManifest, runLunaSessions };

@@ -45,6 +45,16 @@ export function isControllerBatteryRunId(selector: string, batteryRunId: string)
   );
 }
 
+/** The controller run a battery belongs to: the selector in front of a canonical `-iNN` suffix, and
+ *  the id itself for round one or for any id no iteration of a selector could have written. */
+export function controllerRunOfBattery(batteryRunId: string): string {
+  const at = batteryRunId.lastIndexOf("-i");
+  const selector = at > 0 ? batteryRunId.slice(0, at) : batteryRunId;
+  return selector !== batteryRunId && isControllerBatteryRunId(selector, batteryRunId)
+    ? selector
+    : batteryRunId;
+}
+
 /** Resolve a battery's record from the owners that may have placed it: the iteration's candidate
  *  directory and the adopted tree. An iteration measures one battery, under its own run id. */
 function admittedBatteryRecordPaths(repoRoot: string, slug: string, runId: string): string[] {

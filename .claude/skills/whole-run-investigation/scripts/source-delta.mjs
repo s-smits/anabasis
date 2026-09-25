@@ -8,19 +8,20 @@
 // Reads Git objects and recorded campaign text only; never executes reviewed source and prints
 // no source content. A commit the checkout cannot resolve is `source-unresolved`, never guessed.
 //
-//   bun source-delta.mjs --campaign <abs dir> --run <runId> --repo <measured checkout> \
-//     [--previous <commit | abs campaign dir>] [--json] [--out <abs file>]
+//   bun wri.mjs delta <target> [--repo <measured checkout>] [--previous <commit | abs campaign dir>]
+//     [--json] [--out <abs file>]
 //
 // Without --previous the script picks the newest sibling campaign of the same lane (same
 // directory name minus its numeric suffix) whose opening was written earlier, and says so.
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
-import { basename, dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
-import { runtimeProcess } from "#src/meta/process.ts";
-import { runSync, runTextSyncOrThrow } from "#src/meta/subprocess.ts";
-import { errorMessage } from "#src/meta/runtime-values.ts";
+import { existsSync, readdirSync, readFileSync } from "#src/meta/filesystem.ts";
+import { basename, dirname, join, resolve } from "#src/meta/path.ts";
+import { gitMaybe, gitText } from "#skills/main/git.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
+import { parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
+import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
+import { campaignRuns, latestRun } from "#tools/runs/discover.ts";
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SAFEGUARD_CALL = /safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g;
@@ -30,22 +31,17 @@ const MODEL_VISIBLE = [/^src\/author\//, /^src\/builder\//, /^starters\//, /prom
 /** Git's name-status letter for the change a path underwent; anything else is a modification. */
 const CHANGE_BY_STATUS = { A: "added", D: "deleted", R: "renamed" };
 
-function git(repo, args) {
-  return runTextSyncOrThrow(["git", "-C", repo, ...args]).trim();
-}
-
 function commitExists(repo, commit) {
-  return runSync(["git", "-C", repo, "cat-file", "-e", `${commit}^{commit}`]).exitCode === 0;
+  return gitMaybe(repo, "cat-file", "-e", `${commit}^{commit}`) !== null;
 }
 
+/** The named run's opening, or the campaign's latest by opening instant when none is named. */
 function openingOf(campaign, runId) {
-  const dir = join(campaign, "controller");
-  if (!existsSync(dir)) return null;
-  const names = readdirSync(dir).filter((name) => existsSync(join(dir, name, "opening.json")));
-  const chosen = runId === null ? names.sort().at(-1) : names.find((name) => name === runId);
-  return chosen === undefined
+  const chosen =
+    runId === null ? latestRun(campaign) : campaignRuns(campaign).find((run) => run.runId === runId);
+  return chosen === undefined || chosen === null
     ? null
-    : { runId: chosen, opening: readJsonFileOrNull(join(dir, chosen, "opening.json")) };
+    : { runId: chosen.runId, opening: readJsonFileOrNull(chosen.openingPath) };
 }
 
 function laneKey(campaign) {
@@ -70,9 +66,8 @@ export function previousCampaign(campaign, writtenAt) {
 }
 
 function safeguardIds(repo, commit, path) {
-  const shown = runSync(["git", "-C", repo, "show", `${commit}:${path}`]);
-  if (shown.exitCode !== 0) return new Set();
-  const text = new TextDecoder().decode(shown.stdout);
+  const text = gitMaybe(repo, "show", `${commit}:${path}`);
+  if (text === null) return new Set();
   return new Set([...text.matchAll(SAFEGUARD_CALL)].map((match) => match[1]));
 }
 
@@ -81,13 +76,11 @@ export function firedSafeguards(campaign, runId) {
   const root = join(campaign, "safeguards");
   if (!existsSync(root)) return fired;
   for (const name of readdirSync(root)) {
-    if (name !== runId && !name.startsWith(`${runId}-i`)) continue;
-    const log = join(root, name, "SAFEGUARDS_LOG.txt");
+    if (!isControllerBatteryRunId(runId, name)) continue;
+    const log = safeguardLogFile(campaign, name);
     if (!existsSync(log)) continue;
-    for (const line of readFileSync(log, "utf8").split("\n")) {
-      const parts = line.split("|").map((part) => part.trim());
-      if (parts.length < 2 || parts[1].length === 0) continue;
-      fired.set(parts[1], (fired.get(parts[1]) ?? 0) + 1);
+    for (const [id, count] of parseSafeguardLog(readFileSync(log, "utf8")).counts) {
+      fired.set(id, (fired.get(id) ?? 0) + count);
     }
   }
   return fired;
@@ -124,6 +117,12 @@ export function buildSourceDelta(named) {
     previousCommit = previous;
     previousProvenance = "operator-named revision";
   }
+  /** @type {{ schema: string, campaign: string, runId: string, commit: string, previousCommit: string | null,
+   *    previousProvenance: string, state: string, reason?: string,
+   *    changed: { path: string, change: string, safeguardIds: string[], newSafeguardIds?: string[],
+   *      removedSafeguardIds?: string[] }[],
+   *    safeguards: { id: string, state: string, firings: number }[],
+   *    firedElsewhere: { id: string, firings: number }[], modelVisibleChanged: string[] }} */
   const result = {
     schema: "wri-source-delta/v1",
     campaign,
@@ -156,7 +155,7 @@ export function buildSourceDelta(named) {
     result.state = "identical-source";
     return result;
   }
-  const status = git(repo, ["diff", "--name-status", `${previousCommit}..${commit}`]);
+  const status = gitText(repo, "diff", "--name-status", `${previousCommit}..${commit}`);
   const fired = firedSafeguards(campaign, found.runId);
   const declaredInChanged = new Set();
   for (const line of status.split("\n").filter((row) => row.length > 0)) {
@@ -231,42 +230,4 @@ export function renderSourceDelta(delta) {
     );
   }
   return `${lines.join("\n")}\n`;
-}
-
-function parseArgs(argv) {
-  const args = { json: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
-    if (flag === "--json") args.json = true;
-    else if (["--campaign", "--run", "--repo", "--previous", "--out"].includes(flag)) {
-      args[flag.slice(2)] = argv[index + 1];
-      index += 1;
-    } else throw new Error(`unknown argument ${flag}`);
-  }
-  for (const name of ["campaign", "repo"]) {
-    if (!isString(args[name]) || !isAbsolute(args[name])) {
-      throw new Error(`--${name} must be an absolute path`);
-    }
-  }
-  return args;
-}
-
-if (import.meta.main) {
-  try {
-    const args = parseArgs(runtimeProcess.argv.slice(2));
-    const delta = buildSourceDelta({
-      campaign: args.campaign,
-      runId: args.run ?? null,
-      repo: args.repo,
-      previous: args.previous ?? null,
-    });
-    const text = args.json ? `${JSON.stringify(delta, null, 2)}\n` : renderSourceDelta(delta);
-    if (isString(args.out)) {
-      writeFileSync(args.out, text);
-      runtimeProcess.stdout.write(`${args.out}\n`);
-    } else runtimeProcess.stdout.write(text);
-  } catch (error) {
-    runtimeProcess.stderr.write(`source-delta: ${errorMessage(error)}\n`);
-    runtimeProcess.exit(2);
-  }
 }

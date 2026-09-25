@@ -47,7 +47,7 @@ export function epochPassOf(decision: NextMove): string | undefined {
  * frame, whose revision names what a Builder was told. A streak above the aim says the run found no
  * limit; it never says none is reachable, because easy batteries show only that this search did not
  * reach one. A streak below the aim says nothing about a limit at all. */
-function allowanceStop(readout: ClimbReadout | null): string | null {
+export function allowanceStop(readout: ClimbReadout | null): string | null {
   const allowance = readout?.allowance ?? null;
   if (allowance === null || allowance.rounds < POLICY.climb.offAimStreakRounds) return null;
   const { rounds, placed, refused, side, products } = allowance;

@@ -8,7 +8,7 @@
  * Two modes, both refusing an existing destination and never writing into the source:
  *
  *   clone      --from-root /abs/run-root --slug <slug> --into-root /abs/fresh-tree-root
- *              The stage-run mode: `campaigns/<slug>` and `domains/<slug>` copied under the same
+ *              The fresh-tree mode: `campaigns/<slug>` and `domains/<slug>` copied under the same
  *              slug into another tree, the live `.controller.lock` removed, the selected product
  *              re-read through `readProductVersion`.
  *   republish  --from-root /abs/run-root --slug <slug> --as-slug <new-slug> [--into-root /abs/tree]
@@ -55,7 +55,7 @@ import {
 import { sha256 } from "#src/meta/digest.ts";
 import { dirname, isAbsolute, join, relative, resolve } from "#src/meta/path.ts";
 import { keyIfDefined, keysIf } from "#src/meta/optional-key.ts";
-import { campaignDir } from "#src/meta/campaign-root.ts";
+import { campaignDir, defaultProductDir } from "#src/meta/campaign-root.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "#src/claim/fingerprint.ts";
 import { bundleSnapshotToolTree } from "#src/claim/bundle-snapshot.ts";
 import { claimsDirFor } from "#src/run/claim-write.ts";
@@ -69,7 +69,7 @@ import {
   selectInitialProduct,
   selectedProductDir,
 } from "#src/run/product-versions.ts";
-import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { CONFORMANCE_FILE } from "#src/claim/conformance-evidence.ts";
 
 const die: ExitWith = exitWith("seed-campaign");
@@ -345,8 +345,8 @@ export function seedCampaignInto(
   const sourceCampaign = campaignDir(fromRoot, slug);
   if (!existsSync(sourceCampaign)) throw new SeedRefusal(`${sourceCampaign} does not exist`);
   const campaign = campaignDir(intoRoot, slug);
-  const sourceDomain = join(fromRoot, "domains", slug);
-  const domain = join(intoRoot, "domains", slug);
+  const sourceDomain = defaultProductDir(fromRoot, slug);
+  const domain = defaultProductDir(intoRoot, slug);
   requireAbsent(campaign);
   if (existsSync(sourceDomain)) requireAbsent(domain);
   mkdirSync(dirname(campaign), { recursive: true });

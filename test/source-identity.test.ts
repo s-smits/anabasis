@@ -13,6 +13,7 @@ import {
   SOURCE_IDENTITY,
   captureSourceDigest,
   captureSourceIdentity,
+  digestExecutableRoots,
   sourceStillFrozen,
 } from "../src/run/source-identity.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -101,6 +102,38 @@ describe("the frozen source identity (A0.2)", () => {
       run(["add", "-A"]);
       run(["commit", "-qm", "src change"]);
       expect(captureSourceIdentity()?.sourceDigest).not.toBe(before?.sourceDigest);
+    } finally {
+      runtimeProcess.chdir(cwd);
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("digests a named checkout from elsewhere, and reads a committed path from HEAD on request", () => {
+    const repo = mkdtempSync(join(tmpdir(), "roots-at-"));
+    const cwd = runtimeProcess.cwd();
+    const run = (args: string[]) => execTextSync("git", args, { cwd: repo });
+    try {
+      run(["init", "-q"]);
+      run(["config", "user.email", "pin@example.test"]);
+      run(["config", "user.name", "pin"]);
+      mkdirSync(join(repo, "src"), { recursive: true });
+      writeFileSync(join(repo, "src", "a.ts"), "export const a = 1;\n");
+      writeFileSync(join(repo, ".bun-version"), "1.4.2\n");
+      run(["add", "-A"]);
+      run(["commit", "-qm", "first"]);
+      const named = digestExecutableRoots(repo);
+      runtimeProcess.chdir(repo);
+      // The same checkout read in place and named from another directory is one digest.
+      expect(captureSourceDigest()?.sourceDigest).toBe(named);
+      runtimeProcess.chdir(cwd);
+
+      // A local pin edit is drift on the disk reading, and none when the pin is read as committed.
+      writeFileSync(join(repo, ".bun-version"), "9.9.9\n");
+      expect(digestExecutableRoots(repo)).not.toBe(named);
+      expect(digestExecutableRoots(repo, [".bun-version"])).toBe(named);
+      // Only the named path is read from HEAD: a source edit still moves the digest.
+      writeFileSync(join(repo, "src", "a.ts"), "export const a = 2;\n");
+      expect(digestExecutableRoots(repo, [".bun-version"])).not.toBe(named);
     } finally {
       runtimeProcess.chdir(cwd);
       rmSync(repo, { recursive: true, force: true });

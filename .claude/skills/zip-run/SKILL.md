@@ -8,15 +8,18 @@ description: Zip one recorded Harness Builder run for handover at a chosen depth
 One command produces the bundle; the level decides how deep it reaches.
 
 ```sh
-bun .claude/skills/zip-run/scripts/zip-run.mjs <run-dir | campaign-dir> --light|--medium|--verbose \
-  [--out <zip>] [--max-mb N]
+bun .claude/skills/zip-run/scripts/zip-run.ts <run-dir | campaign-dir> --light|--medium|--verbose \
+  [--run <runId>] [--out <zip>] [--max-mb N] [--json]
 ```
 
 `<run-dir>` is the launched worktree (holds `.scratch/quick-run/launch.json`, for example
 `~/Developer/hb4-run-<runId>`). Its `campaigns/` tree
 also carries campaigns copied from other runs, so the script keys on `launch.json`'s `runId` and
-takes the one campaign whose `controller/<runId>/opening.json` exists. A campaign directory with
-one controller run is accepted directly. The zip lands at `--out`, default
+takes the one campaign whose `controller/<runId>/opening.json` exists. A campaign directory is
+accepted directly, and `--run` names the run when it holds more than one. The batteries are the
+ones `batteryRunDirs` matches by this run's canonical iteration ids, so a sibling run whose id merely
+starts with this one never enters, and `MANIFEST.json` records the controller's strict reading of
+the run (`controller`, `controllerError`) without letting a refusal stop the handover. The zip lands at `--out`, default
 `./<runId>-<level>.zip`; put it in the session scratchpad and send it with `SendUserFile`.
 
 ## Pick the level from the request
@@ -57,7 +60,7 @@ from it. Edit the preset, not the script, to change what a recipient is told.
 **medium** adds the per-case and per-check material.
 
 - `cases/<case>/`: `trace.json` (Built Harness turns and tool calls with argument digests and
-  result previews), `trace-pointer.json`, `verifier.json`, `judge.json`, `public-task.json`,
+  result previews), `verifier.json`, `judge.json`, `public-task.json`,
   `final-submission.json`, `artifact.json`.
 - `runs/<runId>/judge/`: census sample, bait corpus, controls, standing.
 - whole `correctness-model/`: `tasks.json` with hidden expectations, `controls.json`,

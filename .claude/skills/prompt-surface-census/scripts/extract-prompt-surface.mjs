@@ -23,6 +23,9 @@
  *
  * TypeScript is resolved from the target repo's node_modules.
  */
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { sha256 } from "#src/meta/digest.ts";
+import { gitMaybe } from "#skills/main/git.ts";
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
@@ -31,7 +34,24 @@ import { isFunction, isString } from "#src/meta/json-shape.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 
-const argv = Bun.argv.slice(2);
+const ARGS = parseOrDie(exitWith("extract-prompt-surface"), {
+  values: [
+    "root",
+    "dir",
+    "doc",
+    "out",
+    "json",
+    "context",
+    "min-chars",
+    "miss-chars",
+    "vocab",
+    "deny",
+    "strong",
+    "audience",
+    "ts",
+  ],
+  flags: ["help", "include-tests"],
+});
 /** Names that match the vocabulary but never reach a model. Match identifier tokens rather than
  * raw substrings: `promptDigest` is noise, while `shape` must not be rejected because it has
  * letters `sha`, nor `profile` because it ends in `file`. */
@@ -87,11 +107,8 @@ const DEFAULT_AUDIENCES = {
 };
 const DOC_EXTENSIONS = /\.(md|markdown|txt|json|ya?ml|py|sh)$/;
 
-const flag = (name, fallback) => {
-  const i = argv.indexOf(`--${name}`);
-  return i === -1 ? fallback : argv[i + 1];
-};
-const has = (name) => argv.includes(`--${name}`);
+const flag = (name, fallback) => ARGS.single.get(name) ?? fallback;
+const has = (name) => ARGS.flags.has(name);
 
 if (has("help")) {
   console.log(`Usage: extract-prompt-surface.mjs [options]
@@ -306,7 +323,7 @@ function audienceOf(relFile) {
   return best.name;
 }
 
-const sha8 = (s) => new Bun.CryptoHasher("sha256").update(s).digest("hex").slice(0, 8);
+const sha8 = (s) => sha256(s).slice(0, 8);
 const trunc = (s, n) => (s.length <= n ? s : `${s.slice(0, n)}…`);
 const oneLine = (s) => s.replace(/\s+/g, " ").trim();
 
@@ -727,15 +744,7 @@ function collect() {
   return { surfaces: [...documentSurfaces(), ...surfaces], misses };
 }
 
-function gitHead() {
-  try {
-    const git = Bun.spawnSync({ cmd: ["git", "-C", root, "rev-parse", "--short", "HEAD"] });
-    if (git.exitCode !== 0) return "unknown";
-    return new TextDecoder().decode(git.stdout).trim();
-  } catch {
-    return "unknown";
-  }
-}
+const gitHead = () => gitMaybe(root, "rev-parse", "--short", "HEAD") ?? "unknown";
 
 const mdCell = (value) => String(value).replace(/\|/g, String.raw`\|`).replace(/\r?\n/g, " ");
 const fenceFor = (value, language) => {

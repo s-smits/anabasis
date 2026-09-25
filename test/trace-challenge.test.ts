@@ -1,12 +1,36 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
 import {
+  collect,
   DEFAULT_MAX_CHARS,
   renderTraceRecord,
+  buildTraceTelemetry,
   selectLatestRecords,
-} from "../.claude/skills/whole-run-investigation/scripts/trace-challenge.mjs";
-import { buildTraceTelemetry } from "../.claude/skills/whole-run-investigation/scripts/trace-telemetry.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/trace-challenge.ts";
+
+const scratch: string[] = [];
+afterEach(() => {
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 describe("whole-run trace challenge packet", () => {
+  it("reads only the run's own batteries, never a longer run id that shares its prefix", () => {
+    const campaignDir = mkdtempSync(join(tmpdir(), "trace-challenge-"));
+    scratch.push(campaignDir);
+    const runIds = ["run-1", "run-1-i02", "run-1-other", "run-10"];
+    const lines = runIds.map((runId, index) =>
+      JSON.stringify({ seq: index + 1, row: caseRecordRow(`task-${index}`, "f", { runId }) }),
+    );
+    writeFileSync(join(campaignDir, "case-record.jsonl"), `${lines.join("\n")}\n`);
+    const outDir = join(campaignDir, "out");
+    mkdirSync(outDir, { recursive: true });
+    const result = collect({ campaignDir, runId: "run-1", outDir, maxChars: DEFAULT_MAX_CHARS });
+    expect(result.status.recordsSeen).toBe(2);
+  });
+
   it("keeps the newest records inside the byte bound", () => {
     const records = [
       { seq: 1, text: "old-".repeat(30) },
@@ -56,9 +80,6 @@ describe("whole-run trace challenge packet", () => {
         runId: "run-1",
         taskId: "task-1",
         family: "family-1",
-        acceptedSubmit: true,
-        pass: false,
-        runtimeNonResult: null,
         traces: [{ path: "trace.json", sha256: "digest" }],
       },
       {
@@ -66,6 +87,7 @@ describe("whole-run trace challenge packet", () => {
         path: "trace.json",
         trace: {
           schema: "case-trace/v4",
+          backend: "codex",
           turns: [
             {
               turn: 1,
@@ -140,10 +162,10 @@ describe("whole-run trace challenge packet", () => {
     ]);
     expect(telemetry.batteries["7-on"]?.toolCallSpread).toMatchObject({ min: 4, median: 4, max: 4, n: 1 });
     expect(telemetry.batteries["7-on"]?.tools).toEqual([
-      { name: "check", calls: 3, errors: 1, repeats: 1, share: 3 / 4 },
-      { name: "read", calls: 1, errors: 0, repeats: 0, share: 1 / 4 },
+      { name: "check", calls: 3, errors: 1, repeats: 1, cases: 1, share: 3 / 4 },
+      { name: "read", calls: 1, errors: 0, repeats: 0, cases: 1, share: 1 / 4 },
     ]);
-    expect(telemetry.batteries["7-on"]?.families.deck?.sequences).toMatchObject({ distinct: 1 });
+    expect(telemetry.batteries["7-on"]?.families?.deck?.sequences).toMatchObject({ distinct: 1 });
     expect(telemetry.paired).toEqual([
       expect.objectContaining({
         left: "7-off",
@@ -165,18 +187,18 @@ describe("whole-run trace challenge packet", () => {
   });
 
   it("keeps missing traces absent and excludes prompt, argument and result content", () => {
-    const telemetry = buildTraceTelemetry([
-      {
-        runId: "7-on",
-        taskId: "missing",
-        family: "tower",
-        outcome: "non-result",
-        trace: null,
-        prompt: "do not retain this prompt",
-        argsDigest: "do not retain this digest",
-        resultPreview: "do not retain this result",
-      },
-    ]);
+    // Fields beyond the telemetry's own record are ignored, never copied into the output.
+    const record = {
+      runId: "7-on",
+      taskId: "missing",
+      family: "tower",
+      outcome: "non-result" as const,
+      trace: null,
+      prompt: "do not retain this prompt",
+      argsDigest: "do not retain this digest",
+      resultPreview: "do not retain this result",
+    };
+    const telemetry = buildTraceTelemetry([record]);
     expect(telemetry.batteries["7-on"]?.cases).toEqual({ seen: 1, recorded: 0 });
     expect(telemetry.batteries["7-on"]?.toolCallSpread).toBeNull();
     expect(JSON.stringify(telemetry)).not.toContain("do not retain");

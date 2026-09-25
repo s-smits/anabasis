@@ -1,5 +1,5 @@
 import assert from "../src/meta/assert.ts";
-import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
+import { decodeOutput, runSync, runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { mkdtemp, rm } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -78,5 +78,17 @@ test("idle completed state remains inspect-before-stop", async () => {
     assert.equal(run("summary", path).recommendation.code, "INSPECT_BEFORE_STOP");
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an unknown option, or none of the commands, refuses with exit 2 before reading a snapshot", () => {
+  for (const [args, message] of [
+    [["summary", "missing.json", "--lsat", "3"], /thread-state: unknown option "--lsat"/],
+    [["summary", "missing.json", "--all"], /thread-state: unknown option "--all"/],
+    [[], /thread-state: expected one of summary, history, diff/],
+  ]) {
+    const result = runSync([Bun.argv[0], SCRIPT, ...args]);
+    assert.equal(result.exitCode, 2, args.join(" "));
+    assert.match(decodeOutput(result.stderr), message);
   }
 });

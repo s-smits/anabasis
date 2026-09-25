@@ -2,9 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { resolveRunTarget, resolveSourceCheckout } from "../.claude/skills/whole-run-investigation/scripts/run-target.mjs";
+import { resolveSourceCheckout } from "../.claude/skills/main/run.ts";
+import { resolveRunSelector } from "../tools/runs/discover.ts";
 
 const dirs: string[] = [];
 const COMMIT = "511312ce8f2926355a957f90dd33fb010078bb8b";
@@ -34,7 +33,7 @@ function campaignWith(runs: Record<string, string | null>): string {
 /** A scripted git: HEAD and status per directory, plus a log of every command. */
 function fakeGit(heads: Heads, worktrees: string[]) {
   const calls: string[] = [];
-  const git = (cmd: string[], cwd: string): string => {
+  const git = (cmd: readonly string[], cwd: string): string => {
     calls.push(`${cwd}: ${cmd.join(" ")}`);
     const state = heads.get(cwd);
     if (cmd[1] === "rev-parse") {
@@ -57,27 +56,27 @@ describe("run target resolution", () => {
       "run-b": "2026-09-12T10:00:00.000Z",
       "run-c": null,
     });
-    expect(resolveRunTarget(campaign)).toEqual({
+    expect(resolveRunSelector(campaign)).toEqual({
       campaign,
       runId: "run-b",
       chosen: "latest of 2 runs by opening writtenAt",
     });
-    expect(resolveRunTarget(join(campaign, "controller"))).toMatchObject({ runId: "run-b" });
-    expect(resolveRunTarget(join(campaign, "controller", "run-a"))).toEqual({
+    expect(resolveRunSelector(join(campaign, "controller"))).toMatchObject({ runId: "run-b" });
+    expect(resolveRunSelector(join(campaign, "controller", "run-a"))).toEqual({
       campaign,
       runId: "run-a",
       chosen: "folder",
     });
-    expect(resolveRunTarget(campaign, "run-a")).toEqual({ campaign, runId: "run-a", chosen: "--run" });
-    expect(() => resolveRunTarget(join(campaign, "controller", "run-a"), "run-b")).toThrow(
+    expect(resolveRunSelector(campaign, "run-a")).toEqual({ campaign, runId: "run-a", chosen: "--run" });
+    expect(() => resolveRunSelector(join(campaign, "controller", "run-a"), "run-b")).toThrow(
       "folder names run run-a but --run says run-b",
     );
   });
 
   it("refuses a folder without any opened run", () => {
     const campaign = campaignWith({ "run-c": null });
-    expect(() => resolveRunTarget(campaign)).toThrow("no run with an opening.json");
-    expect(() => resolveRunTarget(join(campaign, "missing"))).toThrow("no such folder");
+    expect(() => resolveRunSelector(campaign)).toThrow("no run with a dated opening.json");
+    expect(() => resolveRunSelector(join(campaign, "missing"))).toThrow("no such folder");
   });
 
   it("prefers the current directory, then an existing clean worktree at the commit", () => {
@@ -98,6 +97,10 @@ describe("run target resolution", () => {
       repo: "/wt/clean",
       chosen: "existing worktree",
     });
+    // A found worktree is prepared by the one dependency owner, never by a second install here.
+    expect(elsewhere.calls.filter((line) => line.includes("worktree.sh"))).toEqual([
+      "/skill: /skill/scripts/worktree.sh setup /wt/clean",
+    ]);
     expect(resolveSourceCheckout(COMMIT, { repo: "/given", git: here.git })).toEqual({
       repo: "/given",
       chosen: "--repo",
@@ -111,7 +114,7 @@ describe("run target resolution", () => {
     const dir = join(cache, COMMIT.slice(0, 12));
     const heads: Heads = new Map([["/cwd", { head: "0000000000000000000000000000000000000000" }]]);
     const { git, calls } = fakeGit(heads, ["/skill"]);
-    const creating = (cmd: string[], cwd: string): string => {
+    const creating = (cmd: readonly string[], cwd: string): string => {
       if (cmd[1] === "cat-file") throw new Error("missing object");
       if (cmd[1] === "worktree" && cmd[2] === "add") {
         mkdirSync(dir, { recursive: true });
@@ -124,12 +127,12 @@ describe("run target resolution", () => {
     );
     expect(
       calls.filter(
-        (line) => line.includes("fetch") || line.includes("worktree add") || line.includes("install"),
+        (line) => line.includes("fetch") || line.includes("worktree add") || line.includes("worktree.sh"),
       ),
     ).toEqual([
       `/skill: git fetch --quiet origin ${COMMIT}`,
       `/skill: git worktree add --detach ${dir} ${COMMIT}`,
-      `${dir}: bun install --frozen-lockfile`,
+      `/skill: /skill/scripts/worktree.sh setup ${dir}`,
     ]);
   });
 });

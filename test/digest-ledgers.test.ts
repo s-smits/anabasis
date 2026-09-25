@@ -1,9 +1,26 @@
 import { expect, test } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { admissionLedgerLines, batteryTallies, checkInformativenessLines, exhaustionClass, familyCoverageLines, roleSpendLines } from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
+import {
+  admissionLedgerLines,
+  batteryTallies,
+  checkInformativenessLines,
+  exhaustionClass,
+  familyCoverageLines,
+  roleSpendLines,
+} from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
 import { tmpdir } from "../src/meta/os.ts";
+import { controllerRunOfBattery } from "../src/run/controller-battery-record-policy.ts";
 import { join } from "../src/meta/path.ts";
+import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
+
+const unaccepted: Partial<CaseRecordRow> = { acceptedSubmit: false, truthOk: null, pass: false };
+const providerNonResult: Partial<CaseRecordRow> = {
+  acceptedSubmit: false,
+  truthOk: null,
+  pass: null,
+  runtimeNonResult: "provider stopped",
+  runtimeNonResultKind: "provider",
+};
 
 test("join targets are declared IDs, not Boolean flags", () => {
   const lines = checkInformativenessLines({
@@ -21,18 +38,11 @@ test("join targets are declared IDs, not Boolean flags", () => {
 });
 
 test("family coverage retains partially and entirely unmeasured batteries", () => {
-  const row = (
-    runId: string,
-    family: string,
-    acceptedSubmit: boolean,
-    truthOk: boolean | null,
-    runtimeNonResultKind: string | null = null,
-  ) => ({ runId, family, acceptedSubmit, truthOk, runtimeNonResultKind });
   const tallies = batteryTallies([
-    row("partial", "measured", true, true),
-    row("partial", "censored", false, null, "provider"),
-    row("partial", "unaccepted", false, null),
-    row("empty", "censored", false, null, "provider"),
+    caseRecordRow("t1", "measured", { runId: "partial" }),
+    caseRecordRow("t2", "censored", { runId: "partial", ...providerNonResult }),
+    caseRecordRow("t3", "unaccepted", { runId: "partial", ...unaccepted }),
+    caseRecordRow("t1", "censored", { runId: "empty", ...providerNonResult }),
   ]);
   const lines = familyCoverageLines({ tallies }).join("\n");
   expect(lines).toMatch(/measured\s+1\/1.*all-pass/);
@@ -51,6 +61,10 @@ test("explicit allowance errors reveal old misclassification without rewriting a
   expect(exhaustionClass("You've hit your session limit")).toBe("explicit-exhaustion");
   expect(exhaustionClass("429 too many requests")).toBe("generic-limit");
   expect(exhaustionClass("You've hit your limit while allocating task slots")).toBe("other");
+  // The controller's clause, not every sentence that mentions money or a budget: a solver writing
+  // about a credit field or a quota table has exhausted nothing.
+  expect(exhaustionClass("credit limit field missing from the invoice schema")).toBe("other");
+  expect(exhaustionClass("quota table exhausted its rows")).toBe("other");
   const cases = [
     {
       runId: "run",
@@ -74,7 +88,20 @@ test("explicit allowance errors reveal old misclassification without rewriting a
       solver: { errors: [message] },
     },
   ];
-  const tallies = batteryTallies(cases);
+  // The case rows in the writer's shapes, beside the battery cases whose solver errors carry the
+  // limit message: a non-result the solver owns, an unaccepted attempt and a verified pass.
+  const tallies = batteryTallies([
+    caseRecordRow("t1", "f", {
+      runId: "run",
+      acceptedSubmit: false,
+      truthOk: null,
+      pass: null,
+      runtimeNonResult: message,
+      runtimeNonResultKind: "solver",
+    }),
+    caseRecordRow("t2", "f", { runId: "run", ...unaccepted }),
+    caseRecordRow("t3", "f", { runId: "run" }),
+  ]);
   const options = {
     campaign: "/nonexistent-digest-fixture",
     tallies,
@@ -86,7 +113,7 @@ test("explicit allowance errors reveal old misclassification without rewriting a
   expect(lines).toContain(
     "explicit exhaustion outside provider classification: 2 · recorded grades unchanged",
   );
-  expect(tallies[0]).toMatchObject({ graded: 1, unaccepted: 1, nonResult: 1, providerNonResult: 0 });
+  expect(tallies[0]).toMatchObject({ verified: 1, unaccepted: 1, nonResults: 1, providerNonResult: 0 });
   expect(roleSpendLines({ ...options, batteryOf: () => null }).join("\n")).toContain(
     "missing rows leave censoring unobservable",
   );
@@ -109,4 +136,13 @@ test("an epoch review counts a finding unrouted only when the author router give
   );
   // Truss run fa03b7 read its one curriculum finding as unowned, though it routes to `tests`.
   expect(admissionLedgerLines({ campaign }).join("\n")).toContain("findings 3 · unrouted 1 · reads 0");
+});
+
+test("the served-model row opens the controller run a battery belongs to", () => {
+  expect(controllerRunOfBattery("run-a-i02")).toBe("run-a");
+  expect(controllerRunOfBattery("run-a")).toBe("run-a");
+  // Only a suffix an iteration could have written names a round: -i1 is round one's own id, and a
+  // selector that merely ends in -i<digits> is not a round.
+  expect(controllerRunOfBattery("run-a-i1")).toBe("run-a-i1");
+  expect(controllerRunOfBattery("mast-i2x")).toBe("mast-i2x");
 });

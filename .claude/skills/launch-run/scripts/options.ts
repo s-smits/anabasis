@@ -1,8 +1,10 @@
-import { isAbsolute, join } from "node:path";
+import { CliArgumentError, type ExitWith, parseCliArgs } from "#skills/main/cli.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
 import { keyIfDefined } from "#src/meta/optional-key.ts";
-import { parseArgs } from "node:util";
 import { asRecord, isBoolean, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
+
+type ParsedCliArgs = ReturnType<typeof parseCliArgs>;
 
 export const PRESETS = {
   truss:
@@ -48,29 +50,39 @@ export interface OpeningPlan extends RunPlan, RequestIdentity {
   service: string;
 }
 
-/** What `parseArgs` hands back for `ARGUMENTS`: every declared option, each a string or a flag,
- *  and absent when the operator did not pass it. */
-type OptionValues = Partial<Record<keyof typeof ARGUMENTS, string | boolean>>;
+/** The options that stay absent unless the operator passes them. */
+const OPTIONAL_VALUES = [
+  "max-iterations",
+  "stop-after-ms",
+  "kill-after-ms",
+  "run",
+  "prompt",
+  "project",
+  "env-file",
+  "codex-home",
+  "output-dir",
+] as const;
 
-const ARGUMENTS = {
-  model: { type: "string" },
-  condition: { type: "string", default: "opus" },
-  source: { type: "string", default: "origin/main" },
-  budget: { type: "string", default: "1320" },
-  tasks: { type: "string", default: "25" },
-  "max-iterations": { type: "string" },
-  "stop-after-ms": { type: "string" },
-  "kill-after-ms": { type: "string" },
-  run: { type: "string" },
-  prompt: { type: "string" },
-  project: { type: "string" },
-  "env-file": { type: "string" },
-  "codex-home": { type: "string" },
-  "output-dir": { type: "string" },
-  help: { type: "boolean" },
-  list: { type: "boolean" },
-  "dry-run": { type: "boolean" },
+/** The launcher's arguments, parsed by `.claude/skills/main/cli.ts`, so a misspelled flag refuses
+ *  and a value may be passed once. `--condition` is the legacy alias of `--model`, and
+ *  `launchOptions` refuses the pair as one option passed twice. */
+export const LAUNCH_ARGUMENTS = {
+  values: ["model", "condition", "source", "budget", "tasks", ...OPTIONAL_VALUES],
+  flags: ["help", "list", "dry-run"],
+  positionals: [0, Number.MAX_SAFE_INTEGER],
 } as const;
+
+export type LaunchOptions = Partial<Record<(typeof OPTIONAL_VALUES)[number], string>> & {
+  condition: string;
+  source: string;
+  budget: string;
+  tasks: string;
+  help: boolean;
+  list: boolean;
+  "dry-run": boolean;
+  names: readonly string[];
+  conditions: Condition[];
+};
 
 export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${PRESET_NAMES}|custom>... [options]
   --model sol,luna,astra,opus,fable Standard model presets; default opus (legacy alias: --condition)
@@ -91,83 +103,87 @@ export const HELP = `Usage: bun .claude/skills/launch-run/scripts/launch.ts <${P
 Repeat a preset for independent replicas, for example truss truss --model sol,astra.
 One Bun command prepares and probes the batch, gates its source once, then launches it.`;
 
-export type LaunchOptions = ReturnType<typeof parseOptions>;
-
-function conditionName(value: string): Condition {
+function conditionName(value: string, refuse: ExitWith): Condition {
   if (!Object.hasOwn(CONDITIONS, value)) {
-    throw new Error(`unknown condition ${value}; choose ${Object.keys(CONDITIONS).join(", ")}`);
+    refuse(`unknown condition ${value}; choose ${Object.keys(CONDITIONS).join(", ")}`);
   }
   // SAFETY: `Object.hasOwn` has just proved the string is one of the keys `Condition` is built from.
   return value as Condition;
 }
 
-function validateOptionValues(values: OptionValues): void {
+function validateOptionValues(options: LaunchOptions, refuse: ExitWith): void {
   for (const key of ["budget", "tasks", "max-iterations", "stop-after-ms", "kill-after-ms"] as const) {
-    const value = values[key];
-    if (
-      value !== undefined &&
-      (!isString(value) || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))
-    ) {
-      throw new Error(`--${key} must be a positive integer`);
+    const value = options[key];
+    if (value !== undefined && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
+      refuse(`--${key} must be a positive integer`);
     }
   }
   for (const key of ["env-file", "codex-home", "output-dir"] as const) {
-    const value = values[key];
-    if (value !== undefined && (!isString(value) || !isAbsolute(value))) {
-      throw new Error(`--${key} must be absolute`);
-    }
+    const value = options[key];
+    if (value !== undefined && !isAbsolute(value)) refuse(`--${key} must be absolute`);
   }
 }
 
-export function parseOptions(argv: string[]) {
-  const {
-    values,
-    positionals: names,
-    tokens,
-  } = parseArgs({ args: argv, options: ARGUMENTS, allowPositionals: true, tokens: true });
-  const seen = new Set<string>();
-  for (const token of tokens) {
-    if (token.kind !== "option") continue;
-    const name = token.name === "model" ? "condition" : token.name;
-    if (seen.has(name)) throw new Error(`duplicate --${token.name}`);
-    seen.add(name);
-  }
-  values.condition = values.model ?? values.condition;
-  const conditions = values.condition.split(",").map(conditionName);
-  const options = { ...values, names, conditions };
-  if (values.help === true || values.list === true) return options;
-  if (names.length === 0) throw new Error(`name a preset: ${PRESET_NAMES.replaceAll("|", ", ")} or custom`);
+/**
+ * The launch options a parse admits, refusing through `refuse` what the parser cannot see: an
+ * undeclared condition or preset, `--model` beside `--condition`, a prompt that is not one or two
+ * lines, and a `--run` or `--project` that would name more than one run.
+ */
+export function launchOptions(parsed: ParsedCliArgs, refuse: ExitWith): LaunchOptions {
+  const { single, flags, positionals: names } = parsed;
+  if (single.has("model") && single.has("condition")) refuse("--model and --condition are one option");
+  const condition = single.get("model") ?? single.get("condition") ?? "opus";
+  const conditions = condition.split(",").map((name) => conditionName(name, refuse));
+  const options: LaunchOptions = {
+    ...Object.fromEntries(
+      OPTIONAL_VALUES.flatMap((key) => (single.has(key) ? [[key, single.get(key)]] : [])),
+    ),
+    condition,
+    source: single.get("source") ?? "origin/main",
+    budget: single.get("budget") ?? "1320",
+    tasks: single.get("tasks") ?? "25",
+    help: flags.has("help"),
+    list: flags.has("list"),
+    "dry-run": flags.has("dry-run"),
+    names,
+    conditions,
+  };
+  if (options.help || options.list) return options;
+  if (names.length === 0) refuse(`name a preset: ${PRESET_NAMES.replaceAll("|", ", ")} or custom`);
   for (const name of names) {
-    if (!Object.hasOwn(PRESETS, name) && name !== "custom") {
-      throw new Error(`unknown preset ${name}; use --list`);
-    }
+    if (!Object.hasOwn(PRESETS, name) && name !== "custom") refuse(`unknown preset ${name}; use --list`);
   }
-  if (new Set(conditions).size !== conditions.length) throw new Error("name each condition once");
-  if (names.includes("custom") !== (values.prompt !== undefined)) {
-    throw new Error("custom and --prompt must be supplied together");
-  }
-  if (
-    values.prompt !== undefined &&
-    (/[\r\0]/.test(values.prompt) ||
-      values.prompt.split("\n").length > 2 ||
-      values.prompt.split("\n").some((line) => !line.trim()))
-  ) {
-    throw new Error("--prompt must be one or two non-empty lines without CR or NUL");
-  }
-  validateOptionValues(values);
-  if (
-    values.run !== undefined &&
-    (names.length !== 1 || conditions.length !== 1 || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,85}$/.test(values.run))
-  ) {
-    throw new Error("--run requires one preset, one condition and a safe id of at most 86 characters");
+  if (new Set(conditions).size !== conditions.length) refuse("name each condition once");
+  const { prompt, run, project } = options;
+  if (names.includes("custom") !== (prompt !== undefined)) {
+    refuse("custom and --prompt must be supplied together");
   }
   if (
-    values.project !== undefined &&
-    (names.length !== 1 || conditions.length !== 1 || !/^[a-z0-9][a-z0-9-]*$/.test(values.project))
+    prompt !== undefined &&
+    (/[\r\0]/.test(prompt) ||
+      prompt.split("\n").length > 2 ||
+      prompt.split("\n").some((line) => !line.trim()))
   ) {
-    throw new Error("--project requires one preset, one condition and an existing project id");
+    refuse("--prompt must be one or two non-empty lines without CR or NUL");
+  }
+  validateOptionValues(options, refuse);
+  const oneRun = names.length === 1 && conditions.length === 1;
+  if (run !== undefined && (!oneRun || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,85}$/.test(run))) {
+    refuse("--run requires one preset, one condition and a safe id of at most 86 characters");
+  }
+  if (project !== undefined && (!oneRun || !/^[a-z0-9][a-z0-9-]*$/.test(project))) {
+    refuse("--project requires one preset, one condition and an existing project id");
   }
   return options;
+}
+
+const throwArgument: ExitWith = (message) => {
+  throw new CliArgumentError(message);
+};
+
+/** `launchOptions` over an argument list, throwing `CliArgumentError` where the CLI exits 2. */
+export function parseOptions(argv: readonly string[]): LaunchOptions {
+  return launchOptions(parseCliArgs(argv, LAUNCH_ARGUMENTS), throwArgument);
 }
 export function planRuns(options: LaunchOptions, parent: string, suffix: string): RunPlan[] {
   return options.names.flatMap((name, index) =>
@@ -200,10 +216,16 @@ export function slotEnvironment(name: Condition): Record<string, string> {
   const condition = CONDITIONS[name];
   const prefix = condition.kind.toUpperCase();
   return Object.fromEntries(
-    SLOTS.flatMap((slot, i) => [
-      [`${prefix}_${slot.toUpperCase()}_MODEL`, condition.model],
-      [`${prefix}_${slot.toUpperCase()}_REASONING_EFFORT`, condition.efforts[i]!],
-    ]),
+    SLOTS.flatMap((slot, i) => {
+      const effort = condition.efforts[i];
+      if (effort === undefined) {
+        throw new Error(`condition ${name} names no effort for the ${slot} slot`);
+      }
+      return [
+        [`${prefix}_${slot.toUpperCase()}_MODEL`, condition.model],
+        [`${prefix}_${slot.toUpperCase()}_REASONING_EFFORT`, effort],
+      ];
+    }),
   );
 }
 

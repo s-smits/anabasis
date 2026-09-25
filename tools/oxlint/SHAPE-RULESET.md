@@ -1499,7 +1499,7 @@ turned out to be.
 | what | where it went |
 | --- | --- |
 | `onlyStatement` ×3 and the statement-list visitor ×2 | `tools/oxlint/ana/shared/statements.ts` |
-| the CLI parse preamble ×14, the absolute-path check ×5, the required-option check ×2 | `system-path-simulation/scripts/cli-args.mts` |
+| the CLI parse preamble ×14, the absolute-path check ×5, the required-option check ×2 | `.claude/skills/main/cli.ts` |
 | the folded trace facts ×2, restated a third time in a `.d.mts` | `foldTraceFacts` in `tools/outcome/trace-facts.ts` |
 | the case-outcome counts | `OutcomeTally` in `src/claim/case-record.ts`, exported |
 | the temporary-then-rename write ×3 | `writeAtomic` in `src/meta/completed-json.ts` |
@@ -1611,7 +1611,7 @@ where the cap is a count per line.
   an operator, and removing it would move `verified - passed` to that print site. The census rule
   reports one shape restated across owners; a derived field inside the owner is not that, and the
   three readers that do not want it already leave it out by destructuring.
-- `required` in `cli-args.mts` stays local at its 21 call sites — a deliberate no, because the name
+- `required` in `.claude/skills/main/cli.ts` stays local at its 21 call sites — a deliberate no, because the name
   is shorter than the import that would replace it and every script means the same thing by it.
 
 #### Reading the answered rows a second time, 2026-09-20

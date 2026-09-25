@@ -21,13 +21,16 @@
 // cannot host two shards, because they would overwrite each other's faults.
 import { mkdir, readdir, realpathSync, rm } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { classifyBunTestProcess } from "./mutation-run-result.mjs";
 import { spawnCollected } from "#src/builder/candidate-isolation-runtime.ts";
 
 const REPO = realpathSync(Bun.env.REPO ?? runtimeProcess.cwd());
-const OUT = path.resolve(Bun.argv[2]);
-const CANDIDATES = Bun.argv.slice(3);
+const [outArg = "", ...CANDIDATES] = parseOrDie(exitWith("mutation-adjudicate"), {
+  positionals: [1, Number.MAX_SAFE_INTEGER],
+}).positionals;
+const OUT = path.resolve(outArg);
 const MAX_MUTANTS = Number(Bun.env.MAX_MUTANTS ?? 10);
 const MAX_PEERS = Number(Bun.env.MAX_PEERS ?? 8);
 const RUN_TIMEOUT_MS = Number(Bun.env.RUN_TIMEOUT_SEC ?? 120) * 1000;

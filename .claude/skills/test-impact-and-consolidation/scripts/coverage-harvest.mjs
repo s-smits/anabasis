@@ -16,13 +16,17 @@
 
 import { mkdir, readdir } from "#src/meta/filesystem.ts";
 import path from "#src/meta/path.ts";
+import { exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { spawnCollected } from "#src/builder/candidate-isolation-runtime.ts";
 
 const repo = Bun.env.REPO ?? runtimeProcess.cwd();
-const out = path.resolve(Bun.argv[2] ?? "test-impact");
-const concurrency = Number(Bun.argv[3] ?? 5);
-const timeoutMs = Number(Bun.argv[4] ?? 180) * 1000;
+const [outArg, concurrencyArg, timeoutArg] = parseOrDie(exitWith("coverage-harvest"), {
+  positionals: [0, 3],
+}).positionals;
+const out = path.resolve(outArg ?? "test-impact");
+const concurrency = Number(concurrencyArg ?? 5);
+const timeoutMs = Number(timeoutArg ?? 180) * 1000;
 
 const DIRS = ["test", "starters/pi-built-harness/correctness-model"];
 

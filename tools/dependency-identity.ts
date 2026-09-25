@@ -21,7 +21,7 @@ const INSTALL_FIELDS = [
   "catalogs",
 ] as const;
 
-export function dependencyIdentityFromBytes(lock: Uint8Array, manifestText: string): string {
+function dependencyIdentityFromBytes(lock: Uint8Array, manifestText: string): string {
   const manifest = parseJsonAs<Record<string, JsonValue>>(manifestText);
   const installManifest: Record<string, JsonValue> = {};
   for (const field of INSTALL_FIELDS) {

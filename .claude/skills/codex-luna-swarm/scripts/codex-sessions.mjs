@@ -19,7 +19,8 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { homedir } from "#src/meta/os.ts";
-import { isAbsolute, join } from "#src/meta/path.ts";
+import { join } from "#src/meta/path.ts";
+import { absoluteOption, exitWith, parseCommandOrDie, requiredOption } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -33,6 +34,16 @@ const DEFAULT_COMPANION = join(
 );
 const SCRIPT = Bun.fileURLToPath(import.meta.url);
 
+const COMMANDS = {
+  launch: {
+    values: ["tasks-file", "out-dir", "workdir", "model", "effort", "companion"],
+    flags: ["write", "plan-only", "help"],
+  },
+  "run-one": { values: ["spec"], flags: ["help"] },
+  status: { values: ["out-dir"], flags: ["help"] },
+  drain: { values: ["out-dir"], flags: ["help"] },
+};
+
 export function usage() {
   return [
     "codex-sessions.mjs launch --tasks-file <abs json> --out-dir <abs dir> [--workdir <abs dir>]",
@@ -45,37 +56,11 @@ export function usage() {
   ].join("\n");
 }
 
-export function parseArgs(argv) {
-  const options = { _: [] };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (!arg.startsWith("--")) {
-      options._.push(arg);
-      continue;
-    }
-    const key = arg.slice(2).replace(/-/g, "_");
-    if (key === "write" || key === "plan_only" || key === "help") {
-      options[key] = true;
-      continue;
-    }
-    const value = argv[index + 1];
-    if (value === undefined || value.startsWith("--")) throw new Error(`${arg} needs a value`);
-    options[key] = value;
-    index += 1;
-  }
-  return options;
-}
-
 export function batchPolicy(count) {
   if (!Number.isInteger(count) || count < 1) throw new Error("a batch needs at least one session");
   return count <= 5
     ? { model: "gpt-5.6-sol", effort: "medium", rule: "1-5 sessions: gpt-5.6-sol medium" }
     : { model: "gpt-5.6-luna", effort: "xhigh", rule: "6+ sessions: gpt-5.6-luna xhigh" };
-}
-
-function requireAbsolute(value, flag) {
-  if (!isString(value) || !isAbsolute(value)) throw new Error(`${flag} must be an absolute path`);
-  return value;
 }
 
 function requireEffort(value, where) {
@@ -125,13 +110,10 @@ function spawnDetached(cmd, logPath, cwd) {
 }
 
 function launch(options) {
-  const outDir = requireAbsolute(options.out_dir, "--out-dir");
-  const tasksFile = requireAbsolute(options.tasks_file, "--tasks-file");
-  const workdir = options.workdir ? requireAbsolute(options.workdir, "--workdir") : undefined;
-  const companion = options.companion ? requireAbsolute(options.companion, "--companion") : DEFAULT_COMPANION;
+  const { outDir, tasksFile, workdir, companion } = options;
   if (options.effort) requireEffort(options.effort, "--effort");
   const plan = planSessions(readJsonFile(tasksFile), options);
-  if (options.plan_only) {
+  if (options.planOnly) {
     console.log(
       JSON.stringify({
         event: "codex_sessions.plan",
@@ -196,8 +178,8 @@ function companionArgs(spec) {
   return args;
 }
 
-async function runOne(options) {
-  const spec = readJsonFile(requireAbsolute(options.spec, "--spec"));
+async function runOne(specFile) {
+  const spec = readJsonFile(specFile);
   runtimeProcess.on("SIGHUP", () => {});
   const logPath = join(spec.outDir, `${spec.name}.log`);
   const fd = openLog(logPath);
@@ -257,8 +239,8 @@ export function sessionStates(outDir) {
   });
 }
 
-function status(options) {
-  const states = sessionStates(requireAbsolute(options.out_dir, "--out-dir"));
+function status(outDir) {
+  const states = sessionStates(outDir);
   for (const row of states) {
     console.log(
       `${row.name}\t${row.state}\t${row.model}/${row.effort}${row.exit ? `\texit ${row.exit.exitCode ?? row.exit.signal ?? row.exit.error}` : ""}`,
@@ -267,8 +249,7 @@ function status(options) {
   return 0;
 }
 
-function drain(options) {
-  const outDir = requireAbsolute(options.out_dir, "--out-dir");
+function drain(outDir) {
   const counts = { finished: 0, failed: 0, running: 0, missing: 0, printed: 0 };
   for (const row of sessionStates(outDir)) {
     counts[row.state] += 1;
@@ -288,29 +269,40 @@ function drain(options) {
   return counts.missing > 0 ? 2 : 0;
 }
 
-async function main(argv) {
-  const options = parseArgs(argv);
-  const command = options._[0];
-  if (options.help || command === undefined) {
+async function main() {
+  const die = exitWith("codex-sessions.mjs");
+  const { command, single, flags } = parseCommandOrDie(die, COMMANDS);
+  if (flags.has("help")) {
     console.log(usage());
-    return command === undefined ? 1 : 0;
+    return 0;
   }
+  const absolute = absoluteOption(die);
+  const required = requiredOption(die, single);
+  const path = (name) => absolute(name, required(name));
+  const optionalPath = (name) => (single.has(name) ? path(name) : undefined);
   switch (command) {
     case "launch":
-      return launch(options);
+      return launch({
+        outDir: path("out-dir"),
+        tasksFile: path("tasks-file"),
+        workdir: optionalPath("workdir"),
+        companion: optionalPath("companion") ?? DEFAULT_COMPANION,
+        model: single.get("model"),
+        effort: single.get("effort"),
+        write: flags.has("write"),
+        planOnly: flags.has("plan-only"),
+      });
     case "run-one":
-      return runOne(options);
+      return runOne(path("spec"));
     case "status":
-      return status(options);
-    case "drain":
-      return drain(options);
+      return status(path("out-dir"));
     default:
-      throw new Error(`unknown command ${command}\n${usage()}`);
+      return drain(path("out-dir"));
   }
 }
 
 if (import.meta.main) {
-  main(runtimeProcess.argv.slice(2)).then(
+  main().then(
     (code) => {
       runtimeProcess.exitCode = code;
     },

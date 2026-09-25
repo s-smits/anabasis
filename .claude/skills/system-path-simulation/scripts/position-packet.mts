@@ -21,7 +21,7 @@
 import { existsSync, readFileSync } from "#src/meta/filesystem.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { isAbsolute } from "#src/meta/path.ts";
-import { type ExitWith, exitWith, parseOrDie } from "./cli-args.mts";
+import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 import { asRecord, isString } from "#src/meta/json-shape.ts";
 
 const die: ExitWith = exitWith("position-packet");

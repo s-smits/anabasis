@@ -342,6 +342,14 @@ export class ControllerLedger {
       .immediate();
   }
 
+  /** Every version the ledger registered, whether or not a decision ever named it. */
+  registeredProducts(): string[] {
+    return this.db
+      .query<{ id: string }, []>("SELECT id FROM product_versions")
+      .all()
+      .map((row) => row.id);
+  }
+
   productDigest(id: string): string | null {
     return (
       this.db

@@ -1,41 +1,48 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { ANCHOR_SHA256, CLASSES, EVIDENCE_FLOOR, TRANSFORMERS_VERSION, classifyTarget, excerptOf, gradeEvidence, parseArgs, renderPosture, segmentsOf, solvePosture, submitPosture, summarise } from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { caseOutcome, censusSolves, hasCaseRecord } from "../.claude/skills/whole-run-investigation/classifier/solve-input.mjs";
-// biome-ignore format: the directive below only reaches the specifier while this import is one line
-// @ts-expect-error plain-JS skill script without type declarations
-import { buildPriors, renderPriors } from "../.claude/skills/whole-run-investigation/classifier/posture-priors.mjs";
+import { CASE_TRACE_SCHEMA } from "../src/backends/trace-capture.ts";
+import { sha256 } from "../src/meta/digest.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
+import {
+  CLASS_NAMES,
+  type ProseRow,
+  type SessionExecution,
+  type SessionSubmit,
+  anchorVector,
+  axis,
+  writeSession,
+} from "./helpers/prose-session.ts";
+import {
+  EVIDENCE_FLOOR,
+  TRANSFORMERS_VERSION,
+  classifyTarget,
+  excerptOf,
+  gradeEvidence,
+  parseArgs,
+  renderPosture,
+  segmentsOf,
+  solvePosture,
+  submitPosture,
+  summarise,
+} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
+import {
+  censusSolves,
+  hasCaseRecord,
+} from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
 
 const dirs: string[] = [];
-const classEntries: Array<[string, string[]]> = Object.entries(CLASSES);
-const anchorClass = new Map<string, number>();
-type Submit = { kind: string; turn: number; atMs: number; outcome: string; stage?: string | null };
-type Row = {
-  turn: number;
-  atMs: number;
-  kind: "message" | "reasoning" | "prompt" | "compaction";
-  text: string;
-};
-/**
- * The execution-record fields a test may override; the session outcome decides whether its rows
- * count as evidence.
- */
-type Execution = { outcome: string };
 
-const ROWS: Row[] = [
+const ROWS: ProseRow[] = [
   { turn: 1, atMs: 1000, kind: "reasoning", text: "row one: planning" },
   { turn: 1, atMs: 2000, kind: "message", text: "row two: diagnosing" },
   { turn: 1, atMs: 3000, kind: "reasoning", text: "row three: disputing" },
   { turn: 1, atMs: 5000, kind: "reasoning", text: "**Running tests** **Removing the advisor**" },
   { turn: 1, atMs: 9000, kind: "message", text: "row five:   after the\nlast submit" },
 ];
-const SUBMITS: Submit[] = [
+const SUBMITS: SessionSubmit[] = [
   { kind: "candidate", turn: 1, atMs: 3500, outcome: "refused", stage: "bundle" },
   { kind: "controller-terminal", turn: 1, atMs: 3600, outcome: "refused" },
   { kind: "candidate", turn: 1, atMs: 6000, outcome: "accepted", stage: null },
@@ -50,65 +57,19 @@ function temp(prefix: string): string {
   return dir;
 }
 
-const classNames = classEntries.map(([name]) => name);
-for (const [index, [, anchors]] of classEntries.entries()) {
-  for (const text of anchors) anchorClass.set(text, index);
-}
-
 /** A stand-in for the model: each anchor lands on its class axis, a row lands where its fixture says. */
 function fakeEmbed(rows: Map<string, number[]>): (texts: string[]) => Promise<number[][]> {
   return async (texts) =>
     texts.map((text) => {
-      const index = anchorClass.get(text);
-      if (index !== undefined) return classNames.map((_, at) => (at === index ? 1 : 0));
-      const fixture = rows.get(text);
+      const fixture = anchorVector(text) ?? rows.get(text);
       if (fixture === undefined) throw new Error(`no fixture vector for: ${text}`);
       return fixture;
     });
 }
 
-function axis(name: string): number[] {
-  return classNames.map((candidate) => (candidate === name ? 1 : 0));
-}
-
-function writeEpoch(rows: Row[], submits: Submit[], extra: Partial<Execution> = {}): string {
+function writeEpoch(rows: ProseRow[], submits: SessionSubmit[], extra: SessionExecution = {}): string {
   const epochDir = temp("hb4-posture-");
-  const captureId = "6f1d2c3b-4a5e-4f60-8b71-9c0d1e2f3a4b";
-  const header = {
-    schema: "builder-prose-capture/v1",
-    captureId,
-    file: "builder-prose.jsonl",
-    executionFile: "builder-execution.json",
-    rows: rows.length,
-    omitted: 0,
-  };
-  const lines = rows.map((row, index) => ({
-    schema: "builder-prose/v2",
-    sequence: index + 1,
-    ...row,
-    chars: row.text.length,
-    truncated: false,
-  }));
-  writeFileSync(
-    join(epochDir, "builder-prose.jsonl"),
-    `${[header, ...lines].map((line) => JSON.stringify(line)).join("\n")}\n`,
-  );
-  writeFileSync(
-    join(epochDir, "builder-execution.json"),
-    JSON.stringify({
-      schema: "builder-execution/v6",
-      proseCapture: {
-        schema: "builder-prose-capture/v1",
-        captureId,
-        file: "builder-prose.jsonl",
-        rows: rows.length,
-        omitted: 0,
-      },
-      proseOmitted: 0,
-      submits,
-      ...extra,
-    }),
-  );
+  writeSession(epochDir, 1, rows, { submits, ...extra });
   return epochDir;
 }
 
@@ -118,7 +79,7 @@ const VECTORS = new Map<string, number[]>([
   // Nearly equidistant from two classes: a low-margin label.
   [
     "row three: disputing",
-    classNames.map((name) => (name === "disputing-verifier" ? 0.72 : name === "diagnosing" ? 0.69 : 0)),
+    CLASS_NAMES.map((name) => (name === "disputing-verifier" ? 0.72 : name === "diagnosing" ? 0.69 : 0)),
   ],
   ["Running tests", axis("running-checks")],
   ["Removing the advisor", axis("workaround")],
@@ -144,14 +105,10 @@ describe("prose posture classifier", () => {
 
   it("labels rows by their last segment, keeps text out of rows and joins labels, reactions and excerpts to each submit", async () => {
     const epochDir = writeEpoch(ROWS, SUBMITS);
-    const result = await classifyTarget(epochDir, {
-      embed: fakeEmbed(VECTORS),
-      window: 2,
-      priorsFile: join(epochDir, "none.json"),
-    });
+    const result = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), window: 2 });
     expect(result.state).toBe("classified");
-    expect(result.model.embed).toBe("injected");
-    expect(result.calibration.priors).toEqual({ state: "absent" });
+    expect(result.model?.embed).toBe("injected");
+    expect(result.submits[0]).not.toHaveProperty("prior");
     expect(
       result.rows.map((row: { class: string; lowMargin: boolean; segments: number }) => [
         row.class,
@@ -199,7 +156,7 @@ describe("prose posture classifier", () => {
       ["accepted", 1, "workaround", ["workaround"], { rows: 1, dominant: "reporting-status" }, false],
     ]);
     expect(result.submits[1].recent[0].excerpt).toBe("Running tests Removing the advisor");
-    expect(result.summary.find((row: { class: string }) => row.class === "disputing-verifier")).toEqual({
+    expect(result.summary?.find((row: { class: string }) => row.class === "disputing-verifier")).toEqual({
       class: "disputing-verifier",
       count: 1,
       reasoning: 1,
@@ -228,76 +185,16 @@ describe("prose posture classifier", () => {
       ],
       SUBMITS,
     );
-    const result = await classifyTarget(epochDir, {
-      embed: fakeEmbed(VECTORS),
-      window: 2,
-      priorsFile: join(epochDir, "none.json"),
-    });
+    const result = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), window: 2 });
     expect(result.state).toBe("classified");
     expect(result.rows).toHaveLength(ROWS.length);
   });
 
-  it("attaches corpus priors bound to the anchor digest and marks other priors stale", async () => {
-    const epochDir = writeEpoch(ROWS, SUBMITS);
-    const table = { diagnosing: { accepted: 2, refused: 6, refusedRate: 0.75 } };
-    const current = join(epochDir, "current.json");
-    writeFileSync(
-      current,
-      JSON.stringify({
-        anchorSha256: ANCHOR_SHA256,
-        corpus: { campaigns: 3 },
-        byDominant: table,
-        byLast: {},
-      }),
-    );
-    const applied = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), priorsFile: current });
-    expect(applied.calibration.priors).toEqual({ state: "applied", corpus: { campaigns: 3 } });
-    expect(applied.submits[0].prior).toEqual({ table: "pooled", dominant: table.diagnosing, last: null });
-    expect(renderPosture(applied).join("\n")).toContain(
-      "prior (pooled table): dominant 6/8 refused in corpus; last label no corpus row",
-    );
-    // A backend table wins over the pooled one when the execution record names that backend.
-    const scoped = join(epochDir, "scoped.json");
-    writeFileSync(
-      scoped,
-      JSON.stringify({
-        anchorSha256: ANCHOR_SHA256,
-        corpus: {},
-        byDominant: table,
-        byLast: {},
-        byBackend: {
-          codex: { dominant: { diagnosing: { accepted: 1, refused: 0, refusedRate: 0 } }, last: {} },
-        },
-      }),
-    );
-    const record = JSON.parse(await Bun.file(join(epochDir, "builder-execution.json")).text());
-    writeFileSync(join(epochDir, "builder-execution.json"), JSON.stringify({ ...record, backend: "codex" }));
-    const own = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), priorsFile: scoped });
-    expect(own.submits[0].prior).toEqual({
-      table: "codex",
-      dominant: { accepted: 1, refused: 0, refusedRate: 0 },
-      last: null,
-    });
-    const stale = join(epochDir, "stale.json");
-    writeFileSync(
-      stale,
-      JSON.stringify({
-        anchorSha256: "0".repeat(64),
-        corpus: { campaigns: 1 },
-        byDominant: table,
-        byLast: {},
-      }),
-    );
-    const ignored = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), priorsFile: stale });
-    expect(ignored.calibration.priors).toEqual({ state: "stale", corpus: { campaigns: 1 } });
-    expect("prior" in ignored.submits[0]).toBe(false);
-  });
-
   it("reports an epoch without captured prose as no-prose instead of classifying", async () => {
     const epochDir = temp("hb4-posture-");
-    mkdirSync(join(epochDir, "epoch-0123456789ab"));
+    const epoch = selectCampaignEpoch(epochDir, { kickoff: "one line" }).dir;
     writeFileSync(
-      join(epochDir, "epoch-0123456789ab", "builder-execution.json"),
+      join(epoch, "builder-execution.json"),
       JSON.stringify({ schema: "builder-execution/v6", proseOmitted: 0, submits: [] }),
     );
     const result = await classifyTarget(epochDir, { embed: fakeEmbed(new Map()) });
@@ -349,103 +246,9 @@ describe("prose posture classifier", () => {
     expect(summarise([])).toEqual([]);
   });
 
-  it("builds priors from every campaign's submits under each submit's own backend", async () => {
-    const root = temp("hb4-priors-");
-    // The opening names codex, but the submits' own records name both: the records win.
-    for (const name of ["alpha", "beta", "gamma"]) {
-      mkdirSync(join(root, name, "controller", "run-1"), { recursive: true });
-    }
-    writeFileSync(
-      join(root, "alpha", "controller", "run-1", "opening.json"),
-      JSON.stringify({ modelSlots: { builder: { kind: "codex" } } }),
-    );
-    mkdirSync(join(root, "loose-file-holder"));
-    type Labelled = { class: string; kind: "reasoning" | "message"; lowMargin: boolean };
-    type Joined = {
-      outcome: string | null;
-      backend: string | null;
-      dominant: string;
-      recent: Array<{ class: string }>;
-    };
-    type Fake = { state: string; rows?: Labelled[]; submits?: Joined[] };
-    const results = new Map<string, Fake>([
-      [
-        "alpha",
-        {
-          state: "classified",
-          rows: [{ class: "planning", kind: "reasoning", lowMargin: false }],
-          submits: [
-            { outcome: "refused", backend: "codex", dominant: "planning", recent: [{ class: "submitting" }] },
-            {
-              outcome: "accepted",
-              backend: "claude",
-              dominant: "planning",
-              recent: [{ class: "submitting" }],
-            },
-            { outcome: null, backend: "codex", dominant: "planning", recent: [] },
-          ],
-        },
-      ],
-      [
-        "beta",
-        {
-          state: "classified",
-          rows: [{ class: "workaround", kind: "message", lowMargin: true }],
-          submits: [{ outcome: "refused", backend: null, dominant: "workaround", recent: [] }],
-        },
-      ],
-      ["gamma", { state: "no-prose" }],
-    ]);
-    const classify = async (campaign: string) => results.get(campaign.slice(campaign.lastIndexOf("/") + 1));
-    const priors = await buildPriors(root, { classify });
-    expect(priors.anchorSha256).toBe(ANCHOR_SHA256);
-    expect(priors.corpus).toMatchObject({
-      campaigns: 3,
-      states: { classified: 2, "no-prose": 1 },
-      byBackend: { codex: 2, claude: 1, unknown: 1 },
-      rows: 2,
-      submits: 4,
-    });
-    expect(priors.byDominant).toEqual({
-      planning: { accepted: 1, refused: 1, refusedRate: 0.5 },
-      workaround: { accepted: 0, refused: 1, refusedRate: 1 },
-    });
-    expect(priors.byLast).toEqual({ submitting: { accepted: 1, refused: 1, refusedRate: 0.5 } });
-    expect(priors.byBackend).toEqual({
-      claude: {
-        dominant: { planning: { accepted: 1, refused: 0, refusedRate: 0 } },
-        last: { submitting: { accepted: 1, refused: 0, refusedRate: 0 } },
-      },
-      codex: {
-        dominant: { planning: { accepted: 0, refused: 1, refusedRate: 1 } },
-        last: { submitting: { accepted: 0, refused: 1, refusedRate: 1 } },
-      },
-    });
-    expect(priors.perClass.workaround).toEqual({
-      rows: 1,
-      reasoning: 0,
-      message: 1,
-      lowMargin: 1,
-      lowMarginRate: 1,
-    });
-    expect(renderPriors(priors).join("\n")).toContain("workaround: refused 1/1 (100%)");
-    // Campaign order changes nothing: swapping which campaign holds which submits gives the same tables.
-    const swapped = new Map([
-      ["alpha", results.get("beta")!],
-      ["beta", results.get("alpha")!],
-      ["gamma", results.get("gamma")!],
-    ]);
-    const reordered = await buildPriors(root, {
-      classify: async (campaign: string) => swapped.get(campaign.slice(campaign.lastIndexOf("/") + 1)),
-    });
-    expect(reordered.byBackend).toEqual(priors.byBackend);
-    expect(reordered.corpus.byBackend).toEqual(priors.corpus.byBackend);
-  });
-
   it("scopes a campaign to the sessions one run started, including a shared epoch", async () => {
     const campaign = temp("hb4-run-scope-");
-    const epoch = join(campaign, "epoch-0123456789ab");
-    mkdirSync(epoch);
+    const epoch = selectCampaignEpoch(campaign, { kickoff: "one line" }).dir;
     const open = (runId: string, writtenAt: string) => {
       mkdirSync(join(campaign, "controller", runId), { recursive: true });
       writeFileSync(
@@ -453,42 +256,19 @@ describe("prose posture classifier", () => {
         JSON.stringify({ runId, writtenAt }),
       );
     };
-    const session = (n: number, text: string, writtenAt: string, durationMs: number, submit: Submit) => {
-      const suffix = n === 1 ? "" : `-${String(n).padStart(2, "0")}`;
-      const captureId = `6f1d2c3b-4a5e-4f60-8b71-9c0d1e2f3a4${String(n)}`;
-      const file = `builder-prose${suffix}.jsonl`;
-      const executionFile = `builder-execution${suffix}.json`;
-      const header = {
-        schema: "builder-prose-capture/v1",
-        captureId,
-        file,
-        executionFile,
-        rows: 1,
-        omitted: 0,
-      };
-      const row = {
-        schema: "builder-prose/v2",
-        sequence: 1,
-        turn: 1,
-        atMs: 1000,
-        kind: "message",
-        text,
-        chars: text.length,
-        truncated: false,
-      };
-      writeFileSync(join(epoch, file), `${JSON.stringify(header)}\n${JSON.stringify(row)}\n`);
-      writeFileSync(
-        join(epoch, executionFile),
-        JSON.stringify({
-          schema: "builder-execution/v6",
-          backend: "codex",
-          writtenAt,
-          durationMs,
-          proseCapture: { schema: "builder-prose-capture/v1", captureId, file, rows: 1, omitted: 0 },
-          proseOmitted: 0,
-          submits: [submit],
-        }),
-      );
+    const session = (
+      n: number,
+      text: string,
+      writtenAt: string,
+      durationMs: number,
+      submit: SessionSubmit,
+    ) => {
+      writeSession(epoch, n, [{ turn: 1, atMs: 1000, text }], {
+        backend: "codex",
+        writtenAt,
+        durationMs,
+        submits: [submit],
+      });
     };
     const vectors = new Map([
       ["run A planning", axis("planning")],
@@ -537,7 +317,20 @@ describe("prose posture classifier", () => {
     const thin = Array.from({ length: 4 }, () => ({ lowMargin: false }));
     const wide = Array.from({ length: EVIDENCE_FLOOR.rows }, () => ({ lowMargin: false }));
     const blurred = wide.map((row, index) => ({ ...row, lowMargin: index <= EVIDENCE_FLOOR.rows / 2 }));
-    expect(gradeEvidence([], "Builder").grade).toBe("empty");
+    // An empty half takes a low-margin share of 1, not 0/0, so a caller reading the share alone
+    // sees the worst reading rather than a NaN that serialises as null and drops the second
+    // reason. `grade` stays "empty" either way, so pinning the grade alone leaves that guard
+    // unheld, and a reader who mistakes the 1 for a full score has exactly one edit to make.
+    expect(gradeEvidence([], "Builder")).toEqual({
+      grade: "empty",
+      rows: 0,
+      lowMargin: 0,
+      lowMarginShare: 1,
+      reasons: [
+        `0 classified Builder rows, under the ${EVIDENCE_FLOOR.rows}-row floor`,
+        "100% of Builder rows are low-margin",
+      ],
+    });
     expect(gradeEvidence(thin, "Builder")).toMatchObject({
       grade: "thin",
       rows: 4,
@@ -592,60 +385,42 @@ describe("prose posture classifier", () => {
     const write = (taskId: string, preview: string) => {
       mkdirSync(join(caseDir, taskId), { recursive: true });
       const trace = JSON.stringify({
-        schema: "trace/v1",
+        schema: CASE_TRACE_SCHEMA,
         turns: [{ turn: 1, assistantChars: preview.length, assistantPreview: preview, status: "ended" }],
+        toolCalls: [],
       });
       writeFileSync(join(caseDir, taskId, "trace.json"), trace);
-      return new Bun.CryptoHasher("sha256").update(trace).digest("hex");
+      return sha256(trace);
     };
     const good = write("t-pass", "All checks pass. Recording the artifact.");
     write("t-stale", "Diagnosing the refusal before retrying.");
     const record = [
-      {
-        schema: "case-record/v1",
+      caseRecordRow("t-pass", "f", {
         runId: "r1",
-        taskId: "t-pass",
-        family: "f",
-        truthOk: true,
-        pass: true,
         traces: [{ path: "runs/r1/cases/t-pass/trace.json", sha256: good }],
-      },
-      {
-        schema: "case-record/v1",
+      }),
+      caseRecordRow("t-stale", "f", {
         runId: "r1",
-        taskId: "t-stale",
-        family: "f",
+        acceptedSubmit: false,
         truthOk: null,
-        pass: null,
+        pass: false,
         traces: [{ path: "runs/r1/cases/t-stale/trace.json", sha256: "0".repeat(64) }],
-      },
-      {
-        schema: "case-record/v1",
+      }),
+      caseRecordRow("t-cut", "f", {
         runId: "r1",
-        taskId: "t-cut",
-        family: "f",
         truthOk: null,
         pass: null,
-        runtimeNonResultKind: "provider",
-        traces: [],
-      },
-      {
-        schema: "case-record/v1",
-        runId: "other",
-        taskId: "t-elsewhere",
-        family: "f",
-        truthOk: true,
-        pass: true,
-        traces: [],
-      },
+        runtimeNonResult: "the provider stopped answering",
+        runtimeNonResultKind: "runtime",
+      }),
+      caseRecordRow("t-elsewhere", "f", { runId: "other" }),
     ];
     writeFileSync(
       join(campaign, "case-record.jsonl"),
-      `${record.map((row) => JSON.stringify({ seq: 1, row })).join("\n")}\n`,
+      `${record.map((row, index) => JSON.stringify({ seq: index + 1, row })).join("\n")}\n`,
     );
 
     expect(hasCaseRecord(campaign)).toBe(true);
-    expect(caseOutcome(record[2])).toBe("non-result");
     const census = censusSolves(campaign, { runId: "r1" });
     expect(census.ok).toBe(false);
     expect(census.issues).toEqual([
@@ -660,6 +435,11 @@ describe("prose posture classifier", () => {
       rows: 1,
     });
     expect(census.rows.map((row: { taskId: string }) => row.taskId)).toEqual(["t-pass"]);
+    expect(census.cases.map((entry: { outcome: string }) => entry.outcome)).toEqual([
+      "verified",
+      "unaccepted",
+      "non-result",
+    ]);
     const posture = solvePosture(
       [
         {
@@ -686,8 +466,8 @@ describe("prose posture classifier", () => {
     expect(posture.cases[2]).toMatchObject({
       taskId: "t-cut",
       outcome: "non-result",
-      nonResultKind: "provider",
-      trace: "unlisted",
+      nonResultKind: "runtime",
+      trace: "no-trace-pointer",
       rows: 0,
     });
   });
@@ -719,11 +499,11 @@ describe("prose posture classifier", () => {
       batchSize: 16,
     });
     expect(parseArgs(["/campaign", "--run", "run-a"])).toMatchObject({ target: "/campaign", runId: "run-a" });
-    expect(() => parseArgs(["/campaign", "--run"])).toThrow("--run needs a value");
-    expect(() => parseArgs([])).toThrow("missing target");
+    expect(() => parseArgs(["/campaign", "--run"])).toThrow('option "--run" needs a value');
+    expect(() => parseArgs([])).toThrow("expected 1 positional argument");
     expect(() => parseArgs(["/campaign", "--window", "0"])).toThrow("--window must be a positive integer");
     expect(() => parseArgs(["/campaign", "--min-margin", "-1"])).toThrow("minimum margin");
-    expect(() => parseArgs(["/campaign", "--batch"])).toThrow("--batch needs a value");
-    expect(() => parseArgs(["/campaign", "--else"])).toThrow("unknown option: --else");
+    expect(() => parseArgs(["/campaign", "--batch"])).toThrow('option "--batch" needs a value');
+    expect(() => parseArgs(["/campaign", "--else"])).toThrow('unknown option "--else"');
   });
 });

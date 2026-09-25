@@ -15,7 +15,7 @@ import { CONTROLLER_LOCK_FILE, type LockHolderState, lockHolderState, lockToken 
 import type { FullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
 import { assertSupportedHostRuntime, hostRuntimeIdentity } from "./host-runtime-policy.ts";
-import { SOURCE_IDENTITY } from "./source-identity.ts";
+import { SOURCE_IDENTITY, type SourceIdentity } from "./source-identity.ts";
 import { type CampaignBudget, loadBudget } from "./controller-ledger.ts";
 import {
   type ControllerAbortClause,
@@ -24,7 +24,14 @@ import {
 } from "./controller-stop-evidence.ts";
 import { controllerAbortClause } from "./controller-abort-clause.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
-import { isBoolean, isObject, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
+import {
+  isBoolean,
+  isObject,
+  isRecord,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../meta/json-shape.ts";
 import {
   controllerEvidenceDir as evidenceDir,
   type ContinuationEvidence,
@@ -59,7 +66,7 @@ import { readJsonFile } from "../meta/completed-json.ts";
 
 /** `schema` is parsed bytes, so the compiler cannot own these tags as a member type and every
  *  reader compares them by hand. */
-const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
+export const CAMPAIGN_OPENING_SCHEMA = "campaign-opening/v2";
 const CAMPAIGN_TERMINAL_SCHEMA = "campaign-terminal/v4";
 
 export interface ControllerRunState {
@@ -136,9 +143,15 @@ export type ControllerEvidence =
       verifierCleanup?: VerifierCleanup;
       /** An empty list proves the opening observed none. */
       abandonedRuns: string[];
+      /** The recorded iterations' run ids, in the order the controller completed them. */
+      iterations: string[];
+      /** When the controller wrote the terminal, which is when the run ended. */
+      writtenAt: string;
       lastIteration: string | null;
       /** The measured iterations' run ids, which are their batteries' run ids. */
       batteryRunIds: string[];
+      /** Steps the run did not complete, as the controller recorded them. */
+      absentSteps: string[];
       denominator: Denominator;
       /** The opening and terminal snapshots this run bound to each other. */
       budget: CampaignBudget;
@@ -168,12 +181,14 @@ type RawControllerTerminal = {
   source?: JsonValue;
   lock?: { token?: JsonValue; ownedAtRecord?: JsonValue } | null;
   iterations?: JsonValue;
+  absentSteps?: JsonValue;
   outcome?: JsonValue;
   terminalReason?: JsonValue;
   abortClause?: JsonValue;
   budget?: JsonValue;
   providerResourceBudget?: JsonValue;
   verifierCleanup?: JsonValue;
+  writtenAt?: JsonValue;
   runEnd?: JsonValue;
 };
 
@@ -399,7 +414,8 @@ function readRunEnd(terminalPath: string, value: JsonValue | undefined): Recorde
   throw new Error(`${terminalPath}: runEnd is malformed`);
 }
 
-function sourceIdentityIsValid(value: JsonValue | undefined): boolean {
+/** Whether a recorded source identity is concrete: a full commit, a dirty flag and a sha256 digest. */
+export function sourceIdentityIsValid(value: JsonValue | undefined): value is JsonObject & SourceIdentity {
   if (!isRecord(value)) return false;
   const source = value;
   return (
@@ -506,6 +522,8 @@ function assertContinuationIntact(
   }
 }
 
+/** Whether an opening is this campaign's recorded opening for `selector`: the current schema, the
+ *  run id, a valid source identity and an epoch the campaign's own record admits. */
 function openingIsForRun(campaign: string, opening: RawControllerOpening, selector: string): boolean {
   return !(
     opening?.schema !== CAMPAIGN_OPENING_SCHEMA ||
@@ -515,6 +533,8 @@ function openingIsForRun(campaign: string, opening: RawControllerOpening, select
   );
 }
 
+/** Whether a terminal was written for this opening by the lock-owning controller: the current
+ *  schema, the opening's digest, epoch and source, and a non-empty lock token owned at record. */
 function terminalMatchesOpening(
   terminal: RawControllerTerminal,
   opening: RawControllerOpening,
@@ -550,6 +570,13 @@ function assertControllerTerminalIdentity(
     throw new Error(`${terminalPath}: terminal identity disagrees with its opening evidence`);
   }
   return { token: terminal.lock.token };
+}
+
+function terminalWrittenAt(terminalPath: string, value: JsonValue | undefined): string {
+  if (!isString(value) || Number.isNaN(Date.parse(value))) {
+    throw new Error(`${terminalPath}: terminal writtenAt is not a timestamp`);
+  }
+  return value;
 }
 
 export function readControllerEvidence(campaign: string, selector: string): ControllerEvidence {
@@ -595,6 +622,10 @@ export function readControllerEvidence(campaign: string, selector: string): Cont
   // active battery may stay unrecorded; every earlier battery and every completed terminal is strict.
   const savedStop = savedStopClause(terminalPath, terminal, iterations.at(-1)?.terminal ?? "completed");
   const { clause: abortClause, reason: terminalReason } = savedStop;
+  const absentSteps = terminal.absentSteps;
+  if (!Array.isArray(absentSteps) || !absentSteps.every(isString)) {
+    throw new Error(`${terminalPath}: absentSteps must be a list of strings`);
+  }
   // The denominator answers from this run's own battery set, so a run that measured nothing stays
   // absent after a sibling run creates the campaign case record.
   const batteryRunIds = measuredRunIds(iterations);
@@ -619,8 +650,11 @@ export function readControllerEvidence(campaign: string, selector: string): Cont
     abortClause,
     ...keyIfDefined("verifierCleanup", readVerifierCleanup(terminal.verifierCleanup)),
     abandonedRuns,
+    iterations: iterations.map((iteration) => iteration.runId),
+    writtenAt: terminalWrittenAt(terminalPath, terminal.writtenAt),
     lastIteration: iterations.at(-1)?.runId ?? null,
     batteryRunIds,
+    absentSteps: [...absentSteps],
     denominator,
     budget,
     providerResourceBudget,

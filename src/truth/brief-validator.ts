@@ -182,17 +182,6 @@ function artifactSchemaFieldFindings(brief: BriefRecord): ContractFinding[] {
       findings.push(
         fieldFinding(`artifactSchema[${i}].allowedValues`, "an array (optional)", field.allowedValues),
       );
-    } else if (field.taskConditioned !== undefined && field.taskConditioned !== true) {
-      // The literal true alone, as `fileMap` is declared: the family census reads this mark as a
-      // boundary, and a truthy string or a 1 would silently move a root the author never meant to
-      // declare material.
-      findings.push(
-        fieldFinding(
-          `artifactSchema[${i}].taskConditioned`,
-          "the literal true (optional)",
-          field.taskConditioned,
-        ),
-      );
     } else if (
       field.openMapPaths !== undefined &&
       (!Array.isArray(field.openMapPaths) ||

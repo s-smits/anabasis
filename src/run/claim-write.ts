@@ -175,7 +175,7 @@ async function probeOrNoVerdict(
   options: WriteRunClaimOptions,
   request: Parameters<BuildDeps["probeSolvability"]>[0],
 ): Promise<Awaited<ReturnType<BuildDeps["probeSolvability"]>>> {
-  const probe = options.probeSolvability ?? makeProbeSolvability(options.probe ?? {}, "readiness");
+  const probe = options.probeSolvability ?? makeProbeSolvability(options.probe ?? {});
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await probe(request);

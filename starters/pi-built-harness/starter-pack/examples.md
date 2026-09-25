@@ -15,7 +15,7 @@ parsing binary telemetry frames".
 ```text
 Families   fixed-header decode | TLV payloads | CRC-guarded frames | reassembly across buffers |
            endianness variants. Left out: frame encryption and authentication.
-Root       files {fileMap: true, taskConditioned: true}, holding the entrypoint the task names.
+Root       files {fileMap: true}, holding the entrypoint the task names.
 Checks     target-compiles     external ["cc"]; cites compile-contract (entrypoint, C17, signatures)
            decode-behaviour    external ["cc"]; compiles, then runs cell:build/driver on each
                                published scenario's stdin; cites decode-contract, scenario-contract
@@ -39,7 +39,7 @@ radial low-voltage distribution feeders".
 ```text
 Families   residential radial | industrial feeder with motor inrush | mixed feeder with PV
            backfeed | long rural feeder governed by voltage drop. Left out: harmonics, protection.
-Root       network {taskConditioned: true}: buses, lines with a catalogue conductor id and length,
+Root       network: buses, lines with a catalogue conductor id and length,
            the reported total cost. Every check reads under it.
 Checks     catalogue-conformance authored; every line names one published conductor and copies
                                  its published ampacity and impedance; cites catalogue-rule
@@ -123,7 +123,7 @@ One rostering domain runs through the brief, tasks, controls, evaluator and refe
       "decoyClasses": ["alias-swap"]
     }
   ],
-  "artifactSchema": [{"name": "assignments", "shape": "array of {staffId, shiftId} rows", "taskConditioned": true}],
+  "artifactSchema": [{"name": "assignments", "shape": "array of {staffId, shiftId} rows"}],
   "designRuleConstants": [],
   "correctnessContract": "check-program/v1"
 }
@@ -172,8 +172,7 @@ One rostering domain runs through the brief, tasks, controls, evaluator and refe
     {
       "name": "files",
       "shape": "map of safe relative POSIX paths to file contents, including the main.py entrypoint",
-      "fileMap": true,
-      "taskConditioned": true
+      "fileMap": true
     }
   ],
   "designRuleConstants": [],

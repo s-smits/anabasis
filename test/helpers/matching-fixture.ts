@@ -71,11 +71,7 @@ export const MATCHING_BRIEF: Brief = {
       decoyClasses: ["alias-swap", "ghost-entity"],
     },
   ],
-  // The binding set is the deliverable a solver must produce anew per task, so the family census
-  // moves exactly this root between siblings of one family.
-  artifactSchema: [
-    { name: "assignments", "shape": "array of {part, slot} binding objects", taskConditioned: true },
-  ],
+  artifactSchema: [{ name: "assignments", "shape": "array of {part, slot} binding objects" }],
   designRuleConstants: [
     { name: "max-slots-per-part", value: 1, unit: "slot", authority: "domain brief", citation: "s.1" },
   ],
@@ -251,7 +247,7 @@ export const MATCHING_REJECTS = [
     ],
   },
   // The hollow-control minimum requires one reject per family that empties the deliverable. Both
-  // keep the artifact structurally valid and remove only the taskConditioned "assignments" root.
+  // keep the artifact structurally valid and remove only the "assignments" root.
   {
     id: "r-hollow-single-part",
     taskId: "t1",

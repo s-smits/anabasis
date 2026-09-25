@@ -88,7 +88,6 @@ function publicArtifactField(field: ArtifactField): ArtifactField {
       field.allowedValues === undefined ? undefined : [...field.allowedValues],
     ),
     ...keyIfDefined("fileMap", field.fileMap),
-    ...keyIfDefined("taskConditioned", field.taskConditioned),
     ...keyIfDefined("openMapPaths", field.openMapPaths === undefined ? undefined : [...field.openMapPaths]),
   };
 }

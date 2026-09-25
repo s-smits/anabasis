@@ -54,15 +54,13 @@ export interface SpecimenSpec {
   /** Reference-solve source, the line `// CHECKS`, then the evaluator source. */
   verifier: string;
   slug?: string;
-  schema?: Array<{ name: string; "shape": string; taskConditioned?: true }>;
+  schema?: Array<{ name: string; "shape": string }>;
   /** Grounds the default `answer` check on this installed tool. */
   tool?: string;
   /** Replaces the default single `answer` check. */
   checks?: JsonValue[];
   /** Declared after the default `answer` check. */
   extraChecks?: JsonValue[];
-  /** The default `answer` check's artifact path, when it is not spelled `$.answer`. */
-  answerPath?: string;
   /** Replaces the two default tasks. */
   tasks?: FixtureTask[];
   /** Each default task's expected value, in task order. */
@@ -88,15 +86,12 @@ export interface Fixture {
 // ---------------------------------------------------------------------------------------------
 // Running the census.
 
-type Purpose = "adoption" | "readiness";
 export type Witnessed = Awaited<ReturnType<ReturnType<typeof makeProbeSolvability>>>;
 
-/** Counts the host subjects a census opened, and which checks each one ran. */
+/** Counts the host subjects a census opened. */
 interface EvaluateLog {
   calls: number;
   subjects: string[];
-  /** Check ids by subject id, so a transplant's narrowed check set is readable. */
-  checks: Record<string, string[]>;
 }
 
 /** Exits 0 whatever it is handed. */
@@ -270,7 +265,7 @@ export function specimen(spec: SpecimenSpec): Fixture {
 
   const answer = check({
     id: "answer",
-    roots: [spec.answerPath ?? "$.answer"],
+    roots: ["$.answer"],
     inputs: ["$.expected"],
     ...keyIfDefined("tool", spec.tool),
   });
@@ -306,11 +301,12 @@ export function testLifetime(): VerifierLifetime {
   return createVerifierLifetime({ root: scratchDir("ana-solvability-receipts-") });
 }
 
-export function probe(options: SolvabilityProbeOptions = {}, purpose: Purpose = "adoption") {
-  const run = makeProbeSolvability(
-    { verifierLifetime: testLifetime(), createSolvabilityStarter, ...options },
-    purpose,
-  );
+export function probe(options: SolvabilityProbeOptions = {}) {
+  const run = makeProbeSolvability({
+    verifierLifetime: testLifetime(),
+    createSolvabilityStarter,
+    ...options,
+  });
   return (fixture: Fixture, stages?: SolvabilityStageCache): Promise<Witnessed> =>
     run({
       slugDir: fixture.dir,
@@ -320,11 +316,8 @@ export function probe(options: SolvabilityProbeOptions = {}, purpose: Purpose = 
     });
 }
 
-export const witness = (
-  fixture: Fixture,
-  options: SolvabilityProbeOptions = {},
-  purpose: Purpose = "adoption",
-): Promise<Witnessed> => probe(options, purpose)(fixture);
+export const witness = (fixture: Fixture, options: SolvabilityProbeOptions = {}): Promise<Witnessed> =>
+  probe(options)(fixture);
 
 export const statuses = (result: Witnessed) => result.evidence?.cases.map((row) => row.status);
 export const codes = (result: Witnessed) => result.findings.map((finding) => finding.code);
@@ -346,7 +339,7 @@ export function gate(
 }
 
 export function evaluateLog(): EvaluateLog {
-  return { calls: 0, subjects: [], checks: {} };
+  return { calls: 0, subjects: [] };
 }
 
 export function countingHost(log: EvaluateLog, host = createVerifierHost()): VerifierHostHandle {
@@ -355,7 +348,6 @@ export function countingHost(log: EvaluateLog, host = createVerifierHost()): Ver
       openSubject: (subject) => {
         log.calls += 1;
         log.subjects.push(subject.subjectId);
-        log.checks[subject.subjectId] = (subject.checks ?? []).map((applicable) => applicable.id);
         return host.openSubject(subject);
       },
     },

@@ -127,7 +127,6 @@ describe("Builder start prompt", () => {
       "runtime.tools.run",
       "tasks.json",
       "check-program/v1",
-      "taskConditioned",
       "Wilson",
       MEMORY_FILE,
       SCRATCHPAD_FILE,
@@ -197,13 +196,11 @@ describe("Builder start prompt", () => {
     }
   });
 
-  /** The difficulty judgement has an instrument, so the prompt points at measuring rather than
-   *  carrying a recipe. What remains is the one direction with outcome evidence behind it: stacking
-   *  interactions inside an unchanged limit makes a battery far harder than adding one interaction
-   *  per task. The counts stay with the authoring context that knows this run's battery size
-   *  (AGENTS.md prior 10: no course is prescribed). */
+  /** The difficulty judgement has an instrument, and the battery contract every round carries is
+   *  the one surface that points at it, so the prompt carries neither that pointer nor a recipe. The
+   *  counts stay with the authoring context that knows this run's battery size (AGENTS.md prior 10:
+   *  no course is prescribed). */
   it("points at measurement for difficulty and prescribes no course", () => {
-    expect(PROMPT).toContain("measure");
     for (const recipe of [
       "run the independent per-task searches concurrently",
       "publish the limit at its best with no slack",
@@ -212,9 +209,9 @@ describe("Builder start prompt", () => {
     ]) {
       expect(PROMPT, recipe).not.toContain(recipe);
     }
-    expect(flat(renderBatteryContract(25))).toContain(
-      "Author the first battery above what you believe the harness handles",
-    );
+    const contract = flat(renderBatteryContract(25));
+    expect(contract).toContain("Author the first battery above what you believe the harness handles");
+    expect(contract).toContain("let your rehearsals rather than your belief confirm");
   });
 
   /** A Builder told that "verifier-required" is an available answer reaches for it: it settles
@@ -247,7 +244,6 @@ const STAGES = [
   "4. Control census.",
   "5. Grounding.",
   "6. F2 reference solve.",
-  "7. Family transplant.",
 ] as const;
 
 describe("STARTER.md gate map", () => {

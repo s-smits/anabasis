@@ -64,9 +64,6 @@ export type SolvabilityCensusGate = (
   stages?: SolvabilityStageCache,
 ) => Promise<CampaignFeedback[]>;
 
-/** The two codes the family-binding census emits (family-binding.ts). */
-const FAMILY_BINDING_CODES = new Set(["TASK_FAMILY_UNIVERSAL_WITNESS", "TASK_FAMILY_BINDING_UNPROVEN"]);
-
 type ToolRefusalCode =
   | "solvability-tool-missing"
   | "solvability-tool-self-authored"
@@ -149,7 +146,6 @@ export function makeSolvabilityCensusGate(
     return [
       ...censusFeedback(evidence, insensitivity),
       ...representationFeedback(representation.findings),
-      ...familyBindingFeedback(probedFindings),
       ...acceptIndependenceFeedback(independence),
       ...toolRefusals,
     ];
@@ -185,38 +181,6 @@ function representationFeedback(findings: ContractFinding[]): CampaignFeedback[]
       }),
     )
     .toArray();
-}
-
-/**
- * The family-binding census arrives on the probe's ordinary findings channel, and this routes it
- * to a packet of its own because its owner and its remedy differ from the per-case census beside
- * it. What crosses is already the aggregate the census composed — family, denominator, the marked
- * root names and the remedy — all Builder-authored public identities, with no donor or target task
- * id among them.
- *
- * The owner is `tests`, because the Builder can either author tasks that require different
- * deliverables or repair a correctness check that failed to tell two deliverables apart; the
- * declared repair scope therefore covers the correctness model as well as the tasks. This is
- * pre-adoption evidence, so the session that produced it is the normal consumer.
- *
- * A `tests` row that later reaches admitted feedback is still a product issue. The default loop
- * reopens authoring from the adopted product and lets the Builder choose the change, and accepted
- * bytes decide whether it changed only tasks, corrected evaluation or changed the build. An
- * earlier agent-only repair routing could not express that scope, because it held task changes on
- * a separate clause, which is why the recorded owner keeps the full repair scope here.
- */
-function familyBindingFeedback(findings: readonly ContractFinding[]): CampaignFeedback[] {
-  const rows = findings.filter((found) => FAMILY_BINDING_CODES.has(found.code));
-  if (rows.length === 0) return [];
-  return [
-    {
-      owner: "tests",
-      severity: "blocking",
-      claim: `family binding census: ${rows.length} family/families whose accepted deliverables were exchanged between siblings`,
-      evidence: PROTECTED_EVIDENCE,
-      findings: controllerValidatedFindings(rows),
-    },
-  ];
 }
 
 /**

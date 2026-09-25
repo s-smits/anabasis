@@ -86,7 +86,7 @@ describe("placeOnBand — one count, one zone", () => {
     [-1, 4],
     [1.5, 4],
   ])("has no placement for %s of %s — null, never a fabricated zone", (passes, n) => {
-    // The same null the interval returns. An unmeasured battery must not read as "at the limit".
+    // The same null the interval returns. An unmeasured battery must not read as "on the calibration target".
     expect(placeOnBand(passes, n, BAND)).toBeNull();
     expect(wilsonInterval(passes, n)).toBeNull();
   });
@@ -146,7 +146,9 @@ describe("placeOnBand — one count, one zone", () => {
     expect(continuation(25)).not.toContain("the first battery above");
     expect(renderBatteryContract(25)).toContain("Expect about 3 of 25 verified cases to pass");
     expect(continuation(25)).toContain("does not by itself answer a battery that found no limit");
-    expect(continuation(25)).toContain("longer wording or a re-tuned published number establishes neither");
+    expect(continuation(25)).toContain(
+      "a re-tuned published number is harder demand only where a witness of yours reaches it and a rehearsal shows your solver does not",
+    );
     // A smaller battery restates every count from its own size.
     expect(bandLandmarks(10, POLICY.climb.band)).toEqual({
       tooHardUpTo: null,
@@ -219,7 +221,7 @@ describe("decideDifficulty — the placement of the latest battery", () => {
   it.each([
     [5, "significantly too hard"],
     [90, "significantly too easy"],
-    [40, "limit"],
+    [40, "on the calibration target"],
   ])("words %s of 100 as %s", (passed, words) => {
     expect(decideDifficulty([battery({ n: 100, passed })]).rationale).toContain(words);
   });

@@ -114,27 +114,26 @@ and each is here because moving it cost something.
 9. **A tool is what the host hashed.** `toolId` resolves once at submit, under the candidate's
    `.toolchain` first and then the host PATH, and every run records its digest, source, inputs,
    exit and outcome.
-10. **Approach the limit from above.** A battery the solver mostly passes, arrived at before a
-    harder one failed, has found no limit: it proves neither that the checks are complete nor that
-    the tasks are difficult. So a first battery is deliberately overly complex, around 3 verified
-    of 25, and later batteries aim for a count inside `climb.band` — 0.20 to 0.50, which is 5 to 12
-    of 25 — because that is where the limit can actually be measured. `placeOnBand` owns the
-    reading: the Wilson interval decides whether a battery is significantly too easy or too hard,
-    and the point count decides whether it sits under, on or over the aim. **No course is
-    prescribed**, and the reason is recorded. Campaign 3fd52f9e-28 moved only its published
-    magnitudes for four consecutive batteries, which is exactly what a prescribed three-stage
-    course had told it to do. So the prompts state the counts the band implies and leave the route
-    to the Builder, and they are the sole owner of those counts. `renderBatteryContract`
-    (`src/run/climb-readout.ts`) states the first battery's count, the count that would find no
-    limit and the aim, per size; a continuation states the aim and never the first battery's count.
-    Every sentence it and the climb readout send is a line of `FRAME`
+10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted
+    witness, which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run
+    371f8f's solver beat the Builder's own reference on 5 of 6 tasks. So seek tasks beyond the
+    fixed solver's observed capability, by whatever stronger witness the Builder chooses, and locate
+    the transition by blind measurement. A first battery authored above it, about 3 verified of 25,
+    is a hypothesis rather than a prerequisite. Later batteries aim inside `climb.band`, 0.20 to
+    0.50 or 5 to 12 of 25, the calibration target: on-band means on that target, not a proved
+    limit. `placeOnBand` reads it: the Wilson interval decides too easy or too hard, the point
+    count under, on or over the aim. An unbracketed boundary is reported unlocated, not met with
+    manufactured failures. **No course is prescribed**, because campaign 3fd52f9e-28 moved only its
+    published magnitudes for four consecutive batteries, exactly as a prescribed three-stage course
+    had told it to, so the prompts alone state the band's counts and the route is the Builder's.
+    `renderBatteryContract` (`src/run/climb-readout.ts`) states the first battery's count, the
+    count that would find no limit and the aim, per size; a continuation never states the first
+    count. Every sentence it and the climb readout send is a line of `FRAME`
     (`src/run/climb-readout-frame.ts`), and `FRAME_REVISION` is recorded in
-    `difficulty-decision/v6`, so rewording a sentence creates a new recorded condition rather than
-    a tidier one. The readout states each family's solve effort, as median and most minutes against
-    `solve_minutes` and median tool calls, and scores the plan's per-task predictions against the
-    verdicts. Effort is stated as a fact and never read as difficulty, because within a battery
-    minutes and tool calls do not separate the cases that passed from those that failed. Useful
-    adopted work is retained.
+    `difficulty-decision/v6`, so rewording one is a new recorded condition. The readout states each
+    family's solve effort (median and most minutes against `solve_minutes`, median tool calls) and
+    scores the plan's per-task predictions, but never reads effort as difficulty: within a battery
+    it does not separate passes from fails. Useful adopted work is retained.
 
 ## Evidence and implementation status
 
@@ -618,21 +617,22 @@ live evidence.
     condition rather than proof of a difficulty advance.
 
     The demand comes from the request's own field, never from a rule the Builder adds to it. Five
-    runs read together on 2026-09-24 showed three ways of looking harder while measuring less:
+    runs read together on 2026-09-24 showed three ways of looking harder that nothing measured:
     - The firmware Builders invented duty and report rules the request never held, so a failing
       battery measured the solver's reading of the author's wording.
     - The truss Builders lengthened a listed set of load cases and called that a tier.
-    - Both shipped solver tools that reported every margin a check reads. That turns any task into
-      propose, read the failing state, adjust, and a tool returning the value a check compares
-      against is the reference solve under another name.
+    - Both shipped solver tools that reported every margin a check reads, so a solver could
+      propose, read the failing state and adjust. That evaluates a candidate and synthesises none.
+    None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
+    proves a task harder or easier by itself; blind measurement decides.
 
     So the prompts now say it once each: `starter-pack/difficulty-ladder.md` owns the argument,
-    `STARTER.md` owns the six-line entry, and the Builder system prompt owns the clauses. Above the
-    aim, the one move left once the tasks carry all three things of a hard row is to take the set
-    out of the task statement and out of the tools, because adding members to a listed set is
-    coverage. The same pass tied submit to the rehearsals: a Builder submits once a clear preview
-    and its own `harness_trial` results agree with the aim, and a target every outcome meets
-    predicts nothing.
+    `STARTER.md` owns the tier entry, the Builder system prompt owns the clauses, and the round's
+    own text — `roundPrompt` and the `FRAME` battery contract — owns when to submit and when a
+    limit only the reference search reaches is a difficulty: when the solver cannot run that search
+    inside its walls. The same pass tied submit to the rehearsals: a Builder submits once a clear
+    preview and its own `harness_trial` results agree with the aim, and a target every outcome
+    meets predicts nothing.
 
     Battery size has one owner, and it is not the file named after it: the numbers sit in
     `POLICY.battery` in `src/critic/policy.ts`, beside the loop ceilings, as `floor 5`,
@@ -654,7 +654,7 @@ live evidence.
     direction-bound words changed: the streak stops where the product crossed the aim, and a
     battery below the aim reads the same scores, repeated task sets, attribution and calibration
     that a battery above it reads. Until 2026-09-18 the streak counted the above-aim side alone,
-    which is the side a first battery is deliberately authored away from. A target enters the
+    the side a first battery's suggested count sits away from. A target enters the
     calibration count only when its comparator names the side the streak is on, so the Builder is
     told which comparator to declare. Sample size has one owner too, the Wilson interval at
     `climb.confidence` 0.95 two-sided, whose single quantile is `REPORTING_Z` in
@@ -727,9 +727,13 @@ live evidence.
     per cell, which had asked a 6-check, 5-family truss for 30 rejects. Build each reject from the
     known-correct accept for the same task and then change one fact; further checks may well fail
     on it (operator decision 2026-09-14). A reject that fails elsewhere but not on its named check
-    provides no discrimination evidence. `taskConditioned` roots are replayed across sibling tasks,
-    numeric boundaries get a task sitting on the value, and a root no check reads is refused before
-    measurement.
+    provides no discrimination evidence. Two siblings are refused only when every applicable check
+    reads the same public input and hidden rows in both (`tasks-duplicate-condition`,
+    `variationFindings` in `src/truth/tasks.ts`), because then no artifact can pass one and fail
+    the other. One deliverable passing every sibling is not refused: that is what a ladder of
+    tightening limits looks like, and a transplant census that refused it until 2026-09-25 made
+    Builders invent constraints to get past it. Numeric boundaries get a task sitting on the value,
+    and a root no check reads is refused before measurement.
 
 13. **Set one representation contract before tools and truth depend on it.** The public artifact
     schema, the writer tool schema, the DraftStore representation, submit compilation, the F2

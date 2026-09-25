@@ -163,16 +163,12 @@ describe("pi starter pack brief vocabulary", () => {
     for (const name of named) expect(declared.has(name ?? ""), name).toBe(true);
   });
 
-  // The fresh-candidate check refuses a corpus under the calibration floor and a brief with no
-  // material root, so the text states the one and every example schema carries the other.
-  it.concurrent("STARTER.md states the control floor the fresh-candidate check applies and marks every example material root", () => {
+  // The fresh-candidate check refuses a corpus under the calibration floor, so the text states it.
+  it.concurrent("STARTER.md states the control floor the fresh-candidate check applies", () => {
     const { minimumKnownPasses, minimumKnownFailures } = EVALUATOR_CALIBRATION_POLICY;
     expect(STARTER_DOC.replace(/\s+/g, " ")).toContain(
       `at least ${minimumKnownPasses} known-correct and ${minimumKnownFailures} deliberately incorrect rows`,
     );
-    for (const example of [workedBrief(), fileMapBrief()]) {
-      expect(example.artifactSchema.some((field) => field.taskConditioned === true)).toBe(true);
-    }
   });
 
   it.concurrent("the file-map brief contract passes validateBrief unchanged", () => {

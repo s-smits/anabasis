@@ -255,7 +255,7 @@ Starts from block 1c's `REACH-ONLY CHECKS (lane 6)` and block 1's `UNTRIPPED IN 
 The question is whether each check can fail on a shipping artifact at all. Two mechanisms recur:
 reject controls that reach only where shipping never goes, which is what `UNTRIPPED IN SHIPPING`
 counts, and a label or id a check cannot bind to the geometry it is meant to constrain, so a
-`taskConditioned` root can be replaced without moving the verdict. Read the claim's
+deliverable root can be replaced without moving the verdict. Read the claim's
 `externalCheckCoverage` (host-attested launches and reject controls per check-and-tool pair),
 `controls.json` beside `tasks.json`, the `checkReceipts` of each shipping `verifier.json`, and the
 Epoch Reviewer's `probe_check` rows, whose `probeIds` say which checks moved when one artifact path

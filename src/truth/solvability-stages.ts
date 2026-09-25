@@ -11,7 +11,6 @@
  * solve reads has moved.
  */
 import { capturedStructuredClone } from "../meta/json-runtime.ts";
-import type { ContractFinding } from "./brief.ts";
 import type { ReferenceSolveOutcome } from "./reference-solve.ts";
 
 /** How one stage's result entered this census. */
@@ -34,11 +33,10 @@ export type SolvabilityStageMemory<T> = Map<string, Remembered<T>>;
 /** Session-owned memory, one map per stage; the stage modules own the value shapes. */
 export interface SolvabilityStageCache {
   referenceSolves: SolvabilityStageMemory<ReferenceSolveOutcome>;
-  familyBindings: SolvabilityStageMemory<ContractFinding[]>;
 }
 
 export function createSolvabilityStageCache(): SolvabilityStageCache {
-  return { referenceSolves: new Map(), familyBindings: new Map() };
+  return { referenceSolves: new Map() };
 }
 
 /** Reuse the result recorded under `key`, or execute and remember it when the stage settled. Values

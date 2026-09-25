@@ -81,11 +81,6 @@ export type ArtifactField = {
   allowedValues?: Array<string | number | boolean>;
   /** Open file map: safe relative POSIX paths to text contents; control filenames stay examples. */
   fileMap?: true;
-  /** This root holds a deliverable that must depend on the task, rather than a report or other
-   * supporting field. The family census in solvability.ts exchanges these roots between tasks
-   * in the same family. Put content that must change with the answer under a marked root;
-   * leave support that belongs to the destination task under an unmarked root. */
-  taskConditioned?: true;
   /** Dotted paths under this field whose objects are keyed by data, not by a fixed field list —
    * e.g. ["busAddresses"] for a {partId: busAddress} record under this root, or ["$"] for the
    * root itself. A declared path compiles open over keys and closed over its value shape; control
@@ -243,11 +238,6 @@ export function externalChecksOf(
       kind: check.execution.evidence.kind,
     })),
   );
-}
-
-/** The artifact-schema roots marked `taskConditioned: true`: the material deliverable roots. */
-export function taskConditionedRoots(brief: Brief): string[] {
-  return brief.artifactSchema.flatMap((field) => (field.taskConditioned === true ? [field.name] : []));
 }
 
 /** A withheld fact: the author reads its classification alone. */

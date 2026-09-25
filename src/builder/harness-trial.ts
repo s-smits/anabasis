@@ -348,13 +348,14 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   // behind. A rehearsal that graded those bytes anyway would answer the round's difficulty question
   // with evidence the battery itself discards, so the verifier runs only when the candidate held
   // still, the solver accepted a submission and no non-result was typed.
+  const blocker = solverBlockerOf(solved);
   const { execution, truthOk } = verifierView(
-    candidate.stable && solved.acceptedSubmit && solved.solved.nonResult === undefined
+    candidate.stable && solved.acceptedSubmit && blocker === null
       ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
       : { status: "not-run" },
   );
   let status = solved.acceptedSubmit ? "completed" : "unaccepted";
-  if (solved.solved.nonResult !== undefined) status = "non-result";
+  if (blocker !== null) status = "non-result";
   if (execution.status === "execution-failed") status = "verifier-failed";
   if (execution.status === "non-result") status = "non-result";
   if (!candidate.stable) status = "candidate-changed";

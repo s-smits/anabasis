@@ -248,7 +248,12 @@ function expectWithinCensus(body: JsonObject): void {
  * the measured Built solver's stand-in: it reaches the registered tools through the starter the
  * trial builds, and it is never told what the hidden expectations are.
  */
-function assigningSolver(slot: string | null, submitting = true, onSolve?: () => void): Solver {
+function assigningSolver(
+  slot: string | null,
+  submitting = true,
+  onSolve?: () => void,
+  errors: string[] = [],
+): Solver {
   const solver: Solver = async (_task, toolset) => {
     onSolve?.();
     const byName = new Map(toolset.tools.map((tool) => [tool.name, tool]));
@@ -258,7 +263,7 @@ function assigningSolver(slot: string | null, submitting = true, onSolve?: () =>
     };
     if (slot !== null) await call(WRITER, { assignments: [{ part: SOLE_PART, slot }] });
     if (submitting) await call(SUBMIT, {});
-    return { turns: 1, completedTurns: 1, errors: [], toolCalls: 2, startedToolCalls: 2 };
+    return { turns: 1, completedTurns: 1, errors, toolCalls: 2, startedToolCalls: 2 };
   };
   return withSolverBuiltStarterFactory(solver, async (_slugDir, task, submission, schema) =>
     createBuiltStarter(
@@ -476,6 +481,19 @@ describe("the four facts that do cross", () => {
     expect(asRecord(body.solve)?.accepted).toBe(false);
     expect(body.truth).toEqual({ verdict: "not-run" });
     expect(body.verifier).toEqual({ status: "not-run" });
+    expectWithinCensus(body);
+  }, 60_000);
+
+  it("types a solve the provider cut off after tool work as the battery would, not as a solver miss", async () => {
+    const dir = workspace();
+    const keyError =
+      "Incorrect API key provided: sk-***. You can find your API key at https://platform.openai.com.";
+    const solver = assigningSolver(RIGHT_SLOT, false, undefined, [keyError, "turn 1 failed"]);
+    const body = modelVisible(await rehearse(round(dir, solver).tool));
+
+    expect(body.status).toBe("non-result");
+    expect(asRecord(body.solve)?.nonResult).toBe(keyError);
+    expect(body.truth).toEqual({ verdict: "not-run" });
     expectWithinCensus(body);
   }, 60_000);
 

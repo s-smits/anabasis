@@ -17,6 +17,10 @@
  * Everything else (HOME, PATH, TMPDIR, locale) stays: tests and product read those legitimately.
  * A test that needs one of the removed names sets it explicitly for its own child.
  *
+ * The opt-in switches are the exception to class 3: a live suite is enabled by an `ANA_RUN_*` name,
+ * and its model pin rides beside it. Neither holds a secret, and the credential pattern would
+ * otherwise match both, leaving the live suite unable to run under any environment.
+ *
  * The deletions govern this process and any child handed this environment. Bun gives an env-less
  * spawn a snapshot taken before this file ran, so `test/helpers/bun-spawn-sync.ts` passes `Bun.env`
  * to every child it starts; a test spawning its own child directly must do the same.
@@ -30,6 +34,8 @@ const CONTROL_ENVIRONMENT = [
   "CLICOLOR_FORCE",
 ] as const;
 
+const OPT_IN_ENVIRONMENT = ["ANA_RUN_CODEX_OAUTH_LIVE", "ANA_CODEX_OAUTH_MODEL"] as const;
+
 const CREDENTIAL_ENVIRONMENT =
   /(?:api[_-]?key|token|auth|credential|secret|password|codex|claude|anthropic|openrouter|aws|ssh)/i;
 
@@ -38,6 +44,7 @@ for (const name of Object.keys(Bun.env)) {
   // SAFETY: the control list is a literal of the names that alter isolation, test composition or
   // captured child output, and the credential pattern is the same one the generated-worker
   // boundary enforces downstream.
+  if (OPT_IN_ENVIRONMENT.some((optIn) => optIn === name)) continue;
   if (CONTROL_ENVIRONMENT.some((control) => control === name) || CREDENTIAL_ENVIRONMENT.test(name)) {
     delete Bun.env[name];
     removed.push(name);

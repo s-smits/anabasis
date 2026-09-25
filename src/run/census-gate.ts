@@ -392,8 +392,8 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 /**
  * What the author may read about a failed tool run. Two kinds of fact cross: the identities it
  * wrote itself, and what the host measured around the process — how it ended, how long it ran, how
- * many bytes it wrote, and for a `sandbox` outcome the host's own reason, which is host-authored
- * text about the request rather than anything the tool printed. Tool stdout and stderr stay
+ * many bytes it wrote, and for a `sandbox` or `protocol` outcome the host's own reason, which is
+ * host-authored text about the request or the byte counts rather than anything the tool printed. Tool stdout and stderr stay
  * protected as verifier output under rule 4.
  *
  * The cell facts in `advice` are what the Builder cannot observe from its own session, where the
@@ -406,7 +406,8 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): string {
   const subject = evidence.phase === "discrimination" ? ` on control "${evidence.subjectId}"` : "";
   const reason =
-    evidence.outcome === "sandbox" && evidence.nonResultReason !== undefined
+    (evidence.outcome === "sandbox" || evidence.outcome === "protocol") &&
+    evidence.nonResultReason !== undefined
       ? `: ${evidence.nonResultReason}`
       : "";
   const started = evidence.timedOut || evidence.exitCode !== null || evidence.signal !== null;

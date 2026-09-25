@@ -110,6 +110,21 @@ describe("a census that ends in a verifier non-result", () => {
     expect(JSON.stringify(feedback)).not.toContain(reason);
   });
 
+  it("gives the author the host's over-cap reason, which carries byte counts and no tool byte", async () => {
+    const reason =
+      'tool "truss-contract-checker" wrote 2590112 stdout bytes, over the 1048576 the host reads; print only what the check reads';
+    const { feedback } = await settle("over-cap", {
+      ...TRUSS_CRASH,
+      outcome: "protocol",
+      exitCode: 0,
+      stdoutBytes: 2_590_112,
+      nonResultReason: reason,
+    });
+    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
+    expect(feedback[0]?.findings?.[0]?.code).toBe("tool-no-result");
+    expect(feedback[0]?.findings?.[0]?.detail).toContain(`outcome "protocol": ${reason}.`);
+  });
+
   it("gives no cell advice when no process ever started", async () => {
     const { feedback } = await settle("never-started", {
       ...TRUSS_CRASH,

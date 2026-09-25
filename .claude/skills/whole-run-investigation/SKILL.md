@@ -390,7 +390,8 @@ the operator asks what to change next. A review alone authorises no source edit,
 
 A whole-run investigation ends in one adjudicated note under `notes/investigation-YYYYMMDD-<topic>.md`
 — local and ignored, so never published — beside the four-file archive `finish` scaffolded, copied
-to `notes/runs/<runName>/` when it is durable:
+to `notes/runs/<runName>/` when it is durable. Its working review directory, the `--out` of `read`
+and `launch`, goes under `notes/wri-YYYYMMDD/<run>/`. The archive's four files:
 
 - `main_synthesis.md`: adjudicated findings, limits, accounting and recommendations.
 - `luna_syntheses.md`: the accepted reports in manifest order, with only whitespace normalisation
@@ -404,7 +405,9 @@ was not there starts: what the run showed, why that is not what they would have 
 what it does now instead, with each consequential claim marked as re-checked against the bytes or
 resting on one lane's report.
 
-Before proposing a remedy, read the earlier notes for the same mechanism. A mechanism that recurs
+Before proposing a remedy, read the earlier notes for the same mechanism: this checkout's `notes/`,
+and for runs before the 2026-09-22 split, `/Users/air/Developer/harness-builder-v4/notes/`, which
+also holds `current-state.md`, `handover/` and `run-failures/`. A mechanism that recurs
 across runs has usually been found before, and its remedy is often already in the measured source
 as a standing duty of some component — a reviewer prompt line, a gate, a sensor. When that is so,
 the first question is not what new remedy to propose but whether the standing duty fired: read the

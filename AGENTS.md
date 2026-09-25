@@ -1099,8 +1099,10 @@ when or why a line was written. The same code's full history lives in the local 
 `/Users/air/Developer/harness-builder-v4` (GitHub `s-smits/harness-builder-v4`): about 4,900
 commits from July 2026 on, and the pull requests that numbers like `#978` in older notes refer to.
 It is messy — reverts, retunings and parallel branches — so read it for provenance, and use
-`git log --all --follow` or `-S '<sentence>'` there to date a line. Never build, run or deliver from
-it; its tree is not this one's.
+`git log --all --follow` or `-S '<sentence>'` there to date a line. Its ignored `notes/` holds the
+investigation notes, `current-state.md` and handovers written before the split; this checkout's
+ignored `notes/` holds everything since. Never build, run or deliver from it; its tree is not this
+one's.
 
 **Install only when dependency identity moved.** Do not add or maintain dependency patches,
 including `patchedDependencies` or edits to installed dependency source. `worktree.sh` owns root

@@ -302,10 +302,10 @@ class BuilderCampaignController {
     this.experimentProposal = undefined;
     this.submittedTree = undefined;
     const outcome = await this.checkSubmission(turn);
-    const advice = outcome.ok ? [] : this.plan.advice();
+    const advice = this.plan.advice();
     return {
       ...outcome,
-      ...keysIf(advice.length > 0, () => ({ advice })),
+      ...keysIf(!outcome.ok && advice.length > 0, () => ({ advice })),
       ...keyIfDefined("experimentProposal", this.experimentProposal),
       ...keyIfDefined("treeId", this.submittedTree),
     };

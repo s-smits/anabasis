@@ -5,9 +5,9 @@
  * result, a pass-count target, each family's ladder level and the move that puts it there, and a
  * predicted pass probability per task. The controller writes the other file, `experiment-evidence.json`
  * under the campaign directory, which the Builder can neither read nor write directly: every
- * rehearsal's aggregate verdict, what the solve spent, the bytes it solved and how the plan's
- * predictions scored against the verdicts that still describe the tasks as they stand. It sits
- * outside the workspace, so it is in no candidate diff, no fingerprint and no `scoringHash`.
+ * rehearsal's aggregate verdict, what the solve spent, the bytes it solved, the prediction the plan
+ * stated for it before its verdict arrived and how those predictions scored. It sits outside the
+ * workspace, so it is in no candidate diff, no fingerprint and no `scoringHash`.
  *
  * The plan used to be read in four places with three shapes of its own — a capture, a submission
  * parse, a recorded-authoring check and a readout — and its change prose was read against the
@@ -55,7 +55,7 @@ import { POLICY } from "../critic/policy.ts";
 import { EXPERIMENT_FILE, MEMORY_FILE } from "./builder-memory.ts";
 
 const PLAN_SCHEMA = "experiment-plan/v2";
-export const EVIDENCE_SCHEMA = "experiment-evidence/v2";
+export const EVIDENCE_SCHEMA = "experiment-evidence/v3";
 export const EVIDENCE_STEM = "experiment-evidence";
 const TEXT_MAX_BYTES = 2_000;
 const MOVE_MAX_BYTES = 300;
@@ -138,8 +138,9 @@ export type RehearsalRow = SolveEffort & {
   wallMinutes: number;
 };
 
-/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded. */
-type RecordedRehearsal = RehearsalRow & { bytes: string | null };
+/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded, and the pass
+ *  probability the plan then stated for it, which the Builder wrote before it saw the verdict. */
+type RecordedRehearsal = RehearsalRow & { bytes: string | null; predicted: number | null };
 
 export type PredictionScore = { scored: number; brier: number; expected: number; observed: number };
 
@@ -405,6 +406,17 @@ const rehearsalVerdicts = (rows: readonly RecordedRehearsal[], now: ReadonlyMap<
     ),
   );
 
+/** Each graded rehearsal against the prediction recorded with it, so a task rehearsed twice counts
+ *  twice and a prediction revised after its verdict leaves the score as it was. */
+function scoredBeforeVerdicts(rows: readonly RecordedRehearsal[]): PredictionScore | null {
+  const graded = rows.flatMap((row, index) =>
+    row.verdict === "not-run" || row.predicted === null
+      ? []
+      : [{ taskId: String(index), pass: row.predicted, verdict: row.verdict === "pass" }],
+  );
+  return predictionScore(graded, new Map(graded.map((row) => [row.taskId, row.verdict])));
+}
+
 /** Where the plan and the rehearsals disagree, as advice only: a target above the aim, which the
  *  readout would otherwise say only after a battery measured it, rehearsal passes past an at-most
  *  target, a prediction the verdict contradicts, and tasks rehearsed only at bytes since changed.
@@ -471,9 +483,8 @@ export function currentPlan(workspace: string): ExperimentSubmission | null {
 }
 
 /** The controller's evidence about the round plan: every rehearsal of the round, written through to
- *  its own `experiment-evidence*.json` in `dir` after each one, beside the prediction score the
- *  current plan earns against those still at their task's current bytes. One object per round,
- *  held by the controller and read by the plan view; a null `dir` keeps the rows in memory only. */
+ *  its own `experiment-evidence*.json` in `dir` at each read of the plan, submit included, so the file
+ *  names the plan that stood last. One object per round; a null `dir` keeps the rows in memory only. */
 export class PlanEvidence {
   private readonly rows: RecordedRehearsal[] = [];
   private path: string | undefined;
@@ -485,30 +496,25 @@ export class PlanEvidence {
 
   /** Records one rehearsal and returns the plan's advice after it. */
   record(row: RehearsalRow): string[] {
-    const now = rehearsalBytes(this.workspace);
-    this.rows.push({ ...row, bytes: now?.get(row.taskId) ?? null });
+    const predicted = currentPlan(this.workspace)?.predictions.find(({ taskId }) => taskId === row.taskId);
+    const bytes = rehearsalBytes(this.workspace)?.get(row.taskId) ?? null;
+    this.rows.push({ ...row, bytes, predicted: predicted?.pass ?? null });
+    return this.advice();
+  }
+
+  /** The advice the current plan earns against this round's rehearsals. */
+  advice(): string[] {
     const plan = currentPlan(this.workspace);
-    if (this.dir !== null) {
+    if (this.dir !== null && this.rows.length > 0) {
       mkdirSync(this.dir, { recursive: true });
       this.path ??= claimEvidenceFile(this.dir);
       writeCompleted(this.path, {
         schema: EVIDENCE_SCHEMA,
         planDigest: plan?.digest ?? null,
         rehearsals: this.rows,
-        predictionScore:
-          plan === null ? null : predictionScore(plan.predictions, rehearsalVerdicts(this.rows, now)),
+        predictionScore: scoredBeforeVerdicts(this.rows),
       });
     }
-    return plan === null ? [] : planAdvice(plan, this.rows, now);
-  }
-
-  list(): readonly RehearsalRow[] {
-    return this.rows;
-  }
-
-  /** The advice the current plan earns against this round's rehearsals. */
-  advice(): string[] {
-    const plan = currentPlan(this.workspace);
     return plan === null ? [] : planAdvice(plan, this.rows, rehearsalBytes(this.workspace));
   }
 

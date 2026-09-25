@@ -611,7 +611,7 @@ describe("the run-end numbers", () => {
   const evidence = (
     planDigest: string,
     verdicts: Array<[string, "pass" | "fail" | "not-run"]>,
-    schema = "experiment-evidence/v2",
+    schema = "experiment-evidence/v3",
   ) =>
     JSON.stringify({
       schema,

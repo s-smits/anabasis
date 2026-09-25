@@ -231,7 +231,7 @@ describe("the plan evidence", () => {
       CONTRADICTED_T1,
     ]);
     expect(JSON.parse(readFileSync(join(rehearsals, "experiment-evidence-2.json"), "utf8"))).toMatchObject({
-      schema: "experiment-evidence/v2",
+      schema: "experiment-evidence/v3",
       planDigest: hashJsonValue(PLAN),
       predictionScore: { scored: 1, brier: 0.81, expected: 0.1, observed: 1 },
     });
@@ -246,6 +246,36 @@ describe("the plan evidence", () => {
       "MEMORY.md risk: The span family may still be one call.",
       "Full files: EXPERIMENT.json, MEMORY.md and starter-pack/difficulty-ladder.md; the context tool searches them with the round's history and traces.",
     ]);
+  });
+
+  // A plan revised after its rehearsals is the one submitted, and a prediction revised to match the
+  // verdict it has already seen would score the round as better calibrated than it was.
+  it("scores each rehearsal against the prediction made before it, and names the plan read last", () => {
+    const dir = planned();
+    const rehearsals = join(workspace(), "rehearsals");
+    const file = join(rehearsals, "experiment-evidence.json");
+    const evidence = new PlanEvidence(dir, rehearsals);
+    evidence.advice();
+    expect(existsSync(rehearsals)).toBe(false);
+
+    evidence.record(pass("t1"));
+    const revised = { ...PLAN, predictions: [{ taskId: "t1", pass: 0.9 }] };
+    writeFileSync(join(dir, "EXPERIMENT.json"), JSON.stringify(revised));
+    evidence.advice();
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({
+      planDigest: hashJsonValue(revised),
+      predictionScore: { scored: 1, brier: 0.81, expected: 0.1, observed: 1 },
+    });
+
+    // A second rehearsal of t1 is its own forecast, made under the revised plan; a not-run is none.
+    evidence.record(pass("t1"));
+    evidence.record({ ...pass("t2"), verdict: "not-run" });
+    expect(JSON.parse(readFileSync(file, "utf8")).predictionScore).toEqual({
+      scored: 2,
+      brier: 0.41,
+      expected: 1,
+      observed: 2,
+    });
   });
 
   // A tightened task is a different question from the one its earlier rehearsal answered, so that

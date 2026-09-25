@@ -270,11 +270,15 @@ export function requestWithoutFiles(requested: readonly string[]): string[] {
  *  named files. Both order files slowest-first from the recorded timings and refresh them. */
 export function testCommand(requested: readonly string[], workers: string | undefined): string[] {
   requestedFiles(requested);
-  // Inside a file, four concurrent tests at once: most of them spawn child processes.
+  // Inside a file, four concurrent tests at once: most of them spawn child processes. `--parallel`
+  // isolates every file by default, and a worker isolating file after file is where Bun's
+  // spawnSync loses a child's exit and spins for good (oven-sh/bun#34069), so the workers share
+  // one global per process and no test may lean on a fresh one.
   const command = [
     runtimeProcess.execPath,
     "test",
     `--parallel=${String(workerCount(workers))}`,
+    "--no-isolate",
     ...COMMON_FLAGS,
   ];
   return requested.length === 0 ? [...command, "test"] : [...command, ...requested];
@@ -670,19 +674,11 @@ async function main(): Promise<number> {
       console.error(said[step.because]);
     }
     if (step.rerun === null) return step.exitCode;
-    // One fresh process without workers over those files, keeping the request's filters. `--parallel`
-    // implies `--isolate` and this process has no workers, so it asks for it: without it every file
-    // shares one global and module registry, and a process-lifetime cache one file fills answers
-    // another file's test.
+    // One fresh process without workers over those files, keeping the request's filters. It shares
+    // one global across them, as each parallel worker did, since isolating file after file is what
+    // makes Bun's spawnSync wedge.
     const again = await runWalled(
-      [
-        runtimeProcess.execPath,
-        "test",
-        "--isolate",
-        ...COMMON_FLAGS,
-        ...requestWithoutFiles(requested),
-        ...step.rerun,
-      ],
+      [runtimeProcess.execPath, "test", ...COMMON_FLAGS, ...requestWithoutFiles(requested), ...step.rerun],
       temporaryRoot,
       idleSeconds,
       cwd,

@@ -21,6 +21,9 @@ changes_source() {
     ':(exclude).claude/**/*.md'
 }
 
+# Git names the remote as the hook's two arguments; its URL is where a base branch's head is read.
+remote_url=${2:-}
+
 # Git hands the hook one line per ref on stdin: `<local ref> <local sha> <remote ref> <remote sha>`.
 # A push that only deletes remote refs (local sha all zeros) publishes no bytes from this tree, so
 # the gate has nothing to prove and would only hold the queue. New remote refs run the full gate:
@@ -91,6 +94,14 @@ if [ "$publishes" -eq 0 ]; then
   exit 0
 fi
 
+# The sha this push leaves a branch at, or nothing when the push does not move it. GitHub still reports
+# the old head of a branch the same push replays, so every stack check reads a moved branch here.
+moved_to() {
+  for update in $moved; do
+    case "$update" in "refs/heads/$1:"*) echo "${update##*:}" && return ;; esac
+  done
+}
+
 # A new branch is a new pull request, and a new pull request goes on the top of the one open stack:
 # it contains the head of the open pull request that no other open one is based on. The stack is
 # read from GitHub; when it cannot be read, the check says so and steps aside rather than block.
@@ -104,6 +115,8 @@ if [ -n "$new_branches" ]; then
       read -r top_pr top_branch top_sha <<EOF
 $tops
 EOF
+      top_moved=$(moved_to "$top_branch")
+      top_sha=${top_moved:-$top_sha}
       for sha in $new_branches; do
         ! git merge-base --is-ancestor "$top_sha" "$sha" 2>/dev/null || continue
         echo "pre-push: a new pull request goes on the top of the open stack, $top_pr ($top_branch), and" >&2
@@ -130,11 +143,6 @@ fi
 # base lists that one's commits too. So every pull request whose head or base this push moves is read
 # as the push would leave it. A rebase keeps a commit's author time and subject, which is how an old
 # copy is told from the commit that replaced it.
-moved_to() {
-  for update in $moved; do
-    case "$update" in "refs/heads/$1:"*) echo "${update##*:}" && return ;; esac
-  done
-}
 if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRefOid,baseRefName,baseRefOid \
   --jq '.[] | "#\(.number) \(.headRefName) \(.headRefOid) \(.baseRefName) \(.baseRefOid)"' 2>/dev/null); then
   strays=$(printf '%s\n' "$edges" | while read -r pr head head_sha base base_sha; do
@@ -142,7 +150,11 @@ if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRef
     new_base=$(moved_to "$base")
     [ -n "$new_head$new_base" ] || continue
     h=${new_head:-$head_sha}
-    b=${new_base:-$base_sha}
+    # GitHub keeps a pull request's baseRefOid at the base it had when its own head was last pushed, so
+    # a base an earlier push moved reads stale there and that base's own commits read as strays. The
+    # base branch's head on the remote is what the pull request lists its commits against.
+    b=${new_base:-$([ -z "$remote_url" ] || git ls-remote -q "$remote_url" "refs/heads/$base" 2>/dev/null | cut -f1)}
+    b=${b:-$base_sha}
     for sha in "$h" "$b"; do
       git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q origin "$sha" 2>/dev/null || true
     done

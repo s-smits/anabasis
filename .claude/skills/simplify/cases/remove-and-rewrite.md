@@ -46,17 +46,44 @@ against an empty slate, not as an edit of the old code.
 1. **Choose the files and functions from evidence.** Pick them from the latest
    recorded runs or the failing path, and name the one fact each rewrite
    carries. Save copies of the old files to the scratchpad for reference.
-2. **Delete them outright and commit the removal alone**, with the subject
-   `R`. The tree need not build at this commit.
-3. **Rebuild one category per commit**, from the fact each file carries rather
-   than from the old structure. Keep recorded data shapes readable: evidence
-   already on disk must still parse.
-4. **Prove it.** Run the owning tests, then replay recorded inputs through the
-   new code where it produces records. Report old versus new with
+2. **A test file brings its subject.** When a test file is in scope, so is
+   the production it directly touches: every function or constant it imports
+   from `src/`, `tools/` or `vendor/` whose behaviour its assertions check.
+   Utilities it only uses to set up or read (`join`, `readFileSync`,
+   `parseJsonAs`, a scratch helper) are not its subject, and neither is
+   anything it reaches only through `test/helpers/` or a deeper import.
+   Rewriting the test alone leaves the code it exists to hold exactly as it
+   was, which is the smaller half of the job: the rebuilt test is the
+   specification, and the production it touches is rebuilt against it. List
+   each subject function with its callers outside the test before deleting
+   anything; those callers keep compiling against the rebuilt signature, or
+   move with it in the same pull request.
+3. **Delete them outright and commit the removal alone**, with the subject
+   `R`: the test files, and the subject functions' bodies. A subject file
+   whose every export is in scope goes whole; otherwise the functions go and
+   the rest of the file stays. The tree need not build at this commit.
+4. **Rebuild tests first, then production.** Write each test from the
+   behaviour it pins, run it against the empty subject and watch it fail, then
+   rebuild the subject until it passes, from the fact it carries rather than
+   from the old structure. A test that passes against a deleted subject is
+   testing a helper, not the subject. Keep recorded data shapes readable:
+   evidence already on disk must still parse. Squash `R` into its rebuild
+   before anything is pushed, because every pushed commit passes alone.
+5. **Then consolidate the neighbours.** The files next to the rebuilt
+   subjects, those that import one or are imported by one, get an ordinary
+   simplify pass rather than a rewrite: merge what the rebuild made
+   duplicate, drop what its new signature made unreachable, inline a wrapper
+   that only adapted to the old shape. Name them before starting, about seven
+   for three rewritten subjects, chosen by how much of their code touches the
+   subject rather than by size.
+6. **Prove it.** Run the owning tests, every other test that imports a
+   rebuilt subject, then replay recorded inputs through the new code where it
+   produces records. Report old versus new with
    `measure.py --base <commit before R>`: concepts, production lines, new
-   functions.
+   functions, for tests and production separately. A pass whose production
+   line count did not move rewrote only the tests.
 
-Before step 2, check that nothing outside the rewrite reads the fields you
+Before step 3, check that nothing outside the rewrite reads the fields you
 intend to drop. Recorded manifests with unknown keys are fine only when the
 reader ignores extra keys; confirm that in source.
 

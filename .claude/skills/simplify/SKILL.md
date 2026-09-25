@@ -38,7 +38,7 @@ working diff. Then match the wording; it decides the procedure.
 | The operator wrote | Do this |
 | --- | --- |
 | "remove X and /simplify", "sloppy, remove and find another way" | The deletion is decided. Run the removal sweep in `cases/remove-and-rewrite.md`. Do not come back with a smaller version of X. |
-| "rewrite from scratch", "completely remove and rewrite", "overkill" | The R protocol in the same file: delete, commit `R`, rebuild. Count concepts, not lines. |
+| "rewrite from scratch", "completely remove and rewrite", "overkill" | The R protocol in the same file: delete the tests and the production they touch, commit `R`, rebuild tests then production. Count concepts, not lines. |
 | "why do we even need X?" | Answer with the owner that already covers it, or the root cause X patches. Code comes after that answer. |
 | "one layer higher", "don't let the components go this deep" | Revert the leaf edit. Find the one owner every path runs through and fix it there. |
 | "find a reference in Bun or another well-known repo" | Read how that project settles the same problem, cite the file, then fit that shape into the existing owner. |
@@ -114,9 +114,11 @@ At each rung, ask: did we fix the root cause, or patch the result?
 - A file keeps its number of names imported from `src/meta/filesystem.ts`; a
   change adds at most one, and needing more means a redesign (2026-09-15).
   `measure.py`'s budget lines list each import source's added names.
-- A rewrite from scratch deletes in a commit titled `R` and rebuilds in the
-  next commits on the same PR, so the rebuild reads against an empty slate
-  (PR #683 gate overhaul; PR #703 `1ed6d7d05` then `cbdca8c3d`).
+- A rewrite from scratch deletes in a commit titled `R` and rebuilds after
+  it, so the rebuild reads against an empty slate (PR #683 gate overhaul;
+  PR #703 `1ed6d7d05` then `cbdca8c3d`). A rewritten test takes the
+  production it directly touches with it, and `R` is squashed into its
+  rebuild before the push, because every pushed commit passes alone.
 
 ## Counts are questions
 

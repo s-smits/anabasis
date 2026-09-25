@@ -19,7 +19,7 @@ import { existsSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
-import { keysIf } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import { BUILDER_SESSION_EVIDENCE_FILE } from "./session-evidence.ts";
 import { CELL_RUNTIME_ROOT_NAMES } from "./verifier-workshop-input.ts";
 import { BUILDER_SCRATCH_ROOTS, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
@@ -385,52 +385,48 @@ export function deriveBundleContract(repoRoot: string): string[] {
   return [...contract].sort();
 }
 
-/** Checks the binding's nesting twice, once as it is spelled and once as the physical roots
- *  guardPath will later compare against, and returns the physical ones. Both are needed because
- *  they catch different mistakes: the lexical one a binding written wrong, the physical one a
- *  binding whose spelling is fine but whose links land somewhere else. The one exception to the
- *  nesting is a declared shared cell root, a microvm guest's share, which may hold `ossRoot` in
- *  place of the epoch. */
+/** Checks the binding's nesting twice: as spelled, which catches a binding written wrong, and at
+ *  the physical roots guardPath compares against, which catches one whose links land elsewhere.
+ *  Controller output may reach an isolated source worktree through a `campaigns` symlink, so the
+ *  policy binds the physical roots; binding the spelling would make every legitimate access to the
+ *  shared tree look like an escape. A declared shared cell root, a microvm guest's share, may hold
+ *  `ossRoot` in place of the epoch. */
 function nestedBindingRoots(binding: CandidateIsolationBinding) {
+  const nested = (epoch: string, iteration: string, oss: string, shared: string | undefined) =>
+    containsPath(iteration, epoch) &&
+    (containsPath(oss, epoch) || (shared !== undefined && containsPath(oss, shared)));
   const lexicalRepo = resolve(binding.repoRoot);
-  const repoRoot = realpathSync.native(binding.repoRoot);
-  const lexicalEpoch = resolve(lexicalRepo, binding.epochDir);
-  const lexicalIteration = resolve(lexicalRepo, binding.iterationDir);
-  const lexicalOss = resolve(lexicalRepo, binding.ossRoot);
-  const lexicalShared = binding.sharedCellRoot === undefined ? null : resolve(binding.sharedCellRoot);
-  const ossNested = (oss: string, epoch: string, shared: string | null) =>
-    containsPath(oss, epoch) || (shared !== null && containsPath(oss, shared));
+  const epoch = resolve(lexicalRepo, binding.epochDir);
+  const shared = binding.sharedCellRoot === undefined ? undefined : resolve(binding.sharedCellRoot);
+  const lexical = (path: string) => resolve(lexicalRepo, path);
   if (
-    !containsPath(lexicalEpoch, lexicalRepo) ||
-    !containsPath(lexicalIteration, lexicalEpoch) ||
-    !ossNested(lexicalOss, lexicalEpoch, lexicalShared)
+    !containsPath(epoch, lexicalRepo) ||
+    !nested(epoch, lexical(binding.iterationDir), lexical(binding.ossRoot), shared)
   ) {
     throw new Error(
       "candidate workspace access rules binding is not nested repoRoot ⊇ epochDir ⊇ iterationDir/ossRoot",
     );
   }
-  // Controller output may be shared into an isolated source worktree through a `campaigns`
-  // symlink, so the isolation binds to the physical roots guardPath will later see. The lexical
-  // spelling would make every legitimate access to the shared tree resolve outside the grant and
-  // look like an escape attempt.
-  const epochDir = resolveRequested(repoRoot, binding.epochDir);
-  const iterationDir = resolveRequested(repoRoot, binding.iterationDir);
-  const ossRoot = resolveRequested(repoRoot, binding.ossRoot);
-  const sharedCellRoot = lexicalShared === null ? null : realpathSync.native(lexicalShared);
-  if (!containsPath(iterationDir, epochDir) || !ossNested(ossRoot, epochDir, sharedCellRoot)) {
+  const repoRoot = realpathSync.native(binding.repoRoot);
+  const physical = {
+    repoRoot,
+    epochDir: resolveRequested(repoRoot, binding.epochDir),
+    iterationDir: resolveRequested(repoRoot, binding.iterationDir),
+    ossRoot: resolveRequested(repoRoot, binding.ossRoot),
+    sharedCellRoot: shared === undefined ? undefined : realpathSync.native(shared),
+  };
+  if (!nested(physical.epochDir, physical.iterationDir, physical.ossRoot, physical.sharedCellRoot)) {
     throw new Error("candidate workspace physical roots are not nested epochDir ⊇ iterationDir/ossRoot");
   }
-  return { repoRoot, epochDir, iterationDir, ossRoot, sharedCellRoot };
+  return physical;
 }
 
 /** Read grants for the adopted tool trees this session runs: the controller's adopted domain link,
- *  and the workspace's own `.toolchain` when it points outside this epoch. Both are written by the
- *  controller through `linkWorkspaceToolTree`, and both are needed because they can disagree — an
+ *  and the workspace's own `.toolchain` when it points outside this epoch. They can disagree — an
  *  evaluation correction keeps the tree it was seeded with while a later adoption moves the domain
- *  link, so granting the adopted domain alone leaves the correction's own `.toolchain/bun` behind a
- *  sibling deny. Each resolved tree must be `epoch-<key>/workspace/.toolchain` of this campaign, so
- *  a re-pointed link buys at worst a sibling epoch's tools, never its evaluator, its evidence or
- *  any write path. */
+ *  link — so granting one alone leaves the other behind a sibling deny. Each must resolve to
+ *  `epoch-<key>/workspace/.toolchain` of this campaign, so a re-pointed link buys at worst a
+ *  sibling epoch's tools, never its evaluator, its evidence or any write path. */
 function adoptedToolReadRules(
   repoRoot: string,
   slug: string,
@@ -438,21 +434,23 @@ function adoptedToolReadRules(
   iterationDir: string,
 ): IsolationRule[] {
   const inCampaign = (path: string) => {
-    const parts = relative(dirname(epochDir), path).split(sep);
+    const [epoch, workspace, tree, ...rest] = relative(dirname(epochDir), path).split(sep);
     return (
-      parts.length === 3 &&
-      parts[0]?.startsWith("epoch-") === true &&
-      parts[1] === WORKSPACE_DIR &&
-      parts[2] === WORKSPACE_TOOL_TREE
+      rest.length === 0 &&
+      epoch?.startsWith("epoch-") === true &&
+      workspace === WORKSPACE_DIR &&
+      tree === WORKSPACE_TOOL_TREE
     );
   };
-  const adopted = bundleSnapshotToolTree(selectedProductDir(repoRoot, slug));
   const own = bundleSnapshotToolTree(iterationDir);
-  // The workspace's own tree is already inside the candidate-tree grant unless it is a link out.
-  const trees = [adopted, own === null || containsPath(own, epochDir) ? null : own].filter(
-    (path): path is string => path !== null && inCampaign(path),
+  // The workspace's own tree is already inside the candidate-tree grant unless it links out.
+  const trees = new Set(
+    [
+      bundleSnapshotToolTree(selectedProductDir(repoRoot, slug)),
+      own !== null && containsPath(own, epochDir) ? null : own,
+    ].filter((path): path is string => path !== null && inCampaign(path)),
   );
-  return [...new Set(trees)].map((path) => ({ kind: "subpath", path, id: "adopted-toolchain" }));
+  return [...trees].map((path) => ({ kind: "subpath", path, id: "adopted-toolchain" }));
 }
 
 export function deriveCandidateIsolation(
@@ -462,57 +460,47 @@ export function deriveCandidateIsolation(
   const { repoRoot, epochDir, iterationDir, ossRoot, sharedCellRoot } = nestedBindingRoots(binding);
   const sub = (path: string, id: string): IsolationRule => ({ kind: "subpath", path, id });
   const lit = (path: string, id: string): IsolationRule => ({ kind: "literal", path, id });
+  const repo = (path: string) => join(repoRoot, path);
   const author = purpose === "author";
-  const bundleContract = author ? deriveBundleContract(repoRoot) : [];
+  const workshop = [sub(ossRoot, "verifier-workshop")];
   const read: IsolationRule[] = author
     ? [
         sub(iterationDir, "candidate-tree"),
         lit(join(epochDir, BACKENDS_FILE), "session-contract"),
         lit(join(epochDir, BUILDER_SESSION_EVIDENCE_FILE), "session-contract"),
         ...adoptedToolReadRules(repoRoot, binding.slug, epochDir, iterationDir),
-        ...AUTHORING_BARRELS.map(({ name }) => sub(join(repoRoot, "vendor", name), "vendor-bundle")),
-        ...bundleContract.map((path) => lit(path, "bundle-contract")),
-        ...AGENT_AUTHORING_INTERFACE.map((path) => sub(join(repoRoot, path), "agent-authoring-interface")),
-        sub(join(repoRoot, "starters"), "starters"),
-        sub(join(repoRoot, "node_modules"), "toolchain"),
+        ...AUTHORING_BARRELS.map(({ name }) => sub(repo(`vendor/${name}`), "vendor-bundle")),
+        ...deriveBundleContract(repoRoot).map((path) => lit(path, "bundle-contract")),
+        ...AGENT_AUTHORING_INTERFACE.map((path) => sub(repo(path), "agent-authoring-interface")),
+        sub(repo("starters"), "starters"),
+        sub(repo("node_modules"), "toolchain"),
         // The Builder runs `node` to test what it authored, and this profile denies the home
-        // directory where fnm, nvm and volta install it. The grant is the runtime's own prefix —
-        // its bin, lib and bundled modules — and never the home directory that encloses it.
+        // directory where fnm, nvm and volta install it. The grant is the runtime's own prefix,
+        // never the home directory that encloses it.
         ...nodeRuntimeReadRoots().map((root) => sub(root, "node-runtime")),
-        lit(join(repoRoot, "package.json"), "toolchain"),
-        lit(join(repoRoot, "bun.lock"), "toolchain"),
-        lit(join(repoRoot, ".bun-version"), "toolchain"),
-        lit(join(repoRoot, "biome.json"), "toolchain"),
-        lit(join(repoRoot, "README.md"), "docs"),
-        lit(join(repoRoot, "AGENTS.md"), "docs"),
-        lit(join(repoRoot, "CLAUDE.md"), "docs"),
+        ...["package.json", "bun.lock", ".bun-version", "biome.json"].map((file) =>
+          lit(repo(file), "toolchain"),
+        ),
+        ...["README.md", "AGENTS.md", "CLAUDE.md"].map((file) => lit(repo(file), "docs")),
       ]
-    : [sub(ossRoot, "verifier-workshop")];
-  const write: IsolationRule[] = author
-    ? [sub(iterationDir, "iteration-write")]
-    : [sub(ossRoot, "verifier-workshop")];
-  const hostScratchRoots = BUILDER_SCRATCH_ROOTS;
+    : workshop;
+  const write = author ? [sub(iterationDir, "iteration-write")] : workshop;
   const identity = {
     schema: CANDIDATE_ISOLATION_SCHEMA,
     repoRoot,
     epochDir,
-    // Declared only when it is set, so every binding without a shared cell keeps the exact digest
-    // it had before the field existed.
-    ...keysIf(sharedCellRoot !== null, () => ({
-      sharedCellRoot: /* SAFETY: keysIf evaluates only when the null check held. */ sharedCellRoot as string,
-    })),
+    // Left out when unset, so every binding without a shared cell keeps the digest it always had.
+    ...keyIfDefined("sharedCellRoot", sharedCellRoot),
     allow: { read, write, exec: write },
     measuredNamePrefixes: MEASURED_EVIDENCE_NAME_PREFIXES,
     network: author ? ("allow" as const) : ("deny" as const),
     profile: author ? ("candidate" as const) : ("isolated-workshop" as const),
-    // Both cells write the host scratch trees, because that is the only route a Builder has to
-    // install anything: the authoring session downloads a toolchain there and the offline workshop
-    // unpacks it, which is how tens of megabytes of a scientific library land where the verifier
-    // can read them. Gating the workshop's share of it behind a flag left the default run unable
-    // to install at all.
+    // Both cells write the host scratch trees, because that is the Builder's only route to install
+    // anything: the authoring session downloads a toolchain there and the offline workshop unpacks
+    // it where the verifier can read it.
     scratchWriteRoots: author
-      ? hostScratchRoots
-      : [join(ossRoot, CELL_RUNTIME_ROOT_NAMES.tmp), ...hostScratchRoots],
+      ? BUILDER_SCRATCH_ROOTS
+      : [join(ossRoot, CELL_RUNTIME_ROOT_NAMES.tmp), ...BUILDER_SCRATCH_ROOTS],
     readDenyRoots: author ? [ossRoot] : [],
     writeDenyRoots: author ? WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)) : [],
     cellRuntimeRoots: author ? [] : Object.values(CELL_RUNTIME_ROOT_NAMES).map((name) => join(ossRoot, name)),
@@ -524,88 +512,81 @@ export function policyReadGrant(policy: CandidateAccessPolicy): ProjectedReadGra
   return { allow: policy.allow.read.map((rule) => rule.path) };
 }
 
-/** The physical location of a requested path: resolve the deepest ancestor that exists, then
- *  append whatever is left. Resolving the whole path would fail for a file about to be created,
- *  and resolving nothing would judge a symlink planted inside the candidate tree at its name
- *  instead of at its target, which is the way out of the grant. */
+/** The physical location of a requested path: resolve the deepest ancestor that exists, then append
+ *  the rest. Resolving the whole path would fail for a file about to be created, and resolving
+ *  nothing would judge a symlink planted in the candidate tree at its name instead of its target,
+ *  which is the way out of the grant. */
 function resolveRequested(repoRoot: string, requested: string): string {
   if (requested.includes("\0")) throw new Error("path contains a NUL byte");
-  const lexical = isAbsolute(requested) ? resolve(requested) : resolve(repoRoot, requested);
+  const lexical = resolve(repoRoot, requested);
   let probe = lexical;
   while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe);
   return resolve(realpathSync.native(probe), relative(probe, lexical));
 }
 
 /** The in-process path check every capability runs before the OS enforces the same policy. The
- *  order of the checks is the policy: the cross-cell and module-shadow denies come first because
- *  they must survive the grants, then the credential and `.git` names, then measured evidence, and
- *  only then the allow rules. A deny running after the allows would never be reached for a path
- *  inside a granted subtree, which is exactly where the dangerous ones sit. */
+ *  order of the checks is the policy: the cross-cell and module-shadow denies first, because they
+ *  must survive the grants, then credentials and `.git`, then measured evidence, and only then the
+ *  allow rules. A deny after the allows would never be reached inside a granted subtree, which is
+ *  exactly where the dangerous paths sit. */
 export function guardPath(
   policy: CandidateAccessPolicy,
   capability: string,
   mode: IsolationMode,
   requested: string,
 ): GuardDecision {
+  const deny = (resolved: string | null, reason: string, detail: string): GuardDecision => ({
+    decision: "deny",
+    resolved,
+    reason: `deny/${reason}`,
+    message: `${capability} refused: ${detail}`,
+  });
   let resolved: string;
   try {
     resolved = resolveRequested(policy.repoRoot, requested);
   } catch (error) {
-    const detail = errorMessage(error);
-    return {
-      decision: "deny",
-      resolved: null,
-      reason: "deny/unresolvable",
-      message: `${capability} refused: ${detail}`,
-    };
+    return deny(null, "unresolvable", errorMessage(error));
   }
-  const deny = (reason: string, message: string): GuardDecision => ({
-    decision: "deny",
-    resolved,
-    reason,
-    message,
-  });
-  if (mode !== "write" && policy.readDenyRoots.some((root) => containsPath(resolved, root))) {
+  const under = (roots: readonly string[]) => roots.some((root) => containsPath(resolved, root));
+  if (mode !== "write" && under(policy.readDenyRoots)) {
+    return deny(resolved, "purpose-isolation", `${requested} belongs to another capability's isolated cell`);
+  }
+  if (mode === "write" && under(policy.writeDenyRoots)) {
     return deny(
-      "deny/purpose-isolation",
-      `${capability} refused: ${requested} belongs to another capability's isolated cell`,
+      resolved,
+      "module-shadow",
+      `${requested} would shadow the vendor @ana modules inside the workspace`,
     );
   }
-  if (mode === "write" && policy.writeDenyRoots.some((root) => containsPath(resolved, root))) {
+  const rel = relative(policy.repoRoot, resolved).split(sep).join("/");
+  const inRepo = !rel.startsWith("..") && !isAbsolute(rel);
+  if (inRepo && BUILDER_SECRET_PATH_PATTERNS.some((pattern) => pattern.test(rel))) {
+    return deny(resolved, "secret", `${rel} is secret or credential material`);
+  }
+  if (inRepo && (rel === ".git" || rel.startsWith(".git/"))) {
+    return deny(resolved, "git-history", "repository history is not a build input");
+  }
+  const measured = containsPath(resolved, policy.epochDir)
+    ? relative(policy.epochDir, resolved)
+        .split(sep)
+        .find((segment) => policy.measuredNamePrefixes.some((prefix) => segment.startsWith(prefix)))
+    : undefined;
+  if (measured !== undefined) {
     return deny(
-      "deny/module-shadow",
-      `${capability} refused: ${requested} would shadow the vendor @ana modules inside the workspace`,
+      resolved,
+      "measured",
+      `${measured} is measured evidence; measurement reaches the Builder only through projected feedback, never by file read`,
     );
   }
-  const rel = relative(policy.repoRoot, resolved);
-  if (!rel.startsWith("..") && !isAbsolute(rel)) {
-    const posix = rel.split(sep).join("/");
-    if (BUILDER_SECRET_PATH_PATTERNS.some((pattern) => pattern.test(posix))) {
-      return deny("deny/secret", `${capability} refused: ${posix} is secret or credential material`);
-    }
-    if (posix === ".git" || posix.startsWith(".git/")) {
-      return deny("deny/git-history", `${capability} refused: repository history is not a build input`);
-    }
-  }
-  if (containsPath(resolved, policy.epochDir)) {
-    const measuredSegment = relative(policy.epochDir, resolved)
-      .split(sep)
-      .find((segment) => policy.measuredNamePrefixes.some((p) => segment.startsWith(p)));
-    if (measuredSegment !== undefined) {
-      return deny(
-        "deny/measured",
-        `${capability} refused: ${measuredSegment} is a measured evidence; measurement reaches the Builder only through projected feedback, never by file read`,
-      );
-    }
-  }
-  for (const rule of policy.allow[mode]) {
-    if (rule.kind === "literal" ? resolved === rule.path : containsPath(resolved, rule.path)) {
-      return { decision: "allow", resolved, reason: `allow/${rule.id}` };
-    }
-  }
-  const roots = [...new Set(policy.allow[mode].map((rule) => rule.id))].join(", ");
+  const rules = policy.allow[mode];
+  const rule = rules.find((r) =>
+    r.kind === "literal" ? resolved === r.path : containsPath(resolved, r.path),
+  );
+  if (rule !== undefined) return { decision: "allow", resolved, reason: `allow/${rule.id}` };
+  const interfaces = [...new Set(rules.map((r) => r.id))].join(", ");
   return deny(
-    "deny/outside-allow",
-    `${capability} (${mode}) refused: ${requested} is outside the candidate workspace access rules; allowed interfaces: ${roots}`,
+    resolved,
+    "outside-allow",
+    `${mode} of ${requested} is outside the candidate workspace access rules; allowed interfaces: ${interfaces}`,
   );
 }

@@ -363,7 +363,6 @@ async function prepareReferenceSolve(
   let policy: GeneratedWorkerPolicy;
   try {
     policy = generatedWorkerPolicy(bundle, undefined, executable);
-    assertGeneratedWorkerPolicyUnchanged(policy);
   } catch (cause) {
     throw new ReferenceSolveProcessFailure("reference-solve-host", "environment", errorMessage(cause));
   }

@@ -79,6 +79,22 @@ export interface GeneratedWorkerPolicy {
   runtimeEnvironment: Record<string, string>;
 }
 
+/** The paths a Seatbelt profile names. The identity is built from placeholders, so it describes the
+ *  policy rather than the temporary directory this run's bundle happened to land in. */
+interface ProfilePaths {
+  bundleAncestors: readonly string[];
+  bundleDirectory: string;
+  bundleFile: string;
+  executable: string;
+}
+
+const PLACEHOLDER_PATHS: ProfilePaths = {
+  bundleAncestors: ["<generated-bundle-ancestor>"],
+  bundleDirectory: "<generated-bundle-directory>",
+  bundleFile: "<generated-bundle-file>",
+  executable: "<bun-executable>",
+};
+
 /** Runtime module namespaces are refused exactly as Node builtins are, because they reach the same
  *  place by another door: `bun:ffi` loads libc and calls posix_spawn directly, which is a process
  *  launch that no JavaScript restriction sees, and `bun` exposes the runtime's own launch methods. */
@@ -138,40 +154,41 @@ function inside(root: string, path: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
-function policyProfile(
-  bundleFile: string,
-  runtimeClosure: readonly ExactReadSnapshot[],
-  paths: "actual" | "placeholder",
-  runtimeExecutable: string,
-): string {
+function policyProfile(paths: ProfilePaths, runtimeClosure: readonly ExactReadSnapshot[]): string {
   const metadataPaths = [
-    ...(paths === "placeholder" ? ["<generated-bundle-ancestor>"] : ancestorDirectories(bundleFile)),
+    ...paths.bundleAncestors,
     ...runtimeClosure.flatMap(({ path }) => ancestorDirectories(path)),
     ...exactSymlinkMetadataPaths(runtimeClosure),
-  ]
-    .filter((path) => path !== "/")
-    .filter((path, index, all) => all.indexOf(path) === index)
-    .sort();
-  const readable = [
-    paths === "placeholder" ? "<generated-bundle-directory>" : dirname(bundleFile),
-    paths === "placeholder" ? "<generated-bundle-file>" : bundleFile,
-    ...exactFileReadPaths(runtimeClosure),
-  ];
+  ].filter((path) => path !== "/");
   return seatbeltProfile({
     shared: {
       // Reads are exact literals, so a sibling in the same directory stays out.
       ...GENERATED_WORKER_POSTURE,
-      metadata: { literals: metadataPaths },
-      reads: { literals: readable },
+      metadata: { literals: [...new Set(metadataPaths)].sort() },
+      reads: { literals: [paths.bundleDirectory, paths.bundleFile, ...exactFileReadPaths(runtimeClosure)] },
       writes: { literals: ["/dev/null"] },
     },
     seatbelt: {
       finalRules: [
         "(deny process-exec)",
-        `(allow process-exec (literal ${capturedJsonStringify(paths === "placeholder" ? "<bun-executable>" : runtimeExecutable)}))`,
+        `(allow process-exec (literal ${capturedJsonStringify(paths.executable)}))`,
       ],
     },
   });
+}
+
+/** Darwin needs the exact Mach-O images named, because a deny-default Seatbelt profile grants reads
+ *  by literal path. Bubblewrap's baseline already binds the Bun installation read-only, so there the
+ *  executable is snapshotted only to detect drift between construction and the confined run. */
+function attestRuntimeClosure(isLinux: boolean, runtimeExecutable: string): ExactReadSnapshot[] {
+  try {
+    return snapshotExactReads(isLinux ? [runtimeExecutable] : darwinRuntimeReadPaths(runtimeExecutable));
+  } catch {
+    throw new GeneratedToolWorkerNonResult(
+      "sandbox",
+      "generated-tool worker runtime closure could not be attested",
+    );
+  }
 }
 
 export function generatedWorkerPolicy(
@@ -186,25 +203,15 @@ export function generatedWorkerPolicy(
     );
   }
   const isLinux = support.mechanismId === LINUX_BWRAP_ID;
-  let runtimeClosure: ExactReadSnapshot[];
-  try {
-    // Darwin needs the exact Mach-O images named, because a deny-default Seatbelt profile grants
-    // reads by literal path. Bubblewrap's baseline already binds the Bun installation read-only, so
-    // the executable is snapshotted there only to detect drift between policy construction and the
-    // confined run — rediscovering the same runtime through a second closure would bind what the
-    // baseline has already bound.
-    runtimeClosure = snapshotExactReads(
-      isLinux ? [runtimeExecutable] : darwinRuntimeReadPaths(runtimeExecutable),
-    );
-  } catch {
-    throw new GeneratedToolWorkerNonResult(
-      "sandbox",
-      "generated-tool worker runtime closure could not be attested",
-    );
-  }
-  const profile = isLinux
-    ? LINUX_POLICY_DESCRIPTOR
-    : policyProfile(bundle.file, runtimeClosure, "actual", runtimeExecutable);
+  const runtimeClosure = attestRuntimeClosure(isLinux, runtimeExecutable);
+  const profileFor = (paths: ProfilePaths) =>
+    isLinux ? LINUX_POLICY_DESCRIPTOR : policyProfile(paths, runtimeClosure);
+  const profile = profileFor({
+    bundleAncestors: ancestorDirectories(bundle.file),
+    bundleDirectory: dirname(bundle.file),
+    bundleFile: bundle.file,
+    executable: runtimeExecutable,
+  });
   const runtimeEnvironment: Record<string, string> = {};
   const launchArgs = isLinux
     ? [
@@ -213,15 +220,10 @@ export function generatedWorkerPolicy(
         "--remount-ro",
         "/",
         ...bwrapEnvironmentArgs(runtimeEnvironment),
-        runtimeExecutable,
-        ...BUN_FLAGS,
       ]
-    : ["-p", profile, runtimeExecutable, ...BUN_FLAGS];
-  // The same mechanism fields on both hosts. Platform-specific key names were a presentation detail
-  // rather than a distinct security contract, and one object keeps the Darwin and Linux branches
-  // from drifting apart field by field while the profile value still records what each mechanism
-  // actually enforces. The bundle path is a placeholder here, so the identity describes the policy
-  // and not the temporary directory this run happened to get.
+    : ["-p", profile];
+  // One set of mechanism fields on both hosts, so the Darwin and Linux branches cannot drift apart
+  // field by field while the profile still records what each mechanism enforces.
   const identity = hashJsonBytes({
     schema: POLICY_SCHEMA,
     mechanism: {
@@ -232,20 +234,23 @@ export function generatedWorkerPolicy(
     bun: { executable: runtimeExecutable, closure: runtimeClosure },
     environment: runtimeEnvironment,
     bunArguments: BUN_FLAGS,
-    profile: isLinux
-      ? LINUX_POLICY_DESCRIPTOR
-      : policyProfile(bundle.file, runtimeClosure, "placeholder", runtimeExecutable),
+    profile: profileFor(PLACEHOLDER_PATHS),
   });
-  return {
+  const policy = {
     mechanismId: support.mechanismId,
     executable: support.mechanismPath,
-    launchArgs,
+    launchArgs: [...launchArgs, runtimeExecutable, ...BUN_FLAGS],
     profile,
     hash: hashJsonBytes({ identity, profile, bundleFile: bundle.file, bundleDigest: bundle.digest }),
     identity,
     runtimeClosure,
     runtimeEnvironment,
   };
+  // The real child proves the boundary once it runs; what stays unproved is the runtime it is about
+  // to be spawned from, so a closure that changed while the policy was built is refused here, before
+  // any caller spawns from it.
+  assertGeneratedWorkerPolicyUnchanged(policy);
+  return policy;
 }
 
 export function assertGeneratedWorkerPolicyUnchanged(policy: GeneratedWorkerPolicy): void {

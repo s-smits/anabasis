@@ -172,13 +172,9 @@ export class WorkerClient {
     private readonly requestTimeoutMs = TIMEOUT_MS,
     private readonly readyTimeoutMs = TIMEOUT_MS,
   ) {
+    // The real child proves the boundary: it installs the execution wall, runs the isolation probes
+    // and only then loads generated code, and its `ready` frame carries the probe this client checks.
     this.policy = generatedWorkerPolicy(bundle, support);
-    // The real child is what proves the boundary: it installs the execution wall, runs the isolation
-    // probes and only then loads generated code, and its `ready` frame carries the probe this
-    // client checks. What that leaves unproved is the runtime the child is about to be spawned
-    // from, so this snapshot check rejects a changed runtime closure before the spawn rather than
-    // discovering it afterwards.
-    assertGeneratedWorkerPolicyUnchanged(this.policy);
     this.networkCanary = Bun.listen({
       hostname: "127.0.0.1",
       port: 0,

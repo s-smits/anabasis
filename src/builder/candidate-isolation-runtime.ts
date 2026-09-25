@@ -440,28 +440,38 @@ export function decideGuardedPaths(
 ): IsolatedPathDecision[] {
   const decisions = request.paths.map((requested) => ({
     requested,
-    decision: guardPath(policy, request.capability, request.mode, requested),
+    decision: guardAndRecord(policy, record, request.capability, request.mode, requested),
   }));
-  const denied = decisions.filter((entry) => entry.decision.decision === "deny");
-  if (denied.length === 0) return decisions;
-  for (const entry of denied) {
+  const refusal = decisions.find((entry) => entry.decision.decision === "deny")?.decision;
+  if (refusal?.decision === "deny") throw new CandidateIsolationRefusal(refusal.message);
+  return decisions;
+}
+
+/** Decides one path, recording a refusal as a `guard-denied` row, because no process ran for it and
+ *  nothing else will. */
+export function guardAndRecord(
+  policy: CandidateAccessPolicy,
+  record: PathRecord,
+  capability: string,
+  mode: IsolationMode,
+  requested: string,
+): IsolatedPathDecision["decision"] {
+  const decision = guardPath(policy, capability, mode, requested);
+  if (decision.decision === "deny") {
     record.append({
-      capability: request.capability,
-      mode: request.mode,
+      capability,
+      mode,
       policyDigest: policy.digest,
       profileDigest: null,
-      requested: entry.requested,
-      resolved: entry.decision.resolved,
+      requested,
+      resolved: decision.resolved,
       decision: "deny",
-      reason: entry.decision.reason,
+      reason: decision.reason,
       enforcement: "guard-denied",
       bytes: null,
     });
   }
-  const refusal = denied[0];
-  throw new CandidateIsolationRefusal(
-    refusal?.decision.decision === "deny" ? refusal.decision.message : "unreachable",
-  );
+  return decision;
 }
 
 /** Records the allowed paths of a request that ran. It is exported beside `decideGuardedPaths` for

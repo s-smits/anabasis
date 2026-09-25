@@ -212,8 +212,11 @@ describe("review coverage tied to recorded execution", () => {
       join(root, "correctness-model/tasks.json"),
       JSON.stringify([{ taskId: "private-task", publicInput: { count: 1 } }]),
     );
-    for (const phase of ["authoring", "measured", "partial-draft"] as const) {
+    // The starter seeds the task file as `[]`: a draft that has written no task yet is complete
+    // coverage, where an unreadable one is not.
+    for (const phase of ["authoring", "measured", "partial-draft", "seed"] as const) {
       if (phase === "partial-draft") writeFileSync(join(root, "correctness-model/tasks.json"), "{");
+      if (phase === "seed") writeFileSync(join(root, "correctness-model/tasks.json"), "[]");
       const result = await runEpochReview({
         repoRoot: root,
         slug: "bounds",
@@ -243,7 +246,7 @@ describe("review coverage tied to recorded execution", () => {
           return { pin: reviewSlotPin(REVIEW), text: "Source inspection only.", error: null };
         },
       });
-      expect(result.status).toBe(phase === "authoring" ? "completed" : "incomplete");
+      expect(result.status).toBe(phase === "authoring" || phase === "seed" ? "completed" : "incomplete");
       if (phase === "measured") {
         expect(result.verifier?.unavailable).toContain("unavailable");
       } else {

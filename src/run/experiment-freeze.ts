@@ -103,15 +103,27 @@ type FreezeFingerprint = {
   taskSetHash: string | null;
 };
 
-function capturedBattery(dir: string, requirement: string) {
+/** The task file's rows, bare or under `tasks`, or null when it holds no task array at all. */
+function batteryRows(dir: string) {
   const document = parseJsonAs<JsonValue>(readFileSync(join(dir, TASKS_FILE), "utf8"));
   const rows = Array.isArray(document)
     ? document
     : isRecord(document) && Array.isArray(document.tasks)
       ? document.tasks
       : null;
+  return { document, rows };
+}
+
+function capturedBattery(dir: string, requirement: string) {
+  const { document, rows } = batteryRows(dir);
   if (rows === null || rows.length === 0) throw new Error(requirement);
   return { document, rows };
+}
+
+/** An authoring draft's task rows. The starter seeds the task file as an empty array, so a draft
+ *  that has written no task yet holds none rather than a defective battery. */
+export function draftTaskRows(dir: string): ReturnType<typeof publicTaskRows> {
+  return batteryRows(dir).rows?.length === 0 ? [] : publicTaskRows(dir);
 }
 
 /** Each task's id, family and public input, with its private expectation rows for scoring

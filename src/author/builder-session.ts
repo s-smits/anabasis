@@ -419,7 +419,8 @@ async function runRoundTurns(
   let turns = 0;
   let prompt = firstPrompt;
   const cap = maxTurns ?? Number.POSITIVE_INFINITY;
-  while (turns < cap && state.accepted === null && !state.terminal) {
+  const open = (): boolean => turns < cap && state.accepted === null && !state.terminal;
+  while (open()) {
     const next = await runSessionTurn({
       session,
       state,
@@ -445,7 +446,9 @@ async function runRoundTurns(
     if (next === null) break;
     turns += 1;
     prompt = next.prompt;
-    recorder.prompt(prompt);
+    // Recorded only when a turn will carry it: the continuation composed after a settling turn is
+    // never sent, and a prompt row stands for text the Builder read.
+    if (open()) recorder.prompt(prompt);
   }
   return turns;
 }

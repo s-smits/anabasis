@@ -232,6 +232,8 @@ describe("the record a round settles", () => {
       ["compaction", 1],
       ["prompt", 2],
     ]);
+    // The accepting turn ends the round, so the continuation composed after it was never sent.
+    expect(prose.filter((row) => row.kind === "prompt").map((row) => row.turn)).toEqual([1, 2]);
     expect(prose.slice(2, 4).map((row) => row.text)).toEqual([
       "tokensBefore=90000 compacted=true",
       "tokensBefore=80000 compacted=true\n\nSummary: the checks pass.",

@@ -65,7 +65,7 @@ import {
   reviewInventory,
   reviewVerifierEvidence,
 } from "./review-sources.ts";
-import { publicTaskRows } from "../run/experiment-freeze.ts";
+import { draftTaskRows } from "../run/experiment-freeze.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
   type EpochReviewEvidence,
@@ -617,12 +617,12 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
-  // An unreadable task file is recorded as a missing core file, which keeps coverage incomplete
-  // rather than silently leaving every task id nameable.
+  // A draft with no task yet names none. An unreadable task file is recorded as a missing core
+  // file, which keeps coverage incomplete rather than silently leaving every task id nameable.
   let taskIds: string[] = input.analysis?.cases.map((row) => row.taskId) ?? [];
   if (input.analysis === null) {
     try {
-      taskIds = publicTaskRows(root).map((row) => row.taskId);
+      taskIds = draftTaskRows(root).map((row) => row.taskId);
     } catch {
       inventory.missing.push(TASKS_FILE);
     }

@@ -98,7 +98,7 @@ describe("the opening a round composes", () => {
           }),
       },
     );
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(turns).toBe(3);
   });
 
@@ -286,7 +286,7 @@ describe("the admission a repair earns", () => {
       },
     );
     expect(gateCalls).toBe(2);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(outcome.iterations[1]).toMatchObject({
       workspaceChange: {
         baseCommit: outcome.iterations[0]?.workspaceChange?.baseCommit,

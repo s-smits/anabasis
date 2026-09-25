@@ -127,10 +127,6 @@ function feedbackForAdoptedTree(
   return null;
 }
 
-function held(digest: string, reason: AdmissionLineage["reason"]): AdmissionRead {
-  return { priorEvidence: null, lineage: { digest, reason } };
-}
-
 function admissionPayload(root: string): string | null {
   if (!controllerLedgerExists(root)) return null;
   using ledger = ControllerLedger.open(root);
@@ -161,9 +157,9 @@ export function readAdmission(repoRoot: string, slug: string): AdmissionRead {
     return NOTHING;
   }
   const feedback = feedbackForAdoptedTree(repoRoot, slug, admission);
-  if (feedback === null) return held(admission.digest, "evaluation-identity-unadopted");
-  if (admission.feedback.length === 0) return held(admission.digest, "no-feedback");
-  if (feedback.length === 0 || attemptsConsumed(admission)) return held(admission.digest, "agenda-consumed");
+  if (feedback === null || feedback.length === 0 || attemptsConsumed(admission)) {
+    return { priorEvidence: null, lineage: { digest: admission.digest } };
+  }
   return { priorEvidence: { digest: admission.digest, feedback, kind: "admitted-packet" }, lineage: null };
 }
 

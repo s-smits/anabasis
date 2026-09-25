@@ -102,7 +102,9 @@ function campaign(prefix: string = "outcome-") {
         budget: BUDGET,
         epoch: EPOCH,
         openingDigest: hashJsonValue(opening),
-        iterations: [{ runId: RUN, terminal: null, buildClauses: [], measured: wasMeasured }],
+        iterations: [
+          { runId: RUN, terminal: null, buildClause: null, buildDetail: null, measured: wasMeasured },
+        ],
         absentSteps: [],
         outcome: "completed",
         abortClause: null,
@@ -721,13 +723,17 @@ describe("controller evidence", () => {
     });
     c.rebindOpening();
     c.amend("terminal", (terminal) => {
-      terminal["iterations"] = [{ runId: `${RUN}-i02`, terminal: null, buildClauses: [], measured: false }];
+      terminal["iterations"] = [
+        { runId: `${RUN}-i02`, terminal: null, buildClause: null, buildDetail: null, measured: false },
+      ];
     });
     expect(() => c.report()).toThrow(/iterations\[0\] is malformed/);
 
     // The retired battery-id list is not read as a measured flag.
     c.amend("terminal", (terminal) => {
-      terminal["iterations"] = [{ runId: RUN, terminal: null, buildClauses: [], batteryRunIds: [RUN] }];
+      terminal["iterations"] = [
+        { runId: RUN, terminal: null, buildClause: null, buildDetail: null, batteryRunIds: [RUN] },
+      ];
     });
     expect(() => c.report()).toThrow(/iterations\[0\] is malformed/);
   });

@@ -714,7 +714,7 @@ export async function runBuilderCampaign(
   attemptGate?.assertAttemptAvailable();
   const memory = resumeCampaignMemory(input.campaignDir, input.slug, hashJsonValue(input.kickoff));
   const refused = preSessionClause(input, memory, deps.budget?.status());
-  if (refused !== null) return { buildAdmissible: false, clauses: [refused], iterations: [] };
+  if (refused !== null) return { buildAdmissible: false, clause: refused, iterations: [] };
   const workspace = join(input.campaignDir, WORKSPACE_DIR);
   // A repair seeds from the adopted package once and resumes in-flight edits without overwriting them.
   const { created } = initWorkspace(workspace, input.adoptedDir, true, deps.safeguardContext);
@@ -794,11 +794,10 @@ export async function runBuilderCampaign(
   return {
     buildAdmissible: false,
     ...keyIfDefined("experimentProposal", controller.experimentProposal),
-    clauses: [
+    clause:
       outcome.terminalClause ??
-        controller.terminalClause ??
-        (exhausted ? "budget-limited" : "iterations-exhausted"),
-    ],
+      controller.terminalClause ??
+      (exhausted ? "budget-limited" : "iterations-exhausted"),
     iterations: controller.iterations,
   };
 }

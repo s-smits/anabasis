@@ -258,8 +258,8 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
     //     ["stop", "stopped", null, false],
     //   ],
     // );
-    // expect(outcome.rounds.slice(0, 4).map((round) => round.buildClauses)).toEqual([[], [], [], []]);
-    // expect(outcome.rounds.at(-1)?.buildClauses.join(" ")).toContain(
+    // expect(outcome.rounds.slice(0, 4).map((round) => round.buildClause)).toEqual([null, null, null, null]);
+    // expect(outcome.terminal).toContain(
     //   "3 consecutive rounds ended below the aim",
     // );
     // const batteries = outcome.rounds.slice(0, 4).map((round) => round.runId);
@@ -275,7 +275,7 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
         ["rebuild", "candidate", "promoted", true],
       ],
     );
-    expect(outcome.rounds.map((round) => round.buildClauses)).toEqual([[], [], [], [], []]);
+    expect(outcome.rounds.map((round) => round.buildClause)).toEqual([null, null, null, null, null]);
     const batteries = outcome.rounds.map((round) => round.runId);
     expect(batteries).toEqual(["climb", "climb-i02", "climb-i03", "climb-i04", "climb-i05"]);
 

@@ -344,7 +344,7 @@ describe("a gate run two callers may share", () => {
         campaignDir,
         ...FRESH_BUILD,
         maxTurns: 3,
-        admissionLineage: { digest: "packet-settled", reason: "agenda-consumed" },
+        admissionLineage: { digest: "packet-settled" },
       },
       {
         open: async (tools): Promise<HostSession> => {
@@ -391,10 +391,7 @@ describe("a gate run two callers may share", () => {
     expect(gateCalls).toBe(2);
     expect(outcome.buildAdmissible).toBe(true);
     expect(outcome.iterations.map((row) => row.outcome)).toEqual(["gates-blocked", "fingerprinted"]);
-    expect(outcome.iterations[0]?.admissionLineage).toEqual({
-      digest: "packet-settled",
-      reason: "agenda-consumed",
-    });
+    expect(outcome.iterations[0]?.admissionLineage).toEqual({ digest: "packet-settled" });
     expect(outcome.iterations[1]?.admissionLineage).toBeUndefined();
     expect(outcome.iterations[1]?.diagnosisInput).toEqual({ kind: "in-campaign-carry", digest: null });
     if (outcome.buildAdmissible) {
@@ -750,7 +747,7 @@ describe("a check that names an installed tool", () => {
           }),
       },
     );
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(opening).toContain("Task count: exactly 5 tasks.");
     for (const expected of ["tool-missing", "tasks-exact-census", "requires exactly 5 tasks; found 4"]) {
       expect(reply).toContain(expected);
@@ -811,7 +808,7 @@ describe("a check that names an installed tool", () => {
     const campaignDir = scratchDir("ana-primary-census-candidate-");
     const verifier = toolHost(campaignDir, "#!/bin/sh\nkill -9 $$\n");
     const { outcome, turns, iteration } = await censusThrough(campaignDir, verifier);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(turns).toBe(2);
     expect(iteration.feedback).toEqual([
       expect.objectContaining({
@@ -841,7 +838,7 @@ describe("a check that names an installed tool", () => {
       },
     });
     const { outcome, turns, iteration } = await censusThrough(campaignDir, verifier);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["environment-blocked"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "environment-blocked" });
     expect(turns).toBe(1);
     expect(iteration.focusOwner).toBe("environment");
     expect(iteration.feedback).toEqual([

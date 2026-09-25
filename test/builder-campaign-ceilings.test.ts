@@ -113,10 +113,10 @@ describe("a relaunch reads the durable counters before it opens a session", () =
       // A pre-adoption continuation carries its feedback in the queue, and the in-flight build owns
       // the whole tree, so author-owned rows direct the session rather than refusing it.
       expect(opened).toBe(1);
-      expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+      expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
       return;
     }
-    expect(outcome).toEqual({ buildAdmissible: false, clauses: [clause], iterations: [] });
+    expect(outcome).toEqual({ buildAdmissible: false, clause, iterations: [] });
     expect(opened).toBe(0);
     expect(existsSync(join(campaignDir, "workspace"))).toBe(false);
   });
@@ -196,7 +196,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
       // Eight turns were available: one refusal, three counted strikes, terminal on the third. A
       // bundle refusal never reaches the verifier gate, so it cannot settle verifier-required either.
       expect(session.replies).toHaveLength(4);
-      expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["authoring-stalled"] });
+      expect(outcome).toMatchObject({ buildAdmissible: false, clause: "authoring-stalled" });
       expect(gateCalls).toBe(expectedGateCalls);
       expect(outcome.iterations).toHaveLength(expectedIterations);
       const record = required(readExecutionEvidence(campaignDir)[0], "one execution record");
@@ -228,7 +228,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
     // invocation after three turns instead of granting four fresh ones.
     const resumed = await run(6);
     expect(resumed.turns).toBe(3);
-    expect(resumed.outcome).toMatchObject({ buildAdmissible: false, clauses: ["authoring-stalled"] });
+    expect(resumed.outcome).toMatchObject({ buildAdmissible: false, clause: "authoring-stalled" });
   }, 30_000);
 
   it.concurrent("re-executes a tree whose only refusal was a typed runtime non-result, and strikes nothing", async () => {
@@ -301,7 +301,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
     expect(opens).toBe(1);
     expect(outcome).toMatchObject({
       buildAdmissible: false,
-      clauses: ["authoring-stalled"],
+      clause: "authoring-stalled",
       experimentProposal: proposals.at(-1),
       iterations: [],
     });
@@ -354,8 +354,8 @@ describe("the trailing run of one identical diagnosis", () => {
   //   expect(replies[1]).toContain("authoring-repeated-findings");
   //   expect(replies[1]).toContain(`repeat 2 of ${ceiling}`);
   //   expect(replies[2]).toContain(`repeat 3 of ${ceiling}`);
-  //   expect(outcomes[0]).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
-  //   expect(outcomes[1]).toMatchObject({ buildAdmissible: false, clauses: ["authoring-stalled"] });
+  //   expect(outcomes[0]).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
+  //   expect(outcomes[1]).toMatchObject({ buildAdmissible: false, clause: "authoring-stalled" });
   //   expect(rows).toHaveLength(ceiling);
   //   // Every attempt recorded a different agent identity, so only the repeat count can have stopped it.
   //   expect(new Set(rows.map((row) => row.fingerprint?.agentHash)).size).toBe(ceiling);
@@ -370,7 +370,7 @@ describe("the trailing run of one identical diagnosis", () => {
   //     attempt % 2 === 1 ? "alternating defect A" : "alternating defect B",
   //   );
   //   for (const outcome of outcomes) {
-  //     expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+  //     expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
   //   }
   //   expect(rows).toHaveLength(rounds);
   //   expect(new Set(rows.map((row) => row.findingsHash)).size).toBe(2);
@@ -381,7 +381,7 @@ describe("the trailing run of one identical diagnosis", () => {
     // More rounds than the loop has ever allowed a repeat, split across a relaunch.
     const { outcomes, rows, replies } = await churn([8, 1], () => "the same authoring defect remains");
     for (const outcome of outcomes) {
-      expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+      expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     }
     expect(rows).toHaveLength(9);
     expect(new Set(rows.map((row) => row.findingsHash)).size).toBe(1);
@@ -426,7 +426,7 @@ describe("a census that reached no completed run", () => {
 
   it("records each no-result census for the author and never settles the campaign on it", async () => {
     const { outcome, replies } = await sealing(Array(4).fill("fwcheck"));
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(outcome.iterations).toHaveLength(4);
     expect(replies).toHaveLength(4);
     expect(replies.join("\n")).not.toContain("tool-non-result");
@@ -435,7 +435,7 @@ describe("a census that reached no completed run", () => {
   // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
   // it("settles verifier-required at the ceiling, telling the author the tool and the count on the way", async () => {
   //   const { outcome, replies } = await sealing(Array(ceiling + 1).fill("fwcheck"));
-  //   expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["verifier-required"] });
+  //   expect(outcome).toMatchObject({ buildAdmissible: false, clause: "verifier-required" });
   //   expect(replies).toHaveLength(ceiling);
   //   expect(replies[1]).toContain("tool-non-result-repeat");
   //   expect(replies[1]).toContain(`attempt 2 of ${ceiling}`);
@@ -480,7 +480,7 @@ describe("a census that reached no completed run", () => {
   //   const half = Math.ceil((ceiling + 1) / 2);
   //   const perTurn = Array.from({ length: ceiling + 1 }, (_, index) => (index < half ? early : late));
   //   const { outcome, replies } = await sealing(perTurn, "probes" in row ? row.probes : undefined);
-  //   expect(outcome).toMatchObject({ buildAdmissible: false, clauses: [clause] });
+  //   expect(outcome).toMatchObject({ buildAdmissible: false, clause });
   //   expect(outcome.iterations).toHaveLength(iterations);
   //   expect(replies).toHaveLength(turns);
   // });
@@ -490,7 +490,7 @@ describe("a census that reached no completed run", () => {
   //   ["charged beside a conformance refusal", refusedConformance],
   // ] as const)("replays a charge %s, so a relaunch cannot buy the ceiling again", async (_name, probes) => {
   //   const first = await sealing(["fwcheck", "fwcheck"], probes);
-  //   expect(first.outcome).toMatchObject({ clauses: ["iterations-exhausted"] });
+  //   expect(first.outcome).toMatchObject({ clause: "iterations-exhausted" });
   //   expect(resumeCampaignMemory(first.campaignDir, "matching", KICKOFF_HASH).toolNonResultRefusals).toEqual({
   //     fwcheck: 2,
   //   });
@@ -543,7 +543,7 @@ describe("a census that reached no completed run", () => {
         open: session.open,
       },
     );
-    expect(outcome).toEqual({ buildAdmissible: false, clauses: ["environment-blocked"], iterations: [] });
+    expect(outcome).toEqual({ buildAdmissible: false, clause: "environment-blocked", iterations: [] });
     expect(session.replies).toHaveLength(1);
   });
 });
@@ -563,7 +563,7 @@ describe("the campaign's provider ledger", () => {
       { campaignDir, ...FRESH_BUILD, maxTurns: 3 },
       { ...BARE, budget: campaignBudgetGate(campaignDir), open: neverOpens },
     );
-    expect(outcome).toEqual({ buildAdmissible: false, clauses: ["budget-limited"], iterations: [] });
+    expect(outcome).toEqual({ buildAdmissible: false, clause: "budget-limited", iterations: [] });
     expect(loadBudget(campaignDir)).toEqual(before);
   });
 
@@ -597,7 +597,7 @@ describe("the campaign's provider ledger", () => {
       },
     );
     expect(turns).toBe(1);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["budget-limited"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "budget-limited" });
     expect(loadBudget(campaignDir)).toEqual({ turnBudget: 1, turnsUsed: 1, status: "budget_limited" });
   });
 

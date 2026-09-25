@@ -174,7 +174,7 @@ async function assertRebuildRound(
     return double({
       buildAdmissible: false,
       adopted: false,
-      clauses: ["iterations-exhausted"],
+      clause: "iterations-exhausted",
       iterations: [],
     });
   };
@@ -208,7 +208,8 @@ async function assertRebuildRound(
     decision: selected.decision,
     nextDecision: selected.decision,
     build: built.build,
-    buildClauses: built.clauses,
+    buildClause: built.buildClause,
+    buildDetail: built.buildDetail,
     admissionBasisDigest: selected.prior?.digest ?? null,
     steps: { promotion: null, measure: null },
   });
@@ -268,7 +269,7 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
     return double({
       buildAdmissible: false,
       adopted: false,
-      clauses: ["iterations-exhausted"],
+      clause: "iterations-exhausted",
       iterations: [],
     });
   };

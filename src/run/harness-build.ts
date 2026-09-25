@@ -209,7 +209,7 @@ export async function buildHarness(
     });
     carryMemoryForward(campaignRoot, epoch);
     if (budget.status() === "budget_limited") {
-      return { buildAdmissible: false, clauses: ["budget-limited"], iterations: [], adopted: false, epoch };
+      return { buildAdmissible: false, clause: "budget-limited", iterations: [], adopted: false, epoch };
     }
     return await runEpochBuild(
       manifest,

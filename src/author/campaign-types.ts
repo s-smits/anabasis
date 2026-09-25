@@ -60,15 +60,10 @@ export type DiagnosisInput = {
   digest: string | null;
 };
 
-/** A current-policy admission packet that seeded no owner: the digest the build read and the
- * reason it carried nothing. Lineage is evidence, never a decision -- a build with lineage and no
- * `priorEvidence` takes exactly the same course as one with neither. */
-export type AdmissionLineage = {
-  digest: string;
-  /** "evaluation-identity-unadopted": the packet was observed under a correctness model or battery
-   *  pair this tree does not have, so its rows stay recorded and select no owner. */
-  reason: "no-feedback" | "agenda-consumed" | "evaluation-identity-unadopted";
-};
+/** A current-policy admission packet that seeded no owner, by the digest the build read. Why it
+ * seeded none is read from the packet that digest names. Lineage is evidence, never a decision --
+ * a build with lineage and no `priorEvidence` takes exactly the same course as one with neither. */
+export type AdmissionLineage = { digest: string };
 
 type IterationOutcome = "fingerprinted" | "gates-blocked";
 
@@ -103,8 +98,6 @@ export type CampaignClause =
   | "improvement-memory-missing"
   | "environment-blocked"
   | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
-  | "carried-battery-unreadable" // a battery exists but cannot be read; do not compare it
-  | "carried-exam-drift"
   // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
   // | "verifier-required"
   | "iterations-exhausted"
@@ -128,7 +121,7 @@ export type CampaignOutcome = (
        *  inside one invocation or across fourteen. */
       unchangedCandidateSubmissions: number;
     }
-  | { buildAdmissible: false; clauses: CampaignClause[]; iterations: IterationEvidence[] }
+  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
 ) & { experimentProposal?: ExperimentSubmission };
 
 /** Author-safe finding with its recorded routing severity. */

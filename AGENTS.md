@@ -302,14 +302,14 @@ live evidence.
    Tool evidence counts attempted, completed, failed and could-not-run actions separately, and a
    submit result joins to its attempt by session and turn, never by whatever is nearby. A clause
    that exists only in stdout is not durable evidence. An admission packet that routes no owner is
-   lineage with a reason — `no-feedback`, `agenda-consumed` or `evaluation-identity-unadopted` —
-   and it selects no owner. Unknown usage or cost stays `null` rather than reading as zero, and a
-   turn the provider costed is kept separate from one the transport estimated. The reason is worth
-   spelling out: a streamed frame's `usage` is not final, an interrupted turn never receives the
-   result message carrying the turn's account, and each frame repeats the whole cached input while
-   none of them carries a cost. A total that holds estimated turns therefore bounds nothing in
-   either direction. `usage.estimatedTurns` counts them beside `reportedTurns`, and on an older
-   record it is absent, which means unknown rather than zero.
+   recorded as lineage, by its digest alone, and it selects no owner; why it routed none is read
+   from the packet that digest names. Unknown usage or cost stays `null` rather than reading as
+   zero, and a turn the provider costed is kept separate from one the transport estimated. The
+   reason is worth spelling out: a streamed frame's `usage` is not final, an interrupted turn never
+   receives the result message carrying the turn's account, and each frame repeats the whole cached
+   input while none of them carries a cost. A total that holds estimated turns therefore bounds
+   nothing in either direction. `usage.estimatedTurns` counts them beside `reportedTurns`, and on an
+   older record it is absent, which means unknown rather than zero.
 
    Order harness versions and checkpoints by recorded commit time, not by directory order or file
    mtime. Per-case external and differential grounding coverage applies only to truth-verified

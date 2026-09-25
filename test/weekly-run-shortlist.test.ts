@@ -188,7 +188,8 @@ function recordedRun(input: {
       {
         runId: iteration,
         terminal: "completed",
-        buildClauses: [],
+        buildClause: null,
+        buildDetail: null,
         measured: batteries.length > 0,
       },
     ],

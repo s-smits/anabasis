@@ -34,10 +34,13 @@ writeFileSync(
     '[ -z "${ANA_FAKE_GATE_OUTPUT:-}" ] || { printf \'%s\\n\' "$ANA_FAKE_GATE_OUTPUT"; exit 1; }\n',
 );
 chmodSync(join(fakeBin, "bun"), 0o755);
-// The open stack's tops, as the hook's `gh pr list` query prints them, one per line.
+// The open stack as the hook's two `gh pr list` queries print it, one pull request per line: its tops,
+// or every pull request's head and base, which is the query that asks for `baseRefOid`.
 writeFileSync(
   join(fakeBin, "gh"),
-  '#!/bin/sh\n[ -z "${ANA_FAKE_GH_FAILS:-}" ] || exit 1\nprintf \'%s\' "${ANA_FAKE_STACK_TOPS:-}"\n',
+  '#!/bin/sh\n[ -z "${ANA_FAKE_GH_FAILS:-}" ] || exit 1\n' +
+    'case "$*" in *baseRefOid*) printf \'%s\' "${ANA_FAKE_STACK_EDGES:-}" ;; ' +
+    "*) printf '%s' \"${ANA_FAKE_STACK_TOPS:-}\" ;; esac\n",
 );
 chmodSync(join(fakeBin, "gh"), 0o755);
 git("init", "-q");
@@ -203,6 +206,54 @@ describe("pre-push proof routing", () => {
     );
     expect(result.status).toBe(0);
     expect(result.stderr).toContain("the stack check was skipped");
+  });
+
+  // A pull request lists every commit between its base and its head as its own, so a rewritten base
+  // has to take the pull requests on it along in the same push. `oldDocs` is `docs` as it stood before
+  // a rebase rewrote it: the same author time and subject over other bytes.
+  const oldDocs = execTextSync("git", ["commit-tree", `${base}^{tree}`, "-p", base, "-m", "docs"], {
+    cwd: fixture,
+    env: { ...Bun.env, GIT_AUTHOR_DATE: git("log", "-1", "--format=%ad", "--date=raw", docs) },
+  }).trim();
+  const child = git("commit-tree", `${base}^{tree}`, "-p", oldDocs, "-m", "child");
+  const stack = `#20 parent ${oldDocs} main ${base}\n#21 child ${child} parent ${oldDocs}`;
+  const short = (sha: string): string => git("rev-parse", "--short=9", sha);
+
+  it("refuses rewriting a base while the pull request on it still carries the old copy", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/parent ${docs} refs/heads/parent ${oldDocs}`],
+      "edge-stale-marker",
+      { ANA_FAKE_STACK_EDGES: stack },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("#21 (child) would list old copies of parent's commits as its own");
+    expect(result.stderr).toContain(`git rebase --onto ${short(docs)} ${short(oldDocs)} ${short(child)}`);
+    expect(existsSync(result.marker)).toBe(false);
+  });
+
+  it("passes a restack that replays the pull request on the rewritten base in the same push", () => {
+    const result = runHookWithRefs(
+      [
+        `refs/heads/parent ${docs} refs/heads/parent ${oldDocs}`,
+        `refs/heads/child ${source} refs/heads/child ${child}`,
+      ],
+      "edge-restack-marker",
+      { ANA_FAKE_STACK_EDGES: stack },
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
+  });
+
+  it("refuses a push that leaves a pull request listing another open one's commits", () => {
+    const result = runHookWithRefs(
+      [`refs/heads/topic ${source} refs/heads/topic ${docs}`],
+      "edge-base-marker",
+      { ANA_FAKE_STACK_EDGES: `#20 lower ${docs} main ${base}\n#22 topic ${docs} main ${base}` },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("#22 (topic) would list #20's commits as its own");
+    expect(result.stderr).toContain("gh pr edit 22 --base lower");
+    expect(existsSync(result.marker)).toBe(false);
   });
 
   it("refuses a ref the checked-out tree does not contain", () => {

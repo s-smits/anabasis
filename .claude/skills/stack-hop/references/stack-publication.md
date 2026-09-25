@@ -97,6 +97,12 @@ ancestor. Never include an unrelated branch in
 that push. Inspect the hook if its version changed: a skill cannot override a different hook's
 behaviour. Keep the hook and required CI checks enabled.
 
+Before any gate runs, the hook also reads the open pull requests from GitHub and refuses a push
+that would leave one listing commits that are not its own: a rewritten base whose pull requests
+still sit on its old copy, or a head that contains another open pull request's head beyond its
+base. So a restack of a named range carries every open descendant above it in the same push,
+because the first pull request above the range is based on the range's last branch.
+
 ## Publish without invalidating PR metadata
 
 Immediately before publication, compare remote heads, PR states and bases with the saved table.

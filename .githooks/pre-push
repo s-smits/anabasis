@@ -29,6 +29,7 @@ publishes=0
 published=""
 heads=""
 new_branches=""
+moved=""
 already_remote=""
 documentation_only=1
 documentation_diff_ok=1
@@ -47,6 +48,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   *)
     publishes=1
     published="$published $local_sha"
+    moved="$moved $remote_ref:$local_sha"
     if ! git merge-base --is-ancestor "$local_sha" "$tested_commit"; then
       echo "pre-push: $local_ref ($local_sha) is not contained in the checked-out tree ($tested_commit)," >&2
       echo "pre-push: so the gate would prove other bytes. Check that commit out and push from there." >&2
@@ -120,6 +122,63 @@ EOF
   else
     echo "pre-push: the open pull requests could not be read from GitHub, so the stack check was skipped." >&2
   fi
+fi
+
+# An open pull request lists as its own every commit between its base and its head. Rewriting a base
+# without replaying the pull requests on it therefore leaves each of them listing old copies of the
+# base's commits beside its own, and a head that contains another open pull request's head beyond its
+# base lists that one's commits too. So every pull request whose head or base this push moves is read
+# as the push would leave it. A rebase keeps a commit's author time and subject, which is how an old
+# copy is told from the commit that replaced it.
+moved_to() {
+  for update in $moved; do
+    case "$update" in "refs/heads/$1:"*) echo "${update##*:}" && return ;; esac
+  done
+}
+if edges=$(gh pr list --state open --limit 200 --json number,headRefName,headRefOid,baseRefName,baseRefOid \
+  --jq '.[] | "#\(.number) \(.headRefName) \(.headRefOid) \(.baseRefName) \(.baseRefOid)"' 2>/dev/null); then
+  strays=$(printf '%s\n' "$edges" | while read -r pr head head_sha base base_sha; do
+    new_head=$(moved_to "$head")
+    new_base=$(moved_to "$base")
+    [ -n "$new_head$new_base" ] || continue
+    h=${new_head:-$head_sha}
+    b=${new_base:-$base_sha}
+    for sha in "$h" "$b"; do
+      git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q origin "$sha" 2>/dev/null || true
+    done
+    if ! git cat-file -e "$h^{commit}" 2>/dev/null || ! git cat-file -e "$b^{commit}" 2>/dev/null; then
+      echo "pre-push: $pr ($head) was not checked: its head or its base is not in this clone." >&2
+      continue
+    fi
+    copy=$({ git log --format='%at %s' "$b..$h"; git log --format='%at %s' "$h..$b"; } | sort | uniq -d |
+      head -1 | cut -d' ' -f2-)
+    if [ -n "$copy" ]; then
+      echo "$pr ($head) would list old copies of $base's commits as its own, among them \"$copy\"."
+      if git merge-base --is-ancestor "$base_sha" "$h" 2>/dev/null; then
+        from=$(git rev-parse --short=9 "$base_sha")
+      else
+        from="<the old $base it was built on>"
+      fi
+      echo "Replay it on its base in this same push, and each pull request above it in turn:"
+      echo "  git rebase --onto $(git rev-parse --short=9 "$b") $from $(git rev-parse --short=9 "$h")"
+    fi
+    printf '%s\n' "$edges" | while read -r other other_head other_sha _ _; do
+      o=$(moved_to "$other_head")
+      o=${o:-$other_sha}
+      [ "$other" != "$pr" ] && [ "$o" != "$b" ] || continue
+      git merge-base --is-ancestor "$o" "$h" 2>/dev/null && ! git merge-base --is-ancestor "$o" "$b" 2>/dev/null ||
+        continue
+      echo "$pr ($head) would list $other's commits as its own: its head contains $other_head and its base"
+      echo "$base does not. Base it there with gh pr edit ${pr#?} --base $other_head, or rebase it onto $base."
+    done
+  done)
+  if [ -n "$strays" ]; then
+    echo "pre-push: this push would leave open pull requests listing commits that are not theirs. Nothing was pushed." >&2
+    printf '%s\n' "$strays" | sed 's/^/pre-push:   /' >&2
+    exit 1
+  fi
+else
+  echo "pre-push: the open pull requests could not be read from GitHub, so the edge check was skipped." >&2
 fi
 
 if [ "$documentation_only" -eq 1 ]; then

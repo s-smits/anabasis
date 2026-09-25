@@ -33,11 +33,13 @@ const isObservation = (kind: AnalysisFindingKind): boolean =>
  *  one battery to the next, which changes the published magnitudes over a task set that has not
  *  moved and leaves the battery exactly as easy as it was. The variation this finding is about is
  *  across the battery's own tasks, which authoring validation already requires of a shared public
- *  input. */
+ *  input. And "let this input differ" was met by permuting values inside one template, which
+ *  satisfies that validation and leaves one condition measured many times, so the sentence asks for
+ *  a difference in what the tasks demand rather than in what they publish. */
 function publicAct(kind: AnalysisFindingKind, deferred: boolean): string {
   if (deferred) return "this is advisory and asks for no change before submit";
   if (kind === "curriculum-defect") {
-    return "let this input differ between the fresh battery's tasks; it does not ask for a published limit to move between batteries";
+    return "make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it; it does not ask for a published limit to move between batteries";
   }
   if (kind === "hardness") return "this records the measured difficulty there and asks for no repair";
   if (kind === "diagnosis-uncertain") {

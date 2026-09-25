@@ -2,10 +2,12 @@
 
 None of these six is your domain, and none of them is a domain this loop runs. They are here so
 that "harder" means something specific while you author, rather than a bigger number in the same
-task. If the domain you were given happens to touch one of them, the rows still describe only the
-scale: they name no requirement for you to adopt. **We aim for frontier.**
+task. The rows show the scale and nothing else: they name no requirement for you to adopt. **We aim
+for frontier**, and we reach it with what the request's own field demands.
 
-Four tiers, by what one answer has to hold at once:
+## Four tiers
+
+A tier is what one answer has to hold at once:
 
 - **easy** — choose one thing so a published limit holds inside a stated budget, and report both
   figures you compared. The solver chooses, and one comparison settles it.
@@ -22,12 +24,32 @@ Four tiers, by what one answer has to hold at once:
   sequence is bound and an earlier step forecloses a later one; or feasibility is not the bar,
   because a reported margin has to survive its admissible neighbours under a published trade rule.
 
-The report duty is not decoration. It is what stops a wrong answer from looking right: an answer
-that states the figure each limit was read against can be checked against its own design, and one
-that does not cannot.
+The report in every row is there so that a wrong answer cannot look right, and it does that only
+when a check reads the same figure off the delivered answer — a recomputation over the design, a
+build's own sizes, the output the program produces when it runs. A figure checked only against your
+own arithmetic over the brief grades the report and leaves the work unread.
 
-Four of the six name the open-source solver that would decide them. That is the altitude to author
-at: a tool that scores the solver's design without handing over the design.
+## Where the demand comes from
+
+The request names a field, and the field already holds everything the upper tiers need. Its
+practitioners share finite things: memory, time, a budget, a catalogue, one interface several parts
+must use. Its parts fail in known ways and its inputs arrive malformed. Its standards publish the
+classes an answer declares and the limits each class carries. Read the field for those before you
+write a rule of your own.
+
+A budget, a degraded state or a report duty the field does not already hold is an invented
+requirement, and it costs three ways. You are its only authority, so the solver can read it a way
+you never meant, and a battery failing on that reading measures your wording. It measures your rule
+rather than the work the request asked for. And the review reads it as tasks that leave the
+request's own obligations undemanded, which is a curriculum defect however hard it makes the
+battery.
+
+When the answer is a program or a configuration, the tiers keep their meaning and change their
+material. The finite thing is a resource the target really has. The degraded states are real faults
+of what the program connects to and real malformed input. A harder task asks for more of the
+requested capabilities at once, through their real interfaces, so that making one work constrains
+how another can. The checks decide from what the built program does, never from how its source is
+arranged or from a trace of calls into a stand-in you wrote.
 
 ## Six domains
 
@@ -56,18 +78,18 @@ at: a tool that scores the solver's design without handing over the design.
   the final configuration, with no admissible re-tap improving one reported margin by more than the
   published trade rule allows at another's cost; report the step that governs.
 
-**Thermodynamic power cycle** — graded by a real property recompute and energy balance (CoolProp).
+**Byte-stream protocol parser** — graded by compiling the delivered source with the real compiler
+and replaying byte streams through the program it builds.
 
-- easy — choose the boiler pressure so the cycle reaches its net-power target inside the turbine
-  inlet-temperature limit, and report both.
-- medium — set pressures, temperatures and mass flow so net power, thermal efficiency, the turbine
-  exit quality floor and the condenser duty limit hold together, none met at the cost of another,
-  and report the governing value for each.
-- hard — that, and still hold at the published off-design ambient and with one feedwater heater out
-  of service; report the worst condition and what limits it there.
-- frontier — that, holding everywhere in the published ambient range rather than at the listed
-  off-design point and at every step of the published load ramp rather than at its two ends; report
-  the ambient and the step you found worst.
+- easy — parse the published request grammar for well-formed input inside the stated buffer size,
+  and have the program report the method and body length it read.
+- medium — length framing, chunked bodies and pipelined requests all through the one fixed buffer,
+  none handled at the cost of another, with the program reporting where each message ends.
+- hard — that, and still frame correctly when the published malformed and truncated streams are
+  interleaved with valid ones; the program reports the byte at which it refused each bad stream.
+- frontier — that, with the stream split into reads wherever the verifier chooses rather than at
+  listed offsets, and the header and pipelining limits that apply following the conformance profile
+  the program itself declares; report each message boundary, identical under every split.
 
 **Impulsive orbital transfer** — graded by a real two-body propagation of the actual burn vectors.
 
@@ -110,122 +132,97 @@ at: a tool that scores the solver's design without handing over the design.
   than one listed set, and the latency budget that applies following the workload class your own
   answer assigns each query; report the parameters you found worst and the query they fall on.
 
-## What sets the tier, and what does not
+## What moves the tier, and what gives it away
 
 The solver is a capable model with a shell. Anything it can settle by searching, it will search:
-it writes its own optimiser, runs it for as long as the wall allows and reads your own published
-rules back out of the brief. So the tier is not set by how constrained the search is. It is set by
-whether the answer has to be right about something the search cannot enumerate cheaply.
+it writes its own optimiser, runs it for as long as the wall allows and reads your published rules
+back out of the brief. So the tier is set by whether the answer has to be right about something the
+search cannot enumerate cheaply, and three changes that feel harder measure exactly the same:
 
-Three changes that feel harder and measure the same:
+- **A tighter number on a rule the tasks already had.** The solver's search finds the same kind of
+  answer closer to the limit, and the reasoning is unchanged.
+- **More cases of a rule the tasks already had.** That is coverage, worth having and not a tier.
+- **A new rule that only removes candidates.** A clearance, an exclusion, a forbidden pairing: the
+  solver filters and searches what is left. A rule raises the tier only when satisfying it spends
+  something the other limits need, so the answer has to be re-planned rather than re-filtered.
 
-- **A tighter number on a rule the tasks already had.** The published limit moves, the solver's
-  search finds the same kind of answer closer to it, and the reasoning is unchanged.
-- **More cases of a rule the tasks already had.** That is coverage. Coverage is worth having and it
-  is not a tier.
-- **A new rule that only removes candidates.** A clearance, an exclusion volume, a forbidden
-  pairing: the solver filters its candidate set and searches what is left. A rule raises the tier
-  only when satisfying it spends something the other limits need, so that the answer has to be
-  re-planned rather than re-filtered.
+What does move it is the set. The answer that wins at nominal is not the one that survives the set,
+so the solver gives something up before it knows what it is buying; and once the set is a region
+rather than a list, the solver has to find its own worst case before it can report one.
 
-What does move it is the second item below: the one answer must survive a *set* of states, so the
-solver's search has to run inside that set rather than once at nominal. That is why every
-engineering hard row above ends "and still hold with any one X out of service", "at every corner of
-the tolerance box", "under a skewed parameter set". The set is what makes enumeration expensive,
-and expense is not the point — the point is that the answer that wins at nominal is not the answer
-that survives the set, so the solver has to give something up before it knows what it is buying.
+Three things you publish can give the tier back without a word of the tasks changing.
 
-The frontier rows take the set back out of the task statement. A named outage, a listed corner and
-a supplied skewed parameter set are all still handed over: the solver reads the set off the brief
-and checks its answer against each member. Once the set is a region rather than a list, the solver
-has to find its own worst case before it can report one, and the verifier searches that region
-again rather than replaying a list.
+**Your tools.** An adviser that reports every margin under the verified model across every listed
+state turns any feasible task into iterate-until-clear: propose, read the one failing state, adjust,
+ask again. Keep the analysis — a solver without one fails on arithmetic, which measures nothing —
+but then the difficulty has to live where that adviser cannot reach: a region the verifier searches
+again, a class the answer declares, a sequence whose early steps close later ones. Say in
+EXPERIMENT.json which one your tasks rely on. A tool that returns the very value a check compares
+against is the reference solve under another name.
 
-## Where the published number has to sit
-
-A rule is carried by a number, and the number decides whether the rule can be broken at all. Two
-ways that goes wrong, both of them leaving a battery that scores high while measuring less than it
-names.
-
-**An obligation no admissible design can breach.** Take the answer a solver that ignores the
-obligation would produce and read it against every published limit and reporting tolerance. If it
-clears them all, the battery verifies that the obligation was performed, not that any decision
-turned on it: the demanding method and the cheap one agree inside the tolerance, so no check
-separates them. Move the limit to where the two answers differ by more than the tolerance, or stop
+**A number no admissible answer can breach.** Take the answer a solver that ignores an obligation
+would produce and read it against every published limit and tolerance. If it clears them all, the
+battery verifies that the obligation was performed, not that any decision turned on it. Move the
+limit to where the demanding answer and the cheap one differ by more than the tolerance, or stop
 naming the obligation.
 
-**A limit read off your own best answer.** Setting each limit to what your own reference search
-reached is the right shape — it is the one value you know is attainable — but it inherits that
-search's variance. Where the search converged the limit is tight and the task is an optimisation;
-where it stopped early the limit is slack and a first reasonable answer clears it, so one family
-publishes one obligation at several strengths without saying so. Before the battery goes out, read
-each limit against the task inputs that should explain it: two tasks whose inputs sit in the same
-range and whose limits differ several-fold differ in search quality, not in demand.
+**A number read off your own answer.** Your reference search is the one value you know is
+attainable, and it carries that search's variance: tight where it converged, slack where it stopped
+early, so one family publishes one obligation at several strengths without saying so. Two tasks
+whose inputs sit in the same range and whose limits differ several-fold differ in search quality,
+not in demand. And a permitted region centred on your reference's answer publishes that answer
+outright: the solver reads the centre and needs no search.
 
-## Every battery after the first
+## Reading a measured battery
 
 A battery moves the demand or repairs the last measurement. Adding tasks is neither, and neither is
-re-running a demand you have already measured: the count a battery returns is what you paid the
-round for, and paying it twice for the same count buys nothing.
+re-running a demand already measured: the count is what you paid the round for, and paying twice for
+it buys nothing. Growing a probe to the full size is no exception — the probe measured the level,
+and a full battery authored at its demand is the probe again, in more cases.
 
-Growing a probe battery to the full size is not an exception to that. The probe measured the level;
-the expansion carries that level onto every new task and moves from there. A full battery authored
-at the probe's own demand is the probe again, in more cases.
-
-The same holds between sibling tasks inside one battery. Two tasks of a family that keep the whole
-structure — what is bound to what, which states the one answer must clear, which quantity is the
-scarce one — and differ only in the magnitudes of the published numbers measure one condition
-twice: the plan that wins the first wins the second, so the pair returns one result at the price of
-two cases. Vary the input the obligation is carried by, and the pair reports two things.
-
-A family that varies only by magnitude also bounds the next battery. Once the numbers are the only
-axis that has ever moved, the only demand left to raise is a number, which is the first of the
-three changes that measure the same. Move a structural input between siblings while the battery is
-being authored and that axis is still open when the round after it needs one.
+The same holds between sibling tasks. Two tasks of a family that keep the whole structure — what is
+bound to what, which states the one answer must clear, which quantity is scarce — and differ only in
+the magnitudes of the published numbers measure one condition twice: the plan that wins the first
+wins the second. Vary the input the obligation is carried by, and the pair reports two things. A
+family that varies only by magnitude also bounds the next battery, because the only demand left to
+raise is a number; for a program, siblings differ in which parts they combine and how those parts
+must cooperate.
 
 ## When a battery lands above the aim
 
-Read the hard and frontier rows of all six domains and ask what they carry that your tasks do not.
-In every one of them it is the same three things, and a battery that scores near the top is usually
-missing the last two:
+Every hard and frontier row carries the same three things, and a battery scoring near the top is
+usually missing the last two:
 
 1. Something finite the requirements share, so meeting one spends what another needs.
 2. A set of degraded or adversarial states the same answer must also clear, under which the obvious
    construction is wrong — and in the frontier rows that set is searched rather than listed.
-3. A duty to report the value each limit was read against, so a plausible wrong answer is visibly
-   wrong.
+3. A duty to report the value each limit was read against, checked against the answer itself.
 
-Check the change you are about to make against the three that measure the same. If it is one of
-them, it will not move the score, however much work it is to build. Then check the numbers you
-already publish against "Where the published number has to sit": a battery also lands above the aim
-when a rule it names cannot be broken as published, and no rule added beside that one fixes it.
+Find each in the request's field, never in a rule you add to it. If your tasks already carry all
+three and still land above the aim, the move left is to take the set out of the task statement and
+out of your tools; adding members to a listed set is coverage. If the field genuinely holds none of
+the three, say so in EXPERIMENT.json's gap and raise the demand the other way: more of the request's
+own capabilities in each task, working through their real interfaces at once. Then check the
+numbers you already publish against the two above — a rule that cannot be broken as published keeps
+a battery above the aim whatever is added beside it.
 
 ## When a battery lands below the aim
 
 The first battery is authored above what you believe the solver handles, so landing here is the
-course working: the next batteries come down to the aim. A later battery still below it is not, and
-the reason is usually not that the tasks are too hard. Three things read exactly like difficulty
-from the outside. Settle them in this order before easing anything:
+course working. A later battery still below it usually is not, because three things read exactly
+like difficulty from the outside. Settle them in this order before easing anything:
 
 1. **Could the answer be read?** A rule your checks apply and your brief does not publish fails
-   every task, and the count it produces is indistinguishable from a hard battery. Publishing that
-   rule is not publishing a way to satisfy it: what decides whether an answer is valid is public,
-   and the search order, allocation recipe, fallback chain and hidden tie-break that reach one stay
-   yours. The task is exactly as hard after the fix — the solver still has to find the answer, it
-   just stops failing a test it could not read.
+   every task. So does a rule you wrote yourself that a practitioner could read two ways: every
+   solver that took the other reading fails it. Publishing what decides validity is not publishing
+   the search order, allocation recipe, fallback chain or tie-break that reaches a valid answer.
 2. **Could the answer be expressed?** An artifact a correct solver cannot write through the tools
    you gave it is a representation defect, not a hard task. Every accept control is a shape your
    writer produced; a valid answer your writer cannot produce is one you never tested.
 3. **Was the same core failing each time?** The same tasks failing in consecutive batteries is a
    stuck path or an unpublished rule. A battery that is genuinely hard fails different tasks.
 
-Only once all three are clear is the battery telling you something about the tasks. Then ease the
-whole battery rather than a subset: the distance to the aim is stated in cases, and a change the
-solver absorbs in one or two of them will not move it, in this direction any more than in the other.
-
-Easing means giving back one of the three things the hard and frontier rows carry — the finite
-thing the requirements share, the set of states the one answer must clear, the duty to report the
-value each limit was read against. It does not mean loosening a published number on a rule the
-tasks already had. That is the mirror of the first change on the list above, and it moves the count
-about as far as tightening one did: a solver that could not plan the answer whole still cannot, and
-one that could now clears the looser limit with the design it already had.
+Only then is the battery telling you about the tasks. Ease the whole battery rather than a subset,
+since the distance to the aim is stated in cases, by giving back one of the three things above. It
+does not mean loosening a published number on a rule the tasks already had, which moves the count as
+little as tightening one did.

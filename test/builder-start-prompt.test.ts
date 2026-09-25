@@ -274,7 +274,10 @@ describe("STARTER.md gate map", () => {
    *  the one read first. */
   it("points the first battery at the top tier and leaves the counts to the prompt", () => {
     const starter = flat(STARTER_ENTRY);
-    expect(starter).toContain("Take the first battery from the **frontier** row.");
+    expect(starter).toContain("— **frontier**, where the first battery starts —");
+    // The demand is the field's, and a margin-reporting adviser gives it back.
+    expect(starter).toContain("a limit, state or duty you invent measures your wording");
+    expect(starter).toContain("A tool reporting every margin on every listed state");
     for (const downwards of ["easy to hard", "start easy", "from easy"]) {
       expect(starter, downwards).not.toContain(downwards);
     }
@@ -294,7 +297,7 @@ describe("STARTER.md gate map", () => {
   it("states what a later battery is and rules out widening at a measured demand", () => {
     const starter = flat(STARTER_ENTRY);
     expect(starter).toContain("A battery after the first moves the demand or repairs the last measurement.");
-    expect(starter).toContain("growing a probe to the full size is no exception");
+    expect(starter).toContain("nor is growing a probe to full size at the level it measured");
     // The ladder owns the reasoning, and the entry owns the one sentence: neither states a direction.
     for (const course of ["raise", "ease", "climb to", "harder next"]) {
       expect(starter, course).not.toContain(course);
@@ -371,7 +374,7 @@ describe("STARTER.md gate map", () => {
     for (const domain of [
       "GP surgery",
       "Power distribution feeder",
-      "Thermodynamic power cycle",
+      "Byte-stream protocol parser",
       "Impulsive orbital transfer",
       "Lumped LC impedance match",
       "Relational index selection",
@@ -413,7 +416,7 @@ describe("STARTER.md gate map", () => {
       expect(below, settled).toContain(settled);
     }
     expect(below.indexOf("landing here is the course working")).toBeLessThan(
-      below.indexOf("A later battery still below it is not"),
+      below.indexOf("A later battery still below it usually is not"),
     );
   });
 
@@ -421,7 +424,7 @@ describe("STARTER.md gate map", () => {
    *  only the load magnitude and the numeric limits leaves the battery one axis, and the ladder
    *  already says moving a number measures the same condition twice. */
   it("asks sibling tasks in a family to vary a structural input, not only its magnitudes", () => {
-    const after = flat(STARTER_LADDER.split("## Every battery after the first")[1] ?? "");
+    const after = flat(STARTER_LADDER.split("## Reading a measured battery")[1] ?? "");
     expect(after, "the after-the-first section").not.toBe("");
     for (const rule of [
       "differ only in the magnitudes of the published numbers measure one condition twice",
@@ -429,6 +432,23 @@ describe("STARTER.md gate map", () => {
       "A family that varies only by magnitude also bounds the next battery",
     ]) {
       expect(after, rule).toContain(rule);
+    }
+  });
+
+  /** Two ways a battery measured the author rather than the solver: a rule the request's field does
+   *  not hold, which the solver can read another way, and a tool that hands back what the checks
+   *  compare against, which makes every task iterate-until-clear. Above the aim, the move left once
+   *  the tasks carry all three things is to stop handing over the set, not to lengthen it. */
+  it("finds the demand in the request's field and keeps the tools from giving it back", () => {
+    const ladder = flat(STARTER_LADDER);
+    for (const rule of [
+      "is an invented requirement, and it costs three ways",
+      "A tool that returns the very value a check compares against is the reference solve under another name",
+      "a permitted region centred on your reference's answer publishes that answer outright",
+      "take the set out of the task statement and out of your tools; adding members to a listed set is coverage",
+      "never from how its source is arranged or from a trace of calls into a stand-in you wrote",
+    ]) {
+      expect(ladder, rule).toContain(rule);
     }
   });
 

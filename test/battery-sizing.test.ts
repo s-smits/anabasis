@@ -320,7 +320,7 @@ describe("runBuildStep battery sizing", () => {
   it("says which comparator the direction asks for, and what the next round does with it", () => {
     const contract = continuation(25);
     expect(contract).toContain(
-      "at-most when it should pass fewer cases than the last one did, at-least when it should pass more",
+      "at-most when this battery should pass fewer cases than the last one did, at-least when more",
     );
     expect(contract).toContain("reports whether that target was met and, when it was missed, by how much");
     expect(contract).not.toContain("the next round reports how far the measurement landed from it");

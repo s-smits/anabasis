@@ -232,28 +232,31 @@ interface BuiltStarterOptions {
 }
 
 /**
- * The universal Built prompt, which points one way: prepare something that passes, then widen its
- * worst margin until the wall. It used to point both ways as well, adding that a requirement is
- * pass or fail so a checked answer is done — but solvers breaching a published limit is the common
- * failure and stopping early is not, so the closing sentence asks for a submit once every
- * requirement is met and the margin stops widening rather than at the first pass, which would
- * cancel the two sentences before it.
+ * The universal Built prompt: prepare something that passes, keep the best candidate saved, and
+ * spend the rest of the wall only where spending it can change the verdict.
  *
- * It no longer asks for margin comparison at all. `readMargins` measures the prepared answer
- * against every complete published boundary and the artifact-writer returns that table, so the
- * comparison is computed rather than requested of the solver.
+ * Margin is where it can. Solvers breaching a published limit by their own reported numbers was the
+ * common numeric failure, and a candidate that only just meets a limit under the solver's own model
+ * is exactly the one that breaches it when recomputed, so for a numeric limit the time goes on the
+ * worst margin. But the same sentence, stated for every requirement, sent solvers whose
+ * requirements were all met-or-not — a program that builds and behaves, a schedule that holds its
+ * rules — on long searches that changed no outcome, and held first submits were re-sent
+ * without a fix. So margin is conditional on a numeric limit, and an answer whose every requirement
+ * has been run and met is finished.
  *
- * What remains is what the solver cannot observe: the wall submits the last answer an
- * artifact-writer prepared, so a candidate worth keeping has to be saved before the next
- * experiment replaces it, or a case ships an untouched baseline many times over its budget because
- * that is what was prepared when time ran out.
+ * It asks for no margin comparison. `readMargins` measures the prepared answer against every
+ * complete published boundary and the artifact-writer returns that table, so the comparison is
+ * computed rather than requested of the solver. What remains is what the solver cannot observe: the
+ * wall submits the last answer an artifact-writer prepared, so a candidate worth keeping has to be
+ * saved before the next experiment replaces it.
  */
 export const builtSystemPrompt = (solveMs: number): string =>
-  "Complete the task with the available tools and submit one answer. Choose your approach within the public task's requirements, and read every requirement before you build. " +
+  "Complete the task with the available tools and submit one answer. Read every requirement before you build, and choose your approach within them. " +
   "For source code or files, write complete working files, not fragments or descriptions. " +
-  "When a tool or installed program can build, run or test your candidate, do so: a breach it reports is a failed requirement. " +
-  "Prepare a candidate as your answer as soon as it meets every requirement you can check, then spend the time that remains widening the worst margin. Save it before you change it, so a change that does not improve it can be undone and what stays prepared at the end is the best candidate you found rather than the last one you tried. If a requirement fails, change the candidate for that reason, with commands you wait for rather than detached jobs; a bounded search over candidates is a sound way to meet a tight limit. " +
-  `Keep searching while solve time remains; the case has ${String(Math.round(solveMs / 60_000))} minutes of it, and at the end the last answer an artifact-writer prepared is submitted for you. Submit when the prepared answer meets every requirement and no change you can still make widens its worst margin.`;
+  "When a tool or installed program can build, run or test your candidate, do so: a breach it reports is a failed requirement, and a requirement you have not run is one you have not checked. " +
+  "Prepare a candidate as your answer as soon as it meets every requirement you can check. Save it before you change it, so a change that does not improve it can be undone and what stays prepared at the end is the best candidate you found rather than the last one you tried. If a requirement fails, change the candidate for that reason, with commands you wait for rather than detached jobs; a bounded search over candidates is a sound way to meet a tight limit. " +
+  "Where a requirement is a numeric limit, a candidate that only just meets it by your own model may breach it when recomputed, so spend the remaining time widening the worst margin. Where every requirement is simply met or not, and a run has shown each one met, submit. " +
+  `The case has ${String(Math.round(solveMs / 60_000))} minutes of solve time, and at the end the last answer an artifact-writer prepared is submitted for you.`;
 
 export function builtFirstTurnPrompt(
   task: Pick<PublicTask<unknown>, "taskId" | "family" | "publicInput">,

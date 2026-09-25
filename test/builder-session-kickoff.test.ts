@@ -154,7 +154,7 @@ describe("the notes a round opens on", () => {
     const note = first.indexOf("OpenSees 3.5 is pinned");
     for (const current of [
       "The user's request, unchanged:",
-      "Build and check the candidate",
+      "Build, check and rehearse the candidate",
       "Authoring context:",
     ]) {
       expect(first.indexOf(current)).toBeGreaterThan(note);

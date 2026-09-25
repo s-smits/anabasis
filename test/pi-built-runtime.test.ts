@@ -195,6 +195,7 @@ describe("the Built harness instructions", () => {
     // candidate shipped the worse one. save_candidate and restore_candidate are how it returns.
     expect(prompt).toContain("Save it before you change it");
     expect(prompt).toContain("120 minutes");
+    expect(prompt).toContain("Where a requirement is a numeric limit");
     // 19 of 19 recorded truss answers of 2026-09-17 breached a published limit by their own
     // reported numbers. The prompt used to ask the solver to compare each reported value with each
     // published requirement, and to hold margin where its own model only approximated one;

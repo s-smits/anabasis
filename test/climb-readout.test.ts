@@ -343,6 +343,10 @@ describe("rendering", () => {
       "The latest battery passed every one of its 5 verified cases, so it found no limit.",
     );
     expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
+    // A re-tuned number or a longer list of named states is coverage, not a new move.
+    expect(allPass).toContain(
+      "A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+    );
     expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
     // Refused attempts are not verified, so a battery passing every verified case is still all-pass.
     expect(render(readoutOf(row("r1", 0, { passed: 3, n: 5, unaccepted: 2 })))).toContain(
@@ -387,6 +391,10 @@ describe("rendering", () => {
       renderBatteryContract(10, 5, [0.2, 0.95], true),
     ];
     for (const text of texts) expect(text).not.toMatch(UNFILLED);
+    // A target every outcome meets is no prediction, and neither is one the rehearsals contradict.
+    expect(renderBatteryContract(25, 25, BAND, true)).toContain(
+      "A target every outcome meets predicts nothing",
+    );
   });
 
   it("carries a declared band into the reading, the contract and the history", () => {

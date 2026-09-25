@@ -10,14 +10,14 @@ You may change the harness's runtime settings in `agent/config.yaml`.
 
 ## How hard to make the tasks
 
-Four tiers — easy, medium, hard, frontier — by what one answer has to hold at once, rising from
-one published limit to a whole set of adversarial states the same answer must clear, and then to a
-set the solver has to search rather than read off the brief, the guide or your tool text. Take the
-first battery from the **frontier** row.
+A task is as hard as what one answer has to hold at once: one limit, then several sharing something
+finite, then adversarial states the same answer must clear, then — **frontier**, where the first
+battery starts — a set the solver must find rather than read off the brief, the guide or your
+tools. Find that demand in the request's field: a limit, state or duty you invent measures your
+wording. A tool reporting every margin on every listed state did the part you meant to measure.
 
 A battery after the first moves the demand or repairs the last measurement. Adding tasks is
-neither, and growing a probe to the full size is no exception: the probe measured the level, so the
-expansion carries it onto every new task and moves from there.
+neither, nor is growing a probe to full size at the level it measured.
 
 Six domains at all four tiers, and what each side of a missed aim asks for:
 [`starter-pack/difficulty-ladder.md`](starter-pack/difficulty-ladder.md).
@@ -27,13 +27,12 @@ Six domains at all four tiers, and what each side of a missed aim asks for:
 1. Install the domain's tools under `.toolchain`; time one call of each.
 2. Write the files and extend the seed tests, then run
    `.toolchain/bun --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`.
-3. Begin with `harness_inspect readiness` and page every family. As soon as one task, an accept
-   and the tools exist, `harness_trial` solves that task blind with your own agent: the one
-   measurement of how hard your battery is, six per round. A battery you do not measure is one
-   the controller measures for you, a round at a time. `correctness_check` runs every gate below
-   without adopting, and on changed product bytes also runs a review of several minutes.
-4. `submit` freezes and gates the candidate; a refusal names the code and file to fix.
-   Previewing unchanged bytes is free.
+3. Begin with `harness_inspect readiness` and page every family. Once one task, an accept and the
+   tools exist, `harness_trial` solves that task blind with your own agent, six per round: the
+   reference solve proves a task reachable, a rehearsal says how hard it is. `correctness_check`
+   runs every gate below without adopting, and reviews changed product bytes for some minutes.
+4. `submit` freezes and gates the candidate once a clear preview and your rehearsals agree with
+   the aim; a refusal names the code and file to fix.
 5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`; the `context` tool searches
    them, the round plan, measured batteries and passing solve traces.
 

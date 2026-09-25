@@ -21,6 +21,7 @@ import { readObservations } from "./evidence.ts";
 import { renderList, renderShow, shortPath } from "./format.ts";
 import { mainCheckout } from "./discover.ts";
 import { collectDetail, collectRows, type RunDetail } from "./rows.ts";
+import { runPulse } from "./pulse.ts";
 import { PAUSE_FINDING, resumePlan } from "./resume.ts";
 import { stopRun } from "../../.claude/skills/launch-run/scripts/stop.ts";
 
@@ -29,21 +30,28 @@ const USAGE = `Usage: bun run runs [list] [--closed N]
        bun run runs stop <runId> [--yes] [--grace-ms N]
        bun run runs resume <runId|project> [--yes]
        bun run runs pause
+       bun run runs pulse [<runId|label|project> ...] [--every S] [--once]
 
   list    every run this machine recorded, open ones first (the default with no arguments)
   show    one run: opening identity, authoring, batteries by claim time, terminal, recent evidence
+  pulse   what moved in the open runs since the last look: a round opened, a battery recorded,
+          a clear preview, a rehearsal against its prediction, a quiet Builder, a non-result
   stop    the existing stop owner, refusing a service the manager bound to another worktree
   resume  the continuation of a campaign: same prompt, same pins, same budget, same project
   pause   why there is none, and what to use instead
 
   --yes       actually stop, or actually launch the continuation; without it both only print
   --closed N  how many closed runs to list (default 8)
-  --grace-ms  milliseconds between SIGTERM and removing the service (default 15000)`;
+  --grace-ms  milliseconds between SIGTERM and removing the service (default 15000)
+  --every S   seconds between two looks for pulse (default 290)
+  --once      one pulse look, status lines only, then exit`;
 
 const OPTIONS = {
   yes: { type: "boolean" },
   closed: { type: "string" },
   "grace-ms": { type: "string" },
+  every: { type: "string" },
+  once: { type: "boolean" },
   help: { type: "boolean" },
 } as const;
 
@@ -152,6 +160,10 @@ async function main(argv: string[]): Promise<number> {
   if (command === "pause") {
     process.stdout.write(`${PAUSE_FINDING}\n`);
     return 2;
+  }
+  if (command === "pulse") {
+    const everyMs = values.once === true ? null : count(values.every, 290, "--every") * 1000;
+    return await runPulse(repoRoot, positionals.slice(1), everyMs);
   }
   if (command === "list") {
     process.stdout.write(`${renderList(collectRows(repoRoot, { closedLimit }))}\n`);

@@ -117,6 +117,27 @@ describe("the Builder's destructive-command guard", () => {
       expect(workspaceAllows(`cd ${target} && rm -rf build`, rm)).toBe(false);
     }
     expect(workspaceAllows(`HOME=/ && cd ${home} && rm -rf usr`, rm)).toBe(false);
+    // The directory the shell is already in stays inside, unless the command may have moved PWD.
+    expect(workspaceAllows('cd "$PWD" && rm -rf .toolchain/pyenv .toolchain/venv', rm)).toBe(true);
+    expect(workspaceAllows("cd . && rm -rf build", rm)).toBe(true);
+    for (const moved of [
+      'PWD=/; cd "$PWD" && rm -rf usr',
+      'for PWD in /; do cd "$PWD" && rm -rf usr; done',
+      'cd "$PWD/.." && rm -rf x',
+      "cd $PWDX && rm -rf x",
+    ]) {
+      expect(workspaceAllows(moved, rm)).toBe(false);
+    }
+    // A loop or branch body is read past its keyword, and its operands meet the same rules.
+    expect(workspaceAllows('for d in a b; do rm -rf "scratch/builds/$d/.pio"; done', rm)).toBe(true);
+    expect(workspaceAllows("if [ -d build ]; then rm -rf build; else rm -rf out; fi", rm)).toBe(true);
+    for (const escape of [
+      'for d in a; do rm -rf "$d"; done',
+      "for d in a; do rm -rf /usr; done",
+      "if x; then rm -rf ..; fi",
+    ]) {
+      expect(workspaceAllows(escape, rm)).toBe(false);
+    }
     // A child of the private home is removed directly, under either rule dcg names.
     for (const rule of [rm, "core.filesystem:rm-rf-root-home"]) {
       expect(workspaceAllows("rm -rf ~/ws && mkdir -p ~/ws/fw", rule)).toBe(true);
@@ -146,11 +167,18 @@ describe("the Builder's destructive-command guard", () => {
       `echo x >> ${v("{HOME}")}/log && cat > ${v("TMPDIR")}/a/b.txt <<'EOF'
 > ${v("OUT")}
 EOF`,
+      // A relative target expanding a plain variable stays in the workspace, as a relative remove does.
+      `for i in 0 1; do python3 opt.py "${v("i")}" > "scratch/opt-${v("i")}.log" 2>&1 & done; wait`,
     ]) {
       expect(privateScratchRedirect(allowed)).toBe(true);
       expect(workspaceAllows(allowed, redirect)).toBe(true);
     }
     for (const refused of [
+      `cat > "../x${v("i")}"`,
+      `cat > "/etc/${v("i")}"`,
+      `cat > "${v("i")}/../../x"`,
+      `cat > "out/${v("(id)")}"`,
+      `cd / && cat > "etc/${v("i")}"`,
       `cat > ${v("OUT")}/run.py`,
       `cat > ${v("HOME")}/../x`,
       `cat > ${v("HOMEDIR")}/x`,
@@ -237,6 +265,7 @@ EOF`,
     );
     expect(workspaceResidual("rm -rf build && rm -rf out`x`", rm)).toBe("true && rm -rf out`x`");
     expect(workspaceResidual("rm -rf out$(x)", rm)).toBeNull();
+    expect(workspaceResidual('for d in a b; do rm -rf "x/$d"; done', rm)).toBe("for d in a b; do true; done");
     expect(workspaceResidual("rm -rf build", "core.git:reset-hard")).toBeNull();
   });
 

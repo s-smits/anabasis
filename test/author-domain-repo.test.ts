@@ -204,6 +204,25 @@ describe("the domain workspace repository", () => {
     expect(homed[0]).toContain("count=1 first=venv/pyvenv.cfg");
   });
 
+  it("moves a venv home inside the adopted tree into the repair tree, and not one that only shares its prefix", () => {
+    const seed = tmp();
+    const adopted = join(realpathSync(seed), ".toolchain");
+    seedWithUvVenv(seed, `${adopted}/py/bin`);
+    const dir = tmp();
+    initWorkspace(dir, seed, true);
+    expect(readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(
+      `home = ${join(dir, ".toolchain")}/py/bin\n`,
+    );
+    expect(readFileSync(join(adopted, "venv/pyvenv.cfg"), "utf8")).toBe(`home = ${adopted}/py/bin\n`);
+
+    const sibling = tmp();
+    const beside = `${join(realpathSync(sibling), ".toolchain")}-host/bin`;
+    seedWithUvVenv(sibling, beside);
+    const besideDir = tmp();
+    initWorkspace(besideDir, sibling, true);
+    expect(readFileSync(join(besideDir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(`home = ${beside}\n`);
+  });
+
   it("names a partial copy an interrupted pass left beside the tool tree, and still seeds", () => {
     const seed = tmp();
     seedWithUvVenv(seed, "/host/python");

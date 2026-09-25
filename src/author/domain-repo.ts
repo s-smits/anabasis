@@ -220,12 +220,17 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
       `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
-    // Safeguard 55: relocation rewrites launchers only. A copied venv keeps its `home =` line in
-    // pyvenv.cfg, so its stdlib still resolves through the adopted tree, surfacing there as
-    // sys.base_prefix.
+    // Safeguard 55: a venv names its interpreter's home by absolute path in pyvenv.cfg, and a home
+    // left in the adopted tree starts Python only where the Builder's read grant reaches, so the
+    // solver and the verifier cannot find the stdlib. The home moves with the tree; the sensor
+    // still says when it had to.
     const homed = [
       ...new Bun.Glob("**/pyvenv.cfg").scanSync({ cwd: path, dot: true, followSymlinks: false }),
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
+    for (const name of homed) {
+      const config = join(path, name);
+      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${path}/`));
+    }
     if (homed.length > 0) {
       safeguardTriggered(
         "55-rebuild-seed-venv-home-in-adopted-tree",

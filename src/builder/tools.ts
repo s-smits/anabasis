@@ -16,9 +16,9 @@ import {
   bashTimeoutMs,
   workspaceSolverBudgetNotice,
 } from "./bash-install-env.ts";
-import { type PathRecord, runIsolated } from "./candidate-isolation-runtime.ts";
+import { type PathRecord, guardAndRecord, runIsolated } from "./candidate-isolation-runtime.ts";
 import { moreRowsNote } from "./read-window.ts";
-import { type CandidateAccessPolicy, guardPath } from "./candidate-isolation.ts";
+import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,
@@ -136,26 +136,11 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
       const target = pathOf(row);
       let allowed = decided.get(target);
       if (allowed === undefined) {
-        const decision = guardPath(policy, capability, "read", target);
-        allowed = decision.decision === "allow";
-        if (!allowed) {
-          record.append({
-            capability,
-            mode: "read",
-            policyDigest: policy.digest,
-            profileDigest: null,
-            requested: target,
-            resolved: decision.resolved,
-            decision: "deny",
-            reason: decision.reason,
-            enforcement: "guard-denied",
-            bytes: null,
-          });
-          if (onDeniedContent === "throw") {
-            throw new Error(
-              `derivation disagreement: ${capability} returned content from a path the guard denies (${rel(target)})`,
-            );
-          }
+        allowed = guardAndRecord(policy, record, capability, "read", target).decision === "allow";
+        if (!allowed && onDeniedContent === "throw") {
+          throw new Error(
+            `derivation disagreement: ${capability} returned content from a path the guard denies (${rel(target)})`,
+          );
         }
         decided.set(target, allowed);
       }

@@ -215,11 +215,11 @@ export function batteryDisposition(
   cases: readonly { runtimeNonResult: string | null }[],
 ): BatteryDisposition {
   if (plan === "skipped") return "skipped-precase";
-  const neverAttempted = cases.filter(
-    (row) => row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true,
-  );
-  return neverAttempted.length > 0 ? "provider-stopped" : "completed";
+  return cases.some(neverAttempted) ? "provider-stopped" : "completed";
 }
+
+const neverAttempted = (row: { runtimeNonResult: string | null }) =>
+  row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true;
 
 /**
  * The human sentence recorded beside the disposition. "complete" is truthful only where the battery
@@ -245,9 +245,7 @@ export function batteryTerminalReason(
     }
     return "complete";
   }
-  const never = cases.filter(
-    (row) => row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true,
-  ).length;
+  const never = cases.filter(neverAttempted).length;
   return `${PROVIDER_STOPPED_REASON_PREFIX} ${String(never)} of ${String(cases.length)} cases were never attempted`;
 }
 

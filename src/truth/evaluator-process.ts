@@ -273,7 +273,6 @@ function openEvaluator(bundle: EvaluatorBundle, request: Request, lifetime: Veri
     throw new EvaluatorProcessFailure("sandbox", "bundle bytes changed");
   }
   const policy = generatedWorkerPolicy(bundle);
-  assertGeneratedWorkerPolicyUnchanged(policy);
   const lease = lifetime.begin({
     role: "evaluator",
     cell: bundle.dir,

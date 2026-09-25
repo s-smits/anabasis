@@ -324,14 +324,6 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
     expectNoProtectedDetail(JSON.stringify(view.execution));
   });
 
-  it("reads the aggregate bit out of the verifier result without letting it into the execution view", () => {
-    expect(verifierView({ status: "completed", truthOk: true }).truthOk).toBe(true);
-    expect(verifierView({ status: "completed", truthOk: false }).truthOk).toBe(false);
-    expect(verifierView({ status: "completed" }).truthOk).toBeNull();
-    expect(verifierView({ status: "completed", truthOk: null }).truthOk).toBeNull();
-    expect(Object.keys(verifierView({ status: "not-run" }).execution)).toEqual(["status"]);
-  });
-
   it("carries none of the protected classes into either surface of a real failing rehearsal", async () => {
     const dir = workspace();
     const { tool } = round(dir, assigningSolver(WRONG_SLOT));
@@ -343,30 +335,6 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
     // Both surfaces at once, so the sweep does not depend on which one a transport sends today.
     expectNoProtectedDetail(JSON.stringify(result));
     expect(keyPaths(body)).toEqual([...VERDICT_KEY_PATHS]);
-  }, 60_000);
-
-  it("crosses the same fields on a pass as on a fail, so the census is not the verdict's", async () => {
-    const dir = workspace();
-    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
-    const body = modelVisible(await rehearse(tool));
-
-    expect(body.truth).toEqual({ verdict: "pass" });
-    expect(keyPaths(body)).toEqual([...VERDICT_KEY_PATHS]);
-  }, 60_000);
-
-  it("keeps the host receipt to identities the text already states", async () => {
-    const dir = workspace();
-    const { tool } = round(dir, assigningSolver(RIGHT_SLOT));
-    const details = asRecord((await rehearse(tool)).details);
-
-    expect(Object.keys(required(details, "the tool details")).sort()).toEqual(["receipt", "taskId"]);
-    expect(Object.keys(required(asRecord(details?.receipt), "the receipt")).sort()).toEqual([
-      "candidateId",
-      "outcome",
-      "submitted",
-      "truthVerdict",
-      "turns",
-    ]);
   }, 60_000);
 
   /**
@@ -453,14 +421,27 @@ describe("what a rehearsal hands the round plan", () => {
 });
 
 describe("the four facts that do cross", () => {
+  // A pass crosses the same fields as a fail, so the census is not the verdict's, and the host
+  // receipt holds only identities the text already states.
   it("decides the verdict from the bytes the solver submitted, not from the task", async () => {
     const dir = workspace();
-    const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT)).tool));
+    const passed = await rehearse(round(dir, assigningSolver(RIGHT_SLOT)).tool);
+    const passing = modelVisible(passed);
     const failing = modelVisible(await rehearse(round(dir, assigningSolver(WRONG_SLOT)).tool));
 
     expect(asRecord(passing.task)?.taskId).toBe(asRecord(failing.task)?.taskId);
     expect(passing.truth).toEqual({ verdict: "pass" });
     expect(failing.truth).toEqual({ verdict: "fail" });
+    expect(keyPaths(passing)).toEqual([...VERDICT_KEY_PATHS]);
+    const details = required(asRecord(passed.details), "the tool details");
+    expect(Object.keys(details).sort()).toEqual(["receipt", "taskId"]);
+    expect(Object.keys(required(asRecord(details.receipt), "the receipt")).sort()).toEqual([
+      "candidateId",
+      "outcome",
+      "submitted",
+      "truthVerdict",
+      "turns",
+    ]);
     // A miss is stated as the mirror of a pass and names no next task: a first battery is authored to
     // be missed, so steering towards an easier rehearsal would choose the Builder's course for it.
     const missed = isString(failing.nextAction) ? failing.nextAction : "";

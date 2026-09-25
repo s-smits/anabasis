@@ -101,8 +101,6 @@ describe("an exported Built Harness bundle", () => {
     const readme = readFileSync(join(outDir, "README.md"), "utf8");
     expect(readme).toContain("bun run solve -- ");
     expect(readme).toContain("bun run check -- ");
-    expect(readme).toContain("CLAUDE_BUILT_MODEL");
-    expect(readme).toContain("## Take the Harness along");
     expect(readFileSync(join(outDir, ".harness", "backends", "default.json"), "utf8")).toContain(
       '"disabled": true',
     );

@@ -28,6 +28,10 @@ describe("draft-tool nullable numeric arguments", () => {
     },
   });
 
+  const VALID = { numberFirst: 7, nullFirst: 0, constrainedNumber: 7.5, constrainedInteger: 7 };
+  const validate = (args: Record<string, number | null | undefined>) =>
+    validateToolArguments(tool, double({ name: tool.name, arguments: args }));
+
   it("keeps null, zero and a number exact through Pi's pinned validator in either union order", () => {
     const raw = {
       numberFirst: null,
@@ -35,85 +39,29 @@ describe("draft-tool nullable numeric arguments", () => {
       constrainedNumber: null,
       constrainedInteger: 0,
     };
-    const validated = validateToolArguments(tool, double({ name: tool.name, arguments: raw }));
+    const validated = validate(raw);
     expect(validated).toEqual(raw);
     expect(validated).not.toBe(raw);
+    expect(validate(VALID)).toEqual(VALID);
   });
 
-  it("keeps missing distinct from undefined and refuses both for a required value", () => {
-    expect(() =>
-      validateToolArguments(
-        tool,
-        double({
-          name: tool.name,
-          arguments: { nullFirst: 7, constrainedNumber: 7.5, constrainedInteger: 7 },
-        }),
-      ),
-    ).toThrow(/numberFirst.*required/);
-    expect(() =>
-      validateToolArguments(
-        tool,
-        double({
-          name: tool.name,
-          arguments: {
-            numberFirst: undefined,
-            nullFirst: 7,
-            constrainedNumber: 7.5,
-            constrainedInteger: 7,
-          },
-        }),
-      ),
-    ).toThrow(/numberFirst/);
-    expect(
-      validateToolArguments(
-        tool,
-        double({
-          name: tool.name,
-          arguments: {
-            numberFirst: 7,
-            nullFirst: 0,
-            constrainedNumber: 7.5,
-            constrainedInteger: 7,
-          },
-        }),
-      ),
-    ).toEqual({
-      numberFirst: 7,
-      nullFirst: 0,
-      constrainedNumber: 7.5,
-      constrainedInteger: 7,
-    });
-  });
-
-  it("keeps numeric constraints and refuses invalid numbers without coercing null or zero", () => {
-    expect(() =>
-      validateToolArguments(
-        tool,
-        double({
-          name: tool.name,
-          arguments: {
-            numberFirst: 7,
-            nullFirst: 0,
-            constrainedNumber: 11,
-            constrainedInteger: 7,
-          },
-        }),
-      ),
-    ).toThrow(/constrainedNumber.*<= 10/);
-    expect(() =>
-      validateToolArguments(
-        tool,
-        double({
-          name: tool.name,
-          arguments: {
-            numberFirst: 7,
-            nullFirst: 0,
-            constrainedNumber: 7,
-            constrainedInteger: 1.5,
-          },
-        }),
-      ),
-    ).toThrow(/constrainedInteger.*integer/);
+  // Missing and undefined stay distinct inputs, and both are refused for a required value; the
+  // numeric constraints survive the union rewrite without coercing null or zero.
+  it.each<[string, Record<string, number | null | undefined>, RegExp]>([
+    [
+      "a missing required value",
+      { nullFirst: 7, constrainedNumber: 7.5, constrainedInteger: 7 },
+      /numberFirst.*required/,
+    ],
+    ["an undefined required value", { ...VALID, numberFirst: undefined }, /numberFirst/],
+    ["a number above its declared maximum", { ...VALID, constrainedNumber: 11 }, /constrainedNumber.*<= 10/],
+    [
+      "a fraction where an integer is declared",
+      { ...VALID, constrainedInteger: 1.5 },
+      /constrainedInteger.*integer/,
+    ],
+  ])("refuses %s", (_, args, refusal) => {
+    expect(() => validate(args)).toThrow(refusal);
   });
 
   it("leaves an ambiguous three-way union unchanged", () => {

@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { campaignBudgetGate, setTurnBudget } from "../src/run/campaign-budget.ts";
-import { buildHarness, resolveBuilderSlots, withBuilderPin } from "../src/run/harness-build.ts";
+import { buildHarness, resolveBuilderCondition } from "../src/run/harness-build.ts";
+import { loadRepoEnv } from "../src/backends/env.ts";
+import { resolveSlots } from "../src/backends/resolve.ts";
 import type { AskManifest } from "../src/run/ask-manifest.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
@@ -46,77 +48,26 @@ describe("the harness build step", () => {
   });
 });
 
-describe("backend slot resolution for the campaign", () => {
-  it.concurrent("resolves the builder to claude through the operator pin and records its model", () => {
-    const repoRoot = join(SCRATCH_ROOT, "resolve-pinned");
-    mkdirSync(join(repoRoot, ".harness", "backends"), { recursive: true });
-    writeFileSync(
-      join(repoRoot, ".harness", "backends", "bridge-truss.json"),
-      JSON.stringify({ builder: { kind: "claude" } }),
-    );
-    const slots = resolveBuilderSlots(repoRoot, "bridge-truss", {});
-    expect(slots.builder).toEqual({
-      kind: "claude",
-      model: "claude-opus-5",
-      reasoningEffort: "medium",
-      source: "operator",
-    });
-    // bridge-truss.json pins only the builder, so the built slot takes the declared default, which is now
-    // claude for every slot instead of codex-by-first-position.
-    expect(slots.built.kind).toBe("claude");
-    expect(slots.review).toEqual({ enabled: false, source: "unconfigured" });
-  });
-
-  it.concurrent("resolves an explicit codex builder pin; an unpinned repo defaults to claude and passes", () => {
-    // The unconfigured default now comes from the completeness matrix (builder → claude), so an
-    // unpinned repository resolves a Builder here. This test does not open a provider session.
-    const repoRoot = join(SCRATCH_ROOT, "resolve-unpinned");
+// Which slot a repository resolves is `resolve.test.ts`'s; what the build adds is the entrypoint's
+// effort and model laid over the resolved Builder slot, and nothing over the other two.
+describe("the Builder condition a build records", () => {
+  it.concurrent("keeps the resolved effort, and lays an entrypoint effort and model over it", () => {
+    const repoRoot = join(SCRATCH_ROOT, "condition");
     mkdirSync(repoRoot, { recursive: true });
-    expect(resolveBuilderSlots(repoRoot, "bridge-truss", {}).builder).toEqual({
-      kind: "claude",
-      model: "claude-opus-5",
-      reasoningEffort: "medium",
-      source: "default",
-    });
-    // A codex builder pin resolves: every kind opens the one pi host session on the mounted roster
-    // (builderSlot + builderSessionOpener).
-    // The default stays claude — this row states support, never the default.
-    expect(
-      resolveBuilderSlots(repoRoot, "bridge-truss", { HARNESS_BUILDER_BACKEND: "codex" }).builder,
-    ).toMatchObject({
-      kind: "codex",
-      source: "env",
-    });
-  });
-
-  it.concurrent("resolves an openrouter builder pin through the env", () => {
-    const repoRoot = join(SCRATCH_ROOT, "resolve-openrouter");
-    mkdirSync(repoRoot, { recursive: true });
-    expect(
-      resolveBuilderSlots(repoRoot, "bridge-truss", {
-        HARNESS_BUILDER_BACKEND: "openrouter",
-        OPENROUTER_PROVIDER: "deepinfra",
-      }).builder,
-    ).toMatchObject({ kind: "openrouter", providerPin: ["deepinfra"], source: "env" });
-  });
-
-  it.concurrent("a default operator pin satisfies the entrypoint's own guard", () => {
-    const repoRoot = join(SCRATCH_ROOT, "resolve-default-operator");
-    mkdirSync(join(repoRoot, ".harness", "backends"), { recursive: true });
-    writeFileSync(
-      join(repoRoot, ".harness", "backends", "default.json"),
-      JSON.stringify({ builder: { kind: "claude" }, built: { kind: "claude" }, review: { kind: "claude" } }),
+    const resolvedSlots = resolveSlots(repoRoot, MANIFEST.slug, loadRepoEnv(repoRoot, {}));
+    const declared = resolveBuilderCondition(MANIFEST, { resolvedSlots }, repoRoot);
+    expect(declared.builder.reasoningEffort).toBe(resolvedSlots.builder.reasoningEffort);
+    const pinned = resolveBuilderCondition(
+      MANIFEST,
+      { resolvedSlots, effort: "high", model: "pinned" },
+      repoRoot,
     );
-    const slots = resolveBuilderSlots(repoRoot, "bridge-truss", {});
-    expect(slots.builder.kind).toBe("claude");
-    expect(slots.builder.source).toBe("operator");
-  });
-
-  it.concurrent("records the declared builder effort, and an entrypoint effort replaces it", () => {
-    const repoRoot = join(import.meta.dir, "..");
-    const slots = resolveBuilderSlots(repoRoot, "bridge-truss", {});
-    expect(slots.builder).toMatchObject({ kind: "claude", reasoningEffort: "medium" });
-    const denominated = withBuilderPin(slots, { effort: "high" });
-    expect(denominated.builder).toMatchObject({ kind: "claude", reasoningEffort: "high" });
+    expect(pinned.builder).toMatchObject({
+      kind: resolvedSlots.builder.kind,
+      model: "pinned",
+      reasoningEffort: "high",
+    });
+    expect(pinned.slots.builder).toMatchObject({ model: "pinned", reasoningEffort: "high" });
+    expect(pinned.slots.built).toEqual(resolvedSlots.built);
   });
 });

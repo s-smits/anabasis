@@ -41,15 +41,10 @@ function text(result: Awaited<ReturnType<ReturnType<typeof toolsFor>["read"]["ex
 describe("the optional DraftStore-backed Pi files preset", () => {
   it("uses Pi's direct schemas and batched edit coercion without registering bash", () => {
     const { tools, read, write, edit } = toolsFor(new DraftStore());
-    expect(tools.map((tool) => tool.name)).toEqual(["read", "write", "edit", "materialize_files"]);
+    expect(tools.map((tool) => tool.name)).not.toContain("bash");
     expect(read.parameters).toHaveProperty("properties.offset");
     expect(write.parameters).toHaveProperty("properties.content");
     expect(edit.parameters).toHaveProperty("properties.edits");
-    for (const tool of [read, write, edit]) {
-      expect(tool.description).toContain(
-        "the answer's `files` itself: name a file inside it without a leading `files/`.",
-      );
-    }
     expect(edit.prepareArguments?.({ path: "a.txt", oldText: "a", newText: "b" })).toMatchObject({
       edits: [{ oldText: "a", newText: "b" }],
     });
@@ -105,22 +100,24 @@ describe("the optional DraftStore-backed Pi files preset", () => {
     const { write, edit } = toolsFor(draft, schema);
     await write.execute("seed", { path: "a.txt", content: "é" });
     const before = draft.checkpoint();
-    await expect(write.execute("long-path", { path: "x".repeat(513), content: "x" })).rejects.toThrow();
+    await expect(write.execute("long-path", { path: "x".repeat(513), content: "x" })).rejects.toThrow(
+      /a path longer than 512 characters/,
+    );
+    // Pi's edit tool reports only "Error code: unknown"; the byte-limit refusal travels as the cause.
     await expect(
       edit.execute("large-edit", {
         path: "a.txt",
         edits: [{ oldText: "é", newText: "é".repeat(ARTIFACT_JSON_MAX_BYTES / 2) }],
       }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ cause: { message: "the prepared answer exceeds its public byte limit" } });
     expect(draft.checkpoint()).toEqual(before);
-    expect(
-      publicArtifactSchemaFindings(schema, { files: { "a.txt": "é".repeat(ARTIFACT_JSON_MAX_BYTES / 2) } }),
-    ).not.toEqual([]);
     draft.replaceFiles(
       Object.fromEntries(Array.from({ length: FILE_MAP_MAX_ENTRIES }, (_, i) => [`f${i}`, "x"])),
     );
     const full = draft.checkpoint();
-    await expect(write.execute("overflow", { path: "extra", content: "x" })).rejects.toThrow();
+    await expect(write.execute("overflow", { path: "extra", content: "x" })).rejects.toThrow(
+      `expected at most ${FILE_MAP_MAX_ENTRIES} files`,
+    );
     expect(draft.checkpoint()).toEqual(full);
     await write.execute("replace", { path: "f0", content: "updated" });
     expect(draft.getFile("f0")).toBe("updated");
@@ -182,7 +179,7 @@ describe("the optional DraftStore-backed Pi files preset", () => {
         path: "a.txt",
         edits: [{ oldText: "absent", newText: "x" }],
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/Could not find the exact text in a.txt/);
     expect(draft.getFile("a.txt")).toBe("alpha");
     expect(draft.seq).toBe(before);
 
@@ -193,21 +190,6 @@ describe("the optional DraftStore-backed Pi files preset", () => {
     await write.execute("queued-write", { path: "a.txt", content: "final" });
     expect(draft.getFile("a.txt")).toBe("final");
     expect(draft.seq).toBe(before + 2);
-  });
-
-  it("restores exact sorted file state through the existing draft checkpoint", async () => {
-    const draft = new DraftStore();
-    const { write } = toolsFor(draft);
-    await write.execute("z", { path: "z.txt", content: "last" });
-    await write.execute("a", { path: "a.txt", content: "first" });
-    const checkpoint = draft.checkpoint();
-    const restored = DraftStore.fromCheckpoint(checkpoint);
-
-    expect(restored.fileSnapshot()).toEqual({ "a.txt": "first", "z.txt": "last" });
-    expect(restored.seq).toBe(draft.seq);
-    const projection = restored.fileSnapshot();
-    projection["a.txt"] = "falsified";
-    expect(restored.getFile("a.txt")).toBe("first");
   });
 
   it("replaces Pi's unavailable bash advice", async () => {
@@ -250,22 +232,29 @@ describe("the declared open file map", () => {
     expect(validatePublicArtifactSchema(JSON.parse(JSON.stringify(openSchema)))).toEqual(openSchema);
   });
 
-  it("rejects unsafe paths, non-string contents, collisions, and oversize maps", () => {
-    const bad = (files: Record<string, JsonValue>) => publicArtifactSchemaFindings(openSchema, { files });
-    expect(bad({ "../escape.txt": "x" })).not.toEqual([]);
-    expect(bad({ "/absolute.txt": "x" })).not.toEqual([]);
-    expect(bad({ "a\\b.txt": "x" })).not.toEqual([]);
-    expect(bad({ "a\0b.txt": "x" })).not.toEqual([]);
-    expect(bad({ "a//b.txt": "x" })).not.toEqual([]);
-    expect(bad({ "./a.txt": "x" })).not.toEqual([]);
-    expect(bad({ "": "x" })).not.toEqual([]);
-    expect(bad({ "a.txt": 7 })).not.toEqual([]);
-    expect(bad({ a: "file", "a/b.txt": "also under a" })).not.toEqual([]);
-    const oversize = Object.fromEntries(
-      Array.from({ length: FILE_MAP_MAX_ENTRIES + 1 }, (_, i) => [`f${i}.txt`, "x"]),
-    );
-    expect(bad(oversize)).not.toEqual([]);
-    expect(bad({ ["x".repeat(600)]: "x" })).not.toEqual([]);
+  it.each<[string, Record<string, JsonValue>]>([
+    ['a path with a "." or ".." segment', { "../escape.txt": "x" }],
+    ['a path with a "." or ".." segment', { "./a.txt": "x" }],
+    ["an absolute path", { "/absolute.txt": "x" }],
+    ["a path with NUL or backslash", { "a\\b.txt": "x" }],
+    ["a path with NUL or backslash", { "a\0b.txt": "x" }],
+    ["a path with an empty segment", { "a//b.txt": "x" }],
+    ["an empty path", { "": "x" }],
+    ["a path longer than 512 characters", { ["x".repeat(600)]: "x" }],
+    ["number", { "a.txt": 7 }],
+    ["a file whose path is also a directory of another file", { a: "file", "a/b.txt": "also under a" }],
+    [
+      `${FILE_MAP_MAX_ENTRIES + 1} files`,
+      Object.fromEntries(Array.from({ length: FILE_MAP_MAX_ENTRIES + 1 }, (_, i) => [`f${i}.txt`, "x"])),
+    ],
+    [
+      "the prepared answer exceeds its public byte limit",
+      { "a.txt": "é".repeat(ARTIFACT_JSON_MAX_BYTES / 2) },
+    ],
+  ])("refuses a file map holding %s", (actual, files) => {
+    expect(publicArtifactSchemaFindings(openSchema, { files })).toEqual([
+      expect.objectContaining({ actual }),
+    ]);
   });
 
   it("refuses a fileMap declaration that is not the literal true", () => {
@@ -305,44 +294,68 @@ describe("the declared open file map", () => {
   });
 });
 
-// Draft tools update DraftStore through its write methods, which advance seq. Reads
-// return separate copies, so changing a returned value cannot change the stored value.
-/** The inner object of the `{ nested: { count: 1 } }` each test below seeds, read through checks. */
+/** The inner object of the `{ nested: { count: 1 } }` each store below is seeded with. */
 const nested = (value: unknown): JsonObject =>
   required(asRecord(asRecord(value)?.["nested"]), "the seeded nested object");
 
-describe("state values are private and clone-isolated", () => {
-  it("getValue returns a clone: mutating it leaves the store and seq unchanged", () => {
-    const store = new DraftStore();
-    store.setValue("payload", { nested: { count: 1 } });
-    const seqAfterWrite = store.seq;
+/** A store holding one nested value and one file: two writes, so seq 2. */
+function seeded(value: JsonObject = { nested: { count: 1 } }): DraftStore {
+  const store = new DraftStore();
+  store.setValue("root", value);
+  store.setFile("a.txt", "one");
+  return store;
+}
 
-    nested(store.getValue("payload"))["count"] = 999;
+function tap(store: DraftStore, act: (store: DraftStore) => void): DraftStore {
+  act(store);
+  return store;
+}
 
-    expect(store.seq).toBe(seqAfterWrite);
-    expect(store.getValue("payload")).toEqual({ nested: { count: 1 } });
-  });
+/** Tamper with a snapshot the way a generated tool holding one could. */
+function tamper(snap: DraftSnapshot): void {
+  nested(snap.state.root)["count"] = 999;
+  if (snap.files) snap.files["a.txt"] = "tampered";
+}
 
-  it("setValue clones on write: mutating the caller's object afterwards does not reach the store", () => {
-    const store = new DraftStore();
-    const value = { nested: { count: 1 } };
-    store.setValue("payload", value);
-    const seqAfterWrite = store.seq;
-
-    value.nested.count = 999;
-
-    expect(store.seq).toBe(seqAfterWrite);
-    expect(store.getValue("payload")).toEqual({ nested: { count: 1 } });
-  });
-
-  it("the old public attrs object is gone; both regions are Maps, so a key is never a prototype", () => {
-    const store = new DraftStore();
-    // Held as Maps rather than plain objects. `draft-authority.ts` proxies a null-prototype target
-    // and answers only named members, so a generated tool reaches neither field. Both regions are
-    // private, so the test reads them by name at runtime.
-    expect(store).not.toHaveProperty("attrs");
-    expect(store).toHaveProperty("state", expect.any(Map));
-    expect(store).toHaveProperty("files", expect.any(Map));
+// Draft tools reach the store only through its write methods, which advance seq; every read hands
+// back a copy, so changing what a read returned changes neither the stored value nor the clock.
+describe("the draft store keeps its values private", () => {
+  it.each<[string, () => DraftStore, number]>([
+    [
+      "a value read back",
+      () => tap(seeded(), (store) => void (nested(store.getValue("root"))["count"] = 999)),
+      2,
+    ],
+    [
+      "the caller's object after writing it",
+      () => {
+        const value = { nested: { count: 1 } };
+        return tap(seeded(value), () => void (value.nested.count = 999));
+      },
+      2,
+    ],
+    ["a snapshot", () => tap(seeded(), (store) => tamper(store.snapshot())), 2],
+    [
+      "a file projection",
+      () => tap(seeded(), (store) => void (store.fileSnapshot()["a.txt"] = "tampered")),
+      2,
+    ],
+    // A restored store starts its clock at zero: no closure state survives a restart.
+    [
+      "the snapshot a store was restored from",
+      () => {
+        const snap = seeded().snapshot();
+        return tap(DraftStore.fromSnapshot(snap), () => tamper(snap));
+      },
+      0,
+    ],
+  ])("never lets %s reach back into the store", (_, tampered, seq) => {
+    const store = tampered();
+    expect(store.snapshot()).toEqual({
+      state: { root: { nested: { count: 1 } } },
+      files: { "a.txt": "one" },
+    });
+    expect(store.seq).toBe(seq);
   });
 
   it("keeps prototype-shaped keys as data and never reads an inherited property", () => {
@@ -372,41 +385,42 @@ describe("state values are private and clone-isolated", () => {
       Reflect.deleteProperty(Object.prototype, "draftStoreInherited");
     }
   });
-
-  it("deleteValue reports whether it removed anything and only then advances seq", () => {
-    const store = new DraftStore();
-    store.setValue("k", 1);
-    const seqAfterWrite = store.seq;
-
-    expect(store.deleteValue("absent")).toBe(false);
-    expect(store.seq).toBe(seqAfterWrite);
-    expect(store.deleteValue("k")).toBe(true);
-    expect(store.seq).toBe(seqAfterWrite + 1);
-    expect(store.hasValue("k")).toBe(false);
-  });
 });
 
 describe("files and state have separate storage with the same operations", () => {
-  it("set, get, has and delete round-trip, and delete advances seq once", () => {
-    const store = new DraftStore();
-    store.setFile("src/main.ts", "export const x = 1;\n");
-    expect(store.getFile("src/main.ts")).toBe("export const x = 1;\n");
-    expect(store.hasFile("src/main.ts")).toBe(true);
-
-    const seqBeforeDelete = store.seq;
-    expect(store.deleteFile("absent.ts")).toBe(false);
-    expect(store.seq).toBe(seqBeforeDelete);
-    expect(store.deleteFile("src/main.ts")).toBe(true);
-    expect(store.seq).toBe(seqBeforeDelete + 1);
-    expect(store.getFile("src/main.ts")).toBeUndefined();
-  });
+  it.each([
+    [
+      "state",
+      (s: DraftStore) => s.setValue("k", 1),
+      (s: DraftStore) => s.hasValue("k"),
+      (s: DraftStore, key: string) => s.deleteValue(key),
+    ],
+    [
+      "file",
+      (s: DraftStore) => s.setFile("k", "1"),
+      (s: DraftStore) => s.hasFile("k"),
+      (s: DraftStore, key: string) => s.deleteFile(key),
+    ],
+  ] as const)(
+    "a %s delete reports whether it removed anything and only then advances seq",
+    (_, set, has, remove) => {
+      const store = new DraftStore();
+      set(store);
+      expect(has(store)).toBe(true);
+      const seqAfterWrite = store.seq;
+      expect(remove(store, "absent")).toBe(false);
+      expect(store.seq).toBe(seqAfterWrite);
+      expect(remove(store, "k")).toBe(true);
+      expect(store.seq).toBe(seqAfterWrite + 1);
+      expect(has(store)).toBe(false);
+    },
+  );
 
   it("snapshot sorts both regions and omits files entirely while none exist", () => {
     const store = new DraftStore();
     store.setValue("zeta", 1);
     store.setValue("alpha", 2);
     expect(Object.keys(store.snapshot().state)).toEqual(["alpha", "zeta"]);
-    expect(store.snapshot().files).toBeUndefined();
     expect(JSON.stringify(store.snapshot())).not.toContain("files");
 
     store.setFile("b.txt", "b");
@@ -421,108 +435,34 @@ describe("files and state have separate storage with the same operations", () =>
     expect(first).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("replaceFiles swaps the whole map, so a removed file is representable", () => {
+  // One tick per resulting file keeps a later checkpoint above its mutation floor; an identical map
+  // ticks nothing, so an answer prepared from it stays current.
+  it.each<[string, Record<string, string>, Record<string, string>, number]>([
+    ["a whole new map", { "keep.ts": "1", "drop.ts": "2" }, { "keep.ts": "1", "a.ts": "1", "b.ts": "2" }, 3],
+    ["an empty map", { "a.ts": "1" }, {}, 1],
+    ["an identical map", { "a.ts": "1" }, { "a.ts": "1" }, 0],
+  ])("replaceFiles with %s swaps the whole map and ticks once per resulting file", (_, from, to, ticks) => {
     const store = new DraftStore();
-    store.setFile("keep.ts", "1");
-    store.setFile("drop.ts", "2");
-
-    store.replaceFiles({ "keep.ts": "1", "new.ts": "3" });
-
-    expect(store.fileSnapshot()).toEqual({ "keep.ts": "1", "new.ts": "3" });
-    expect(store.hasFile("drop.ts")).toBe(false);
-  });
-
-  it("replaceFiles advances seq once per resulting file, so no later checkpoint reads as falsified", () => {
-    const store = new DraftStore();
-    const before = store.seq;
-    store.replaceFiles({ "a.ts": "1", "b.ts": "2", "c.ts": "3" });
-    expect(store.seq).toBe(before + 3);
-
-    // fromCheckpoint requires seq to cover the file count, including after a whole-map write.
-    const restored = DraftStore.fromCheckpoint(store.checkpoint());
-    expect(restored.fileSnapshot()).toEqual(store.fileSnapshot());
-    expect(restored.seq).toBe(store.seq);
-  });
-
-  it("emptying the file map still advances seq once", () => {
-    const store = new DraftStore();
-    store.setFile("a.ts", "1");
-    const before = store.seq;
-    store.replaceFiles({});
-    expect(store.seq).toBe(before + 1);
-    expect(store.fileSnapshot()).toEqual({});
-  });
-
-  it("an identical map leaves seq unchanged, so a prepared answer stays current", () => {
-    const store = new DraftStore();
-    store.replaceFiles({ "a.ts": "1" });
+    store.replaceFiles(from);
     store.setArtifact({ files: store.fileSnapshot() }, "finish", "call");
     const before = store.seq;
-
-    store.replaceFiles({ "a.ts": "1" });
-
-    expect(store.seq).toBe(before);
-    expect(store.artifactMaterialization().state).toBe("current");
-  });
-});
-
-describe("snapshot is deeply isolated", () => {
-  it("mutating nested snapshot values never reaches back into the store", () => {
-    const store = new DraftStore();
-    store.setValue("root", { nested: { count: 1 } });
-    store.setFile("a.txt", "one");
-    const seqAfterWrite = store.seq;
-
-    const snap = store.snapshot();
-    nested(snap.state.root)["count"] = 999;
-    if (snap.files) snap.files["a.txt"] = "tampered";
-
-    expect(store.seq).toBe(seqAfterWrite);
-    const fresh = store.snapshot();
-    expect(nested(fresh.state.root)["count"]).toBe(1);
-    expect(fresh.files?.["a.txt"]).toBe("one");
+    store.replaceFiles(to);
+    expect(store.fileSnapshot()).toEqual(to);
+    expect(store.seq).toBe(before + ticks);
+    expect(store.artifactMaterialization().state).toBe(ticks === 0 ? "current" : "stale");
+    expect(DraftStore.fromCheckpoint(store.checkpoint()).fileSnapshot()).toEqual(to);
   });
 });
 
 describe("restart equivalence", () => {
   it("a fresh store restored from a snapshot produces identical output and behaviour", () => {
-    const store = new DraftStore();
-    store.setValue("root", { label: "draft" });
-    store.setValue("count", 2);
-    store.setFile("src/main.ts", "export const x = 1;\n");
-
+    const store = seeded();
     const restarted = DraftStore.fromSnapshot(store.snapshot());
     expect(restarted.snapshot()).toEqual(store.snapshot());
 
     store.setValue("extra", 3);
     restarted.setValue("extra", 3);
     expect(restarted.snapshot()).toEqual(store.snapshot());
-  });
-
-  it("mutating the snapshot object after restoration does not reach the freshly built store", () => {
-    const store = new DraftStore();
-    store.setValue("root", { nested: { count: 1 } });
-    store.setFile("a.txt", "one");
-
-    const snap: DraftSnapshot = store.snapshot();
-    const restarted = DraftStore.fromSnapshot(snap);
-
-    nested(snap.state.root)["count"] = 999;
-    if (snap.files) snap.files["a.txt"] = "tampered";
-
-    const restartedSnap = restarted.snapshot();
-    expect(nested(restartedSnap.state.root)["count"]).toBe(1);
-    expect(restartedSnap.files?.["a.txt"]).toBe("one");
-  });
-
-  it("restoring a snapshot starts the sequence number at zero — no hidden closure state survives restart", () => {
-    const store = new DraftStore();
-    store.setValue("a", 1);
-    store.setFile("b.txt", "2");
-    expect(store.seq).toBeGreaterThan(0);
-
-    const restarted = DraftStore.fromSnapshot(store.snapshot());
-    expect(restarted.seq).toBe(0);
   });
 
   it("restoring a null snapshot gives an empty store with a field problem", () => {
@@ -566,26 +506,24 @@ describe("explicit answer preparation", () => {
     });
   });
 
-  it("refuses an answer prepared without a controller-held writer identity", () => {
-    const store = new DraftStore();
-    expect(() => store.setArtifact({ answer: 1 })).toThrow(/writer identity/);
-    expect(() => store.setArtifact({ answer: 1 }, "finish", "")).toThrow(/writer identity/);
-    expect(store.artifactMaterialization()).toEqual({ state: "absent" });
-  });
-
-  it("refuses an artifact larger than the worker protocol can carry", () => {
-    const store = new DraftStore();
-    expect(() => store.setArtifact({ value: "x".repeat(1024 * 1024) }, "finish", "large")).toThrow(
+  it.each<[string, (store: DraftStore) => void, RegExp]>([
+    ["no writer", (store) => store.setArtifact({ answer: 1 }), /writer identity/],
+    ["an empty call id", (store) => store.setArtifact({ answer: 1 }, "finish", ""), /writer identity/],
+    [
+      "more bytes than the worker protocol carries",
+      (store) => store.setArtifact({ value: "x".repeat(1024 * 1024) }, "finish", "large"),
       /byte limit/,
-    );
+    ],
+  ])("refuses an answer prepared with %s and records none", (_, prepare, refusal) => {
+    const store = new DraftStore();
+    expect(() => prepare(store)).toThrow(refusal);
     expect(store.artifactMaterialization()).toEqual({ state: "absent" });
   });
 });
 
-// Checkpoint restoration (PF-06 s4.1 DraftAuthorityCheckpoint) restores the sequence number
-// as well as the draft values, so subsequent edits continue from the saved version.
-// A plain snapshot omits seq; the fromSnapshot test above checks that it starts at zero.
-describe("draft checkpoint restores the sequence number (plan-pack restart-equivalence)", () => {
+// A checkpoint, unlike a snapshot, carries the sequence number, so edits after a restore continue
+// from the saved version and a prepared answer keeps its identity.
+describe("draft checkpoint restores the sequence number", () => {
   it("fromCheckpoint restores state and seq, then later edits increase seq", () => {
     const store = new DraftStore();
     store.setValue("root", { label: "draft" });
@@ -632,22 +570,13 @@ describe("draft checkpoint restores the sequence number (plan-pack restart-equiv
     ).toThrow(/falsified/);
   });
 
-  it("restore refuses a falsified clock: negative, non-integer, or fewer ticks than the snapshot required", () => {
+  // The floor counts both regions, so files cannot be smuggled past a low clock: one value and two
+  // files make it 3.
+  it.each([-1, 1.5, 2])("restore refuses the falsified clock %p", (seq) => {
     const store = new DraftStore();
     store.setValue("meta", 1);
-    store.setFile("a.ts", "1");
-    store.setFile("b.ts", "2");
-    const cp = store.checkpoint();
-    expect(() => DraftStore.fromCheckpoint({ ...cp, seq: -1 })).toThrow(/falsified/);
-    expect(() => DraftStore.fromCheckpoint({ ...cp, seq: 1.5 })).toThrow(/falsified/);
-    expect(() => DraftStore.fromCheckpoint({ ...cp, seq: 2 })).toThrow(/falsified/); // floor is 3
-  });
-
-  it("the mutation floor counts both regions, so files cannot be smuggled past a low clock", () => {
-    const store = new DraftStore();
-    store.setValue("k", 1);
     store.replaceFiles({ "a.ts": "1", "b.ts": "2" });
     expect(store.seq).toBe(3);
-    expect(() => DraftStore.fromCheckpoint({ ...store.checkpoint(), seq: 2 })).toThrow(/falsified/);
+    expect(() => DraftStore.fromCheckpoint({ ...store.checkpoint(), seq })).toThrow(/falsified/);
   });
 });

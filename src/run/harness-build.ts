@@ -44,7 +44,6 @@ import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { campaignVerifierLifetime } from "./verifier-lifetime.ts";
 import { closeVerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
-import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -141,40 +140,20 @@ type EpochBuildContext = {
   };
 };
 
-/** Resolve the slots a build records. */
-export function resolveBuilderSlots(
-  repoRoot: string,
-  slug: string,
-  processEnv: OptionalEnvValues = Bun.env,
-): ResolvedSlots {
-  return resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
-}
-
-/** Add the Builder's effort and optional operator model override to the slots recorded in
- *  backends.json. Effort is a plain string because each transport accepts its own vocabulary;
- *  Codex effort values need not be Claude effort values. */
-export function withBuilderPin(slots: ResolvedSlots, pin: { effort: string; model?: string }): ResolvedSlots {
-  return {
-    ...slots,
-    builder: {
-      ...slots.builder,
-      reasoningEffort: pin.effort,
-      ...keyIfDefined("model", pin.model),
-    },
-  };
-}
-
+/** The slots a build records, with the Builder's effort and optional operator model override laid
+ *  over the resolved Builder slot. Effort is a plain string because each transport accepts its own
+ *  vocabulary; Codex effort values need not be Claude effort values. */
 export function resolveBuilderCondition(
   manifest: AskManifest,
   options: HarnessBuildOptions,
   repoRoot: string,
 ) {
-  const slots = options.resolvedSlots ?? resolveBuilderSlots(repoRoot, manifest.slug);
+  const slots = options.resolvedSlots ?? resolveSlots(repoRoot, manifest.slug, loadRepoEnv(repoRoot));
   const effort = options.effort ?? slots.builder.reasoningEffort;
-  const denominated = withBuilderPin(slots, {
-    effort,
-    ...keyIfDefined("model", options.model),
-  });
+  const denominated: ResolvedSlots = {
+    ...slots,
+    builder: { ...slots.builder, reasoningEffort: effort, ...keyIfDefined("model", options.model) },
+  };
   return {
     slots: denominated,
     builder: {

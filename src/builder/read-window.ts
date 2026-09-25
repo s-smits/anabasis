@@ -1,5 +1,4 @@
 import { errorMessage } from "../meta/runtime-values.ts";
-import { capturedJsonStringify } from "../meta/json-runtime.ts";
 /**
  * The one owner of how much text a model-facing read returns, and of saying what it left out.
  *
@@ -51,14 +50,6 @@ export interface ReadWindow extends WindowRange {
 export interface CharacterWindow extends WindowRange {
   total: number;
   text: string;
-}
-
-interface JsonListPage extends WindowRange {
-  total: number;
-  /** The rendered body: this range, the total, and the taken records under the caller's key. */
-  text: string;
-  /** How many records the body carries. */
-  count: number;
 }
 
 /** The shared arithmetic, so listings and text reads page by one convention. An offset past the end
@@ -120,54 +111,6 @@ export function readWindow(text: string, offset?: number, limit?: number): ReadW
   }
   const to = range.from - 1 + taken.length;
   return { from: range.from, to, total: lines.length, more: to < lines.length, text: taken.join("\n"), cut };
-}
-
-/**
- * A listing the model receives as one JSON body. `windowRange` bounds the record count; the byte
- * guard here bounds the body as well, because a count-only window hands the shared 64 KB tool
- * ceiling (`evidenceResult` in solve/define-tool.ts) a body to cut mid-structure, and the Builder
- * then reads a header claiming every requested record above a fragment that will not parse. Stopping
- * at the guard keeps `to` and `more` naming the records the body actually carries, so the offset the
- * note offers is the one that continues the list.
- *
- * One record is always taken, so a caller paging a long list always advances; a single record past
- * the guard is left to the ceiling, exactly as `readWindow` leaves a single over-long line.
- */
-export function jsonListPage<T>(
-  records: readonly T[],
-  key: string,
-  offset?: number,
-  limit?: number,
-): JsonListPage {
-  const range = windowRange(records.length, offset, limit);
-  const encoder = new TextEncoder();
-  // The envelope is part of the body, so it is measured with the records rather than assumed small.
-  const body = (rows: readonly T[], to: number) =>
-    capturedJsonStringify({
-      from: range.from,
-      to,
-      more: to < records.length,
-      total: records.length,
-      [key]: rows,
-    });
-  const taken: T[] = [];
-  let bytes = encoder.encode(body([], range.from - 1)).byteLength;
-  for (const record of records.slice(range.from - 1, range.to)) {
-    // The record's own JSON cost, counting the comma that joins it to the previous one.
-    const cost = encoder.encode(capturedJsonStringify(record)).byteLength + 1;
-    if (taken.length > 0 && bytes + cost > WINDOW_BYTES) break;
-    taken.push(record);
-    bytes += cost;
-  }
-  const to = range.from - 1 + taken.length;
-  return {
-    from: range.from,
-    to,
-    more: to < records.length,
-    total: records.length,
-    text: body(taken, to),
-    count: taken.length,
-  };
 }
 
 /**

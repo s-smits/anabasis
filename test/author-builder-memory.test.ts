@@ -82,7 +82,9 @@ function campaign(memory: string, scratchpad?: string) {
 }
 
 describe("the notes block a fresh session opens on", () => {
-  it("renders nothing until a pass has written something", () => {
+  // The header comes first and names the workspace the notes were read from; the wording is the
+  // producer's. A carry within one request is no binding change, so the header claims none.
+  it("renders nothing until a pass has written something, then heads the notes with their origin", () => {
     const dir = workspace();
     expect(builderMemoryBlock(dir)).toBe("");
     expect(builderMemoryBlock(join(dir, "absent"))).toBe("");
@@ -92,19 +94,9 @@ describe("the notes block a fresh session opens on", () => {
     expect(block).toContain("OpenSees 3.5");
     // The scratchpad is still the untouched starter, so it stays out of the block entirely.
     expect(block).not.toContain(`--- ${SCRATCHPAD_FILE} ---`);
-  });
-
-  it("heads the block with its origin, its authorship and what overrides it", () => {
-    const dir = workspace();
-    writeFileSync(join(dir, MEMORY_FILE), "# Builder memory\n\nthe engine is pinned\n");
-    const block = builderMemoryBlock(dir);
-    expect(block.startsWith("Historical notes, model-authored and possibly stale.")).toBe(true);
-    expect(block).toContain(dir);
-    expect(block).toContain('"carried forward from <epoch>"');
-    expect(block).toContain("Everything below this\nblock is current and overrides it");
-    expect(block.indexOf("Historical notes")).toBeLessThan(block.indexOf(`--- ${MEMORY_FILE} ---`));
-    // A carry within one request is no longer a binding change, so the header claims none.
-    expect(block).not.toContain("binding");
+    const header = block.slice(0, block.indexOf(`--- ${MEMORY_FILE} ---`));
+    expect(header).toContain(dir);
+    expect(header).not.toContain("binding");
   });
 
   it("bounds a hand-written file on the read and keeps the end the Builder wrote last", () => {

@@ -16,7 +16,6 @@ import { join } from "../src/meta/path.ts";
 import { heapStats } from "bun:jsc";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
-  jsonListPage,
   LIST_WINDOW_ROWS,
   READ_WINDOW_LINES,
   readWindow,
@@ -430,38 +429,6 @@ describe("the read window", () => {
     expect(windowRange(500, 401, LIST_WINDOW_ROWS)).toEqual({ from: 401, to: 500, more: false });
     expect(windowRange(10)).toEqual({ from: 1, to: 10, more: false });
     expect(READ_WINDOW_LINES).toBeGreaterThan(LIST_WINDOW_ROWS);
-  });
-
-  it("stops a JSON listing at the byte guard and names the records it carries", () => {
-    const rows = Array.from({ length: 200 }, (_, index) => ({ id: index + 1, label: "x".repeat(400) }));
-    const page = jsonListPage(rows, "files", 1, LIST_WINDOW_ROWS);
-    expect(page.count).toBeLessThan(rows.length);
-    expect(page).toMatchObject({ from: 1, to: page.count, total: 200, more: true });
-    const body = JSON.parse(page.text);
-    expect(body.files).toHaveLength(page.count);
-    expect(new TextEncoder().encode(page.text).byteLength).toBeLessThan(TOOL_TEXT_LIMITS.evidence);
-    // The offset the page names is the next unread record, not the one a count-only window promised.
-    expect(JSON.parse(jsonListPage(rows, "files", page.to + 1, LIST_WINDOW_ROWS).text).files[0].id).toBe(
-      page.to + 1,
-    );
-  });
-
-  it("returns a listing that fits whole, and advances on a record that does not", () => {
-    expect(jsonListPage([{ id: 1 }, { id: 2 }], "files", 1, LIST_WINDOW_ROWS)).toMatchObject({
-      from: 1,
-      to: 2,
-      more: false,
-      total: 2,
-      count: 2,
-    });
-    // One record is always taken, as readWindow always returns a first line: a page that returned
-    // nothing would leave the caller asking for the same offset forever.
-    expect(jsonListPage([{ text: "x".repeat(60_000) }, { text: "y" }], "matches", 1, 40)).toMatchObject({
-      from: 1,
-      to: 1,
-      more: true,
-      count: 1,
-    });
   });
 
   // One sentence with one owner. harness_trial and correctness_check each held a byte-identical

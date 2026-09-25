@@ -24,9 +24,7 @@ function fwFile(name: string, text: string) {
 }
 
 describe("streaming file window", () => {
-  // The claim under test is equivalence: the same window, whether the file is in memory or not.
-  // Anything weaker would let the streaming path drift from the owner that defines a window.
-  it("returns what the in-memory owner returns, at the start, the middle and the end", () => {
+  it("returns what the in-memory owner returns, at the start, the middle, the end and past it", () => {
     const sample = fwFile(
       "sample.txt",
       `${Array.from({ length: 5_000 }, (_, i) => `line ${i + 1} ${"y".repeat(i % 40)}`).join("\n")}\n`,
@@ -36,6 +34,7 @@ describe("streaming file window", () => {
       [100, 3],
       [2_500, 400],
       [4_999, 10],
+      [9_999, 5],
     ] as const) {
       expect(readFileWindow(sample.path, sample.lines, offset, limit)).toEqual(
         readWindow(sample.text, offset, limit),
@@ -44,8 +43,8 @@ describe("streaming file window", () => {
   });
 
   it("clamps a negative offset and a zero limit rather than paging from the end", () => {
-    // windowRange is the arithmetic both windows share, and a model sends a negative offset and a
-    // zero limit often enough that run 35 recorded both. Unclamped, a negative offset slices from
+    // windowRange is the arithmetic both windows share, and models do send a negative offset and a
+    // zero limit. Unclamped, a negative offset slices from
     // the end of the file: the caller asked for the start and would be handed the tail with nothing
     // saying so. A zero limit is one line, not none, because an empty page cannot be walked.
     const sample = fwFile("clamped.txt", "one\ntwo\nthree\nfour\n");
@@ -77,11 +76,6 @@ describe("streaming file window", () => {
     const sample = fwFile("many.txt", `${Array.from({ length: 900 }, (_, i) => `row ${i}`).join("\n")}\n`);
     const window = readFileWindow(sample.path, sample.lines, 10, 5);
     expect([window.from, window.to, window.total, window.more]).toEqual([10, 14, 901, true]);
-  });
-
-  it("gives an empty window past the end rather than an error", () => {
-    const sample = fwFile("short.txt", "one\ntwo\n");
-    expect(readFileWindow(sample.path, sample.lines, 99, 5)).toEqual(readWindow(sample.text, 99, 5));
   });
 
   it("closes the file at an early stop, so a page and a refused scan leak no descriptor", () => {

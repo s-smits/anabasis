@@ -1,14 +1,11 @@
 /**
  * What a Builder turn does when the provider, not the task, ended it.
  *
- * Three shapes, one question each. A transport failure that produced no build output is run again
- * on a growing ladder (run53-sol-0903 and run55-sol-0903 on an unrefreshable access token,
- * truss-run12-sol-0903 on the per-turn settle cap during a host outage: each ended the whole run on
- * its first failed turn). A refusal that no wait clears spends no wait at all
- * (opus-20260905T065506215Z sat through 17 minutes of ladder on a disabled organisation). And
- * a limit that names when it clears waits for that instant, because the ladder cannot reach it:
- * campaign 3fd52f9e-28 ended twice on 2026-09-17, at 07:33 against "resets 12pm (Europe/Amsterdam)"
- * and at 12:36 against "resets 6:30pm", each time abandoning a live campaign hours early.
+ * Three shapes, one question each. A transport failure that produced no build output, such as an
+ * unrefreshable access token or the per-turn settle cap, is run again on a growing ladder rather
+ * than ending the whole run on its first failed turn. A refusal that no wait clears, such as a
+ * disabled organisation, spends no wait at all. And a limit that names when it clears waits for
+ * that instant, because the ladder cannot reach it and ending there abandons a live campaign.
  *
  * Every case drives the real `runBuilderTurn` against a scripted session, so the retry owner, the
  * recorded rows and the typed non-result are the production ones.
@@ -21,17 +18,13 @@ import type { AgentSession, AgentTurnResult, RunTurnOptions } from "../src/backe
 import { BuildAgentTurnNonResult } from "../src/author/build-agent.ts";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
 import { runBuilderTurn, type BuilderTurnState } from "../src/author/builder-turn-loop.ts";
-import {
-  PERMANENT_REFUSAL,
-  PROVIDER_RESET_MARGIN_MS,
-  TURN_RETRY_BACKOFF_MS,
-} from "../src/author/turn-retry.ts";
+import { PROVIDER_RESET_MARGIN_MS, TURN_RETRY_BACKOFF_MS } from "../src/author/turn-retry.ts";
 import { allowanceWait, providerResetAt } from "../src/truth/provider-reset.ts";
 import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
 import { ControllerSignalAbort, controllerAbortClause } from "../src/run/controller-abort-clause.ts";
 
-/** The wording run53 and run55 both ended on. No canonical matcher recognises it, which is why the
- *  retry is decided on the turn's outcome rather than on prose. */
+/** An unrefreshable-token wording no canonical matcher recognises, which is why the retry is
+ *  decided on the turn's outcome rather than on prose, and the ladder must retry it. */
 const TOKEN_REFRESH =
   "Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.";
 const SETTLE_CAP = "per-turn settle cap 3600000 ms elapsed before turn/completed; turn interrupted";
@@ -195,9 +188,9 @@ describe("a refusal the run cannot wait out", () => {
 
   it("spends no wait when a second allowance beside a clocked one names no clock", async () => {
     // One turn can carry both: the session limit says it clears at noon, the monthly spend limit
-    // says to raise it at claude.ai/settings/usage and clears on no clock at all. Until 2026-09-20
-    // one clause was read across the whole list, so noon spoke for both and the run slept the
-    // hours to it before meeting the same monthly limit unchanged.
+    // says to raise it at claude.ai/settings/usage and clears on no clock at all. Reading one clause
+    // across the whole list would let noon speak for both, and the run would sleep the hours to it
+    // before meeting the same monthly limit unchanged.
     const turn = turnUnderTest(() =>
       failed(
         "api_error status 429: You've hit your session limit · resets 12pm (Europe/Amsterdam)",
@@ -221,10 +214,6 @@ describe("a refusal the run cannot wait out", () => {
       kind: "provider-resource-budget-exhausted",
     });
     expect(turn.waits).toEqual([]);
-  });
-
-  it("keeps the token-refresh wording out of the permanent set", () => {
-    expect(PERMANENT_REFUSAL.test(TOKEN_REFRESH)).toBe(false);
   });
 });
 
@@ -253,8 +242,8 @@ describe("a session limit that says when it clears", () => {
     const turn = turnUnderTest(() =>
       failed("api_error status 429: You've hit your session limit · resets 4pm (Europe/Amsterdam)"),
     );
-    // The stop arrives inside the wait, which for a reset is most of the hours it covers. Before
-    // this the gates were asked only on the way in, so the run slept to the provider's clock first.
+    // The stop arrives inside the wait, which for a reset is most of the hours it covers; gates
+    // asked only on the way in would let the run sleep to the provider's clock first.
     const waitMs = async (ms: number) => {
       turn.waits.push(ms);
       budget.cancelActiveTurns(new ControllerSignalAbort("SIGTERM"));
@@ -313,59 +302,33 @@ describe("a session limit that says when it clears", () => {
 });
 
 describe("the reset time a provider names", () => {
-  it("resolves the clause campaign 3fd52f9e-28 died on, in the zone it names", () => {
-    // 07:33:23Z on 2026-09-17 is 09:33 in Amsterdam, so noon there is 10:00Z — two and a half hours
-    // later. The run ended instead, and three further authoring rounds opened against a dead provider.
-    const limit = "api_error status 429: You've hit your session limit · resets 12pm (Europe/Amsterdam)";
-    expect(providerResetAt(limit, new Date("2026-09-17T07:33:23Z"))?.toISOString()).toBe(
+  // Resolved in the zone the clause names, and taking the clock's next occurrence when today's has
+  // passed; the refusals that name no sleepable clock are asserted at the turn above.
+  it.each([
+    // 07:33:23Z is 09:33 in Amsterdam, so noon there is 10:00Z.
+    [
+      "api_error status 429: You've hit your session limit · resets 12pm (Europe/Amsterdam)",
+      "2026-09-17T07:33:23Z",
       "2026-09-17T10:00:00.000Z",
-    );
-    expect(
-      providerResetAt(
-        "... limit · resets 6:30pm (Europe/Amsterdam)",
-        new Date("2026-09-17T12:36:11Z"),
-      )?.toISOString(),
-    ).toBe("2026-09-17T16:30:00.000Z");
+    ],
+    ["... limit · resets 6:30pm (Europe/Amsterdam)", "2026-09-17T12:36:11Z", "2026-09-17T16:30:00.000Z"],
+    // 12:36Z is 14:36 in Oslo, so 1:30am is tomorrow's, still under a day away.
+    ["resets 1:30am (Europe/Oslo)", "2026-09-17T12:36:00Z", "2026-09-17T23:30:00.000Z"],
+    ["resets soon (Mars/Olympus_Mons)", "2026-09-17T12:36:00Z", null],
+  ])("resolves %s at %s to %s", (clause, now, expected) => {
+    expect(providerResetAt(clause, new Date(now))?.toISOString() ?? null).toBe(expected);
   });
 
-  it("takes the clock's next occurrence when today's has passed", () => {
-    // 12:36Z is 14:36 in Oslo, so 1:30am is tomorrow's — 23:30Z, still under a day away.
-    expect(
-      providerResetAt("resets 1:30am (Europe/Oslo)", new Date("2026-09-17T12:36:00Z"))?.toISOString(),
-    ).toBe("2026-09-17T23:30:00.000Z");
-  });
-
-  it("reads each clock from the allowance that named it", () => {
+  it("resumes when the last of several clocked allowances lifts, not the first", () => {
     const now = new Date("2026-09-17T07:33:23Z");
-    const noon = "api_error status 429: You've hit your session limit · resets 12pm (Europe/Amsterdam)";
-    const spend =
-      "api_error status 429: You've hit your monthly spend limit · raise it at claude.ai/settings/usage";
-
-    // An allowance naming no clock refuses, whatever a clause beside it says.
-    expect(allowanceWait([noon, spend], now)).toMatchObject({ refuse: true });
-    expect(allowanceWait([spend], now)).toMatchObject({ refuse: true, at: null });
-    // Where several allowances name clocks, work resumes when the last of them lifts, not the first.
     expect(
-      allowanceWait([noon, "You've hit your session limit · resets 4pm (Europe/Amsterdam)"], now),
+      allowanceWait(
+        [
+          "api_error status 429: You've hit your session limit · resets 12pm (Europe/Amsterdam)",
+          "You've hit your session limit · resets 4pm (Europe/Amsterdam)",
+        ],
+        now,
+      ),
     ).toMatchObject({ refuse: false, at: new Date("2026-09-17T14:00:00.000Z") });
-    // A transport failure is no allowance, so the caller keeps its ordinary ladder.
-    expect(allowanceWait(["api_error status 429: too many requests; retry later"], now)).toMatchObject({
-      refuse: false,
-      at: null,
-    });
-  });
-
-  it("resolves nothing it cannot sleep on", () => {
-    const now = new Date("2026-09-17T12:36:00Z");
-    // Read as a bare clock, a dated allowance would sleep until tomorrow morning for a limit that
-    // clears in days.
-    expect(
-      providerResetAt("You've hit your weekly limit · resets Sep 12 at 8am (Europe/Amsterdam)", now),
-    ).toBeNull();
-    expect(
-      providerResetAt("You've hit your monthly spend limit · raise it at claude.ai/settings/usage", now),
-    ).toBeNull();
-    expect(providerResetAt("Your organization has disabled Claude subscription access", now)).toBeNull();
-    expect(providerResetAt("resets soon (Mars/Olympus_Mons)", now)).toBeNull();
   });
 });

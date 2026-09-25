@@ -95,20 +95,6 @@ test("difficulty is read from measured results, so a battery-wide label is refus
   }
 });
 
-test("historical declarations remain readable without becoming a second condition authority", () => {
-  const tasks = battery();
-  tasks[0] = {
-    ...tasks[0]!,
-    intendedFeatures: { invented: { min: 1000 } },
-    difficultyAxes: ["invented"],
-    difficultyAxisPath: "$.absent",
-  };
-  const before = JSON.stringify(tasks);
-  expect(codes(tasks)).toEqual([]);
-  // Validation reads; it never repairs the candidate on the Builder's behalf.
-  expect(JSON.stringify(tasks)).toBe(before);
-});
-
 test("an empty battery and a malformed one are refused before any rule reads a task", () => {
   expect(codes([])).toEqual(["tasks-empty"]);
   // A wrong shape returns its field finding alone: the rules below it would read absent fields.

@@ -3,9 +3,9 @@ import { BuildAgentTurnNonResult, runModelAttempt } from "../src/author/build-ag
 import { rejectionOf } from "./helpers/doubles.ts";
 
 describe("a thrown transport failure inside one model attempt", () => {
-  // Campaigns -4 and -5 (2026-08-29): the codex thread-open fatal was thrown by the
-  // transport rather than settled as a failed turn, bypassed every classifier and recorded a bare
-  // abort with no owner. The attempt boundary now applies openBuildSession's rule to throws.
+  // A transport can throw a failure it should have settled as a failed turn, which would bypass
+  // every classifier and record a bare abort with no owner, so the attempt boundary applies
+  // openBuildSession's rule to throws as well.
   it("becomes the typed turn non-result when the canonical matcher recognises it", async () => {
     const error = await rejectionOf(
       runModelAttempt(undefined, "builder", async () => {

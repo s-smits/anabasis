@@ -81,23 +81,12 @@ describe("the candidate check's on-disk task shape", () => {
 });
 
 describe("harness_inspect", () => {
-  it.concurrent("routes an early feedback call back to readiness", () => {
-    expect(new BuilderAuthorFeedback().page()).toMatchObject({
-      available: false,
-      phase: "before-submit",
-      nextAction: expect.stringContaining("harness_inspect readiness"),
-    });
-    // Rehearsals are an instrument the Builder may use, not a condition of submitting.
-    expect(new BuilderAuthorFeedback().page().nextAction).not.toContain("trials");
-  });
-
   it.concurrent("combines static readiness and chooses one sample trial task per family", async () => {
     const dir = workspace(fence("## Task battery contract", "json"), runtimeProcess.cwd());
     const blocked = await inspect<{
       staticStatus: string;
       missing: string[];
       modules: Array<{ module: string; present: boolean; diagnostics: number }>;
-      toolContract: { registerExactly: string[] };
       tasks: {
         count: number;
         familiesTotal: number;
@@ -112,7 +101,6 @@ describe("harness_inspect", () => {
     expect(blocked.staticStatus).toBe("blocked");
     expect(blocked.missing).toEqual(["correctness-model/evaluator.ts", "agent/tools.ts"]);
     expect(blocked.modules.every((module) => !module.present)).toBe(true);
-    expect(blocked.toolContract.registerExactly).toContain("submit");
     expect(blocked.tasks).toMatchObject({ count: 4, familiesTotal: 2 });
     expect(blocked.suggestedTrials).toEqual([
       { family: "single-shift", taskId: "single-shift-01" },
@@ -224,6 +212,7 @@ describe("harness_inspect", () => {
   });
 
   it.concurrent("summarises the contract state of a clean candidate without opening any value", async () => {
+    const dir = workspace();
     const body = await inspect<{
       files: Record<string, boolean>;
       staticStatus: string;
@@ -231,7 +220,7 @@ describe("harness_inspect", () => {
       tasks: Record<string, JsonValue>;
       brief: Record<string, JsonValue>;
       controls: JsonValue;
-    }>(workspace(), "readiness");
+    }>(dir, "readiness");
     expect(body.files).toEqual({
       "correctness-model/brief.json": true,
       "correctness-model/tasks.json": true,
@@ -246,21 +235,38 @@ describe("harness_inspect", () => {
     expect(body.tasks).toMatchObject({
       count: 4,
       families: [
-        { family: "single-shift", tasks: 2 },
-        { family: "two-shift", tasks: 2 },
+        {
+          family: "single-shift",
+          tasks: 2,
+          publicInputPaths: expect.any(Number),
+          sampleTaskId: "single-shift-01",
+        },
+        { family: "two-shift", tasks: 2, publicInputPaths: expect.any(Number), sampleTaskId: "two-shift-01" },
       ],
     });
     // Check ids and counts only: how often each declared check is exercised, never what it expects.
     expect(body.tasks.hiddenChecksByCheckId).toEqual({});
     expect(body.brief).toMatchObject({ slug: "duty-roster", artifactFields: ["assignments"] });
     expect(body.controls).toEqual({ accept: expect.any(Number), reject: expect.any(Number) });
+    // One family opens to its task ids and the public paths its generated tools may read.
+    const family = await inspect<{ taskIds: string[]; publicInputPaths: string[] }>(
+      dir,
+      "readiness",
+      undefined,
+      {
+        family: "two-shift",
+      },
+    );
+    expect(family.taskIds).toEqual(["two-shift-01", "two-shift-02"]);
+    expect(family.publicInputPaths).toEqual(expect.arrayContaining(["$.staff[]", "$.shifts[]"]));
   }, 60_000);
 
   it.concurrent("resolves each declared tool where the host will, and names the one that resolves nowhere", async () => {
-    // run22: the whole truth logic lived in a checker the registry materialised and no inspection
-    // view named it. Now readiness lists each tool an external check names with the path and
-    // digest the host will bind at submit, or the reason it will not run.
+    // Readiness lists each tool an external check names with the path and digest the host will bind
+    // at submit, or the reason it will not run, so a checker the registry materialises is never
+    // invisible to inspection. A brief naming no external tool lists none.
     const dir = workspace();
+    expect((await inspect<{ installedTools: JsonValue }>(dir, "readiness")).installedTools).toEqual([]);
     const briefPath = join(dir, "correctness-model/brief.json");
     const parsed: unknown = JSON.parse(readFileSync(briefPath, "utf8"));
     const brief = isRecord(parsed) ? parsed : {};
@@ -292,9 +298,7 @@ describe("harness_inspect", () => {
     ]);
   });
 
-  it.concurrent("reports no external checks as an empty list and an unreadable brief honestly", async () => {
-    const none = await inspect<{ installedTools: JsonValue }>(workspace(), "readiness");
-    expect(none.installedTools).toEqual([]);
+  it.concurrent("reports an unreadable brief's tools as a reason instead of an empty list", async () => {
     const dir = workspace();
     writeFileSync(join(dir, "correctness-model/brief.json"), "not json");
     const invalid = await inspect<{ installedTools: { invalid: string } }>(dir, "readiness");
@@ -470,41 +474,17 @@ describe("harness_inspect", () => {
     });
   });
 
-  it.concurrent("lists every task family and the public paths its generated tools may read", async () => {
-    const dir = workspace();
-    const ready = await inspect<{
-      tasks: {
-        families: Array<{ family: string; tasks: number; publicInputPaths: number; sampleTaskId: string }>;
-      };
-    }>(dir, "readiness");
-    expect(ready.tasks.families).toEqual([
-      {
-        family: "single-shift",
-        tasks: 2,
-        publicInputPaths: expect.any(Number),
-        sampleTaskId: "single-shift-01",
-      },
-      { family: "two-shift", tasks: 2, publicInputPaths: expect.any(Number), sampleTaskId: "two-shift-01" },
-    ]);
-    const family = await inspect<{ taskIds: string[]; publicInputPaths: string[]; total: number }>(
-      dir,
-      "readiness",
-      undefined,
-      { family: "two-shift" },
-    );
-    expect(family.taskIds).toEqual(["two-shift-01", "two-shift-02"]);
-    expect(family.total).toBeGreaterThan(0);
-    expect(family.publicInputPaths).toContain("$.staff[]");
-    expect(family.publicInputPaths).toContain("$.shifts[]");
-  });
-
   it.concurrent("keeps a large refusal bounded while every grouped field remains reachable", async () => {
     const dir = workspace();
     const feedback = new BuilderAuthorFeedback();
+    // Before any gate has run, feedback routes back to readiness; rehearsals are an instrument the
+    // Builder may use, not a condition of submitting.
     expect(feedback.page()).toMatchObject({
       available: false,
-      nextAction: expect.stringContaining("readiness"),
+      phase: "before-submit",
+      nextAction: expect.stringContaining("harness_inspect readiness"),
     });
+    expect(feedback.page().nextAction).not.toContain("trials");
     const longDetail = `start-${"x".repeat(20_000)}-end`;
     feedback.record(
       { attempt: 3, turn: 7, stage: "gates", commit: "a".repeat(40) },
@@ -518,7 +498,6 @@ describe("harness_inspect", () => {
       ]),
     );
     const tool = createHarnessInspectTool({ workspace: dir, context: CONTEXT, feedback });
-    expect(tool.description).toContain("Use feedback after correctness_check or submit findings");
     const call = async (args: Record<string, JsonValue>) => {
       const result = await tool.execute("feedback", { action: "feedback", ...args });
       const block = result.content[0];

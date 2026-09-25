@@ -45,7 +45,7 @@ const REASON_MAX_CHARS = 300;
  *  backoffs, seventeen minutes, on the same HTTP 403 before ending on the clause it would have
  *  ended on at once. The transient set stays decided on the turn's outcome; this names the one
  *  permanent shape. */
-export const PERMANENT_REFUSAL =
+const PERMANENT_REFUSAL =
   /\b(?:organi[sz]ation|account|workspace)\b[^\n]{0,80}\b(?:disabled|deactivated|suspended)\b/i;
 
 export interface TurnRetryContext {

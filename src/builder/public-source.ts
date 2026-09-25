@@ -42,7 +42,7 @@ interface PublicDnsAddress {
 
 type PublicDnsLookup = (hostname: string) => Promise<PublicDnsAddress[]>;
 
-export interface PublicHttpsTarget {
+interface PublicHttpsTarget {
   url: URL;
   hostname: string;
   address: PublicDnsAddress;
@@ -155,13 +155,6 @@ export async function resolvePublicHttpsTarget(
   return { url, hostname, address };
 }
 
-/** Where the request actually goes: the vetted address, carrying the path the operator asked for. */
-export function pinnedRequestUrl(target: PublicHttpsTarget): string {
-  // An IPv6 address is bracketed so it can sit in a URL authority.
-  const { address, family } = target.address;
-  return `https://${family === 6 ? `[${address}]` : address}${target.url.pathname}${target.url.search}`;
-}
-
 /** Stream one response to the staging file, refusing at the byte ceiling rather than after it. */
 async function drainToFile(body: ReadableStream<Uint8Array>, path: string): Promise<Hop> {
   const hash = new Bun.CryptoHasher("sha256");
@@ -194,8 +187,12 @@ function hopFailure(cause: unknown): PublicSourceFailure {
 
 async function fetchHop(target: PublicHttpsTarget, path: string, signal?: AbortSignal): Promise<Hop> {
   const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  // The request goes to the vetted address, carrying the path the operator asked for; an IPv6
+  // address is bracketed so it can sit in a URL authority.
+  const { address, family } = target.address;
+  const pinned = `https://${family === 6 ? `[${address}]` : address}${target.url.pathname}${target.url.search}`;
   try {
-    const response = await fetch(pinnedRequestUrl(target), {
+    const response = await fetch(pinned, {
       method: "GET",
       redirect: "manual",
       signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),

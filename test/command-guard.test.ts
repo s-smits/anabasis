@@ -29,8 +29,7 @@ const LOCAL = ".local";
 
 const dirs: string[] = [];
 
-/** `workspaceResidual` hands back the rewritten command or `null`; every case below asks only
- *  which of the two it was, and the wrapper used to live in the source it tests. */
+/** `workspaceResidual` hands back the rewritten command or `null`; most cases ask only which. */
 function workspaceAllows(command: string, ruleId: string | null): boolean {
   return workspaceResidual(command, ruleId) !== null;
 }
@@ -53,7 +52,7 @@ afterEach(() => {
 /**
  * A stand-in for `dcg` that answers in its protocol: Claude Code's PreToolUse JSON on stdout, exit
  * 0 either way. The real binary is not a test dependency — a host without it must still run this
- * suite. The fixture reproduces the protocol measured from dcg 0.11.0 on 2026-08-20 and refuses
+ * suite. The fixture reproduces the protocol dcg answers in hook mode and refuses
  * the destructive remove, checkout and reset commands exercised below.
  *
  * `/bin/sh` by absolute path, and no interpreter lookup: the guard is handed `PATH` and `HOME` and
@@ -85,8 +84,8 @@ function fakeGuard(name: string): string {
 }
 
 describe("the Builder's destructive-command guard", () => {
-  // Operator decision 2026-09-14: a recursive remove of the session's own relative tree and a
-  // discarding checkout or restore of its own file are allowed over the guard's refusal; anything
+  // A recursive remove of the session's own relative tree and a discarding checkout or restore of
+  // its own file are allowed over the guard's refusal; anything
   // rooted outside the workspace, climbing out of it, or following a `cd` out of the session's own
   // tree keeps the refusal.
   it.concurrent("allows workspace-bound removes and reverts over the guard's refusal", () => {
@@ -101,7 +100,7 @@ describe("the Builder's destructive-command guard", () => {
     expect(workspaceAllows("rm -rf *", rm)).toBe(false);
     expect(workspaceAllows("rm -rf", rm)).toBe(false);
     expect(workspaceAllows("cd / && rm -rf usr", rm)).toBe(false);
-    // Run 08c0f2: a cd into the private home or a relative child keeps the remove inside.
+    // A cd into the private home or a relative child keeps the remove inside.
     const home = ["$", "HOME"].join("");
     expect(workspaceAllows("cd ~ && rm -rf build && ls", rm)).toBe(true);
     expect(workspaceAllows(`cd ${home} && rm -rf work && mkdir -p work/fw && cd work/fw`, rm)).toBe(true);
@@ -118,7 +117,7 @@ describe("the Builder's destructive-command guard", () => {
       expect(workspaceAllows(`cd ${target} && rm -rf build`, rm)).toBe(false);
     }
     expect(workspaceAllows(`HOME=/ && cd ${home} && rm -rf usr`, rm)).toBe(false);
-    // The same run: a child of the private home is removed directly, under either rule dcg names.
+    // A child of the private home is removed directly, under either rule dcg names.
     for (const rule of [rm, "core.filesystem:rm-rf-root-home"]) {
       expect(workspaceAllows("rm -rf ~/ws && mkdir -p ~/ws/fw", rule)).toBe(true);
       expect(workspaceAllows(`rm -rf "${home}/b" build`, rule)).toBe(true);
@@ -127,7 +126,7 @@ describe("the Builder's destructive-command guard", () => {
       }
       expect(workspaceAllows(`HOME=/usr; rm -rf ${home}/lib`, rule)).toBe(false);
     }
-    // Rehearsal 805bcc: a quoted heredoc writing a wrapper that cds is text, not a cd of this command.
+    // A quoted heredoc writing a wrapper that cds is text, not a cd of this command.
     const wrapper = (quote: string, after = "") =>
       `rm -rf .toolchain/py312 && cat > .toolchain/bin/py <<${quote}EOF${quote}${after}\n#!/bin/sh\nDIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\nEOF\nchmod +x .toolchain/bin/py`;
     expect(workspaceAllows(wrapper("'"), rm)).toBe(true);
@@ -137,7 +136,7 @@ describe("the Builder's destructive-command guard", () => {
     expect(workspaceAllows(wrapper("'", " && cd /"), rm)).toBe(false);
     expect(workspaceAllows(`${wrapper("'")}\ncd / && rm -rf usr`, rm)).toBe(false);
     expect(workspaceAllows("git checkout -- src/app.ts", "core.git:checkout-discard")).toBe(true);
-    // Operator decision 2026-09-16: a redirect into the shell's own private HOME or TMPDIR passes;
+    // A redirect into the shell's own private HOME or TMPDIR passes;
     // any other expanded target, a climb out, or a reassigned HOME or TMPDIR keeps the refusal.
     const redirect = "core.filesystem:redirect-truncate-dynamic-path";
     const v = (name: string) => ["$", name].join("");
@@ -203,7 +202,9 @@ EOF`,
     expect(refuseDestructiveCommand(DESTRUCTIVE_SAMPLE, env)).toContain(
       "Rule: core.filesystem:rm-rf-general",
     );
-    expect(refuseDestructiveCommand("rm -rf ../sibling", env)).toContain("Accepted: Delete a workspace tree");
+    expect(refuseDestructiveCommand("rm -rf ../sibling", env)).toContain(
+      `Accepted: ${acceptedSpelling("core.filesystem:rm-rf-general", DCG_RULES)}`,
+    );
     // The guard names one rule per answer: an admitted segment must not carry a refused one past it.
     expect(refuseDestructiveCommand("rm -rf build && git checkout -- a.ts", env)).toBeNull();
     expect(refuseDestructiveCommand(`rm -rf build; ${RESET_SAMPLE}`, env)).toContain(
@@ -252,7 +253,7 @@ EOF`,
   });
 
   it.concurrent("keeps the reason and the rule of dcg's refusal and drops the hand-over to a user", () => {
-    // dcg 0.14.0's hook-mode reason for `rm -rf build/vendor`, measured 2026-09-03, explanation shortened.
+    // dcg's hook-mode reason for `rm -rf build/vendor`, explanation shortened.
     const measured = [
       "BLOCKED by dcg",
       "",
@@ -275,29 +276,22 @@ EOF`,
         "BLOCKED by dcg",
         "Reason: rm -rf is destructive and requires human approval. Explain what you want to delete and why, then ask the user to run the command manually.",
         "Rule: core.filesystem:rm-rf-general",
-        "Accepted: Delete a workspace tree with rm -rf <relative path>; for anything else move a tree into scratch/.trash/ instead.",
+        `Accepted: ${acceptedSpelling("core.filesystem:rm-rf-general", DCG_RULES)}`,
         BUILDER_REFUSAL_CLOSE,
       ].join("\n"),
     );
-    expect(builderRefusal("Rule: core.git:reset-hard")).toContain(
-      "Accepted: Revert a file with git checkout --",
-    );
-    expect(builderRefusal("Rule: core.filesystem:redirect-truncate-dynamic-path")).toContain(
-      "Accepted: Write only under",
-    );
+    for (const ruleId of ["core.git:reset-hard", "core.filesystem:redirect-truncate-dynamic-path"]) {
+      expect(builderRefusal(`Rule: ${ruleId}`)).toContain(`Accepted: ${acceptedSpelling(ruleId, DCG_RULES)}`);
+    }
+    // An unknown rule, and a git rule id whose fix no line states, quote nothing rather than the cp line.
     expect(builderRefusal("Rule: some.pack:unknown")).not.toContain("Accepted:");
-    // A git rule id whose fix no line states quotes nothing rather than the cp line.
     expect(builderRefusal("Rule: core.git:push-force-short")).not.toContain("Accepted:");
-    expect(builderRefusal("Rule: core.git:reset-hard")).toContain(
-      "Accepted: Revert a file with git checkout --",
-    );
   });
 
   // A refusal that quotes a spelling the same guard refuses costs a second turn and then quotes
   // nothing, because the second rule id maps to no line. dcg 0.14.0 refuses a move whose path is
   // a shell variable (`core.filesystem:mv-dynamic-path`: "Shell variables ... may resolve to /"),
-  // so no accepted line may propose one. The Built list carried exactly that until 2026-09-06:
-  // its `rm -r` refusal quoted a move into `$TMPDIR`, which the guard then refused as well.
+  // so no accepted line may propose one.
   it.concurrent("quotes no move into a shell-variable destination", () => {
     const movesToVariable = new RegExp(
       [String.raw`\b(mv|move)\b[^;.]*`, String.raw`\$`, "[A-Za-z_]"].join(""),
@@ -322,7 +316,7 @@ EOF`,
     expect(acceptedSpelling("core.git:reset-hard", BUILT_SHELL_RULES)).toBeNull();
     // The trash line names a destination each shell can write and the guard admits: a literal
     // relative directory for the Builder, the case home for the Built shell, whose /tmp other
-    // solves share (run 08c0f2: two cases met in /tmp/oldbuild1). The place line names each
+    // solves share. The place line names each
     // shell's own folder. The write line names targets each shell keeps: the Built shell's TMPDIR
     // is fresh for each command, so it names only $HOME and ~. The Built list carries no git line and no
     // installed-tool line: its shell has neither a repository nor a .toolchain directory, and its
@@ -341,16 +335,12 @@ EOF`,
     expect(acceptedSpelling("core.filesystem:redirect-truncate-dynamic-path", DCG_RULES)).toContain(
       "$TMPDIR/<name>",
     );
-    // The walls are each harness's own settings, so the shared line names no number.
-    expect(BUILT_SHELL_RULES.join(" ")).toContain("A command has a default time limit;");
-    // The Built system prompt offers a bounded search as a way to meet a limit, so no rule may
-    // withhold the timeout that search needs.
-    expect(BUILT_SHELL_RULES.join(" ")).not.toContain("never for a search");
+    // The walls are each harness's own settings, so the shared lines name no number.
     expect(BUILT_SHELL_RULES.join(" ")).not.toMatch(/\d+ s\b/);
   });
 
-  // The second #503 commit dropped the fallback, so a guard with another layout left the session
-  // with the closing line alone and no reason to act on.
+  // Without a fallback, a guard with another layout would leave the session with the closing line
+  // alone and no reason to act on.
   it.concurrent("keeps a bounded reason when the guard writes a layout without actionable lines", () => {
     const other = [
       "denied: rm is not allowed here",

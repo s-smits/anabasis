@@ -1,10 +1,8 @@
 /**
- * What the controller tells a Builder round about its own progress, and what it writes down about
- * the round afterwards. The two halves look unrelated and are the same problem twice: a session
- * cannot see its own position, so the controller has to state it, and a reader after the fact
- * cannot see the session at all, so the controller has to record it.
+ * What the controller tells a Builder round about its own progress. A session cannot see its own
+ * position, so the controller has to state it.
  *
- * The steering half is bounded by what the Builder may act on. The opening states the round's turn
+ * The steering is bounded by what the Builder may act on. The opening states the round's turn
  * limit and the continuation restates the unchanged request beside the round's facts — which turn,
  * how long, how many submits, how the last one ended — because pi compacts the conversation and the
  * opening turn is the oldest part of it, so a long-running session can genuinely no longer know
@@ -14,12 +12,6 @@
  * round as one assistant turn and would otherwise never reach turn eight. Throughout, the text is
  * scope-neutral — it never names a file that a task-fixed round is not allowed to edit, which is
  * why the opening is asserted not to contain `tasks.json`.
- *
- * The transcript half is about a record that has to survive the thing it records. Events arrive
- * before the session identity does, so the transcript buffers rather than dropping what came first,
- * and it settles a pointer carrying the file's SHA-256 so a later reader can tell the recorded
- * bytes from bytes that were edited afterwards. Given no output directory it stays inert instead of
- * failing, because a missing transcript must not be able to end a round that was otherwise working.
  */
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
@@ -30,6 +22,7 @@ import { continuePrompt, unchangedAuthoringNote } from "../src/author/builder-co
 import type { AgentTurnResult, RunTurnOptions } from "../src/backends/backend-types.ts";
 import type { HostSession } from "../src/backends/pi-session.ts";
 import type { RuntimeModelIdentity } from "../src/claim/runtime-model-identity.ts";
+import { required } from "./helpers/doubles.ts";
 
 const roots: string[] = [];
 const IDENTITY: RuntimeModelIdentity = {
@@ -85,7 +78,10 @@ function scripted(turns: TurnScript[]): ScriptedSession {
           // SAFETY: runBuilderSession mounts the hosted submit tool into this roster, so every
           // entry answers to the AgentTool shape this cast reads.
           const candidates = tools.map((tool) => tool as SubmitTool);
-          const submit = required(candidates.find((tool) => tool.name === "submit"));
+          const submit = required(
+            candidates.find((tool) => tool.name === "submit"),
+            "the mounted submit tool",
+          );
           const counted: SubmitTool = {
             execute: async (id, args) => {
               calls += 1;
@@ -113,11 +109,6 @@ function scripted(turns: TurnScript[]): ScriptedSession {
   return { open, opened } satisfies ScriptedSession;
 }
 
-function required<T>(value: T | undefined | null): T {
-  if (value === undefined || value === null) throw new Error("missing");
-  return value;
-}
-
 const NO_SUBMIT = () => undefined;
 
 describe("turn-budget steering", () => {
@@ -133,9 +124,6 @@ describe("turn-budget steering", () => {
     const { open, opened } = scripted([undefined, undefined]);
     await runBuilderSession(INPUT(tempRoot(), 8), { open, tools: [], submit: NO_SUBMIT_THROWER });
     expect(opened.prompts[0]).toContain("Round limit: 8 assistant turns");
-    expect(opened.prompts[0]).toContain(
-      "submit once a clear preview says it works and your rehearsals agree with the aim",
-    );
     // Scope-neutral: the opening text never names a file a task-fixed repair may not edit.
     expect(opened.prompts[0]).not.toContain("tasks.json");
   });

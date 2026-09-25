@@ -225,7 +225,8 @@ function chooseRun(
   locations: readonly RunLocation[],
   selector: string,
 ): { location: RunLocation; refusal?: undefined } | { refusal: string; location?: undefined } {
-  // An exact run id first, then an exact project name, then the ids the selector is the head of.
+  // An exact run id first, then an exact project name, then the ids the selector is the head or the
+  // tail of. The tail is the launcher's hex suffix, which is how a run is named everywhere else.
   // The project before a partial id: otherwise a slug that is also the head of its own runs' ids
   // — which is how the launcher names them — could never select the project. An exact id used to
   // take the first location holding it, and a run id is unique inside one campaign rather than
@@ -233,7 +234,9 @@ function chooseRun(
   // first. Each group refuses the same way when it holds more than one.
   const exact = locations.filter((location) => location.runId === selector);
   const named = locations.filter((location) => location.slug === selector);
-  const partial = locations.filter((location) => location.runId.startsWith(selector));
+  const partial = locations.filter(
+    (location) => location.runId.startsWith(selector) || location.runId.endsWith(selector),
+  );
   const candidates = [exact, named, partial].find((group) => group.length > 0) ?? [];
   const [only] = candidates;
   if (only === undefined) {

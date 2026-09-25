@@ -193,37 +193,46 @@ describe("execution limits and sandbox requirements", () => {
 });
 
 describe("the bytes the host hands back", () => {
-  it("truncates stdout at the cap and keeps the last of stderr", async () => {
-    const double32 = (name: string, seed: string, times: number) => [
-      `${name}=${seed}`,
-      "i=0",
-      `while [ $i -lt ${String(times)} ]; do ${name}="$${name}$${name}"; i=$((i+1)); done`,
-    ];
+  const double32 = (name: string, seed: string, times: number) => [
+    `${name}=${seed}`,
+    "i=0",
+    `while [ $i -lt ${String(times)} ]; do ${name}="$${name}$${name}"; i=$((i+1)); done`,
+  ];
+
+  it("hands back no answer when stdout ran past the cap", async () => {
     const fx = hostFixture({
       "loud-tool": [
-        // A short header lands as its own chunk, so the cap is reached mid-chunk rather than on
-        // a convenient boundary — the case where a drop-whole-chunks rule splices the stream.
-        `printf 'HDR\\n'`,
-        "sleep 0.2",
         ...double32("s", "a".repeat(32), 15), // 32 * 2^15 = 1,048,576 bytes
         `printf '%s%s' "$s" "$s"`,
         `printf 'END-MARK'`,
+      ],
+    });
+
+    const out = await runOnce(fx.host, subject({}), { toolId: "loud-tool", checkId: "c-loud" });
+    // The first megabyte of a longer document is a different document: a check parsing it would
+    // read a cut as a wrong answer and reject an artifact the tool never judged.
+    expect(out).toMatchObject({ executed: false, stdout: "", exitCode: 0 });
+    expect(out.nonResult?.kind).toBe("protocol");
+    expect(out.evidence.outcome).toBe("protocol");
+    expect(out.evidence.stdoutBytes).toBe(2 * 1024 * 1024 + "END-MARK".length);
+    expect(out.evidence.nonResultReason).toContain("over the 1048576 the host reads");
+    expect(fx.host.executedBindings()).toEqual([]);
+  });
+
+  it("keeps stdout whole at the cap and the last of stderr past its own", async () => {
+    const fx = hostFixture({
+      "chatty-tool": [
+        ...double32("s", "a".repeat(32), 15),
+        `printf '%s' "$s"`,
         ...double32("e", "b".repeat(32), 14), // 32 * 2^14 = 524,288 bytes, twice the stderr cap
         `printf '%sTAIL-MARK' "$e" 1>&2`,
       ],
     });
-    const written = `HDR\n${"a".repeat(2 * 1024 * 1024)}END-MARK`;
 
-    const out = await runOnce(fx.host, subject({}), { toolId: "loud-tool", checkId: "c-loud" });
+    const out = await runOnce(fx.host, subject({}), { toolId: "chatty-tool", checkId: "c-chatty" });
     expect(out.executed).toBe(true);
-    expect(out.evidence.stdoutBytes).toBe(written.length);
-    // What the evaluator reads is an exact PREFIX of what the tool wrote. Dropping a whole
-    // oversized chunk and keeping a later small one would splice the stream: the evaluator would
-    // parse a document the tool never emitted, with the middle silently missing and the final
-    // line still in place.
-    expect(out.stdout.length).toBeLessThanOrEqual(1024 * 1024);
-    expect(out.stdout.length).toBeLessThan(out.evidence.stdoutBytes);
-    expect(written.startsWith(out.stdout)).toBe(true);
+    expect(out.stdout).toBe("a".repeat(1024 * 1024));
+    expect(out.evidence.stdoutBytes).toBe(1024 * 1024);
     expect(out.evidence.stderrBytes).toBe(524_288 + "TAIL-MARK".length);
     // The capture stops at its cap; the tail follows the stream to its end, because a chatty
     // compiler's closing summary is exactly the part past the cap.

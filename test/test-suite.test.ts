@@ -66,6 +66,7 @@ describe("the command a request becomes", () => {
       Bun.argv[0]!,
       "test",
       `--parallel=${String(workerCount(undefined))}`,
+      "--no-isolate",
       "--max-concurrency=4",
       "--timeout=60000",
       `--timings=${join(REPO_ROOT, "test/.test-timings.json")}`,
@@ -505,17 +506,11 @@ it("passes once its worker has wedged", async () => {
     const quick = ["b", "d"].flatMap((group) =>
       Array.from({ length: 5 }, (_, index) => `${group}${String(index)}`),
     );
-    // Each quick file fails when it sees a global an earlier file left, as a process-lifetime cache
-    // would: the parallel workers isolate every file, and the rerun has to as well.
     for (const name of quick) {
       writeFileSync(
         join(fixture, `${name}.test.ts`),
         `import { it } from "bun:test";
-it("passes", () => {
-  const shared = globalThis as { anaEarlierFile?: string };
-  if (shared.anaEarlierFile !== undefined) throw new Error(\`shares a global with \${shared.anaEarlierFile}\`);
-  shared.anaEarlierFile = import.meta.path;
-});
+it("passes", () => {});
 `,
       );
     }

@@ -275,12 +275,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
  * resumed campaign reuses the repository it created rather than starting a second one, which is
  * what keeps history continuous across invocations.
  */
-export function initWorkspace(
-  dir: string,
-  seedFrom?: string,
-  writableSeedTools = false,
-  safeguard?: SafeguardContext,
-) {
+export function initWorkspace(dir: string, seedFrom?: string, safeguard?: SafeguardContext) {
   mkdirSync(dir, { recursive: true });
   linkWorkspaceRuntime(dir);
   linkWorkspacePackageScopes(dir);
@@ -292,7 +287,7 @@ export function initWorkspace(
     let seeded: string | null = null;
     if (seedFrom !== undefined) {
       seeded = materialiseAdoptedCandidate(seedFrom, dir, safeguard);
-      if (writableSeedTools) seeded = copySeedToolTree(dir, safeguard) ?? seeded;
+      seeded = copySeedToolTree(dir, safeguard) ?? seeded;
       linkWorkspaceRuntime(dir);
     }
     for (const [name, content] of STARTER_MEMORY_FILES) {

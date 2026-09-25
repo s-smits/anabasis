@@ -132,7 +132,7 @@ describe("the domain workspace repository", () => {
     const runtime = realpathSync(Bun.argv[0]!);
     symlinkSync(runtime, join(tools, "bun"));
 
-    initWorkspace(dir, seed, true);
+    initWorkspace(dir, seed);
     const owned = join(dir, TOOLCHAIN);
     expect(realpathSync(owned)).toBe(join(realpathSync(dir), TOOLCHAIN));
     expect(readlinkSync(join(owned, "bin/relative"))).toBe("../packages/relative");
@@ -174,7 +174,7 @@ describe("the domain workspace repository", () => {
     const seed = tmp();
     const python = seedWithUvVenv(seed, "/host");
     const dir = tmp();
-    initWorkspace(dir, seed, true);
+    initWorkspace(dir, seed);
     const owned = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
     expect(owned).toContain(`'''exec' "${join(dir, ".toolchain/venv/bin/python3")}" "$0" "$@"`);
     expect(owned).not.toContain(python);
@@ -185,7 +185,7 @@ describe("the domain workspace repository", () => {
     const outsideHome = tmp();
     seedWithUvVenv(outsideHome, "/host/python");
     const outside = safeguardLog();
-    initWorkspace(tmp(), outsideHome, true, outside.context);
+    initWorkspace(tmp(), outsideHome, outside.context);
     const copied = outside.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
     expect(copied[0]).toContain("launchersRewritten=1 singleQuoted=1");
@@ -199,7 +199,7 @@ describe("the domain workspace repository", () => {
     const insideHome = tmp();
     seedWithUvVenv(insideHome, join(realpathSync(insideHome), ".toolchain/py/bin"));
     const inside = safeguardLog();
-    initWorkspace(tmp(), insideHome, true, inside.context);
+    initWorkspace(tmp(), insideHome, inside.context);
     const homed = inside.lines().filter((line) => line.includes("55-rebuild-seed-venv-home-in-adopted-tree"));
     expect(homed).toHaveLength(1);
     expect(homed[0]).toContain("count=1 first=venv/pyvenv.cfg");
@@ -210,7 +210,7 @@ describe("the domain workspace repository", () => {
     const adopted = join(realpathSync(seed), ".toolchain");
     seedWithUvVenv(seed, `${adopted}/py/bin`);
     const dir = tmp();
-    initWorkspace(dir, seed, true);
+    initWorkspace(dir, seed);
     expect(readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(
       `home = ${join(dir, ".toolchain")}/py/bin\n`,
     );
@@ -220,7 +220,7 @@ describe("the domain workspace repository", () => {
     const beside = `${join(realpathSync(sibling), ".toolchain")}-host/bin`;
     seedWithUvVenv(sibling, beside);
     const besideDir = tmp();
-    initWorkspace(besideDir, sibling, true);
+    initWorkspace(besideDir, sibling);
     expect(readFileSync(join(besideDir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(`home = ${beside}\n`);
   });
 
@@ -230,7 +230,7 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     mkdirSync(join(dir, ".toolchain-0000-interrupted"), { recursive: true });
     const log = safeguardLog();
-    initWorkspace(dir, seed, true, log.context);
+    initWorkspace(dir, seed, log.context);
     const leftover = log.lines().filter((line) => line.includes("53-rebuild-seed-copy-leftover"));
     expect(leftover).toHaveLength(1);
     expect(leftover[0]).toContain("count=1 first=.toolchain-0000-interrupted");
@@ -243,7 +243,7 @@ describe("the domain workspace repository", () => {
     symlinkSync("/moved-away/epoch/workspace/.toolchain", join(seed, TOOLCHAIN));
     const log = safeguardLog();
     const dir = tmp();
-    initWorkspace(dir, seed, true, log.context);
+    initWorkspace(dir, seed, log.context);
     const unresolved = log.lines().filter((line) => line.includes("52-rebuild-seed-tool-tree-unresolved"));
     expect(unresolved).toHaveLength(1);
     expect(unresolved[0]).toContain("target=/moved-away/epoch/workspace/.toolchain");
@@ -258,7 +258,7 @@ describe("the domain workspace repository", () => {
     const noTree = tmp();
     seedBundles(noTree);
     const noTreeDir = tmp();
-    initWorkspace(noTreeDir, noTree, true, present.context);
+    initWorkspace(noTreeDir, noTree, present.context);
     expect(present.lines().some((line) => line.includes("52-rebuild-seed-tool-tree-unresolved"))).toBe(false);
     // A product that installed nothing leaves nothing to say.
     expect(readFileSync(join(noTreeDir, MEMORY_FILE), "utf8")).not.toContain("controller:");
@@ -274,7 +274,7 @@ describe("the domain workspace repository", () => {
     writeFileSync(join(tools, "bin/plain"), '#!/bin/sh\nexec cat "$@"\n');
     chmodSync(join(tools, "bin/plain"), 0o755);
     const dir = tmp();
-    initWorkspace(dir, seed, true);
+    initWorkspace(dir, seed);
     const line =
       "<!-- controller: seeding copied the adopted product's .toolchain into this workspace, where it is yours to edit (files 2; launchers rewritten 0; links moved 0; install names moved 0; venv homes moved 0). Left out because they still named the adopted tree, 1: custom. -->";
     expect(readFileSync(join(dir, MEMORY_FILE), "utf8").split("\n")[0]).toBe(line);
@@ -295,14 +295,14 @@ describe("the domain workspace repository", () => {
     const seed = tmp();
     seedBundles(seed);
     const dir = tmp();
-    initWorkspace(dir, seed, true);
+    initWorkspace(dir, seed);
     const clean = safeguardLog();
-    initWorkspace(dir, seed, true, clean.context);
+    initWorkspace(dir, seed, clean.context);
     expect(clean.lines().some((line) => line.includes("56-rebuild-workspace-resumed-dirty"))).toBe(false);
     writeFileSync(join(dir, AGENT_TOOLS_TS), "export const seeded = 2;\n");
     writeFileSync(join(dir, "agent/scratch.ts"), "export const extra = 1;\n");
     const dirty = safeguardLog();
-    initWorkspace(dir, seed, true, dirty.context);
+    initWorkspace(dir, seed, dirty.context);
     const resumed = dirty.lines().filter((line) => line.includes("56-rebuild-workspace-resumed-dirty"));
     expect(resumed).toHaveLength(1);
     expect(resumed[0]).toContain("paths=2 first=agent/tools.ts,agent/scratch.ts");
@@ -327,7 +327,7 @@ describe("the domain workspace repository", () => {
     chmodSync(join(tools, "bin/plain"), 0o755);
     const log = safeguardLog();
     const dir = tmp();
-    initWorkspace(dir, seed, true, log.context);
+    initWorkspace(dir, seed, log.context);
     expect(existsSync(join(dir, ".toolchain/custom"))).toBe(false);
     expect(readFileSync(join(dir, ".toolchain/bin/plain"), "utf8")).toContain("exec cat");
     const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
@@ -346,7 +346,7 @@ describe("the domain workspace repository", () => {
     const dir = join(tmp(), "camp$aign");
     mkdirSync(dir, { recursive: true });
     const log = safeguardLog();
-    initWorkspace(dir, seed, true, log.context);
+    initWorkspace(dir, seed, log.context);
     // The launcher is gone and the rest of the venv arrived, so the Builder has a tool to
     // reinstall rather than no run to reinstall it in.
     expect(existsSync(join(dir, ".toolchain/venv/bin/f2py"))).toBe(false);
@@ -368,7 +368,7 @@ describe("the domain workspace repository", () => {
     });
     const dir = tmp();
     const log = safeguardLog();
-    initWorkspace(dir, seed, true, log.context);
+    initWorkspace(dir, seed, log.context);
     const copied = log.lines().filter((line) => line.includes("54-rebuild-seed-tool-tree-copied"));
     expect(copied).toHaveLength(1);
     expect(copied[0]).toContain("installNames=1");

@@ -723,7 +723,7 @@ export async function runBuilderCampaign(
   if (refused !== null) return { buildAdmissible: false, clause: refused, iterations: [] };
   const workspace = join(input.campaignDir, WORKSPACE_DIR);
   // A repair seeds from the adopted package once and resumes in-flight edits without overwriting them.
-  const { created } = initWorkspace(workspace, input.adoptedDir, true, deps.safeguardContext);
+  const { created } = initWorkspace(workspace, input.adoptedDir, deps.safeguardContext);
   const fresh: WorkspaceSeed = input.adoptedDir === undefined ? "starter" : "adopted";
   const seed = created ? fresh : "resumed";
   const controller = new BuilderCampaignController(input, deps, memory);

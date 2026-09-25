@@ -743,7 +743,8 @@ live evidence.
 
     Keep the authoring areas separate by authority. `harness_inspect` is static and read-only, with
     four modes: `readiness`, `task`, `coverage`, `feedback`. Readiness is the whole static view in
-    one call, and a named `group` or `family` pages the findings or a family it cannot fit.
+    one call; a named `family` lists a family it cannot fit, and findings past its first page are
+    read exactly through `feedback` once `correctness_check` has recorded them.
     `context` (`src/builder/context-tool.ts`) is where everything else a round may consult is read.
     It takes a question and the decision the answer settles, and returns the lines that bear on it,
     each cited by document and line, over five sources: the round's opening, the

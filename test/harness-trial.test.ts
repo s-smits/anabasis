@@ -166,6 +166,8 @@ const PERMITTED_KEY_PATHS: readonly string[] = [
   "validation.round.passed",
   "validation.round.passedInOneTurn",
   "nextAction",
+  // A verdict the round plan does not count, because a preview rejected an accept control.
+  "calibration",
 ];
 
 /** The exact census of a rehearsal that reached a verdict. The union above catches an addition
@@ -390,7 +392,7 @@ describe("what a rehearsal hands the round plan", () => {
       rehearsals,
       onRehearsal: (row: RehearsalRow) => {
         rows.push(row);
-        return row.verdict === "pass" ? ["Advice: a stand-in line."] : [];
+        return { advice: row.verdict === "pass" ? ["Advice: a stand-in line."] : [], counted: true };
       },
     };
     const passing = modelVisible(await rehearse(round(dir, assigningSolver(RIGHT_SLOT), true, plan).tool));
@@ -414,6 +416,19 @@ describe("what a rehearsal hands the round plan", () => {
     ]);
     expect(rehearsals.list().map((doc) => doc.id)).toEqual([`traces/rehearsal-1/${TASK_ID}`]);
     for (const doc of rehearsals.list()) expectNoProtectedDetail("text" in doc ? doc.text() : "");
+  }, 60_000);
+
+  // The verdict still crosses, but a check program that refused a known-good answer may have decided
+  // it, so the result reads no battery difficulty from it and the round count passes over it.
+  it("reads no difficulty from a verdict the plan does not count", async () => {
+    const plan = { onRehearsal: () => ({ advice: ["Advice: uncounted."], counted: false }) };
+    const failing = modelVisible(
+      await rehearse(round(workspace(), assigningSolver(WRONG_SLOT), true, plan).tool),
+    );
+    expect(failing).toMatchObject({ truth: { verdict: "fail" }, calibration: "uncounted" });
+    expect(failing.validation).toMatchObject({ truthVerdict: "fail", round: { graded: 0, passed: 0 } });
+    expect(failing.nextAction).not.toEqual(expect.stringContaining("scores near"));
+    expect(failing.nextAction).toEqual(expect.stringContaining("rejected one of its own accept controls"));
   }, 60_000);
 });
 

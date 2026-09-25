@@ -116,9 +116,24 @@ export type RehearsalRow = SolveEffort & {
   wallMinutes: number;
 };
 
-/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded, and the pass
- *  probability the plan then stated for it, which the Builder wrote before it saw the verdict. */
-type RecordedRehearsal = RehearsalRow & { bytes: string | null; predicted: number | null };
+/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded, the pass
+ *  probability the plan then stated for it, which the Builder wrote before it saw the verdict, the
+ *  candidate it solved, and whether a preview of that candidate rejected one of its own accept
+ *  controls, before the rehearsal or after it. A check program that refuses a known-good answer
+ *  grades the tool as much as the task, so that verdict counts towards neither the target nor the
+ *  score. */
+type RecordedRehearsal = RehearsalRow & {
+  bytes: string | null;
+  predicted: number | null;
+  candidateId: string | null;
+  acceptRejected: boolean;
+};
+
+/** The plan's advice after one rehearsal, and whether its verdict counts as calibration. */
+export type RehearsalReading = { advice: string[]; counted: boolean };
+
+const UNCOUNTED_REHEARSAL =
+  "Advice: a preview of this candidate rejected one of its own accept controls, so this verdict may measure the check program rather than the task, and it counts towards neither the target nor the prediction score. Preview the repaired candidate before rehearsing again.";
 
 export type PredictionScore = { scored: number; brier: number; expected: number; observed: number };
 
@@ -289,7 +304,10 @@ const rehearsalVerdicts = (rows: readonly RecordedRehearsal[], now: ReadonlyMap<
   new Map(
     rows.flatMap(
       (row): Array<[string, boolean]> =>
-        row.verdict === "not-run" || row.bytes === null || row.bytes !== now?.get(row.taskId)
+        row.verdict === "not-run" ||
+        row.acceptRejected ||
+        row.bytes === null ||
+        row.bytes !== now?.get(row.taskId)
           ? []
           : [[row.taskId, row.verdict === "pass"]],
     ),
@@ -299,7 +317,7 @@ const rehearsalVerdicts = (rows: readonly RecordedRehearsal[], now: ReadonlyMap<
  *  twice and a prediction revised after its verdict leaves the score as it was. */
 function scoredBeforeVerdicts(rows: readonly RecordedRehearsal[]): PredictionScore | null {
   const graded = rows.flatMap((row, index) =>
-    row.verdict === "not-run" || row.predicted === null
+    row.verdict === "not-run" || row.acceptRejected || row.predicted === null
       ? []
       : [{ taskId: String(index), pass: row.predicted, verdict: row.verdict === "pass" }],
   );
@@ -340,7 +358,9 @@ function planAdvice(
     );
   }
   const stale = new Set(
-    rows.flatMap((row) => (verdicts.has(row.taskId) || row.verdict === "not-run" ? [] : [row.taskId])),
+    rows.flatMap((row) =>
+      verdicts.has(row.taskId) || row.verdict === "not-run" || row.acceptRejected ? [] : [row.taskId],
+    ),
   );
   if (now === null && rows.some((row) => row.verdict !== "not-run")) {
     advice.push(
@@ -374,18 +394,39 @@ export function currentPlan(workspace: string): ExperimentSubmission | null {
 export class PlanEvidence {
   private readonly rows: RecordedRehearsal[] = [];
   private path: string | undefined;
+  /** Candidates a preview found rejecting one of their own accept controls, until a clear preview. */
+  private readonly rejected = new Set<string>();
 
   constructor(
     private readonly workspace: string,
     private readonly dir: string | null,
   ) {}
 
-  /** Records one rehearsal and returns the plan's advice after it. */
-  record(row: RehearsalRow): string[] {
+  /** Records one rehearsal of `candidateId` and returns the plan's advice after it. */
+  record(row: RehearsalRow, candidateId: string | null = null): RehearsalReading {
     const predicted = currentPlan(this.workspace)?.predictions.find(({ taskId }) => taskId === row.taskId);
     const bytes = rehearsalBytes(this.workspace)?.get(row.taskId) ?? null;
-    this.rows.push({ ...row, bytes, predicted: predicted?.pass ?? null });
-    return this.advice();
+    const acceptRejected = candidateId !== null && this.rejected.has(candidateId);
+    this.rows.push({ ...row, bytes, predicted: predicted?.pass ?? null, candidateId, acceptRejected });
+    const advice = this.advice();
+    return acceptRejected
+      ? { advice: [UNCOUNTED_REHEARSAL, ...advice], counted: false }
+      : { advice, counted: true };
+  }
+
+  /** A preview's conclusive reading of one candidate's accept controls. A rejection also uncounts
+   *  the rehearsals of that candidate already recorded, since the same check program graded them;
+   *  a clear preview counts the ones after it and leaves those rows as they were, raw verdicts kept
+   *  either way. A preview that reached no control verdict is not a reading, and calls nothing. */
+  previewed(candidateId: string, controls: "rejected" | "clear"): void {
+    if (controls === "clear") {
+      this.rejected.delete(candidateId);
+      return;
+    }
+    this.rejected.add(candidateId);
+    this.rows.forEach((row, index) => {
+      if (row.candidateId === candidateId) this.rows[index] = { ...row, acceptRejected: true };
+    });
   }
 
   /** The advice the current plan earns against this round's rehearsals. */
@@ -460,11 +501,11 @@ function planLines(workspace: string, rows: readonly RecordedRehearsal[]): strin
   ];
 }
 
-function rehearsalLines(rows: readonly RehearsalRow[]): string[] {
+function rehearsalLines(rows: readonly RecordedRehearsal[]): string[] {
   if (rows.length === 0) return [];
   const listed = rows.map(
     (row) =>
-      `${row.taskId}${row.family === null ? "" : ` (${row.family})`} ${row.verdict} in ${effortPhrase(row, row.wallMinutes)}`,
+      `${row.taskId}${row.family === null ? "" : ` (${row.family})`} ${row.verdict}${row.acceptRejected ? " (uncounted: its preview rejected an accept control)" : ""} in ${effortPhrase(row, row.wallMinutes)}`,
   );
   return [`Rehearsals this round: ${listed.join("; ")}.`];
 }

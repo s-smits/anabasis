@@ -495,13 +495,19 @@ class BuilderCampaignController {
       trialsDir: join(this.input.campaignDir, "trials"),
       memory: this.candidates.validation,
     });
-    if (
+    const rejected = report.refusals.some(({ findings }) =>
+      findings.some(({ code }) => code === "DISCRIMINATION_ACCEPT_REJECTED"),
+    );
+    const clear =
       report.harness !== null &&
       report.gated !== null &&
       report.blocked === null &&
-      report.refusals.length === 0
-    ) {
-      this.reviewClock.validatedProduct(report.harness.fingerprint);
+      report.refusals.length === 0;
+    if (report.harness !== null && clear) this.reviewClock.validatedProduct(report.harness.fingerprint);
+    // Only a preview that read the controls moves a rehearsal's calibration: a blocked or refused
+    // one on other grounds says nothing about whether this candidate's check program accepts them.
+    if (report.snapshotId !== null && (rejected || clear)) {
+      this.plan.previewed(report.snapshotId, rejected ? "rejected" : "clear");
     }
     return report;
   }
@@ -655,7 +661,7 @@ class BuilderCampaignController {
       rehearsals: this.rehearsals,
       onRehearsal: (row, submitted) => {
         this.reviews?.rehearsed(row, submitted);
-        return this.plan.record(row);
+        return this.plan.record(row, submitted.candidateId);
       },
       ...keyIfDefined(
         "builtSolver",

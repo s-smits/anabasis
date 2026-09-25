@@ -46,6 +46,7 @@ import {
   workspaceHead,
   workspaceStatus,
 } from "../src/author/domain-repo.ts";
+import { MEMORY_FILE, builderMemoryBlock } from "../src/author/builder-memory.ts";
 import { BUILT_PRESET_IDS, presetToolNames } from "../src/truth/built-presets.ts";
 import { loadBuiltStarterFactory } from "../src/truth/contracts.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -248,12 +249,46 @@ describe("the domain workspace repository", () => {
     expect(unresolved[0]).toContain("target=/moved-away/epoch/workspace/.toolchain");
     expect(readlinkSync(join(dir, ".toolchain/bun"))).toBeTruthy();
     expect(existsSync(join(dir, ".toolchain/venv"))).toBe(false);
+    // The Builder is told too, rather than meeting every installed tool as missing.
+    expect(readFileSync(join(dir, MEMORY_FILE), "utf8").split("\n")[0]).toBe(
+      "<!-- controller: the adopted product's tool tree no longer resolves, so this workspace's .toolchain starts without the tools that product installed. -->",
+    );
 
     const present = safeguardLog();
     const noTree = tmp();
     seedBundles(noTree);
-    initWorkspace(tmp(), noTree, true, present.context);
+    const noTreeDir = tmp();
+    initWorkspace(noTreeDir, noTree, true, present.context);
     expect(present.lines().some((line) => line.includes("52-rebuild-seed-tool-tree-unresolved"))).toBe(false);
+    // A product that installed nothing leaves nothing to say.
+    expect(readFileSync(join(noTreeDir, MEMORY_FILE), "utf8")).not.toContain("controller:");
+  });
+
+  it("tells the Builder at the head of MEMORY.md what the seed copy did, and says nothing in a starter workspace", () => {
+    const seed = tmp();
+    seedBundles(seed);
+    const tools = join(seed, TOOLCHAIN);
+    mkdirSync(join(tools, "bin"), { recursive: true });
+    writeFileSync(join(tools, "custom"), `#!/bin/sh\nexec "${realpathSync(tools)}/private-runtime"\n`);
+    chmodSync(join(tools, "custom"), 0o755);
+    writeFileSync(join(tools, "bin/plain"), '#!/bin/sh\nexec cat "$@"\n');
+    chmodSync(join(tools, "bin/plain"), 0o755);
+    const dir = tmp();
+    initWorkspace(dir, seed, true);
+    const line =
+      "<!-- controller: seeding copied the adopted product's .toolchain into this workspace, where it is yours to edit (files 2; launchers rewritten 0; links moved 0; install names moved 0; venv homes moved 0). Left out because they still named the adopted tree, 1: custom. -->";
+    expect(readFileSync(join(dir, MEMORY_FILE), "utf8").split("\n")[0]).toBe(line);
+    // The root commit carries it, and the notes block the round opens on shows it and nothing of
+    // the untouched starter beneath it.
+    expect(gitOut(dir, ["show", `HEAD:${MEMORY_FILE}`]).split("\n")[0]).toBe(line);
+    const block = builderMemoryBlock(dir);
+    expect(block).toContain(line);
+    expect(block).not.toContain("## Domain and representation");
+
+    const starter = tmp();
+    initWorkspace(starter);
+    expect(readFileSync(join(starter, MEMORY_FILE), "utf8")).not.toContain("controller:");
+    expect(builderMemoryBlock(starter)).toBe("");
   });
 
   it("counts the uncommitted paths a resumed repair carries, and nothing on a clean resume", () => {

@@ -370,7 +370,7 @@ const rehearsalVerdicts = (rows: readonly RehearsalRow[]) =>
 /** Where the plan and the rehearsals disagree, as advice only: rehearsal passes past an at-most
  *  target, and a prediction the verdict contradicts. Neither refuses anything, because a rehearsal
  *  is one blind solve and the measured battery is the evidence. */
-export function planAdvice(plan: ExperimentPlan, rows: readonly RehearsalRow[]): string[] {
+function planAdvice(plan: ExperimentPlan, rows: readonly RehearsalRow[]): string[] {
   const verdicts = rehearsalVerdicts(rows);
   const passed = [...verdicts].flatMap(([taskId, pass]) => (pass ? [taskId] : []));
   const advice: string[] = [];
@@ -519,7 +519,7 @@ function rehearsalLines(rows: readonly RehearsalRow[]): string[] {
  *  the target, each family's level and move, the prediction total, this round's rehearsals with
  *  their effort as plain facts, any advice, the ladder's frontier row, the MEMORY.md risk line and
  *  where the full files are. */
-export function renderPlanView(workspace: string, rows: readonly RehearsalRow[]): string {
+function renderPlanView(workspace: string, rows: readonly RehearsalRow[]): string {
   const frontier = frontierRow(workspace);
   const risk = riskLine(workspace);
   return [

@@ -16,6 +16,7 @@ import {
   summarizeJudge,
 } from "../src/truth/judge.ts";
 import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
+import { RATIONALE_MAX } from "../src/truth/judge-drivers.ts";
 import { double, required, scriptedSession } from "./helpers/doubles.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import {
@@ -346,7 +347,8 @@ describe("the schema-tool verdict: budget, task disclosure, hint and cited rules
   it("answers a malformed verdict with the whole schema hint, so the model can retry", async () => {
     const judge = toolJudge(async (tool) => {
       await expect(tool.execute("call-1", double({ verdict: "maybe", rationale: "" }))).rejects.toThrow(
-        'judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..400),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one',
+        // The hint states the rationale bound the schema enforces, so the retry can meet it.
+        `judge verdict must match {verdict:"pass"|"fail"|"abstain",rationale:string(1..${String(RATIONALE_MAX)}),rules?:string[]}; a fail must cite only shown rules, verbatim, at least one`,
       );
       return { status: "completed" };
     });

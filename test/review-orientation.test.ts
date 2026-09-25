@@ -6,7 +6,7 @@
  * which is not the same question on the two sides of the aim and is no question at all on it.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { IterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import type { AdviceIssue, RebuildAdvicePacket } from "../src/author/rebuild-advice.ts";
@@ -20,6 +20,7 @@ import { uppercaseFixture } from "./helpers/uppercase-fixture.ts";
 import { double } from "./helpers/doubles.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const SLUG = "orient";
 const PIN = "test/pin";
@@ -36,10 +37,7 @@ type Counts = {
 /** The reviewer's subject: this battery's own analysis, or the prior packet at a checkpoint. */
 type Subject = { kind: "measured"; counts: Counts } | { kind: "checkpoint"; counts: Counts };
 
-const trees: string[] = [];
-afterAll(() => {
-  for (const dir of trees) rmSync(dir, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
 const review = {
   enabled: true,
@@ -50,8 +48,7 @@ const review = {
 } as const;
 
 function tree(): string {
-  const dir = mkdtempSync(join(import.meta.dir, ".ana-scratch-review-orientation-"));
-  trees.push(dir);
+  const dir = scratchDir(".ana-scratch-review-orientation-", import.meta.dir);
   uppercaseFixture(dir);
   return dir;
 }
@@ -194,25 +191,26 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).toContain("passed 8 of 25 (Wilson interval");
     expect(prompt).toContain("aim 5 to 12 of 25): at the limit.");
     expect(prompt).not.toContain("too easy");
+    // On the aim the battery measured what it was climbing towards, so no question opens.
+    expect(prompt).not.toContain("is a lead, not a finding on its own");
   });
 
-  it("places a battery below the aim without calling it too hard", async () => {
-    const prompt = await shown(battery(2, 25));
-    expect(prompt).toContain("passed 2 of 25 (Wilson interval");
-    expect(prompt).toContain("aim 5 to 12 of 25): in range, below the aim.");
-  });
-
-  /** The lead is the question the placement opens, and the two sides do not open the same one.
+  /** The placement sentence is the author's own `FRAME` line, filled from the readout row, so the
+   *  reviewer and the author cannot be told two different things about one battery. The lead is the
+   *  question the placement opens, and the two sides do not open the same one.
    *  Both sides used to receive the question written for the side above the aim: a review of a
    *  battery the solver could not reach was asked which obligation of the request its tasks do not
    *  demand. The two readings that produce a below-aim count without hard tasks are separable here
    *  and nowhere else, since the Builder never sees a verifier verdict. */
-  for (const [zone, passed] of [
-    ["under-aim", 2],
-    ["too-hard", 0],
+  for (const [zone, passed, placement] of [
+    ["under-aim", 2, "aim 5 to 12 of 25): in range, below the aim."],
+    ["too-hard", 0, "target range [0.2, 0.5], aim 5 to 12 of 25): significantly too hard."],
   ] as const) {
-    it(`asks a ${zone} battery what else fails every task before it calls the tasks hard`, async () => {
+    it(`places a ${zone} battery and asks what else fails every task before it calls the tasks hard`, async () => {
       const prompt = await shown(battery(passed, 25));
+      expect(prompt).toContain(`passed ${String(passed)} of 25 (Wilson interval`);
+      expect(prompt).toContain(placement);
+      expect(prompt).not.toContain("as a first battery should");
       expect(prompt).toContain("A placement below the aim is a lead, not a finding on its own");
       expect(prompt).toContain("hardness is the last of its readings rather than the first");
       // Each reading names the routable owner that repairs it, and the instrument for the first.
@@ -224,20 +222,6 @@ describe("the epoch reviewer's orientation", () => {
       expect(prompt).not.toContain("the obligation of the request those tasks do not demand");
     });
   }
-
-  it("opens no question for a battery on the aim, which measured what it was climbing towards", async () => {
-    const prompt = await shown(battery(8, 25));
-    expect(prompt).not.toContain("is a lead, not a finding on its own");
-  });
-
-  /** The placement sentence is the author's own `FRAME` line, filled from the readout row, so the
-   *  reviewer and the author cannot be told two different things about one battery. */
-  it("reads a battery the interval rules below the aim in the author's own words", async () => {
-    const prompt = await shown(battery(0, 25));
-    expect(prompt).toContain("passed 0 of 25 (Wilson interval [0.000,");
-    expect(prompt).toContain("target range [0.2, 0.5], aim 5 to 12 of 25): significantly too hard.");
-    expect(prompt).not.toContain("as a first battery should");
-  });
 
   it("refuses to place a battery too small to hold a whole count inside the band", async () => {
     // aimCounts(1, [0.2, 0.5]) is [1, 0]: every count of a one-case battery is off the aim in both

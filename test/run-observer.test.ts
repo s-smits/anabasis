@@ -113,7 +113,7 @@ describe("run observer", () => {
     expect(rows(root)[0]?.promptDigest).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("tallies each completed turn's tool calls with failures raised to a warning (runs 48/66)", () => {
+  it("tallies each completed turn's tool calls with failures raised to a warning", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-observer-turn-tools-"));
     const observer = createRunObserver(root, "demo", "run-01");
     observer.turnTools({ turn: 1, toolCalls: 4, failed: 0, failedByName: {} });

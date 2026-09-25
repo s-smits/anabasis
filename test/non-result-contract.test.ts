@@ -332,9 +332,9 @@ describe("what the solve's own signals establish when no message names the provi
     ).toContain("remote verifier staging failed");
   });
 
-  it("types a solve whose every outer turn completed no provider result as environment (live-run-08)", () => {
-    // The exact recorded shape run 8 booked as 50 product fails: four provider-degraded turns per
-    // case under a spend-limit outage, zero tool starts, zero completions, no submit.
+  it("types a solve whose every outer turn completed no provider result as environment", () => {
+    // A spend-limit outage's shape, once booked as product fails: four provider-degraded turns per
+    // case, zero tool starts, zero completions, no submit.
     const errors = [1, 2, 3, 4].map(
       (turn) => `turn ${String(turn)} completed no claude-opus-5 result (provider-degraded turn)`,
     );

@@ -75,11 +75,6 @@ function withClosure(
     : { ...evidence, postTerminal: after };
 }
 
-export function writeBuilderExecutionEvidence(epochDir: string, evidence: BuilderExecutionEvidence): void {
-  const path = claimEvidencePath(epochDir);
-  writeRecordAndProse(path, withClosure(evidence, epochDir, path), crypto.randomUUID());
-}
-
 /** Choose a numbered file on the first write and update that same file on every later write from
  *  this session, so a session's checkpoints and its final result share one record instead of
  *  leaving a trail of partial ones. Another session gets the next unused name from

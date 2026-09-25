@@ -14,6 +14,8 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "../..
 import { join } from "../../src/meta/path.ts";
 import { expect } from "bun:test";
 import type { AgentToolsProbes } from "../../src/author/agent-tools-session.ts";
+import type { CampaignFeedback, FeedbackOwner } from "../../src/author/campaign-types.ts";
+import type { PiTool } from "../../src/backends/pi-session.ts";
 import { commitAll, initWorkspace } from "../../src/author/domain-repo.ts";
 import { hashJsonValue } from "../../src/meta/stable-json.ts";
 import { type BuilderCampaignInput, runBuilderCampaign } from "../../src/run/builder-campaign.ts";
@@ -207,6 +209,30 @@ export function namedTool(tools: readonly unknown[], name: string): FixtureSubmi
 
 export function submitTool(tools: readonly unknown[]): FixtureSubmitTool {
   return namedTool(tools, "submit");
+}
+
+/** The whole text a tool call returned to the model. */
+export async function replyText(tool: FixtureSubmitTool, id: string): Promise<string> {
+  return (await tool.execute(id, {})).content.map((part) => part.text).join("\n");
+}
+
+/** A blocking gate row, the shape every refusing gate double returns. */
+export function blockingRow(owner: FeedbackOwner, claim: string, evidence = "gate.json"): CampaignFeedback {
+  return { owner, severity: "blocking", claim, evidence };
+}
+
+/** A session that runs `author` and then submits once per turn, keeping each reply the model read.
+ *  The turn count is the reply count, because every turn submits exactly once. */
+export function submittingSession(author: (turn: number) => void | Promise<void> = () => {}) {
+  const replies: string[] = [];
+  const open = async (tools: readonly PiTool[]) =>
+    scriptedSession(async () => {
+      const turn = replies.length + 1;
+      await author(turn);
+      replies.push(await replyText(submitTool(tools), `submit-${turn}`));
+      return { status: "completed", assistantText: "submitted" };
+    });
+  return { open, replies };
 }
 
 /** One campaign attempt whose session runs `author` once and submits, returning the submit tool's

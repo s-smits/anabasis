@@ -28,11 +28,7 @@ import {
   diagnosisPacket,
   readDiagnoses,
 } from "../src/review/diagnosis-reader.ts";
-import {
-  DIAGNOSIS_SYSTEM_PROMPT,
-  diagnosisConfidence,
-  recordDiagnosisTool,
-} from "../src/review/diagnosis-tool.ts";
+import { diagnosisConfidence, recordDiagnosisTool } from "../src/review/diagnosis-tool.ts";
 import { batteryCensus, compileSolve } from "../src/review/solve-steps.ts";
 
 const REVIEW = {
@@ -229,11 +225,6 @@ describe("what the diagnosis reader leaves behind", () => {
     const { evidence } = await read(battery(), [], closing);
     expect(closing.length).toBeGreaterThan(4_000);
     expect(evidence.readerText).toBe(closing);
-  });
-
-  test("a prompt that says the closing message is read, and asks for plain prose", () => {
-    expect(DIAGNOSIS_SYSTEM_PROMPT).toContain("Your closing message is recorded beside your diagnoses");
-    expect(DIAGNOSIS_SYSTEM_PROMPT).toContain("end in plain prose with what that reader should know");
   });
 });
 

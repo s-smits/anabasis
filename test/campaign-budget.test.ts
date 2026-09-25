@@ -63,45 +63,35 @@ describe("the campaign spend budget", () => {
     expect(setTurnBudget(root, null)).toEqual({ turnBudget: null, turnsUsed: 4, status: "active" });
   });
 
-  it("refuses damaged historical spend and unresolved leases before creating a counter", () => {
-    for (const value of [
-      "not json",
-      ...[
-        { turnBudget: 5, turnsUsed: -1, status: "active" },
-        { turnBudget: 5, turnsUsed: 1.5, status: "active" },
-        { turnBudget: 1, turnsUsed: 1, status: "active" },
-      ].map((row) => JSON.stringify(row)),
-    ]) {
-      const root = tmp();
-      writeFileSync(join(root, "budget.json"), value);
-      expect(() => loadBudget(root)).toThrow();
-      expect(() => campaignBudgetGate(root)).toThrow();
-      expect(existsSync(join(root, "controller.sqlite"))).toBe(false);
-      expect(existsSync(join(root, ".budget-attempt.lock"))).toBe(false);
-    }
+  it("refuses an unresolved pre-ledger lease and a cap that is not a positive integer", () => {
     const root = tmp();
-    for (const cap of [0, -1, 1.5, Infinity]) expect(() => setTurnBudget(root, cap)).toThrow(TypeError);
+    for (const cap of [0, -1, 1.5, Infinity]) {
+      expect(() => setTurnBudget(root, cap)).toThrow("turnBudget must be a positive safe integer or null");
+    }
     writeFileSync(join(root, ".budget-attempt.lock"), "unresolved historical call");
     expect(() => setTurnBudget(root, 4)).toThrow(/predates the controller ledger/);
     expect(existsSync(join(root, "controller.sqlite"))).toBe(false);
   });
 
-  it("refuses missing, replaced and corrupted ledgers instead of resetting spend", () => {
-    for (const damaged of ["missing-db", "missing-identity", "replaced-db", "corrupt-db"]) {
-      const root = tmp();
-      setTurnBudget(root, 1);
-      campaignBudgetGate(root).startAttempt("builder").complete();
-      const path = join(root, damaged === "missing-identity" ? "budget.json" : "controller.sqlite");
-      renameSync(path, path + ".saved");
-      if (damaged === "corrupt-db") writeFileSync(path, "corrupted database");
-      if (damaged === "replaced-db") {
-        const other = tmp();
-        setTurnBudget(other, 100);
-        writeFileSync(path, readFileSync(join(other, "controller.sqlite")));
-      }
-      expect(() => loadBudget(root)).toThrow();
-      expect(() => campaignBudgetGate(root)).toThrow();
+  it.each([
+    ["missing-db", /predates the controller ledger/],
+    ["missing-identity", /the controller ledger identity is missing/],
+    ["replaced-db", /the controller ledger identity does not match/],
+    ["corrupt-db", /file is not a database/],
+  ])("refuses a %s ledger instead of resetting spend", (damaged, refusal) => {
+    const root = tmp();
+    setTurnBudget(root, 1);
+    campaignBudgetGate(root).startAttempt("builder").complete();
+    const path = join(root, damaged === "missing-identity" ? "budget.json" : "controller.sqlite");
+    renameSync(path, path + ".saved");
+    if (damaged === "corrupt-db") writeFileSync(path, "corrupted database");
+    if (damaged === "replaced-db") {
+      const other = tmp();
+      setTurnBudget(other, 100);
+      writeFileSync(path, readFileSync(join(other, "controller.sqlite")));
     }
+    expect(() => loadBudget(root)).toThrow(refusal);
+    expect(() => campaignBudgetGate(root)).toThrow(refusal);
   });
 
   it("keeps a killed started call charged when the campaign enters a new run", async () => {

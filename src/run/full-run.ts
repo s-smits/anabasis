@@ -227,7 +227,7 @@ function ensureDcgForBuilder(args: FullRunArgs, deps: FullRunDeps, builder: Camp
 /** An unset --max-iterations reads as Infinity, so there is no default round cap (operator
  *  decision). Budgets and typed operational stops still apply, and this cap fires only when the
  *  operator supplies one. */
-export function roundCapTerminal(round: number, roundLimit: number): string | null {
+function roundCapTerminal(round: number, roundLimit: number): string | null {
   return round >= roundLimit
     ? `operator-interrupted: round cap ${roundLimit} reached after completed round ${round} (--max-iterations sets it)`
     : null;
@@ -235,7 +235,7 @@ export function roundCapTerminal(round: number, roundLimit: number): string | nu
 
 /** The soft time boundary: read after a round records, so the battery in flight always finishes
  *  and the run overruns the boundary by at most one round. */
-export function softBoundaryTerminal(
+function softBoundaryTerminal(
   round: number,
   elapsedMs: number,
   stopAfterMs: number | undefined,

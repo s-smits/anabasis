@@ -30,7 +30,7 @@ import { isBoolean, isString } from "../meta/json-shape.ts";
 import { RATIONALE_MAX, errorText, noVerdictAttempt } from "./judge-drivers.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { isProviderResourceBudgetInterruption } from "../run/provider-resource-budget.ts";
-export { JUDGE_VERDICT_SCHEMA, sessionJudge } from "./judge-drivers.ts";
+export { sessionJudge } from "./judge-drivers.ts";
 /**
  * The one gate a model-visible judge input passes: the declared-key allowlist, then the versioned
  * sanitizer. The allowlist runs first because the sanitizer only normalizes bytes at whatever depth

@@ -43,31 +43,19 @@ function decorate(first: boolean, hasResumedCarry: boolean, repairOwner: Feedbac
 }
 
 describe("iteration evidence decoration", () => {
-  it("uses the declared diagnosis on a fresh first iteration", () => {
-    expect(decorate(true, false, "brief").diagnosisInput).toEqual({
-      kind: "rebuild-advice",
-      digest: "diagnosis-digest",
-    });
-  });
-
-  it("uses carried provenance on a resumed first iteration", () => {
-    expect(decorate(true, true, "brief").diagnosisInput).toEqual({
-      kind: "in-campaign-carry",
-      digest: null,
-    });
-  });
-
-  it("uses carried provenance on a later iteration without an owner", () => {
-    expect(decorate(false, false, null).diagnosisInput).toEqual({
-      kind: "in-campaign-carry",
-      digest: null,
-    });
-  });
-
-  it("uses carried provenance on a later routed iteration", () => {
-    expect(decorate(false, false, "correctness-model").diagnosisInput).toEqual({
-      kind: "in-campaign-carry",
-      digest: null,
-    });
+  const CARRY = { kind: "in-campaign-carry", digest: null } as const;
+  it.each([
+    [
+      "a fresh first iteration uses the declared diagnosis",
+      true,
+      false,
+      "brief",
+      { kind: "rebuild-advice", digest: "diagnosis-digest" },
+    ],
+    ["a resumed first iteration uses carried provenance", true, true, "brief", CARRY],
+    ["a later iteration without an owner uses carried provenance", false, false, null, CARRY],
+    ["a later routed iteration uses carried provenance", false, false, "correctness-model", CARRY],
+  ] as const)("%s", (_title, first, resumed, owner, diagnosisInput) => {
+    expect(decorate(first, resumed, owner).diagnosisInput).toEqual(diagnosisInput);
   });
 });

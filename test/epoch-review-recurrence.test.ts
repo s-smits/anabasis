@@ -23,6 +23,8 @@ import {
 } from "../src/review/epoch-review-findings.ts";
 import type { MeasuredCondition } from "../src/review/epoch-review-findings.ts";
 
+type ReviewerIdentity = Parameters<typeof conditionAlreadyReviewed>[2];
+
 afterAll(cleanupScratch);
 
 describe("a condition is reviewed once", () => {
@@ -53,44 +55,58 @@ describe("a condition is reviewed once", () => {
       }),
     );
 
-  test("a completed review of the same condition is not bought twice", () => {
+  test("a completed review of the same condition, by the same reviewer, is not bought twice", () => {
     const root = dir();
     write(root, "r1", { status: "completed", condition: condition("t1") });
     expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(true);
-    expect(
-      conditionAlreadyReviewed(root, condition("t1"), {
-        ...REVIEW_IDENTITY,
-        reviewerPin: "another-model/effort",
-      }),
-    ).toBe(false);
-    expect(
-      conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: "medium" }),
-    ).toBe(false);
-    expect(
-      conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: null }),
-    ).toBe(false);
-    expect(
-      conditionAlreadyReviewed(root, condition("t1"), {
-        ...REVIEW_IDENTITY,
-        requestDigest: "another-request",
-      }),
-    ).toBe(false);
-    // New contested artifacts or standing issues under the same condition are new settlement work.
-    expect(
-      conditionAlreadyReviewed(root, condition("t1"), {
-        ...REVIEW_IDENTITY,
-        obligationsDigest: "another-obligation-set",
-      }),
-    ).toBe(false);
-    expect(conditionAlreadyReviewed(root, condition("t1"), { ...REVIEW_IDENTITY, reviewerPin: null })).toBe(
-      false,
-    );
   });
 
-  test("a review recorded under the previous schema is not reused", () => {
+  const unknownVerifier = measuredConditionOf({ ...condition("t1"), verifierIdentity: null });
+  test.each<[string, Record<string, JsonValue>, MeasuredCondition, ReviewerIdentity]>([
+    [
+      "another reviewer pin",
+      {},
+      condition("t1"),
+      { ...REVIEW_IDENTITY, reviewerPin: "another-model/effort" },
+    ],
+    ["an unknown reviewer pin", {}, condition("t1"), { ...REVIEW_IDENTITY, reviewerPin: null }],
+    ["another reviewer effort", {}, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: "medium" }],
+    ["an unknown reviewer effort", {}, condition("t1"), { ...REVIEW_IDENTITY, reviewerEffort: null }],
+    ["another request", {}, condition("t1"), { ...REVIEW_IDENTITY, requestDigest: "another-request" }],
+    // New contested artifacts or standing issues under the same condition are new settlement work.
+    ["another obligation set", {}, condition("t1"), { ...REVIEW_IDENTITY, obligationsDigest: "another" }],
+    ["a new task set", {}, condition("t2"), REVIEW_IDENTITY],
+    [
+      "a changed verifier",
+      {},
+      measuredConditionOf({ ...condition("t1"), verifierIdentity: "verifier-b" }),
+      REVIEW_IDENTITY,
+    ],
+    ["an unknown verifier", {}, unknownVerifier, REVIEW_IDENTITY],
+    ["a review under the previous schema", { schema: "epoch-review/v3" }, condition("t1"), REVIEW_IDENTITY],
+    ["a failed review", { status: "failed" }, condition("t1"), REVIEW_IDENTITY],
+    [
+      "an incomplete review",
+      { status: "incomplete", coverage: { complete: false } },
+      condition("t1"),
+      REVIEW_IDENTITY,
+    ],
+    [
+      "coverage without a completeness verdict",
+      { coverage: { files: 400, opened: 400, chars: 800 } },
+      condition("t1"),
+      REVIEW_IDENTITY,
+    ],
+    ["a review with no recorded condition", { condition: null }, condition("t1"), REVIEW_IDENTITY],
+    ["a review with no recorded effort", { reviewerEffort: null }, condition("t1"), REVIEW_IDENTITY],
+  ])("a completed review is not reused for %s", (_label, body, asked, identity) => {
     const root = dir();
-    write(root, "r1", { schema: "epoch-review/v3", status: "completed", condition: condition("t1") });
-    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
+    write(root, "r1", { status: "completed", condition: condition("t1"), ...body });
+    expect(conditionAlreadyReviewed(root, asked, identity)).toBe(false);
+  });
+
+  test("no analysis directory yet is not coverage", () => {
+    expect(conditionAlreadyReviewed(join(dir(), "absent"), condition("t1"), REVIEW_IDENTITY)).toBe(false);
   });
 
   test("recurrence counts distinct measured conditions, not duplicate findings or replay files", () => {
@@ -161,44 +177,6 @@ describe("a condition is reviewed once", () => {
     await call(tool, { ...args, demonstration: DEMO });
     expect(await call(tool, { ...args, demonstration: DEMO, citations: CITATIONS })).toContain("as blocking");
     expect(state.findings.map((row) => row.severity)).toEqual(["advisory", "advisory", undefined]);
-  });
-
-  test("a new task set is a new condition", () => {
-    const root = dir();
-    write(root, "r1", { status: "completed", condition: condition("t1") });
-    expect(conditionAlreadyReviewed(root, condition("t2"), REVIEW_IDENTITY)).toBe(false);
-  });
-
-  test("changed or unknown verifier identity cannot reuse a completed review", () => {
-    const root = dir();
-    write(root, "r1", { status: "completed", condition: condition("t1") });
-    expect(
-      conditionAlreadyReviewed(
-        root,
-        measuredConditionOf({ ...condition("t1"), verifierIdentity: "verifier-b" }),
-        REVIEW_IDENTITY,
-      ),
-    ).toBe(false);
-    expect(
-      conditionAlreadyReviewed(
-        root,
-        measuredConditionOf({ ...condition("t1"), verifierIdentity: null }),
-        REVIEW_IDENTITY,
-      ),
-    ).toBe(false);
-  });
-
-  test("partial and legacy coverage cannot suppress another review", () => {
-    for (const body of [
-      { status: "incomplete", coverage: { complete: false } },
-      { status: "completed", coverage: { files: 400, opened: 400, chars: 800 } },
-      { status: "completed", condition: null },
-      { status: "completed", reviewerEffort: null },
-    ]) {
-      const root = dir();
-      write(root, "r1", { condition: condition("t1"), ...body });
-      expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
-    }
   });
 
   test("a harness defect whose check an earlier review named is admitted as blocking", async () => {
@@ -735,16 +713,6 @@ describe("a condition is reviewed once", () => {
     expect(state.findings[0]?.severity).toBe("advisory");
     await call(tool, { ...named, severity: "advisory", checkId: "capacity" });
     expect(state.findings[1]?.severity).toBeUndefined();
-  });
-
-  test("a failed review does not count as coverage", () => {
-    const root = dir();
-    write(root, "r1", { status: "failed", condition: condition("t1") });
-    expect(conditionAlreadyReviewed(root, condition("t1"), REVIEW_IDENTITY)).toBe(false);
-  });
-
-  test("no analysis directory yet is not coverage", () => {
-    expect(conditionAlreadyReviewed(join(dir(), "absent"), condition("t1"), REVIEW_IDENTITY)).toBe(false);
   });
 
   test("an absent task set hash still separates conditions", () => {

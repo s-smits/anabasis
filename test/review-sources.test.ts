@@ -15,16 +15,11 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { type EpochReviewInput, runEpochReview } from "../src/review/epoch-reviewer.ts";
-import {
-  EPOCH_REVIEW_SCHEMA,
-  conditionAlreadyReviewed,
-  measuredConditionOf,
-} from "../src/review/epoch-review-findings.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { double } from "./helpers/doubles.ts";
 import { reviewSlotPin } from "../src/review/review-session.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import { REVIEW_IDENTITY, call } from "./helpers/review-fixtures.ts";
+import { call } from "./helpers/review-fixtures.ts";
 import { REBUILD_ADVICE_SCHEMA } from "../src/author/rebuild-advice.ts";
 const EVALUATOR_TS = "evaluator.ts";
 /** A battery that verified nothing, as the runner records one. */
@@ -604,41 +599,14 @@ describe("review coverage tied to recorded execution", () => {
     }
   });
 
-  test("changing recorded tool bytes invalidates a completed review of the same harness", () => {
+  // Whether a changed identity is reused is the recurrence table's; this owns that the bytes move it.
+  test("changing recorded tool bytes changes the verifier identity a completed review is keyed by", () => {
     const root = coreTree();
     recordedTool(root);
-    const first = reviewVerifierEvidence(root, "r1");
-    const condition = measuredConditionOf({
-      agentHash: "a",
-      correctnessModelHash: "c",
-      taskSetHash: "t",
-      builtPin: "pin",
-      verifierIdentity: first.identity,
-    });
-    const reviews = join(root, "reviews");
-    mkdirSync(reviews);
-    writeFileSync(
-      join(reviews, "r1-epoch-review.json"),
-      JSON.stringify({
-        ...REVIEW_IDENTITY,
-        schema: EPOCH_REVIEW_SCHEMA,
-        status: "completed",
-        findings: [],
-        coverage: { complete: true },
-        condition,
-      }),
-    );
-    expect(conditionAlreadyReviewed(reviews, condition, REVIEW_IDENTITY)).toBe(true);
+    const first = reviewVerifierEvidence(root, "r1").identity;
+    expect(first).not.toBeNull();
     recordedTool(root, "#!/bin/sh\nexit 1\n");
-    const next = reviewVerifierEvidence(root, "r1");
-    expect(next.identity).not.toBe(first.identity);
-    expect(
-      conditionAlreadyReviewed(
-        reviews,
-        measuredConditionOf({ ...condition, verifierIdentity: next.identity }),
-        REVIEW_IDENTITY,
-      ),
-    ).toBe(false);
+    expect(reviewVerifierEvidence(root, "r1").identity).not.toBe(first);
   });
 
   test("rereading a condition under another reviewer does not manufacture recurrence", async () => {
@@ -889,18 +857,12 @@ describe("what the reviewer may open", () => {
     expect(reviewInventory(root).files.sort()).toEqual(["agent/solve.ts", "tasks.json"]);
   });
 
-  test("skips a dangling symlink while keeping readable inventory entries", () => {
-    const root = scratchDir("ana-inv-");
-    writeFileSync(join(root, EVALUATOR_TS), "export const x = 1;");
-    symlinkSync(join(root, "gone.ts"), join(root, "broken.ts"));
-    expect(reviewInventory(root).files).toEqual([EVALUATOR_TS]);
-  });
-
-  test("the inventory excludes linked files and directories outside the measured tree", () => {
+  test("the inventory skips a dangling link and every link leaving the measured tree", () => {
     const root = scratchDir("ana-inv-links-");
     const outside = scratchDir("ana-private-");
     writeFileSync(join(root, EVALUATOR_TS), "public evaluation");
     writeFileSync(join(outside, "secret.txt"), "private controller bytes");
+    symlinkSync(join(root, "gone.ts"), join(root, "broken.ts"));
     symlinkSync(join(outside, "secret.txt"), join(root, "linked.txt"));
     symlinkSync(outside, join(root, "linked-dir"));
     expect(reviewInventory(root).files).toEqual([EVALUATOR_TS]);

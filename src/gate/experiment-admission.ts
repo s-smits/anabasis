@@ -211,10 +211,7 @@ function productRepairOwed(
 
 /** Every independent refusal of the declared scope. Revising the proposal can resolve them without
  *  new bytes, so each is reported at once rather than one per check. */
-export function candidateProposalRefusals(
-  candidate: CandidateSnapshot,
-  input: AdmissionInput,
-): ContractFinding[] {
+function candidateProposalRefusals(candidate: CandidateSnapshot, input: AdmissionInput): ContractFinding[] {
   if (candidate.experimentProposal === undefined) return [];
   const baseline = adoptedBaseline(input.adoptedDir, candidate);
   return [

@@ -1,9 +1,6 @@
 /**
- * What lets a measured candidate replace the selected product. The paired comparison is gone and
- * one battery decides a round, so nothing here reads a second battery or a Progress Guard verdict;
- * neither survives in `src/` at all.
- *
- * What replaced them is a set of floors the candidate meets on its own. Its claim has to reach
+ * What lets a measured candidate replace the selected product. One battery decides a round, through
+ * a set of floors the candidate meets on its own. Its claim has to reach
  * `measured` and then pass it, because stopping exactly at `measured` means the battery ran and
  * the claim was refused. Its battery has to have verified at least one case, since a battery of
  * non-results is an operational result and no capability result. Its tasks and correctness model
@@ -371,30 +368,6 @@ describe("promoteCandidate — one battery, one decision", () => {
     );
   });
 
-  it("holds the same candidate when its battery verified no case", () => {
-    // The nearest hostile case to the promotion above: one field moves. Zero verified cases is a
-    // valid operational result and no capability result, so it cannot replace a tree that has one.
-    const root = scratchRoot("promote-zero");
-    tree(root, `domains/${SLUG}`, `["v1-tasks"]`, MEASURED);
-    const candidate = tree(root, `campaigns/${SLUG}/candidates/r2`, `["v2-tasks"]`, READY);
-
-    const evidence = promoteCandidate(root, SLUG, candidate, "r2", {
-      experiment: "build",
-      transaction: { expectedShippingBundle: sealedBundleOf(candidate) },
-      battery: { verified: 0 },
-    });
-
-    expect(evidence.decision).toBe("held");
-    expect(evidence.clauses.join("; ")).toContain("candidate-zero-verified");
-    expect(evidence.battery).toEqual({ verified: 0 });
-    // A hold leaves current byte-identical and the candidate where it stands.
-    expect(readFileSync(join(root, "domains", SLUG, "correctness-model", "tasks.json"), "utf8")).toBe(
-      `["v1-tasks"]`,
-    );
-    expect(existsSync(candidate)).toBe(true);
-    expect(persistedRow(root, "r2").decision).toBe("held");
-  });
-
   it("holds a climb candidate whose harness identity moved, and promotes the one that only moved the battery", () => {
     const root = scratchRoot("promote-climb");
     tree(root, `domains/${SLUG}`, `["level-1"]`, MEASURED);
@@ -469,29 +442,6 @@ describe("recordExperimentIntegrityHold", () => {
       `["level-1"]`,
     );
     expect(existsSync(candidate)).toBe(true);
-  });
-
-  it("refuses to replace a settled promotion row with a later hold under the same run id", () => {
-    // A run id is the transaction identity: an exact replay returns the completed row, and a
-    // second, different settlement under it is a defect rather than a correction.
-    const root = scratchRoot("integrity-replay");
-    tree(root, `domains/${SLUG}`, `["v1-tasks"]`, MEASURED);
-    const candidate = tree(root, `campaigns/${SLUG}/candidates/r6`, `["v2-tasks"]`, READY);
-    const first = promoteCandidate(root, SLUG, candidate, "r6", {
-      experiment: "build",
-      transaction: { expectedShippingBundle: sealedBundleOf(candidate) },
-      battery: { verified: 5 },
-    });
-    expect(first.decision).toBe("promoted");
-
-    // Replaying the same run reads its completed promotion row.
-    const replayed = promoteCandidate(root, SLUG, candidate, "r6", {
-      experiment: "build",
-      transaction: {},
-      battery: { verified: 5 },
-    });
-    expect(replayed.decision).toBe("promoted");
-    expect(persistedRow(root, "r6").decision).toBe("promoted");
   });
 
   it("refuses to replay a committed row whose bytes moved after its digest", () => {

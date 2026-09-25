@@ -18,6 +18,7 @@ import {
 } from "../author/builder-session.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
+  type CampaignMemory,
   extendTrailingBlockedFindings,
   nextOrdinal,
   resumeCampaignMemory,
@@ -47,6 +48,7 @@ import type {
   PriorEvidence,
 } from "../author/campaign-types.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
+import type { BudgetStatus } from "./controller-ledger.ts";
 import {
   campaignAttemptGate,
   type CampaignBudgetGate,
@@ -158,8 +160,6 @@ export interface BuilderCampaignDeps {
   waitMs?: (ms: number) => Promise<void>; // test interface for the turn-retry backoff
 }
 
-export type CampaignMemory = ReturnType<typeof resumeCampaignMemory>;
-
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
 type Accepted = {
   experimentProposal?: ExperimentSubmission;
@@ -177,25 +177,29 @@ function proposesExperiment(input: Pick<BuilderCampaignInput, "adoptedDir">): bo
   return input.adoptedDir !== undefined;
 }
 
-/** Refuse exhausted authoring and environment blockers before opening a model session. */
-export function preSessionRefusal(
+/** The clause that ends this campaign before a model session opens: exhausted authoring, an
+ *  environment blocker or a spent durable cap, none of which a provider turn could change. */
+function preSessionClause(
   input: Pick<BuilderCampaignInput, "priorEvidence">,
   memory: CampaignMemory,
-): CampaignOutcome | null {
-  if (memory.clause !== null) return { buildAdmissible: false, clauses: [memory.clause], iterations: [] };
+  budget: BudgetStatus | undefined,
+): CampaignClause | null {
+  if (memory.clause !== null) return memory.clause;
   // The durable half of the unchanged-candidate ceiling. The round that reached it recorded an
   // authoring-stalled terminal, but the terminal binds one invocation: truss-run1-sol-0830 opened
   // fourteen of them on the same campaign and each started its counters at zero, so the same
   // commit was submitted unchanged 21 times. Reading the replayed per-commit tally here makes a
   // relaunch continue the count rather than restart it, and costs no model turn.
   if (unchangedCandidateSubmissions(memory, []) >= POLICY.loop.unchangedCandidateStrikes) {
-    return { buildAdmissible: false, clauses: ["authoring-stalled"], iterations: [] };
+    return "authoring-stalled";
   }
   const feedback = [...memory.carried, ...(input.priorEvidence?.feedback ?? [])];
   if (feedback.some((row) => row.severity === "blocking" && row.owner === "environment")) {
-    return { buildAdmissible: false, clauses: ["environment-blocked"], iterations: [] };
+    return "environment-blocked";
   }
-  return null;
+  // A spent durable cap is settled here, before any provider turn: it used to be found only at
+  // the first submit, by which point the session had already been paid for.
+  return budget === "budget_limited" ? "budget-limited" : null;
 }
 
 /** What the controller asks of this round: how many tasks, and the contract those tasks are
@@ -705,13 +709,8 @@ export async function runBuilderCampaign(
   const attemptGate = campaignAttemptGate(deps.budget);
   attemptGate?.assertAttemptAvailable();
   const memory = resumeCampaignMemory(input.campaignDir, input.slug, hashJsonValue(input.kickoff));
-  const refused = preSessionRefusal(input, memory);
-  if (refused !== null) return refused;
-  // A spent durable cap is a pre-session terminal, settled before any provider turn: it used to
-  // be found only at the first submit, by which point the session had already been paid for.
-  if (deps.budget?.status() === "budget_limited") {
-    return { buildAdmissible: false, clauses: ["budget-limited"], iterations: [] };
-  }
+  const refused = preSessionClause(input, memory, deps.budget?.status());
+  if (refused !== null) return { buildAdmissible: false, clauses: [refused], iterations: [] };
   const workspace = join(input.campaignDir, WORKSPACE_DIR);
   // A repair seeds from the adopted package once and resumes in-flight edits without overwriting them.
   const { created } = initWorkspace(workspace, input.adoptedDir, true, deps.safeguardContext);

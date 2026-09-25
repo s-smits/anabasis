@@ -65,15 +65,10 @@ describe("session pool", () => {
     expect(active).toBe(0);
   });
 
-  it("holds the two widths apart: the judge session stays wider than the battery session", () => {
-    expect(JUDGE_MAX_CONCURRENCY).toBe(5);
-    expect(BUILT_SOLVE_MAX_CONCURRENCY).toBe(3);
-  });
-
   // The harness declares the Built width and the operator may bound it; a malformed value refuses
   // rather than falling back, because a silently changed width is a changed measurement condition.
   it("takes the Built width from the harness, lets ANA_BUILT_CONCURRENCY override it, and refuses a malformed one", () => {
-    expect(builtSolveConcurrency(undefined, {})).toBe(3);
+    expect(builtSolveConcurrency(undefined, {})).toBe(BUILT_SOLVE_MAX_CONCURRENCY);
     expect(builtSolveConcurrency(8, {})).toBe(8);
     expect(builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: "" })).toBe(8);
     // The operator's bound wins in both directions: it is the provider session limit being spent.
@@ -159,40 +154,23 @@ describe("session pool", () => {
     expect(seen).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it("runJudgeBatches takes a width, and a width past the input count is one batch rather than an error", async () => {
+  it.each([
+    // A width past the input count is one batch rather than an error.
+    [64, [1, 2, 3, 4, 5, 6, 7], [[1, 2, 3, 4, 5, 6, 7]]],
+    [2, [1, 2, 3, 4, 5], [[1, 2], [3, 4], [5]]],
+    // A width below one would divide the loop by zero and never terminate.
+    [0, [1, 2], [[1], [2]]],
+  ])("runJudgeBatches at width %p batches %p as %p", async (width, inputs, expected) => {
     const batches: number[][] = [];
     await runJudgeBatches(
-      [1, 2, 3, 4, 5, 6, 7],
+      inputs,
       async (input) => input,
       (batch) => {
         batches.push([...batch]);
         return true;
       },
-      64,
+      width,
     );
-    expect(batches).toEqual([[1, 2, 3, 4, 5, 6, 7]]);
-    const narrow: number[][] = [];
-    await runJudgeBatches(
-      [1, 2, 3, 4, 5],
-      async (input) => input,
-      (batch) => {
-        narrow.push([...batch]);
-        return true;
-      },
-      2,
-    );
-    expect(narrow).toEqual([[1, 2], [3, 4], [5]]);
-    // A width below one would divide the loop by zero and never terminate.
-    const floored: number[][] = [];
-    await runJudgeBatches(
-      [1, 2],
-      async (input) => input,
-      (batch) => {
-        floored.push([...batch]);
-        return true;
-      },
-      0,
-    );
-    expect(floored).toEqual([[1], [2]]);
+    expect(batches).toEqual(expected);
   });
 });

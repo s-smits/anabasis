@@ -30,25 +30,22 @@ import {
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, required } from "./helpers/doubles.ts";
 
-const PROBE = { min: 5, max: 10 };
+const PROBE = BATTERY_SIZE.probe;
 
 const continuation = (n: number, min = n, band = POLICY.climb.band) =>
   renderBatteryContract(n, min, band, true);
 
 describe("batterySize", () => {
-  it("bounds every requested size and REFUSES out of range instead of clamping", () => {
-    expect(batterySize(undefined)).toBe(25);
-    expect(batterySize(BATTERY_SIZE.floor)).toBe(5);
-    expect(batterySize(BATTERY_SIZE.ceiling)).toBe(60);
+  it("accepts every size inside the policy bounds and REFUSES outside them instead of clamping", () => {
+    const { floor, ceiling } = BATTERY_SIZE;
+    expect(batterySize(undefined)).toBe(BATTERY_SIZE.default);
+    // The probe's own bounds are ordinary sizes, so a probe round needs no second path.
+    for (const n of [floor, PROBE.min, PROBE.max, ceiling]) expect(batterySize(n)).toBe(n);
     // A silently altered operator condition is a silently dropped one: refuse, never clamp.
-    expect(() => batterySize(4)).toThrow(/outside \[5, 60\]/);
-    expect(() => batterySize(61)).toThrow(/outside \[5, 60\]/);
-    expect(() => batterySize(double(25.5))).toThrow(/outside/);
-  });
-
-  it("accepts the probe's own bounds, so a probe round is an ordinary size", () => {
-    expect(batterySize(PROBE.min)).toBe(PROBE.min);
-    expect(batterySize(PROBE.max)).toBe(PROBE.max);
+    const outside = `outside [${floor}, ${ceiling}]`;
+    expect(() => batterySize(floor - 1)).toThrow(outside);
+    expect(() => batterySize(ceiling + 1)).toThrow(outside);
+    expect(() => batterySize(double(25.5))).toThrow(outside);
   });
 });
 
@@ -90,8 +87,7 @@ describe("batterySizingGate", () => {
   });
 
   it("sizes a product past the probe to the smallest battery that still carries its last reading", () => {
-    // Truss de8b40 measured 22 of 25 and then paid 25 solves a round to re-read the same thing.
-    // Nine of eleven still reads significantly too easy, so eleven buys the reading for 44% of it.
+    // A battery that read too easy at 25 is re-read for less: nine of eleven still reads significantly too easy, so eleven buys the reading for 44% of it.
     expect(batterySizingGate(25, 25, landed(22, 25))).toEqual({ min: 11, max: 11 });
     expect(batterySizingGate(25, 25, landed(6, 6))).toEqual({ min: 11, max: 11 });
     expect(batterySizingGate(25, 25, landed(20, 25))).toEqual({ min: 14, max: 14 });
@@ -244,7 +240,6 @@ describe("runBuildStep battery sizing", () => {
   });
 
   it("sizes a round past the probe to the size its last battery's reading survives at", async () => {
-    // Truss de8b40 measured 22 of 25 and then paid 25 solves a round to re-read the same thing.
     const round = await sizedRound(probeRoot(true, 25, 22), null);
     // Sizing reads the whole battery, 22 of 25, not the changed subset the difficulty selector uses.
     expect(round.expectedTasks).toBe(11);
@@ -262,14 +257,8 @@ describe("runBuildStep battery sizing", () => {
     expect(await sizedRound(root, null)).toMatchObject({ expectedTasks: 25 });
   });
 
-  /** The counts a round is authored against have one owner, and it is the start prompt.
-   *
-   *  A "measurement note" briefly filled the null a round with no recorded placement leaves,
-   *  stating the first battery's count, the count that finds no limit and the aim. On a fresh build
-   *  those are the three counts the first-battery contract had already put in the same context
-   *  block, word for word; on a continuation whose readout could not be read, they are the
-   *  first-battery count the continuation contract exists to keep out — the "Expect about 3 of 25"
-   *  beside a measurement reporting 24 of 25. */
+  /** The counts a round is authored against have one owner, the battery contract in the start
+   *  prompt; a sizing note restating them would put a first-battery count beside a continuation. */
   it("leaves the pass counts to the prompt that owns them, and adds no second owner", async () => {
     const fresh = await sizedRound(probeRoot(false), null, "build");
     expect(fresh).toMatchObject({ expectedTasks: 10, minTasks: 5 });
@@ -277,28 +266,14 @@ describe("runBuildStep battery sizing", () => {
     expect(note).toContain(
       "batteries have 5 to 10 tasks until one passes some but not all of its scored cases, then 25",
     );
+    // The counts themselves are the battery contract's, which climb-decision and the campaign
+    // opening prove are delivered per size.
     for (const count of ["verified pass", "aim", "finds no limit"]) expect(note).not.toContain(count);
-    // A fresh build is told all three counts, per size, by the prompt that owns them.
-    expect(renderBatteryContract(10, 5)).toContain(
-      "5 tasks — author for about 1, aim 1 to 2, 5 or more finds no limit",
-    );
-    // A continuation is told the aim and never the first battery's count.
-    expect(continuation(25)).toContain("Aim for 5 to 12 of 25");
-    expect(continuation(25)).not.toContain("Expect about");
   });
 
-  /** One number, three owners: the band.
-   *
-   *  `climb.band` is a manifest row, and `climbThresholds` reads it. Until 2026-09-21 two consumers
-   *  did not: the prompt contract and `battery-sizing` read the `POLICY.climb` constant
-   *  directly. A run that declared its own band therefore had its placement read against the
-   *  declared one while the Builder was told to aim at the code-owned counts and the sizing gate
-   *  held the code-owned ceiling — three readings of one number, agreeing only while nothing
-   *  overrode it, so no test ever saw them disagree. This declares a band and asserts all three
-   *  move together.
-   *
-   *  [0.2, 0.95] is the contrast that makes each visible: at 25 cases no count is significantly too
-   *  easy under it, and 22 of 25 no longer holds "too easy" at any size below the requested one. */
+  /** One number, three owners: a declared `climb.band` must move the placement, the prompt
+   *  contract and the sizing gate together. [0.2, 0.95] makes each visible: at 25 cases no count is
+   *  significantly too easy under it, and 22 of 25 no longer holds "too easy" below 25 tasks. */
   it("moves the prompt counts and the sizing gate with a declared band, not only the placement", async () => {
     const declared: [number, number] = [0.2, 0.95];
     // Same battery, same 22 of 25: under the code-owned ceiling it holds too-easy at eleven tasks.
@@ -309,9 +284,7 @@ describe("runBuildStep battery sizing", () => {
     // And the band the controller read is the one the authoring session is handed.
     expect(round.band).toEqual(declared);
     // The Builder's sentences are written from that band, not from the policy row.
-    expect(continuation(25, 25, declared)).toContain("Aim for 5 to 23 of 25");
     expect(continuation(25, 25, declared)).toContain("At 25 cases no pass count is significantly too easy");
-    expect(continuation(25)).toContain("Aim for 5 to 12 of 25");
   });
 
   /** The readout reports the latest battery's target either way — met, missed with a distance, or

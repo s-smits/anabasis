@@ -35,176 +35,70 @@ import type { AdviceIssue } from "../src/author/rebuild-advice.ts";
 import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
+import { PROBE_BUDGET } from "../src/review/review-probe.ts";
+import { ownerWritableFiles } from "../src/author/feedback-routing.ts";
+
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
 afterAll(cleanupScratch);
 
 describe("the epoch reviewer's finding tool stays inside its authority", () => {
-  test("its prompt distinguishes candidate analysis from answer disclosure", () => {
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "bounded candidate generation and complete public-requirement reports are legitimate solving support",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain("A short tool sequence is not a defect");
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "neither a single complete-analysis endpoint nor a dedicated optimiser is required",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain("Exploratory subset analysis is valid");
-    expect(EPOCH_REVIEW_PROMPT).toContain("protected answers or verifier material exposed to the solver");
-    expect(EPOCH_REVIEW_PROMPT).toContain("analysis that silently omits required public scenarios");
-    expect(EPOCH_REVIEW_PROMPT).toContain("Before alleging answer leakage");
-    // At or above the aim, silence is not an answer: a finding, or a family-by-family account.
-    expect(EPOCH_REVIEW_PROMPT).toContain('"nothing demonstrated" does not answer it');
-    expect(EPOCH_REVIEW_PROMPT).toContain("a solver tool that reports every margin a declared check reads");
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "a rule the author invented that no practitioner of the request would hold",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "If the evidence only shows easy or repetitive tasks, record a curriculum concern",
-    );
-    // de8b40's first backstop review fired forty minutes in, read brief.json `{}` and a tools module
-    // returning no tools, and spent its one blocking finding on the seed placeholder the next turn
-    // replaced. The same review read the authored tasks and found a real defect there, so the rule
-    // is that unwritten work is not a finding, not that an unfinished tree goes unread.
-    expect(EPOCH_REVIEW_PROMPT).toContain("is work not yet done rather than a defect");
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "Review what has been authored; where nothing has been, say so and record nothing",
-    );
-    // c1d2a7 round two: the review's one curriculum finding read the published mass limit, which
-    // equals the author's own reference mass, and asked for a limit "independently of any stored
-    // solution". Adoption refuses that candidate — its reference must earn a truth verdict against
-    // every published limit (solvability-witness-failed) — so the ask cost a slot and could not be
-    // met. Both halves of the shape: which way the margins point, and the floor under the limit.
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "A published limit set at the author's own reference result is the shape to read carefully",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "do not ask for a limit set independently of the author's own solution",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "a tighter published limit means a stronger reference search and nothing else",
-    );
-    expect(EPOCH_REVIEW_PROMPT).not.toContain("a task whose answer is recoverable from its own inputs");
-    // Run 8729bb: three consecutive reviews reported the artifact-writer's empty generated
-    // schema as a missing channel; the host binds that schema and execution (bindDraftTools).
-    expect(EPOCH_REVIEW_PROMPT).toContain("an empty schema there is not a missing channel");
-    // The 0905 review corpus: 9 of 75 findings over-claimed verifier equivalence, hidden-key
-    // recovery or pin infeasibility from read source alone. The prompt names the three shapes.
-    expect(EPOCH_REVIEW_PROMPT).toContain("Read source is not executed source.");
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "a reading taken from source alone against the agent's tools or guide is held to advice",
-    );
-    // One statement of that rule, not four. The corpus it was measured against holds 92 hedged
-    // claims and 103 findings of a kind that routes to no owner; repeating the instruction in
-    // four places bought none of the caution it asks for.
-    expect(EPOCH_REVIEW_PROMPT.split("held to advice").length - 1).toBe(1);
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "Block only when the verbatim original request or a published public rule requires the property",
-    );
-  });
-
-  // Four bundles across two unrelated domains carried exactly one private ruleDecisions row each,
-  // 133 to 265 characters, and in every one no declared check read the decision it described. The
-  // twelve reviews over them spent 25 findings and never read the publication ceiling, because the
-  // prompt only ever named the floor. The duty is stated once, with the probe that settles it and
-  // the three surfaces that can own it.
-  test("its prompt makes the publication ceiling a standing reading", () => {
-    expect(EPOCH_REVIEW_PROMPT).toContain("Read the publication ceiling every time");
-    expect(EPOCH_REVIEW_PROMPT).toContain("at least one decision a passing answer needs stays out of it");
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "whether it is a sufficient construction algorithm for the artifact the declared checks decide",
-    );
-    // A private row is not evidence of withholding by existing; the reviewer reads it against the
-    // checks, and the probe is what turns "no check reads it" from a reading into a demonstration.
-    expect(EPOCH_REVIEW_PROMPT).toContain("withholds nothing when no declared check reads the order");
-    expect(EPOCH_REVIEW_PROMPT).toContain("`probe_check` settles it");
-    for (const owner of ["`brief` for the rule rows", "`instructions` for the guide", "`tools-spec`"]) {
-      expect(EPOCH_REVIEW_PROMPT).toContain(owner);
-    }
-    // Stated once. The same corpus shows a duty repeated in four places buys none of the care.
-    expect(EPOCH_REVIEW_PROMPT.split("publication ceiling").length - 1).toBe(1);
-  });
-
-  test("its prompt says what carries a finding to an owner, and what a probe is for", () => {
-    // 180 of the 497 findings recorded across 314 reviews carry no checkId, no artifactSchemaPath
-    // and no publicInputPath, so their public sentence names nothing to repair; 103 are of a kind
-    // that routes to no owner at all while still spending one of the six slots. The prompt says so.
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "A finding reaches its owner through its identities, not its prose",
-    );
-    // c1d2a7 round two: the review's harness-defect on accept-controls carried no checkId,
-    // artifactSchemaPath or publicInputPath, so publicFindingClaim took its identity-free branch
-    // and the whole finding reached the author as "inspect that contract for a mismatch".
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "A finding that names none of the three reaches that pass as its kind and owner and nothing else",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain("name the declared check those controls are meant to distinguish");
-    expect(EPOCH_REVIEW_PROMPT).toContain("still spend one of your six slots");
-    // The 2026-09-16 replay ran eight probes and cited none, so its harness-defect took the
-    // source-derived floor. The prompt asks before record_finding has to.
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "Once you have run a probe, every harness-defect must say what it rests on",
-    );
-    expect(EPOCH_REVIEW_PROMPT).toContain("send `probeIds: []` for a reading taken from source alone");
-    // No blocking finding exists in that corpus, and the Judge contests nothing in most batteries.
-    // One paragraph settles both directions where two mirrored ones stood.
-    expect(EPOCH_REVIEW_PROMPT).toContain("in either direction");
-    expect(EPOCH_REVIEW_PROMPT).not.toContain("A disputed fail is the reverse");
-    // The host refuses a task-naming claim outright and record_finding's own description says so.
-    expect(EPOCH_REVIEW_PROMPT).not.toContain("Never name an individual task in a claim");
-    // A firmware admissibility check tested `prescaler >= 1` and never membership in the board's
-    // published prescalerChoices, though the same file exported that catalogue as the reference
-    // search's candidate list. The probe paragraph names the replacement that settles the class.
-    expect(EPOCH_REVIEW_PROMPT).toContain("A closed value set the public input publishes");
-    expect(EPOCH_REVIEW_PROMPT).toContain("name a value outside the set");
-    expect(EPOCH_REVIEW_PROMPT).toContain("tests only a bound on it passes such a probe");
-    // The reference enumerating a set for its own search is what made the hole easy to miss.
-    expect(EPOCH_REVIEW_PROMPT).toContain(
-      "a set the reference enumerates for its own search is not thereby a set the declared checks enforce",
-    );
-  });
-
   const evidence = "campaigns/truss/analysis/r2-epoch-review.json";
 
-  test("a harness defect must name a routable owner", async () => {
+  // The prompt is a condition identity, so it is held to properties rather than to its sentences:
+  // each duty is stated once, superseded phrasings stay out, and the bounds it spells in words are
+  // the bounds the host enforces.
+  test("its prompt states each duty once, keeps retired phrasings out and spells the host's bounds", async () => {
+    for (const duty of [
+      "held to advice",
+      "publication ceiling",
+      "Read source is not executed source",
+      "A finding reaches its owner through its identities",
+      "Your closing message is recorded",
+      "Block only when",
+    ]) {
+      expect(EPOCH_REVIEW_PROMPT.split(duty).length - 1).toBe(1);
+    }
+    for (const retired of [
+      "a task whose answer is recoverable from its own inputs",
+      "A disputed fail is the reverse",
+      "Never name an individual task in a claim",
+      "close with a short synthesis",
+    ]) {
+      expect(EPOCH_REVIEW_PROMPT).not.toContain(retired);
+    }
+    expect(EPOCH_REVIEW_PROMPT).toContain(`at most ${NUMBER_WORDS[PROBE_BUDGET]} in a review`);
+    const state = reviewState();
+    const tool = recordFindingTool([], [], evidence, state);
+    const hardness = {
+      kind: "hardness",
+      claim: "the family asks more than the harness reaches",
+      severity: "advisory",
+    };
+    for (let attempt = 0; attempt < NUMBER_WORDS.length; attempt += 1) {
+      if ((await call(tool, hardness)).includes("records at most")) break;
+    }
+    expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
+  });
+
+  test("a harness defect must name a routable owner, and the owner field lists what each one writes", async () => {
     const state = reviewState();
     const tool = recordFindingTool([issue()], [], evidence, state);
     const ownerContract = JSON.stringify(tool.parameters);
-    expect(ownerContract).toContain("tests: correctness-model/tasks.json");
-    expect(ownerContract).toContain("correctness-model: correctness-model/evaluator.ts");
-    expect(ownerContract).toContain("controls: correctness-model/controls.json");
-    expect(ownerContract).toContain("The Builder may make a broader repair");
+    for (const owner of ["tests", "correctness-model", "controls"] as const) {
+      expect(ownerContract).toContain(`${owner}: ${ownerWritableFiles(owner).join(", ")}`);
+    }
     expect(ownerContract).not.toContain("evaluation correction freezes the agent and tasks");
-    expect(ownerContract).toContain("demonstrated violation of the request or a declared requirement");
-    expect(ownerContract).toContain("partial repair does not close");
-    expect(
-      await call(tool, {
-        kind: "harness-defect",
-        claim: "the writer omits a required root",
-        severity: "blocking",
-        citations: CITATIONS,
-        demonstration: DEMO,
-      }),
-    ).toContain("routable owner");
-    expect(
-      await call(tool, {
-        kind: "harness-defect",
-        claim: "the writer omits a required root",
-        owner: "not-an-owner",
-        severity: "blocking",
-        citations: CITATIONS,
-        demonstration: DEMO,
-      }),
-    ).toContain("routable owner");
+    const defect = {
+      kind: "harness-defect",
+      claim: "the writer omits a required root",
+      severity: "blocking",
+      citations: CITATIONS,
+      demonstration: DEMO,
+    };
+    expect(await call(tool, defect)).toContain("routable owner");
+    expect(await call(tool, { ...defect, owner: "not-an-owner" })).toContain("routable owner");
     expect(state.findings).toHaveLength(0);
-  });
-
-  // The closing message is recorded as the review's report and read by whoever takes the campaign
-  // up next. A reviewer told only to "close with a short synthesis" treated it as a sign-off.
-  test("its prompt says the closing message is read and asks for plain prose, and reads the plan", () => {
-    expect(EPOCH_REVIEW_PROMPT).toContain("Your closing message is recorded as this review's report");
-    expect(EPOCH_REVIEW_PROMPT).toContain("end in plain prose with what that reader should know");
-    expect(EPOCH_REVIEW_PROMPT).not.toContain("close with a short synthesis");
-    expect(EPOCH_REVIEW_PROMPT).toContain("Judge the round against what it set out to do");
-    expect(EPOCH_REVIEW_PROMPT).toContain("The plan is intent, never evidence that anything was achieved");
   });
 
   test("a blocking harness defect must state the case it demonstrates", async () => {
@@ -575,11 +469,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       demonstration: DEMO,
     };
 
-    test("the tool asks the reviewer to fill the identities", () => {
+    test("the tool's schema offers the reviewer the identities", () => {
       const tool = recordFindingTool([], [], evidence, reviewState(), { identities });
-      expect(tool.description).toContain(
-        "Fill checkId, artifactSchemaPath and publicInputPath whenever you know them",
-      );
       for (const field of ["checkId", "artifactSchemaPath", "publicInputPath"]) {
         expect(JSON.stringify(tool.parameters)).toContain(`"${field}":`);
       }

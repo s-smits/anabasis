@@ -7,36 +7,32 @@
  * turns — each one a function that may call the hosted tools the driver generated, exactly as a
  * real backend does in-process — and records what the session was opened and prompted with.
  *
- * Four of the eight `builder-session-*.test.ts` files import this module — kickoff, record,
- * refusal and turns — so a change here does not reach the other four. Three of those never open a
- * session at all, but `builder-session-stall.test.ts` does, against an opener it scripts itself,
- * which is the one to check by hand. The module carries what more than one importer needs; a tool
- * double or a finding batch a single file uses stays in that file.
+ * The three `builder-session*.test.ts` files import this module: the loop, what the model is told,
+ * and the execution record the round leaves. The module carries what more than one importer needs;
+ * a tool double or a finding batch a single file uses stays in that file.
  */
 import type { JsonValue } from "../../src/meta/json-shape.ts";
 import type { AgentTurnEvent, AgentTurnResult } from "../../src/backends/backend-types.ts";
 import type { HostSession, PiTool } from "../../src/backends/pi-session.ts";
+import type { BuilderExecutionEvidence } from "../../src/author/builder-execution.ts";
 import type { BuilderSessionDeps } from "../../src/author/builder-session.ts";
 import type { CandidateCheckOutcome } from "../../src/author/candidate-check.ts";
-import type { FingerprintEvidence } from "../../src/claim/fingerprint.ts";
 import { controllerValidatedFinding } from "../../src/truth/brief.ts";
 import { required, scriptedSession } from "./doubles.ts";
 import { MATCHING_BRIEF } from "./matching-fixture.ts";
 
-export const FINGERPRINT = {
+export const ACCEPTED: Extract<CandidateCheckOutcome, { ok: true }> = {
   ok: true,
-  slug: "matching",
-  agentHash: "a".repeat(64),
-  correctnessModelHash: "b".repeat(64),
-  scoringHash: "b".repeat(64),
-  taskSetHash: "c".repeat(64),
-  agentFiles: [],
-  correctnessModelFiles: [],
-} satisfies FingerprintEvidence;
-
-export const ACCEPTED: CandidateCheckOutcome = {
-  ok: true,
-  fingerprint: FINGERPRINT,
+  fingerprint: {
+    ok: true,
+    slug: "matching",
+    agentHash: "a".repeat(64),
+    correctnessModelHash: "b".repeat(64),
+    scoringHash: "b".repeat(64),
+    taskSetHash: "c".repeat(64),
+    agentFiles: [],
+    correctnessModelFiles: [],
+  },
   commit: "d".repeat(40),
   baseCommit: "e".repeat(40),
   changedPaths: ["correctness-model/brief.json"],
@@ -54,7 +50,7 @@ export const ACCEPTED: CandidateCheckOutcome = {
   advisories: [],
 };
 
-export const REFUSED: CandidateCheckOutcome = {
+export const REFUSED: Extract<CandidateCheckOutcome, { ok: false }> = {
   ok: false,
   stage: "bundle",
   findings: [
@@ -94,6 +90,12 @@ export type OpenedSession = {
 };
 
 export const INPUT = { slug: "matching", kickoff: "Build a slot binding harness.", workspace: "/tmp/ws" };
+
+/** A turn that calls submit once and reports nothing else. */
+export const submitsOnce: TurnScript = async (submit) => {
+  await submit.execute("submit", {});
+  return undefined;
+};
 
 /** Find a hosted tool by name in the roster the session receives. */
 export function toolNamed(tools: readonly unknown[], name: string): SubmitTool | undefined {
@@ -139,4 +141,16 @@ export function deps(
 ): BuilderSessionDeps {
   // A failed turn is retried on a growing backoff; no driver test spends that wall clock.
   return { open, tools, submit, waitMs: async () => {} };
+}
+
+/** The two execution-record callbacks, each collecting what the driver hands it in order. */
+export function recordSink() {
+  const checkpoints: BuilderExecutionEvidence[] = [];
+  const settled: BuilderExecutionEvidence[] = [];
+  return {
+    checkpoints,
+    settled,
+    onCheckpoint: (evidence: BuilderExecutionEvidence) => checkpoints.push(evidence),
+    onExecution: (evidence: BuilderExecutionEvidence) => settled.push(evidence),
+  };
 }

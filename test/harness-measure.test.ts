@@ -429,7 +429,7 @@ describe("measureHarness", () => {
     expect(zero.verdicts).toEqual({ measured: true, claimCreated: true, ready: false });
   }, 240_000);
 
-  it.concurrent("settles a typed absence when every solve is provider-degraded — no crash, no 0/N score (live-run-08)", async () => {
+  it.concurrent("settles a typed absence when every solve is provider-degraded — no crash, no 0/N score", async () => {
     const repo = scaffoldRepo(join(SCRATCH_ROOT, "e2e-environment-blocked"), {
       toolsSpec: true,
       conformance: true,

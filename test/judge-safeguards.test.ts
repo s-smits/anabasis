@@ -3,8 +3,7 @@
  * predicate over the recorded review plus one emit; the log line proves the emit, the negative
  * cases prove they stay quiet on the ordinary shapes.
  */
-import { mkdtempSync, readFileSync, rmSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
@@ -17,19 +16,11 @@ import {
 } from "../src/analyse/judge-safeguards.ts";
 import type { JudgeReviewsResult } from "../src/analyse/judge-reviews.ts";
 import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
-const scratch: string[] = [];
 type Exit = JudgeReviewsResult["exit"];
 
-afterEach(() => {
-  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-function logDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "judge-safeguards-"));
-  scratch.push(dir);
-  return dir;
-}
+afterEach(cleanupScratch);
 
 function readLog(dir: string): string {
   try {
@@ -77,7 +68,7 @@ describe("48: the former blocking floor", () => {
   });
 
   it("writes one line naming the counts", () => {
-    const dir = logDir();
+    const dir = scratchDir("judge-safeguards-");
     safeguardJudgeReview(review({ exit: exit(5, 1, 25) }), 8, createSafeguardContext(dir));
     const log = readLog(dir);
     expect(log).toContain("48-judge-disagreement-at-former-block-threshold");
@@ -99,7 +90,7 @@ describe("49: a Judge that passes everything", () => {
   });
 
   it("writes its line beside 48 when both hold", () => {
-    const dir = logDir();
+    const dir = scratchDir("judge-safeguards-");
     safeguardJudgeReview(review({ exit: exit(4, 0, 20) }), 4, createSafeguardContext(dir));
     const log = readLog(dir);
     expect(log).toContain("48-judge-disagreement-at-former-block-threshold");
@@ -108,7 +99,7 @@ describe("49: a Judge that passes everything", () => {
   });
 
   it("stays quiet on agreement", () => {
-    const dir = logDir();
+    const dir = scratchDir("judge-safeguards-");
     safeguardJudgeReview(review({ exit: exit(0, 0, 25) }), 6, createSafeguardContext(dir));
     expect(readLog(dir)).toBe("");
   });
@@ -118,7 +109,7 @@ describe("50: evaluation-only repair right after Judge advice", () => {
   /** "evaluation" also covers changed controls and hidden expectations, not the checker alone
    *  (test/experiment-freeze.e2e.test.ts pins that from bytes), so the line must say so. */
   it("fires on a rebuild whose packet carried Judge disagreement and whose accepted bytes were evaluation-only", () => {
-    const dir = logDir();
+    const dir = scratchDir("judge-safeguards-");
     safeguardJudgeAdviceThenEvaluatorRepair(
       "rebuild",
       packet("advisory"),
@@ -133,7 +124,7 @@ describe("50: evaluation-only repair right after Judge advice", () => {
   });
 
   it("stays quiet without the Judge, on a full build, on a climb, or on a failed build", () => {
-    const dir = logDir();
+    const dir = scratchDir("judge-safeguards-");
     const context = createSafeguardContext(dir);
     safeguardJudgeAdviceThenEvaluatorRepair("rebuild", packet("none"), "evaluation", context);
     safeguardJudgeAdviceThenEvaluatorRepair("rebuild", packet(null), "evaluation", context);

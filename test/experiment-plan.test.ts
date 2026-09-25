@@ -40,9 +40,11 @@ const PLAN: ExperimentPlan = {
   ],
 };
 
-const CONTRADICTED_T1 = "Advice: rehearsal verdicts contradict 1 prediction(s): t1 predicted 0.1 and passed.";
+const calibration = (graded: number, expected: number, passed: number) =>
+  `Advice: before their verdicts, your predictions for this round's ${String(graded)} graded rehearsal(s) expected ${String(expected)} passes and ${String(passed)} passed.`;
+const CALIBRATION_T1 = calibration(1, 0.1, 1);
 const staleAdvice = (taskIds: string) =>
-  `Advice: rehearsed only at bytes that have since changed, so counted towards neither the target nor the predictions: ${taskIds}.`;
+  `Advice: rehearsed only at bytes that have since changed, so not counted towards the target: ${taskIds}.`;
 
 /** The plan with one field removed, as `jq 'del(.field)'` would leave it. */
 const without = (field: keyof ExperimentPlan): JsonValue =>
@@ -166,9 +168,9 @@ describe("the plan reader", () => {
 });
 
 describe("the plan evidence", () => {
-  it("advises when rehearsals contradict a prediction or already pass the at-most target", () => {
+  it("advises when rehearsals pass more than their predictions expected or than the at-most target", () => {
     const contradicted = new PlanEvidence(planned(), null);
-    expect(contradicted.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
+    expect(contradicted.record(pass("t1"))).toEqual([CALIBRATION_T1]);
     expect(contradicted.record(pass("t2"))[0]).toBe(
       "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
     );
@@ -176,6 +178,48 @@ describe("the plan evidence", () => {
     expect(new PlanEvidence(planned(), null).record(pass("t2"))).toEqual([]);
     // Without a readable plan there is nothing to advise against.
     expect(new PlanEvidence(workspace(), null).record(pass("t1"))).toEqual([]);
+  });
+
+  // Firmware round 2 predicted 0.4 and 0.6 for rehearsals that both passed, and no single verdict
+  // lay far enough from its prediction to say so. The count is what the target states, and a
+  // prediction revised after its verdict does not change what was expected before it.
+  it("advises when the predictions made before the verdicts expected another pass count", () => {
+    const low = {
+      ...PLAN,
+      predictions: [
+        { taskId: "t1", pass: 0.4 },
+        { taskId: "t2", pass: 0.6 },
+      ],
+    };
+    const dir = workspace(low);
+    bundle(dir, 10);
+    const evidence = new PlanEvidence(dir, null);
+    expect(evidence.record(pass("t1"))).toEqual([]);
+    expect(evidence.record(pass("t2"))).toContain(calibration(2, 1, 2));
+    writeFileSync(
+      join(dir, "EXPERIMENT.json"),
+      JSON.stringify({
+        ...low,
+        predictions: [
+          { taskId: "t1", pass: 0.95 },
+          { taskId: "t2", pass: 0.95 },
+        ],
+      }),
+    );
+    expect(evidence.advice()).toContain(calibration(2, 1, 2));
+    // Misses that cancel leave the expected count standing, and that is all this line reads.
+    const even = {
+      ...PLAN,
+      predictions: [
+        { taskId: "t1", pass: 0.1 },
+        { taskId: "t2", pass: 0.9 },
+      ],
+    };
+    const balanced = workspace(even);
+    bundle(balanced, 10);
+    const cancelled = new PlanEvidence(balanced, null);
+    cancelled.record(pass("t1"));
+    expect(cancelled.record({ ...pass("t2"), verdict: "fail" })).toEqual([]);
   });
 
   // Run 371f8f round 2 declared at most 5 of 7 against an aim of 2 to 3, and only the readout after
@@ -228,7 +272,7 @@ describe("the plan evidence", () => {
     writeFileSync(join(rehearsals, "experiment-evidence.json"), "{}");
     const evidence = new PlanEvidence(dir, rehearsals);
     expect(evidence.record({ ...pass("t1"), minutes: 30, toolCalls: 12, costUsd: null })).toEqual([
-      CONTRADICTED_T1,
+      CALIBRATION_T1,
     ]);
     expect(JSON.parse(readFileSync(join(rehearsals, "experiment-evidence-2.json"), "utf8"))).toMatchObject({
       schema: "experiment-evidence/v3",
@@ -240,7 +284,7 @@ describe("the plan evidence", () => {
     expect(evidence.view().split("\n")).toEqual([
       "Round plan (experiment-plan/v2, tasks scope): target at-most 1 verified passes; 2 task prediction(s) summing to 0.6 expected passes.",
       "Families: span at frontier — The worst case lies in a range the solver must search.; joint at hard — Every degraded state the same answer must clear..",
-      CONTRADICTED_T1,
+      CALIBRATION_T1,
       "Rehearsals this round: t1 (span) pass in 30 of 120 solve minutes (25%), 12 tool calls, cost unreported.",
       "Ladder frontier row: - **frontier** — hard, with the set no longer handed over.",
       "MEMORY.md risk: The span family may still be one call.",
@@ -279,28 +323,30 @@ describe("the plan evidence", () => {
   });
 
   // A tightened task is a different question from the one its earlier rehearsal answered, so that
-  // verdict stops counting and is named instead of silently calibrating what would be submitted.
+  // verdict stops counting towards the target and is named. Its prediction was about the bytes it
+  // ran on, so the calibration line keeps it.
   it("counts a rehearsal at the task's current bytes and names one at earlier bytes as stale", () => {
     const dir = planned();
     const evidence = new PlanEvidence(dir, null);
-    expect(evidence.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
+    expect(evidence.record(pass("t1"))).toEqual([CALIBRATION_T1]);
 
     bundle(dir, 4, "Solve it within the tighter limit.");
-    expect(evidence.advice()).toEqual([staleAdvice("t1")]);
+    expect(evidence.advice()).toEqual([CALIBRATION_T1, staleAdvice("t1")]);
     expect(evidence.view().split("\n")).toContain(staleAdvice("t1"));
-    expect(evidence.record(pass("t2"))).toEqual([staleAdvice("t1")]);
+    expect(evidence.record(pass("t2"))).toEqual([calibration(2, 0.6, 2), staleAdvice("t1")]);
 
-    // Tasks that do not load leave the current bytes unknown rather than changed: nothing counts,
-    // not even a rehearsal recorded while they were unreadable, and no task is called stale.
+    // Tasks that do not load leave the current bytes unknown rather than changed: nothing counts
+    // towards the target, not even a rehearsal recorded while they were unreadable, and no task is
+    // called stale.
     writeFileSync(join(dir, "correctness-model", "tasks.json"), "{ not json");
     const unknown =
-      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target or the predictions until they do.";
-    expect(evidence.record(pass("t1"))).toEqual([unknown]);
+      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target until they do.";
+    expect(evidence.record(pass("t1"))).toEqual([calibration(3, 0.7, 3), unknown]);
     expect(evidence.view().split("\n")).toContain(unknown);
 
     // Back at the first bytes, the first t1 verdict counts again and t2's stays stale.
     bundle(dir, 10);
-    expect(evidence.advice()).toEqual([CONTRADICTED_T1, staleAdvice("t2")]);
+    expect(evidence.advice()).toEqual([calibration(3, 0.7, 3), staleAdvice("t2")]);
   });
 
   // The identity covers what grades the solve and not only what the solver reads: neither the
@@ -331,9 +377,9 @@ describe("the plan evidence", () => {
     const dir = planned();
     arrange(dir);
     const evidence = new PlanEvidence(dir, null);
-    expect(evidence.record(pass("t1"))).toEqual([CONTRADICTED_T1]);
+    expect(evidence.record(pass("t1"))).toEqual([CALIBRATION_T1]);
     change(dir);
-    expect(evidence.advice()).toEqual([staleAdvice("t1")]);
+    expect(evidence.advice()).toEqual([CALIBRATION_T1, staleAdvice("t1")]);
   });
 
   it("bounds a long quoted line in the view and marks what it left out", () => {

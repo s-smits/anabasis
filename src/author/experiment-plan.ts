@@ -62,7 +62,7 @@ const MOVE_MAX_BYTES = 300;
 const PLAN_MAX_BYTES = 16_384;
 /** Bytes kept of each free-text line the compact view quotes. */
 const VIEW_MAX_BYTES = 320;
-/** A prediction this far from a verdict is stated as contradicted by it. */
+/** Rehearsal passes this far from the passes their predictions expected are stated as advice. */
 const CONTRADICTED_BY = 0.8;
 const LADDER_FILE = "starter-pack/difficulty-ladder.md";
 const RISK_HEADING = "## Risk";
@@ -419,7 +419,8 @@ function scoredBeforeVerdicts(rows: readonly RecordedRehearsal[]): PredictionSco
 
 /** Where the plan and the rehearsals disagree, as advice only: a target above the aim, which the
  *  readout would otherwise say only after a battery measured it, rehearsal passes past an at-most
- *  target, a prediction the verdict contradicts, and tasks rehearsed only at bytes since changed.
+ *  target, predictions made before their verdicts that expected another pass count, which revising
+ *  them afterwards does not unsay, and tasks rehearsed only at bytes since changed.
  *  None refuses anything, because a rehearsal is one blind solve and the measured battery is the
  *  evidence. */
 function planAdvice(
@@ -443,14 +444,10 @@ function planAdvice(
       `Advice: rehearsals already passed ${passed.length} distinct task(s) (${passed.join(", ")}) against a target of at most ${verifiedPasses} verified passes.`,
     );
   }
-  const contradicted = plan.predictions.flatMap((row) => {
-    const verdict = verdicts.get(row.taskId);
-    if (verdict === undefined || Math.abs(row.pass - (verdict ? 1 : 0)) < CONTRADICTED_BY) return [];
-    return [`${row.taskId} predicted ${row.pass} and ${verdict ? "passed" : "failed"}`];
-  });
-  if (contradicted.length > 0) {
+  const score = scoredBeforeVerdicts(rows);
+  if (score !== null && Math.abs(score.observed - score.expected) >= CONTRADICTED_BY) {
     advice.push(
-      `Advice: rehearsal verdicts contradict ${contradicted.length} prediction(s): ${contradicted.join("; ")}.`,
+      `Advice: before their verdicts, your predictions for this round's ${score.scored} graded rehearsal(s) expected ${score.expected} passes and ${score.observed} passed.`,
     );
   }
   const stale = new Set(
@@ -458,11 +455,11 @@ function planAdvice(
   );
   if (now === null && rows.some((row) => row.verdict !== "not-run")) {
     advice.push(
-      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target or the predictions until they do.",
+      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target until they do.",
     );
   } else if (stale.size > 0) {
     advice.push(
-      `Advice: rehearsed only at bytes that have since changed, so counted towards neither the target nor the predictions: ${[...stale].join(", ")}.`,
+      `Advice: rehearsed only at bytes that have since changed, so not counted towards the target: ${[...stale].join(", ")}.`,
     );
   }
   return advice;

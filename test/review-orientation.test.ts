@@ -396,7 +396,7 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     const bare = issue({ id: JOINTS, kind: "unaccepted", family: "joints" });
     const prompt = await oriented({ measured: true, experiment: plan, issues: [diagnosed, bare] });
     expect(prompt).toContain(`${BEAMS.slice(0, 12)} (beams, verified-fail, 2/5)`);
-    expect(prompt).toContain("tool-contract layer, intervention correct");
+    expect(prompt).toContain("agent/tools-spec.json. First failure boundary");
     expect(prompt).toContain(`Falsifier: ${READING.falsifier}`);
     expect(prompt).toContain(`Cause: ${READING.cause}`);
     expect(prompt).toContain(`${JOINTS.slice(0, 12)} (joints, unaccepted, 2/5): no diagnosis recorded`);

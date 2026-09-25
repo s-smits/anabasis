@@ -26,9 +26,9 @@
  *
  * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
  * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
- * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its layer, intervention, boundary
- * and falsifier, which the diagnosis reader drew from solver traces and public context alone; its
- * causal argument stays recorded here.
+ * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its owner, boundary and falsifier,
+ * which the diagnosis reader drew from solver traces and public context alone; its causal argument
+ * stays recorded here.
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
@@ -47,7 +47,10 @@ import {
 } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { isBundleFile } from "./feedback-routing.ts";
+import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
+import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { type BundleFile, isBundleFile } from "./feedback-routing.ts";
 import {
   type BatteryCondition,
   type ConditionGap,
@@ -55,7 +58,7 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v7";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v8";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -74,23 +77,20 @@ type AdviceIssueKind =
   /** The Judge failed what the verifier passed: a disclosure about the verifier's accept. */
   | "judge-failed-verifier-passed";
 
-/** Where in the harness the diagnosis reader locates a failure: the part of the Built Harness a
- *  repair would touch. `solver` says the harness gave the solver what it needed and the solve still
- *  went wrong, which is a finding in its own right rather than an abstention. */
-export const DIAGNOSIS_LAYERS = [
-  "operating-guide",
-  "tool-contract",
-  "tool-behaviour",
-  "representation",
-  "walls",
-  "missing-tool",
+/** Where the diagnosis reader locates a failure: a bundle file the solver reads, which is the file
+ *  a repair would change, or `solver` when the harness gave the solver what it needed and the solve
+ *  still went wrong, which is a finding in its own right rather than an abstention. The reader reads
+ *  solves, not the evaluation, so no file under `correctness-model/` other than the brief it
+ *  publishes is offered. */
+export const DIAGNOSIS_OWNERS = [
+  BRIEF_FILE,
+  BUILT_AGENTS_FILE,
+  TOOLS_SPEC_FILE,
+  GENERATED_TOOLS_FILE,
+  HARNESS_CONFIG_FILE,
   "solver",
-] as const;
-export type DiagnosisLayer = (typeof DIAGNOSIS_LAYERS)[number];
-
-/** The kind of change the diagnosis proposes, independent of which file carries it. */
-export const DIAGNOSIS_INTERVENTIONS = ["publish", "correct", "extend", "raise-wall", "none"] as const;
-export type DiagnosisIntervention = (typeof DIAGNOSIS_INTERVENTIONS)[number];
+] as const satisfies readonly (BundleFile | "solver")[];
+export type DiagnosisOwner = (typeof DIAGNOSIS_OWNERS)[number];
 
 /** A structured reading of why one or more issues' solves failed, located at a step of a recorded
  *  trace, with the observation that would refute it. It is advice: it selects no owner and changes
@@ -99,8 +99,7 @@ export type IssueDiagnosis = {
   /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
    *  describes the battery in front of the author. */
   runId: string;
-  layer: DiagnosisLayer;
-  intervention: DiagnosisIntervention;
+  owner: DiagnosisOwner;
   /** The first observed failure boundary: the tool called at that step, or null when the boundary is
    *  the solve's end (a wall, a missing submission), and what the trace shows there. */
   boundary: { tool: string | null; reading: string };
@@ -620,8 +619,8 @@ function issueLine(issue: AdviceIssue): string {
   return `- [${issueStatusWord(issue)}] ${issue.family}: ${issue.count}/${issue.denominator} ${words} (first seen ${issue.firstSeenRunId}, last seen ${issue.lastSeenRunId})${diagnosis}`;
 }
 
-/** The diagnosis as the author reads it: where the harness failed, what kind of change it points
- *  to, and what would prove it wrong. The cause stays in review evidence, because the boundary and
+/** The diagnosis as the author reads it: which file the failure points to, where the solve failed,
+ *  and what would prove it wrong. The cause stays in review evidence, because the boundary and
  *  the falsifier are the parts a next pass can check against its own traces, and a causal paragraph
  *  is the part an author adopts without checking. The support counts say how far one reading was
  *  sampled, so a reading drawn from one case does not read like a pattern. */
@@ -633,7 +632,7 @@ export function diagnosisLine(diagnosis: IssueDiagnosis): string {
       : `, ${support.contrasts} passing contrast${support.contrasts === 1 ? "" : "s"}`;
   const where = boundary.tool === null ? "at the solve's end" : `at a call to ${boundary.tool}`;
   const reading = /[.!?]$/.test(boundary.reading) ? boundary.reading : `${boundary.reading}.`;
-  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.layer} layer, intervention ${diagnosis.intervention}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
+  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
 }
 
 /** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families

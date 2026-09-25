@@ -973,10 +973,10 @@ describe("what the author reads", () => {
     expect(rendered).not.toContain("- [disputed]");
   });
 
-  it("a diagnosis publishes its layer, boundary, intervention and falsifier, and keeps its cause", () => {
+  it("a diagnosis publishes its owner, boundary and falsifier, and keeps its cause", () => {
     const rendered = renderRebuildAdvice(advicePacket([issue({ diagnosis: READING })]));
     expect(rendered).toContain(
-      "diagnosis (r2, medium confidence: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): tool-contract layer, intervention correct.",
+      "diagnosis (r2, medium confidence: holds for 2 of 3 sampled of 3 failing cases, 1 passing contrast): agent/tools-spec.json.",
     );
     expect(rendered).toContain(
       `First failure boundary at a call to write_layout: ${READING.boundary.reading}. Falsifier:`,

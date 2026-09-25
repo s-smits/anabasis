@@ -464,21 +464,21 @@ live evidence.
    and up to two passing solves of the same family, every one compiled by `compileSolve`
    (`src/review/solve-steps.ts`) into numbered steps such as `c04.s7` and `c04.end`. Beside them
    sit the measured harness's walls, its declared tool descriptions, its operating guide and a
-   census of every solve's tool use. Its one tool, `record_diagnosis`, takes a harness layer from
-   `DIAGNOSIS_LAYERS`, an intervention from `DIAGNOSIS_INTERVENTIONS`, a first observed failure
-   boundary, a cause and a falsifier. It refuses a boundary that is not a shown step of a solve the
-   reading names, a contrast that is not a step of a shown passing solve, a solver-layer reading
-   that proposes a change, and any text naming a task. One reading may cover several issues that
+   census of every solve's tool use. Its one tool, `record_diagnosis`, takes an owner from
+   `DIAGNOSIS_OWNERS` — a harness file the solver reads, or `solver` for no change — a first
+   observed failure boundary, a cause and a falsifier. It refuses an owner the solver does not read,
+   a boundary that is not a shown step of a solve the reading names, a contrast that is not a step
+   of a shown passing solve, and any text naming a task. One reading may cover several issues that
    share a flaw. Confidence is computed from how many sampled solves the reading holds for and
    whether it cites a contrast, never stated by the model.
 
    The reader opens no `verifier.json`, Judge record or accepted artifact, and records
    `promptDigest`, so a change to protected detail alone leaves that digest unchanged — which is
-   also why its boundary and falsifier may reach the author. The rebuild advice renders the layer,
-   the intervention, the boundary and the falsifier with the support counts, and keeps the cause in
-   the record, where the Epoch Reviewer reads it beside each standing issue. The reader selects no
-   owner. Treat a timeout as diagnosable unless the battery
-   evidence proves the environment owns it.
+   also why its boundary and falsifier may reach the author. The rebuild advice renders the owner,
+   the boundary and the falsifier with the support counts, and keeps the cause in the record, where
+   the Epoch Reviewer reads it beside each standing issue. The owner a reading names is advice: it
+   routes no feedback. Treat a timeout as diagnosable unless the battery evidence proves the
+   environment owns it.
 
    The Epoch Reviewer runs once per measured-condition digest, and may record routable findings or
    dispute a standing issue. It labels each finding advisory or blocking, and blocking requires a

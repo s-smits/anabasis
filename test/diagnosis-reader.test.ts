@@ -87,8 +87,7 @@ const B = BEAMS.slice(0, 12);
 
 const WRITER_READING = {
   issueIds: [B],
-  layer: "tool-contract",
-  intervention: "correct",
+  owner: "agent/tools-spec.json",
   boundary: "c01.s2",
   boundaryReading: "write_layout rejects the pinned support the family's public input requires",
   cause: "the writer's support enum omits pinned, so no valid call can express the layout",
@@ -313,8 +312,7 @@ describe("what a reading records", () => {
         cited: { boundary: "c01.s2", supporting: ["c01", "c02", "c03"], contrast: ["c04.s2"] },
         diagnosis: {
           runId: "r2",
-          layer: "tool-contract",
-          intervention: "correct",
+          owner: "agent/tools-spec.json",
           boundary: { tool: "write_layout", reading: WRITER_READING.boundaryReading },
           cause: WRITER_READING.cause,
           falsifier: WRITER_READING.falsifier,
@@ -324,9 +322,7 @@ describe("what a reading records", () => {
       },
     ]);
     const rendered = renderRebuildAdvice(attachIssueReadings(fixture.advice, evidence));
-    expect(rendered).toContain(
-      "tool-contract layer, intervention correct. First failure boundary at a call to write_layout",
-    );
+    expect(rendered).toContain("agent/tools-spec.json. First failure boundary at a call to write_layout");
     expect(rendered).toContain(WRITER_READING.falsifier);
     expect(rendered).not.toContain(WRITER_READING.cause);
   });
@@ -336,8 +332,7 @@ describe("what a reading records", () => {
       {
         ...WRITER_READING,
         issueIds: [B, JOINTS.slice(0, 12)],
-        layer: "walls",
-        intervention: "raise-wall",
+        owner: "agent/config.yaml",
         boundary: "c05.end",
         supporting: ["c05", "c01"],
         contrast: [],
@@ -368,12 +363,11 @@ describe("what a reading records", () => {
       { contrast: ["c02.s2"] },
       "contrast c02.s2 is not a shown step of a passing solve",
     ],
-    ["the solver layer with a change", { layer: "solver" }, "the solver layer takes intervention none"],
-    ["a harness layer with no change", { intervention: "none" }, "the solver layer takes intervention none"],
+    // The reader reads solves, not the evaluation, so an evaluation-side owner is another lane's.
     [
-      "a raised wall outside the walls layer",
-      { intervention: "raise-wall" },
-      "raise-wall belongs to the walls layer",
+      "an owner the solver does not read",
+      { owner: "correctness-model/evaluator.ts" },
+      "owner must be a harness file the solver reads",
     ],
     ["no falsifier", { falsifier: "  " }, "are all required"],
     [
@@ -522,7 +516,7 @@ describe("the tool alone", () => {
       [issue({ count: 3, denominator: 4 })],
     );
     const sink: DiagnosisReaderEvidence = {
-      schema: "diagnosis-reading/v2",
+      schema: "diagnosis-reading/v3",
       slug: "truss",
       runId: "r2",
       readerPin: null,

@@ -432,21 +432,21 @@ finding itself keeps the owner it named.
 Starts from the triage table the `handoff` lane prints, from any advice issue with a count, and
 from a completed epoch review beside a failing family.
 
-The question is whether the diagnosis, the Epoch Reviewer and the advice packet agreed on which
-side owned a failing family, and whether the successor repaired that side. Read the advice
-packet's issues (`lastSeenRunId`, state, `dispute`), the diagnosis reading
-(`diagnosis-reading/v2`, `src/review/diagnosis-reader.ts`) with its cause, cited `boundary` and
-`falsifier`, the battery's `-epoch-review.json` findings, `probeIds` and `disputes`, the
-successor's decision-row `operation`, and the reviews timed by their UUIDv7 names. Per failing
-family report the diagnosis's cause and the reviewer's kind, whether the reviewer disputed the
-issue or showed through `probe_check` a changed value that moved no check, whether the packet
-withheld the agent advice for a disputed issue, and whether the successor's attributed operation
-repaired the named side; then time it, from the first failing battery to the first
-evaluation-side review. A probe that moved no check is a lead to a loose check, not proof of one,
-and a task probe repairs neither side. Do not read the failed traces, which lane 25 owns. The
-decision it changes is which side the next round reopens; it routes to `correctness-model` or
-`controls` when the evaluation side was named and never repaired, and to `src/author/rebuild-advice.ts`
-when the packet dropped the side.
+The question is whether the diagnosis, the Epoch Reviewer and the advice packet agreed on which side
+owned a failing family, and whether the successor repaired that side. Read the advice packet's
+issues (`lastSeenRunId`, state, `dispute`), the diagnosis reading (`diagnosis-reading/v3`,
+`src/review/diagnosis-reader.ts`) with its owner, cause, cited `boundary` and `falsifier`, the
+battery's `-epoch-review.json` findings, `probeIds` and `disputes`, the successor's decision-row
+`operation`, and the reviews timed by their UUIDv7 names. Per failing family report the diagnosis's
+owner and cause and whether the reviewer recorded a defect, whether the reviewer disputed the issue
+or showed through `probe_check` a changed value that moved no check, whether the packet withheld the
+agent advice for a disputed issue, and whether the successor's attributed operation repaired the
+named side; then time it, from the first failing battery to the first evaluation-side review. A
+probe that moved no check is a lead to a loose check, not proof of one, and a task probe repairs
+neither side. Do not read the failed traces, which lane 25 owns. The decision it changes is which
+side the next round reopens; it routes to `correctness-model/evaluator.ts` or
+`correctness-model/controls.json` when the evaluation side was named and never repaired, and to
+`src/author/rebuild-advice.ts` when the packet dropped the side.
 
 **16. Judge disagreement adjudication.**
 

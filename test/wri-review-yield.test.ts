@@ -310,8 +310,7 @@ describe("review-yield: harness-trial reader", () => {
 describe("review-yield: diagnosis reader", () => {
   const diagnosis = {
     runId: "run-a",
-    layer: "tool-contract",
-    intervention: "correct",
+    owner: "agent/tools-spec.json",
     boundary: { tool: "write_layout", reading: "failed tool call" },
     cause: "public interface mismatch",
     falsifier: "the interface agrees",

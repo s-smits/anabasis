@@ -2,9 +2,9 @@
  * `probe_check`, the epoch reviewer's one executing tool. Every other authority the reviewer has
  * reads bytes: it opens source, quotes it and reasons about it. A reader that cannot execute cannot
  * demonstrate, so without this tool `demonstrated()` can only ever mean a length of prose. What
- * that costs is a review whose harness-defect concedes inside its own claim that nothing is
- * presently mis-decided, and whose two decisive observations are filed as `hardness` and
- * `diagnosis-uncertain` — neither of which carries an owner, so neither routes anywhere.
+ * that costs is a review whose defect finding concedes inside its own claim that nothing is
+ * presently mis-decided, and whose two decisive observations are filed as observations, which ask
+ * for no repair and so change nothing.
  *
  * A probe changes one field of a known-correct accept control and runs the candidate's own declared
  * checks over the original and the changed artifact through `runControls` — the same path the
@@ -64,6 +64,7 @@ import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolTex
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
+import { contractDefect } from "../analyse/finding-owner.ts";
 
 /** Probes per review. Each one loads the generated check program in a confined child and may launch
  *  the declared external tools, so it costs about what one census control costs. Eight is enough to
@@ -155,20 +156,20 @@ export function probeBackedRows(state: ProbeState, cited: JsonValue | undefined)
   return state.rows.filter((row) => conclusive(row) && numbers.has(row.id)).sort((a, b) => a.id - b.id);
 }
 
-/** A review that executed probes and then records a harness-defect without saying whether it rests
+/** A review that executed probes and then records a defect without saying whether it rests
  *  on them loses the one route to a first-occurrence blocking finding, and its evidence record
  *  cannot link the finding to the rows that support it — which is exactly what a reviewer does when
  *  it narrates what its probes returned inside the claim prose and leaves `probeIds` unset. Asking
  *  costs one argument, and `probeIds: []` is the answer when the reading came from source alone. */
 export function probeCitationRefusal(
-  kind: string | null,
+  finding: { defect: boolean | null; owner: string | null },
   state: ProbeState,
   cited: JsonValue | undefined,
 ): string | null {
-  if (kind !== "harness-defect" || cited !== undefined) return null;
+  if (!contractDefect(finding) || cited !== undefined) return null;
   const ran = state.rows.filter(conclusive).map((row) => row.id);
   if (ran.length === 0) return null;
-  return `this review executed probe${ran.length === 1 ? "" : "s"} ${ran.join(", ")}; a harness-defect must say what it rests on. Retry with probeIds naming the probes whose result supports it, or probeIds: [] when you read this from source alone`;
+  return `this review executed probe${ran.length === 1 ? "" : "s"} ${ran.join(", ")}; a defect must say what it rests on. Retry with probeIds naming the probes whose result supports it, or probeIds: [] when you read this from source alone`;
 }
 
 /** Load the candidate's own contract the way measurement loads it: the validated brief, the

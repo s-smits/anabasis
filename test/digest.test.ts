@@ -368,7 +368,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "analysis", "run-1-judges.json"),
       JSON.stringify({
-        schema: "judge-reviews/v11",
+        schema: "judge-reviews/v12",
         runId: "run-1",
         census: null,
         // t9 was never a verified case of run-1, so its row is not attributed.
@@ -721,7 +721,7 @@ describe("digest", () => {
     expect(refused).not.toContain('absent step "epoch review"');
   });
 
-  it("counts an advisory finding's recurrence over measured reviews by kind and declared check", () => {
+  it("counts an advisory finding's recurrence over measured reviews by placement and declared check", () => {
     const paths = fixture();
     const analysis = join(paths.campaign, "analysis");
     mkdirSync(analysis, { recursive: true });
@@ -731,10 +731,10 @@ describe("digest", () => {
         JSON.stringify({ schema: EPOCH_REVIEW_SCHEMA, status: "completed", findings, reads: [] }),
       );
     const advisory = {
-      kind: "harness-defect",
+      defect: true,
       severity: "advisory",
       checkId: "alpha-check",
-      proposedOwner: "brief",
+      owner: "correctness-model/brief.json",
     };
     review("run-1", [advisory]);
     const once = digestOf(paths);
@@ -743,10 +743,10 @@ describe("digest", () => {
     // An authoring checkpoint reads the same bytes a measured review reads, so it is no recurrence.
     review("authoring-01a0b788-f000-7000-8000-000000000000", [advisory]);
     expect(digestOf(paths)).not.toContain("ADVISORY FINDING RECURS UNROUTED");
-    review("run-2", [advisory, { kind: "harness-defect", severity: "advisory" }]);
+    review("run-2", [advisory, { defect: true, severity: "advisory" }]);
     const twice = digestOf(paths);
     expect(twice).toContain(
-      "ADVISORY FINDING RECURS UNROUTED (lane 14): harness-defect alpha-check advisory in 2 measured reviews (run-1, run-2)",
+      "ADVISORY FINDING RECURS UNROUTED (lane 14): defect alpha-check advisory in 2 measured reviews (run-1, run-2)",
     );
     expect(twice).toContain("advisory findings naming no check: 1 (no recurrence identity)");
     // A review of another schema is refused by name rather than read for its findings.
@@ -945,7 +945,7 @@ describe("digest", () => {
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
       JSON.stringify({
-        schema: "judge-reviews/v11",
+        schema: "judge-reviews/v12",
         runId: "run-1",
         contested: [],
         census: {
@@ -977,7 +977,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v11 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v12 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 
@@ -1007,11 +1007,11 @@ describe("digest", () => {
       join(paths.campaign, "analysis", "run-1-admission.json"),
       JSON.stringify({
         admitted: [
-          { kind: "contract", proposedOwner: null },
-          { kind: "contract", proposedOwner: "correctness-model" },
+          { defect: false, owner: null },
+          { defect: true, owner: "correctness-model/evaluator.ts" },
         ],
         refused: [],
-        feedback: [{ owner: "correctness-model" }],
+        feedback: [{ owner: "correctness-model/evaluator.ts" }],
         policy: "epoch-review/v3",
       }),
     );
@@ -1022,11 +1022,9 @@ describe("digest", () => {
     expect(digest).toContain("REPEATED CONDITION (lane 20): run-1, run-4");
     expect(digest).toContain("run-2: task set unobservable — no manifest-verified battery record");
     expect(digest).toContain(
-      "run-1: admitted 2 ((none) 1, correctness-model 1) · refused 0 · feedback owners {correctness-model} · policy epoch-review/v3",
+      "run-1: admitted 2 ((none) 1, correctness-model/evaluator.ts 1) · refused 0 · feedback owners {correctness-model/evaluator.ts} · policy epoch-review/v3",
     );
-    expect(digest).toContain(
-      "FINDINGS WITHOUT PROPOSED OWNER (lane 14): 1 of 2 admitted findings name no owner",
-    );
+    expect(digest).toContain("FINDINGS WITHOUT OWNER (lane 14): 1 of 2 admitted findings name no owner");
   });
 
   it("each measured product keeps its check corpus, join targets and case denominator", () => {

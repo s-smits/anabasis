@@ -59,7 +59,7 @@ launch it. Where a question below names a lane, it means the lane's frozen repor
    against the run. When every round routes blocking feedback to an owner no authoring session can
    write, the sessions keep submitting and the gate keeps refusing without anyone reaching the
    file. Leniency helps only where a writable owner exists; otherwise it buys longer silence. Lane
-   14's routing reading and `FINDINGS WITHOUT PROPOSED OWNER` say which case this run is.
+   14's routing reading and `FINDINGS WITHOUT OWNER` say which case this run is.
 
 8. **Can the fix be simulated before it is paid for?** Where `system-path-simulation` can exercise
    the changed path, say so and give the command. The operator asks for a before-and-after

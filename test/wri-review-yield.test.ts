@@ -62,12 +62,12 @@ function iterations(root: string): void {
 }
 
 describe("review-yield: current advice readers", () => {
-  it("reads a null proposal's actual admission route and refuses an unrelated feedback join", () => {
+  it("reads an observation's admission route and refuses an unrelated feedback join", () => {
     const root = campaign();
     iterations(root);
     const finding = {
-      kind: "hardness" as const,
-      proposedOwner: null,
+      defect: false,
+      owner: "correctness-model/tasks.json" as const,
       claim: "private assessment",
       evidence: "analysis/run-a-epoch-review.json",
     };
@@ -87,7 +87,7 @@ describe("review-yield: current advice readers", () => {
     );
     const feedback = {
       owner: "correctness-model/tasks.json",
-      findings: [{ code: "hardness", path: finding.evidence, detail: "public projection" }],
+      findings: [{ code: "observation", path: finding.evidence, detail: "public projection" }],
     };
     record(root, "run-a", "admission", { admitted: projected.findings, feedback: [feedback] }, 4);
     expect(epochReviewer(root).runs[0]?.consumer).toMatchObject({
@@ -114,10 +114,10 @@ describe("review-yield: current advice readers", () => {
     iterations(root);
     const findings = [
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "private assessment",
         evidence: "private",
-        proposedOwner: "agent/BUILT_AGENTS.md" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const disputes = [{ issueId: "issue-a", reason: "private reason" }];
@@ -178,16 +178,16 @@ describe("review-yield: current advice readers", () => {
     iterations(root);
     const findings = [
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "agent/BUILT_AGENTS.md" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "a second private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "agent/BUILT_AGENTS.md" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const review = {
@@ -199,12 +199,12 @@ describe("review-yield: current advice readers", () => {
       coverage: { opened: 2 },
     };
     record(root, "run-a", "epoch-review", review, 3);
-    // The recorded admission was written by another revision of publicEpochReview: same kind, owner
+    // The recorded admission was written by another revision of publicEpochReview: same placement
     // and evidence file, a claim sentence this tree cannot reproduce. Both rows are admitted.
     const projection = publicEpochReview({ status: "completed", findings, disputes: [] });
     const olderWording = projection.findings.map((finding, index) => ({
       ...finding,
-      claim: `The epoch review reported ${finding.kind} in ${finding.proposedOwner}: check \`some-check-${index}\`; repair the enforcement in that owner's files.`,
+      claim: `The epoch review reported ${finding.defect ? "defect" : "observation"} in ${finding.owner}: check \`some-check-${index}\`; repair the enforcement in that owner's files.`,
     }));
     record(root, "run-a", "admission", { admitted: olderWording }, 4);
     record(

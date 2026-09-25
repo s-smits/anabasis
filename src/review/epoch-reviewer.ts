@@ -342,7 +342,7 @@ function demonstrationLines(rows: readonly ReviewProbeRow[]): string[] {
  * that survived a held candidate is still an issue — but the tree seeded for the next authoring
  * pass is then the version that candidate failed to displace, not the one those counts measured. A
  * reviewer told "the previous battery of this product" about counts over tasks it cannot see reads
- * a contradiction, and spends a controller-defect finding on it that costs the next authoring pass
+ * a contradiction, and spends a finding on it that costs the next authoring pass
  * a round. So the sentence says which battery it is, and where the ledger could not answer it says
  * that rather than falling through to the confident wording.
  */
@@ -467,7 +467,7 @@ function lead(toAim: number): string {
   if (toAim === 0) return "";
   return toAim < 0
     ? " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand."
-    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record hardness once you have read the brief and the writer schema against the artifact and neither holds.";
+    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.";
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The

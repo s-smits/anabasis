@@ -23,9 +23,10 @@ export function checkerUnboundFinding(repoRoot: string, analysis: IterationAnaly
   ).length;
   if (unbound === 0) return null;
   return {
-    kind: "harness-defect",
+    owner: EVALUATOR_FILE,
+    defect: true,
     claim: `run ${analysis.battery.runId} recorded ${unbound} unbound-external-result finding(s): a check reported an external verdict that no host tool run supports, so this battery supports no claim. Repair the check — call the declared tool through runtime.tools.run and return a non-result when the run did not complete — instead of waiting for an environment fix`,
     evidence: relative(repoRoot, path),
-    proposedOwner: EVALUATOR_FILE,
+    hostRule: "external-result-unbound",
   };
 }

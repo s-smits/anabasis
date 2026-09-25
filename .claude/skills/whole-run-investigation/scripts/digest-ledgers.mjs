@@ -605,7 +605,7 @@ function admissionLines(dir, admissions) {
     const refused = Array.isArray(record?.refused) ? record.refused : [];
     const owners = new Map();
     for (const finding of admitted) {
-      const owner = isString(finding?.proposedOwner) ? finding.proposedOwner : "(none)";
+      const owner = isString(finding?.owner) ? finding.owner : "(none)";
       owners.set(owner, (owners.get(owner) ?? 0) + 1);
     }
     unrouted += owners.get("(none)") ?? 0;
@@ -622,7 +622,7 @@ function admissionLines(dir, admissions) {
   }
   if (unrouted > 0) {
     lines.push(
-      `FINDINGS WITHOUT PROPOSED OWNER (lane 14): ${unrouted} of ${admittedTotal} admitted findings name no owner; the actual route is in admission feedback`,
+      `FINDINGS WITHOUT OWNER (lane 14): ${unrouted} of ${admittedTotal} admitted findings name no owner; the actual route is in admission feedback`,
     );
   }
   return lines;
@@ -640,7 +640,6 @@ function reviewLines(dir, reviews) {
       continue;
     }
     const findings = record.findings.filter((finding) => isRecord(finding));
-    // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
     const unroutable = findings.filter((finding) => authorSessionOwner(finding) === null).length;
     lines.push(
       `${label}: epoch review ${record.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record.reads) ? record.reads.length : "?"}`,
@@ -650,14 +649,14 @@ function reviewLines(dir, reviews) {
     if (name.startsWith("authoring-")) continue;
     for (const finding of findings) {
       if (finding.severity !== "advisory") continue;
-      // A finding recurs under its kind and the declared check it names. One naming no check has
-      // no identity here, since a bare artifact root collapses every finding of one kind onto one
-      // word.
+      // A finding recurs under whether it is a defect and the declared check it names. One naming
+      // no check has no identity here, since a bare artifact root collapses every such finding onto
+      // one word.
       if (!isString(finding.checkId)) {
         unidentified += 1;
         continue;
       }
-      const key = `${finding.kind} ${finding.checkId}`;
+      const key = `${finding.defect === true ? "defect" : "observation"} ${finding.checkId}`;
       recurrence.set(key, [...new Set([...(recurrence.get(key) ?? []), label])]);
     }
   }

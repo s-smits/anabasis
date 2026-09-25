@@ -288,7 +288,7 @@ live evidence.
    proposal for the next difficulty. The Built Harness owns its own solving method. Code may
    validate declared structure and realised bytes, but it must not start choosing domain content
    because reasoning about that content looks difficult. In particular: no autonomous scheduler, no
-   model-written claim check, no deterministic harness-defect classifier.
+   model-written claim check, no deterministic classifier of harness defects.
 
 6. **Use evidence as evidence.** Apply the identities, case kinds and denominators above. After
    five consecutive provider non-results, stop scheduling new battery cases: let the in-flight
@@ -491,7 +491,8 @@ live evidence.
    a question; the finding is still owed to whatever the request demands and the tasks leave
    undemanded. Since 2026-09-24, "nothing demonstrated" no longer answers that question at or
    above the aim, after a review of a full pass recorded nothing and the round moved on. The
-   reviewer either records one advisory curriculum-defect naming the undemanded obligation, or
+   reviewer either records one advisory defect owned by `correctness-model/tasks.json` naming the
+   undemanded obligation, or
    says family by family which obligation each family demands and why none is left. The shapes it
    is pointed at are sibling tasks differing only in published values, limits the first candidate
    clears widely, a solver tool reporting every margin a check reads, and a rule no practitioner
@@ -518,19 +519,20 @@ live evidence.
    declared checks over the original and the changed artifact and reports which checks moved. At
    most eight per review (`PROBE_BUDGET`), accept controls only, on a path that already exists. A
    probe whose original did not pass, or whose changed artifact reached no verdict, is not evidence.
-   Every harness-defect finding cites its `probeIds`, or sends `[]` for a source-only reading, and a
-   probe-backed harness defect may be admitted blocking on first occurrence. Otherwise a first
-   defect whose owner sits under `agent/` stays advisory, and recurrence is keyed by the declared check the finding
-   names, or by the artifact path when it names no check — but only a path below a declared schema
-   root. A bare root is not an identity: `schemaPath` requires the first segment alone, so a
-   one-root domain offers exactly one word for the whole artifact, and across the recorded corpus
-   every campaign that fell back to a path collapsed to a single constant. Run 17f9de demoted a new
-   finding on two recurrences that belonged to other defects; the same collapse raises one at a
-   single recurrence, which is how a 25-of-25 harness came to be reset. Only a curriculum defect,
-   or a harness defect whose owner sits under `correctness-model/`, may dispute an issue, and a dispute keeps the issue counted while
-   withholding the agent advice. Public candidate analysis and checks of published limits are
-   legitimate solving support — call a tool an answer shortcut only when it supplies the remaining
-   decision the solver was meant to make.
+   A finding is a defect, naming the bundle file at fault, or an observation, which names a file or
+   none and is always advisory. Every defect not owned by the task set cites its `probeIds`, or
+   sends `[]` for a source-only reading, and a probe-backed defect may be admitted blocking on first
+   occurrence. Otherwise a first defect whose owner sits under `agent/` stays advisory, and
+   recurrence is keyed by the declared check the finding names, or by the artifact path when it
+   names no check — but only a path below a declared schema root. A bare root is not an identity:
+   `schemaPath` requires the first segment alone, so a one-root domain offers exactly one word for
+   the whole artifact, and across the recorded corpus every campaign that fell back to a path
+   collapsed to a single constant. Run 17f9de demoted a new finding on two recurrences that belonged
+   to other defects; the same collapse raises one at a single recurrence, which is how a 25-of-25
+   harness came to be reset. Only a defect owned under `correctness-model/` may dispute an issue,
+   and a dispute keeps the issue counted while withholding the agent advice. Public candidate
+   analysis and checks of published limits are legitimate solving support — call a tool an answer
+   shortcut only when it supplies the remaining decision the solver was meant to make.
 
    An authoring review reads two things the Builder never sees. One is the bytes the Built solver
    submitted in each of the round's blind rehearsals, beside the one verdict they earned; the

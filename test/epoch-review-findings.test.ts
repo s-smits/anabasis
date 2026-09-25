@@ -71,7 +71,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
     const hardness = {
-      kind: "hardness",
+      defect: false,
       claim: "the family asks more than the harness reaches",
       severity: "advisory",
     };
@@ -81,7 +81,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
   });
 
-  test("a harness defect must name a bundle file as its owner, and the owner field lists every one", async () => {
+  test("a defect must name a bundle file as its owner, and the owner field lists every one", async () => {
     const state = reviewState();
     const tool = recordFindingTool([issue()], [], evidence, state);
     const ownerContract = JSON.stringify(tool.parameters);
@@ -89,7 +89,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(ownerContract).not.toContain('"environment"');
     expect(ownerContract).not.toContain("evaluation correction freezes the agent and tasks");
     const defect = {
-      kind: "harness-defect",
+      defect: true,
       claim: "the writer omits a required root",
       severity: "blocking",
       citations: CITATIONS,
@@ -100,14 +100,14 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.findings).toHaveLength(0);
   });
 
-  test("a blocking harness defect must state the case it demonstrates", async () => {
+  test("a blocking defect must state the case it demonstrates", async () => {
     // Run truss-opus-20260907T210000000Z-6bf0e9 round 3 blocked on a defect whose own claim said it
     // could not construct the passing case, and that finding took the run's next move.
     const state = reviewState();
     const identities = { schemaRoots: ["layout"], checkIds: ["topology"] };
     const tool = recordFindingTool([], [], evidence, state, { identities });
     const hedged = {
-      kind: "harness-defect",
+      defect: true,
       owner: "correctness-model/evaluator.ts",
       checkId: "topology",
       claim: "the check never walks connectivity",
@@ -119,7 +119,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     );
     expect(state.findings).toHaveLength(0);
     // The same reading recorded as advice is admitted, demonstration or not.
-    expect(await call(tool, { ...hedged, severity: "advisory" })).toContain("recorded harness-defect");
+    expect(await call(tool, { ...hedged, severity: "advisory" })).toContain("recorded defect");
     expect(state.findings[0]?.severity).toBe("advisory");
     // The stated case and citation satisfy this admission check; review evidence retains both.
     const stated = reviewState();
@@ -144,7 +144,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     // so a longer one is recorded whole rather than refused for its form.
     const longer = `${claim}${"y".repeat(800)}`;
     expect(await call(longTool, { ...hedged, severity: "advisory", claim: longer })).toContain(
-      "recorded harness-defect",
+      "recorded defect",
     );
     expect(long.findings[1]?.claim).toBe(longer);
     expect(longTool.parameters).not.toHaveProperty("properties.claim.maxLength");
@@ -153,7 +153,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   test("citations are held to what read_source returned, not to a count or a length", async () => {
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
-    const advisory = { kind: "hardness", claim: "the family demands little", severity: "advisory" };
+    const advisory = { defect: false, claim: "the family demands little", severity: "advisory" };
     // Five bound quotations, one of them longer than the old 800-character ceiling, all quote
     // returned pages, so each is a citation the finding may carry.
     const long = "x".repeat(900);
@@ -164,9 +164,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       pages: [{ start: 0, text: long }],
     });
     const five = [...CITATIONS, ...CITATIONS, ...CITATIONS, ...CITATIONS, { path: "long.ts", quote: long }];
-    expect(await call(tool, { ...advisory, citations: five })).toContain("recorded hardness");
+    expect(await call(tool, { ...advisory, citations: five })).toContain("recorded observation");
     // An empty list cites nothing, which is the same as sending none.
-    expect(await call(tool, { ...advisory, citations: [] })).toContain("recorded hardness");
+    expect(await call(tool, { ...advisory, citations: [] })).toContain("recorded observation");
     // A quotation no returned page contains is still refused: that is the rule, not the form.
     expect(
       await call(tool, { ...advisory, citations: [{ path: "evaluator.ts", quote: "never returned" }] }),
@@ -174,18 +174,22 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.findings).toHaveLength(2);
   });
 
-  test("a curriculum defect must name the public input the fresh battery should vary", async () => {
+  test("a defect owned by the task set must name the public input the fresh battery should vary", async () => {
     // Run truss-opus-20260907T210000000Z-6bf0e9 recorded three curriculum defects naming no
     // identity. Each reached the task author as "inspect that contract for a mismatch", and the
     // batteries stayed at 24/24, 24/24 and 25/25.
     const state = reviewState();
     const tool = recordFindingTool([], [], evidence, state);
     const args = {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "one template closes every family",
       severity: "advisory",
     };
     expect(await call(tool, args)).toContain("`publicInputPath`");
+    // Blocking on the task set asks for the same stated case as blocking on any other file.
+    const blocking = { ...args, severity: "blocking", publicInputPath: "$.limits.span" };
+    expect(await call(tool, blocking)).toContain("`demonstration`");
     expect(state.findings).toHaveLength(0);
 
     await call(tool, { ...args, publicInputPath: "$.limits.maxMemberLengthMm" });
@@ -215,7 +219,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const tool = recordFindingTool([], [], evidence, state);
     for (const severity of [undefined, null, "urgent", ""]) {
       const args = {
-        kind: "curriculum-defect",
+        defect: true,
+        owner: "correctness-model/tasks.json",
         claim: "the task range may be too narrow",
         publicInputPath: "$.limits.span",
       };
@@ -226,7 +231,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.findings).toHaveLength(0);
     expect(state.refused).toBe(4);
     await call(tool, {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "the task range may be too narrow",
       severity: "advisory",
       publicInputPath: "$.limits.span",
@@ -238,10 +244,10 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     // Eight recorded Builders (2026-09-14 to 16) repaired advisory review findings before submit
     // and paid a fresh full check for each.
     const defect = {
-      kind: "harness-defect" as const,
+      defect: true,
       claim: "private remedy text",
       evidence: "e.json",
-      proposedOwner: "correctness-model/evaluator.ts" as const,
+      owner: "correctness-model/evaluator.ts" as const,
       checkId: "mass-within-limit",
     };
     const review = {
@@ -319,14 +325,14 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(rendered).toContain("do not rebuild the agent around them: beams (verified-fail)");
   });
 
-  test("only the first blocking harness defect reopens an authoring area", async () => {
+  test("only the first blocking defect reopens an authoring area", async () => {
     const state = reviewState();
     // correctness-model, not an agent-side owner: this case is about the one-blocking cap, and an
     // agent-side owner would be advisory on its first reading for a different reason.
     const tool = recordFindingTool([issue()], [], evidence, state);
     expect(
       await call(tool, {
-        kind: "harness-defect",
+        defect: true,
         claim: "first defect",
         owner: "correctness-model/evaluator.ts",
         severity: "blocking",
@@ -336,7 +342,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     ).toContain("as blocking");
     expect(
       await call(tool, {
-        kind: "harness-defect",
+        defect: true,
         claim: "second defect",
         owner: "correctness-model/evaluator.ts",
         severity: "blocking",
@@ -351,7 +357,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   test("a claim naming a task in the battery is refused", async () => {
     const state = reviewState();
     const text = await call(recordFindingTool([issue()], ["truss-09"], evidence, state), {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "truss-09 is unsolvable",
       severity: "blocking",
       citations: CITATIONS,
@@ -366,7 +373,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const state = reviewState();
     const tool = recordFindingTool([issue()], [], evidence, state);
     await call(tool, {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "the beams check passes any artifact",
       severity: "blocking",
       citations: CITATIONS,
@@ -375,7 +383,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       disputesIssue: BEAMS.slice(0, 12),
     });
     await call(tool, {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "restated",
       severity: "blocking",
       citations: CITATIONS,
@@ -401,7 +410,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   test("a finding citing an unoffered issue records the finding and no dispute", async () => {
     const state = reviewState();
     await call(recordFindingTool([issue()], [], evidence, state), {
-      kind: "curriculum-defect",
+      defect: true,
+      owner: "correctness-model/tasks.json",
       claim: "the task range may be too narrow",
       severity: "advisory",
       publicInputPath: "$.limits.span",
@@ -413,13 +423,17 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.disputes).toHaveLength(0);
   });
 
-  test("hardness, uncertainty and solving-agent defects leave verified failures available for diagnosis", async () => {
-    for (const kind of ["hardness", "diagnosis-uncertain", "harness-defect"]) {
+  test("observations and solving-agent defects leave verified failures available for diagnosis", async () => {
+    const placements = [
+      { defect: false, owner: "correctness-model/tasks.json" },
+      { defect: false },
+      { defect: true, owner: "agent/tools-spec.json" },
+    ];
+    for (const placement of placements) {
       const state = reviewState();
       const tool = recordFindingTool([issue()], [], evidence, state);
       const finding = {
-        kind,
-        owner: "agent/tools-spec.json",
+        ...placement,
         claim: "the family is feasible but the agent fails",
         severity: "blocking",
         citations: CITATIONS,
@@ -429,7 +443,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         "cannot dispute an issue",
       );
       expect(state.findings).toHaveLength(0);
-      expect(await call(tool, finding)).toContain(`recorded ${kind}`);
+      expect(await call(tool, finding)).toContain(`recorded ${placement.defect ? "defect" : "observation"}`);
       const advice = attachIssueReadings(
         advicePacket([issue()]),
         publicEpochReview({ status: "completed", ...state }),
@@ -445,7 +459,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const tool = recordFindingTool([issue()], [], evidence, state);
     expect(
       await call(tool, {
-        kind: "harness-defect",
+        defect: true,
         owner: "correctness-model/evaluator.ts",
         claim: "the evaluator rejects a permitted representation",
         severity: "blocking",
@@ -463,7 +477,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
   describe("public identities cross the projection; the claim never does", () => {
     const identities = { schemaRoots: ["pins"], checkIds: ["gpio-exit-code"] };
     const defect = {
-      kind: "harness-defect",
+      defect: true,
       owner: "correctness-model/evaluator.ts",
       severity: "blocking",
       citations: CITATIONS,
@@ -486,7 +500,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         artifactSchemaPath: "pins.gpio",
         publicInputPath: "$.board.pins",
       });
-      expect(text).toBe("recorded harness-defect as blocking");
+      expect(text).toBe("recorded defect as blocking");
       expect(state.findings[0]).toMatchObject({
         checkId: "gpio-exit-code",
         artifactSchemaPath: "pins.gpio",
@@ -520,7 +534,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
           unobserved: true,
           artifactSchemaPath: "pins",
         }),
-      ).toBe("recorded harness-defect as blocking");
+      ).toBe("recorded defect as blocking");
       expect(state.findings[0]).toMatchObject({ unobserved: true, artifactSchemaPath: "pins" });
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
         "Epoch review (correctness-model/evaluator.ts): no declared check observes the obligation the review traced at artifact path `pins`; add a check that observes what the delivered artifact does there.",
@@ -696,20 +710,20 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       ).toHaveLength(state.findings.length);
     });
 
-    test("hardness and an uncertain diagnosis name the check as an observation, never as a repair order", async () => {
-      // Astra reviews i11 to i18 (2026-09-12 to 14) recorded diagnosis-uncertain on equilibrium and
-      // provenance in eight rounds; each reached the Builder as "inspect and repair that contract"
-      // followed by "Repair the complete public obligation".
-      for (const kind of ["hardness", "diagnosis-uncertain"] as const) {
+    test("an observation names the check, never a repair order", async () => {
+      // An uncertain reading that reaches the Builder as "inspect and repair that contract" followed
+      // by "Repair the complete public obligation" is a repair order it never earned.
+      for (const placement of [{ owner: "correctness-model/tasks.json" }, {}]) {
         const state = reviewState();
         expect(
           await call(recordFindingTool([], [], evidence, state, { identities }), {
-            kind,
+            defect: false,
+            ...placement,
             severity: "advisory",
             claim: "private prose",
             checkId: "gpio-exit-code",
           }),
-        ).toBe(`recorded ${kind} as advisory`);
+        ).toBe("recorded observation as advisory");
         const projected =
           publicEpochReview({ status: "completed", ...state }, { brief: null }).findings[0]?.claim ?? "";
         expect(projected).toContain("check `gpio-exit-code`");
@@ -724,7 +738,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         }
         const bare = reviewState();
         await call(recordFindingTool([], [], evidence, bare, { identities }), {
-          kind,
+          defect: false,
           severity: "advisory",
           claim: "private prose",
         });
@@ -734,7 +748,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       }
     });
 
-    // The owner's file is the one concrete name such a finding has; the label and kind stay private.
+    // The owner's file is the one concrete name such a finding has; the claim stays private.
     test("a finding without identities names its owner's file under its group", async () => {
       const state = reviewState();
       await call(recordFindingTool([], [], evidence, state, { identities }), {

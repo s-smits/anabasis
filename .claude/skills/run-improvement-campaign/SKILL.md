@@ -429,10 +429,11 @@ lead; `artifact.json` beside `public-task.json` is the measurement. When a batte
 nothing, read what blocked every case — an unpublished rule, a submission path a correct answer
 cannot use, a requirement no published tool can meet — before reading the battery as hard.
 
-A reviewer finding still cannot stop the battery that raises it: a `curriculum-defect` is never
-repairable in its own session (`epoch-review-public.ts`), because its public act is "vary this in
-the fresh battery". When such a finding contradicts a standing prompt instruction, one of the two
-owners has to move, and which one is a question for the recorded cases, not for the finding.
+A reviewer finding still cannot stop the battery that raises it: a defect owned by
+`correctness-model/tasks.json` is never repairable in its own session (`epoch-review-public.ts`),
+because its public act is "vary this in the fresh battery". When such a finding contradicts a
+standing prompt instruction, one of the two owners has to move, and which one is a question for the
+recorded cases, not for the finding.
 
 The walls are not what stops a solve, so do not reach for them. Across every recorded truss case,
 `solver.turns` and `solver.completedTurns` are 1: the pi loop spends one turn and calls tools inside

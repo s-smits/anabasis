@@ -188,8 +188,8 @@ function reviewRecords(campaign, sessions) {
       status: isString(value.status) ? value.status : null,
       probes: Array.isArray(value.probes) ? value.probes.length : 0,
       findings: findings.map((finding) => ({
-        kind: isString(finding.kind) ? finding.kind : null,
-        owner: finding.proposedOwner ?? null,
+        defect: finding.defect === true,
+        owner: finding.owner ?? null,
         claim: finding.claim,
       })),
     });
@@ -219,7 +219,7 @@ async function reviewSlot(campaign, sessions, embedder, run) {
         turn: null,
         atMs: record.atMs,
         reviewId: record.reviewId,
-        kind: finding.kind,
+        defect: finding.defect,
         owner: finding.owner,
         vector,
         class: earlier === undefined ? "new-finding" : "restated-finding",

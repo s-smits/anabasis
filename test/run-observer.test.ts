@@ -290,12 +290,11 @@ describe("run observer", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-observer-tree-"));
     const observer = startFullRunObservation(root, "demo", "run-tree", "build me a harness");
     observeAnalysisResult(observer, "demo", "run-tree", {
-      judges: {
-        findings: [{ claim: "controls are thin", evidence: "census.json", proposedOwner: "controls" }],
-        exit: { kind: "advisory" },
-      },
+      judges: { exit: { kind: "advisory" } },
       admission: {
-        admitted: [{ claim: "controls are thin", evidence: "census.json", proposedOwner: "controls" }],
+        admitted: [
+          { claim: "controls are thin", evidence: "census.json", owner: "correctness-model/controls.json" },
+        ],
         feedback: [],
       },
     });

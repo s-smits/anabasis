@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
-import type { AnalysisFinding } from "../src/analyse/iteration-analysis.ts";
 import {
   BUNDLE_FILES,
   advisory,
@@ -48,15 +47,14 @@ describe("the complete repair agenda", () => {
     expect(isBundleFile("correctness-model/controls.json")).toBe(true);
   });
 
-  it("keeps an unowned Judge disclosure typed while a Builder defect has only its owner", () => {
-    const base = { claim: "finding", evidence: "recorded", proposedOwner: null } satisfies Pick<
-      AnalysisFinding,
-      "claim" | "evidence" | "proposedOwner"
-    >;
-    expect(authorSessionOwner({ ...base, kind: "judge-disagreement" })).toBeNull();
-    expect(authorSessionOwner({ ...base, kind: "harness-defect", proposedOwner: TASKS_FILE })).toBe(
-      TASKS_FILE,
-    );
+  it("routes an aggregate finding to the bundle file it names, and nothing else anywhere", () => {
+    const base = { claim: "finding", evidence: "recorded" };
+    expect(authorSessionOwner({ ...base, defect: false, owner: null })).toBeNull();
+    expect(authorSessionOwner({ ...base, defect: false, owner: "environment" })).toBeNull();
+    expect(authorSessionOwner({ ...base, defect: false, owner: TASKS_FILE })).toBe(TASKS_FILE);
+    expect(authorSessionOwner({ ...base, defect: true, owner: TASKS_FILE })).toBe(TASKS_FILE);
+    const subject = { taskId: "t1", family: "beams" };
+    expect(authorSessionOwner({ ...base, defect: true, owner: TASKS_FILE, subject })).toBeNull();
   });
 
   it("preserves admitted severity and public findings while private-only changes leave author text identical", () => {
@@ -106,7 +104,7 @@ describe("the complete repair agenda", () => {
           severity: "advisory",
           findings: [
             controllerValidatedFinding({
-              code: "curriculum-defect",
+              code: "defect",
               path: cited,
               detail: "Let $.peripherals differ between the tasks.",
             }),
@@ -114,7 +112,7 @@ describe("the complete repair agenda", () => {
         },
       ]) ?? "";
     expect(text).toBe(
-      "- correctness-model/tasks.json: [advisory] curriculum-defect: Let $.peripherals differ between the tasks.",
+      "- correctness-model/tasks.json: [advisory] defect: Let $.peripherals differ between the tasks.",
     );
     expect(text).not.toContain("campaigns/");
   });

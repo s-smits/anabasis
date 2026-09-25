@@ -32,7 +32,6 @@
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
-import { authorSessionOwner, findingSeverity } from "../analyse/finding-owner.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -48,6 +47,7 @@ import {
 } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { isBundleFile } from "./feedback-routing.ts";
 import {
   type BatteryCondition,
   type ConditionGap,
@@ -55,7 +55,7 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v6";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v7";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -163,17 +163,18 @@ type AdviceFamilyRow = {
   publicInputs: string | null;
 };
 
+/** A finding no bundle file holds, which is therefore an observation and always advice: the
+ *  environment's, or one the controller could not place. */
 type AdviceFinding = {
-  kind: AnalysisFinding["kind"];
+  owner: "environment" | null;
   claim: string;
-  severity: "blocking" | "advisory";
-  /** Public identities retained only to key repeated unowned diagnosis findings. `hostRule` is
+  /** Public identities retained only to key repeated unplaced findings. `hostRule` is
    *  carried because `recurrence` reads the previous packet's own findings: dropped here, a host
    *  finding's run of consecutive packets restarts at one every round. */
   checkId?: string;
   artifactSchemaPath?: string;
   hostRule?: string;
-  /** Set from the second consecutive packet carrying the same unowned diagnosis, so the author
+  /** Set from the second consecutive packet carrying the same unplaced finding, so the author
    *  reads a recurrence rather than what looks like a fresh open question each round. */
   repeated?: { count: number; since: string };
 };
@@ -479,23 +480,22 @@ export function attachIssueReadings(
   };
 }
 
-/** The recurrence key of an unowned diagnosis, which is the subject it named and nothing else.
- *  Every other finding has no key. It used to fall through to the kind itself, the constant
- *  `diagnosis-uncertain` every finding reaching here shares, so any two in consecutive packets read
- *  as one diagnosis recurring. A diagnosis the reviewer could not attribute is exactly the case
- *  with no identity to derive, so it gets none. */
-function unownedDiagnosisIdentity(
-  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath" | "hostRule">,
+/** The recurrence key of an unplaced finding, which is the subject it named and nothing else. An
+ *  environment finding has no key, and neither has an unplaced one naming no subject: two of those
+ *  in consecutive packets are not the same observation recurring merely because both could not be
+ *  placed. */
+function unplacedIdentity(
+  finding: Pick<AnalysisFinding, "owner" | "checkId" | "artifactSchemaPath" | "hostRule">,
 ): string | null {
-  return finding.kind === "diagnosis-uncertain" ? namedSubject(finding) : null;
+  return finding.owner === null ? namedSubject(finding) : null;
 }
 
-/** How many consecutive packets have carried this unowned diagnosis, read off the previous packet's
+/** How many consecutive packets have carried this unplaced finding, read off the previous packet's
  *  own findings. A separate history array said the same thing a second time, and an identity absent
  *  from one round already left the chain, so a reappearance after a gap counts from one again
  *  without anything having to remember the gap. */
 function recurrence(previous: RebuildAdvicePacket | null, identity: string): AdviceFinding["repeated"] {
-  const prior = (previous?.findings ?? []).find((finding) => unownedDiagnosisIdentity(finding) === identity);
+  const prior = (previous?.findings ?? []).find((finding) => unplacedIdentity(finding) === identity);
   if (previous === null || prior === undefined) return undefined;
   return { count: (prior.repeated?.count ?? 1) + 1, since: prior.repeated?.since ?? previous.runId };
 }
@@ -538,36 +538,24 @@ export function deriveRebuildAdvice(
             contestedFamilies: [...new Set(judges.contested.map((row) => row.family))].sort(),
           },
     // Per-case findings never leave the controller, and these aggregate rows are already
-    // author-visible by construction. A routed row reaches the same session again as feedback, so
-    // only rows that route nowhere are new information here; the test is the routing predicate and
-    // not the rendered claim, because two findings may carry the same text and dropping both
-    // because one routed would lose the one that did not.
-    //
-    // A judge-disagreement row is the one kind that predicate reads wrong. It routes nowhere, so
-    // the predicate calls it new, but `judge.reason` above is the same string from the same
-    // producer, and the duplicate also spends one of the four rendered finding slots. The Judge
-    // exit has one owner here, the judge block, and the admission record keeps the row either way.
-    // A controller defect is dropped because it is not the author's to repair.
-    findings: admission.admitted
-      .filter(
-        (finding) =>
-          finding.subject === undefined &&
-          finding.kind !== "judge-disagreement" &&
-          finding.kind !== "controller-defect" &&
-          authorSessionOwner(finding) === null,
-      )
-      .map((finding) => {
-        const identity = unownedDiagnosisIdentity(finding);
-        return {
-          kind: finding.kind,
+    // author-visible by construction. A finding a bundle file holds reaches the same session again
+    // as feedback to that file, so only the rows no file holds are new information here; the test
+    // is the owner and not the rendered claim, because two findings may carry the same text and
+    // dropping both because one routed would lose the one that did not.
+    findings: admission.admitted.flatMap((finding) => {
+      if (finding.subject !== undefined || isBundleFile(finding.owner)) return [];
+      const identity = unplacedIdentity(finding);
+      return [
+        {
+          owner: finding.owner,
           claim: finding.claim,
-          severity: findingSeverity(finding),
           ...keyIfDefined("checkId", finding.checkId),
           ...keyIfDefined("artifactSchemaPath", finding.artifactSchemaPath),
           ...keyIfDefined("hostRule", finding.hostRule),
           ...keyIfDefined("repeated", identity === null ? undefined : recurrence(previous, identity)),
-        };
-      }),
+        },
+      ];
+    }),
   };
 }
 
@@ -682,26 +670,17 @@ function unmeasuredLine(issues: readonly AdviceIssue[]): string | null {
   return `Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
 
-/** Public finding text, capped in count and in length. A finding that routes to no owner is the one
- *  row the controller could not place, so it is the row most likely to grow, and the cap therefore
- *  belongs to the boundary rather than to any one producer feeding it.
- *
- *  Blocking sorts first because the cap cuts the tail. Unsorted, a blocking finding can sit behind
- *  three advisory ones that arrived first and leave the packet saying "1 further admitted
- *  finding(s) omitted" without saying the omitted row was the blocking one. A blocking finding is
- *  an admitted, cited demonstration of a violated requirement, the strongest row this packet
- *  carries, while an advisory is a lead. Within one severity the admitted order stands. */
+/** Public finding text, capped in count and in length, in admitted order. A finding no bundle file
+ *  holds is the row the controller could not route, so it is the row most likely to grow, and the
+ *  cap therefore belongs to the boundary rather than to any one producer feeding it. */
 function findingLines(findings: readonly AdviceFinding[]): string[] {
-  const ordered = [...findings].sort(
-    (a, b) => Number(b.severity === "blocking") - Number(a.severity === "blocking"),
-  );
-  const lines = ordered.slice(0, RENDERED_FINDINGS).map((finding) => {
+  const lines = findings.slice(0, RENDERED_FINDINGS).map((finding) => {
     const repeated =
       finding.repeated === undefined
         ? ""
         : ` (recurring: ${String(finding.repeated.count)} consecutive packets since ${finding.repeated.since})`;
     const claim = boundText(finding.claim, FINDING_CLAIM_BYTES).shown;
-    return `- [${finding.severity}] ${finding.kind}: ${claim}${repeated}`;
+    return `- ${finding.owner ?? "unplaced"}: ${claim}${repeated}`;
   });
   const omitted = findings.length - lines.length;
   return omitted > 0

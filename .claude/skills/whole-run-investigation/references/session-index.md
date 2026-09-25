@@ -79,7 +79,7 @@ incomplete on the seed, say whether each standing duty fired before a new one is
 **13. Public-safe feedback sufficiency.** From a finding whose gap the next round did not touch,
 say whether `publicAct` kept the permitted information the Builder needed to act.
 
-**14. Finding routing and recurrence.** From `FINDINGS WITHOUT PROPOSED OWNER` and `ADVISORY
+**14. Finding routing and recurrence.** From `FINDINGS WITHOUT OWNER` and `ADVISORY
 FINDING RECURS UNROUTED`, say what each finding became and whether its recurrence key could fire.
 
 **15. Harness-versus-evaluation triage hand-off.** From the triage table, say whether diagnosis,

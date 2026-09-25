@@ -56,7 +56,7 @@ and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON C
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT
 ALLOWANCE WAIT (lane 24)` where a `turnRetries[]` reason names an allowance reset clock. Block 4d,
 the admission and epoch-review ledger, reads `analysis/<runId>-epoch-review.json` and
-`-admission.json`: `FINDINGS WITHOUT PROPOSED OWNER (lane 14)` and `ADVISORY FINDING RECURS
+`-admission.json`: `FINDINGS WITHOUT OWNER (lane 14)` and `ADVISORY FINDING RECURS
 UNROUTED (lane 14)`. Block 4e, Builder memory, reads `MEMORY.md` against `MEMORY_CAP_BYTES` and
 prints `MEMORY OVER READ CAP (lane 26)`.
 

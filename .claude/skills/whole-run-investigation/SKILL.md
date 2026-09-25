@@ -116,7 +116,7 @@ could change.
 | 4b `TARGET MISSED` or `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
 | 6 `SUBMITTED BYTES NEVER REHEARSED` or `REHEARSAL CONTRADICTS TARGET`; the `yield` `harness-trial` row | 11 |
 | the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
-| 4d `FINDINGS WITHOUT PROPOSED OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
+| 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
 | the `handoff` triage table | 15 |
 | 2b `CENSUS WITH DISAGREEMENT` | 16 |
 | the `handoff` census table | 17 |

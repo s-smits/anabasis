@@ -138,7 +138,7 @@ function analysis(
 
 function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v11",
+    schema: "judge-reviews/v12",
     slug: SLUG,
     runId: RUN,
     judgePin: null,
@@ -155,7 +155,6 @@ function judges(overrides?: Partial<JudgeReviewsResult>): JudgeReviewsResult {
       verified: 0,
       reason: "no disagreement",
     },
-    findings: [],
     absent: [],
     ...overrides,
   };
@@ -294,26 +293,24 @@ describe("what one battery observes", () => {
   });
 
   it("carries aggregate findings and drops any finding bound to one case", () => {
-    // proposedOwner null so the row routes nowhere and this test measures the subject filter
-    // alone; the routing filter has its own test below.
+    // An unplaced row routes nowhere, so this test measures the subject filter alone; the routing
+    // filter has its own test below.
     const aggregate: AnalysisFinding = {
-      kind: "harness-defect",
+      defect: false,
       claim: "the battery passed all 2 verified cases",
       evidence: "campaigns/x/case-record.jsonl",
-      proposedOwner: null,
+      owner: null,
       severity: "advisory",
     };
     const perCase: AnalysisFinding = {
-      kind: "harness-defect",
+      defect: true,
       claim: "task t2 failed its declared check",
       evidence: "campaigns/x/case-record.jsonl",
-      proposedOwner: "correctness-model/tasks.json",
+      owner: "correctness-model/tasks.json",
       subject: { taskId: "t2", family: "beams" },
     };
     const result = derive(analysis([caseRow("t1")]), judges(), admission([aggregate, perCase]), null);
-    expect(result.findings).toEqual([
-      { kind: "harness-defect", claim: aggregate.claim, severity: "advisory" },
-    ]);
+    expect(result.findings).toEqual([{ owner: null, claim: aggregate.claim }]);
   });
 });
 
@@ -462,39 +459,44 @@ describe("the issue register and its projection", () => {
     return root;
   }
 
-  it("carries admitted severity and unaccepted counts without inventing a blocking diagnosis or admission refusal", () => {
+  it("routes placed findings to their file, renders the unplaced ones, and invents no admission refusal", () => {
     const root = repo();
     const data = analysis([caseRow("absent", { acceptedSubmit: false, pass: false, truthOk: null })]);
     const evidence = `campaigns/${SLUG}/case-record.jsonl`;
     writeFileSync(join(root, evidence), "");
     const uncertain: AnalysisFinding = {
-      kind: "diagnosis-uncertain",
+      defect: false,
       claim: "cause is unknown",
       evidence,
-      proposedOwner: null,
+      owner: null,
     };
-    const blocking: AnalysisFinding = { ...uncertain, kind: "harness-defect", claim: "demonstrated defect" };
+    const defect: AnalysisFinding = {
+      ...uncertain,
+      defect: true,
+      owner: "correctness-model/brief.json",
+      claim: "demonstrated defect",
+    };
     const admitted = admitFindings(root, data, [
       ...hostFindings(root, data),
       uncertain,
-      blocking,
-      { ...blocking, claim: "advisory observation", severity: "advisory" },
-      { ...blocking, proposedOwner: "correctness-model/brief.json" },
+      defect,
+      { ...defect, claim: "advised defect", severity: "advisory" },
+      { ...uncertain, owner: "correctness-model/brief.json", claim: "placed observation" },
     ]);
-    expect(admitted.feedback.map((row) => [row.owner, row.severity])).toEqual([
-      ["correctness-model/brief.json", "blocking"],
+    expect(admitted.feedback.map((row) => [row.severity, row.claim])).toEqual([
+      ["blocking", "demonstrated defect"],
+      ["advisory", "advised defect"],
+      ["advisory", "placed observation"],
     ]);
     const result = derive(data, judges(), admitted, null);
-    expect(result.findings.map((row) => row.severity)).toEqual([
-      "advisory",
-      "advisory",
-      "blocking",
-      "advisory",
+    expect(result.findings.map((row) => [row.owner, row.hostRule ?? row.claim])).toEqual([
+      [null, "unaccepted-without-verdict"],
+      [null, "cause is unknown"],
     ]);
     const rendered = renderRebuildAdvice(result);
     expect(rendered).toContain("1/1 attempts produced no accepted submission");
-    expect(rendered).toContain("[advisory] diagnosis-uncertain: cause is unknown");
-    expect(rendered).toContain("[blocking] harness-defect: demonstrated defect");
+    expect(rendered).toContain("- unplaced: cause is unknown");
+    expect(rendered).not.toContain("demonstrated defect");
     expect(rendered).not.toContain("submission admission");
     expect(rendered).not.toContain("final-submission.json");
   });
@@ -527,10 +529,10 @@ describe("the issue register and its projection", () => {
     const evidence = `campaigns/${SLUG}/case-record.jsonl`;
     writeFileSync(join(root, evidence), "");
     const host: AnalysisFinding = {
-      kind: "diagnosis-uncertain",
+      defect: false,
       claim: "the agent submitted nothing the verifier could read",
       evidence,
-      proposedOwner: null,
+      owner: null,
       severity: "advisory",
       hostRule: "unaccepted-without-verdict",
     };
@@ -583,12 +585,12 @@ describe("the issue register and its projection", () => {
     // A blocking Judge exit can also repeat it in the census line. This section adds only
     // admitted findings that are not already routed to an owner.
     const routed: AnalysisFinding = {
-      kind: "harness-defect",
+      defect: true,
       claim: "the checker admitted 3 ungrounded verdicts",
       evidence: "campaigns/bridge-truss/analysis/base-analysis.json",
-      proposedOwner: "correctness-model/evaluator.ts",
+      owner: "correctness-model/evaluator.ts",
     };
-    const unrouted: AnalysisFinding = { ...routed, kind: "diagnosis-uncertain", proposedOwner: null };
+    const unrouted: AnalysisFinding = { ...routed, defect: false, owner: null };
     const admitted = admission([routed, unrouted]);
     const withRouting = {
       ...admitted,
@@ -603,48 +605,17 @@ describe("the issue register and its projection", () => {
       ],
     };
     const text = renderRebuildAdvice(derive(analysis([caseRow("t1")]), judges(), withRouting, null));
-    expect(text).toContain("diagnosis-uncertain");
+    expect(text).toContain("- unplaced: the checker admitted 3 ungrounded verdicts");
     expect(text.split("the checker admitted 3 ungrounded verdicts")).toHaveLength(2);
   });
 
-  it("prints the Judge exit once, through the judge line rather than an advisory finding", () => {
-    // `judge.reason` and the judge-disagreement finding are the same sentence from `judgeExit`, so
-    // rendering both carries it twice and the copy spends a rendered finding slot.
-    const disagreement: AnalysisFinding = {
-      kind: "judge-disagreement",
-      claim:
-        "the Judge disagreed with the verifier on 1 of 6 verified cases; the verifier decides every pass",
-      evidence: "campaigns/bridge-truss/analysis/base-judges.json",
-      proposedOwner: null,
-    };
-    const advice = derive(analysis([caseRow("t1")]), judges(), admission([disagreement]), null);
-    expect(advice.findings).toEqual([]);
-    const text = renderRebuildAdvice(advice);
-    expect(text).not.toContain("judge-disagreement");
-  });
-
-  it("keeps a controller defect out of the author's packet", () => {
-    // Rendered, this sends the author to inspect the public contract for a mismatch the controller
-    // owns, which no authoring change can repair.
-    const defect: AnalysisFinding = {
-      kind: "controller-defect",
-      claim:
-        "The epoch review reported controller-defect in the public contract; inspect that contract for a mismatch.",
-      evidence: "campaigns/bridge-truss/analysis/review.json",
-      proposedOwner: null,
-      severity: "advisory",
-    };
-    const advice = derive(analysis([caseRow("t1")]), judges(), admission([defect]), null);
-    expect(advice.findings).toEqual([]);
-  });
-
-  it("annotates an unowned diagnosis with its consecutive recurrence, keyed by what it named", () => {
+  it("annotates an unplaced finding with its consecutive recurrence, keyed by what it named", () => {
     const uncertain = (checkId?: string, artifactSchemaPath?: string, hostRule?: string): AnalysisFinding => {
       const finding: AnalysisFinding = {
-        kind: "diagnosis-uncertain",
+        defect: false,
         claim: "the reviewer could not attribute the equilibrium result",
         evidence: "campaigns/bridge-truss/analysis/review.json",
-        proposedOwner: null,
+        owner: null,
         severity: "advisory",
         ...keyIfDefined("checkId", checkId),
         ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
@@ -654,7 +625,7 @@ describe("the issue register and its projection", () => {
     };
     const round = (runId: string, findings: AnalysisFinding[], previous: RebuildAdvicePacket | null) =>
       derive(analysis([caseRow("t1")], runId), judges(), admission(findings), previous);
-    // The same unowned diagnosis can render to rebuild after rebuild. The claim stays visible every
+    // The same unplaced finding can render to rebuild after rebuild. The claim stays visible every
     // round; from the second round it carries the recurrence.
     const first = round("r1", [uncertain("equilibrium", "members")], null);
     const second = round("r2", [uncertain("equilibrium", "members")], first);
@@ -690,10 +661,10 @@ describe("the issue register and its projection", () => {
     // unrelated observations. Naming nothing now keys nothing, and the sentence is absent rather
     // than wrong; the claims themselves still reach the author every round.
     const unattributed = (claim: string, artifactSchemaPath?: string): AnalysisFinding => ({
-      kind: "diagnosis-uncertain",
+      defect: false,
       claim,
       evidence: "campaigns/bridge-truss/analysis/review.json",
-      proposedOwner: null,
+      owner: null,
       severity: "advisory",
       ...keyIfDefined("artifactSchemaPath", artifactSchemaPath),
     });
@@ -742,10 +713,10 @@ describe("the issue register and its projection", () => {
       exit: { kind: "advisory", verifierFailJudgePass: 3, verifierPassJudgeFail: 0, verified: 10, reason },
     });
     const finding: AnalysisFinding = {
-      kind: "harness-defect",
+      defect: false,
       claim,
       evidence: "campaigns/bridge-truss/analysis/base-analysis.json",
-      proposedOwner: null,
+      owner: null,
     };
     const text = renderRebuildAdvice(
       derive(analysis([caseRow("t1")]), contested, admission([finding]), null),
@@ -884,28 +855,16 @@ describe("the issue register and its projection", () => {
     expect(renderRebuildAdvice(rebuilt)).toBe("");
   });
 
-  /** The cap cuts the tail, so what the tail holds decides what the author never sees. The standing
-   *  issues above this block are ordered by how many cases they hold before they are cut; cutting
-   *  this block in admission order instead puts a blocking finding — an admitted, cited
-   *  demonstration of a violated requirement — behind any three advisory leads that arrived first,
-   *  and leaves the packet saying "1 further admitted finding(s) omitted", a line that does not say
-   *  the omitted row was the blocking one. */
-  it("renders the blocking findings before the advisory ones it may have to omit", () => {
-    // A harness-defect naming no routable owner is the one kind that is both unowned, so it
-    // reaches this block at all, and blocking by default. That is the shape a review records: a
-    // handful of advisory findings and one blocking harness-defect that named no owner.
-    const defect = (claim: string): AnalysisFinding => ({
-      kind: "harness-defect",
-      claim,
-      evidence: "campaigns/bridge-truss/analysis/review.json",
-      proposedOwner: null,
-    });
-    const advisory = (index: number): AnalysisFinding => ({
-      ...defect(`advisory-${index}`),
-      severity: "advisory",
-    });
-    // Four advisory leads admitted first, then the one demonstration, which is the row that decides.
-    const findings = [...Array.from({ length: 4 }, (_, index) => advisory(index)), defect("blocking-9")];
+  it("renders unplaced findings in admitted order and says how many the cap left out", () => {
+    const findings = Array.from(
+      { length: 5 },
+      (_, index): AnalysisFinding => ({
+        defect: false,
+        claim: `observation-${index}`,
+        evidence: "campaigns/bridge-truss/analysis/review.json",
+        owner: null,
+      }),
+    );
     const result = derive(
       analysis([caseRow("t0", { truthOk: false, pass: false })]),
       judges(),
@@ -913,15 +872,11 @@ describe("the issue register and its projection", () => {
       null,
     );
     expect(result.findings).toHaveLength(5);
-
     const text = renderRebuildAdvice(result);
-    expect(text).toContain("[blocking] harness-defect: blocking-9");
+    expect(text).toContain("- unplaced: observation-0");
     expect(text).toContain("1 further admitted finding omitted from this packet.");
-    // It leads, and the advisory lead that lost its slot is the last one admitted, not the finding.
-    expect(text.indexOf("blocking-9")).toBeLessThan(text.indexOf("advisory-0"));
-    expect(text).not.toContain("advisory-3");
-    // Within one severity the admitted order stands, so nothing else moves.
-    const positions = ["advisory-0", "advisory-1", "advisory-2"].map((claim) => text.indexOf(claim));
+    expect(text).not.toContain("observation-4");
+    const positions = [0, 1, 2, 3].map((index) => text.indexOf(`observation-${index}`));
     expect(positions).toEqual(positions.toSorted((a, b) => a - b));
   });
 
@@ -935,10 +890,10 @@ describe("the issue register and its projection", () => {
     const findings = Array.from(
       { length: 6 },
       (_, index): AnalysisFinding => ({
-        kind: "diagnosis-uncertain",
+        defect: false,
         claim: `${index} `.padEnd(20_000, "declared assertion text "),
         evidence: "campaigns/bridge-truss/analysis/review.json",
-        proposedOwner: null,
+        owner: null,
         severity: "advisory",
       }),
     );
@@ -959,11 +914,11 @@ describe("the issue register and its projection", () => {
         judges(),
         admission([
           {
-            kind: "diagnosis-uncertain",
+            defect: false,
             claim: "c".repeat(601),
             severity: "advisory",
             evidence: "campaigns/bridge-truss/analysis/review.json",
-            proposedOwner: null,
+            owner: null,
           },
         ]),
         null,

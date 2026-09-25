@@ -378,22 +378,23 @@ write reads the seed's empty `tasks.json`, `publicTaskRows` throws through `capt
 (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the file under
 `coverage.missing`, so the early reviews carry `incomplete` for a file that was in their reads;
 nothing was authored, so no finding was missed, and the defect is the label. Read
-`analysis/<runId>-epoch-review.json` (`epoch-review/v4`), the review files timed by their UUIDv7
+`analysis/<runId>-epoch-review.json` (`epoch-review/v5`), the review files timed by their UUIDv7
 names, and the orientation `placeOnBand` gave the reviewer. Do not read the reviewer's claim text
 as a finding. The decision it changes is the reviewer prompt and the coverage label, both owned by
 `src/review/`; this lane selects no `FeedbackOwner`.
 
 **13. Public-safe feedback sufficiency.**
 
-Starts from a `curriculum-defect` or `harness-defect` finding admitted in one round whose named
+Starts from a defect finding admitted in one round whose named
 gap the next round's bytes did not touch, from an ambiguous repeated repair, and from a source
 delta touching `src/review/epoch-review-public.ts`.
 
 The question is whether the model-visible projection kept the permitted information needed to act.
 Derive the allowed public facts from the measured contract before reading what the projection
-drops, then follow one consequential finding from `epoch-review/v4` through `publicAct`
+drops, then follow one consequential finding from `epoch-review/v5` through `publicAct`
 (`src/review/epoch-review-public.ts`) into the served kickoff prompt (`prompt-ingested`, role
-`builder`, in `observability/<runId>.jsonl`). For a curriculum defect the projection is one fixed
+`builder`, in `observability/<runId>.jsonl`). For a defect owned by `correctness-model/tasks.json`
+the projection is one fixed
 sentence asking that the fresh battery's tasks differ in what they demand of the named
 `publicInputPath`, so a concrete gap — no task with a reversed load case, no limit that binds —
 reaches the Builder as a template; read whether the Builder's own notes recorded the gap
@@ -407,7 +408,7 @@ correction at the projection owner, `src/review/epoch-review-public.ts`; this la
 
 **14. Finding routing and recurrence.**
 
-Starts from block 4d's `FINDINGS WITHOUT PROPOSED OWNER (lane 14)` and `ADVISORY FINDING RECURS
+Starts from block 4d's `FINDINGS WITHOUT OWNER (lane 14)` and `ADVISORY FINDING RECURS
 UNROUTED (lane 14)`, and from the `yield` lane's `epoch-reviewer` component.
 
 The question is what each finding became: finding, admission, owner, then next-round bytes. A

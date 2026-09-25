@@ -139,7 +139,8 @@ describe("review coverage tied to recorded execution", () => {
                     const recorder = input.tools.find((tool) => tool.name === "record_finding")!;
                     expect(
                       await call(recorder, {
-                        kind: "curriculum-defect",
+                        defect: true,
+                        owner: "correctness-model/tasks.json",
                         severity: "advisory",
                         claim: "Only one count is sampled.",
                         publicInputPath: "$.count",
@@ -148,7 +149,7 @@ describe("review coverage tied to recorded execution", () => {
                     const source = input.tools.find((tool) => tool.name === "read_source")!;
                     await call(source, { path: "agent/tools.ts" });
                     const finding = {
-                      kind: "harness-defect",
+                      defect: true,
                       owner: "agent/tools-spec.json",
                       severity: "blocking",
                       claim: "Private source-derived concern.",
@@ -665,7 +666,7 @@ describe("review coverage tied to recorded execution", () => {
           const finding = tools.find((tool) => tool.name === "record_finding")!;
           expect(
             await call(finding, {
-              kind: "harness-defect",
+              defect: true,
               claim: "the writer exceeds the upper bound",
               owner: "agent/tools-spec.json",
               severity: "advisory",
@@ -674,7 +675,7 @@ describe("review coverage tied to recorded execution", () => {
                 "The request limits count to ten; this writer always returns eleven, so its output violates that limit. This is source-derived.",
               citations: [{ path, quote }],
             }),
-          ).toBe(`recorded harness-defect as ${taskSetHash === "t2" ? "blocking" : "advisory"}`);
+          ).toBe(`recorded defect as ${taskSetHash === "t2" ? "blocking" : "advisory"}`);
           return { pin: reviewSlotPin(review), text: "A source-derived boundary gap.", error: null };
         },
       });
@@ -732,7 +733,7 @@ describe("review coverage tied to recorded execution", () => {
           const reader = tools.find((tool) => tool.name === "read_source")!;
           const finding = tools.find((tool) => tool.name === "record_finding")!;
           const args = {
-            kind: "harness-defect",
+            defect: true,
             claim: "the upper bound is not enforced",
             owner: "correctness-model/evaluator.ts",
             severity: "blocking",
@@ -746,7 +747,7 @@ describe("review coverage tied to recorded execution", () => {
           expect(
             await call(finding, { ...args, citations: [{ path: sourcePath, quote: "return true;" }] }),
           ).toContain("actually returned");
-          expect(await call(finding, args)).toBe("recorded harness-defect as blocking");
+          expect(await call(finding, args)).toBe("recorded defect as blocking");
           if (mode !== "incomplete") {
             for (const path of reviewInventory(root).files) await call(reader, { path });
           }

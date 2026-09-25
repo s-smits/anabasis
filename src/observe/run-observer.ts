@@ -21,7 +21,6 @@ import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import { isSafePathSegment } from "../meta/path-segment.ts";
-import { stableJson } from "../meta/stable-json.ts";
 import { keyIfNotNull } from "../meta/optional-key.ts";
 import { isNumber } from "../meta/json-shape.ts";
 
@@ -173,7 +172,8 @@ export interface RunObserver {
 interface ObservedFinding {
   claim: string;
   evidence: string;
-  proposedOwner: string | null;
+  owner: string | null;
+  hostRule?: string;
 }
 
 interface CampaignProgressOptionsResult {
@@ -369,14 +369,14 @@ export function observeAnalysisResult(
   slug: string,
   runId: string,
   result: {
-    judges: { findings: ObservedFinding[]; exit: { kind: string } };
+    judges: { exit: { kind: string } };
     admission: { admitted: ObservedFinding[]; feedback: unknown[] };
   },
 ): void {
   observer.phase({
     phase: "analyse",
     state: "completed",
-    summary: `Analysis completed ${result.judges.findings.length} finding(s), Judge exit ${result.judges.exit.kind}`,
+    summary: `Analysis admitted ${result.admission.admitted.length} finding(s), Judge exit ${result.judges.exit.kind}`,
     evidence: [`campaigns/${slug}/analysis/${runId}-judges.json`],
   });
   const admission = observer.child(
@@ -387,12 +387,11 @@ export function observeAnalysisResult(
       evidence: [`campaigns/${slug}/analysis/${runId}-admission.json`],
     }),
   );
-  const modelFindings = new Set(result.judges.findings.map(stableJson));
+  // A host rule states a recorded fact; every other admitted finding is the reviewer's hypothesis.
   for (const finding of result.admission.admitted) {
-    const modelOwned = modelFindings.has(stableJson(finding));
     admission.steering({
-      authority: modelOwned ? "model-hypothesis" : "evidence-observation",
-      ...keyIfNotNull("owner", finding.proposedOwner),
+      authority: finding.hostRule === undefined ? "model-hypothesis" : "evidence-observation",
+      ...keyIfNotNull("owner", finding.owner),
       claim: finding.claim,
       evidence: [finding.evidence],
     });

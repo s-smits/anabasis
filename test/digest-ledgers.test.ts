@@ -3,7 +3,6 @@ import {
   admissionLedgerLines,
   batteryTallies,
   checkInformativenessLines,
-  exhaustionClass,
   familyCoverageLines,
   roleSpendLines,
 } from "../.claude/skills/whole-run-investigation/scripts/digest-ledgers.mjs";
@@ -11,6 +10,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { controllerRunOfBattery } from "../src/run/controller-battery-record-policy.ts";
 import { join } from "../src/meta/path.ts";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
+import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 
 const unaccepted: Partial<CaseRecordRow> = { acceptedSubmit: false, truthOk: null, pass: false };
@@ -54,42 +54,41 @@ test("family coverage retains partially and entirely unmeasured batteries", () =
   expect(familyCoverageLines({ tallies: [] })).toContain("no case rows");
 });
 
-test("explicit allowance errors reveal old misclassification without rewriting accepted outcomes", () => {
-  const message =
-    "Claude Code returned an error result: You've hit your limit · resets 9:10pm (Europe/Amsterdam)";
-  expect(exhaustionClass(message)).toBe("explicit-exhaustion");
-  expect(exhaustionClass("You've hit your session limit")).toBe("explicit-exhaustion");
-  expect(exhaustionClass("429 too many requests")).toBe("generic-limit");
-  expect(exhaustionClass("You've hit your limit while allocating task slots")).toBe("other");
-  // The controller's clause, not every sentence that mentions money or a budget: a solver writing
-  // about a credit field or a quota table has exhausted nothing.
-  expect(exhaustionClass("credit limit field missing from the invoice schema")).toBe("other");
-  expect(exhaustionClass("quota table exhausted its rows")).toBe("other");
-  const cases = [
-    {
-      runId: "run",
-      acceptedSubmit: false,
-      truthOk: null,
-      runtimeNonResultKind: "solver",
-      solver: { errors: [message] },
-    },
-    {
-      runId: "run",
-      acceptedSubmit: false,
-      truthOk: null,
-      runtimeNonResultKind: null,
-      solver: { errors: [message] },
-    },
-    {
-      runId: "run",
-      acceptedSubmit: true,
-      truthOk: true,
-      runtimeNonResultKind: null,
-      solver: { errors: [message] },
-    },
-  ];
-  // The case rows in the writer's shapes, beside the battery cases whose solver errors carry the
-  // limit message: a non-result the solver owns, an unaccepted attempt and a verified pass.
+test("a turn retry is an explicit allowance wait on the provider's own clause alone, and censoring reads the typed kind", () => {
+  const retry = (turn: number, reason: string, waitMs: number) => ({
+    role: "builder",
+    turn,
+    attempt: 1,
+    of: 3,
+    status: "failed",
+    reason,
+    waitMs,
+  });
+  const file = "epoch-aa/builder-execution-02.json";
+  const executions = {
+    records: [
+      {
+        epoch: "epoch-aa",
+        file: "builder-execution-02.json",
+        record: {
+          turnRetries: [
+            retry(
+              2,
+              "Claude Code returned an error result: You've hit your limit · resets 9:10pm (Europe/Amsterdam)",
+              300_000,
+            ),
+            // The controller's clause, not every sentence that mentions a limit or a credit.
+            retry(3, "You've hit your limit while allocating task slots", 30_000),
+            retry(4, "credit limit field missing from the invoice schema", 0),
+          ],
+        },
+      },
+    ],
+    unavailable: [],
+  };
+  // A solver-typed non-result whose message carries the allowance clause, an unaccepted attempt
+  // and a verified pass: no row is provider-typed, so the message censors nothing.
+  const message = "You've hit your limit · resets 9:10pm (Europe/Amsterdam)";
   const tallies = batteryTallies([
     caseRecordRow("t1", "f", {
       runId: "run",
@@ -105,18 +104,38 @@ test("explicit allowance errors reveal old misclassification without rewriting a
   const options = {
     campaign: "/nonexistent-digest-fixture",
     tallies,
-    batteryOf: () => ({ cases }),
+    batteryOf: () => null,
     decisions: [],
+    executions,
   };
   const lines = roleSpendLines(options).join("\n");
-  expect(lines).toContain("provider non-results 0 (explicit-exhaustion 2)");
+  expect(lines).toContain(`${file}: turn retries 3 · waited 5.5 min in total`);
   expect(lines).toContain(
-    "explicit exhaustion outside provider classification: 2 · recorded grades unchanged",
+    `  EXPLICIT ALLOWANCE WAIT (lane 24): ${file} turn 2 attempt 1/3 failed waited 5 min (explicit allowance)`,
   );
+  expect(lines).toContain(
+    `  turn retry: ${file} turn 3 attempt 1/3 failed waited 0.5 min (other reason; not proof of exhaustion)`,
+  );
+  expect(lines).toContain(
+    `  turn retry: ${file} turn 4 attempt 1/3 failed waited 0 min (other reason; not proof of exhaustion)`,
+  );
+  expect(lines.split("EXPLICIT ALLOWANCE WAIT").length).toBe(2);
   expect(tallies[0]).toMatchObject({ verified: 1, unaccepted: 1, nonResults: 1, providerNonResult: 0 });
-  expect(roleSpendLines({ ...options, batteryOf: () => null }).join("\n")).toContain(
-    "missing rows leave censoring unobservable",
+  expect(lines).toContain(
+    "no provider-typed non-results in the case rows; missing rows leave censoring unobservable",
   );
+  expect(lines).not.toContain("CENSORED");
+  // A provider-typed row censors its battery; without the battery record the instants stay unknown,
+  // and a decision that read the battery is named.
+  const censored = roleSpendLines({
+    ...options,
+    tallies: batteryTallies([caseRecordRow("t1", "f", { runId: "run", ...providerNonResult })]),
+    decisions: [{ runId: "next", action: "placed", evidenceRunIds: ["run"] }],
+  }).join("\n");
+  expect(censored).toContain(
+    "run: graded 0 · provider non-results 1 · first ? last ? · CENSORED (provider non-results; the typed kind is the evidence, the message is not)",
+  );
+  expect(censored).toContain("DECISION ON CENSORED BATTERY (lane 24): next placed read run");
 });
 
 test("an epoch review counts a finding unrouted only when the author router gives it no owner", async () => {
@@ -125,6 +144,7 @@ test("an epoch review counts a finding unrouted only when the author router give
   await Bun.write(
     join(campaign, "analysis", "authoring-a-epoch-review.json"),
     JSON.stringify({
+      schema: EPOCH_REVIEW_SCHEMA,
       status: "completed",
       findings: [
         finding("curriculum-defect", null),
@@ -134,8 +154,18 @@ test("an epoch review counts a finding unrouted only when the author router give
       reads: [],
     }),
   );
-  // Truss run fa03b7 read its one curriculum finding as unowned, though it routes to `tests`.
-  expect(admissionLedgerLines({ campaign }).join("\n")).toContain("findings 3 · unrouted 1 · reads 0");
+  // A curriculum finding names no owner and still routes, to `tests`, so it is not unrouted.
+  expect(admissionLedgerLines({ campaign }).join("\n")).toContain(
+    "authoring-a: epoch review completed · findings 3 · unrouted 1 · reads 0",
+  );
+  // A review of another schema is refused by name rather than read for its findings.
+  await Bun.write(
+    join(campaign, "analysis", "run-b-epoch-review.json"),
+    JSON.stringify({ status: "completed", findings: [finding("harness-defect", null)], reads: [] }),
+  );
+  const refused = admissionLedgerLines({ campaign }).join("\n");
+  expect(refused).toContain(`run-b: epoch review refused, not ${EPOCH_REVIEW_SCHEMA}`);
+  expect(refused).not.toContain("run-b: epoch review completed");
 });
 
 test("the served-model row opens the controller run a battery belongs to", () => {

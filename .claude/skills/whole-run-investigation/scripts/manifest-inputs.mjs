@@ -2,15 +2,16 @@ import { boundText } from "#src/meta/bounded-text.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { existsSync, readFileSync, realpathSync } from "#src/meta/filesystem.ts";
 import { isBoolean, isString } from "#src/meta/json-shape.ts";
-import { homedir } from "#src/meta/os.ts";
-import { isAbsolute, join, resolve } from "#src/meta/path.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
 import { exitWith } from "#skills/main/cli.ts";
 import { gitText } from "#skills/main/git.ts";
 import {
   ANGLE_COUNT,
+  DETERMINISTIC_ROW_TITLES,
   DETERMINISTIC_ROWS,
   GIT_SHA,
   ISOLATED_ANGLES,
+  TRACE_CHALLENGE_LANE,
   SHA256 as SHA_256,
 } from "./catalogue-shape.mjs";
 import { readJsonFile } from "#src/meta/completed-json.ts";
@@ -18,9 +19,12 @@ import { readJsonFile } from "#src/meta/completed-json.ts";
 export const ORIENTATION_HEADING = "orientation";
 /** Maximum nonblank lines in the shared reviewer orientation. */
 const ORIENTATION_MAX_LINES = 20;
+/** A lane heading in the catalogue and in the session index: `**N. Title.**` at line start. */
 const ANGLE_HEADING = /^\*\*(\d+)\.\s+(.+?)\*\*/;
+/** A deterministic row heading in both files: `**A. Title.**` at line start. */
 const DETERMINISTIC_ROW_HEADING = /^\*\*([A-I])\.\s+(.+?)\*\*/;
-const DETERMINISTIC_SESSION_HEADING = /^\*\*session\s+\d+\b.*\*\*/i;
+/** The one paragraph of a lane body that names its deterministic trigger. */
+const TRIGGER_PARAGRAPH = /^Starts from\b/;
 const REQUIRED_SHARED_VIEWS = ["digest", "review-yield", "builder"];
 const REQUIRED_RUN_VIEWS = [
   "default",
@@ -32,21 +36,11 @@ const REQUIRED_RUN_VIEWS = [
   "cases-non-result",
   "cases-pass",
 ];
-export const BLINDED_PAIRS = [
-  ["angle_05", "angle_06"],
-  ["angle_07", "angle_08"],
-  ["angle_19", "angle_20"],
-];
 
 export const manifestFail = exitWith("build-manifest");
 
-function slug(title) {
-  return title
-    .toLowerCase()
-    .replaceAll("&", " and ")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 48);
+export function laneName(number) {
+  return `lane_${String(number).padStart(2, "0")}`;
 }
 
 function unwrap(text) {
@@ -54,37 +48,6 @@ function unwrap(text) {
     .split(/\n{2,}/)
     .flatMap((block) => block.replace(/\s*\n\s*/g, " ").trim() || [])
     .join("\n\n");
-}
-
-function headingSection(skill, heading) {
-  const start = skill.indexOf(heading);
-  if (start === -1) return "";
-  const rest = skill.slice(start);
-  const end = rest.indexOf("\n## ");
-  return end === -1 ? rest : rest.slice(0, end);
-}
-
-function sessionRows(section) {
-  const sessions = new Map();
-  for (const line of section.split("\n")) {
-    const match = /^\|\s*\*\*(.+?)\*\*\s*\|(.+?)\|(.+?)\|\s*$/.exec(line);
-    if (!match) continue;
-    const [, title, trigger, body] = match;
-    if (/^\d/.test(title.trim())) continue;
-    sessions.set(slug(title), {
-      kind: "intelligence",
-      title: title.trim(),
-      trigger: trigger.trim(),
-      body: body.trim(),
-    });
-  }
-  return sessions;
-}
-
-export function intelligenceSessions(skill) {
-  const admitted = sessionRows(headingSection(skill, "## Admit useful sessions"));
-  const reference = sessionRows(headingSection(skill, "## Reference-comparison sessions"));
-  return new Map([...admitted, ...reference]);
 }
 
 function angleStartsAndBoundaries(lines) {
@@ -102,85 +65,128 @@ function angleStartsAndBoundaries(lines) {
     if (row) {
       deterministic.push({ index, letter: row[1] });
       boundaries.push(index);
-    } else if (/^##\s/.test(line) || DETERMINISTIC_SESSION_HEADING.test(line)) {
-      boundaries.push(index);
-    }
+    } else if (/^##\s/.test(line)) boundaries.push(index);
   });
   return { starts, deterministic, boundaries };
 }
 
-function validateCatalogueRows(starts, deterministic) {
+/** The catalogue and the session index share one shape; each names its own refusal clause. */
+function validateCatalogueRows(starts, deterministic, index) {
+  const clause = index
+    ? "session-index-drift: session index"
+    : "catalogue-lane-count: review-angle catalogue";
   const expectedRows = [...DETERMINISTIC_ROWS];
   const actualRows = deterministic.map((row) => row.letter);
   if (
     actualRows.length !== expectedRows.length ||
-    actualRows.some((letter, index) => letter !== expectedRows[index])
+    actualRows.some((letter, position) => letter !== expectedRows[position])
   ) {
     manifestFail(
-      `review-angle catalogue must declare deterministic rows ${DETERMINISTIC_ROWS[0]}-${DETERMINISTIC_ROWS.at(-1)} exactly once and in order; found ${actualRows.join(", ")}`,
+      `${clause} must declare deterministic rows ${DETERMINISTIC_ROWS[0]}-${DETERMINISTIC_ROWS.at(-1)} exactly once and in order; found ${actualRows.join(", ") || "none"}`,
     );
   }
-  const expected = Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
+  const expected = Array.from({ length: ANGLE_COUNT }, (_, position) => position + 1);
   const actual = starts.map((start) => start.number);
-  if (actual.length !== expected.length || actual.some((number, index) => number !== expected[index])) {
+  if (actual.length !== expected.length || actual.some((number, position) => number !== expected[position])) {
     manifestFail(
-      `review-angle catalogue must declare angles 1-${ANGLE_COUNT} exactly once and in order; found ${actual.join(", ")}`,
+      `${clause} must declare lanes 1-${ANGLE_COUNT} exactly once and in order; found ${actual.join(", ") || "none"}`,
     );
   }
   if (deterministic.at(-1).index > starts[0].index) {
     manifestFail(
-      `review-angle catalogue must keep deterministic rows ${DETERMINISTIC_ROWS[0]}-${DETERMINISTIC_ROWS.at(-1)} before semantic angle 1`,
+      `${clause} must keep deterministic rows ${DETERMINISTIC_ROWS[0]}-${DETERMINISTIC_ROWS.at(-1)} before lane 1`,
     );
   }
 }
 
-export function angleSessions(skill) {
-  const lines = skill.split("\n");
+/** The one `Starts from` paragraph of a lane body, which the manifest carries as its trigger. */
+function laneTrigger(rawBody, number) {
+  const paragraphs = rawBody
+    .split(/\n{2,}/)
+    .map((block) =>
+      block
+        .replace(ANGLE_HEADING, "")
+        .replace(/\s*\n\s*/g, " ")
+        .trim(),
+    )
+    .filter((block) => TRIGGER_PARAGRAPH.test(block));
+  if (paragraphs.length !== 1) {
+    manifestFail(
+      `lane-without-trigger: lane ${number} must carry exactly one paragraph beginning \`Starts from\`; found ${paragraphs.length}`,
+    );
+  }
+  return paragraphs[0];
+}
+
+/** Every lane the catalogue declares, keyed by `lane_NN`, after the shape is proved. The session
+ *  index is parsed with the same reader (`index` true): its rows carry one sentence and no trigger. */
+export function angleSessions(text, index = false) {
+  const lines = text.split("\n");
   const { starts, deterministic, boundaries } = angleStartsAndBoundaries(lines);
-  validateCatalogueRows(starts, deterministic);
+  validateCatalogueRows(starts, deterministic, index);
   const sessions = new Map();
   for (const start of starts) {
-    const end = boundaries.find((index) => index > start.index) ?? lines.length;
+    const end = boundaries.find((boundary) => boundary > start.index) ?? lines.length;
     const rawBody = lines.slice(start.index, end).join("\n");
-    if (DETERMINISTIC_SESSION_HEADING.test(rawBody)) {
-      manifestFail(`angle ${start.number} contains a deterministic session declaration`);
-    }
-    const number = String(start.number).padStart(2, "0");
-    sessions.set(`angle_${number}`, {
-      kind: "angle",
-      name: `angle_${number}`,
+    sessions.set(laneName(start.number), {
+      name: laneName(start.number),
       number: start.number,
       title: `${start.number}. ${start.title}`,
-      trigger: null,
+      trigger: index ? null : laneTrigger(rawBody, start.number),
       body: unwrap(rawBody),
     });
   }
   return sessions;
 }
 
-function blindedPartners(angles) {
-  const partner = new Map();
-  for (const [a, b] of BLINDED_PAIRS) {
-    if (angles.some((angle) => angle.name === a) && angles.some((angle) => angle.name === b)) {
-      partner.set(a, b);
-      partner.set(b, a);
+// The session index carries one sentence per row and lane so a reviewer can select sessions
+// without loading the whole catalogue. It is only useful while it names the same rows, so a drift
+// refuses the build.
+export function assertIndexMatchesCatalogue(index, angles) {
+  const declared = angleSessions(angles);
+  const indexed = angleSessions(index, true);
+  for (const [name, session] of declared) {
+    const row = indexed.get(name);
+    if (row.title !== session.title) {
+      manifestFail(
+        `session-index-drift: session index title for ${name} is "${row.title}" but the catalogue says "${session.title}"`,
+      );
     }
   }
-  return partner;
+  return declared;
 }
 
-function requiredCuts(angles, partner) {
-  const cuts = new Set();
-  angles.forEach((angle, index) => {
-    const next = angles[index + 1];
-    if (next && partner.get(angle.name) === next.name) cuts.add(index);
-  });
-  angles.forEach((angle, index) => {
-    if (!ISOLATED_ANGLES.has(angle.number)) return;
-    if (index > 0) cuts.add(index - 1);
-    if (index < angles.length - 1) cuts.add(index);
-  });
-  return cuts;
+/** Which isolated lanes the recorded evidence lets a launch include. Both need at least one
+ *  verified case in the default view; the trace-challenge lane also needs a complete packet, which
+ *  the composer verifies byte by byte once the lane is assigned. */
+export function isolatedLaneGate(snapshot) {
+  const report = snapshot.view("default");
+  const verified = report
+    ? Object.values(report.batteries ?? {}).reduce((sum, battery) => sum + (battery.cases?.verified ?? 0), 0)
+    : null;
+  const gate = new Map();
+  for (const number of ISOLATED_ANGLES.keys()) {
+    if (verified === null) {
+      gate.set(number, {
+        fired: false,
+        reason: "the default view is unavailable, so no verified case is recorded",
+      });
+      continue;
+    }
+    if (verified === 0) {
+      gate.set(number, { fired: false, reason: "no battery recorded a verified case" });
+      continue;
+    }
+    if (
+      number === TRACE_CHALLENGE_LANE &&
+      !existsSync(join(snapshot.dir, "trace-challenge", "trace-challenge-status.json"))
+    ) {
+      gate.set(number, { fired: false, reason: "the snapshot carries no trace-challenge packet" });
+      continue;
+    }
+    gate.set(number, { fired: true, reason: `${verified} verified case(s) recorded` });
+  }
+  return gate;
 }
 
 function contiguousGroupSizes(total, count, requiredCutAfter) {
@@ -212,85 +218,36 @@ function contiguousGroupSizes(total, count, requiredCutAfter) {
   return best(0, count)?.sizes ?? null;
 }
 
-function contiguousGroups(angles, sizes) {
+/** Split the launchable lanes into `count` contiguous sessions of balanced size, each isolated lane
+ *  alone. `lanes` is already the launchable set: an unfired isolated lane never reaches it. */
+export function partitionAngles(lanes, count) {
+  if (count > lanes.length) {
+    manifestFail(
+      `--auto ${count} asks for more sessions than the ${lanes.length} launchable lanes; at most one lane per session`,
+    );
+  }
+  const cuts = new Set();
+  lanes.forEach((lane, index) => {
+    if (!ISOLATED_ANGLES.has(lane.number)) return;
+    if (index > 0) cuts.add(index - 1);
+    if (index < lanes.length - 1) cuts.add(index);
+  });
+  const sizes = contiguousGroupSizes(lanes.length, count, cuts);
+  if (!sizes) {
+    manifestFail(`--auto ${count} cannot seat each isolated lane alone; ask for at least ${cuts.size + 1}`);
+  }
   const groups = [];
   let cursor = 0;
   for (const size of sizes) {
-    groups.push(angles.slice(cursor, cursor + size));
+    groups.push(lanes.slice(cursor, cursor + size));
     cursor += size;
   }
   return groups;
 }
 
-function mixedGroups(angles, count, partner) {
-  const groups = Array.from({ length: count }, () => []);
-  const hasPartner = (group, name) => group.some((member) => partner.get(member.name) === name);
-  const isolated = angles.filter((angle) => ISOLATED_ANGLES.has(angle.number));
-  if (count < isolated.length + 2) {
-    manifestFail("too few sessions to preserve isolated lanes and blinded pairs");
-  }
-  isolated.forEach((angle, index) => groups[index].push(angle));
-  for (const angle of angles) {
-    if (ISOLATED_ANGLES.has(angle.number)) continue;
-    const choices = groups
-      .map((group, index) => ({ group, index }))
-      .filter(({ group, index }) => index >= isolated.length && !hasPartner(group, angle.name))
-      .sort((a, b) => a.group.length - b.group.length || a.index - b.index);
-    const choice = choices[0];
-    if (choice === undefined) {
-      manifestFail("no legal session remains for an angle; blinded pairs cannot be placed");
-    }
-    choice.group.push(angle);
-  }
-  return groups.filter((group) => group.length > 0);
-}
-
-export function partitionAngles(angles, count) {
-  if (count > angles.length) {
-    manifestFail(
-      `--auto ${count} asks for more sessions than the ${angles.length} angles declared; at most one angle per session`,
-    );
-  }
-  const partner = blindedPartners(angles);
-  const cuts = requiredCuts(angles, partner);
-  const sizes = contiguousGroupSizes(angles.length, count, cuts);
-  if (sizes) return { groups: contiguousGroups(angles, sizes), mixed: false };
-  console.error(
-    `build-manifest: --auto ${count} cannot give every blinded pair its own contiguous split ` +
-      `(${cuts.size} are forced); falling back to balanced non-contiguous grouping`,
-  );
-  return { groups: mixedGroups(angles, count, partner), mixed: true };
-}
-
-// The session index carries one sentence per row so a reviewer can select sessions without loading the
-// whole catalogue. It is only useful while it names the same rows, so a drift refuses the build.
-export function assertIndexMatchesCatalogue(index, angles) {
-  const indexed = angleSessions(index);
-  const declared = angleSessions(angles);
-  for (const [name, session] of declared) {
-    const row = indexed.get(name);
-    if (!row) manifestFail(`session index does not declare ${name}; add its one-sentence row`);
-    if (row.title !== session.title) {
-      manifestFail(
-        `session index title for ${name} is "${row.title}" but the catalogue says "${session.title}"`,
-      );
-    }
-  }
-  for (const name of indexed.keys()) {
-    if (!declared.has(name)) manifestFail(`session index declares ${name}, which the catalogue does not`);
-  }
-}
-
-function sessionMemberName(token) {
-  const match = /^(?:angle_)?(\d{1,2})$/.exec(token);
-  if (!match) return token;
-  const number = Number(match[1]);
-  if (number < 1 || number > ANGLE_COUNT) return token;
-  return `angle_${String(number).padStart(2, "0")}`;
-}
-
 function sessionMembers(token, problems) {
-  const range = /^(?:angle_)?(\d{1,2})\s*-\s*(?:angle_)?(\d{1,2})$/.exec(token);
+  const one = /^(?:lane_)?(\d{1,2})$/;
+  const range = /^(?:lane_)?(\d{1,2})\s*-\s*(?:lane_)?(\d{1,2})$/.exec(token);
   if (range) {
     const from = Number(range[1]);
     const to = Number(range[2]);
@@ -298,49 +255,37 @@ function sessionMembers(token, problems) {
       problems.push(`session range \`${token}\` runs backwards; write it low to high`);
       return [];
     }
-    return Array.from({ length: to - from + 1 }, (_, offset) => sessionMemberName(String(from + offset)));
+    return Array.from({ length: to - from + 1 }, (_, offset) => laneName(from + offset));
   }
-  return token.split("+").map((part) => sessionMemberName(part.trim()));
+  const single = one.exec(token);
+  return [single ? laneName(Number(single[1])) : token];
 }
 
-function sessionGroupName(members) {
+export function sessionGroupName(members) {
   if (members.length === 1) return members[0].name;
   const numbers = members.map((member) => String(member.session.number).padStart(2, "0"));
-  const contiguous = members.every(
-    (member, index) => index === 0 || member.session.number === members[index - 1].session.number + 1,
-  );
-  return contiguous ? `angles_${numbers[0]}_${numbers.at(-1)}` : `angles_${numbers.join("_")}`;
+  return `lanes_${numbers[0]}_${numbers.at(-1)}`;
 }
 
 function validateSessionGroup(members, problems) {
-  const named = members.filter((member) => member.session.kind !== "angle");
-  if (named.length > 0 && members.length > 1) {
-    problems.push(
-      `\`${named[0].name}\` is a whole session and cannot share a session; give it its own comma-separated entry`,
-    );
-    return false;
-  }
   const isolated = members.find((member) => ISOLATED_ANGLES.has(member.session.number));
   if (members.length > 1 && isolated) {
     problems.push(
-      `angle ${isolated.session.number} ${ISOLATED_ANGLES.get(isolated.session.number)} and must be its own session`,
+      `lane ${isolated.session.number} ${ISOLATED_ANGLES.get(isolated.session.number)} and must be its own session`,
     );
     return false;
   }
-  for (const [first, second] of BLINDED_PAIRS) {
-    if (members.some((member) => member.name === first) && members.some((member) => member.name === second)) {
-      problems.push(
-        `blinded pair ${first} and ${second} cannot share one session; give each its own ` +
-          "comma-separated entry",
-      );
-      return false;
-    }
+  const contiguous = members.every(
+    (member, index) => index === 0 || member.session.number === members[index - 1].session.number + 1,
+  );
+  if (!contiguous) {
+    problems.push(`\`${members.map((member) => member.name).join(",")}\` is not a contiguous lane range`);
+    return false;
   }
   return true;
 }
 
-// `--sessions 4,7-9,mechanism`: commas separate sessions, `-` is a contiguous angle range inside one
-// session and `+` joins arbitrary angles into one session.
+// `--sessions 1-4,7`: commas separate sessions and `-` is a contiguous lane range inside one session.
 export function parseSessionSpec(spec, declared) {
   const problems = [];
   const groups = [];
@@ -350,9 +295,7 @@ export function parseSessionSpec(spec, declared) {
     for (const name of sessionMembers(entry, problems)) {
       const session = declared.get(name);
       if (!session) {
-        problems.push(
-          `unknown session \`${name}\` in \`${entry}\` — run with --list to see the declared names`,
-        );
+        problems.push(`unknown lane \`${name}\` in \`${entry}\` — run with --list to see the declared names`);
         continue;
       }
       if (claimed.has(name)) {
@@ -365,38 +308,16 @@ export function parseSessionSpec(spec, declared) {
     if (!validateSessionGroup(members, problems)) continue;
     groups.push({ name: sessionGroupName(members), members });
   }
-  if (groups.length === 0 && problems.length === 0) problems.push(`--sessions "${spec}" selected no session`);
+  if (groups.length === 0 && problems.length === 0) problems.push(`--sessions "${spec}" selected no lane`);
   return { groups, problems };
 }
 
-export function referenceSessionNames(skill) {
-  return new Set(sessionRows(headingSection(skill, "## Reference-comparison sessions")).keys());
-}
-
-export function referenceIdentity(root) {
-  if (!existsSync(root)) manifestFail(`--consumer-hardware: no reference tree at ${root}`);
-  const git = (...args) => {
-    try {
-      return gitText(root, ...args);
-    } catch (error) {
-      manifestFail(`--consumer-hardware: git ${args.join(" ")} failed under ${root}: ${error.message}`);
-    }
-  };
-  return { root, revision: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain").length > 0 };
-}
-
-export function defaultReferenceRoot(value) {
-  return resolve(value ?? join(homedir(), "Developer", "schematik-rebuild"));
-}
-
-export function retiredAngles(skill) {
-  const retired = new Map();
-  const section = skill.slice(skill.indexOf("## Admit useful sessions"));
-  for (const line of section.split("\n")) {
-    const match = /^\|\s*([A-I])\s+(.+?)\s*\|\s*(.+?)\s*\|\s*$/.exec(line);
-    if (match) retired.set(match[1], { name: match[2], owner: match[3] });
-  }
-  return retired;
+/** The refusal a notes heading earns when it names a deterministic row rather than a lane. */
+export function deterministicRowProblem(name) {
+  const row = /^(?:row|lane)_([a-i])$/i.exec(name);
+  if (!row) return null;
+  const letter = row[1].toUpperCase();
+  return `row ${letter} (${DETERMINISTIC_ROW_TITLES[letter]}) is settled by the primary reviewer's deterministic preflight, not by a lane`;
 }
 
 function snapshotLabels(runIds) {

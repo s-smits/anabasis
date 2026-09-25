@@ -91,7 +91,8 @@ function snapshotFixture() {
       "FAMILY UNMOVED all-pass: alpha 5/5 → 5/5 (i01 → i02)",
       "FAMILY UNMOVED all-pass: beta 5/5 → 5/5 (i01 → i02)",
       "FAMILY UNMOVED all-pass: alpha 5/5 → 5/5 (i02 → i03)",
-      "REVIEW TURNS EXCEED SOLVER TURNS (angle 28 trigger): review 37 > built 60",
+      "REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review 37 > built 60",
+      "OFF-AIM STREAK (lane 10): 3 batteries under the aim",
       "ordinary prose line",
       "",
     ].join("\n"),
@@ -148,6 +149,9 @@ describe("run overview", () => {
     expect(rendered).toContain("75 total = 70 verified + 2 unaccepted + 3 non-results");
     expect(rendered).toContain("100 of 100 turns used (builder 3, built 60, review 37)");
     expect(rendered).toContain("FAMILY UNMOVED all-pass [3 rows]: alpha 5/5");
+    // A lane-suffixed trigger groups on the whole text before its colon, suffix included.
+    expect(rendered).toContain("OFF-AIM STREAK (lane 10) [1 row");
+    expect(rendered).toContain("REVIEW TURNS EXCEED SOLVER TURNS (lane 24) [1 row");
     expect(rendered).toContain("families alpha 5, beta 5");
     expect(rendered).not.toContain("census");
   });
@@ -233,9 +237,9 @@ function reviewFixture(): string {
     join(review, "lanes", "tasks.json"),
     json([
       {
-        name: "angle_05",
-        task: "assignedAngles: 05\nexpectedHeading: ## angle_05\n",
-        admission: { schema: "wri-progressive-admission/v1", mode: "targeted" },
+        name: "lane_05",
+        task: "assignedSession: lane_05\nassignedLanes: 05\nexpectedHeading: ## lane_05\n",
+        admission: { schema: "wri-progressive-admission/v2", mode: "targeted" },
       },
     ]),
   );
@@ -245,7 +249,7 @@ function reviewFixture(): string {
       type: "luna_sessions.launch",
       model: "gpt-5.6-luna",
       reasoningEffort: "max",
-      sessions: [{ name: "angle_05", promptSha256: "c".repeat(64) }],
+      sessions: [{ name: "lane_05", promptSha256: "c".repeat(64) }],
     }),
   );
   writeFileSync(
@@ -253,13 +257,13 @@ function reviewFixture(): string {
     json({
       type: "luna_sessions.completed",
       sessions: [
-        { name: "angle_05", status: "completed", failureKind: null, threadId: "thread-1", durationMs: 4000 },
+        { name: "lane_05", status: "completed", failureKind: null, threadId: "thread-1", durationMs: 4000 },
       ],
     }),
   );
   writeFileSync(
-    join(output, "angle_05.md"),
-    "## angle_05\n\n### Findings\n\nOracle hardness holds.  \nSecond line.\n",
+    join(output, "lane_05.md"),
+    "## lane_05\n\n### Findings\n\nOracle hardness holds.  \nSecond line.\n",
   );
   return review;
 }
@@ -278,8 +282,8 @@ describe("archive scaffold", () => {
     expect(verdicts.primaryReview.protectedEvidenceChecked).toBe(false);
     const luna = readFileSync(join(first.archiveDir, "luna_syntheses.md"), "utf8");
     expect(luna).toContain("## Collection");
-    expect(luna).toContain("| angle_05 | 05 | completed | thread-1 | 4 |");
-    expect(luna).toContain("## angle_05\n\n### Findings");
+    expect(luna).toContain("| lane_05 | 05 | completed | thread-1 | 4 |");
+    expect(luna).toContain("## lane_05\n\n### Findings");
     expect(luna.endsWith("\n\n")).toBe(false);
     expect(luna).toContain("Oracle hardness holds.\nSecond line.");
     expect(/[ \t]\n/.test(luna)).toBe(false);
@@ -366,9 +370,10 @@ describe("archive scaffold", () => {
     expect(built.predictions[2]?.dependencyWalk.evidencePointers).toHaveLength(1);
     expect(built.predictions[0]?.dependencyWalk).toMatchObject({ walked: false, closed: false });
     expect(built.angleStates).toHaveLength(ANGLE_COUNT);
-    expect(built.angleStates[4]).toMatchObject({ angle: 5, state: "inconclusive", session: "angle_05" });
+    expect(built.angleStates[4]).toMatchObject({ angle: 5, state: "inconclusive", session: "lane_05" });
     expect(built.angleStates[5]).toMatchObject({ angle: 6, state: "unobservable", session: "not-launched" });
-    expect(built.sessionStates.map((row) => row.id)).toEqual(["session_30", "angle_05"]);
+    // One row per launched lane: the primary settles no session of its own.
+    expect(built.sessionStates.map((row) => row.id)).toEqual(["lane_05"]);
     expect(built.safeguards.map((row) => row.id)).toEqual(["99-test-sensor"]);
     expect(built.safeguards.find((row) => row.id === "99-test-sensor")).toMatchObject({
       status: "fired",
@@ -486,6 +491,8 @@ describe("deterministic lane catalogue", () => {
     const past = String(lanes.length + 1);
     expect(() => select({ lanes: past })).toThrow(`no lane ${past}`);
     expect(() => select({ lanes: "velocity" })).toThrow("no lane velocity");
+    // The finding-recurrence lane left the catalogue with its script.
+    expect(() => select({ lanes: "recurrence" })).toThrow("no lane recurrence");
     expect(() => select({ lanes: "" })).toThrow("no lane");
   });
 

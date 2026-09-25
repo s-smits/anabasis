@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-// Join a completed Luna summary back to the WRI task manifest. This validates collection identity
-// and assigned angle headings; it does not adjudicate findings or turn session prose into evidence.
+// Join a completed Luna summary back to the WRI task manifest. This validates collection identity,
+// assigned lane headings and the report sections each lane owes; it does not adjudicate findings or
+// turn session prose into evidence.
 
 import { sha256, sha256OfFile } from "#src/meta/digest.ts";
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "#src/meta/filesystem.ts";
@@ -10,35 +11,38 @@ import { dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { CommandFailure, runCommand } from "#skills/main/cli.ts";
 import { emitReport } from "#skills/main/output.ts";
-import { ANGLE_COUNT, angleNumbers, leafPrompt, SHA256 } from "./catalogue-shape.mjs";
+import { ANGLE_COUNT, ISOLATED_ANGLES, angleNumbers, leafPrompt, SHA256 } from "./catalogue-shape.mjs";
+import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.mjs";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
 
 /** The record types luna-sessions.mjs writes when it opens and when it drains a collection. */
 const SUMMARY_TYPE = "luna_sessions.completed";
 const LAUNCH_TYPE = "luna_sessions.launch";
+const ADMISSION_SCHEMA = "wri-progressive-admission/v2";
+const RECEIPT_SCHEMA = "wri-report-validation/v2";
 
-function assignedAngles(task, index) {
-  const matches = [...task.matchAll(/^assignedAngles:\s*(.+)$/gm)];
-  if (matches.length > 1) throw new Error(`tasks[${index}] declares assignedAngles more than once`);
+function assignedLanes(task, index) {
+  const matches = [...task.matchAll(/^assignedLanes:\s*(.+)$/gm)];
+  if (matches.length > 1) throw new Error(`tasks[${index}] declares assignedLanes more than once`);
   if (matches.length === 0) return [];
   const values = matches[0][1].split(",").map((value) => value.trim());
   if (values.some((value) => !/^\d{2}$/.test(value) || Number(value) < 1 || Number(value) > ANGLE_COUNT)) {
-    throw new Error(`tasks[${index}] has invalid assignedAngles: ${matches[0][1]}`);
+    throw new Error(`tasks[${index}] has invalid assignedLanes: ${matches[0][1]}`);
   }
-  if (new Set(values).size !== values.length) throw new Error(`tasks[${index}] repeats an assigned angle`);
+  if (new Set(values).size !== values.length) throw new Error(`tasks[${index}] repeats an assigned lane`);
   return values;
 }
 
-function admission(value, index, angles) {
+function admission(value, index, lanes) {
   const row = asRecord(value);
   if (!row) {
     throw new Error(
       `tasks[${index}].admission is missing; progressive disclosure must be recorded in the manifest`,
     );
   }
-  if (row.schema !== "wri-progressive-admission/v1") {
-    throw new Error(`tasks[${index}].admission schema is unsupported`);
+  if (row.schema !== ADMISSION_SCHEMA) {
+    throw new Error(`tasks[${index}].admission schema must be ${ADMISSION_SCHEMA}; received ${row.schema}`);
   }
   if (!isString(row.mode) || !["targeted", "exhaustive"].includes(row.mode)) {
     throw new Error(`tasks[${index}].admission.mode must be targeted or exhaustive`);
@@ -48,28 +52,43 @@ function admission(value, index, angles) {
     throw new Error(`tasks[${index}].admission.identityKey is missing`);
   }
   if (
-    !Array.isArray(row.angles) ||
-    row.angles.some((angle) => !Number.isInteger(angle) || angle < 1 || angle > ANGLE_COUNT)
+    !Array.isArray(row.lanes) ||
+    row.lanes.some((lane) => !Number.isInteger(lane) || lane < 1 || lane > ANGLE_COUNT)
   ) {
-    throw new Error(`tasks[${index}].admission.angles must contain only integer angles 1-${ANGLE_COUNT}`);
+    throw new Error(`tasks[${index}].admission.lanes must contain only integer lanes 1-${ANGLE_COUNT}`);
   }
-  const expected = angles.map((angle) => Number(angle));
-  if (JSON.stringify([...row.angles]) !== JSON.stringify(expected)) {
-    throw new Error(`tasks[${index}].admission.angles do not match assignedAngles`);
-  }
-  if (!(row.trigger === null || isString(row.trigger))) {
-    throw new Error(`tasks[${index}].admission.trigger must be text or null`);
-  }
-  if (row.relation !== undefined && row.relation !== "independent-challenge") {
-    throw new Error(`tasks[${index}].admission.relation is unsupported`);
+  const expected = lanes.map((lane) => Number(lane));
+  if (JSON.stringify([...row.lanes]) !== JSON.stringify(expected)) {
+    throw new Error(`tasks[${index}].admission.lanes do not match assignedLanes`);
   }
   if (
-    row.relation === "independent-challenge" &&
-    (!isString(row.challengeId) || row.challengeId.trim().length === 0)
+    !Array.isArray(row.triggers) ||
+    row.triggers.length !== row.lanes.length ||
+    row.triggers.some((trigger) => !isString(trigger) || trigger.trim().length === 0)
   ) {
-    throw new Error(`tasks[${index}].admission.challengeId is required for an independent challenge`);
+    throw new Error(`tasks[${index}].admission.triggers must name one trigger per assigned lane`);
   }
   return row;
+}
+
+/** Exhaustive admission covers every open lane exactly once and each isolated lane at most once;
+ *  targeted admission only forbids assigning one lane twice. */
+function checkLaneCoverage(rows) {
+  const admitted = rows.flatMap((row) => row.admission.lanes);
+  const repeated = admitted.filter((lane, position) => admitted.indexOf(lane) !== position);
+  if (repeated.length > 0) {
+    throw new Error(
+      `progressive admission assigns lane ${String(repeated[0]).padStart(2, "0")} more than once`,
+    );
+  }
+  if (rows[0].admission.mode !== "exhaustive") return;
+  const open = angleNumbers().filter((lane) => !ISOLATED_ANGLES.has(lane));
+  const missing = open.filter((lane) => !admitted.includes(lane));
+  if (missing.length > 0) {
+    throw new Error(
+      `exhaustive progressive admission must cover every open lane exactly once; missing ${missing.map((lane) => String(lane).padStart(2, "0")).join(", ")}`,
+    );
+  }
 }
 
 function taskRows(tasks) {
@@ -86,110 +105,108 @@ function taskRows(tasks) {
     if (seen.has(row.name)) throw new Error(`duplicate task name: ${row.name}`);
     seen.add(row.name);
     if (!isString(row.task) || row.task.trim().length === 0) throw new Error(`tasks[${index}].task is empty`);
-    const angles = assignedAngles(row.task, index);
-    const admitted = admission(row.admission, index, angles);
+    const lanes = assignedLanes(row.task, index);
+    const admitted = admission(row.admission, index, lanes);
     if (admitted.identityKey !== row.name) {
       throw new Error(`tasks[${index}].admission.identityKey must equal task name`);
     }
-    return { name: row.name, task: row.task, angles, admission: admitted };
+    return { name: row.name, task: row.task, lanes, admission: admitted };
   });
   const modes = new Set(rows.map((row) => row.admission.mode));
   if (modes.size !== 1) throw new Error("tasks.json must use one progressive admission mode");
-  if (modes.has("exhaustive")) {
-    const admittedAngles = rows.flatMap((row) => row.admission.angles);
-    const expected = angleNumbers();
-    if (JSON.stringify([...admittedAngles].sort((a, b) => a - b)) !== JSON.stringify(expected)) {
-      throw new Error("exhaustive progressive admission must cover every active angle exactly once");
-    }
-  } else {
-    const owners = new Map();
-    for (const row of rows) {
-      for (const angle of row.admission.angles) {
-        const prior = owners.get(angle) ?? [];
-        prior.push(row);
-        owners.set(angle, prior);
-      }
-    }
-    for (const [angle, ownerRows] of owners) {
-      if (ownerRows.length < 2) continue;
-      const challengeIds = new Set(ownerRows.map((row) => row.admission.challengeId));
-      if (
-        ownerRows.some((row) => row.admission.relation !== "independent-challenge") ||
-        challengeIds.size !== 1 ||
-        challengeIds.has(undefined)
-      ) {
-        throw new Error(
-          `targeted progressive admission assigns angle ${String(angle).padStart(2, "0")} more than once without one independent challenge relation`,
-        );
-      }
-    }
-  }
+  checkLaneCoverage(rows);
   return rows;
 }
 
-function diagnosticCoverageIssues(task, text) {
-  const declarations = [...task.matchAll(/^assignedDiagnosticInputs:\s*(.+)$/gm)];
-  if (declarations.length === 0) return [];
-  if (declarations.length !== 1) return ["assignedDiagnosticInputs is repeated"];
-  const expected = declarations[0][1].split(",").map((input) => input.trim());
-  if (
-    new Set(expected).size !== expected.length ||
-    expected.some((input) => !/^[a-z][a-z0-9-]*$/.test(input))
-  ) {
-    return ["assignedDiagnosticInputs is malformed"];
+/** The `###` subsections of one `## <heading>` section, keyed by title, with their bodies. */
+function subsections(sectionText) {
+  const found = new Map();
+  for (const match of sectionText.matchAll(/^###\s+(.+?)\s*$/gm)) {
+    const title = match[1].trim();
+    const start = match.index + match[0].length;
+    const rest = sectionText.slice(start);
+    const next = /^###\s/m.exec(rest);
+    const body = (next ? rest.slice(0, next.index) : rest).trim();
+    found.set(title, [...(found.get(title) ?? []), body]);
   }
-  const rows = text
-    .split(/\r?\n/)
-    .filter((line) => /^\s*\|.*\|\s*$/.test(line))
-    .map((line) =>
-      line
-        .trim()
-        .split("|")
-        .slice(1, -1)
-        .map((cell) => cell.trim().replace(/^`([^`]+)`$/, "$1")),
-    );
+  return found;
+}
+
+/** What one lane section owes: every report section exactly once, in order and non-empty, and a
+ *  `Findings` body that is either `none` or entries each naming one admitted owner. */
+function sectionIssues(heading, sectionText) {
   const issues = [];
-  for (const input of expected) {
-    const matches = rows.filter((row) => row[0] === input);
-    if (matches.length !== 1) issues.push(`diagnostic input disposition missing or repeated: ${input}`);
-    else if (
-      !["investigate", "no-action", "unobservable"].includes(matches[0][1]) ||
-      !matches[0][2]?.trim()
-    ) {
-      issues.push(`diagnostic input needs a valid disposition and reason/evidence: ${input}`);
+  const found = subsections(sectionText);
+  const order = [...sectionText.matchAll(/^###\s+(.+?)\s*$/gm)].map((match) => match[1].trim());
+  for (const section of REPORT_SECTIONS) {
+    const bodies = found.get(section) ?? [];
+    if (bodies.length !== 1) {
+      issues.push(`${heading}: section \`### ${section}\` missing or repeated`);
+      continue;
+    }
+    if (bodies[0].length === 0) issues.push(`${heading}: section \`### ${section}\` is empty`);
+  }
+  const expectedOrder = REPORT_SECTIONS.filter((section) => found.has(section));
+  const actualOrder = order.filter((section) => REPORT_SECTIONS.includes(section));
+  if (JSON.stringify(expectedOrder) !== JSON.stringify(actualOrder)) {
+    issues.push(`${heading}: report sections are out of order`);
+  }
+  const findings = found.get("Findings")?.[0];
+  if (findings !== undefined && findings.length > 0 && findings !== "none") {
+    const owners = [...findings.matchAll(/^\s*(?:[-*]\s*)?owner:\s*(.+?)\s*$/gm)].map((match) => match[1]);
+    if (owners.length === 0) issues.push(`${heading}: findings name no owner`);
+    for (const owner of owners) {
+      if (!FINDING_OWNERS.includes(owner)) {
+        issues.push(`${heading}: finding owner \`${owner}\` is not one of ${FINDING_OWNERS.join(", ")}`);
+      }
     }
   }
   return issues;
 }
 
+/** The text under each `## <name>` heading, in report order, with repeats kept as repeats. */
+function topSections(text) {
+  const matches = [...text.matchAll(/^##\s+(.+?)\s*$/gm)].filter((match) => !match[0].startsWith("###"));
+  return matches.map((match, position) => {
+    const start = match.index + match[0].length;
+    const end = position + 1 < matches.length ? matches[position + 1].index : text.length;
+    return { name: match[1].trim(), body: text.slice(start, end) };
+  });
+}
+
 function reportContract(task, text, index) {
-  const issues = diagnosticCoverageIssues(task.task, text);
-  const headings = [...text.matchAll(/^##\s+angle_(\d{2})\s*$/gim)].map((match) => match[1]);
-  const names = [...text.matchAll(/^##\s+(.+?)\s*$/gim)].map((match) => match[1].trim());
+  const sections = topSections(text);
+  const names = sections.map((section) => section.name);
+  const headings = names.flatMap((name) => /^lane_(\d{2})$/.exec(name)?.[1] ?? []);
   const expected = expectedHeading(task.task, index);
+  const issues = [];
   const unexpected =
-    task.angles.length > 0
-      ? headings.filter((heading) => !task.angles.includes(heading))
+    task.lanes.length > 0
+      ? headings.filter((heading) => !task.lanes.includes(heading))
       : names.filter((heading) => heading !== expected);
   const missing =
-    task.angles.length > 0
-      ? task.angles.filter((angle) => headings.filter((heading) => heading === angle).length !== 1)
+    task.lanes.length > 0
+      ? task.lanes.filter((lane) => headings.filter((heading) => heading === lane).length !== 1)
       : expected === null || names.filter((heading) => heading === expected).length !== 1
         ? [expected ?? "expected heading"]
         : [];
   if (unexpected.length > 0) {
     issues.push(
-      task.angles.length > 0
-        ? `out-of-scope angle headings: ${[...new Set(unexpected)].join(", ")}`
+      task.lanes.length > 0
+        ? `out-of-scope lane headings: ${[...new Set(unexpected)].join(", ")}`
         : `out-of-scope report headings: ${[...new Set(unexpected)].join(", ")}`,
     );
   }
   if (missing.length > 0) {
     issues.push(
-      task.angles.length > 0
-        ? `assigned angle headings missing or repeated: ${missing.join(", ")}`
+      task.lanes.length > 0
+        ? `assigned lane headings missing or repeated: ${missing.join(", ")}`
         : `expected heading missing or repeated: ${missing.join(", ")}`,
     );
+  }
+  const owed = task.lanes.length > 0 ? task.lanes.map((lane) => `lane_${lane}`) : [expected];
+  for (const section of sections) {
+    if (owed.includes(section.name)) issues.push(...sectionIssues(`## ${section.name}`, section.body));
   }
   return { issues, headings };
 }
@@ -204,6 +221,112 @@ function expectedHeading(task, index) {
 function sameNames(rows, tasks) {
   const names = rows.map((row) => asRecord(row)?.name);
   return names.length === tasks.length && names.every((name, index) => name === tasks[index].name);
+}
+
+/** What the launch input beside the launcher's record binds: the task, launcher and instruction
+ *  digests, and each session's prompt digest against the exact leaf prompt bytes. */
+function inputBinding(input, tasks, taskBytes, tasksPath, sessions) {
+  const issues = [];
+  let instructionsSha256 = null;
+  let promptDigestsBound = false;
+  if (isString(input.tasksPath) && isAbsolute(input.tasksPath) && existsSync(input.tasksPath)) {
+    if (realpathSync(input.tasksPath) !== realpathSync(tasksPath)) {
+      issues.push("launch input tasksPath differs from supplied tasks.json path");
+    }
+    const actual = sha256OfFile(input.tasksPath);
+    if (input.tasksSha256 !== actual) issues.push("launch input task digest differs from tasks.json");
+    if (actual !== sha256(taskBytes)) {
+      issues.push("launch input tasksPath bytes differ from supplied tasks.json");
+    }
+  } else {
+    issues.push("launch input tasksPath is absent or unreadable");
+  }
+  if (
+    isString(input.launcherTasksPath) &&
+    isAbsolute(input.launcherTasksPath) &&
+    existsSync(input.launcherTasksPath)
+  ) {
+    const launcherBytes = readFileSync(input.launcherTasksPath);
+    if (input.launcherTasksSha256 !== sha256(launcherBytes)) {
+      issues.push("launch input launcher task digest is stale");
+    }
+    try {
+      const launcherTasks = capturedJsonParse(launcherBytes.toString("utf8"));
+      if (
+        !Array.isArray(launcherTasks) ||
+        JSON.stringify(launcherTasks) !==
+          JSON.stringify(tasks.map((task) => ({ name: task.name, task: task.task })))
+      ) {
+        issues.push("launcher task bytes differ from the WRI task projection");
+      }
+    } catch (error) {
+      issues.push(`launcher task file is not valid JSON: ${errorMessage(error)}`);
+    }
+  }
+  if (
+    isString(input.instructionsPath) &&
+    isAbsolute(input.instructionsPath) &&
+    existsSync(input.instructionsPath)
+  ) {
+    instructionsSha256 = sha256OfFile(input.instructionsPath);
+    if (input.instructionsSha256 !== instructionsSha256) {
+      issues.push("launch input instruction digest is stale");
+    }
+  } else {
+    issues.push("launch input instructionsPath is absent or unreadable");
+  }
+  if (isString(input.workdir)) {
+    if (!isAbsolute(input.workdir)) issues.push("launch input workdir is not absolute");
+    sessions.forEach((session, index) => {
+      if (asRecord(session)?.workdir !== input.workdir) {
+        issues.push(`launch.sessions[${index}].workdir differs from the recorded launch workdir`);
+      }
+    });
+  }
+  if (Array.isArray(input.tasks)) {
+    if (!sameNames(input.tasks, tasks)) {
+      issues.push("launch input task order/identity differs from supplied tasks");
+    }
+    input.tasks.forEach((value, index) => {
+      const task = asRecord(value);
+      if (!task) {
+        issues.push(`launch input task ${index} is not an object`);
+        return;
+      }
+      if (!SHA256.test(String(task.taskSha256 ?? ""))) {
+        issues.push(`launch input task ${index} has no exact task digest`);
+      } else if (task.taskSha256 !== sha256(new TextEncoder().encode(tasks[index]?.task ?? ""))) {
+        issues.push(`launch input task ${index} digest differs from supplied task bytes`);
+      }
+      if (!SHA256.test(String(task.admissionSha256 ?? ""))) {
+        issues.push(`launch input task ${index} has no exact admission digest`);
+      } else if (
+        task.admissionSha256 !== sha256(new TextEncoder().encode(JSON.stringify(tasks[index]?.admission)))
+      ) {
+        issues.push(`launch input task ${index} admission digest differs from supplied admission ledger`);
+      }
+    });
+  }
+  if (
+    instructionsSha256 !== null &&
+    input.instructionsSha256 === instructionsSha256 &&
+    Array.isArray(input.tasks)
+  ) {
+    const instructions = readFileSync(input.instructionsPath).toString("utf8").trim();
+    const promptHash = (task) => sha256(new TextEncoder().encode(leafPrompt(instructions, task)));
+    sessions.forEach((session, index) => {
+      const expectedHash = promptHash(tasks[index].task);
+      if (asRecord(session)?.promptSha256 !== expectedHash) {
+        issues.push(`launch.sessions[${index}].promptSha256 does not match the exact launcher prompt bytes`);
+      }
+      const recorded = asRecord(input.tasks[index])?.promptSha256;
+      if (recorded !== expectedHash) {
+        issues.push(`launch input task ${index} promptSha256 does not match the exact launcher prompt bytes`);
+      }
+    });
+    promptDigestsBound = true;
+  }
+  return { issues, instructionsSha256, promptDigestsBound };
 }
 
 function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
@@ -278,111 +401,11 @@ function launchBinding(outputDir, tasks, taskBytes, summary, tasksPath) {
       };
     }
   }
-  let instructionsSha256 = null;
-  let promptDigestsBound = false;
-  if (input) {
-    if (isString(input.tasksPath) && isAbsolute(input.tasksPath) && existsSync(input.tasksPath)) {
-      if (realpathSync(input.tasksPath) !== realpathSync(tasksPath)) {
-        issues.push("launch input tasksPath differs from supplied tasks.json path");
-      }
-      const actual = sha256OfFile(input.tasksPath);
-      if (input.tasksSha256 !== actual) issues.push("launch input task digest differs from tasks.json");
-      if (actual !== sha256(taskBytes)) {
-        issues.push("launch input tasksPath bytes differ from supplied tasks.json");
-      }
-    } else {
-      issues.push("launch input tasksPath is absent or unreadable");
-    }
-    if (
-      isString(input.launcherTasksPath) &&
-      isAbsolute(input.launcherTasksPath) &&
-      existsSync(input.launcherTasksPath)
-    ) {
-      const launcherBytes = readFileSync(input.launcherTasksPath);
-      if (input.launcherTasksSha256 !== sha256(launcherBytes)) {
-        issues.push("launch input launcher task digest is stale");
-      }
-      try {
-        const launcherTasks = capturedJsonParse(launcherBytes.toString("utf8"));
-        if (
-          !Array.isArray(launcherTasks) ||
-          JSON.stringify(launcherTasks) !==
-            JSON.stringify(tasks.map((task) => ({ name: task.name, task: task.task })))
-        ) {
-          issues.push("launcher task bytes differ from the WRI task projection");
-        }
-      } catch (error) {
-        issues.push(`launcher task file is not valid JSON: ${errorMessage(error)}`);
-      }
-    }
-    if (
-      isString(input.instructionsPath) &&
-      isAbsolute(input.instructionsPath) &&
-      existsSync(input.instructionsPath)
-    ) {
-      instructionsSha256 = sha256OfFile(input.instructionsPath);
-      if (input.instructionsSha256 !== instructionsSha256) {
-        issues.push("launch input instruction digest is stale");
-      }
-    } else {
-      issues.push("launch input instructionsPath is absent or unreadable");
-    }
-    if (isString(input.workdir)) {
-      if (!isAbsolute(input.workdir)) issues.push("launch input workdir is not absolute");
-      sessions.forEach((session, index) => {
-        if (asRecord(session)?.workdir !== input.workdir) {
-          issues.push(`launch.sessions[${index}].workdir differs from the recorded launch workdir`);
-        }
-      });
-    }
-    if (Array.isArray(input.tasks)) {
-      if (!sameNames(input.tasks, tasks)) {
-        issues.push("launch input task order/identity differs from supplied tasks");
-      }
-      input.tasks.forEach((value, index) => {
-        const task = asRecord(value);
-        if (!task) {
-          issues.push(`launch input task ${index} is not an object`);
-          return;
-        }
-        if (!SHA256.test(String(task.taskSha256 ?? ""))) {
-          issues.push(`launch input task ${index} has no exact task digest`);
-        } else if (task.taskSha256 !== sha256(new TextEncoder().encode(tasks[index]?.task ?? ""))) {
-          issues.push(`launch input task ${index} digest differs from supplied task bytes`);
-        }
-        if (!SHA256.test(String(task.admissionSha256 ?? ""))) {
-          issues.push(`launch input task ${index} has no exact admission digest`);
-        } else if (
-          task.admissionSha256 !== sha256(new TextEncoder().encode(JSON.stringify(tasks[index]?.admission)))
-        ) {
-          issues.push(`launch input task ${index} admission digest differs from supplied admission ledger`);
-        }
-      });
-    }
-    if (
-      instructionsSha256 !== null &&
-      input.instructionsSha256 === instructionsSha256 &&
-      Array.isArray(input.tasks)
-    ) {
-      const instructions = readFileSync(input.instructionsPath).toString("utf8").trim();
-      const promptHash = (task) => sha256(new TextEncoder().encode(leafPrompt(instructions, task)));
-      sessions.forEach((session, index) => {
-        const expectedHash = promptHash(tasks[index].task);
-        if (asRecord(session)?.promptSha256 !== expectedHash) {
-          issues.push(
-            `launch.sessions[${index}].promptSha256 does not match the exact launcher prompt bytes`,
-          );
-        }
-        const recorded = asRecord(input.tasks[index])?.promptSha256;
-        if (recorded !== expectedHash) {
-          issues.push(
-            `launch input task ${index} promptSha256 does not match the exact launcher prompt bytes`,
-          );
-        }
-      });
-      promptDigestsBound = true;
-    }
-  }
+  const bound = input
+    ? inputBinding(input, tasks, taskBytes, tasksPath, sessions)
+    : { issues: [], instructionsSha256: null, promptDigestsBound: false };
+  issues.push(...bound.issues);
+  const { instructionsSha256, promptDigestsBound } = bound;
   const complete = input && promptDigestsBound ? "bound" : "incomplete";
   return {
     state: issues.length === 0 ? complete : "invalid",
@@ -451,18 +474,18 @@ function validate(paths) {
     }
     rows.push({
       name: task.name,
-      assignedAngles: task.angles,
-      reportedAngles: headings,
+      assignedLanes: task.lanes,
+      reportedLanes: headings,
       status: issues.length === 0 ? "accepted-for-adjudication" : "rejected",
       issues,
       reportPath,
       reportBytes: reportBytes.byteLength,
       reportSha256: hasText(reportPath) ? sha256(reportBytes) : null,
-      expectedHeading: task.angles.length > 0 ? null : expectedHeading(task.task, index),
+      expectedHeading: task.lanes.length > 0 ? null : expectedHeading(task.task, index),
     });
   }
   return {
-    schema: "wri-report-validation/v1",
+    schema: RECEIPT_SCHEMA,
     tasksPath: paths.tasksPath,
     tasksSha256: sha256(taskBytes),
     summaryPath: paths.summaryPath,
@@ -490,7 +513,7 @@ function validateCommand(args) {
   } catch (error) {
     const message = errorMessage(error);
     writeJsonFile(paths.outPath, {
-      schema: "wri-report-validation/v1",
+      schema: RECEIPT_SCHEMA,
       tasksPath: paths.tasksPath,
       summaryPath: paths.summaryPath,
       complete: false,

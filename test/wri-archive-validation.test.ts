@@ -67,10 +67,6 @@ function sourceSetup(root: string) {
     'safeguardTriggered("runtime-1", "detail");\nsafeguardTriggered("runtime-2", "detail");\n',
   );
   writeFileSync(join(root, "src/run/other.ts"), 'safeguardTriggered("runtime-3", "detail");\n');
-  writeFileSync(
-    join(root, "src/run/climb-history.ts"),
-    "export function readClimbBatteries() {}\nexport function climbLedgerRows() {}\n",
-  );
 }
 
 function sourceFileDigest(relativeFile: string) {
@@ -180,7 +176,7 @@ function review() {
   const angleStates = Array.from({ length: ANGLE_COUNT }, (_, index) => ({
     angle: index + 1,
     state: "N/A",
-    session: `angle_${String(index + 1).padStart(2, "0")}`,
+    session: `lane_${String(index + 1).padStart(2, "0")}`,
     mode: "targeted",
     identity: binding,
     denominator: {
@@ -191,30 +187,12 @@ function review() {
     reason: "The angle was not admitted in this fixture.",
     evidencePointers: [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)],
   }));
-  const sessionStates = [
-    ...angleStates.map((row) => ({
-      id: row.session,
-      state: "inactive",
-      evidencePointers: row.evidencePointers,
-    })),
-    {
-      id: "session_30",
-      state: "complete",
-      applicability: "applicable",
-      contract: "CL-F",
-      readinessWitness: {
-        sourceFile: "src/run/climb-history.ts",
-        producerSymbol: "readClimbBatteries",
-        consumerSymbol: "climbLedgerRows",
-        sourceRevision,
-        sourceDigest: sourceFileDigest("src/run/climb-history.ts"),
-        vocabulary: "source-ready-no-level-decisions",
-        difficultyDecisionCount: 0,
-        evidencePointers: [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)],
-      },
-      evidencePointers: [pointer(MAIN_SYNTHESIS_MD, PREDICTIONS)],
-    },
-  ];
+  // One session row per launched lane and nothing else: the primary settles no session of its own.
+  const sessionStates = angleStates.map((row) => ({
+    id: row.session,
+    state: "inactive",
+    evidencePointers: row.evidencePointers,
+  }));
   return {
     schema: ARCHIVE_SCHEMA,
     authority: "advisory",
@@ -579,22 +557,36 @@ describe("WRI four-file archive contract", () => {
       (value) => {
         value.deterministicRows = value.deterministicRows.slice(0, 8);
         value.digestVerdicts = value.digestVerdicts.slice(0, 5);
-        const dropped = new Set(value.angleStates.slice(31).map((row: any) => row.session));
-        value.angleStates = value.angleStates.slice(0, 31);
+        const dropped = new Set(value.angleStates.slice(7).map((row: any) => row.session));
+        value.angleStates = value.angleStates.slice(0, 7);
         value.sessionStates = value.sessionStates.filter((row: any) => !dropped.has(row.id));
       },
       [
         "deterministicRows must contain A-I exactly once and in order",
-        "digestVerdicts must contain the 8 canonical verdicts in order",
-        "angleStates must contain angles 1-40 exactly once and in order",
+        "digestVerdicts must contain the 10 canonical verdicts in order",
+        "angleStates must contain angles 1-26 exactly once and in order",
       ],
     ],
     [
-      "a CL-F witness whose producer symbol is not in the named source file",
+      "an archive declaring the previous schema instead of being rewritten",
       (value) => {
-        value.sessionStates.at(-1).readinessWitness.producerSymbol = "missingProducer";
+        value.schema = "wri-archive/v1";
       },
-      ["producerSymbol is absent"],
+      ["schema wri-archive/v1 is the previous archive shape and is refused"],
+    ],
+    [
+      "a verdict list without the rehearsal ledger",
+      (value) => {
+        value.digestVerdicts = value.digestVerdicts.filter((row: any) => row.id !== "rehearsal-ledger");
+      },
+      ["digestVerdicts must contain the 10 canonical verdicts in order"],
+    ],
+    [
+      "an angle whose session has no row to hold it to",
+      (value) => {
+        value.angleStates[2].session = "lane_99";
+      },
+      ["angleStates[2].session lane_99 has no sessionStates row"],
     ],
     [
       "an opportunity with missing runtime receipts read as not fired",

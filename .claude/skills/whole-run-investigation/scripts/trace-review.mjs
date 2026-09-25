@@ -22,19 +22,17 @@ import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isString } from "#src/meta/json-shape.ts";
 import { writeJsonFile } from "#src/meta/completed-json.ts";
 
-const USAGE = `usage: bun run review:collect -- <campaign dir | campaign/controller/<runId>> [--run <runId>] [--repo <measured checkout>] [--out <snapshot dir>] [--cases <n>] [--all] [--diagnostics]
+const USAGE = `usage: bun run review:collect -- <campaign dir | campaign/controller/<runId>> [--run <runId>] [--repo <measured checkout>] [--out <snapshot dir>] [--cases <n>] [--all]
 
 Point at one folder. The run is the folder's own run, or the campaign's latest opening (--run
 selects another). The measured checkout is the current directory or any worktree of this
 repository when clean at the run's source commit, otherwise a detached worktree prepared once under
 ~/.cache/hb4/wri-source. The snapshot lands under ~/.cache/hb4/wri/<runId> unless --out says otherwise.
 Collect all standard deterministic views for ONE source-bound run (the default; --all is explicit).
-Includes digest, category/hook census, review yield, harness evolution, Builder/tool usage,
+Includes digest, review yield, harness evolution, Builder/tool usage,
 outcomes, scan, scorecard, warning observations, all four case partitions and sampled dossiers.
 No model calls or automatic product changes. Source-specific missing views remain unavailable.
-The private angle-15 challenge and optional prose/reference probes keep their own admission.
---diagnostics also prepares two native lane prompts under <snapshot>/diagnostic-lanes.
-For a larger review, build-manifest.mjs --auto N --diagnostics adds these two lanes.`;
+The private lane 23 trace challenge and optional prose/reference probes keep their own admission.`;
 
 /**
  * One parent identity as a single line. `manifest-inputs.mjs` renders each parent with `String()`,
@@ -366,29 +364,6 @@ function collectSnapshot(command) {
   };
   writeJsonFile(join(out, "snapshot-status.json"), manifest);
 
-  if (command.flag("diagnostics")) {
-    try {
-      console.write(
-        runTextSyncOrThrow([
-          ...runner,
-          join(import.meta.dirname, "build-manifest.mjs"),
-          "--snapshot",
-          out,
-          "--worktree",
-          repo,
-          "--out",
-          join(out, "diagnostic-lanes"),
-          "--diagnostics",
-          "--transport",
-          "native",
-        ]),
-      );
-    } catch (error) {
-      console.error(`Diagnostic lane preparation failed; snapshot retained: ${errorMessage(error)}`);
-      code = 1;
-    }
-  }
-
   if (!manifest.complete) {
     const failed = views.flatMap((entry) =>
       entry.status !== "ok" && entry.required !== false ? [`${entry.label}:${entry.status}`] : [],
@@ -411,7 +386,6 @@ if (import.meta.main) {
         out: "text",
         cases: "int",
         all: "flag",
-        diagnostics: "flag",
       },
       positionals: [0, 1],
     },

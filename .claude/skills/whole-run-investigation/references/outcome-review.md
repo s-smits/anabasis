@@ -1,10 +1,11 @@
 # Reading a run through its outcomes
 
 This is the narrow read: one run or one case, through what the host measured, without a lane
-swarm. It absorbed the former `run-outcome-review` skill, and before that
-`run-receipts-and-nonresults` and `stop-unfruitful-run`. It changes no
-score, stops no process and launches nothing; `launch-run` owns an authorised stop and
-`run-improvement-campaign` owns any replacement.
+swarm. It changes no score, stops no process and launches nothing; `launch-run` owns an
+authorised stop and `run-improvement-campaign` owns any replacement. Inside a whole-run
+investigation the same reading is rows G and H of the deterministic read, and what it leaves
+unexplained goes to lane 24 for waits and censoring, lane 22 for what the solver did inside its
+walls, and lane 25 for the failure mechanism and whether its typed kind is honest.
 
 ## Identity and closure
 
@@ -76,7 +77,9 @@ denominator, and recorded evidence is never repaired.
 When the first three completed cases of a live battery are all unaccepted, read their final
 submissions and traces as one bounded sample without waiting for the terminal. Join runs on the
 opening's project and run identity, then bundle hash, `taskSetHash` and `buildInputsHash`; a
-matching slug or epoch name is no evidence of continuation.
+matching slug or epoch name is no evidence of continuation. A battery of non-results is an
+operational result: `DECISION ON CENSORED BATTERY` and `EXPLICIT ALLOWANCE WAIT` are the digest's
+names for a round that decided on one, and lane 24 reads what the wait cost.
 
 ## Whether a live run is still useful
 

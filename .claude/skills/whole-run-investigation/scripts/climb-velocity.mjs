@@ -1,11 +1,16 @@
 // How fast a campaign's batteries are actually getting harder, read from the task bytes rather
 // than from the score. The controller can only steer on a measured pass rate, so a battery the
-// provider wrecked tells it nothing and it re-decides on the last battery that scored — on this
-// campaign, seven consecutive "24/25, significantly too easy, climb" decisions all citing the same
-// 2026-09-16 battery. This reads the other channel: whether the tasks moved, by how much, and in
-// which of the two ways a battery can move.
+// provider wrecked tells it nothing and it re-decides on the last battery that scored, and a run
+// can record the same "significantly too easy" placement round after round, every one citing one
+// battery. This reads the other channel: whether the tasks moved, by how much, and in which of
+// the two ways a battery can move. Lane 10 reads the placements and lane 20 the edges.
 //
 //   bun wri.mjs climb <target> [--json]
+//
+// Each battery carries two placements. `placement` is computed here from the case rows through
+// `placeOnBand`; `recorded` is what the controller wrote in its difficulty decision, read through
+// the digest's schema-refusing reader, so the two can be compared and a decision under another
+// schema is named rather than read.
 //
 // Per battery: the tier histogram and the median structural row from query-complexity.mjs, plus
 // the measured outcome when there is one. Per edge between consecutive batteries:
@@ -20,8 +25,8 @@
 // Every verdict but `adjusted` names its direction. `adjusted` does not: `numericDriftOf` measures
 // distance and not direction, because a boundary states which way is tighter and most declare none.
 // Moving a limit is a real climb when it moves inward, and this reader cannot tell you that it did.
-// A battery that dropped checks or fell down the tier order read as `adjusted` until 2026-09-18,
-// which named a retreat with the one word that says nothing. Only `escalated` changes what the
+// A battery that dropped checks or fell down the tier order once read as `adjusted`, which
+// named a retreat with the one word that says nothing. Only `escalated` changes what the
 // solver has to reason about, and it reads the highest tier a battery's checks reach, so adding two
 // more checks at a tier it already occupies is `widened`. That top tier is the one reading immune to
 // the count: a rank-weighted total rises whenever a battery simply holds more checks, and the mean
@@ -53,6 +58,7 @@ import {
 } from "../classifier/query-complexity.mjs";
 import { isNumber } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
+import { readDifficultyDecisions } from "./digest-ledgers.mjs";
 
 export const VELOCITY_SCHEMA = "climb-velocity/v1";
 /** Cosine at or above this between a family's prose and its nearest predecessor reads as the same
@@ -138,10 +144,9 @@ export function batteriesOf(campaign) {
 
 /** Every other correctness-model file, with its digest. `noveltyOf` scores the check assertions in
  *  `brief.json`; the structural deltas count what `tasks.json` declares. A requirement published
- *  anywhere else is invisible to both: on the de8b40 to -i02 edge the Builder added
- *  `minMemberJointClearanceM` with a `pointSegmentDistance` helper to `rules.ts` under an existing
- *  check, leaving `evaluator.ts` byte-identical, and the edge read `novelty 0.0000 ... rules +0` —
- *  which says the battery was renumbered. */
+ *  anywhere else is invisible to both: a Builder that adds a clearance rule and its helper to
+ *  `rules.ts` under an existing check, leaving `evaluator.ts` byte-identical, produces an edge
+ *  reading `novelty 0.0000 ... rules +0`, which says the battery was renumbered. */
 export function correctnessDigests(dir) {
   const digests = new Map();
   const walk = (at, prefix) => {
@@ -246,13 +251,41 @@ export function verdictOf(before, after, novelty, delta, drift) {
   return "adjusted";
 }
 
+/** The controller's own placement of each battery, from the last difficulty decision that carried
+ *  its readout row: the zone, the distance to the aim and the declared target with its result. */
+function recordedPlacements(campaign) {
+  const decisions = readDifficultyDecisions(campaign);
+  const byRun = new Map();
+  for (const decision of decisions.rows) {
+    for (const row of decision.rows) {
+      byRun.set(row.runId, { zone: row.zone, target: row.target, decidedBy: decision.runId });
+    }
+    if (decision.placement !== null) {
+      const own = byRun.get(decision.runId) ?? {
+        zone: decision.zone,
+        target: null,
+        decidedBy: decision.runId,
+      };
+      byRun.set(decision.runId, { ...own, toAim: decision.placement.toAim });
+    }
+  }
+  return { byRun, refused: decisions.refused };
+}
+
 export async function readCampaign(campaign, options = {}) {
   const outcomes = outcomesOf(campaign);
+  const recorded = recordedPlacements(campaign);
   const batteries = [];
   for (const battery of batteriesOf(campaign)) {
     const reading = await readVersionDir(battery.dir, options);
     const counts = outcomes.get(battery.runId) ?? { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 };
-    batteries.push({ ...battery, reading, counts, placement: placementOf(counts, measuredOf(battery)) });
+    batteries.push({
+      ...battery,
+      reading,
+      counts,
+      placement: placementOf(counts, measuredOf(battery)),
+      recorded: recorded.byRun.get(battery.runId) ?? null,
+    });
   }
   const edges = [];
   for (let at = 1; at < batteries.length; at += 1) {
@@ -278,7 +311,14 @@ export async function readCampaign(campaign, options = {}) {
           : { passed: after.counts.passed, verified: after.counts.verified, placement: after.placement },
     });
   }
-  return { schema: VELOCITY_SCHEMA, campaign, model: MODEL_IDENTITY, batteries, edges };
+  return {
+    schema: VELOCITY_SCHEMA,
+    campaign,
+    model: MODEL_IDENTITY,
+    batteries,
+    edges,
+    refusedDecisions: recorded.refused,
+  };
 }
 
 /** Batteries still needed to reach the aim, from the measured rate change per edge. Returns a
@@ -319,10 +359,9 @@ export function velocityOf(report, band = POLICY.climb.band) {
  *  measured batteries and this needs none.
  *
  *  Both task-side rows come from the authored bytes under `versions/`, so the newest edge is
- *  readable the moment a candidate is adopted and before its first solve is paid for. Campaign
- *  3fd52f9e-10 read `widened` and then `adjusted` on its second and third rounds, each of which
- *  then spent about four hours of solves to confirm a 6 of 6 that settled nothing; both verdicts
- *  existed in the adopted bytes hours earlier. */
+ *  readable the moment a candidate is adopted and before its first solve is paid for: a round
+ *  that reads `widened` or `adjusted` here and then spends hours of solves to confirm a perfect
+ *  battery had that verdict in the adopted bytes before the first solve started. */
 function latestEdgeLine(report) {
   const edge = report.edges.at(-1);
   if (edge === undefined) return "  latest edge: none, because an edge needs two batteries";
@@ -335,8 +374,24 @@ function latestEdgeLine(report) {
   return `  latest edge: ${edge.from} -> ${edge.to} ${edge.verdict} — ${reading}`;
 }
 
+/** The controller's recorded placement beside the computed one, or the fact that none was recorded. */
+function recordedLine(battery) {
+  const computed =
+    battery.placement === null ? "no computed placement" : `computed ${battery.placement.zone}`;
+  if (battery.recorded === null) return `${computed}; no recorded difficulty decision names this battery`;
+  const target =
+    battery.recorded.target === null
+      ? "no target"
+      : `target ${battery.recorded.target.comparator} ${battery.recorded.target.verifiedPasses} ${battery.recorded.target.result}`;
+  const toAim = battery.recorded.toAim === undefined ? "" : ` toAim ${battery.recorded.toAim}`;
+  return `${computed}; recorded ${battery.recorded.zone ?? "?"}${toAim} · ${target} (decision ${battery.recorded.decidedBy})`;
+}
+
 export function render(report, band) {
   const lines = [`${report.batteries.length} batteries in ${report.campaign}`];
+  for (const refusal of report.refusedDecisions ?? []) {
+    lines.push(`  difficulty decision refused: ${refusal}`);
+  }
   for (const battery of report.batteries) {
     const outcome =
       battery.counts.verified === 0
@@ -346,6 +401,7 @@ export function render(report, band) {
     lines.push(
       `      ${outcome}, ${battery.counts.unaccepted} unaccepted, ${battery.counts.nonResult} non-result${battery.claimed ? "" : ", unclaimed"}`,
     );
+    lines.push(`      ${recordedLine(battery)}`);
     // The whole battery reading, rendered by the module that produced it: this block carried its own
     // copy of the check and median lines and dropped the family histogram, which was the only thing
     // a second lane over the same campaign still added.

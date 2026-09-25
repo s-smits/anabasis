@@ -1,47 +1,33 @@
-// Deterministic ledgers added to the digest on 2026-09-08, after the lane audit over 55 archives
-// found the same facts hand-counted in model sessions review after review: which checks the
-// controls exercise but measured submissions never fail (angle 5/27), whether the Judge census could be valid at
-// all (angle 2), per-family pass counts hidden by one aggregate (angle 16), whether any battery
-// repeated a condition (angle 18), which role spent the provider allowance and whether a battery
-// was censored by explicit exhaustion (angle 28 / row I), whether admitted findings had a repair
-// route (angles 9/26), the Builder memory byte cap (angle 24) and served-model attestation (row I).
+// Deterministic ledgers the digest appends after its product blocks: which checks the controls
+// exercise but measured submissions never fail (lanes 5 and 6), whether the Judge census could be
+// valid at all (lane 16), per-family pass counts hidden by one aggregate, whether any battery
+// repeated a condition (lane 20), where each battery landed on the band and whether the declared
+// target was met (lane 10), which role spent the provider allowance and whether a battery was
+// censored by provider non-results (lane 24), whether admitted findings had a repair route and
+// whether an advisory finding keeps coming back (lane 14), the Builder memory byte cap (lane 26)
+// and served-model attestation.
 //
 // Each function returns digest lines. They read recorded JSON only, quote no verifier, finding or
-// memory text, and print leads with a fixed trigger name the catalogue references. The lead is
-// arithmetic; the semantic verdict stays with the primary reviewer.
+// memory text, and print leads with a fixed trigger name the catalogue references: the capitalised
+// text before the first colon is what run-overview groups on and brief prints. The lead is
+// arithmetic; the semantic verdict stays with the lane that reads it.
 
 import { boundText } from "#src/meta/bounded-text.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { wilsonInterval } from "#src/claim/estimation.ts";
 import { MEMORY_CAP_BYTES, MEMORY_FILE, WORKSPACE_DIR } from "#src/author/builder-memory.ts";
-import { isNumber, isString } from "#src/meta/json-shape.ts";
+import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { authorSessionOwner } from "#src/analyse/finding-owner.ts";
 import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
+import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
 import { classifyCaseOutcome, familyTally, outcomeTally } from "#src/claim/case-record.ts";
 import { PROVIDER_ALLOWANCE } from "#src/truth/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun } from "../../main/run.ts";
-
-/** AGENTS.md: explicit credit/allowance exhaustion is a normal operational interruption; a generic
- *  429, timeout or crash is not proof of exhaustion and must be investigated as a failure. What
- *  counts as explicit is `PROVIDER_ALLOWANCE`, the clause the controller itself ends authoring
- *  retries on, so this lead cannot call a battery censored on wording the controller would have
- *  investigated. A local copy matched any "credit", "quota" or "exhaust" in a solver's own output. */
-const GENERIC_LIMIT = /\b429\b|rate.?limit|too many requests|overloaded/i;
-
-export function exhaustionClass(message) {
-  const text = String(message ?? "");
-  // The scheduler stops attempting cases after consecutive provider non-results; those rows are
-  // marked unattempted. This prefix alone does not establish provider exhaustion.
-  if (/^not attempted:/i.test(text)) return "not-attempted";
-  if (PROVIDER_ALLOWANCE.test(text)) return "explicit-exhaustion";
-  if (GENERIC_LIMIT.test(text)) return "generic-limit";
-  return "other";
-}
 
 export function pad(value, width) {
   const text = String(value);
@@ -51,6 +37,37 @@ export function pad(value, width) {
 function interval(passes, n) {
   const bounds = wilsonInterval(passes, n);
   return bounds === null ? "[-,-]" : `[${bounds.lower.toFixed(2)},${bounds.upper.toFixed(2)}]`;
+}
+
+const minutes = (ms) => Math.round(ms / 6_000) / 10;
+
+// --- 4b: difficulty decisions and band placement ----------------------------------------------
+/** The recorded placement of the battery a decision read, or null when the decision placed none. */
+function placementOf(decision) {
+  const placement = decision?.placement;
+  if (!isRecord(placement)) return null;
+  const aim = Array.isArray(placement.aim) ? placement.aim : null;
+  return {
+    passes: isNumber(placement.passes) ? placement.passes : null,
+    n: isNumber(placement.n) ? placement.n : null,
+    zone: isString(placement.zone) ? placement.zone : null,
+    aim: aim?.length === 2 && aim.every(isNumber) ? aim : null,
+    toAim: isNumber(placement.toAim) ? placement.toAim : null,
+  };
+}
+
+/** The readout rows a decision carries, keeping the fields the ledger prints: the battery's counts,
+ *  the zone it read and the target it declared with the result the controller recorded against it. */
+function readoutRowsOf(counters) {
+  return (Array.isArray(counters.rows) ? counters.rows : [])
+    .filter((row) => isRecord(row) && isString(row.runId))
+    .map((row) => ({
+      runId: row.runId,
+      passed: isNumber(row.passed) ? row.passed : null,
+      verified: isNumber(row.verified) ? row.verified : null,
+      zone: isString(row.zone) ? row.zone : null,
+      target: isRecord(row.target) ? row.target : null,
+    }));
 }
 
 /**
@@ -77,20 +94,24 @@ export function readDifficultyDecisions(campaign) {
       refused.push(`${name}: ${isString(record.schema) ? record.schema : "no schema"}`);
       continue;
     }
-    const counters = record.difficulty ?? null;
+    const counters = isRecord(record.difficulty) ? record.difficulty : null;
     if (counters === null) {
       refused.push(`${name}: ${DIFFICULTY_DECISION_SCHEMA} without a difficulty reading`);
       continue;
     }
+    const decision = isRecord(counters.decision) ? counters.decision : {};
     rows.push({
       runId: isString(record.runId) ? record.runId : name,
-      action: counters.decision?.action ?? null,
-      // Where the decision placed the battery it read. `too-easy` is the reading that used to be
-      // spelled as the action `climb`, so it is what a climb-shaped trigger asks about now.
-      zone: counters.decision?.placement?.zone ?? null,
-      admitted: counters.admitted ?? null,
+      action: isString(decision.action) ? decision.action : null,
+      placement: placementOf(decision),
+      // Where the decision placed the battery it read, repeated at the top level because the
+      // check-informativeness block keys its perfect-battery lead on it.
+      zone: placementOf(decision)?.zone ?? null,
+      allowance: isRecord(counters.allowance) ? counters.allowance : null,
+      rows: readoutRowsOf(counters),
+      admitted: isNumber(counters.admitted) ? counters.admitted : null,
       excluded: Array.isArray(counters.excluded) ? counters.excluded.length : 0,
-      evidenceRunIds: (Array.isArray(counters.decision?.evidence) ? counters.decision.evidence : [])
+      evidenceRunIds: (Array.isArray(decision.evidence) ? decision.evidence : [])
         .map((row) => row?.runId)
         .filter((value) => isString(value)),
     });
@@ -98,26 +119,84 @@ export function readDifficultyDecisions(campaign) {
   return { rows, refused };
 }
 
+/** Which side of the aim a placement sits on: `toAim` is the count the battery has to move by, so a
+ *  negative reading is a battery above the aim. A placement without it falls back to the zone. */
+function sideOf(placement) {
+  if (placement === null) return null;
+  if (placement.toAim !== null && placement.toAim !== 0) return placement.toAim < 0 ? "above" : "below";
+  if (placement.zone === "too-easy" || placement.zone === "over-aim") return "above";
+  if (placement.zone === "under-aim" || placement.zone === "too-hard") return "below";
+  return null;
+}
+
+function decisionLine(row) {
+  const placement = row.placement;
+  const head = `${row.runId}: action ${row.action ?? "?"}`;
+  const placed =
+    placement === null
+      ? ""
+      : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
+        ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
+  const allowance =
+    row.allowance === null
+      ? ""
+      : ` · allowance ${row.allowance.rounds ?? "?"} round(s) ${row.allowance.side ?? "?"} over ${row.allowance.products ?? "?"} product(s)`;
+  return `${head}${placed} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
+}
+
+/** The longest run of consecutive placements on one off-aim side, ending at its last member. */
+function offAimStreaks(rows) {
+  const streaks = [];
+  let current = null;
+  for (const row of rows) {
+    const side = sideOf(row.placement);
+    if (side !== null && current?.side === side) {
+      current.runIds.push(row.runId);
+      continue;
+    }
+    if (current !== null && current.runIds.length >= 2) streaks.push(current);
+    current = side === null ? null : { side, runIds: [row.runId] };
+  }
+  if (current !== null && current.runIds.length >= 2) streaks.push(current);
+  return streaks;
+}
+
 /**
- * Section 4b: one line per decision this reader opened, then one line per record it refused. The
- * section used to walk the directory a second time with its own parser, which is how it came to
- * print records the rest of the digest was already refusing — the two readers of one directory
- * disagreed about what counted as a decision, and only this one was on screen.
+ * Section 4b: one line per decision this reader opened, the declared target of every battery the
+ * decisions carry a readout row for, then one line per record it refused. The section reads the
+ * placement the controller recorded and never re-derives one, so a lead here disagrees with the
+ * controller only when the record does.
  */
-export function saturationLedgerLines({ rows, refused }) {
-  const lines = ["", "## 4b saturation ledger (difficulty decisions)"];
-  // Absence proves only that no climb decision was recorded. The selector may still have run and
-  // chosen build or rebuild, so the digest does not say "never ran"; the controller decision
-  // reasons in section 1 say what it chose.
+export function bandPlacementLines({ rows, refused }) {
+  const lines = ["", "## 4b band placement (difficulty decisions)"];
+  // Absence proves only that no placement was recorded. The controller may still have chosen
+  // build or rebuild, so the digest does not say "never ran"; the controller decision reasons in
+  // section 1 say what it chose.
   if (rows.length === 0 && refused.length === 0) {
     lines.push(
-      "no recorded difficulty decisions: no climb decision was recorded; read the controller decision reasons for the selected move",
+      "no recorded difficulty decisions: no placement was recorded; read the controller decision reasons for the selected move",
     );
   }
+  for (const row of rows) lines.push(decisionLine(row));
+  // Every decision restates the whole readout, so the last decision naming a battery owns its row.
+  const targets = new Map();
   for (const row of rows) {
+    for (const readout of row.rows) if (readout.target !== null) targets.set(readout.runId, readout);
+  }
+  for (const readout of targets.values()) {
+    const target = readout.target;
     lines.push(
-      `${row.runId}: action ${row.action ?? "?"}${row.zone === null ? "" : ` ${row.zone}`}` +
-        ` · admitted ${row.admitted ?? "-"} excluded ${row.excluded}`,
+      `  ${readout.runId}: target ${target.comparator ?? "?"} ${target.verifiedPasses ?? "?"} · passed ${readout.passed ?? "?"}/${readout.verified ?? "?"} · ${target.result ?? "?"}`,
+    );
+    if (target.result === "missed") {
+      lines.push(
+        `  TARGET MISSED (lane 10): ${readout.runId} declared ${target.comparator ?? "?"} ${target.verifiedPasses ?? "?"} verified passes and measured ${readout.passed ?? "?"}, missed by ${target.missedBy ?? "?"}`,
+      );
+    }
+  }
+  for (const streak of offAimStreaks(rows)) {
+    lines.push(
+      `OFF-AIM STREAK (lane 10): ${streak.runIds.length} consecutive placements ${streak.side} the aim (${streak.runIds.join(", ")})`,
     );
   }
   for (const line of refused) lines.push(`refused, not ${DIFFICULTY_DECISION_SCHEMA} — ${line}`);
@@ -172,27 +251,29 @@ export function checkInformativenessLines({
   );
   // A reach-only check is only a lead: the controls prove the check can fire, and shipping work
   // never made it fire. Whether it constrains a free variable of the design, or only restates
-  // what any well-formed submission satisfies, is angle 27's execution question.
+  // what any well-formed submission satisfies, is lane 6's execution question.
   if (classes["reach-only"] > 0 && gradedOracleFiles >= 10) {
     lines.push(
-      `REACH-ONLY CHECKS (angle 27 trigger): ${classes["reach-only"]} check(s) fire on controls and never on ${gradedOracleFiles} graded rows`,
+      `REACH-ONLY CHECKS (lane 6): ${classes["reach-only"]} check(s) fire on controls and never on ${gradedOracleFiles} graded rows`,
     );
   }
-  // The decision that read this battery called it significantly too easy, and the battery still
-  // came out perfect. Until the zones replaced them, the same reading was the action `climb`.
-  const climbed = new Set(
-    decisions.filter((decision) => decision.zone === "too-easy").map((decision) => decision.runId),
+  // The decision that read this battery placed it over the aim, and the battery still came out
+  // perfect: a limit was not measured there, whichever of the two over-aim zones it landed in.
+  const overAim = new Set(
+    decisions
+      .filter((decision) => decision.zone === "too-easy" || decision.zone === "over-aim")
+      .map((decision) => decision.runId),
   );
-  const perfectAfterClimb = tallies.filter(
-    (tally) => climbed.has(tally.runId) && tally.verified > 0 && tally.passed === tally.verified,
+  const perfect = tallies.filter(
+    (tally) => overAim.has(tally.runId) && tally.verified > 0 && tally.passed === tally.verified,
   );
-  if (perfectAfterClimb.length > 0) {
+  if (perfect.length > 0) {
     lines.push(
-      `PERFECT BATTERY AFTER CLIMB (angle 27 trigger): ${perfectAfterClimb.map((tally) => `${tally.runId} ${tally.passed}/${tally.verified}`).join(", ")}`,
+      `PERFECT BATTERY OVER AIM (lane 5): ${perfect.map((tally) => `${tally.runId} ${tally.passed}/${tally.verified}`).join(", ")}`,
     );
   }
   lines.push(
-    "margins: not recorded — verifier rows carry pass/fail receipts only; a margin distribution needs angle 27's own execution",
+    "margins: not recorded — verifier rows carry pass/fail receipts only; a margin distribution needs lane 5's own execution",
   );
   return lines;
 }
@@ -226,22 +307,24 @@ export function readJudgeReviews(campaign) {
   return { rows, refused };
 }
 
-/** Judge/verifier disagreement per battery, from the census each review records. The census holds
- *  no controls by construction — `src/truth/judge.ts` records no control count — so this lane reads
- *  the battery subjects offered alone and raises angle 2 on any disagreement. */
+/** Judge/verifier disagreement per battery, from the census each review records, with the vetoes
+ *  the review's exit counted. The census holds no controls by construction — `src/truth/judge.ts`
+ *  records no control count — so this block reads the battery subjects offered alone. */
 export function judgeCensusLines({ judgeReviews }) {
   const lines = ["", "## 2b judge census (analysis/*-judges.json)"];
   const { rows, refused } = judgeReviews;
   if (rows.length === 0 && refused.length === 0) {
-    lines.push("no judge census recorded: angle 2 has no opportunity");
+    lines.push("no judge census recorded: lane 16 has no census to read");
     return lines;
   }
   let withDisagreement = 0;
   for (const judges of rows) {
     // `census` is null when the battery recorded none; the review still records its exit.
     const evidence = judges.census?.evidence ?? null;
+    const exit = judges.exit ?? {};
+    const vetoes = isNumber(exit.vetoed) ? ` · vetoes ${exit.vetoed}` : "";
     if (evidence === null) {
-      lines.push(`${judges.runId}: no census recorded · exit ${judges.exit?.kind ?? "?"}`);
+      lines.push(`${judges.runId}: no census recorded · exit ${exit.kind ?? "?"}${vetoes}`);
       continue;
     }
     const battery = isNumber(evidence.offered) ? evidence.offered : null;
@@ -250,14 +333,14 @@ export function judgeCensusLines({ judgeReviews }) {
     if ((disagreements ?? 0) > 0) withDisagreement += 1;
     lines.push(
       `${judges.runId}: judge ${evidence.judge ?? "?"} · census battery ${battery ?? "?"}` +
-        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${judges.exit?.kind ?? "?"}`,
+        ` · disagreements ${disagreements ?? "?"}/${denominator ?? "?"} · exit ${exit.kind ?? "?"}${vetoes}`,
     );
   }
   for (const line of refused) lines.push(`refused, not ${JUDGE_REVIEWS_SCHEMA} — ${line}`);
   lines.push(
     withDisagreement > 0
-      ? `CENSUS WITH DISAGREEMENT (angle 2 trigger): ${withDisagreement} census(es)`
-      : "angle 2: no trigger — no census recorded a Judge/verifier disagreement",
+      ? `CENSUS WITH DISAGREEMENT (lane 16): ${withDisagreement} census(es)`
+      : "lane 16: no census recorded a Judge/verifier disagreement",
   );
   return lines;
 }
@@ -324,49 +407,57 @@ export function familyCoverageLines({ tallies }) {
     }
   }
   if (tallies.every((tally) => tally.families.size === 1)) {
-    lines.push("single family per battery: no family axis to cover (angle 16 unobservable by construction)");
+    lines.push("single family per battery: no family axis to cover, unobservable by construction");
   }
   for (const lead of leads) lines.push(lead.startsWith("FAMILY") ? lead : `AGGREGATE HIDES FAMILY: ${lead}`);
   if (unobserved > 0) {
     lines.push(`UNOBSERVED FAMILIES: ${unobserved} battery/family rows have no capability evidence`);
   }
   if (unobserved === 0 && leads.length === 0 && graded.some((tally) => tally.families.size > 1)) {
-    lines.push(
-      "angle 16: no family hidden by the aggregate and no family unmoved across consecutive batteries",
-    );
+    lines.push("no family hidden by the aggregate and no family unmoved across consecutive batteries");
   }
   return lines;
 }
 
 // --- 3c: repeated-condition census ------------------------------------------------------------
-export function repeatedConditionLines({ caseRows }) {
-  const lines = ["", "## 3c repeated-condition census (buildInputsHash × backendPin)"];
+/** Batteries grouped by the task set they measured and the Built pin that solved them. The task
+ *  set is the manifest-verified battery's own `bundleSnapshot.taskSetHash`; a battery with no
+ *  verified record has no observable task set and is listed apart rather than joined on a blank. */
+export function repeatedConditionLines({ caseRows, batteryOf }) {
+  const lines = ["", "## 3c repeated-condition census (taskSetHash × backendPin)"];
   const conditions = new Map();
+  const unobservable = new Set();
   for (const row of caseRows) {
-    const key = [row.buildInputsHash ?? "?", row.backendPin ?? "?"].join(" · ");
+    const taskSet = batteryOf(row.runId)?.bundleSnapshot?.taskSetHash;
+    if (!isString(taskSet)) {
+      unobservable.add(row.runId);
+      continue;
+    }
+    const key = [taskSet, row.backendPin ?? "?"].join(" · ");
     const runs = conditions.get(key) ?? new Set();
     runs.add(row.runId);
     conditions.set(key, runs);
   }
-  if (conditions.size === 0) {
+  if (conditions.size === 0 && unobservable.size === 0) {
     lines.push("no case rows");
     return lines;
   }
   let repeated = 0;
   for (const [key, runs] of conditions) {
-    const [inputs, pin] = key.split(" · ");
+    const [taskSet, pin] = key.split(" · ");
     lines.push(
-      `inputs ${String(inputs).slice(0, 9)} · pin ${pin}: ${runs.size} batter${runs.size === 1 ? "y" : "ies"}`,
+      `task set ${String(taskSet).slice(0, 9)} · pin ${pin}: ${runs.size} batter${runs.size === 1 ? "y" : "ies"}`,
     );
     if (runs.size > 1) {
       repeated += 1;
-      lines.push(`  REPEATED CONDITION (angle 18 trigger): ${[...runs].join(", ")}`);
+      lines.push(`  REPEATED CONDITION (lane 20): ${[...runs].join(", ")}`);
     }
   }
+  for (const runId of unobservable) {
+    lines.push(`${runId}: task set unobservable — no manifest-verified battery record`);
+  }
   if (repeated === 0) {
-    lines.push(
-      "no repeated battery condition: angle 18's stability question is unobservable by construction",
-    );
+    lines.push("no repeated battery condition: the stability question is unobservable by construction");
   }
   return lines;
 }
@@ -398,15 +489,36 @@ function spendLines(run, controller) {
       ` · reported ${usage.reportedTurns} unreported ${usage.unreportedTurns} · tokens ${usage.totalTokens ?? "null"} · costUsd ${usage.costUsd ?? "null"}`,
   ];
   if (roles.review > roles.built) {
-    lines.push(
-      `  REVIEW TURNS EXCEED SOLVER TURNS (angle 28 trigger): review ${roles.review} > built ${roles.built}`,
-    );
+    lines.push(`  REVIEW TURNS EXCEED SOLVER TURNS (lane 24): review ${roles.review} > built ${roles.built}`);
   }
   return lines;
 }
 
-export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
-  const lines = ["", "## 4c role spend and censoring (controller terminal, battery non-results)"];
+/** The waits the Builder's transport recorded, one row per retried turn. A row whose reason is the
+ *  provider's own allowance clause is the explicit wait AGENTS.md calls an operational interruption;
+ *  every other reason is printed as the retry it was, for the lane to investigate. */
+function allowanceWaitLines(executions) {
+  const lines = [];
+  for (const { epoch, file, record } of executions.records) {
+    const retries = Array.isArray(record.turnRetries) ? record.turnRetries : [];
+    if (retries.length === 0) continue;
+    const waited = retries.reduce((sum, row) => sum + (isNumber(row.waitMs) ? row.waitMs : 0), 0);
+    lines.push(`${epoch}/${file}: turn retries ${retries.length} · waited ${minutes(waited)} min in total`);
+    for (const row of retries) {
+      const where = `turn ${row.turn ?? "?"} attempt ${row.attempt}/${row.of} ${row.status}`;
+      const wait = `waited ${minutes(row.waitMs)} min`;
+      lines.push(
+        PROVIDER_ALLOWANCE.test(row.reason)
+          ? `  EXPLICIT ALLOWANCE WAIT (lane 24): ${epoch}/${file} ${where} ${wait} (explicit allowance)`
+          : `  turn retry: ${epoch}/${file} ${where} ${wait} (other reason; not proof of exhaustion)`,
+      );
+    }
+  }
+  return lines;
+}
+
+function controllerSpendLines(campaign) {
+  const lines = [];
   const controllerDir = join(campaign, "controller");
   const runDirs = existsSync(controllerDir)
     ? readdirSync(controllerDir)
@@ -415,7 +527,6 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
         .sort()
     : [];
   if (runDirs.length === 0) lines.push("no controller records");
-  let explicitExhaustion = 0;
   for (const dir of runDirs) {
     const runId = basename(dir);
     const { run, refusal } = recordedRunOrRefusal(campaign, runId);
@@ -428,97 +539,139 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
     lines.push(...spendLines(runId, controller));
     if (controller.state !== "recorded") continue;
     for (const step of controller.absentSteps) {
-      const cls = exhaustionClass(step);
-      const head = boundText(String(step).split(/[—:]/)[0], 40).shown;
-      if (cls === "explicit-exhaustion") {
-        explicitExhaustion += 1;
-        lines.push(
-          `  absent step "${head}": EXPLICIT PROVIDER EXHAUSTION — operational interruption, not a harness defect (AGENTS.md)`,
-        );
-      } else if (cls === "generic-limit") {
-        lines.push(
-          `  absent step "${head}": generic 429/rate limit — investigate the actual failure; not proof of exhaustion`,
-        );
-      } else lines.push(`  absent step "${head}": ${cls}`);
+      lines.push(`  absent step "${boundText(String(step).split(/[—:]/)[0], 40).shown}"`);
     }
     lines.push(`  terminal: ${controller.terminalReason.split(":")[0]}`);
   }
+  return lines;
+}
+
+/** A battery is censored by the provider-typed non-results its rows record, and by nothing read
+ *  out of free text: the writer types the kind, so a row it typed otherwise is not a provider
+ *  failure however its message reads. */
+function censoringLines({ tallies, batteryOf, decisions }) {
+  const lines = [];
   const censored = [];
   for (const tally of tallies) {
+    if (tally.providerNonResult === 0) continue;
     const battery = batteryOf(tally.runId);
     const cases = Array.isArray(battery?.cases) ? battery.cases : [];
-    // Old classifiers missed explicit limits after tool activity. Keep the recorded partition,
-    // but inspect provider-origin errors before claiming the battery was not interrupted.
-    const limitMessage = (row) =>
-      [
-        row.runtimeNonResult,
-        row.solver?.nonResult?.message,
-        ...(Array.isArray(row.solver?.errors) ? row.solver.errors : []),
-      ].find((message) => exhaustionClass(message) === "explicit-exhaustion");
-    const provider = cases.filter(
-      (row) =>
-        row?.runtimeNonResultKind === "provider" ||
-        (row?.acceptedSubmit !== true && limitMessage(row) !== undefined),
-    );
-    if (tally.providerNonResult === 0 && provider.length === 0) continue;
-    const classes = new Map();
-    for (const row of provider) {
-      const cls = exhaustionClass(
-        limitMessage(row) ?? row.runtimeNonResult ?? row.solver?.nonResult?.message ?? "",
-      );
-      classes.set(cls, (classes.get(cls) ?? 0) + 1);
-    }
-    const starts = provider
-      .map((row) => row.solver?.startedAt)
-      .filter((value) => isString(value))
-      .sort();
-    const ends = provider
-      .map((row) => row.solver?.endedAt)
-      .filter((value) => isString(value))
-      .sort();
-    const explicit = classes.get("explicit-exhaustion") ?? 0;
-    const notAttempted = classes.get("not-attempted") ?? 0;
-    if (explicit > 0) explicitExhaustion += 1;
-    const label =
-      explicit > 0 && explicit + notAttempted === provider.length
-        ? `CENSORED (explicit exhaustion; ${notAttempted} not attempted after it)`
-        : explicit > 0
-          ? "CENSORED (mixed: explicit exhaustion and unexplained provider non-results — investigate the rest)"
-          : "PROVIDER NON-RESULTS UNEXPLAINED — investigate; a generic failure is not proof of exhaustion";
+    const provider = cases.filter((row) => row?.runtimeNonResultKind === "provider");
+    const instants = (key) =>
+      provider
+        .map((row) => row.solver?.[key])
+        .filter((value) => isString(value))
+        .sort();
     censored.push(tally.runId);
     lines.push(
-      `${tally.runId}: graded ${tally.verified} · provider non-results ${tally.providerNonResult} (${[...classes.entries()].map(([cls, count]) => `${cls} ${count}`).join(", ") || "battery rows unavailable"})` +
-        ` · first ${starts[0] ?? "?"} last ${ends.at(-1) ?? "?"} · ${label}`,
+      `${tally.runId}: graded ${tally.verified} · provider non-results ${tally.providerNonResult}` +
+        ` · first ${instants("startedAt")[0] ?? "?"} last ${instants("endedAt").at(-1) ?? "?"}` +
+        ` · CENSORED (provider non-results; the typed kind is the evidence, the message is not)`,
     );
-    const mistyped = provider.filter((row) => row.runtimeNonResultKind !== "provider").length;
-    if (mistyped > 0) {
-      lines.push(
-        `  explicit exhaustion outside provider classification: ${mistyped} · recorded grades unchanged`,
-      );
-    }
   }
   if (censored.length === 0) {
-    lines.push(
-      "no provider-typed non-results or explicit exhaustion found in available battery rows; missing rows leave censoring unobservable",
-    );
+    lines.push("no provider-typed non-results in the case rows; missing rows leave censoring unobservable");
   }
   for (const decision of decisions) {
     const hit = decision.evidenceRunIds.filter((runId) => censored.includes(runId));
     if (hit.length > 0) {
       lines.push(
-        `DECISION ON CENSORED BATTERY (angle 28 trigger): ${decision.runId} ${decision.action ?? "?"} read ${hit.join(", ")}`,
+        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.action ?? "?"} read ${hit.join(", ")}`,
       );
     }
   }
-  if (explicitExhaustion > 0) {
+  return lines;
+}
+
+export function roleSpendLines({ campaign, tallies, batteryOf, decisions, executions }) {
+  return [
+    "",
+    "## 4c role spend and censoring (controller terminal, builder turn retries, battery non-results)",
+    ...controllerSpendLines(campaign),
+    ...allowanceWaitLines(executions ?? { records: [] }),
+    ...censoringLines({ tallies, batteryOf, decisions }),
+  ];
+}
+
+// --- 4d: admission and review ledger ----------------------------------------------------------
+function admissionLines(dir, admissions) {
+  const lines = [];
+  let unrouted = 0;
+  let admittedTotal = 0;
+  for (const name of admissions) {
+    const record = readJsonFileOrNull(join(dir, name));
+    const admitted = Array.isArray(record?.admitted) ? record.admitted : [];
+    const refused = Array.isArray(record?.refused) ? record.refused : [];
+    const owners = new Map();
+    for (const finding of admitted) {
+      const owner = isString(finding?.proposedOwner) ? finding.proposedOwner : "(none)";
+      owners.set(owner, (owners.get(owner) ?? 0) + 1);
+    }
+    unrouted += owners.get("(none)") ?? 0;
+    admittedTotal += admitted.length;
+    const feedbackOwners = new Set(
+      (Array.isArray(record?.feedback) ? record.feedback : [])
+        .map((row) => row?.owner)
+        .filter((value) => isString(value)),
+    );
     lines.push(
-      "classification: explicit exhaustion censors the denominator; it is not evidence of a harness defect or capability regression",
+      `${name.replace(/-admission\.json$/, "")}: admitted ${admitted.length} (${[...owners.entries()].map(([owner, count]) => `${owner} ${count}`).join(", ") || "-"})` +
+        ` · refused ${refused.length} · feedback owners {${[...feedbackOwners].join(",")}} · policy ${record?.policy ?? "?"}`,
+    );
+  }
+  if (unrouted > 0) {
+    lines.push(
+      `FINDINGS WITHOUT PROPOSED OWNER (lane 14): ${unrouted} of ${admittedTotal} admitted findings name no owner; the actual route is in admission feedback`,
     );
   }
   return lines;
 }
 
-// --- 4d: admission and review ledger ----------------------------------------------------------
+function reviewLines(dir, reviews) {
+  const lines = [];
+  const recurrence = new Map();
+  let unidentified = 0;
+  for (const name of reviews) {
+    const record = readJsonFileOrNull(join(dir, name));
+    const label = name.replace(/-epoch-review\.json$/, "");
+    if (record?.schema !== EPOCH_REVIEW_SCHEMA || !Array.isArray(record.findings)) {
+      lines.push(`${label}: epoch review refused, not ${EPOCH_REVIEW_SCHEMA}`);
+      continue;
+    }
+    const findings = record.findings.filter((finding) => isRecord(finding));
+    // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
+    const unroutable = findings.filter((finding) => authorSessionOwner(finding).owner === null).length;
+    lines.push(
+      `${label}: epoch review ${record.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record.reads) ? record.reads.length : "?"}`,
+    );
+    // Recurrence is counted over measured-iteration reviews alone: an authoring checkpoint reads
+    // the same bytes a later measured review reads, so counting both would double every finding.
+    if (name.startsWith("authoring-")) continue;
+    for (const finding of findings) {
+      if (finding.severity !== "advisory") continue;
+      // A finding recurs under its kind and the declared check it names. One naming no check has
+      // no identity here, since a bare artifact root collapses every finding of one kind onto one
+      // word.
+      if (!isString(finding.checkId)) {
+        unidentified += 1;
+        continue;
+      }
+      const key = `${finding.kind} ${finding.checkId}`;
+      recurrence.set(key, [...new Set([...(recurrence.get(key) ?? []), label])]);
+    }
+  }
+  for (const [key, labels] of recurrence) {
+    if (labels.length < 2) continue;
+    lines.push(
+      `ADVISORY FINDING RECURS UNROUTED (lane 14): ${key} advisory in ${labels.length} measured reviews (${labels.join(", ")})`,
+    );
+  }
+  if (unidentified > 0) {
+    lines.push(`advisory findings naming no check: ${unidentified} (no recurrence identity)`);
+  }
+  return lines;
+}
+
 export function admissionLedgerLines({ campaign }) {
   const lines = ["", "## 4d admission and epoch-review ledger (counts and owners only)"];
   const dir = join(campaign, "analysis");
@@ -531,45 +684,7 @@ export function admissionLedgerLines({ campaign }) {
     lines.push("no admission or epoch-review records");
     return lines;
   }
-  let unrouted = 0;
-  let admittedTotal = 0;
-  for (const name of admissions) {
-    const record = readJsonFileOrNull(join(dir, name));
-    const admitted = Array.isArray(record?.admitted) ? record.admitted : [];
-    const refused = Array.isArray(record?.refused) ? record.refused : [];
-    const owners = new Map();
-    for (const finding of admitted) {
-      const owner = isString(finding?.proposedOwner) ? finding.proposedOwner : "(none)";
-      owners.set(owner, (owners.get(owner) ?? 0) + 1);
-    }
-    const none = owners.get("(none)") ?? 0;
-    unrouted += none;
-    admittedTotal += admitted.length;
-    const feedbackOwners = new Set(
-      (Array.isArray(record?.feedback) ? record.feedback : [])
-        .map((row) => row?.owner)
-        .filter((value) => isString(value)),
-    );
-    lines.push(
-      `${name.replace(/-admission\.json$/, "")}: admitted ${admitted.length} (${[...owners.entries()].map(([owner, count]) => `${owner} ${count}`).join(", ") || "-"})` +
-        ` · refused ${refused.length} · feedback owners {${[...feedbackOwners].join(",")}} · policy ${record?.policy ?? "?"}`,
-    );
-  }
-  for (const name of reviews) {
-    const record = readJsonFileOrNull(join(dir, name));
-    const findings = Array.isArray(record?.findings) ? record.findings : [];
-    // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
-    const unroutable = findings.filter((finding) => authorSessionOwner(finding).owner === null).length;
-    lines.push(
-      `${name.replace(/-epoch-review\.json$/, "")}: epoch review ${record?.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record?.reads) ? record.reads.length : "?"}`,
-    );
-  }
-  if (unrouted > 0) {
-    lines.push(
-      `FINDINGS WITHOUT PROPOSED OWNER: ${unrouted} of ${admittedTotal} admitted findings name no owner; angle 26 reads the actual route from feedback before calling them unrouted`,
-    );
-  }
-  return lines;
+  return [...lines, ...admissionLines(dir, admissions), ...reviewLines(dir, reviews)];
 }
 
 // --- 4e: builder memory cap -------------------------------------------------------------------
@@ -583,18 +698,18 @@ export function builderMemoryLines({ epochDirs }) {
     const bytes = statSync(path).size;
     const text = readFileSync(path, "utf8");
     const curationMarkers = (text.match(/^## /gm) ?? []).length;
-    lines.push(
-      `${basename(dir)}: ${bytes} bytes · ${curationMarkers} section heading(s)` +
-        (bytes > MEMORY_CAP_BYTES
-          ? ` · MEMORY OVER READ CAP (angle 24 trigger): the reader keeps the newest ${MEMORY_CAP_BYTES} bytes and drops ${bytes - MEMORY_CAP_BYTES}`
-          : ""),
-    );
+    lines.push(`${basename(dir)}: ${bytes} bytes · ${curationMarkers} section heading(s)`);
+    if (bytes > MEMORY_CAP_BYTES) {
+      lines.push(
+        `MEMORY OVER READ CAP (lane 26): ${basename(dir)} the reader keeps the newest ${MEMORY_CAP_BYTES} bytes and drops ${bytes - MEMORY_CAP_BYTES}`,
+      );
+    }
   }
   if (found === 0) lines.push("no workspace memory file recorded");
   return lines;
 }
 
-// --- row I: served-model attestation ----------------------------------------------------------
+// --- 5b: served-model attestation -------------------------------------------------------------
 /** `runtime-model-identity/v2` is the only identity `pi-session.ts` writes, and the claim's own
  *  census (`inspectIdentity`) reads any other shape as incomplete, so this reader does the same. */
 function identityAttestation(identity) {
@@ -605,7 +720,7 @@ function identityAttestation(identity) {
 }
 
 export function servedModelLines({ campaign, tallies, batteryOf }) {
-  const lines = ["", "## 5b served-model attestation (row I: battery cases[].solver.runtimeIdentities)"];
+  const lines = ["", "## 5b served-model attestation (battery cases[].solver.runtimeIdentities)"];
   if (tallies.length === 0) {
     lines.push("no case rows");
     return lines;

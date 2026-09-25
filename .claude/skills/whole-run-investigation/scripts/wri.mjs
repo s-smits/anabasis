@@ -9,7 +9,7 @@
 //   bun wri.mjs brief  --out <abs review dir>
 //   bun wri.mjs review  <target> --out <abs review dir> [launch options]
 //   bun wri.mjs collect <target> --out <abs review dir>
-//   bun wri.mjs launch  --out <abs review dir> [--lanes 40 | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
+//   bun wri.mjs launch  --out <abs review dir> [--lanes <count> | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
 //   bun wri.mjs finish  --out <abs review dir>
 //   bun wri.mjs delta | climb | yield | timeline | walls | handoff  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
@@ -21,12 +21,13 @@
 // `<review>/<lane>.txt` and the command prints one bounded brief instead, because the whole read is
 // the size of a paid lane's context. The six lanes that read in-process are also subcommands of
 // their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
-// `review` reads every lane, prints the brief and then launches the full sweep, which is the "all"
-// path; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for.
-// `brief` re-renders that digest from a finished review directory. Use `collect` and `launch`
-// separately only to edit `shared-instructions.json` between them. `finish` validates the lane
-// reports, scaffolds the archive from recorded bytes and `verdicts.json`, then runs the archive
-// validator.
+// `review` reads every lane, prints the brief and then launches the semantic lanes the run's tier
+// names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
+// each a number from the 26-lane catalogue. `brief` re-renders that digest from a finished review
+// directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
+// them. `finish` validates the lane reports, scaffolds the archive from recorded bytes and
+// `verdicts.json`, then runs the archive validator; the investigation itself ends in one adjudicated
+// note the primary writes by hand.
 //
 // A target is one folder — a campaign, its `controller` directory or one `controller/<runId>`
 // folder — or a bare run id, looked up in the main checkout's campaign tree, which every run
@@ -37,7 +38,8 @@ import { existsSync, mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { dirname, isAbsolute, join, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { scaffoldArchive } from "./archive-scaffold.mjs";
-import { renderBrief, renderScope, runScope } from "./brief.mjs";
+import { renderBrief, renderScope, runScope, SEMANTIC_LANES } from "./brief.mjs";
+import { ANGLE_COUNT } from "./catalogue-shape.mjs";
 import { buildOverview } from "./run-overview.mjs";
 import { openRecordedRun, resolveSourceCheckout } from "#skills/main/run.ts";
 import { buildSharedInstructions } from "./shared-instructions.mjs";
@@ -50,7 +52,8 @@ import { findRun, mainCheckout, resolveRunSelector } from "#tools/runs/discover.
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
 const CHECKOUT = resolve(SCRIPT_DIR, "../../../..");
 const BUN = Bun.argv[0];
-const NATIVE_LANE_CAP = 15;
+/** Where the primary writes the adjudicated note that ends an investigation; the tree ignores it. */
+const NOTE_PATH = "notes/investigation-YYYYMMDD-<topic>.md";
 
 /**
  * The deterministic readers, in the order a review reads them. `collect` runs the four the paid
@@ -78,7 +81,6 @@ export const LANES = [
       "--out",
       c.snapshot,
       "--all",
-      "--diagnostics",
     ],
   },
   {
@@ -174,21 +176,6 @@ export const LANES = [
       const { buildHandoffs, renderHandoffs } = await import("./handoffs.mjs");
       return shown(buildHandoffs({ campaign: c.campaign, runId: c.runId }), renderHandoffs);
     },
-  },
-  {
-    name: "recurrence",
-    label: "finding recurrence",
-    needs: (c) =>
-      c.archive === null ? "no archive for this run under notes/runs; `finish` writes one" : null,
-    cmd: (c) => [
-      BUN,
-      "--no-env-file",
-      script("finding-recurrence.mjs"),
-      "--current",
-      c.archive,
-      "--archives",
-      dirname(c.archive),
-    ],
   },
   {
     name: "archive",
@@ -432,6 +419,7 @@ async function runRead(args, positional, select) {
     repo,
     reviewCheckout: CHECKOUT,
     tier: scope.tier,
+    semanticLanes: scope.semanticLanes,
     steps: [],
   };
   mkdirSync(reviewDir, { recursive: true });
@@ -474,9 +462,16 @@ function launch(args, state = loadState(absolute(args, "out"))) {
   if (existsSync(join(lanesDir, "luna-output", "launch.json"))) {
     throw new Error(`${lanesDir} already holds a launch; use a fresh --out or trash the lanes directory`);
   }
+  // `--sessions` names lanes from the catalogue; `--lanes` asks the manifest to pick that many, and
+  // with neither the count is the one the run's tier named when it was read.
   const sessions = args.value("sessions");
-  const lanes = sessions ? sessions.split(",").length : Number(args.value("lanes", "40"));
-  const select = sessions ? ["--sessions", sessions] : ["--auto", String(lanes)];
+  const count = args.value("lanes") ?? String(state.semanticLanes);
+  if (!/^\d+$/.test(count) || Number(count) < 1 || Number(count) > ANGLE_COUNT) {
+    throw new Error(
+      `--lanes must be a count from 1 to ${ANGLE_COUNT}; the tiers ask ${SEMANTIC_LANES.probe} (probe), ${SEMANTIC_LANES.standard} (standard) or ${SEMANTIC_LANES.deep} (deep)`,
+    );
+  }
+  const select = sessions ? ["--sessions", sessions] : ["--auto", count];
   const cmd = [
     BUN,
     "--no-env-file",
@@ -486,7 +481,6 @@ function launch(args, state = loadState(absolute(args, "out"))) {
     "--worktree",
     state.repo,
     ...select,
-    "--diagnostics",
     "--out",
     lanesDir,
     "--transport",
@@ -498,7 +492,6 @@ function launch(args, state = loadState(absolute(args, "out"))) {
     "--launch",
     "--detach",
   ];
-  if (lanes + 2 > NATIVE_LANE_CAP) cmd.push("--stress");
   for (const name of ["title", "notes", "context"]) {
     if (args.value(name)) cmd.push(`--${name}`, args.value(name));
   }
@@ -550,7 +543,7 @@ function finish(args) {
   );
   console.log(
     ok
-      ? `\narchive valid: ${scaffold.archiveDir}`
+      ? `\narchive valid: ${scaffold.archiveDir}\n  then: write the adjudicated note at ${join(CHECKOUT, NOTE_PATH)}`
       : "\narchive not yet valid; fix the issues above (verdicts.json states, main_synthesis.md headings) and run finish again.",
   );
   if (!ok) runtimeProcess.exit(1);

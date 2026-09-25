@@ -33,7 +33,8 @@ Use subagents only when authorised and when a bounded unresolved judgement benef
 Do the deterministic joins once in the primary session with the owning readers.
 Keep the two sides of an independent challenge separate until both return.
 If a lane is missing, name the missing work; replace only coverage that still affects the decision.
-Do not force the historical “32-row” label onto today's catalogue: retain the actual current rows.
+The catalogue is rows A to I and twenty-six lanes; an older note that names an angle by a retired
+number is carrying a mechanism, so translate the mechanism to the lane that owns it today.
 WRI's skill and archive validator own the required shape; this reference does not invent another one.
 
 ## Bind the evidence that decides
@@ -98,8 +99,9 @@ Did an “independent” checker actually run, and can its input adapter represe
 An honest unobservable result often identifies the missing instrument behind a confident claim.
 Do not average confidence or use a majority vote to decide correctness.
 
-Reconcile active 5/6, 7/8 and 19/20 pairs explicitly; assess 36's valid alternatives separately
-from wrong-artifact discrimination.
+Reconcile lane 23's trace challenge with lane 22's process reading explicitly, since they read the
+same traces under different rules; assess lane 7's valid alternatives separately from the
+wrong-artifact discrimination that row E and lane 6 report.
 For each material disagreement, give methods, samples, the deciding evidence and the surviving scope.
 Two reports may describe one mechanism at different depths; collapse them under one owner.
 Two compatible counts may use different projections, such as whole artifacts and member assignments.
@@ -126,10 +128,11 @@ For an exact repeat, pair cases by recorded identity and report both directions 
 One repeat pair demonstrates observed variability; it does not establish a general noise threshold.
 An interval describes its stated sampling assumptions, not independence that the run did not provide.
 Do not pool different harness generations into one capability denominator.
-When run 3 stops before measurement, compare live coverage and source changes, not nonexistent scores.
+When a run stops before measurement, compare live coverage and source changes, not nonexistent scores.
 “No measurement opportunity” is more useful than declaring an unexercised fix successful or failed.
 
-For a climb, separate the selector's proposal, controller override and realised operation.
+For a climb, separate the Builder's `EXPERIMENT.json` target, the controller's recorded
+difficulty decision and the realised task bytes; the [climb reference](climb.md) says which record holds each.
 Read actual predecessor links instead of trusting adjacent filenames or a convenient reader projection.
 Check the changed public input against the declared axis and the deciding constraint.
 Unchanged families may be deliberate controls; preserve them while isolating the moved-family evidence.
@@ -174,6 +177,20 @@ An issue should not become fixed merely because an unvalidated reviewer could no
 Model agreement does not create independence when the same model and assumptions are shared.
 Separate measured provider units from money and total campaign cost from one reported subset.
 Removal or expansion deserves evidence about useful information per opportunity, not criticism counts.
+
+## Ask whether this has happened before
+
+Before proposing a remedy, read the earlier notes under `notes/` for the same mechanism.
+A mechanism that recurs across runs has usually been found before, and its remedy has often already landed.
+That remedy is frequently a standing duty of one component: a sentence in the Epoch Reviewer's prompt, a gate, a sensor.
+So the first question is not what to propose but whether the standing duty actually fired in this run.
+Read the recorded reviews or the sensor's log and say whether the duty was invoked, what it found, and where the finding went.
+Lane 12 reads the Epoch Reviewer's duties that way and lane 14 follows the finding; take their reports before answering from the primary.
+A duty that ran and found nothing, a duty that found the mechanism and routed it nowhere, and a duty that never ran are three different findings.
+Only the first of those asks for a different remedy; the other two ask why the existing one did not reach a decision.
+A second remedy for a mechanism whose first one never ran adds a wall that pays no rent.
+When the earlier note's fix is in the measured source and the mechanism recurred anyway, say so in one sentence, with the commit that carried the fix.
+Name the recurrence in the synthesis as a recurrence, so the next reader finds both notes.
 
 ## Turn findings into useful next actions
 

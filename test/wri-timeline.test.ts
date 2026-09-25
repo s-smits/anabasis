@@ -119,6 +119,7 @@ describe("run timeline", () => {
       [10, "build", "opening recorded"],
       [5, "measure-on", "hook-activated"],
     ]);
+    expect(timeline.stalls?.map((stall) => stall.cause)).toEqual(Array(5).fill("unattributed"));
   });
 
   it("tallies prompts, hooks, steering and settled iterations from the rows alone", () => {

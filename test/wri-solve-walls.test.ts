@@ -68,6 +68,7 @@ const PRESSED: Spec[] = [
     pass: false,
     errors: ["Pi Built worker exceeded its bounded solve time"],
   },
+  { taskId: "passed-at-wall", minutes: 59, turns: 1, pass: true },
   { taskId: "quick", minutes: 6, turns: 1, pass: true },
   { taskId: "gave-up", minutes: 9, turns: 1, accepted: false },
   { taskId: "turns", minutes: 20, turns: 4, accepted: false },
@@ -165,14 +166,16 @@ describe("solve budget against the declared walls", () => {
     // no recorded field says a solve that finished and submitted was cut short.
     expect(battery.bounds).toEqual({
       "time-bound": 1,
+      "submitted-at-wall": 1,
       submitted: 1,
       "no-submit": 1,
       "turn-bound": 1,
       unstarted: 1,
     });
-    expect(battery.outcomes).toEqual({ fail: 1, pass: 1, unaccepted: 2, "non-result": 1 });
+    expect(battery.outcomes).toEqual({ fail: 1, pass: 2, unaccepted: 2, "non-result": 1 });
     expect(battery.rows.map((row) => [row.taskId, row.bound, row.timeShare])).toEqual([
       ["at-wall", "time-bound", 0.967],
+      ["passed-at-wall", "submitted-at-wall", 0.983],
       ["quick", "submitted", 0.1],
       ["gave-up", "no-submit", 0.15],
       ["turns", "turn-bound", 0.333],
@@ -191,6 +194,10 @@ describe("solve budget against the declared walls", () => {
     );
     expect(text).toContain(
       "turns turn-bound, 20 min (33.3%), 4 turn(s) of 4, 12 tool calls, unaccepted, no solver error recorded",
+    );
+    // A pass at the wall is reported at the wall and never as a truncated verdict.
+    expect(text).toContain(
+      "passed-at-wall submitted-at-wall, 59 min (98.3%), 1 turn(s) of 4, 3 tool calls, pass",
     );
     expect(text).toContain(
       "at-wall, turns reached a wall without passing: that verdict rests on a truncated solve",

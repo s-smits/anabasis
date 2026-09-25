@@ -311,6 +311,7 @@ describe("climb velocity", () => {
       },
       counts: { passed: 0, verified: 0, unaccepted: 0, nonResult: 0 },
       placement: null,
+      recorded: null,
     });
     const report = (verdict: ReturnType<typeof verdictOf>) => ({
       schema: VELOCITY_SCHEMA,

@@ -34,6 +34,7 @@ import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-f
 import { terminalTraceRoot, traceCensus } from "./trace-challenge.ts";
 import {
   admissionLedgerLines,
+  bandPlacementLines,
   batteryTallies,
   builderMemoryLines,
   checkInformativenessLines,
@@ -44,9 +45,9 @@ import {
   readJudgeReviews,
   repeatedConditionLines,
   roleSpendLines,
-  saturationLedgerLines,
   servedModelLines,
 } from "./digest-ledgers.mjs";
+import { rehearsalLedgerLines, toolchainRetentionLines } from "./digest-rehearsal.mjs";
 
 /** Trace location is not product identity: an adopted tree may retain older runs. The binding also
  *  returns the manifest-verified battery record it read, so every digest reader of `battery.json`
@@ -221,8 +222,8 @@ function checkMatrix({
   );
   // Named for what the arithmetic shows: the control corpus exercises the check and no submission
   // ever tripped it. That can be a dead check or a competent solver, and the digest cannot tell
-  // them apart — run truss-opus-20260907T210000000Z-6bf0e9 read "INERT" as dead checks over six
-  // checks whose accepted artifacts sat hard against the published limits.
+  // them apart — a reading of "inert" as dead checks has been wrong where every accepted artifact
+  // sat hard against the published limits the checks enforce.
   const inert = [];
   for (const check of checks) {
     const grounding = groundingByCheck.get(check.id) ?? {
@@ -249,8 +250,8 @@ function checkMatrix({
   // Checks, controls and measured rows are grouped by their recorded product identity. Before
   // that grouping, control counts came from the ADOPTED tree while shipping rejections came from whichever
   // battery root the case rows named, so a run whose measured battery was a candidate had an
-  // rejCtl column describing a corpus the shipping column never measured, and the w19 review read
-  // the two as one tree. The source is named on every digest so a fallback cannot pass for a
+  // rejCtl column describing a corpus the shipping column never measured, and a reader took the
+  // two as one tree. The source is named on every digest so a fallback cannot pass for a
   // measured candidate.
   lines.push(`graded oracle rows: ${gradedOracleFiles} (from ${caseRows.length} terminal case rows)`);
   lines.push(
@@ -285,20 +286,25 @@ function toolRosterLines(tools, bundleDir, bundleProvenance) {
   for (const bucket of tools) {
     const name = bucket.name;
     // Mean over the cases that call the tool at all: a per-family evaluator concentrated in
-    // half the battery must not dilute below the repeat bar (w19's evaluate_power_contract
-    // read 1.47/case over all 75 traces but 2.4/case over the 45 cases that used it).
+    // half the battery must not dilute below the repeat bar: a tool used in most cases of one
+    // family reads below the bar over the whole battery and above it over the cases that used it.
     const mean = bucket.calls / bucket.cases;
     const description = descriptions.get(name) ?? "";
-    // The verb may sit on either side of the noun. w46-opus's judge_pin_choice reads
-    // "picked a candidate pin ... and want it judged" and the verb-first form alone missed it.
+    // The verb may sit on either side of the noun: a description reading "picked a candidate
+    // ... and want it judged" is missed by the verb-first form alone.
     const verbFirst =
       /(evaluat|check|test|verif|preview|appl|judg)\w*\b[^.]{0,60}\b(candidate|one |draft|answer)/i;
     const nounFirst = /\b(candidate|draft|answer)\b[^.]{0,60}\b(evaluat|check|test|verif|preview|judg)/i;
     const previewy = mean >= 1.5 && (verbFirst.test(description) || nounFirst.test(description));
     lines.push(
-      `${pad(name, 27)}${pad(bucket.calls, 7)}${pad(`${bucket.cases}cs`, 7)}${pad(`${mean.toFixed(1)}/used`, 10)}${pad(bucket.errors, 4)}` +
-        (previewy ? "ORACLE-PREVIEW SUSPECT: repeated per-case candidate evaluation via public tool" : ""),
+      `${pad(name, 27)}${pad(bucket.calls, 7)}${pad(`${bucket.cases}cs`, 7)}${pad(`${mean.toFixed(1)}/used`, 10)}${bucket.errors}`,
     );
+    // Its own line, so the overview groups it: a trigger printed after a table row never groups.
+    if (previewy) {
+      lines.push(
+        `CHECK TOOL IN SOLVER TRACE (lane 23): ${name} repeated per-case candidate evaluation via public tool`,
+      );
+    }
   }
   return lines;
 }
@@ -308,8 +314,8 @@ function processCensus(caseRows, caseRootOf, bundleDir, bundleProvenance) {
   // How uniform is the solve, and does any public tool look like a verdict previewer? A tool
   // called repeatedly per case whose own description offers to evaluate or check one candidate is
   // the mechanism of a decision procedure shipped through the public interface, which saturates a
-  // battery by construction. The flag is a suspect, not a verdict: angle 8 owns the disclosure
-  // judgement. Each row's trace is read from the digest-intact root the check table used, and
+  // battery by construction. The flag is a suspect, not a verdict: the trace-challenge lane owns
+  // the disclosure judgement. Each row's trace is read from the digest-intact root the check table used, and
   // counted by the same census the trace-challenge telemetry reports.
   const lines = ["", `## 1b solver process (${CASE_TRACE_SCHEMA})`];
   const census = traceCensus(
@@ -368,8 +374,7 @@ export function productEvidenceLines({
   const acceptRows = Array.isArray(controls?.accept) ? controls.accept : [];
 
   // Shipping oracle rows from the terminal case ledger. A campaign may retain the same battery
-  // under adopted and candidate roots (and, in campaigns measured before 2026-09-04, a contest
-  // root nothing writes now), and may also carry F2 roots. The case row's first
+  // under adopted and candidate roots, and may also carry F2 roots. The case row's first
   // digest-bound pointer chooses one physical root; directory presence alone is not membership.
   const { perCheck, gradedOracleFiles, gaps } = shippingEvidence(caseRows, caseRootOf);
   lines.push(...gaps.map((gap) => `shipping evidence gap: ${gap}`));
@@ -681,17 +686,19 @@ export function buildDigest({ campaign: campaignPath, domainsRoot, runIds = [] }
   if (caseRows.length === 0) lines.push("no terminal case rows");
   lines.push(
     ...familyCoverageLines({ tallies }),
-    ...repeatedConditionLines({ caseRows }),
+    ...repeatedConditionLines({ caseRows, batteryOf }),
     ...workshopSpendLines(epochDirs, executions),
-    ...roleSpendLines({ campaign, tallies, batteryOf, decisions }),
+    ...roleSpendLines({ campaign, tallies, batteryOf, decisions, executions }),
     // One line per recorded difficulty decision: the action the controller selected and, where it
-    // placed a battery, the zone it landed in. The record owns the selected action, so the digest
-    // reports it and never argues that a different one was due.
-    ...saturationLedgerLines(difficulty),
+    // placed a battery, where on the band it landed and what target it was measured against. The
+    // record owns the placement, so the digest reports it and never re-derives one.
+    ...bandPlacementLines(difficulty),
     ...admissionLedgerLines({ campaign }),
     ...builderMemoryLines({ epochDirs }),
     ...integrityLines(campaign, executions, caseRows),
     ...servedModelLines({ campaign, tallies, batteryOf }),
+    ...rehearsalLedgerLines({ executions, epochDirs }),
+    ...toolchainRetentionLines({ campaign }),
     "",
     "sequence census lives in trace-challenge trace-telemetry.json, not here",
   );

@@ -5,21 +5,21 @@
 //
 //   bun wri.mjs walls <target> [--battery <runId>] [--json]
 //
-// The reading that changes a decision is the negative one. On campaign 3fd52f9e-28 the median case
-// spent 10.6 of 120 declared minutes across four batteries and 100 cases: no budget was near
-// binding, so nothing about those outcomes is explained by room. The positive reading names the
-// case: de8b40's `canopy-02` ended at exactly 120.0 minutes.
+// The reading that changes a decision is the negative one: a battery whose median case spends a
+// tenth of the declared solve wall has no outcome explained by room. The positive reading names
+// the case that ended on the wall, to the minute.
 //
 // A turn is one outer prompt carrying an unbounded internal tool loop, so a solver that finishes
-// without being nudged records one turn however much work it did: de8b40-i02's 25 cases each
-// recorded one or two turns of 24 while running 37 to 85 tool calls. A turn share is therefore not
+// without being nudged records one turn however much work it did: a battery can record one or two
+// turns of twenty-four per case while running dozens of tool calls. A turn share is therefore not
 // room the solver could have used, and this reader states tool calls and elapsed time instead. The
 // turn wall still binds the case that reaches it, so `turn-bound` stays.
 //
 // A case that reached no wall is reported by what the record says it did — the solve was accepted
-// as a submission, or it ended without one. Those two were one `ended-early` label until
-// 2026-09-19, which no recorded field carried and which read as a cut solve on the 23 de8b40-i02
-// cases that had simply finished.
+// as a submission, or it ended without one. Reading both as one cut-solve label describes a case
+// that simply finished as truncated. A case that passed on a wall is `submitted-at-wall`: the wall
+// was reached and cost the verdict nothing, so it is neither a truncated solve nor room to add.
+// Lane 22 reads this table.
 import { existsSync } from "#src/meta/filesystem.ts";
 import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
@@ -35,6 +35,8 @@ export const WALLS_SCHEMA = "wri-solve-walls/v2";
 export const BOUND_SHARE = 0.95;
 /** Below this, with no completed turn, the case spent no budget: the host stopped before the solve. */
 export const UNSTARTED_MS = 30_000;
+/** The bounds that say a declared wall was reached, whatever the verdict. */
+export const WALL_BOUNDS = new Set(["time-bound", "turn-bound", "submitted-at-wall"]);
 
 const share = (used, wall) => (wall > 0 ? Math.round((used / wall) * 1000) / 1000 : null);
 const minutes = (ms) => Math.round(ms / 600) / 100;
@@ -94,8 +96,10 @@ function wallsOf(campaign, runId) {
  *  A case the host never got as far as solving spent neither, and reading it as a short solve puts a
  *  row that proves nothing about room beside one that does. `submitted` and `no-submit` read
  *  `acceptedSubmit`, the same recorded field the outcome is classified from. */
-function boundOf({ elapsedMs, timeShare, turnShare, turns, acceptedSubmit }) {
+function boundOf({ elapsedMs, timeShare, turnShare, turns, acceptedSubmit, passed }) {
   if (elapsedMs === null && turns === null) return "unrecorded";
+  const atWall = (timeShare !== null && timeShare >= BOUND_SHARE) || (turnShare !== null && turnShare >= 1);
+  if (atWall && passed) return "submitted-at-wall";
   if (timeShare !== null && timeShare >= BOUND_SHARE) return "time-bound";
   if (turnShare !== null && turnShare >= 1) return "turn-bound";
   if (elapsedMs !== null && elapsedMs < UNSTARTED_MS && (turns === null || turns === 0)) return "unstarted";
@@ -114,7 +118,14 @@ function caseOf(row, solver, settings) {
     taskId: row.taskId,
     family: row.family,
     outcome,
-    bound: boundOf({ elapsedMs, timeShare, turnShare, turns: solver.turns, acceptedSubmit }),
+    bound: boundOf({
+      elapsedMs,
+      timeShare,
+      turnShare,
+      turns: solver.turns,
+      acceptedSubmit,
+      passed: outcome === "pass",
+    }),
     elapsedMinutes: elapsedMs === null ? null : minutes(elapsedMs),
     timeShare,
     turns: solver.turns,
@@ -143,9 +154,10 @@ function batteryOf(campaign, roots, runId, rows) {
     // Tool calls, not a turn share: the calls are the work the turns carried, and the turn wall is
     // read per case by `turn-bound` rather than by a median that one long turn leaves near zero.
     toolCalls: { median: median(calls), max: calls.length === 0 ? null : Math.max(...calls) },
-    atWall: cases.filter((row) => row.bound === "time-bound" || row.bound === "turn-bound"),
+    atWall: cases.filter((row) => WALL_BOUNDS.has(row.bound)),
+    // `submitted-at-wall` already names the pass, so the two truncating bounds are the whole set.
     boundedWithoutPass: cases
-      .filter((row) => row.outcome !== "pass" && (row.bound === "time-bound" || row.bound === "turn-bound"))
+      .filter((row) => row.bound === "time-bound" || row.bound === "turn-bound")
       .map((row) => row.taskId),
     rows: cases,
   };

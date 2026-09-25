@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-// Source-delta reach (angle 31, deterministic half). Diff the measured source of this run against
+// Source-delta reach (lane 21, deterministic half). Diff the measured source of this run against
 // the measured source of the previous run in the same lane, list the changed files, and join the
 // safeguard ids declared in changed source files to the run's SAFEGUARDS_LOG: fired, or declared
 // in a changed file without a matching recorded firing (labelled unreached). A changed model-visible text (author prompts,
-// starters, judge framing) is flagged as an angle 12 trigger.
+// starters, judge framing) is flagged for lane 21.
 //
 // Reads Git objects and recorded campaign text only; never executes reviewed source and prints
 // no source content. A commit the checkout cannot resolve is `source-unresolved`, never guessed.
@@ -215,7 +215,7 @@ export function renderSourceDelta(delta) {
   const unreached = delta.safeguards.filter((row) => row.state === "unreached");
   if (unreached.length > 0) {
     lines.push(
-      `UNREACHED CHANGED SAFEGUARDS (angle 31 trigger): ${unreached.map((row) => row.id).join(", ")} — the change was present; no matching firing was found in the selected run logs`,
+      `UNREACHED CHANGED SAFEGUARDS (lane 21): ${unreached.map((row) => row.id).join(", ")} — the change was present; no matching firing was found in the selected run logs`,
     );
   }
   if (delta.firedElsewhere.length > 0) {
@@ -224,10 +224,7 @@ export function renderSourceDelta(delta) {
     );
   }
   if (delta.modelVisibleChanged.length > 0) {
-    lines.push(
-      "",
-      `MODEL-VISIBLE SURFACE CHANGED (angle 12 trigger): ${delta.modelVisibleChanged.join(", ")}`,
-    );
+    lines.push("", `MODEL-VISIBLE SURFACE CHANGED (lane 21): ${delta.modelVisibleChanged.join(", ")}`);
   }
   return `${lines.join("\n")}\n`;
 }

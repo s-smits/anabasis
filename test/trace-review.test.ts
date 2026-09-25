@@ -138,7 +138,6 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
         "--out",
         out,
         "--all",
-        "--diagnostics",
       ],
       { cwd: repoRoot },
     );
@@ -148,14 +147,7 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
     }>(readFileSync(join(out, "snapshot-status.json"), "utf8"));
     expect(result.status).toBe(0);
     expect(manifest.complete).toBe(true);
-    expect(
-      JSON.parse(readFileSync(join(out, "diagnostic-lanes/tasks.json"), "utf8")).map(
-        (task: { name: string }) => task.name,
-      ),
-    ).toEqual(["category_and_hook_yield", "diagnostic_follow_through"]);
-    expect(
-      readFileSync(join(out, "diagnostic-lanes/prompts/diagnostic_follow_through.md"), "utf8"),
-    ).toContain("assignedDiagnosticInputs: scan,builder,review-yield");
+    expect(existsSync(join(out, "diagnostic-lanes"))).toBe(false);
     expect(
       parseJsonAs<{ state: string; phases: { phase: string }[] }>(
         readFileSync(join(out, "timeline.json"), "utf8"),

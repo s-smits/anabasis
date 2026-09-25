@@ -25,11 +25,15 @@ type ReadoutRow = ClimbReadout["rows"][number];
 
 /** A round's `harness_trial` evidence, joined to the battery by the digest of the plan it
  *  measured. `none` when no trial ran under that exact plan — including a plan edited after its
- *  last trial — and `ambiguous` when several rounds rehearsed byte-identical plans. */
+ *  last trial — `ambiguous` when several rounds rehearsed byte-identical plans, and `refused` when
+ *  the plan's evidence is under a schema this reader does not take, which is not the same as none. */
 type TrialsReading =
   | ({ state: "recorded" } & TrialsFile)
   | { state: "none" }
-  | { state: "ambiguous"; evidence: string[] };
+  | { state: "ambiguous"; evidence: string[] }
+  | { state: "refused"; evidence: string[] };
+
+type RefusedTrials = { evidence: string; refused: true };
 
 type TrialsFile = {
   /** Relative to the campaign. */
@@ -144,18 +148,25 @@ function climbFromReadout(campaignDir: string, readFrom: string, readout: ClimbR
   };
 }
 
-function trialsReading(files: readonly TrialsFile[]): TrialsReading {
-  const [only] = files;
+function trialsReading(files: readonly (TrialsFile | RefusedTrials)[]): TrialsReading {
+  const read = files.flatMap((file) => ("refused" in file ? [] : [file]));
+  if (read.length < files.length) {
+    return {
+      state: "refused",
+      evidence: files.flatMap((file) => ("refused" in file ? [file.evidence] : [])).sort(),
+    };
+  }
+  const [only] = read;
   if (only === undefined) return { state: "none" };
-  if (files.length > 1) return { state: "ambiguous", evidence: files.map((file) => file.evidence).sort() };
+  if (read.length > 1) return { state: "ambiguous", evidence: read.map((file) => file.evidence).sort() };
   return { state: "recorded", ...only };
 }
 
 /** Every round's trial evidence in the campaign, keyed by the plan digest it was last scored
  *  against. A round writes its file under its own epoch, so the walk covers each epoch's
- *  `rehearsals/` and reads only the one schema the controller writes. */
-function trialsByPlan(campaignDir: string): Map<string, TrialsFile[]> {
-  const byPlan = new Map<string, TrialsFile[]>();
+ *  `rehearsals/`, reads the one schema the controller writes and names any other as refused. */
+function trialsByPlan(campaignDir: string): Map<string, (TrialsFile | RefusedTrials)[]> {
+  const byPlan = new Map<string, (TrialsFile | RefusedTrials)[]>();
   const epochs = existsSync(campaignDir)
     ? readdirSync(campaignDir).filter((name) => name.startsWith("epoch-"))
     : [];
@@ -173,16 +184,13 @@ function trialsByPlan(campaignDir: string): Map<string, TrialsFile[]> {
   return byPlan;
 }
 
-function readTrials(path: string): { planDigest: string; facts: Omit<TrialsFile, "evidence"> } | null {
+function readTrials(
+  path: string,
+): { planDigest: string; facts: Omit<TrialsFile, "evidence"> | { refused: true } } | null {
   const parsed = readJsonFileOrNull(path);
-  if (
-    !isRecord(parsed) ||
-    parsed.schema !== EVIDENCE_SCHEMA ||
-    !isString(parsed.planDigest) ||
-    !Array.isArray(parsed.rehearsals)
-  ) {
-    return null;
-  }
+  if (!isRecord(parsed) || !isString(parsed.planDigest)) return null;
+  if (parsed.schema !== EVIDENCE_SCHEMA) return { planDigest: parsed.planDigest, facts: { refused: true } };
+  if (!Array.isArray(parsed.rehearsals)) return null;
   const passed = parsed.rehearsals.flatMap((row) =>
     isRecord(row) && row.verdict === "pass" && isString(row.taskId) ? [row.taskId] : [],
   );

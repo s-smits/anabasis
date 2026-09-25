@@ -9,7 +9,7 @@
 
 import { admitBackendSelection } from "../backends/project-backends.ts";
 import type { BackendSlot, ProjectBackendSelection } from "../backends/resolve.ts";
-import { builtSolveConcurrency } from "./session-pool.ts";
+import { builtSolveConcurrency, reviewConcurrency } from "./session-pool.ts";
 
 /** The one policy an invocation may fix: measure and stop only. */
 type ProductPolicy = "fixed";
@@ -192,5 +192,6 @@ export function parseFullRunArgs(argv: string[]): FullRunArgs {
   if (args.prompt === undefined || args.prompt.trim() === "") throw new Error("state a non-empty --prompt");
   // Refuse a malformed operator width before any paid call rather than at the first battery.
   builtSolveConcurrency();
+  reviewConcurrency();
   return args;
 }

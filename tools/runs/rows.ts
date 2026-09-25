@@ -22,6 +22,8 @@ import type { ServiceManager } from "../../.claude/skills/launch-run/scripts/ser
 export interface RunRow {
   runId: string;
   slug: string;
+  /** Where the run's evidence lies, for a reader that goes past the row. */
+  location: RunLocation;
   /** The campaign slug without its request digest and sequence: the field the run was launched on. */
   domain: string;
   /** The part of the slug that names this project among the campaigns on the same domain. */
@@ -163,6 +165,7 @@ function buildRow(
   return {
     runId: location.runId,
     slug: location.slug,
+    location,
     domain,
     project,
     liveness,

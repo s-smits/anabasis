@@ -434,9 +434,10 @@ live evidence.
    Every ordinary accept and reject control is still task-bound and still verified through its
    declared check by the verifier.
 
-   Each subject gets a fresh Judge session, in groups of at most five, stopping after five
-   consecutive provider errors, with a 30-minute hard wall per turn, and the first valid verdict
-   stands. The Judge sees the original request, the bound public task, the submitted artifact, the
+   Each subject gets a fresh Judge session, in groups of at most five (`ANA_REVIEW_CONCURRENCY`
+   sets another width), stopping after five consecutive provider errors, with a 30-minute hard
+   wall per turn, and the first valid verdict stands. The Judge sees the original request, the
+   bound public task, the submitted artifact, the
    public schema and design rules, the projected tool contract and the declared runtime facts. It
    never sees the Built prompt, the solve trace, verifier output or a reference artifact, and two
    artifacts are never compared inside one prompt. `judgeDeAnchoring` in `thresholds.frozen.yaml`

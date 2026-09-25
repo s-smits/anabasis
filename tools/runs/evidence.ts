@@ -98,6 +98,13 @@ export interface Observation {
   type: string | null;
   state: string | null;
   subjectId: string | null;
+  /** `error` and `warning` rows are the controller's own alarms; `default` is ordinary progress. */
+  level: string | null;
+  summary: string | null;
+  /** Set on a row an iteration wrote inside a step, such as a review during a build. */
+  parentId: string | null;
+  /** Repository-relative paths of the files the row names as its evidence. */
+  evidence: string[];
 }
 
 export interface RunEvidence {
@@ -283,6 +290,10 @@ function observation(line: string): Observation | null {
     type: stringOr(row.type),
     state: stringOr(row.state),
     subjectId: stringOr(row.subjectId),
+    level: stringOr(row.level),
+    summary: stringOr(row.summary),
+    parentId: stringOr(row.parentId),
+    evidence: Array.isArray(row.evidence) ? row.evidence.filter(isString) : [],
   };
 }
 

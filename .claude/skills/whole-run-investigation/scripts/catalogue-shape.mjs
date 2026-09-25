@@ -51,6 +51,18 @@ export const DIGEST_VERDICTS = [
   "toolchain-retention",
 ];
 
+/** A Luna or Codex lane reads; a native Claude lane may also repair what it proved. */
+export const READ_ONLY_AUTHORITY = "Authority: read-only. Do not edit files or change external state.";
+export const FIX_AUTHORITY = [
+  "Authority: fix what you prove. For a finding whose evidence you checked against source in this session,",
+  "make the smallest coherent repair in a worktree of your own, created from the stack head the orientation",
+  "names (else `origin/main`) with `scripts/worktree.sh new claude/wri-<lane> <absolute dir> <start point>`:",
+  "one commit per repaired finding, focused tests and `bun run lint -- --strict` green, and never a push or",
+  "a pull request. Never edit `domains/`, `campaigns/`, run trees, recorded evidence, controller locks or",
+  "another lane's worktree, and launch no product run. Every other finding stays a finding; under",
+  "`### Findings`, a repaired one names its branch and commit.",
+].join(" ");
+
 export function angleNumbers() {
   return Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
 }
@@ -58,5 +70,5 @@ export function angleNumbers() {
 /** The exact prompt one lane receives: the manifest composes it, and the report validator hashes
  *  it again to prove the launch sent what the manifest recorded. */
 export function leafPrompt(instructions, task) {
-  return `${instructions.trim()}\n\n${task.trim()}\n\nAuthority: read-only. Do not edit files or change external state.`;
+  return `${instructions.trim()}\n\n${task.trim()}\n\n${READ_ONLY_AUTHORITY}`;
 }

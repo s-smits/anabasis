@@ -4,6 +4,7 @@ import {
   builtSolveConcurrency,
   JUDGE_MAX_CONCURRENCY,
   mapWithConcurrencyLimit,
+  reviewConcurrency,
   runJudgeBatches,
 } from "../src/run/session-pool.ts";
 
@@ -77,6 +78,17 @@ describe("session pool", () => {
     for (const raw of ["0", "-2", "2.5", "six", "06"]) {
       expect(() => builtSolveConcurrency(8, { ANA_BUILT_CONCURRENCY: raw })).toThrow(
         "ANA_BUILT_CONCURRENCY must be a positive integer",
+      );
+    }
+  });
+
+  it("lets ANA_REVIEW_CONCURRENCY set the Judge width, and refuses a malformed one", () => {
+    expect(reviewConcurrency({})).toBe(JUDGE_MAX_CONCURRENCY);
+    expect(reviewConcurrency({ ANA_REVIEW_CONCURRENCY: "" })).toBe(JUDGE_MAX_CONCURRENCY);
+    expect(reviewConcurrency({ ANA_REVIEW_CONCURRENCY: "8" })).toBe(8);
+    for (const raw of ["0", "-2", "2.5", "six", "06"]) {
+      expect(() => reviewConcurrency({ ANA_REVIEW_CONCURRENCY: raw })).toThrow(
+        "ANA_REVIEW_CONCURRENCY must be a positive integer",
       );
     }
   });

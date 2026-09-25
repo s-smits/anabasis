@@ -109,7 +109,9 @@ Immediately before publication, compare remote heads, PR states and bases with t
 Use explicit SHA refspecs and a separate explicit lease for every existing destination; require
 absence for a newly created destination. A replayed head is not a descendant of the head it
 replaces, so its update is a forced one, and the lease is what makes it safe. A lease failure means refresh and reconcile, not widen
-the lease to overwrite the new work. For example, fill in literal values before executing:
+the lease to overwrite the new work. The hook remembers every head that passed the whole gate, the tip
+included when its checkout held nothing else, so the reconciled push gates only the heads the
+reconciliation moved. For example, fill in literal values before executing:
 
 ```sh
 git push --atomic origin \

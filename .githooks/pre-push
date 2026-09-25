@@ -345,6 +345,15 @@ if [ -n "$checked" ]; then
   done
 fi
 
+# The tip's pass is remembered like a pushed head's, so a push its lease refused, or a branch sent
+# again on its own, is not gated twice. The tip's gate runs over this working tree rather than a
+# checkout of the commit, so a pass counts for the commit only when the tree held nothing else before
+# the gate and after it.
+if grep -qxF "$tested_commit --at" "$pass_record" 2>/dev/null; then
+  echo "pre-push: $(git rev-parse --short=9 "$tested_commit") already passed the whole gate on these exact bytes; not run again." >&2
+  exit 0
+fi
+uncommitted=$(git status --porcelain)
 echo "pre-push: running bun run gate (runtime, typecheck, lint, tests)." >&2
 set -- bun run gate
 
@@ -355,6 +364,7 @@ if [ -f "$status_file" ]; then status=$(cat "$status_file"); else status=1; fi
 rm -f "$status_file"
 
 if [ "$status" -eq 0 ]; then
+  [ -n "$uncommitted$(git status --porcelain)" ] || echo "$tested_commit --at" >>"$pass_record"
   exit 0
 fi
 

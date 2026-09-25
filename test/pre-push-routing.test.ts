@@ -353,6 +353,35 @@ describe("pre-push proof routing", () => {
     expect(result.stderr).not.toContain("DID NOT GO THROUGH");
   });
 
+  // Every other case writes its marker into the fixture, which leaves the tree unclean and keeps the
+  // tip's pass unrecorded; this one hides the markers so the checkout holds the tip's bytes alone.
+  it("remembers a tip that passed on a clean checkout, and never one that passed beside a stray file", () => {
+    const exclude = join(fixture, ".git", "info", "exclude");
+    writeFileSync(exclude, "*marker*\n");
+    forgetPasses();
+    try {
+      expect(git("status", "--porcelain")).toBe("");
+      writeFileSync(join(fixture, "stray.ts"), "export {};\n");
+      runHook(source, docs, "tip-stray-marker");
+      const unremembered = runHook(source, docs, "tip-stray-again-marker");
+      expect(readFileSync(unremembered.marker, "utf8")).toContain("9\trun gate");
+
+      rmSync(join(fixture, "stray.ts"));
+      const first = runHook(source, docs, "tip-clean-marker");
+      expect(readFileSync(first.marker, "utf8")).toContain("9\trun gate");
+      const again = runHook(source, docs, "tip-clean-again-marker");
+      expect(again.status).toBe(0);
+      expect(again.stderr).toContain(
+        `${source.slice(0, 9)} already passed the whole gate on these exact bytes`,
+      );
+      expect(existsSync(again.marker)).toBe(false);
+    } finally {
+      rmSync(join(fixture, "stray.ts"), { force: true });
+      writeFileSync(exclude, "");
+      forgetPasses();
+    }
+  });
+
   // Last, because it moves HEAD: the tests above name `source` as the checked-out tree.
   it("gates every earlier commit on its own and stops at the first that fails", () => {
     writeFileSync(join(fixture, "src", "owner.ts"), "export const owner = 3;\n");

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "bun:test";
+import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
 import type { AnalysisFinding } from "../src/analyse/iteration-analysis.ts";
-import { feedbackOwner, advisory } from "../src/author/feedback-routing.ts";
+import {
+  BUNDLE_FILES,
+  advisory,
+  feedbackOwner,
+  isBundleFile,
+  ownerSide,
+} from "../src/author/feedback-routing.ts";
 import { settleGateRun } from "../src/gate/settlement.ts";
 import { settleUnresolved } from "../src/author/campaign-memory.ts";
 import { decideNextMove } from "../src/run/next-move.ts";
@@ -27,19 +34,35 @@ const settle = (feedback: CampaignFeedback[]) =>
   });
 
 describe("the complete repair agenda", () => {
+  it("names a bundle file or the environment, and reads the side from the path", () => {
+    expect(BUNDLE_FILES.filter((file) => ownerSide(file) === "agent")).toEqual([
+      "agent/tools-spec.json",
+      "agent/tools.ts",
+      "agent/BUILT_AGENTS.md",
+      "agent/config.yaml",
+    ]);
+    // The reference solve sits beside the evaluator, so repairing it reopens the correctness model.
+    expect(ownerSide("correctness-model/reference/index.ts")).toBe("correctness-model");
+    expect(isBundleFile("environment")).toBe(false);
+    expect(isBundleFile(null)).toBe(false);
+    expect(isBundleFile("correctness-model/controls.json")).toBe(true);
+  });
+
   it("keeps an unowned Judge disclosure typed while a Builder defect has only its owner", () => {
     const base = { claim: "finding", evidence: "recorded", proposedOwner: null } satisfies Pick<
       AnalysisFinding,
       "claim" | "evidence" | "proposedOwner"
     >;
     expect(authorSessionOwner({ ...base, kind: "judge-disagreement" })).toBeNull();
-    expect(authorSessionOwner({ ...base, kind: "harness-defect", proposedOwner: "tests" })).toBe("tests");
+    expect(authorSessionOwner({ ...base, kind: "harness-defect", proposedOwner: TASKS_FILE })).toBe(
+      TASKS_FILE,
+    );
   });
 
   it("preserves admitted severity and public findings while private-only changes leave author text identical", () => {
     const feedback: CampaignFeedback[] = [
       {
-        ...row("brief"),
+        ...row("correctness-model/brief.json"),
         findings: [
           controllerValidatedFinding({
             code: "brief-field",
@@ -48,21 +71,21 @@ describe("the complete repair agenda", () => {
           }),
         ],
       },
-      { ...row("tests"), severity: "advisory" },
+      { ...row(TASKS_FILE), severity: "advisory" },
       {
-        ...row("correctness-model"),
+        ...row("correctness-model/evaluator.ts"),
         findings: [{ code: "PRIVATE_CODE", path: "PRIVATE_PATH", detail: "PRIVATE_DETAIL" }],
       },
     ];
     const text = advisory(feedback);
     expect(text).toContain(
-      "brief (correctness-model/brief.json): [blocking] brief-field: Publish the required rule.",
+      "correctness-model/brief.json: [blocking] brief-field: Publish the required rule.",
     );
-    expect(text).toContain("tests (correctness-model/tasks.json): [advisory]");
+    expect(text).toContain("correctness-model/tasks.json: [advisory]");
     expect(text).not.toContain("PRIVATE");
     const privateChanges = feedback.map((entry) => {
       const changed = { ...entry, claim: "DIFFERENT_PRIVATE", evidence: "DIFFERENT_PRIVATE" };
-      if (entry.owner === "correctness-model") {
+      if (entry.owner === "correctness-model/evaluator.ts") {
         changed.findings = [{ code: "OTHER", path: "OTHER", detail: "OTHER" }];
       }
       return changed;
@@ -79,7 +102,7 @@ describe("the complete repair agenda", () => {
     const text =
       advisory([
         {
-          ...row("tests"),
+          ...row(TASKS_FILE),
           severity: "advisory",
           findings: [
             controllerValidatedFinding({
@@ -91,13 +114,18 @@ describe("the complete repair agenda", () => {
         },
       ]) ?? "";
     expect(text).toBe(
-      "- tests (correctness-model/tasks.json): [advisory] curriculum-defect: Let $.peripherals differ between the tasks.",
+      "- correctness-model/tasks.json: [advisory] curriculum-defect: Let $.peripherals differ between the tasks.",
     );
     expect(text).not.toContain("campaigns/");
   });
 
   it("keeps every blocker and hashes the complete set independent of arrival order", async () => {
-    const feedback = [row("tests"), row("correctness-model"), row("brief"), row("instructions")];
+    const feedback = [
+      row(TASKS_FILE),
+      row("correctness-model/evaluator.ts"),
+      row("correctness-model/brief.json"),
+      row("agent/BUILT_AGENTS.md"),
+    ];
     const first = await settle(feedback);
     expect(first.kind).toBe("continue");
     for (let offset = 0; offset < feedback.length; offset++) {
@@ -116,28 +144,37 @@ describe("the complete repair agenda", () => {
       feedback.map((entry, index) => (index === 1 ? { ...entry, claim: "new evaluator fact" } : entry)),
     );
     expect(changed.evidence.findingsHash).not.toBe(first.evidence.findingsHash);
-    expect(feedbackOwner([row("controls")])).toBe("controls");
+    expect(feedbackOwner([row("correctness-model/controls.json")])).toBe("correctness-model/controls.json");
     expect(feedbackOwner([])).toBeNull();
   });
 
   it("requests a rebuild from the adopted product for each blocking set", () => {
-    expect(decideNextMove("adopted", [row("tests"), row("controls")])).toMatchObject({
+    expect(
+      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]),
+    ).toMatchObject({
       move: "rebuild",
       seed: "adopted",
     });
     // The owners are named. An open campaign admits a candidate that leaves them alone, so the
     // kickoff states no consequence admission does not impose.
-    expect(decideNextMove("adopted", [row("tests"), row("controls")]).reason).toContain(
-      "blocking feedback stands against controls, tests",
+    expect(
+      decideNextMove("adopted", [row(TASKS_FILE), row("correctness-model/controls.json")]).reason,
+    ).toContain(
+      "blocking feedback stands against correctness-model/controls.json, correctness-model/tasks.json",
     );
-    expect(decideNextMove("adopted", [row("tests")]).reason).not.toContain("admission");
-    expect(decideNextMove("adopted", [row("correctness-model"), row("controls")])).toMatchObject({
+    expect(decideNextMove("adopted", [row(TASKS_FILE)]).reason).not.toContain("admission");
+    expect(
+      decideNextMove("adopted", [
+        row("correctness-model/evaluator.ts"),
+        row("correctness-model/controls.json"),
+      ]),
+    ).toMatchObject({
       move: "rebuild",
       seed: "adopted",
     });
     for (const feedback of [
-      [row("tests"), row("correctness-model")],
-      [row("controls"), row("instructions")],
+      [row(TASKS_FILE), row("correctness-model/evaluator.ts")],
+      [row("correctness-model/controls.json"), row("agent/BUILT_AGENTS.md")],
     ]) {
       expect(decideNextMove("adopted", feedback)).toMatchObject({ move: "rebuild", seed: "adopted" });
       expect(decideNextMove("adopted", feedback)).not.toHaveProperty("experiment");
@@ -147,8 +184,12 @@ describe("the complete repair agenda", () => {
   it("settles an iteration to its own blocking rows", () => {
     const blocked = double<Parameters<typeof settleUnresolved>[0]>({
       outcome: "gates-blocked",
-      feedback: [row("brief"), row("brief"), { ...row("tests"), severity: "advisory" }],
+      feedback: [
+        row("correctness-model/brief.json"),
+        row("correctness-model/brief.json"),
+        { ...row(TASKS_FILE), severity: "advisory" },
+      ],
     });
-    expect(settleUnresolved(blocked)).toEqual([row("brief")]);
+    expect(settleUnresolved(blocked)).toEqual([row("correctness-model/brief.json")]);
   });
 });

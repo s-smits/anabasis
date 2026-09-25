@@ -13,7 +13,8 @@ import { sha256 } from "../meta/digest.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";
-import { BUILDER_OWNED, ownerWritableFiles } from "../author/feedback-routing.ts";
+import { BUNDLE_FILES } from "../author/feedback-routing.ts";
+import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
 import { readRecordedBatteryRecord } from "../truth/battery-record.ts";
 import { verifierEnvironmentHashOfTools } from "../truth/verifier-environment.ts";
 import { TOOL_ID_RE } from "../verify/tool-inventory.ts";
@@ -29,7 +30,8 @@ const READ_CHARS_TOTAL = 4_000_000;
 const READ_CHARS_PER_CALL = 16_000;
 const INVENTORY_MAX_FILES = 400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
-const CORE_FILES = [...BUILDER_OWNED].flatMap(ownerWritableFiles);
+// Every bundle file but the optional walls, whose absence is the defaults rather than a gap.
+const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
 export interface ReviewInventory {
   files: string[];
   truncated: boolean;

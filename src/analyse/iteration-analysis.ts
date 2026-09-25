@@ -111,7 +111,7 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/9-complete-repair-agenda";
+export const FEEDBACK_POLICY = "severity-route/10-bundle-file-owner";
 
 /** The closed finding vocabulary the router understands. Producers are the host and the Judge
  *  review; routing depends on the finding kind, not its producer. */
@@ -396,7 +396,7 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   }
   if (checkerOutage !== null) findings.push(checkerOutage);
   // An all-pass battery deliberately adds nothing here. It once added an advisory harness-defect
-  // with owner "tests", which named a defect the harness does not have and an owner the evidence
+  // owned by the task set, which named a defect the harness does not have and an owner the evidence
   // had not chosen, and restated in a fifth dialect what the packet already says four other ways.
   // The climb readout owns the sentence "this battery found no limit".
   return findings;

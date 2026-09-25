@@ -1,4 +1,5 @@
-import { routableOwner } from "../author/feedback-routing.ts";
+import { isBundleFile } from "../author/feedback-routing.ts";
+import { TASKS_FILE } from "../meta/bundle-layout.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
 import type { AnalysisFinding, AnalysisFindingKind } from "./iteration-analysis.ts";
 
@@ -19,13 +20,13 @@ const FINDING_ROUTES = {
 } as const satisfies Record<AnalysisFindingKind, { route: "tests" | "producer" | null; canBlock: boolean }>;
 
 /** The only author-session owner admitted for a finding, or null. Per-case detail never crosses to
- *  authoring at all. A proposed owner is checked against `routableOwner` rather than trusted: the
+ *  authoring at all. A proposed owner is checked against `isBundleFile` rather than trusted: the
  *  finding's producer proposes an owner and the closed set decides. */
 export function authorSessionOwner(finding: AnalysisFinding): FeedbackOwner | null {
   const { route } = FINDING_ROUTES[finding.kind];
   if (finding.subject !== undefined || route === null) return null;
-  if (route === "tests") return "tests";
-  return routableOwner(finding.proposedOwner) ? finding.proposedOwner : null;
+  if (route === "tests") return TASKS_FILE;
+  return isBundleFile(finding.proposedOwner) ? finding.proposedOwner : null;
 }
 
 /** A defect that may block does unless its producer explicitly said advisory. */

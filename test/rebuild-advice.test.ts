@@ -307,7 +307,7 @@ describe("what one battery observes", () => {
       kind: "harness-defect",
       claim: "task t2 failed its declared check",
       evidence: "campaigns/x/case-record.jsonl",
-      proposedOwner: "tests",
+      proposedOwner: "correctness-model/tasks.json",
       subject: { taskId: "t2", family: "beams" },
     };
     const result = derive(analysis([caseRow("t1")]), judges(), admission([aggregate, perCase]), null);
@@ -479,9 +479,11 @@ describe("the issue register and its projection", () => {
       uncertain,
       blocking,
       { ...blocking, claim: "advisory observation", severity: "advisory" },
-      { ...blocking, proposedOwner: "brief" },
+      { ...blocking, proposedOwner: "correctness-model/brief.json" },
     ]);
-    expect(admitted.feedback.map((row) => [row.owner, row.severity])).toEqual([["brief", "blocking"]]);
+    expect(admitted.feedback.map((row) => [row.owner, row.severity])).toEqual([
+      ["correctness-model/brief.json", "blocking"],
+    ]);
     const result = derive(data, judges(), admitted, null);
     expect(result.findings.map((row) => row.severity)).toEqual([
       "advisory",
@@ -584,7 +586,7 @@ describe("the issue register and its projection", () => {
       kind: "harness-defect",
       claim: "the checker admitted 3 ungrounded verdicts",
       evidence: "campaigns/bridge-truss/analysis/base-analysis.json",
-      proposedOwner: "correctness-model",
+      proposedOwner: "correctness-model/evaluator.ts",
     };
     const unrouted: AnalysisFinding = { ...routed, kind: "diagnosis-uncertain", proposedOwner: null };
     const admitted = admission([routed, unrouted]);
@@ -592,7 +594,7 @@ describe("the issue register and its projection", () => {
       ...admitted,
       feedback: [
         {
-          owner: "correctness-model" as const,
+          owner: "correctness-model/evaluator.ts" as const,
           severity: "blocking" as const,
           claim: routed.claim,
           evidence: `${routed.evidence} (analysis ffffffffffff)`,

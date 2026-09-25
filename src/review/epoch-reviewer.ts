@@ -467,7 +467,7 @@ function lead(toAim: number): string {
   if (toAim === 0) return "";
   return toAim < 0
     ? " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand."
-    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `brief`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `tools-spec`; the accept controls are the shapes the writer is known to produce. Record hardness once you have read the brief and the writer schema against the artifact and neither holds.";
+    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record hardness once you have read the brief and the writer schema against the artifact and neither holds.";
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The

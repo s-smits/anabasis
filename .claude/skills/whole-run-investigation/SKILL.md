@@ -273,7 +273,8 @@ lands beside it as `<name>.md` as it finishes.
 result per task and matching prompt, report and heading identities. Under each owed `## lane_NN`
 heading the report carries `### Started from`, `### Evidence read`, `### Findings` and
 `### Not established`, each once, in that order and non-empty, and every finding names an
-`owner:` from the nine `FeedbackOwner` values plus `controller-source` and `judge`
+`owner:` from the `FeedbackOwner` values — the bundle file at fault, such as
+`correctness-model/evaluator.ts`, or `environment` — plus `controller-source` and `judge`
 (`FINDING_OWNERS` in `manifest-reporting.mjs`, which the leaf prompt spells out). A report that
 breaks that shape is refused with the exact section named; a failed or absent report is
 missing work, and one retry is permitted within the authorised cap. It then scaffolds

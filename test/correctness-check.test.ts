@@ -161,7 +161,7 @@ function session(dir: string, options: Session) {
 
 const GATE_FEEDBACK: CampaignFeedback[] = [
   {
-    owner: "tests",
+    owner: "correctness-model/tasks.json",
     severity: "blocking",
     claim: 'check "answer" does not require a hidden operand for this family',
     evidence: "task validation",
@@ -180,13 +180,13 @@ const GATE_FEEDBACK: CampaignFeedback[] = [
     evidence: "protected host evidence",
   },
   {
-    owner: "brief",
+    owner: "correctness-model/brief.json",
     severity: "advisory",
     claim: "advisory only",
     evidence: "representation census",
   },
   {
-    owner: "accept-controls",
+    owner: "correctness-model/controls.json",
     severity: "advisory",
     claim: "GATE_AUTHOR_PROSE beside a validated finding",
     evidence: "pre-adoption F2 census",
@@ -558,7 +558,7 @@ describe("correctness_check", () => {
     });
     const first = await check();
     expect(first.status).toBe("findings");
-    expect(codesOf(first)).toEqual(["gate-environment"]);
+    expect(codesOf(first)).toEqual(["gate-unvalidated"]);
     // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
     // // The reserved attempt still stands, exactly as it does for a blocked outcome, so the same
     // // tree cannot buy the paid validation sequence again; it is refused instead of answered from memory.
@@ -570,7 +570,7 @@ describe("correctness_check", () => {
     const second = await check();
     expect(gateCalls).toBe(2);
     expect(second.repeated).toBeUndefined();
-    expect(codesOf(second)).toEqual(["gate-environment"]);
+    expect(codesOf(second)).toEqual(["gate-unvalidated"]);
   });
 
   it("previews every distinct candidate and answers unchanged bytes from memory", async () => {
@@ -603,14 +603,14 @@ describe("correctness_check", () => {
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("gates");
     // An advisory row crosses the author boundary the way a blocking one does: the validated
-    // finding keeps its detail, the row that carries none arrives as the gate's name, and the
+    // finding keeps its detail, the row that carries none arrives as gate-unvalidated at its owner's path, and the
     // claim beside either stays behind. It used to arrive as a count with nowhere to read it.
     expect(body.advisory).toEqual({
       rows: 2,
       findings: [
         {
-          code: "gate-brief",
-          path: "submit",
+          code: "gate-unvalidated",
+          path: "correctness-model/brief.json",
           detail: "this gate produced no controller-validated finding; no public detail is available",
         },
         {
@@ -620,7 +620,7 @@ describe("correctness_check", () => {
         },
       ],
     });
-    expect(codesOf(body)).toEqual(["tasks-hidden-operand-unexpected", "gate-environment"]);
+    expect(codesOf(body)).toEqual(["tasks-hidden-operand-unexpected", "gate-unvalidated"]);
     const blocking = GATE_FEEDBACK.filter((row) => row.severity === "blocking");
     const refusal = {
       ...authorFindingOverview(gateFeedbackFindings(blocking)),
@@ -639,7 +639,7 @@ describe("correctness_check", () => {
       candidateId: expect.any(String),
       reason: "refused-gates",
       // Which gates refused the tree survives the session on the receipt, never in the text.
-      findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
+      findingCodes: ["gate-unvalidated", "tasks-hidden-operand-unexpected"],
     });
     expect(JSON.stringify(body)).not.toContain("findingCodes");
     answer = [];

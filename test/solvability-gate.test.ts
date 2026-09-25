@@ -63,7 +63,7 @@ describe("the census projects counts and keeps locations host-side", () => {
         },
       ]),
     );
-    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/reference/index.ts", severity: "blocking" }]);
     expect(authorVisible).toContain("1 of 2");
     expect(authorVisible).toContain("tc-physics-session (1)");
     expect(authorVisible).not.toContain("t2");
@@ -109,7 +109,7 @@ describe("the census projects counts and keeps locations host-side", () => {
 
   it("blocks a census that could not execute, keeping its failure record protected", async () => {
     const { feedback, authorVisible, recorded } = await census("unavailable", probeReturning(null));
-    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
     expect(authorVisible).not.toContain("bundleSnapshot digest drifted");
     expect(await recorded()).toContain("bundleSnapshot digest drifted");
   });
@@ -133,7 +133,7 @@ describe("a refused declaration reaches the owner who can change it", () => {
   it.each<ToolRefusal>([
     [
       "solvability-tool-missing",
-      "correctness-model",
+      "correctness-model/evaluator.ts",
       'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
     ],
     // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
@@ -179,7 +179,7 @@ describe("a refused declaration reaches the owner who can change it", () => {
         },
       ]),
     );
-    expect(feedback).toMatchObject([{ owner: "brief", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/brief.json", severity: "blocking" }]);
     expect(authorVisible).toContain("SOLVABILITY_REPRESENTATION_DEFECT");
     // The detail describes the public authoring interface — writer schema, DraftStore, submit — so
     // it may cross, provided it identifies no task.
@@ -227,7 +227,7 @@ async function independenceOf(name: string, accepts: Accept[]) {
   const run = await census(name, probe, slugWithCorpus(name, accepts));
   // SAFETY: the file the gate wrote one line earlier, through the shape it writes there.
   const recorded = JSON.parse(await run.recorded()) as { acceptIndependence?: AcceptIndependence };
-  const advice = run.feedback.filter((entry) => entry.owner === "accept-controls");
+  const advice = run.feedback.filter((entry) => entry.owner === "correctness-model/controls.json");
   return { ...run, independence: recorded.acceptIndependence, advice };
 }
 

@@ -324,11 +324,11 @@ live evidence.
    sensor.
 
 7. **Give every decision one owner.** Every actionable piece of evidence names its producer, the
-   exact evidence it cites and the active owner. `FeedbackOwner` is a closed set of nine:
-   `brief`, `tests`, `instructions`, `tools-spec`, `accept-controls`, `controls`,
-   `correctness-model`, `fingerprint`, `environment` (`FEEDBACK_OWNERS`,
-   `src/author/campaign-types.ts`). Repair ownership names
-   the defective contract; it is not a write mask and not an automatic reset. Preserve in-flight
+   exact evidence it cites and the active owner. An owner is one bundle file or `environment`:
+   the nine paths of `BUNDLE_FILES` in `src/author/feedback-routing.ts`, under `agent/` and
+   `correctness-model/`, so "which part is at fault" and "which file to open" have one answer, and
+   the half of the bundle a repair reopens is the path's own prefix (`ownerSide`). Repair ownership
+   names the defective file; it is not a write mask and not an automatic reset. Preserve in-flight
    work, and let the accepted bytes decide attribution.
 
    A claim-only `CampaignFeedback` row carries routing metadata rather than a controller-validated
@@ -337,9 +337,7 @@ live evidence.
    controller-owned campaign carry, projected exactly once at the model-visible boundary. An
    unmarked finding fails closed to `generated-execution-unclassified`. Opt a generated finding
    into author-visible detail only where the producer composed that detail from public authoring
-   identities — control ids, mutation classes, family names, declared check ids. When rebuild-tier
-   rows tie, pick the owner whose declared closure settles the most rows, and let arrival order be
-   the last tie-break.
+   identities — control ids, mutation classes, family names, declared check ids.
 
 8. **Spend complexity only when it changes a useful decision.** Map each concept as
    `owner → live consumer → decision changed → evidence → hostile test`. Reuse readers and owners,
@@ -522,14 +520,14 @@ live evidence.
    probe whose original did not pass, or whose changed artifact reached no verdict, is not evidence.
    Every harness-defect finding cites its `probeIds`, or sends `[]` for a source-only reading, and a
    probe-backed harness defect may be admitted blocking on first occurrence. Otherwise a first
-   agent-side defect stays advisory, and recurrence is keyed by the declared check the finding
+   defect whose owner sits under `agent/` stays advisory, and recurrence is keyed by the declared check the finding
    names, or by the artifact path when it names no check — but only a path below a declared schema
    root. A bare root is not an identity: `schemaPath` requires the first segment alone, so a
    one-root domain offers exactly one word for the whole artifact, and across the recorded corpus
    every campaign that fell back to a path collapsed to a single constant. Run 17f9de demoted a new
    finding on two recurrences that belonged to other defects; the same collapse raises one at a
-   single recurrence, which is how a 25-of-25 harness came to be reset. Only curriculum or
-   evaluation-side defects may dispute an issue, and a dispute keeps the issue counted while
+   single recurrence, which is how a 25-of-25 harness came to be reset. Only a curriculum defect,
+   or a harness defect whose owner sits under `correctness-model/`, may dispute an issue, and a dispute keeps the issue counted while
    withholding the agent advice. Public candidate analysis and checks of published limits are
    legitimate solving support — call a tool an answer shortcut only when it supplies the remaining
    decision the solver was meant to make.

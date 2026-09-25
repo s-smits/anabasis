@@ -33,7 +33,7 @@ const DIGEST = "packet-1";
 const UNRECORDED = { scoringHash: null, taskSetHash: null };
 
 const FEEDBACK: CampaignFeedback = {
-  owner: "tests",
+  owner: "correctness-model/tasks.json",
   severity: "blocking",
   claim: "two families share one check",
   evidence: "cases 3 and 7",

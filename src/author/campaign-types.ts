@@ -9,6 +9,7 @@ import type { ControlCorpus } from "../truth/controls.ts";
 import type { TaskBattery } from "../truth/tasks.ts";
 import type { ToolsSpec } from "../truth/tools-spec.ts";
 import type { ExperimentSubmission } from "./experiment-plan.ts";
+import type { BundleFile } from "./feedback-routing.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
 export interface BuiltHarness {
@@ -21,23 +22,8 @@ export interface BuiltHarness {
   conformance: ConformanceEvidence | null;
 }
 
-// Every owner here must be one some route can actually select. `routableOwnerOf` returns a key of
-// `OWNERS` or null, so an owner absent from that table can only arrive as a literal, and two
-// that arrived neither way -- `judge` and `unknown` -- have gone. An owner nothing produces still
-// widens every exhaustive switch over this type and still reads to the next author as a route that
-// exists, which is the cost a closed set is supposed to avoid paying.
-const FEEDBACK_OWNERS = [
-  "brief",
-  "tests",
-  "instructions",
-  "tools-spec",
-  "accept-controls",
-  "controls",
-  "correctness-model",
-  "fingerprint",
-  "environment",
-] as const;
-export type FeedbackOwner = (typeof FEEDBACK_OWNERS)[number];
+/** One bundle file the finding holds at fault, or the environment, which no bundle edit repairs. */
+export type FeedbackOwner = BundleFile | "environment";
 
 export type CampaignFeedback = {
   owner: FeedbackOwner;

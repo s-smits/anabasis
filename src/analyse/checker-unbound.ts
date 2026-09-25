@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join, relative } from "../meta/path.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { batteryPath } from "../truth/battery-record.ts";
+import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import type { AnalysisFinding, IterationAnalysis } from "./iteration-analysis.ts";
 
 export function checkerUnboundFinding(repoRoot: string, analysis: IterationAnalysis): AnalysisFinding | null {
@@ -25,6 +26,6 @@ export function checkerUnboundFinding(repoRoot: string, analysis: IterationAnaly
     kind: "harness-defect",
     claim: `run ${analysis.battery.runId} recorded ${unbound} unbound-external-result finding(s): a check reported an external verdict that no host tool run supports, so this battery supports no claim. Repair the check — call the declared tool through runtime.tools.run and return a non-result when the run did not complete — instead of waiting for an environment fix`,
     evidence: relative(repoRoot, path),
-    proposedOwner: "correctness-model",
+    proposedOwner: EVALUATOR_FILE,
   };
 }

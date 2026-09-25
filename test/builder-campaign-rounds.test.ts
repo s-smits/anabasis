@@ -166,12 +166,12 @@ describe("the opening a round composes", () => {
 
   it.concurrent("projects carried repair evidence at the opening boundary without its raw detail", async () => {
     const raw = {
-      ...blockingRow("tests", "RAW_PROTECTED_CLAIM", "RAW_PROTECTED_EVIDENCE"),
+      ...blockingRow("correctness-model/tasks.json", "RAW_PROTECTED_CLAIM", "RAW_PROTECTED_EVIDENCE"),
       findings: [{ code: "RAW_PROTECTED_CODE", path: "RAW_PROTECTED_PATH", detail: "RAW_PROTECTED_DETAIL" }],
     };
     const delivered = await openingPrompt({ ...FRESH_BUILD, priorEvidence: packet("e".repeat(64), [raw]) });
     expect(delivered).toContain(
-      "tests (correctness-model/tasks.json): [blocking] generated-execution-unclassified: a check failed while executing your generated code and carries no public detail; use harness_inspect for static diagnostics, harness_trial for the generated solve path, or verifier_workshop for the correctnessModel path",
+      "correctness-model/tasks.json: [blocking] generated-execution-unclassified: a check failed while executing your generated code and carries no public detail; use harness_inspect for static diagnostics, harness_trial for the generated solve path, or verifier_workshop for the correctnessModel path",
     );
     expect(delivered).not.toContain("RAW_PROTECTED");
   });
@@ -251,14 +251,20 @@ describe("the admission a repair earns", () => {
         ...FRESH_BUILD,
         maxTurns: 3,
         priorEvidence: packet("packet-verifier", [
-          blockingRow("correctness-model", "repair the verifier only", "packet.json"),
+          blockingRow("correctness-model/evaluator.ts", "repair the verifier only", "packet.json"),
         ]),
       },
       {
         ...BARE,
         gates: async () => {
           gateCalls += 1;
-          return [blockingRow("correctness-model", "repair the verifier only", `census-${gateCalls}.json`)];
+          return [
+            blockingRow(
+              "correctness-model/evaluator.ts",
+              "repair the verifier only",
+              `census-${gateCalls}.json`,
+            ),
+          ];
         },
         open: async (tools) => {
           let turns = 0;
@@ -292,7 +298,7 @@ describe("the admission a repair earns", () => {
         baseCommit: outcome.iterations[0]?.workspaceChange?.baseCommit,
         changedPaths: expect.arrayContaining(["agent/tools.ts", "agent/BUILT_AGENTS.md"]),
       },
-      feedback: [blockingRow("correctness-model", "repair the verifier only", "census-2.json")],
+      feedback: [blockingRow("correctness-model/evaluator.ts", "repair the verifier only", "census-2.json")],
     });
     expect(readFileSync(join(workspace, "agent/tools.ts"), "utf8")).toBe("// cross-owner rewrite\n");
   });
@@ -309,7 +315,7 @@ describe("the admission a repair earns", () => {
       "agent/tools.ts",
     ];
     const advisory: CampaignFeedback = {
-      owner: "tests",
+      owner: "correctness-model/tasks.json",
       severity: "advisory",
       claim: "add harder cases",
       evidence: "packet.json",
@@ -409,8 +415,12 @@ describe("the admission a repair earns", () => {
         maxTurns: 1,
         experiment: "build",
         priorEvidence: packet("packet-controls", [
-          blockingRow("correctness-model", "check the evaluator", "packet.json"),
-          blockingRow("controls", "the reject control set covers no case for this check", "packet.json"),
+          blockingRow("correctness-model/evaluator.ts", "check the evaluator", "packet.json"),
+          blockingRow(
+            "correctness-model/controls.json",
+            "the reject control set covers no case for this check",
+            "packet.json",
+          ),
         ]),
       },
       {
@@ -433,8 +443,8 @@ describe("the admission a repair earns", () => {
       experimentScope: { actual: "build", freeze: null },
     });
     expect(censusRuns).toBe(1);
-    expect(prompt).toContain("- controls (correctness-model/controls.json):");
-    expect(prompt).toContain("- correctness-model (correctness-model/evaluator.ts):");
+    expect(prompt).toContain("- correctness-model/controls.json:");
+    expect(prompt).toContain("- correctness-model/evaluator.ts:");
   });
 
   it.concurrent("admits a coherent broader repair and records build scope with the drift it froze", async () => {
@@ -458,7 +468,7 @@ describe("the admission a repair earns", () => {
         experiment: "build",
         adoptedDir,
         priorEvidence: packet("packet-tests", [
-          blockingRow("tests", "repair the tests closure", "packet.json"),
+          blockingRow("correctness-model/tasks.json", "repair the tests closure", "packet.json"),
         ]),
       },
       { ...BARE, gates: async () => [], open: session.open },
@@ -494,7 +504,7 @@ describe("the admission a repair earns", () => {
       experiment: "build",
       adoptedDir,
       priorEvidence: packet("evaluation-seed", [
-        blockingRow("correctness-model", "Correct the evaluator", "packet.json"),
+        blockingRow("correctness-model/evaluator.ts", "Correct the evaluator", "packet.json"),
       ]),
     };
     const helper = join(workspace, "correctness-model/repair-helper.ts");

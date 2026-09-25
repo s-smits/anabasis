@@ -70,7 +70,7 @@ describe("a census that ends in a verifier non-result", () => {
   it("gives the evaluator's author a repairable finding, and an ordinary fail verdict", async () => {
     const { feedback, recorded, census } = await settle("truss", TRUSS_CRASH);
     expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
+    expect(feedback[0]).toMatchObject({ owner: "correctness-model/evaluator.ts", severity: "blocking" });
     const finding = feedback[0]?.findings?.[0];
     expect(finding?.code).toBe("tool-crash");
     // The run's arguments, files and timeout are written in the evaluator; no registry file exists.
@@ -147,7 +147,7 @@ describe("a census that ends in a verifier non-result", () => {
     ],
     ["a pre-spawn wall refusal on the environment after one retry", OPUS_SANDBOX, 2, "environment"],
     // The hostile side: a crash is the author's, so a second probe would buy nothing.
-    ["a crash on the author at once", TRUSS_CRASH, 1, "correctness-model"],
+    ["a crash on the author at once", TRUSS_CRASH, 1, "correctness-model/evaluator.ts"],
   ] as const)("settles %s", async (name, evidence, probes, owner) => {
     let probeCalls = 0;
     const { feedback, read } = await runGate(`retry-${name}`, {
@@ -176,7 +176,7 @@ describe("a census that ends in a verifier non-result", () => {
       phase: "solvability",
       subjectId: "t17",
     });
-    expect(feedback[0]?.owner).toBe("correctness-model");
+    expect(feedback[0]?.owner).toBe("correctness-model/evaluator.ts");
     expect(feedback[0]?.findings?.[0]?.detail).not.toContain("t17");
   });
 
@@ -205,7 +205,7 @@ describe("a census that ends in a verifier non-result", () => {
   });
 
   const referenceBlocked: CampaignFeedback = {
-    ...blockingRow("correctness-model", "full-task reference solve blocked", "solvability.json"),
+    ...blockingRow("correctness-model/evaluator.ts", "full-task reference solve blocked", "solvability.json"),
     findings: [
       controllerValidatedFinding({
         code: "SOLVABILITY_CENSUS_BLOCKED",
@@ -237,8 +237,8 @@ describe("a census that ends in a verifier non-result", () => {
     });
     expect(feedback.map((row) => row.owner)).toEqual([
       "environment",
-      "correctness-model",
-      "correctness-model",
+      "correctness-model/evaluator.ts",
+      "correctness-model/evaluator.ts",
     ]);
     expect(codesOf(feedback)).toEqual(["DISCRIMINATION_REJECT_PASSED", "SOLVABILITY_CENSUS_BLOCKED"]);
     const census = read("census.json");

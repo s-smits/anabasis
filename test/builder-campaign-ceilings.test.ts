@@ -94,7 +94,7 @@ describe("a relaunch reads the durable counters before it opens a session", () =
       "authoring-stalled",
     ],
     ["a carried blocking environment row", [blockedBy("environment")], "environment-blocked"],
-    ["carried author-owned feedback with no admitted packet", [blockedBy("instructions")], null],
+    ["carried author-owned feedback with no admitted packet", [blockedBy("agent/BUILT_AGENTS.md")], null],
   ] as const)("%s", async (_name, rows, clause) => {
     const campaignDir = scratchDir("ana-pre-session-");
     recordIterations(campaignDir, rows);
@@ -144,7 +144,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
         gates: async () => {
           gateCalls += 1;
           return gateCalls < 3
-            ? [blockingRow("tests", "the defect remains", `census-${gateCalls}.json`)]
+            ? [blockingRow("correctness-model/tasks.json", "the defect remains", `census-${gateCalls}.json`)]
             : [];
         },
       },
@@ -189,7 +189,13 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
           open: session.open,
           gates: async () => {
             gateCalls += 1;
-            return [blockingRow("tests", "the same task defect remains", `census-${gateCalls}.json`)];
+            return [
+              blockingRow(
+                "correctness-model/tasks.json",
+                "the same task defect remains",
+                `census-${gateCalls}.json`,
+              ),
+            ];
           },
         },
       );
@@ -218,7 +224,7 @@ describe("the no-op strike on a candidate the session keeps resubmitting", () =>
         {
           ...BARE,
           open: session.open,
-          gates: async () => [blockingRow("tests", "the same task defect remains")],
+          gates: async () => [blockingRow("correctness-model/tasks.json", "the same task defect remains")],
         },
       );
       return { outcome, turns: session.replies.length };
@@ -334,7 +340,9 @@ describe("the trailing run of one identical diagnosis", () => {
           {
             ...BARE,
             open: session.open,
-            gates: async () => [blockingRow("tests", claimFor(session.replies.length + 1))],
+            gates: async () => [
+              blockingRow("correctness-model/tasks.json", claimFor(session.replies.length + 1)),
+            ],
           },
         ),
       );
@@ -415,7 +423,9 @@ describe("a census that reached no completed run", () => {
               `${JSON.stringify({ ...TRUSS_CRASH, toolId })}\n`,
             );
           }
-          return [blockingRow("correctness-model", "the control census did not settle", "census.json")];
+          return [
+            blockingRow("correctness-model/evaluator.ts", "the control census did not settle", "census.json"),
+          ];
         },
       },
     );
@@ -680,7 +690,7 @@ describe("the campaign's provider ledger", () => {
     );
     expect(session.replies[0]).not.toContain("campaign turn budget is spent");
     expect(session.replies[0]).toContain(
-      "gate-environment submit: this gate produced no controller-validated finding; no public detail is available",
+      "gate-unvalidated environment: this gate produced no controller-validated finding; no public detail is available",
     );
     const execution = readExecutionEvidence(campaignDir);
     expect(execution).toHaveLength(1);

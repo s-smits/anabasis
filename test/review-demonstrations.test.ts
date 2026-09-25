@@ -40,7 +40,7 @@ const review = {
 /** The mass finding as that review recorded it, citing the probes the rows below number 5 and 6. */
 const MASS_FINDING = {
   kind: "harness-defect",
-  owner: "correctness-model",
+  owner: "correctness-model/evaluator.ts",
   severity: "blocking",
   claim: "The mass checker weakens the published strict unrounded mass limit by 0.05 kg.",
   demonstration: DEMO,
@@ -139,7 +139,7 @@ async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: J
   await call(tool(tools, "read_source"), { path: "correctness-model/evaluator.ts" });
   return call(tool(tools, "record_finding"), {
     kind: "harness-defect",
-    owner: "correctness-model",
+    owner: "correctness-model/evaluator.ts",
     severity: "advisory",
     claim: "The answer check refuses a lowercase answer, which the public rule also refuses.",
     citations: [{ path: "correctness-model/evaluator.ts", quote: "publicInput.input.toUpperCase()" }],

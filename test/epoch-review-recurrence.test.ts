@@ -6,13 +6,14 @@
  * an agent-side defect advises on its first reading and blocks on its second, and a probe that
  * actually executed may block on the first.
  */
+import { EVALUATOR_FILE } from "../src/meta/bundle-layout.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { CITATIONS, DEMO, REVIEW_IDENTITY, call, reviewState } from "./helpers/review-fixtures.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { ownerTier } from "../src/author/feedback-routing.ts";
+import { ownerSide } from "../src/author/feedback-routing.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
@@ -168,7 +169,7 @@ describe("a condition is reviewed once", () => {
     });
     const args = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       checkId: "bounds",
       severity: "advisory",
       claim: "a possible boundary gap",
@@ -185,7 +186,7 @@ describe("a condition is reviewed once", () => {
       kind: "harness-defect",
       claim: "private prose",
       evidence: "e",
-      proposedOwner: "brief",
+      proposedOwner: "correctness-model/brief.json",
       severity: "advisory",
       checkId: "sections-minimal-mass",
       artifactSchemaPath: "layout.members",
@@ -205,7 +206,7 @@ describe("a condition is reviewed once", () => {
     });
     const named = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -228,7 +229,7 @@ describe("a condition is reviewed once", () => {
       kind: "harness-defect",
       claim,
       evidence: "e",
-      proposedOwner: "correctness-model",
+      proposedOwner: EVALUATOR_FILE,
       severity: "advisory",
       artifactSchemaPath,
     });
@@ -256,7 +257,7 @@ describe("a condition is reviewed once", () => {
     const identities = { schemaRoots: ["files", "design"], checkIds: [] };
     const named = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -288,8 +289,8 @@ describe("a condition is reviewed once", () => {
     // Read the severity assertions with the writer in mind: `recordFinding` only writes a
     // `severity` field when it demotes, so `"advisory"` is a demotion and `undefined` is the
     // requested blocking standing unchanged.
-    expect(ownerTier("tools-spec")).toBe("agent");
-    expect(ownerTier("correctness-model")).toBe("rebuild");
+    expect(ownerSide("agent/tools-spec.json")).toBe("agent");
+    expect(ownerSide(EVALUATOR_FILE)).toBe("correctness-model");
     const state = reviewState();
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check", "budget-check"] };
     const first = recordFindingTool([], [], "e", state, { identities, recurring: new Map() });
@@ -300,7 +301,7 @@ describe("a condition is reviewed once", () => {
       demonstration: DEMO,
       claim: "the tool supplies the remaining decision",
     };
-    await call(first, { ...named, owner: "tools-spec", checkId: "shortcut-check" });
+    await call(first, { ...named, owner: "agent/tools-spec.json", checkId: "shortcut-check" });
     expect(state.findings[0]?.severity).toBe("advisory");
     // The identical finding on an evaluation owner is admitted blocking on its first reading,
     // because the floor is the agent tier's alone. All that settles is the severity; what the
@@ -308,7 +309,7 @@ describe("a condition is reviewed once", () => {
     const evaluatorSide = reviewState();
     await call(recordFindingTool([], [], "e", evaluatorSide, { identities, recurring: new Map() }), {
       ...named,
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       checkId: "budget-check",
     });
     expect(evaluatorSide.findings[0]?.severity).toBeUndefined();
@@ -319,7 +320,7 @@ describe("a condition is reviewed once", () => {
       recordFindingTool([], [], "e", second, { identities, recurring: new Map([["shortcut-check", 1]]) }),
       {
         ...named,
-        owner: "tools-spec",
+        owner: "agent/tools-spec.json",
         checkId: "shortcut-check",
       },
     );
@@ -335,7 +336,7 @@ describe("a condition is reviewed once", () => {
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
     const named = {
       kind: "harness-defect",
-      owner: "tools-spec",
+      owner: "agent/tools-spec.json",
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -406,7 +407,7 @@ describe("a condition is reviewed once", () => {
     // candidate's own accept control, so the first-occurrence floor does not apply to it.
     const named = {
       kind: "harness-defect",
-      owner: "tools-spec",
+      owner: "agent/tools-spec.json",
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -497,7 +498,7 @@ describe("a condition is reviewed once", () => {
     // support it. Asking costs one argument.
     const named = {
       kind: "harness-defect",
-      owner: "tools-spec",
+      owner: "agent/tools-spec.json",
       severity: "advisory",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -572,7 +573,7 @@ describe("a condition is reviewed once", () => {
           kind: "harness-defect",
           claim: "private prose",
           evidence: "e",
-          proposedOwner: "correctness-model",
+          proposedOwner: EVALUATOR_FILE,
           severity: "advisory",
           checkId: "change-budget",
           artifactSchemaPath: "layout.members",
@@ -603,7 +604,7 @@ describe("a condition is reviewed once", () => {
     });
     const named = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       claim: "the same check again",
       demonstration: DEMO,
@@ -627,7 +628,7 @@ describe("a condition is reviewed once", () => {
       kind: "harness-defect",
       claim: "private prose",
       evidence: "e",
-      proposedOwner: "correctness-model",
+      proposedOwner: EVALUATOR_FILE,
       checkId: "target-compiles",
       artifactSchemaPath: "files",
     };
@@ -637,7 +638,7 @@ describe("a condition is reviewed once", () => {
     const identities = { schemaRoots: ["files"], checkIds: ["target-compiles"] };
     const named = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -703,7 +704,7 @@ describe("a condition is reviewed once", () => {
     });
     const named = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       claim: "the same check again",
       citations: CITATIONS,
       demonstration: DEMO,

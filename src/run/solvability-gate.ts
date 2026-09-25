@@ -44,8 +44,8 @@ import { type Witness, inputInsensitivity } from "./representation-census.ts";
 // import { BLOCKING_CODES, censusRepresentation } from "./representation-census.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
-import { EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
-import { REFERENCE_SOLVE_ENTRY_SOLVE } from "../truth/evaluator-process-bundle.ts";
+import { BRIEF_FILE, EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
+import { REFERENCE_SOLVE_ENTRY, REFERENCE_SOLVE_ENTRY_SOLVE } from "../truth/evaluator-process-bundle.ts";
 
 /** The iteration-relative census evidence; the gate writes it and `check-tool` reads it. */
 export const SOLVABILITY_EVIDENCE_FILE = "solvability.json";
@@ -165,7 +165,7 @@ function missingToolFeedback(findings: readonly ContractFinding[]): CampaignFeed
   if (rows.length === 0) return [];
   return [
     {
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       claim: `installed tools: ${rows.length} external check(s) name a tool that resolves nowhere, so the reference solves did not run`,
       evidence: PROTECTED_EVIDENCE,
@@ -274,7 +274,7 @@ function representationDefectFeedback(
   const projected = ranked.slice(0, 8);
   const withheld = ranked.length - projected.length;
   return {
-    owner: "brief",
+    owner: BRIEF_FILE,
     severity: "blocking",
     claim: `solvability census: ${representationDefects} of ${cases.length} reference artifacts cannot traverse the public writer and submit path`,
     evidence: PROTECTED_EVIDENCE,
@@ -301,7 +301,7 @@ function censusFeedback(
   if (evidence === null) {
     return [
       {
-        owner: "correctness-model",
+        owner: EVALUATOR_FILE,
         severity: "blocking",
         claim: "solvability census could not execute over the fingerprinted candidate",
         evidence: PROTECTED_EVIDENCE,
@@ -347,7 +347,7 @@ function censusFeedback(
         ? ""
         : `, and ${timedOut} of those stopped at the per-task reference solve wall before returning an artifact`;
     feedback.push({
-      owner: "correctness-model",
+      owner: REFERENCE_SOLVE_ENTRY,
       severity: "blocking",
       claim: `solvability census: ${failed} of ${cases.length} authored tasks rejected the candidate's own reference solve`,
       evidence: PROTECTED_EVIDENCE,

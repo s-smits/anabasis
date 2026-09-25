@@ -229,7 +229,7 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
     });
     const feedback = await gate(fixture, result);
     expect(feedback).toContainEqual(
-      expect.objectContaining({ owner: "correctness-model", severity: "blocking" }),
+      expect.objectContaining({ owner: "correctness-model/evaluator.ts", severity: "blocking" }),
     );
     expect(JSON.stringify(feedback)).not.toContain("test-writer-schema.json");
     expect(readFileSync(join(fixture.dir, "solvability.json"), "utf8")).toContain(

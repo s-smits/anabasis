@@ -298,16 +298,16 @@ export class BuilderAuthorFeedback {
 }
 
 /** Gate feedback as submit and correctness_check both show it. A row without controller-validated
- *  findings keeps its prose claim in the evidence and hands the author only the name of the gate
- *  that refused, since an unvalidated claim is routing metadata rather than a finding. */
+ *  findings keeps its prose claim in the evidence and hands the author only the file it names,
+ *  since an unvalidated claim is routing metadata rather than a finding. */
 export function gateFeedbackFindings(feedback: readonly CampaignFeedback[]): ContractFinding[] {
   return feedback.flatMap((row) =>
     row.findings !== undefined && row.findings.length > 0
       ? row.findings
       : [
           controllerValidatedFinding({
-            code: `gate-${row.owner}`,
-            path: "submit",
+            code: "gate-unvalidated",
+            path: row.owner,
             detail: "this gate produced no controller-validated finding; no public detail is available",
           }),
         ],

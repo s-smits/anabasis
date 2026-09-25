@@ -21,7 +21,7 @@ import { join } from "../meta/path.ts";
 import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
-import { BUILDER_OWNED, ownerTier, ownerWritableFiles, routableOwnerOf } from "../author/feedback-routing.ts";
+import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
@@ -145,7 +145,7 @@ const KIND_AND_CLAIM_REQUIRED = "kind and claim are required";
 interface FindingCase {
   parsed: FindingArgs;
   args: Record<string, JsonValue>;
-  owner: ReturnType<typeof routableOwnerOf>;
+  owner: BundleFile | null;
   citations: string | null;
   state: ReviewState;
   identities: BriefIdentities;
@@ -292,7 +292,7 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  owes the demonstration, the citations and the one-reopen cap. */
 function admitSeverity(
   kind: FindingKind,
-  proposedOwner: ReturnType<typeof routableOwnerOf>,
+  proposedOwner: BundleFile | null,
   chosen: FindingSeverity,
   host: { blockingAlready: boolean; recurrences: number; demonstrated: boolean; probeBacked: boolean },
 ): FindingSeverity {
@@ -302,7 +302,7 @@ function admitSeverity(
   if (host.recurrences >= 2) return "advisory";
   if (host.recurrences === 1) return "blocking";
   if (host.probeBacked) return chosen;
-  return proposedOwner !== null && ownerTier(proposedOwner) === "agent" ? "advisory" : chosen;
+  return proposedOwner !== null && ownerSide(proposedOwner) === "agent" ? "advisory" : chosen;
 }
 
 export function briefIdentities(root: string): BriefIdentities {
@@ -389,7 +389,7 @@ const disputeEligibility: FindingRule = ({ parsed, owner }) => {
   if (parsed.disputes === "") return null;
   const evaluationSide =
     parsed.kind === "curriculum-defect" ||
-    (parsed.kind === "harness-defect" && owner !== null && ownerTier(owner) === "rebuild");
+    (parsed.kind === "harness-defect" && owner !== null && ownerSide(owner) === "correctness-model");
   return evaluationSide
     ? null
     : "this finding cannot dispute an issue: only curriculum or evaluation-side defects may suspend diagnosis; omit disputesIssue and retry";
@@ -439,7 +439,9 @@ const FINDING_RULES: readonly FindingRule[] = [
       ? "a claim may not name an individual task; write about the family"
       : null,
   ({ parsed, owner }) =>
-    parsed.kind === "harness-defect" && owner === null ? "a harness-defect must name a routable owner" : null,
+    parsed.kind === "harness-defect" && owner === null
+      ? "a harness-defect must name the bundle file at fault as its owner"
+      : null,
   // An empty list cites nothing, the same as leaving the field out, rather than failing to bind.
   ({ args, citations }) =>
     args.citations !== undefined &&
@@ -511,7 +513,7 @@ function recordedFinding(
 }
 
 /** The schema the reviewer reads; the rules above are what the host applies to what it returns. */
-function findingParameters(owners: readonly string[], surfaces: string, disputable: readonly string[]) {
+function findingParameters(disputable: readonly string[]) {
   return {
     type: "object",
     additionalProperties: false,
@@ -521,8 +523,9 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
       claim: { type: "string", minLength: 1 },
       owner: {
         type: "string",
-        enum: [...owners],
-        description: `Required for harness-defect: name the root contract at fault, not a limit on the repair. Direct ownership: ${surfaces}. The Builder may make a broader repair; the controller determines evaluation-only or build attribution from the candidate bytes. A tests finding starts battery re-authoring with the harness fixed.`,
+        enum: [...BUNDLE_FILES],
+        description:
+          "Required for harness-defect: the bundle file at fault, not a limit on the repair. The Builder may make a broader repair; the controller determines evaluation-only or build attribution from the candidate bytes. A correctness-model/tasks.json finding starts battery re-authoring with the harness fixed.",
       },
       severity: {
         type: "string",
@@ -603,24 +606,18 @@ export function recordFindingTool(
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
   const recurring = priors.recurring ?? new Map<string, number>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
-  const owners = [...BUILDER_OWNED];
-  // Each owner's writable files, so the reviewer sees what an owner covers before choosing one.
-  // This exposes existing file ownership rather than copying routing policy into the description.
-  const surfaces = owners
-    .map((owner) => `${owner}: ${ownerWritableFiles(owner).join(", ") || "no direct file"}`)
-    .join("; ");
   return {
     name: "record_finding",
     label: "Record a finding",
     description:
       "Record one finding supported by evidence about the measured harness. Use harness-defect with an owner when opened source shows a defect in a component the Builder owns; curriculum-defect when the task set is what is wrong; hardness when the tasks are simply harder than the harness. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. The claim stays in controller evidence; the next Builder receives typed findings with public identities and the relevant published requirements. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.",
-    parameters: readerParameters(findingParameters(owners, surfaces, [...byPrefix.keys()])),
+    parameters: readerParameters(findingParameters([...byPrefix.keys()])),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const parsed = findingArgs(args);
       const subject: FindingCase = {
         parsed,
         args,
-        owner: routableOwnerOf(parsed.owner),
+        owner: BUNDLE_FILES.find((file) => file === parsed.owner) ?? null,
         citations: findingCitations(args, state),
         state,
         identities,

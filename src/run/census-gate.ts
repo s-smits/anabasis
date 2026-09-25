@@ -35,7 +35,7 @@ import { harnessSettings } from "../truth/harness-config.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
 import { CONFORMANCE_FILE } from "../claim/conformance-evidence.ts";
 
 /** The control-census record written beside an iteration's candidate. */
@@ -312,7 +312,7 @@ function settleShadow(context: CensusContext, dir: string, name: string, shadow:
     context,
     [
       {
-        owner: dir === "agent" ? "tools-spec" : "correctness-model",
+        owner: dir === "agent" ? GENERATED_TOOLS_FILE : EVALUATOR_FILE,
         severity: "blocking",
         claim: `${dir}: ${name} resolves to the workspace file ${shadow} instead of the vendored package`,
         evidence: "census gate: vendor resolution evidence (census.json)",
@@ -452,7 +452,7 @@ function settleNonResult(
   writeCompleted(join(context.iterationDir, TOOL_NON_RESULT_FILE), error.evidence);
   const feedback: CampaignFeedback[] = [
     {
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       // The claim is part of the stall identity, which is why it names the tool and deliberately
       // does not name the outcome kind. A different tool failing is a moved diagnosis and should
@@ -506,7 +506,7 @@ function settleCensusWall(
   const size = `${harness.corpus.accept.length} accept and ${harness.corpus.reject.length} reject examples over ${harness.battery.tasks.length} tasks`;
   const feedback: CampaignFeedback[] = [
     {
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       claim: `census wall: the ${error.stage} stage was still running when the census stopped`,
       evidence: "census gate: census wall",
@@ -583,7 +583,7 @@ function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
   if (findings.length === 0) return [];
   return [
     {
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       claim: `control census against the installed tools returned ${findings.length} finding(s)`,
       evidence: "census gate: executed discrimination evidence (census.json)",

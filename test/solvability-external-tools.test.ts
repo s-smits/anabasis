@@ -60,7 +60,11 @@ describe("the tools an external check is allowed to name", () => {
     expect(result.evidence).toBeNull();
     // With no evidence the gate reports the refusal alone, not a second census failure beside it.
     expect(await gate(fixture, result)).toMatchObject([
-      { owner: "correctness-model", severity: "blocking", findings: [{ code: "SOLVABILITY_TOOL_MISSING" }] },
+      {
+        owner: "correctness-model/evaluator.ts",
+        severity: "blocking",
+        findings: [{ code: "SOLVABILITY_TOOL_MISSING" }],
+      },
     ]);
   });
 

@@ -1,26 +1,16 @@
 // The report contract every lane writes to and the validator reads back, kept beside the snapshot
 // and reporting instructions so the composer and the validator cannot drift apart.
+import { BUNDLE_FILES } from "#src/author/feedback-routing.ts";
 import { resolve } from "#src/meta/path.ts";
 import { PUBLIC_ONLY_LANE, TRACE_CHALLENGE_LANE } from "./catalogue-shape.mjs";
 
 /** The `###` subsections every lane section carries, each exactly once, in this order. */
 export const REPORT_SECTIONS = ["Started from", "Evidence read", "Findings", "Not established"];
 
-/** Owners a finding may name: the controller's closed `FeedbackOwner` set, plus the two the lane
- *  table routes to and the controller cannot (`controller-source`, `judge`). */
-export const FINDING_OWNERS = [
-  "brief",
-  "tests",
-  "instructions",
-  "tools-spec",
-  "accept-controls",
-  "controls",
-  "correctness-model",
-  "fingerprint",
-  "environment",
-  "controller-source",
-  "judge",
-];
+/** Owners a finding may name: the controller's `FeedbackOwner` set, which is one bundle file or the
+ *  environment, plus the two the lane table routes to and the controller cannot
+ *  (`controller-source`, `judge`). */
+export const FINDING_OWNERS = [...BUNDLE_FILES, "environment", "controller-source", "judge"];
 
 export function reportSectionLines() {
   return [

@@ -36,7 +36,7 @@ import { EPOCH_REVIEW_PROMPT } from "../src/review/epoch-review-prompt.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
-import { ownerWritableFiles } from "../src/author/feedback-routing.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
@@ -81,13 +81,12 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(EPOCH_REVIEW_PROMPT).toContain(`one of your ${NUMBER_WORDS[state.findings.length]} slots`);
   });
 
-  test("a harness defect must name a routable owner, and the owner field lists what each one writes", async () => {
+  test("a harness defect must name a bundle file as its owner, and the owner field lists every one", async () => {
     const state = reviewState();
     const tool = recordFindingTool([issue()], [], evidence, state);
     const ownerContract = JSON.stringify(tool.parameters);
-    for (const owner of ["tests", "correctness-model", "controls"] as const) {
-      expect(ownerContract).toContain(`${owner}: ${ownerWritableFiles(owner).join(", ")}`);
-    }
+    for (const file of BUNDLE_FILES) expect(ownerContract).toContain(`"${file}"`);
+    expect(ownerContract).not.toContain('"environment"');
     expect(ownerContract).not.toContain("evaluation correction freezes the agent and tasks");
     const defect = {
       kind: "harness-defect",
@@ -96,8 +95,8 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       citations: CITATIONS,
       demonstration: DEMO,
     };
-    expect(await call(tool, defect)).toContain("routable owner");
-    expect(await call(tool, { ...defect, owner: "not-an-owner" })).toContain("routable owner");
+    expect(await call(tool, defect)).toContain("bundle file at fault");
+    expect(await call(tool, { ...defect, owner: "not-an-owner" })).toContain("bundle file at fault");
     expect(state.findings).toHaveLength(0);
   });
 
@@ -109,7 +108,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const tool = recordFindingTool([], [], evidence, state, { identities });
     const hedged = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: "correctness-model/evaluator.ts",
       checkId: "topology",
       claim: "the check never walks connectivity",
       severity: "blocking",
@@ -203,7 +202,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(projected).toContain("it does not ask for a published limit to move between batteries");
     // The owner already names the contract; the subject named it a second time, so every curriculum
     // finding read "in the public contract: the contract (public input `...`)".
-    expect(projected).toContain("Epoch review (tasks): public input `$.limits.maxMemberLengthMm`");
+    expect(projected).toContain(
+      "Epoch review (correctness-model/tasks.json): public input `$.limits.maxMemberLengthMm`",
+    );
     expect(projected).not.toContain("the contract (public input");
     // The private claim never crosses.
     expect(projected).not.toContain("one template");
@@ -240,7 +241,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       kind: "harness-defect" as const,
       claim: "private remedy text",
       evidence: "e.json",
-      proposedOwner: "correctness-model" as const,
+      proposedOwner: "correctness-model/evaluator.ts" as const,
       checkId: "mass-within-limit",
     };
     const review = {
@@ -327,7 +328,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       await call(tool, {
         kind: "harness-defect",
         claim: "first defect",
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         severity: "blocking",
         citations: CITATIONS,
         demonstration: DEMO,
@@ -337,7 +338,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       await call(tool, {
         kind: "harness-defect",
         claim: "second defect",
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         severity: "blocking",
         citations: CITATIONS,
         demonstration: DEMO,
@@ -418,7 +419,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       const tool = recordFindingTool([issue()], [], evidence, state);
       const finding = {
         kind,
-        owner: "tools-spec",
+        owner: "agent/tools-spec.json",
         claim: "the family is feasible but the agent fails",
         severity: "blocking",
         citations: CITATIONS,
@@ -445,7 +446,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(
       await call(tool, {
         kind: "harness-defect",
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         claim: "the evaluator rejects a permitted representation",
         severity: "blocking",
         citations: CITATIONS,
@@ -463,7 +464,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const identities = { schemaRoots: ["pins"], checkIds: ["gpio-exit-code"] };
     const defect = {
       kind: "harness-defect",
-      owner: "correctness-model",
+      owner: "correctness-model/evaluator.ts",
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -493,7 +494,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       });
       const projected = publicEpochReview({ status: "completed", ...state }).findings[0]?.claim ?? "";
       expect(projected).toBe(
-        "Epoch review (evaluator): check `gpio-exit-code` at artifact path `pins.gpio` (public input `$.board.pins`); inspect and repair that contract.",
+        "Epoch review (correctness-model/evaluator.ts): check `gpio-exit-code` at artifact path `pins.gpio` (public input `$.board.pins`); inspect and repair that contract.",
       );
       for (const word of ["mock", "header", "returns", "predicate"]) expect(projected).not.toContain(word);
     });
@@ -522,7 +523,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       ).toBe("recorded harness-defect as blocking");
       expect(state.findings[0]).toMatchObject({ unobserved: true, artifactSchemaPath: "pins" });
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
-        "Epoch review (evaluator): no declared check observes the obligation the review traced at artifact path `pins`; add a check that observes what the delivered artifact does there.",
+        "Epoch review (correctness-model/evaluator.ts): no declared check observes the obligation the review traced at artifact path `pins`; add a check that observes what the delivered artifact does there.",
       );
       // Run 08c0f2: every one of nine checks read `$.firmware`, and two different gaps both
       // reached the Builder as "no declared check observes artifact path `firmware`".
@@ -541,7 +542,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         publicEpochReview({ status: "completed", ...state, findings: [traced] }, { brief }).findings[0]
           ?.claim,
       ).toBe(
-        "Epoch review (evaluator): none of the 3 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); add a check that observes what the delivered artifact does there.",
+        "Epoch review (correctness-model/evaluator.ts): none of the 3 declared checks reading artifact path `pins` observes the obligation the review traced there (public input `$.board.pins`); add a check that observes what the delivered artifact does there.",
       );
     });
 
@@ -741,7 +742,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
         claim: "the writer omits a required root",
       });
       expect(publicEpochReview({ status: "completed", ...state }).findings[0]?.claim).toBe(
-        "Epoch review (evaluator): correctness-model/evaluator.ts; inspect that contract for a mismatch.",
+        "Epoch review (correctness-model/evaluator.ts): no check or path named; inspect that contract for a mismatch.",
       );
       expect(state.findings[0]).not.toHaveProperty("checkId");
     });

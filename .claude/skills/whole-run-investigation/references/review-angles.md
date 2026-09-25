@@ -8,10 +8,10 @@ deterministic trigger, which is the capitalised text before the first colon of a
 a lane has something to read; it does not say what the answer is, and a lane that contradicts its
 trigger with evidence is a useful result. Nothing here changes a score. The verifier owns every
 pass, and a lane's product is one finding with one owner, the exact evidence it cites and the
-observation that would reverse it. The owner is one of the nine `FeedbackOwner` values in
-`src/author/campaign-types.ts` — `brief`, `tests`, `instructions`, `tools-spec`,
-`accept-controls`, `controls`, `correctness-model`, `fingerprint`, `environment` — when the
-Builder can repair it, and a named controller source file when it cannot. Lanes 7 and 23 are
+observation that would reverse it. The owner is a `FeedbackOwner` — one of the nine bundle files
+of `BUNDLE_FILES` in `src/author/feedback-routing.ts`, such as `correctness-model/evaluator.ts` or
+`agent/tools-spec.json`, or `environment` — when the Builder can repair it, and a named controller
+source file when it cannot. Lanes 7 and 23 are
 isolated and never share a session with another lane.
 
 Each lane body opens with one paragraph beginning `Starts from`, which the manifest carries

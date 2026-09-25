@@ -349,23 +349,11 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
       f.report,
       laneReport(
         LANE,
-        "- The oracle accepts a wrong answer.\n  owner: correctness-model\n- The judge cited no rule.\n  owner: judge",
+        "- The oracle accepts a wrong answer.\n  owner: correctness-model/evaluator.ts\n- The judge cited no rule.\n  owner: judge",
       ),
     );
     expect(run(f.tasks, f.summary).status).toBe(0);
     expect(receiptOf(f).rows[0].issues).toEqual([]);
-  });
-
-  it("names the nine FeedbackOwner members from src plus the two review-only owners", () => {
-    const source = readFileSync(join(root, "src/author/campaign-types.ts"), "utf8");
-    const declared = /const FEEDBACK_OWNERS = \[([^\]]+)\]/.exec(source)?.[1];
-    if (declared === undefined) throw new Error("campaign-types.ts declares no FEEDBACK_OWNERS");
-    const owners = [...declared.matchAll(/"([a-z-]+)"/g)].flatMap((match) =>
-      match[1] === undefined ? [] : [match[1]],
-    );
-    expect(owners).toHaveLength(9);
-    expect(FINDING_OWNERS.slice(0, owners.length)).toEqual(owners);
-    expect(FINDING_OWNERS.slice(owners.length)).toEqual(["controller-source", "judge"]);
   });
 
   it("rejects a failed session and a report outside the launcher output", () => {

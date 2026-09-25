@@ -7,6 +7,7 @@
  * admitted. The integration cases in test/harness-measure.test.ts derive the same analysis from
  * recorded measurement evidence instead.
  */
+import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
@@ -20,7 +21,7 @@ import {
 } from "../src/analyse/iteration-analysis.ts";
 import { authorSessionOwner } from "../src/analyse/finding-owner.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
-import { BUILDER_OWNED } from "../src/author/feedback-routing.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { recordFindingTool, type ReviewState } from "../src/review/epoch-review-findings.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
@@ -157,8 +158,8 @@ describe("a checker outage recorded in the measured battery", () => {
     const found = hostFindings(root, packet({ summary: { nonResults: 3 }, cases: stopped(3, "timeout") }));
     expect(found.map((f) => f.kind)).toEqual(["environment-non-result", "harness-defect"]);
     const outage = found.find((f) => f.kind === "harness-defect");
-    expect(outage?.proposedOwner).toBe("correctness-model");
-    expect(outage === undefined ? null : authorSessionOwner(outage)).toBe("correctness-model");
+    expect(outage?.proposedOwner).toBe("correctness-model/evaluator.ts");
+    expect(outage === undefined ? null : authorSessionOwner(outage)).toBe("correctness-model/evaluator.ts");
     // Public identities only: the routed claim quotes neither the recorded message nor task ids.
     expect(outage?.claim).not.toContain("recorded detail");
     expect(outage?.evidence).toBe(`domains/${SLUG}/runs/${RUN}/battery.json`);
@@ -189,7 +190,7 @@ describe("the routing decision", () => {
     // the same statement and one of the two reaches nobody — a sole diagnosis recorded as a
     // `hardness` row with a null owner routes no feedback at all.
     for (const kind of ["hardness", "curriculum-defect"] as const) {
-      expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toBe("tests");
+      expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toBe(TASKS_FILE);
     }
   });
 
@@ -197,12 +198,14 @@ describe("the routing decision", () => {
     // The Judge advises; the verifier decides. A disagreement names no owner even when its
     // producer proposed the evaluator.
     expect(
-      authorSessionOwner(finding({ kind: "judge-disagreement", proposedOwner: "correctness-model" })),
+      authorSessionOwner(
+        finding({ kind: "judge-disagreement", proposedOwner: "correctness-model/evaluator.ts" }),
+      ),
     ).toBeNull();
   });
 
   it("routes harness-defect findings only to Builder-owned parts", () => {
-    const owners = [...BUILDER_OWNED];
+    const owners = [...BUNDLE_FILES];
     for (const owner of owners) {
       expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toBe(owner);
     }
@@ -285,31 +288,31 @@ describe("host findings — evidence restatements only", () => {
 describe("controller admission", () => {
   it("admits only findings whose cited evidence exists, and discloses refusals", () => {
     const root = repo();
-    const cited = finding({ proposedOwner: "tests" });
+    const cited = finding({ proposedOwner: TASKS_FILE });
     const uncited = finding({
       evidence: `campaigns/${SLUG}/does-not-exist.json`,
-      proposedOwner: "correctness-model",
+      proposedOwner: "correctness-model/evaluator.ts",
     });
     const evidence = admitFindings(root, packet(), [cited, uncited]);
     expect(evidence.admitted).toEqual([cited]);
     expect(evidence.refused).toEqual([{ finding: uncited, reason: expect.stringMatching(/does not exist/) }]);
-    expect(evidence.feedback.map((f) => f.owner)).toEqual(["tests"]);
+    expect(evidence.feedback.map((f) => f.owner)).toEqual([TASKS_FILE]);
     expect(evidence.findingRoutes).toEqual([
-      { findingDigest: expect.any(String), kind: "harness-defect", owner: "tests" },
+      { findingDigest: expect.any(String), kind: "harness-defect", owner: TASKS_FILE },
     ]);
   });
 
   it("maps finding severity into feedback — an advisory disclosure never blocks a rebuild", () => {
     const root = repo();
-    const advisory = finding({ proposedOwner: "tests", severity: "advisory" });
+    const advisory = finding({ proposedOwner: TASKS_FILE, severity: "advisory" });
     const evidence = admitFindings(root, packet(), [advisory]);
-    expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([["tests", "advisory"]]);
+    expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([[TASKS_FILE, "advisory"]]);
   });
 
   it("carries a controller-marked findings packet the author prompt can render", () => {
     const root = repo();
     const evidence = admitFindings(root, packet(), [
-      finding({ claim: "the battery did not discriminate", proposedOwner: "tests" }),
+      finding({ claim: "the battery did not discriminate", proposedOwner: TASKS_FILE }),
     ]);
     // The author input reads ONLY f.findings, so an admission without it renders nothing, and an
     // unmarked packet is refused at the author isolation.
@@ -348,7 +351,7 @@ describe("controller admission", () => {
       "scope",
       double<never>({
         kind: "harness-defect",
-        owner: "brief",
+        owner: "correctness-model/brief.json",
         severity: "blocking",
         artifactSchemaPath: "files",
         checkId: "compile",
@@ -389,7 +392,9 @@ describe("controller admission", () => {
       packet({ summary: { passed: 2, passRate: 1 } }),
       projected.findings,
     );
-    expect(admission.feedback.map((row) => [row.owner, row.severity])).toEqual([["brief", "blocking"]]);
+    expect(admission.feedback.map((row) => [row.owner, row.severity])).toEqual([
+      ["correctness-model/brief.json", "blocking"],
+    ]);
     expect(JSON.stringify(admission.feedback)).toContain("files");
     // The request has one owner: every prompt rendering these rows states it once under its own
     // heading, and a copy per finding would repeat it once per finding in one authoring prompt.
@@ -446,16 +451,21 @@ describe("controller admission", () => {
       finding({ kind: "environment-non-result" }),
       finding({ kind: "controller-defect" }),
       finding({ kind: "hardness" }),
-      finding({ kind: "harness-defect", proposedOwner: "controls" }),
+      finding({ kind: "harness-defect", proposedOwner: "correctness-model/controls.json" }),
     ]);
     expect(evidence.admitted).toHaveLength(4);
     // hardness reaches the task author whether or not its producer recorded an owner; a blocking
     // severity stays reserved for the defect kinds, so it cannot force a rebuild on its own.
     expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([
-      ["tests", "advisory"],
-      ["controls", "blocking"],
+      [TASKS_FILE, "advisory"],
+      ["correctness-model/controls.json", "blocking"],
     ]);
-    expect(evidence.findingRoutes.map((row) => row.owner)).toEqual([null, null, "tests", "controls"]);
+    expect(evidence.findingRoutes.map((row) => row.owner)).toEqual([
+      null,
+      null,
+      TASKS_FILE,
+      "correctness-model/controls.json",
+    ]);
   });
 
   it("records a null route for an admitted Judge disclosure", () => {
@@ -489,11 +499,11 @@ describe("controller admission", () => {
     const hardness = finding({
       kind: "hardness",
       severity: "advisory",
-      proposedOwner: "tests",
+      proposedOwner: TASKS_FILE,
       claim: "the battery saturated. Suggested check: cut mass-budget headroom",
     });
     const evidence = admitFindings(root, packet(), [hardness]);
-    expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([["tests", "advisory"]]);
+    expect(evidence.feedback.map((f) => [f.owner, f.severity])).toEqual([[TASKS_FILE, "advisory"]]);
     expect(evidence.feedback[0]?.claim).toContain("cut mass-budget headroom");
     expect(evidence.feedback[0]?.findings?.[0]?.code).toBe("hardness");
   });
@@ -509,7 +519,7 @@ describe("the per-case feedback restriction", () => {
   it("withholds a per-case diagnosis from authoring entirely", () => {
     const root = repo();
     const perCase = finding({
-      proposedOwner: "tools-spec",
+      proposedOwner: "agent/tools-spec.json",
       subject: { taskId: "task-901", family: "beams" },
     });
     const evidence = admitFindings(root, analysisWithTasks("task-901"), [perCase]);
@@ -530,7 +540,7 @@ describe("the per-case feedback restriction", () => {
       finding({ kind: "curriculum-defect", subject: { taskId: "task-901", family: "beams" } }),
       finding({ kind: "hardness", claim: "the next battery should be harder" }),
     ]);
-    expect(evidence.feedback.map((row) => [row.owner, row.severity])).toEqual([["tests", "advisory"]]);
+    expect(evidence.feedback.map((row) => [row.owner, row.severity])).toEqual([[TASKS_FILE, "advisory"]]);
     expect(JSON.stringify(evidence.feedback)).not.toContain("task-901");
   });
 });

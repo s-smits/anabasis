@@ -101,8 +101,8 @@ that changes the next move from one whose only consumer is a human reading a ter
 
 Own the edge from the run's recorded bytes to a patched owner. Trace terminal, case kinds, claims,
 promotion decisions and the safeguard census into the choice of the next change. Decide whether the
-loop names an owner from evidence or from prose, whether the nine-member `FeedbackOwner` closure
-is the one actually used, and whether a finding can complete the cycle without ever reaching source.
+loop names an owner from evidence or from prose, whether the `FeedbackOwner` closure — nine
+bundle files and `environment` — is the one actually used, and whether a finding can complete the cycle without ever reaching source.
 Name every point where a recorded row is read by a human step with no script and no artifact.
 
 ## 4. proof_before_launch

@@ -86,12 +86,12 @@ describe("review-yield: current advice readers", () => {
       3,
     );
     const feedback = {
-      owner: "tests",
+      owner: "correctness-model/tasks.json",
       findings: [{ code: "hardness", path: finding.evidence, detail: "public projection" }],
     };
     record(root, "run-a", "admission", { admitted: projected.findings, feedback: [feedback] }, 4);
     expect(epochReviewer(root).runs[0]?.consumer).toMatchObject({
-      value: { admitted: 1, routedOwners: ["tests"] },
+      value: { admitted: 1, routedOwners: ["correctness-model/tasks.json"] },
     });
     expect(JSON.stringify(epochReviewer(root))).not.toContain("private assessment");
     record(
@@ -117,7 +117,7 @@ describe("review-yield: current advice readers", () => {
         kind: "harness-defect" as const,
         claim: "private assessment",
         evidence: "private",
-        proposedOwner: "instructions" as const,
+        proposedOwner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const disputes = [{ issueId: "issue-a", reason: "private reason" }];
@@ -181,13 +181,13 @@ describe("review-yield: current advice readers", () => {
         kind: "harness-defect" as const,
         claim: "private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "instructions" as const,
+        proposedOwner: "agent/BUILT_AGENTS.md" as const,
       },
       {
         kind: "harness-defect" as const,
         claim: "a second private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "instructions" as const,
+        proposedOwner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const review = {

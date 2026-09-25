@@ -133,7 +133,7 @@ describe("a gate run two callers may share", () => {
           if (gateDirs.length === 1 && (change === "preview-blocks" || change === "host-recovers")) {
             return [
               blockingRow(
-                change === "host-recovers" ? "environment" : "correctness-model",
+                change === "host-recovers" ? "environment" : "correctness-model/evaluator.ts",
                 "preview refused",
               ),
             ];
@@ -200,7 +200,7 @@ describe("a gate run two callers may share", () => {
           gateCalls += 1;
           return readFileSync(join(workspace, ".toolchain/bin/field-engine"), "utf8").includes("exit 0")
             ? []
-            : [blockingRow("correctness-model", "installed tool failed")];
+            : [blockingRow("correctness-model/evaluator.ts", "installed tool failed")];
         },
         open: async (tools) =>
           scriptedSession(async () => {
@@ -245,7 +245,7 @@ describe("a gate run two callers may share", () => {
         { campaignDir, ...FRESH_BUILD, maxTurns: 1 },
         {
           ...BARE,
-          gates: async () => [blockingRow("correctness-model", "installed tool failed")],
+          gates: async () => [blockingRow("correctness-model/evaluator.ts", "installed tool failed")],
           open: session.open,
         },
       );
@@ -376,7 +376,7 @@ describe("a gate run two callers may share", () => {
           return gateCalls === 1
             ? [
                 {
-                  ...blockingRow("tests", "first gate refusal", "test gate"),
+                  ...blockingRow("correctness-model/tasks.json", "first gate refusal", "test gate"),
                   findings: [
                     { code: "test-gate", path: "correctness-model/tasks.json", detail: "repair once" },
                   ],
@@ -585,7 +585,7 @@ describe("the receipts a gate run records", () => {
           };
           return [
             {
-              ...blockingRow("correctness-model", "a reject passed", "census.json"),
+              ...blockingRow("correctness-model/evaluator.ts", "a reject passed", "census.json"),
               findings: [controllerValidatedFinding(finding)],
             },
           ];
@@ -812,7 +812,7 @@ describe("a check that names an installed tool", () => {
     expect(turns).toBe(2);
     expect(iteration.feedback).toEqual([
       expect.objectContaining({
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         claim: 'control census: runs of tool "fwcheck" reached no completed run',
       }),
     ]);

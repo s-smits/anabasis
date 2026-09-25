@@ -10,7 +10,7 @@ import {
   reviewVerifierEvidence,
   reviewCoverage,
 } from "../src/review/review-sources.ts";
-import { BUILDER_OWNED, ownerWritableFiles } from "../src/author/feedback-routing.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
@@ -40,7 +40,7 @@ const quoted = (state: SourceReadState, path: string, quote: string) =>
 
 function coreTree() {
   const root = scratchDir("ana-review-core-");
-  for (const path of [...BUILDER_OWNED].flatMap(ownerWritableFiles)) {
+  for (const path of BUNDLE_FILES) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), "{}");
   }
@@ -149,7 +149,7 @@ describe("review coverage tied to recorded execution", () => {
                     await call(source, { path: "agent/tools.ts" });
                     const finding = {
                       kind: "harness-defect",
-                      owner: "tools-spec",
+                      owner: "agent/tools-spec.json",
                       severity: "blocking",
                       claim: "Private source-derived concern.",
                       demonstration: "Private specimen demonstrating the missing public obligation.",
@@ -198,7 +198,7 @@ describe("review coverage tied to recorded execution", () => {
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
-        severityAdjusted: [{ owner: "tools-spec", requested: "blocking", admitted: "advisory" }],
+        severityAdjusted: [{ owner: "agent/tools-spec.json", requested: "blocking", admitted: "advisory" }],
       });
       expect(JSON.stringify(result.admission)).not.toMatch(
         /PRIVATE_UNREAD_QUOTE|Private source-derived|Private specimen/,
@@ -667,7 +667,7 @@ describe("review coverage tied to recorded execution", () => {
             await call(finding, {
               kind: "harness-defect",
               claim: "the writer exceeds the upper bound",
-              owner: "tools-spec",
+              owner: "agent/tools-spec.json",
               severity: "advisory",
               checkId: "bounds",
               demonstration:
@@ -734,7 +734,7 @@ describe("review coverage tied to recorded execution", () => {
           const args = {
             kind: "harness-defect",
             claim: "the upper bound is not enforced",
-            owner: "correctness-model",
+            owner: "correctness-model/evaluator.ts",
             severity: "blocking",
             checkId: "bounds",
             demonstration:

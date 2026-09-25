@@ -33,6 +33,12 @@ restoring it is uncommenting the blocks that carry its id and the prose lines na
 Its finding code is no longer produced, and the model-visible text that described it has been
 taken out, since a rule the Builder is told about and nothing enforces is worse than no rule.
 
+The blocks were archived in commit 3be43b8 and have not moved since, while the code around them has.
+The consolidation that followed renamed what several of them read. A finding's owner, for one, is
+now the bundle file at fault, such as `correctness-model/evaluator.ts`, rather than a word such as
+`correctness-model`. So a restore starts from 3be43b8 and translates each uncommented line into the
+current vocabulary before it can compile.
+
 ## Kept
 
 Each kept component refuses a candidate, holds a battery or bounds a loop because something is

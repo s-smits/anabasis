@@ -80,7 +80,7 @@ describe("publishesAdmissionPointer", () => {
 });
 
 const row = (over: Partial<CampaignFeedback>): CampaignFeedback => ({
-  owner: "correctness-model",
+  owner: "correctness-model/evaluator.ts",
   severity: "blocking",
   claim: "the census disagreed with the verifier on enough verified cases",
   evidence: "campaigns/bridge-truss/analysis/r1.json (analysis 0123456789ab)",

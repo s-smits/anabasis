@@ -11,6 +11,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CampaignFeedback, FeedbackOwner } from "../src/author/campaign-types.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { backendPinOf, resolveSlots } from "../src/backends/resolve.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -118,23 +119,19 @@ describe("an off-aim streak", () => {
 });
 
 describe("the reopen route", () => {
-  it.each([
-    "brief",
-    "tests",
-    "instructions",
-    "tools-spec",
-    "accept-controls",
-    "controls",
-    "correctness-model",
-    "fingerprint",
-  ] as const)("reopens the adopted product on blocking %s feedback and names the owner", (owner) => {
-    const move = decideNextMove("adopted", rows("blocking", owner));
-    expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
-    expect(move.reason).toContain(owner);
-  });
+  it.each([...BUNDLE_FILES])(
+    "reopens the adopted product on blocking %s feedback and names the owner",
+    (owner) => {
+      const move = decideNextMove("adopted", rows("blocking", owner));
+      expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(move.reason).toContain(owner);
+    },
+  );
 
   it("stops only on blocking environment feedback, and builds when nothing is adopted", () => {
-    expect(decideNextMove("adopted", rows("blocking", "environment", "tests")).move).toBe("stop");
+    expect(
+      decideNextMove("adopted", rows("blocking", "environment", "correctness-model/tasks.json")).move,
+    ).toBe("stop");
     expect(decideNextMove("adopted", rows("advisory", "environment")).move).toBe("rebuild");
     expect(decideNextMove("none", rows("blocking", "environment")).move).toBe("build");
     expect(decideNextMove("adopted", null).move).toBe("measure");
@@ -192,7 +189,7 @@ function writeBlockingTests(root: string, runId: string): void {
       digest: "d".repeat(64),
       admitted: [],
       refused: [],
-      feedback: rows("blocking", "tests"),
+      feedback: rows("blocking", "correctness-model/tasks.json"),
     }),
   );
 }

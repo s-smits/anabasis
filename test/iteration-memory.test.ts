@@ -39,7 +39,7 @@ function settle(campaignDir: string, evidence: Partial<IterationEvidence> & { or
 }
 
 const briefRefusal = (code: string): CampaignFeedback => ({
-  owner: "brief",
+  owner: "correctness-model/brief.json",
   severity: "blocking",
   claim: "build failed at stage brief",
   evidence: "campaigns/slug/01-slug/iteration.json",
@@ -118,7 +118,10 @@ describe("cross-iteration Builder memory", () => {
     };
     short(2, { feedback: [] });
     short(3, { attempts: {} });
-    short(4, { attempts: {}, feedback: [{ owner: "brief", severity: "blocking", findings: "refused" }] });
+    short(4, {
+      attempts: {},
+      feedback: [{ owner: "correctness-model/brief.json", severity: "blocking", findings: "refused" }],
+    });
     expect(detailOf(dir)).toBe(
       "Earlier build attempts: 01 fingerprinted.\nEarlier errors: [ARTIFACT_TRUTH_COVERAGE] correctness-model/brief.json in 01. Do not repeat these errors.",
     );
@@ -162,7 +165,11 @@ describe("cross-iteration Builder memory", () => {
       feedback: [briefRefusal("ARTIFACT_TRUTH_COVERAGE")],
     });
     settle(join(root, "epoch-cccc"), { ordinal: 1, outcome: "fingerprinted" });
-    settle(join(root, "epoch-dddd"), { ordinal: 1, outcome: "fingerprinted", focusOwner: "tests" });
+    settle(join(root, "epoch-dddd"), {
+      ordinal: 1,
+      outcome: "fingerprinted",
+      focusOwner: "correctness-model/tasks.json",
+    });
     const detail = detailOf(join(root, "epoch-cccc"));
     expect(detail).toContain(
       "Earlier build attempts: epoch-aaaa/01 fingerprinted; epoch-bbbb/01 gates-blocked; 01 fingerprinted.",
@@ -183,11 +190,11 @@ describe("cross-iteration Builder memory", () => {
 
   it("names the timeline and the refusals this owner already produced, with their iterations", () => {
     const dir = tmp();
-    settle(dir, { ordinal: 1, outcome: "gates-blocked", focusOwner: "brief" });
+    settle(dir, { ordinal: 1, outcome: "gates-blocked", focusOwner: "correctness-model/brief.json" });
     settle(dir, {
       ordinal: 2,
       outcome: "gates-blocked",
-      focusOwner: "brief",
+      focusOwner: "correctness-model/brief.json",
       attempts: { brief: 2, controls: 3 },
       feedback: [briefRefusal("ARTIFACT_TRUTH_COVERAGE")],
     });
@@ -200,8 +207,10 @@ describe("cross-iteration Builder memory", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe(ITERATION_MEMORY_CODE);
     const detail = findings[0]?.detail ?? "";
-    expect(detail).toContain("01 gates-blocked, part brief");
-    expect(detail).toContain("02 gates-blocked, part brief (retried brief x2, controls x3)");
+    expect(detail).toContain("01 gates-blocked, part correctness-model/brief.json");
+    expect(detail).toContain(
+      "02 gates-blocked, part correctness-model/brief.json (retried brief x2, controls x3)",
+    );
     expect(detail).toContain("03 fingerprinted");
     // The repeat the controller's stall hash cannot see across a gap is exactly what crosses.
     expect(detail).toContain("[ARTIFACT_TRUTH_COVERAGE] correctness-model/brief.json in 02, 03");
@@ -243,7 +252,7 @@ describe("cross-iteration Builder memory", () => {
       feedback: [
         briefRefusal("BRIEF_REFUSED"),
         {
-          owner: "tests",
+          owner: "correctness-model/tasks.json",
           severity: "blocking",
           claim: "battery census refused",
           evidence: "campaigns/slug/01-slug/census.json",
@@ -262,10 +271,10 @@ describe("cross-iteration Builder memory", () => {
     settle(dir, {
       ordinal: 1,
       outcome: "gates-blocked",
-      focusOwner: "controls",
+      focusOwner: "correctness-model/controls.json",
       feedback: [
         {
-          owner: "controls",
+          owner: "correctness-model/controls.json",
           severity: "blocking",
           claim: "solvability census refused: disk source bytes differ from the fixed identity",
           evidence: "pre-adoption solvability census (protected host evidence: solvability.json)",

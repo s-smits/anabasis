@@ -6,7 +6,8 @@ import type { ContestedCase } from "../analyse/judge-contested.ts";
 import type { Brief } from "../truth/brief.ts";
 import { publicRuleDecisions } from "../truth/public-resources.ts";
 import type { EpochReviewEvidence } from "./epoch-review-findings.ts";
-import { EVALUATION_SERVED, ownerWritableFiles, routableOwner } from "../author/feedback-routing.ts";
+import { isBundleFile } from "../author/feedback-routing.ts";
+import { EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 /** What the reviewed candidate supplies: the public contract, and the contested rows the review
  *  settled against it. */
@@ -48,17 +49,15 @@ function publicAct(kind: AnalysisFindingKind, deferred: boolean): string {
   return "inspect and repair that contract";
 }
 
-/** Where the Builder acts, from the identity the finding names; owner and kind stay controller
- *  fields. The owner label decides nothing on its own — one finding can move from brief to
- *  correctness-model and back between rounds — and a Builder acts on the check id, input path or
- *  file beside the label rather than on the label itself. */
+/** The file where the Builder acts, from the identity the finding names before its owner: a check
+ *  lives in the evaluator and a bare public input in the tasks, whichever file the reviewer chose,
+ *  because one finding can move between owners from round to round while its identity stays. */
 function publicGroup(finding: AnalysisFinding): string {
   const owner = finding.proposedOwner;
-  if (finding.kind === "curriculum-defect" || owner === "tests") return "tasks";
-  if (finding.checkId !== undefined || finding.unobserved === true) return "evaluator";
-  if (finding.publicInputPath !== undefined && finding.artifactSchemaPath === undefined) return "tasks";
-  if (!routableOwner(owner)) return "unplaced";
-  return EVALUATION_SERVED.has(owner) ? "evaluator" : "solver surface";
+  if (finding.kind === "curriculum-defect" || owner === TASKS_FILE) return TASKS_FILE;
+  if (finding.checkId !== undefined || finding.unobserved === true) return EVALUATOR_FILE;
+  if (finding.publicInputPath !== undefined && finding.artifactSchemaPath === undefined) return TASKS_FILE;
+  return isBundleFile(owner) ? owner : "unplaced";
 }
 
 /** The public sentence for one finding, composed from typed identities alone. A template sentence
@@ -67,8 +66,8 @@ function publicGroup(finding: AnalysisFinding): string {
  *  authoring identities, so they cross; the reviewer's claim is not one and never enters this
  *  sentence. */
 function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: Brief | null): string {
-  const heading = `Epoch review (${publicGroup(finding)})`;
-  const files = routableOwner(finding.proposedOwner) ? ownerWritableFiles(finding.proposedOwner) : [];
+  const group = publicGroup(finding);
+  const heading = `Epoch review (${group})`;
   const named = [
     ...(finding.checkId === undefined ? [] : [`check \`${finding.checkId}\``]),
     ...(finding.artifactSchemaPath === undefined ? [] : [`artifact path \`${finding.artifactSchemaPath}\``]),
@@ -99,7 +98,7 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     return `${heading}: ${gap}${input}; add a check that observes what the delivered artifact does there.`;
   }
   if (named === "" && inputPath === null) {
-    return `${heading}: ${files.length === 0 ? "no check, path or file named" : files.join(", ")}; ${isObservation(finding.kind) ? "it is an observation and asks for no repair" : deferred ? "it is advisory and asks for no change before submit" : "inspect that contract for a mismatch"}.`;
+    return `${heading}: ${group === "unplaced" ? "no check, path or file named" : "no check or path named"}; ${isObservation(finding.kind) ? "it is an observation and asks for no repair" : deferred ? "it is advisory and asks for no change before submit" : "inspect that contract for a mismatch"}.`;
   }
   return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding.kind, deferred)}.`;
 }

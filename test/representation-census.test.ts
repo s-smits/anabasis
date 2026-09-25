@@ -423,7 +423,10 @@ describe("representation findings in the solvability gate", () => {
     const witnesses = [constantPlan("t1", ["U01"]), constantPlan("t2", ["U01", "U02"])];
     const { feedback, evidence } = await runGate("insensitive", witnesses, "failed");
     expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
+    expect(feedback[0]).toMatchObject({
+      owner: "correctness-model/reference/index.ts",
+      severity: "blocking",
+    });
     expect(feedback[0]?.findings?.map((f) => f.code)).toEqual([
       "SOLVABILITY_CENSUS_BLOCKED",
       "REFERENCE_SOLVE_IGNORES_PUBLIC_INPUT",

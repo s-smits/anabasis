@@ -144,7 +144,7 @@ describe("the census gate", () => {
     const feedback = await gate(censusHarness({}), iterationDir, slugDir);
     expect(feedback).toEqual([
       expect.objectContaining({
-        owner: "tools-spec",
+        owner: "agent/tools.ts",
         severity: "blocking",
         findings: [
           expect.objectContaining({
@@ -181,7 +181,7 @@ describe("the census gate", () => {
         claim: `control census cannot run: ${detail}`,
       }),
     ]);
-    expect(feedback.some((row) => row.owner === "correctness-model")).toBe(false);
+    expect(feedback.some((row) => row.owner === "correctness-model/evaluator.ts")).toBe(false);
     expect(JSON.parse(readFileSync(join(iterationDir, "environment-non-result.json"), "utf8"))).toMatchObject(
       { kind: "verifier-tool-refused", detail },
     );
@@ -210,7 +210,7 @@ describe("the census gate", () => {
     const feedback = await gate(censusHarness({}), iterationDir, slugDir);
     expect(feedback).toEqual([
       expect.objectContaining({
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         severity: "blocking",
         claim: "census wall: the controls stage was still running when the census stopped",
         findings: [
@@ -251,7 +251,7 @@ describe("the census gate", () => {
     expect(cut?.()).toBe(true);
     expect(feedback).toMatchObject([
       {
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         claim: expect.stringContaining("reference solve stage"),
         findings: [{ path: "correctness-model/reference/index.ts" }],
       },
@@ -343,7 +343,9 @@ describe("the census gate", () => {
       iterationDir,
       join(iterationDir, "workspace"),
     );
-    expect(feedback.map((f) => [f.owner, f.severity])).toEqual([["correctness-model", "blocking"]]);
+    expect(feedback.map((f) => [f.owner, f.severity])).toEqual([
+      ["correctness-model/evaluator.ts", "blocking"],
+    ]);
     // EVERY census feedback row carries controller-validated findings: the outer repair input
     // drops findings-less feedback (consumerhw-live-01 iteration 2).
     for (const row of feedback) {
@@ -400,7 +402,7 @@ describe("the census gate", () => {
       expectedTasks: 25,
       solvability: async () => [
         {
-          owner: "brief",
+          owner: "correctness-model/brief.json",
           severity: "advisory",
           claim: "the representation census recorded an observation",
           evidence: "public representation census",
@@ -409,7 +411,7 @@ describe("the census gate", () => {
     });
 
     const feedback = await gate(censusHarness({}), iterationDir, join(iterationDir, "workspace"));
-    expect(feedback).toMatchObject([{ owner: "brief", severity: "advisory" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/brief.json", severity: "advisory" }]);
     expect(JSON.parse(readFileSync(join(iterationDir, "census.json"), "utf8"))).toMatchObject({
       verdict: "pass",
       findings: [],
@@ -437,7 +439,7 @@ describe("the census gate", () => {
       writeFileSync(join(workspace, importer, "tools.ts"), 'import "@ana/agent-bundle";\n');
       const { gate, probed } = recordingGate();
       const feedback = await gate(censusHarness({}), iterationDir, workspace);
-      const owner = importer === "agent" ? "tools-spec" : "correctness-model";
+      const owner = importer === "agent" ? "agent/tools.ts" : "correctness-model/evaluator.ts";
       expect(feedback).toMatchObject([{ owner, severity: "blocking" }]);
       expect(feedback[0]?.claim).toContain("@ana/agent-bundle");
       expect(feedback[0]?.findings?.[0]?.detail).toContain(`remove ${shadowRoot}/@ana/agent-bundle/index.ts`);

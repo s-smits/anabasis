@@ -216,8 +216,8 @@ describe("the epoch reviewer's orientation", () => {
       // Each reading names the routable owner that repairs it, and the instrument for the first.
       expect(prompt).toContain("rule the checks apply that the brief does not publish fails every task");
       expect(prompt).toContain("probe an accept control at a field the public contract leaves free");
-      expect(prompt).toContain("owned by `brief`");
-      expect(prompt).toContain("owned by `tools-spec`");
+      expect(prompt).toContain("owned by `correctness-model/brief.json`");
+      expect(prompt).toContain("owned by `agent/tools-spec.json`");
       // The question for the other side is the wrong one here.
       expect(prompt).not.toContain("the obligation of the request those tasks do not demand");
     });

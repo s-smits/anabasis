@@ -18,6 +18,7 @@ import {
 } from "../.claude/skills/whole-run-investigation/classifier/query-complexity.mjs";
 import {
   VELOCITY_SCHEMA,
+  declaredDirections,
   numericDriftOf,
   outcomesOf,
   readCampaign,
@@ -229,15 +230,58 @@ function writeCaseRecord(dir: string, rows: CaseRecordRow[]): void {
 }
 
 describe("climb velocity", () => {
-  const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
+  const reading = (mass: number) => ({
+    rows: [{ taskId: "heavy-01", family: "heavy", numerics: { "limits.mass": mass } }],
+  });
+  const unmoved = { tightened: 0, loosened: 0, unknown: 0 };
 
-  // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
+  // With no declared boundary a loosened limit reads exactly like a tightened one: both moved.
   it.concurrent.each([
-    [100, { median: 0, moved: 0 }],
-    [90, { median: 0.1, moved: 1 }],
-    [110, { median: 0.1, moved: 1 }],
+    [100, { median: 0, moved: 0, ...unmoved }],
+    [90, { median: 0.1, moved: 1, ...unmoved, unknown: 1 }],
+    [110, { median: 0.1, moved: 1, ...unmoved, unknown: 1 }],
   ])("measures how far a published number of 100 moved to %d", (after, drift) => {
     expect(numericDriftOf(reading(100), reading(after))).toEqual(drift);
+  });
+
+  const capped = (direction: "atMost" | "atLeast", families: string[] | "all" = "all") => ({
+    truthChecks: [
+      {
+        id: "mass-within-limit",
+        execution: { families },
+        numericBoundaries: [
+          { publicInputPath: "$.limits.mass", constantName: "mass-cap", artifactPath: "$.mass", direction },
+        ],
+      },
+    ],
+  });
+
+  // A cap the solver must stay under is tighter when it falls, and a floor when it rises.
+  it.concurrent("names the direction a declared boundary gives a moved limit", () => {
+    const both = (direction: "atMost" | "atLeast") => ({
+      before: declaredDirections(capped(direction)),
+      after: declaredDirections(capped(direction)),
+    });
+    expect(numericDriftOf(reading(100), reading(90), both("atMost"))).toMatchObject({ tightened: 1 });
+    expect(numericDriftOf(reading(100), reading(110), both("atMost"))).toMatchObject({ loosened: 1 });
+    expect(numericDriftOf(reading(100), reading(110), both("atLeast"))).toMatchObject({ tightened: 1 });
+  });
+
+  // The hostile half: a direction stated on one side only, flipped between batteries, or declared
+  // for another family supports no reading, so the move stays unknown rather than guessed.
+  it.concurrent("reads unknown where the declared direction does not support one", () => {
+    const unknown = { median: 0.1, moved: 1, ...unmoved, unknown: 1 };
+    const atMost = declaredDirections(capped("atMost"));
+    for (const declared of [
+      { before: [], after: atMost },
+      { before: declaredDirections(capped("atLeast")), after: atMost },
+      {
+        before: declaredDirections(capped("atMost", ["light"])),
+        after: declaredDirections(capped("atMost", ["light"])),
+      },
+    ]) {
+      expect(numericDriftOf(reading(100), reading(90), declared)).toEqual(unknown);
+    }
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -325,7 +369,7 @@ describe("climb velocity", () => {
           to: "i04",
           verdict,
           novelty: null,
-          drift: { median: 0, moved: 0 },
+          drift: { median: 0, moved: 0, tightened: 0, loosened: 0, unknown: 0 },
           delta: zeros,
           source: null,
           outcome: "unobservable",

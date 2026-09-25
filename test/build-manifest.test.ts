@@ -22,8 +22,11 @@ import {
   ANGLE_COUNT,
   DETERMINISTIC_ROW_TITLES,
   DIGEST_VERDICTS,
+  FIX_AUTHORITY,
   ISOLATED_ANGLES,
+  leafPrompt,
   MIN_AUTO_SESSIONS,
+  READ_ONLY_AUTHORITY,
   PUBLIC_ONLY_LANE,
   TRACE_CHALLENGE_LANE,
 } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
@@ -604,6 +607,14 @@ describe("what a launch composes", () => {
       tasks.filter((task) => task.name !== traceLane).every((task) => !task.task.includes(privateNote)),
     ).toBe(true);
     expect(result.prompt(FULL_SWEEP[0]!)).toContain("# Your assignment");
+    // A native Claude lane may repair what it proved; the prompt a Luna lane is sent stays read-only.
+    for (const name of FULL_SWEEP) {
+      expect(result.prompt(name)).toContain(FIX_AUTHORITY);
+      expect(result.prompt(name)).not.toContain(READ_ONLY_AUTHORITY);
+    }
+    const luna = leafPrompt(result.instructions(), result.task(FULL_SWEEP[0]!)?.task ?? "");
+    expect(luna).toContain(READ_ONLY_AUTHORITY);
+    expect(luna).not.toContain(FIX_AUTHORITY);
   });
 
   it("leaves an unfired isolated lane out of --auto and refuses selecting it by hand", () => {

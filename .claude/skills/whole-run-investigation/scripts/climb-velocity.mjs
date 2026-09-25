@@ -22,9 +22,11 @@
 //   eased         the checks moved down the tier order
 //   escalated     the checks moved up the tier order
 //
-// Every verdict but `adjusted` names its direction. `adjusted` does not: `numericDriftOf` measures
-// distance and not direction, because a boundary states which way is tighter and most declare none.
-// Moving a limit is a real climb when it moves inward, and this reader cannot tell you that it did.
+// Every verdict but `adjusted` names its direction. `adjusted` does not, because only a declared
+// boundary states which way is tighter. So the drift row beside it counts each moved number as
+// `tightened` or `loosened` where both batteries declare one comparison direction for that public
+// input on a check applying to the task's family, and as `unknown` everywhere else. Moving a limit
+// is a real climb when it moves inward, and an undeclared limit leaves that unread.
 // A battery that dropped checks or fell down the tier order once read as `adjusted`, which
 // named a retreat with the one word that says nothing. Only `escalated` changes what the
 // solver has to reason about, and it reads the highest tier a battery's checks reach, so adding two
@@ -53,10 +55,13 @@ import {
   MODEL_IDENTITY,
   STRUCTURE_KEYS,
   TIER_ORDER,
+  loadBundle,
   readVersionDir,
   renderBattery,
 } from "../classifier/query-complexity.mjs";
 import { isNumber } from "#src/meta/json-shape.ts";
+import { jsonPathTokens } from "#src/meta/json-evidence.ts";
+import { publishedMargins } from "#src/truth/numeric-boundary.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { readDifficultyDecisions } from "./digest-ledgers.mjs";
 
@@ -203,13 +208,39 @@ function noveltyOf(before, after) {
   return { mean: total / later.length, units: later.length };
 }
 
+/** Every public comparison direction a brief declares, keyed by the spelling `numericLeaves` gives
+ *  the same public input path, with the families its check applies to. Only a complete boundary
+ *  states a direction, which is why this reads `publishedMargins`. */
+export function declaredDirections(brief) {
+  return publishedMargins(brief).flatMap((margin) => {
+    const tokens = jsonPathTokens(margin.publicInputPath);
+    if (tokens === null) return [];
+    const key = tokens.join("").replace(/^\./, "");
+    return [{ key, direction: margin.direction, families: margin.families }];
+  });
+}
+
+/** The one direction declared for this path and family, or null when none or two disagree. */
+function directionAt(declared, family, key) {
+  const found = new Set(
+    declared
+      .filter((row) => row.key === key && (row.families === null || row.families.includes(family)))
+      .map((row) => row.direction),
+  );
+  return found.size === 1 ? [...found][0] : null;
+}
+
 /** How far the published numbers moved between two batteries, over the public inputs that the same
- *  task carries in both. Direction is deliberately absent: a boundary states which way is tighter
- *  and most do not declare one, so this answers "did the numbers move" and the check-tier histogram
- *  answers whether anything new has to be reasoned about. */
-export function numericDriftOf(before, after) {
+ *  task carries in both, and which way. A move is `tightened` or `loosened` only where both
+ *  batteries declare the same comparison direction for that input (`declaredDirections`); every
+ *  other move is `unknown`, because an undeclared number states no side that is tighter. This
+ *  answers "did the numbers move"; the check-tier histogram answers whether anything new has to be
+ *  reasoned about.
+ *  @param {{ before: ReturnType<typeof declaredDirections>, after: ReturnType<typeof declaredDirections> }} [declared] */
+export function numericDriftOf(before, after, declared = { before: [], after: [] }) {
   const earlier = new Map(before.rows.map((row) => [row.taskId, row]));
   const changes = [];
+  const moves = { tightened: 0, loosened: 0, unknown: 0 };
   for (const row of after.rows) {
     const previous = earlier.get(row.taskId);
     if (previous === undefined) continue;
@@ -217,11 +248,15 @@ export function numericDriftOf(before, after) {
       const was = previous.numerics[path];
       if (!isNumber(was) || was === 0 || value === was) continue;
       changes.push(Math.abs(value - was) / Math.abs(was));
+      const direction = directionAt(declared.after, row.family, path);
+      if (direction === null || directionAt(declared.before, previous.family, path) !== direction) {
+        moves.unknown += 1;
+      } else moves[(direction === "atMost") === value < was ? "tightened" : "loosened"] += 1;
     }
   }
-  if (changes.length === 0) return { median: 0, moved: 0 };
+  if (changes.length === 0) return { median: 0, moved: 0, ...moves };
   changes.sort((a, b) => a - b);
-  return { median: changes[Math.floor(changes.length / 2)], moved: changes.length };
+  return { median: changes[Math.floor(changes.length / 2)], moved: changes.length, ...moves };
 }
 
 /** The rank of the highest tier a battery's checks reach. Adding or dropping checks at tiers it
@@ -296,7 +331,10 @@ export async function readCampaign(campaign, options = {}) {
       delta[key] = after.reading.medians[key] - before.reading.medians[key];
     }
     const novelty = noveltyOf(before.reading, after.reading);
-    const drift = numericDriftOf(before.reading, after.reading);
+    const drift = numericDriftOf(before.reading, after.reading, {
+      before: declaredDirections(loadBundle(before.dir).brief),
+      after: declaredDirections(loadBundle(after.dir).brief),
+    });
     edges.push({
       from: before.runId,
       to: after.runId,
@@ -414,7 +452,7 @@ export function render(report, band) {
   for (const edge of report.edges) {
     lines.push(`  ${edge.from} -> ${edge.to}: ${edge.verdict}`);
     lines.push(
-      `      novelty ${edge.novelty === null ? "n/a" : edge.novelty.mean.toFixed(4)}   numbers moved ${edge.drift.moved} by ${(edge.drift.median * 100).toFixed(2)}% median`,
+      `      novelty ${edge.novelty === null ? "n/a" : edge.novelty.mean.toFixed(4)}   numbers moved ${edge.drift.moved} by ${(edge.drift.median * 100).toFixed(2)}% median (${edge.drift.tightened} tightened, ${edge.drift.loosened} loosened, ${edge.drift.unknown} direction unknown)`,
     );
     lines.push(
       `      delta ${STRUCTURE_KEYS.map((key) => `${key} ${edge.delta[key] >= 0 ? "+" : ""}${edge.delta[key]}`).join("  ")}`,

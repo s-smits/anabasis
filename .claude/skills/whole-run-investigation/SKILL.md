@@ -146,7 +146,10 @@ sharp question, and they fall into six groups. One independent `gpt-5.6-luna` se
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.
-When the operator asks for Luna, run one session per lane and never group lanes.
+When the operator asks for Luna, run one session per lane and never group lanes. A Luna or Codex
+lane is read-only. A native lane, a Claude subagent run from `prompts/`, may also repair a finding
+it proved, one commit per finding in a worktree of its own and never a push; the primary folds
+those commits in the way it folds any lane's.
 
 Product validity:
 
@@ -384,7 +387,8 @@ evidence supports a probe or a hold. End the recommendations with `What to do ne
 Consolidate and Overhaul, where a section may report no justified change. Use
 [an independent review packet](references/external-review.md) only when another method can settle
 a consequential dispute, and [the plan questions](references/improvement-plan-questions.md) when
-the operator asks what to change next. A review alone authorises no source edit, PR or launch.
+the operator asks what to change next. A review alone authorises no PR or launch, and no source
+edit beyond the native lanes' own commits.
 
 ## The archive and the note
 

@@ -86,6 +86,7 @@ describe("limit margin against the reference solve", () => {
     expect(rows).toEqual([
       {
         family: "truss",
+        limits: "hidden",
         tasks: 1,
         paired: 2,
         within1pct: 0,
@@ -124,6 +125,7 @@ describe("limit margin against the reference solve", () => {
     expect(recorded?.families).toEqual([
       {
         family: "cantilever",
+        limits: "hidden",
         tasks: 1,
         paired: 1,
         within1pct: 1,
@@ -132,6 +134,59 @@ describe("limit margin against the reference solve", () => {
         unpaired: 0,
       },
     ]);
+  });
+
+  // A battery whose every cap is public carries no hidden limit, so reading hidden operands alone
+  // gave an empty report. The declared boundary pairs the published cap with the one artifact path it
+  // bounds, so the 12-to-18 mass cap is read against the reference's reported mass of 10, not
+  // against whichever number happens to sit nearest it.
+  it("reads a published limit through its declared boundary, and counts an unreadable one as unpaired", () => {
+    const mass: BriefTruthCheck = {
+      ...numericCheck("mass-within-limit", ["$.mass", "$.members"]),
+      numericBoundaries: [
+        {
+          publicInputPath: "$.massCap",
+          constantName: "mass-cap",
+          artifactPath: "$.mass",
+          direction: "atMost",
+        },
+      ],
+    };
+    const brief: Brief = { ...MATCHING_BRIEF, truthChecks: [mass] };
+    const tasks: BuildTask[] = [
+      { taskId: "tight", family: "truss", publicInput: { span: 12, massCap: 10.2 }, hidden: [] },
+      { taskId: "loose", family: "truss", publicInput: { span: 12, massCap: 18 }, hidden: [] },
+      { taskId: "unstated", family: "truss", publicInput: { span: 12 }, hidden: [] },
+    ];
+    const artifact = { mass: 10, members: [{ stress: 18 }] };
+    const rows = limitMargin(brief, tasks, [
+      caseOf("tight", artifact),
+      caseOf("loose", artifact),
+      caseOf("unstated", artifact),
+    ]);
+    expect(rows).toEqual([
+      {
+        family: "truss",
+        limits: "published",
+        tasks: 3,
+        paired: 2,
+        within1pct: 0,
+        within5pct: 1,
+        medianRelativeDistance: expect.closeTo((0.02 + 0.8) / 2, 9),
+        unpaired: 1,
+      },
+    ]);
+    // A boundary declaring no bounded artifact path states no comparison, so it pairs nothing.
+    const {
+      artifactPath: _path,
+      direction: _direction,
+      ...half
+    } = mass.numericBoundaries?.[0] ?? {
+      publicInputPath: "",
+      constantName: "",
+    };
+    const halfStated: Brief = { ...brief, truthChecks: [{ ...mass, numericBoundaries: [half] }] };
+    expect(limitMargin(halfStated, tasks, [caseOf("tight", artifact)])).toEqual([]);
   });
 
   // Rule 4 in source: the margin is computed from hidden operands and reference artifacts, so only

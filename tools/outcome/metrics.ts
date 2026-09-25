@@ -83,8 +83,9 @@ interface LimitMarginRow extends LimitMarginFamily {
 export interface OutcomeMetrics {
   runId: string;
   claim: ClaimFacts;
-  /** Host-only margin of hidden numeric limits against the claim-time reference solve, by family;
-   *  null when no claim-time witness recorded one. The pairing is heuristic and says so. */
+  /** Host-only margin of hidden and published numeric limits against the claim-time reference
+   *  solve, by family; null when no claim-time witness recorded one. Hidden pairing is heuristic and
+   *  says so. */
   limitMargin: { pairing: string; families: LimitMarginRow[] } | null;
   identity: {
     backendPins: string[];
@@ -420,7 +421,7 @@ function limitMarginTable(campaignDir: string, runId: string): OutcomeMetrics["l
       return {
         ...row,
         shareWithin5pct: share,
-        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.unpaired} unpaired, over ${row.tasks} task(s); heuristic pairing`,
+        reading: `${row.family}: ${row.within5pct} of ${row.paired} paired ${row.limits} limits within 5% of the reference (${percent}), ${row.within1pct} within 1%, ${row.unpaired} unpaired, over ${row.tasks} task(s); ${row.limits === "hidden" ? "heuristic" : "declared"} pairing`,
       };
     }),
   };

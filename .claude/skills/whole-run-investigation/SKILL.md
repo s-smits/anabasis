@@ -146,6 +146,7 @@ sharp question, and they fall into six groups. One independent `gpt-5.6-luna` se
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.
+When the operator asks for Luna, run one session per lane and never group lanes.
 
 Product validity:
 

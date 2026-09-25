@@ -30,9 +30,8 @@ describe("the served tool surface", () => {
     );
   });
 
-  // Run 52 (2026-09-03) served a record_answer description saying it wrote a pin plan only while
-  // agent/tools-spec.json declared the complete answer. Conformance compared names alone, so the
-  // drift survived six iterations; these two cases pin both halves of the served-surface check.
+  // A served description can contradict the declared one while every name still matches, so
+  // conformance compares the text as well as the names.
   it.concurrent("refuses a served tool description the tool contract does not declare", async () => {
     const source = TOOLS_SOURCE.replace(
       'description: "bind a declared part to a slot"',
@@ -118,8 +117,8 @@ describe("the served tool surface", () => {
 });
 
 describe("how the probed workers end", () => {
-  // Run 6bf0e9 (2026-09-07) refused agent bytes on a one-second close timeout the worker missed after
-  // every probe had settled, and accepted the same bytes on the next submit.
+  // A close timeout after every probe settled says nothing about the agent bytes, which the next
+  // submit would accept unchanged; a crash does.
   it("refuses a worker crash while allowing a close-handshake timeout after settled probes", () => {
     const missedWall = {
       status: "non-result" as const,
@@ -140,9 +139,8 @@ describe("how the probed workers end", () => {
     ]);
   });
 
-  // Run truss-opus-20260907T210000000Z-6bf0e9 refused a candidate because nine of about 26 workers
-  // missed a one-second close handshake at once, while the same agent bytes submitted cleanly
-  // moments later. Each close waits for the one before it, so their timeout windows do not overlap.
+  // Workers closed together miss their close handshakes together under load. Each close waits for
+  // the one before it, so their timeout windows do not overlap.
   it("closes one worker at a time", async () => {
     let open = 0;
     let mostAtOnce = 0;

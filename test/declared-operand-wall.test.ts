@@ -23,7 +23,6 @@ import { double } from "./helpers/doubles.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
 import type { CheckRunner } from "../src/truth/correctness-model-contract.ts";
 import type { ToolRunRequest, VerifierRuntime } from "../src/verify/verifier-port.ts";
-import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
 
 /** The hostile task: one declared operand and one undeclared field beside it. */
 const PUBLIC_INPUT = { laneCount: 4, usb3DataRequired: true };
@@ -282,7 +281,9 @@ describe("verification through the wall", () => {
       { checkId: "lane-count", stdin: "lane-secret", files: { "operand.txt": "lane-secret" } },
     ]);
     for (const foreign of ["usb-secret", "fabricated-operand"]) {
-      await expect(evaluateWith(foreign)).rejects.toBeInstanceOf(VerifierContractError);
+      await expect(evaluateWith(foreign)).rejects.toThrow(
+        'file "operand.txt" is not a string leaf or JSON of the declared artifact/public input',
+      );
     }
     expect(reached).toHaveLength(1);
   });

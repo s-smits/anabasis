@@ -35,9 +35,9 @@ describe("exact-read attestation", () => {
       fs.unlinkSync(alias);
       fs.writeFileSync(alias, "same bytes");
       realpath.mockReturnValueOnce(target).mockReturnValueOnce(target).mockReturnValueOnce(alias);
-      expect(() => snapshotExactReads([link])).toThrow(ExactReadAttestationError);
+      expect(() => snapshotExactReads([link])).toThrow("exact sandbox read changed while attesting");
       realpath.mockReturnValueOnce(target).mockReturnValueOnce(alias);
-      expect(() => snapshotExactReads([link])).toThrow(ExactReadAttestationError);
+      expect(() => snapshotExactReads([link])).toThrow("exact sandbox read changed while attesting");
     } finally {
       realpath.mockRestore();
       fs.rmSync(root, { recursive: true, force: true });

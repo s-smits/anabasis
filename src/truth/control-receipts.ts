@@ -234,7 +234,6 @@ function receiptForControlFindings(
   controlId: string,
   declared: DeclaredReceiptControl,
   receipt: ControlReceipt,
-  mode: "strict" | "live",
 ): DiscriminationClaimabilityFinding[] {
   const findings: DiscriminationClaimabilityFinding[] = [];
   const expectedCheckId = expectedCheckIdOf(declared.control);
@@ -252,7 +251,6 @@ function receiptForControlFindings(
     );
   }
   if (
-    mode === "strict" &&
     receipt.observedOutcome !== "non-result" &&
     !sideMatchesExpected(primarySide(receipt), receipt.expectedOutcome, expectedCheckId)
   ) {
@@ -305,15 +303,11 @@ function receiptsById(
   return byId;
 }
 
-/**
- * Check receipts against the declared controls. A live run may already have reported its outcome,
- * so `live` skips only that duplicate. Saved evidence uses the strict default and also rejects a
- * mismatch between the expected and observed result.
- */
-export function validateControlReceipts(
+/** Check receipts against the declared controls, including a mismatch between the expected and
+ *  observed result. */
+function validateControlReceipts(
   corpus: ControlCorpus,
   receipts: readonly unknown[],
-  mode: "strict" | "live" = "strict",
 ): DiscriminationClaimabilityFinding[] {
   const findings: DiscriminationClaimabilityFinding[] = [];
   const declared = new Map<string, DeclaredReceiptControl>();
@@ -331,7 +325,7 @@ export function validateControlReceipts(
       );
       continue;
     }
-    findings.push(...receiptForControlFindings(controlId, control, receipt, mode));
+    findings.push(...receiptForControlFindings(controlId, control, receipt));
   }
   return findings;
 }

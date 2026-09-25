@@ -4,11 +4,10 @@
  * Every case here is a pre-solve gate: an invalid brief, an unclaimable control census, a bundle
  * whose bytes moved after the fingerprint, and a generated worker that no longer matches the
  * conformance receipt the build recorded. Each asserts that the solver was never invoked, because
- * the cost of the refusal arriving late is a paid battery — run w16 paid 50 solves before the
- * worker-binding check moved ahead of the solve loop.
+ * the cost of the refusal arriving late is a paid battery.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
@@ -19,41 +18,23 @@ import type { BackendStartupEvidence } from "../src/run/model-preflight.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
 import { validateBrief } from "../src/truth/brief-validator.ts";
 import { loadBuiltControllerInterface } from "../src/truth/contracts.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
 import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
-  ACCEPTS,
   BRIEF,
-  EVALUATOR_SOURCE,
   PUBLIC_SCHEMA,
-  REJECTS,
   TASKS,
   TOOLS_SOURCE,
+  bundleSlug,
   fingerprintOf,
   laxVerifierSlug,
+  matchingBattery,
   removeScratchRoot,
-  scratch,
   scriptedSolver,
-  SCRIPTED_CONDITION,
-  SCRIPTED_THRESHOLD_DIGEST,
+  scriptedVerify,
 } from "./helpers/verification-runner-fixtures.ts";
 
 afterAll(removeScratchRoot);
-
-/** The fixture bundle, written to a fresh scratch slug: evaluator, generated tools and controls. */
-function bundleSlug(): string {
-  const slugDir = scratch();
-  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-  mkdirSync(join(slugDir, "agent"), { recursive: true });
-  writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), EVALUATOR_SOURCE);
-  writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-  writeFileSync(
-    join(slugDir, "correctness-model/controls.json"),
-    JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-  );
-  return slugDir;
-}
 
 describe("a bundle that cannot be executed never reaches the solver", () => {
   it.concurrent("refuses a brief whose check path is invalid, before projection or any solve", async () => {
@@ -68,20 +49,15 @@ describe("a bundle that cannot be executed never reaches the solver", () => {
     }
 
     let solves = 0;
-    const evaluate = makeVerify({
+    const evaluate = scriptedVerify("legacy-invalid-path", {
       solver: async () => {
         solves++;
         throw new Error("invalid brief reached solver");
       },
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: [],
-      runId: "legacy-invalid-path",
     });
-    await expect(
-      evaluate({ slug: "matching", slugDir, fingerprint: fingerprintOf(slugDir), tasks: TASKS.tasks }),
-    ).rejects.toThrow("bundle snapshot brief failed validation:");
+    await expect(evaluate(matchingBattery(slugDir))).rejects.toThrow(
+      "bundle snapshot brief failed validation:",
+    );
     expect(solves).toBe(0);
     expect(existsSync(join(slugDir, "runs/legacy-invalid-path/battery.json"))).toBe(false);
   });
@@ -93,14 +69,12 @@ describe("a bundle that cannot be executed never reaches the solver", () => {
     // grade bytes nobody admitted.
     writeFileSync(join(slugDir, "agent/tools.ts"), `${TOOLS_SOURCE}\n// drifted`);
     await expect(
-      makeVerify({
-        solver: scriptedSolver(),
-        backendPin: "scripted/none",
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: ["web-search:off"],
-        runId: "run-bundleSnapshot-drift",
-      })({ slug: "matching", slugDir, fingerprint, tasks: TASKS.tasks }),
+      scriptedVerify("run-bundleSnapshot-drift")({
+        slug: "matching",
+        slugDir,
+        fingerprint,
+        tasks: TASKS.tasks,
+      }),
     ).rejects.toThrow(/EXECUTED_BUNDLE_DRIFT/);
   }, 60_000);
 
@@ -120,14 +94,12 @@ describe("a bundle that cannot be executed never reaches the solver", () => {
         "draft.setArtifact({ assignments: [] });",
       ),
     );
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-bundleSnapshot-witness",
-    })({ slug: "matching", slugDir, fingerprint, tasks: TASKS.tasks });
+    const report = await scriptedVerify("run-bundleSnapshot-witness")({
+      slug: "matching",
+      slugDir,
+      fingerprint,
+      tasks: TASKS.tasks,
+    });
 
     expect(report.score.map((row) => row.passed)).toEqual([true, true, true]);
     const battery = JSON.parse(
@@ -172,16 +144,11 @@ describe("an unclaimable control census ends the run before the paid loop", () =
     // this guards.
     const slugDir = laxVerifierSlug();
     let judgeInvocations = 0;
-    const report = await makeVerify({
+    const report = await scriptedVerify("run-early-exit", {
       solver: async () => {
         throw new Error("the paid solver loop must not run under unclaimable discrimination evidence");
       },
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
       backendStartup,
-      capabilities: ["web-search:off"],
-      runId: "run-early-exit",
       judge: {
         pin: "scripted/judge-v1",
         invoke: async () => {
@@ -197,7 +164,7 @@ describe("an unclaimable control census ends the run before the paid loop", () =
           };
         },
       },
-    })({ slug: "matching", slugDir, fingerprint: fingerprintOf(slugDir), tasks: TASKS.tasks });
+    })(matchingBattery(slugDir));
 
     expect(report.score).toEqual([]);
     expect(report.evidence.runStatus).toMatchObject({ state: "terminal", verified: 0 });
@@ -266,20 +233,7 @@ describe("the generated worker the battery runs is the one the build recorded", 
       },
     } satisfies ConformanceEvidence;
     const evalWith = (runId: string, conformance: ConformanceEvidence) =>
-      makeVerify({
-        solver,
-        backendPin: "scripted/none",
-        condition: SCRIPTED_CONDITION,
-        thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-        capabilities: ["web-search:off"],
-        runId,
-        conformance,
-      })({
-        slug: "matching",
-        slugDir,
-        fingerprint: fingerprintOf(slugDir),
-        tasks: TASKS.tasks,
-      });
+      scriptedVerify(runId, { solver, conformance })(matchingBattery(slugDir));
 
     const refusedReport = await evalWith("run-worker-binding-mismatch", stale);
     expect(solverCalls).toBe(0);

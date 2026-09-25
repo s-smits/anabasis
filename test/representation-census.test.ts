@@ -1,11 +1,9 @@
 /**
- * A harness can pass every gate it has and still measure nothing, and live-run-06 is the recorded
- * case of it. Its retained traces show F2 passing 25 of 25, every submit accepted and the accept
- * controls passing 3 of 3, which is as clean a run-up to a battery as the gates can produce. The
- * battery then measured 0 of 25. The whole difference was a spelling: the reference answer writes
- * `accessionCode: "n/a"` for a record with no local code and the agent wrote `""` instead, 95 times
- * across all 25 cases. Nothing was wrong with the agent's reasoning and nothing was wrong with the
- * checks; the two sides simply never agreed on how to write "absent", and no gate was looking.
+ * A harness can pass every gate it has and still measure nothing. F2, every submit and every accept
+ * control can pass while the battery scores zero, when the whole difference is a spelling: the
+ * reference answer writes `accessionCode: "n/a"` for a record with no local code and the agent
+ * writes `""` instead. Nothing is wrong with the agent's reasoning or with the checks; the two sides
+ * simply never agreed on how to write "absent".
  *
  * So the census looks for that disagreement before a battery is paid for, and it looks for a second
  * shape beside it — an artifact root that just copies its public input, which is a root the checks
@@ -51,7 +49,7 @@ const CATALOG = [
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
 /** A root that transcribes the catalogue, beside an answer that spells "n/a". */
-function runSix(taskId: string): Witness {
+function absentAndCopied(taskId: string): Witness {
   return {
     taskId,
     publicInput: { catalogue: CATALOG, shelfCapacity: 100 },
@@ -70,11 +68,11 @@ function runSix(taskId: string): Witness {
 const codes = (witnesses: Witness[]) => censusRepresentation(witnesses).findings.map((f) => f.code);
 
 describe("the representation census", () => {
-  it("reports both representation findings in the run 6 fixture and names the affected field", () => {
-    const { findings } = censusRepresentation([runSix("t1"), runSix("t2")]);
-    const found = findings.map((f) => f.code);
-    expect(found).toContain("REFERENCE_ANSWER_SPELLS_ABSENCE");
-    expect(found).toContain("ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT");
+  it("reports both representation findings as blocking and names the affected field", () => {
+    const { findings } = censusRepresentation([absentAndCopied("t1"), absentAndCopied("t2")]);
+    expect(new Set(findings.filter((f) => BLOCKING_CODES.has(f.code)).map((f) => f.code))).toEqual(
+      new Set(["REFERENCE_ANSWER_SPELLS_ABSENCE", "ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT"]),
+    );
     const absence = findings.find(
       (f) => f.code === "REFERENCE_ANSWER_SPELLS_ABSENCE" && f.path.includes("records"),
     );
@@ -83,14 +81,6 @@ describe("the representation census", () => {
     );
     expect(absence?.detail).toContain('"n/a"');
     expect(absence?.detail).toContain("all 2 authored tasks");
-  });
-
-  it("keeps both census kinds blocking", () => {
-    const blocking = censusRepresentation([runSix("t1")]).findings.filter((f) => BLOCKING_CODES.has(f.code));
-    expect(new Set(blocking.map((f) => f.code))).toEqual(
-      new Set(["REFERENCE_ANSWER_SPELLS_ABSENCE", "ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT"]),
-    );
-    expect(BLOCKING_CODES.has("ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT")).toBe(true);
   });
 
   /**
@@ -104,12 +94,12 @@ describe("the representation census", () => {
    */
   it("blocks an artifact root that copies the same public input on every task", () => {
     const stops = [{ stopId: "ST-01", zoneId: "north" }];
-    const itFive = (taskId: string): Witness => ({
+    const copiedStops = (taskId: string): Witness => ({
       taskId,
       publicInput: { requiredStops: stops },
       artifact: { routeFacts: stops, itinerary: [{ routeId: "R-0" }] },
     });
-    const { findings } = censusRepresentation([itFive("t1"), itFive("t2")]);
+    const { findings } = censusRepresentation([copiedStops("t1"), copiedStops("t2")]);
     expect(findings.map((f) => f.code)).toEqual(["ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT"]);
     expect(findings.filter((f) => BLOCKING_CODES.has(f.code))).toHaveLength(1);
   });
@@ -278,15 +268,15 @@ describe("a value the public schema declares as a closed state", () => {
 
 /** The solve reads fields nobody authored, so its derived root is the same (empty) value on every
  *  task while the authored inputs all differ. */
-const runTwelve = (taskId: string, requests: string[]): Witness => ({
+const constantPlan = (taskId: string, requests: string[]): Witness => ({
   taskId,
   publicInput: { requestedItems: requests.map((requestId) => ({ requestId })) },
   artifact: { allocationPlan: [], requestFacts: requests },
 });
 
 describe("the input-insensitivity observation", () => {
-  it("names the constant root with both denominators on run 12's shape, and only that root", () => {
-    const findings = inputInsensitivity([runTwelve("t1", ["U01"]), runTwelve("t2", ["U01", "U02"])]);
+  it("names the constant root with both denominators, and only that root", () => {
+    const findings = inputInsensitivity([constantPlan("t1", ["U01"]), constantPlan("t2", ["U01", "U02"])]);
     expect(findings.map((f) => f.code)).toEqual(["REFERENCE_SOLVE_IGNORES_PUBLIC_INPUT"]);
     expect(findings[0]?.path).toBe("correctness-model/reference/index.ts#solve");
     expect(findings[0]?.detail).toContain('"allocationPlan"');
@@ -297,17 +287,17 @@ describe("the input-insensitivity observation", () => {
   });
 
   it("stays quiet when the inputs themselves are constant: constant output proves nothing", () => {
-    expect(inputInsensitivity([runTwelve("t1", ["U01"]), runTwelve("t2", ["U01"])])).toEqual([]);
+    expect(inputInsensitivity([constantPlan("t1", ["U01"]), constantPlan("t2", ["U01"])])).toEqual([]);
   });
 
   it("declines below two witnesses, and skips a root missing from any artifact", () => {
-    expect(inputInsensitivity([runTwelve("t1", ["U01"])])).toEqual([]);
+    expect(inputInsensitivity([constantPlan("t1", ["U01"])])).toEqual([]);
     const partial: Witness = {
       taskId: "t2",
       publicInput: { requestedItems: [{ requestId: "REQ-09" }] },
       artifact: { requestFacts: [] },
     };
-    expect(inputInsensitivity([runTwelve("t1", ["U01"]), partial])).toEqual([]);
+    expect(inputInsensitivity([constantPlan("t1", ["U01"]), partial])).toEqual([]);
   });
 });
 
@@ -351,7 +341,7 @@ async function runGate(name: string, witnesses: Witness[], status: "passed" | "f
 
 describe("representation findings in the solvability gate", () => {
   it("routes an absence-marker refusal to brief even when both reference solves pass", async () => {
-    const { feedback, evidence } = await runGate("blocked", [runSix("t1"), runSix("t2")]);
+    const { feedback, evidence } = await runGate("blocked", [absentAndCopied("t1"), absentAndCopied("t2")]);
     // Every reference solve passed, but the representation finding still refuses adoption.
     const blocking = feedback.filter((row) => row.severity === "blocking");
     expect(blocking).toHaveLength(1);
@@ -411,17 +401,17 @@ describe("representation findings in the solvability gate", () => {
   it("declines instead of throwing when the recorded task file is unreadable", async () => {
     const dir = join(SCRATCH, "notasks");
     mkdirSync(dir, { recursive: true });
-    const gate = makeSolvabilityCensusGate({}, probeOver([runSix("t1")]));
+    const gate = makeSolvabilityCensusGate({}, probeOver([absentAndCopied("t1")]));
     expect(await gate(HARNESS, dir, join(dir, "slug"))).toEqual([]);
   });
 
   /**
-   * Run 12's regression check. Its reference solve read absent publicInput fields and produced
-   * the same allocationPlan for 25 different tasks. Two later iterations received only a failure
-   * count. The refusal now identifies the constant root while withholding task ids and verifier text.
+   * A reference solve that reads absent publicInput fields produces the same root for every task.
+   * A failure count alone would not say which root; the refusal names it while withholding task ids
+   * and verifier text.
    */
   it("reports constant reference output to the correctness-model author without task ids or verifier text", async () => {
-    const witnesses = [runTwelve("t1", ["U01"]), runTwelve("t2", ["U01", "U02"])];
+    const witnesses = [constantPlan("t1", ["U01"]), constantPlan("t2", ["U01", "U02"])];
     const { feedback, evidence } = await runGate("insensitive", witnesses, "failed");
     expect(feedback).toHaveLength(1);
     expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });

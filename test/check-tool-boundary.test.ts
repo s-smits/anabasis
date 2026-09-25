@@ -18,7 +18,6 @@ import {
   checkCostRows,
   unexecutedGroundingFindings,
 } from "../src/truth/grounding-coverage.ts";
-import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-check-tool-boundary-"));
 const lifetime = createVerifierLifetime({ root: join(ROOT, "receipts") });
@@ -380,16 +379,16 @@ it("executes private authored probes and rejects a public-example lookup without
   try {
     await expect(
       evaluateCheckProgram({ ...brief, truthChecks: [external] }, runner)(request, { tools: scope.port }),
-    ).rejects.toBeInstanceOf(VerifierContractError);
+    ).rejects.toThrow('file "driver.c" is not a string leaf');
     // The host captured the external contract when the scope opened. Changing the caller's
     // declaration can relax its local guard, but cannot widen that captured cell.
     external.execution = { ...behavior.execution };
     await expect(
       evaluateCheckProgram({ ...brief, truthChecks: [external] }, runner)(request, { tools: scope.port }),
-    ).rejects.toBeInstanceOf(VerifierContractError);
+    ).rejects.toThrow('file "driver.c" is not a string leaf');
     await expect(
       scope.port.run({ toolId: "cc", checkId: "behavior", files: { "driver.c": "int main(){return 0;}" } }),
-    ).rejects.toBeInstanceOf(VerifierContractError);
+    ).rejects.toThrow('file "driver.c" is not a string leaf');
   } finally {
     await scope.close();
   }
@@ -533,7 +532,7 @@ it("prices each dispatched check, including one that threw, and orders the rows 
   const request = { artifact: {}, publicTask: { taskId: "t", family: "f", publicInput: {} }, hidden: [] };
   expect(await run("slow", request)).toBe(true);
   // A dispatch that threw still spent its wall time; dropping it would price the cheap checks only.
-  await expect(run("broken", request)).rejects.toThrow();
+  await expect(run("broken", request)).rejects.toThrow('check "broken" this check threw');
   expect(await run("slow", request)).toBe(true);
   const rows = checkCostRows(spend, [{ checkId: "slow" }, { checkId: "slow" }, { checkId: "broken" }]);
   expect(rows.map((row) => row.checkId)).toEqual(["slow", "broken"]);

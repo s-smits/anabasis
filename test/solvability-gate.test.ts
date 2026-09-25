@@ -1,82 +1,103 @@
 /**
- * The F2 census runs every authored task's reference solve before a candidate is adopted, and a
- * candidate that solves task 1 and fails task 2 is refused. That is the easy half. The hard half is
- * what the refusal is allowed to say back, because the same session that authored the battery is
- * the session that reads the finding, and a refusal detailed enough to be useful is a refusal
- * detailed enough to be an answer key.
+ * What the F2 census gate lets cross to the Builder, and to which owner.
  *
- * So the census projects counts and withholds locations. The Builder learns how many reference
- * solves failed and how those failures concentrate by declared check, since a bare total tells an
- * author nothing it can act on — but the task ids, the per-task check results and the raw verifier
- * text never cross. The complete record stays host-side in
- * `solvability.json`, which is what makes the projection safe to narrow: nothing is being thrown
- * away, only kept on the correct side of the boundary.
+ * The session that authored the battery is the session that reads the refusal, so a refusal
+ * detailed enough to be useful is detailed enough to be an answer key. The census therefore
+ * projects counts and withholds locations: how many reference solves failed and how the failures
+ * concentrate by declared check, but no task id, per-task result or verifier text. The whole record
+ * stays host-side in `solvability.json`, so nothing is thrown away, only kept on the correct side.
  *
- * The routing cases are the other half, and they exist because an environment failure that reads as
- * a product failure sends the Builder to repair something that was never broken. A census the wall
- * cut records no `solvability.json` and returns no feedback at all; a census that cannot execute
- * blocks while keeping the failure record protected; an unresolved tool gets its own row beside the
- * count rather than being folded into it; and a plain non-result routes to the environment owner.
- * Two refusals route to `brief` as blocking instead — a tool whose digest matches known
- * candidate-authored source, and an external check passing a program as its argument — because
- * those are the author's declarations, not the host's luck.
+ * Routing is the other half. An environment failure that reads as a product failure sends the
+ * Builder to repair something that was never broken, and a declaration the author made — a tool
+ * that resolves nowhere, one only the author wrote, one handed its program as an argument — must
+ * reach the owner who can change that declaration.
  *
- * Constant reference output across differing inputs is a related defect and is measured next door
- * in test/representation-census.test.ts, not here.
+ * Every case here hands the gate a probe double: what runs the census over a real bundle is
+ * `solvability-*.test.ts` beside this one, and constant reference output across inputs is measured
+ * in `representation-census.test.ts`.
  */
+import { afterAll, describe, expect, it } from "bun:test";
+import type { BuiltHarness } from "../src/author/campaign-types.ts";
+import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { afterAll, describe, expect, it } from "bun:test";
-import { double } from "./helpers/doubles.ts";
-import type { BuiltHarness } from "../src/author/campaign-types.ts";
 import type { AcceptIndependence } from "../src/run/accept-control-independence.ts";
-import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
 import { makeSolvabilityCensusGate } from "../src/run/solvability-gate.ts";
+import { double } from "./helpers/doubles.ts";
 import { probeReturning } from "./helpers/solvability-probe.ts";
 
+type Accept = { id: string; taskId: string; artifact: unknown };
+type ToolRefusal = [code: string, owner: string, detail: string];
+
 const SCRATCH = mkdtempSync(join(tmpdir(), "ana-solvgate-"));
+const HARNESS = double<BuiltHarness>({ fingerprint: { taskSetHash: "tsh-1" } });
+const REFERENCE_ARTIFACT = {
+  design: { members: [{ id: "m1", section: "CHS33.7x2.6" }], totalMass_kg: 278.56 },
+};
+const INDEPENDENT_ARTIFACT = {
+  design: { members: [{ id: "m1", section: "CHS42.4x2.6" }], totalMass_kg: 281.655 },
+};
+
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
-const HARNESS = double<BuiltHarness>({ fingerprint: { taskSetHash: "tsh-1" } });
-
-function iterationDir(name: string): string {
+/** Run the gate over `probe` in a fresh iteration directory, with `slugDir` as its slug. */
+async function census(name: string, probe: ReturnType<typeof probeReturning>, slugDir?: string) {
   const dir = join(SCRATCH, name);
   mkdirSync(dir, { recursive: true });
-  return dir;
+  const feedback = await makeSolvabilityCensusGate({}, probe)(HARNESS, dir, slugDir ?? join(dir, "slug"));
+  const recorded = () => Bun.file(join(dir, "solvability.json")).text();
+  return { dir, feedback, authorVisible: JSON.stringify(feedback), recorded };
 }
 
-describe("the F2 pre-adoption solvability census", () => {
-  it("refuses a candidate with one failed reference solve and reports check counts without task ids or verifier text", async () => {
-    const dir = iterationDir("hostile");
-    const probe = probeReturning([
-      { taskId: "t1", status: "passed" },
-      {
-        taskId: "t2",
-        status: "failed",
-        failedCheckIds: ["tc-physics-session"],
-        error: "[tc-physics-session] utilization 1.4 above 1.0 on member m3",
-      },
-    ]);
-    const gate = makeSolvabilityCensusGate({}, probe);
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
-    const authorVisible = JSON.stringify(feedback);
+describe("the census projects counts and keeps locations host-side", () => {
+  it("refuses one failed reference solve, naming the check and its count but not the task or engine text", async () => {
+    const { feedback, authorVisible, recorded } = await census(
+      "hostile",
+      probeReturning([
+        { taskId: "t1", status: "passed" },
+        {
+          taskId: "t2",
+          status: "failed",
+          failedCheckIds: ["tc-physics-session"],
+          error: "[tc-physics-session] utilization 1.4 above 1.0 on member m3",
+        },
+      ]),
+    );
+    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
     expect(authorVisible).toContain("1 of 2");
-    // Feedback names the declared check and its aggregate failure count. Runs 12 and 14
-    // lacked that information; per-task results and raw verifier text remain protected.
     expect(authorVisible).toContain("tc-physics-session (1)");
     expect(authorVisible).not.toContain("t2");
     expect(authorVisible).not.toContain("utilization");
-    // The full record — task ids, per-task joins, engine words — persists host-side, protected.
-    const persisted = await Bun.file(join(dir, "solvability.json")).text();
-    expect(persisted).toContain("t2");
-    expect(persisted).toContain("utilization");
+    expect(await recorded()).toContain("utilization 1.4");
   });
 
-  it("records no solvability.json and no feedback for a census the wall cut", async () => {
-    const dir = iterationDir("cut");
+  it("ranks the concentration by count and adds nothing for a failed case that names no check", async () => {
+    const { authorVisible } = await census(
+      "concentration",
+      probeReturning([
+        { taskId: "t1", status: "failed", failedCheckIds: ["tc-b", "tc-a"] },
+        { taskId: "t2", status: "failed", failedCheckIds: ["tc-b"] },
+        { taskId: "t3", status: "failed" },
+      ]),
+    );
+    expect(authorVisible).toContain("3 of 3");
+    expect(authorVisible).toContain("2 declared truth-check(s): tc-b (2), tc-a (1)");
+    expect(authorVisible).not.toContain("t1");
+  });
+
+  it("says nothing for a clean census and records the source identity it ran under", async () => {
+    const { feedback, recorded } = await census(
+      "clean",
+      probeReturning([{ taskId: "t1", status: "passed" }]),
+    );
+    expect(feedback).toEqual([]);
+    expect(JSON.parse(await recorded()).source?.commit).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("records nothing and says nothing for a census the wall cut", async () => {
+    const dir = join(SCRATCH, "cut");
+    mkdirSync(dir, { recursive: true });
     let cut = false;
     const failed = probeReturning([{ taskId: "t1", status: "failed", failedCheckIds: ["c"], error: "late" }]);
     const gate = makeSolvabilityCensusGate({}, async (input) => {
@@ -87,101 +108,66 @@ describe("the F2 pre-adoption solvability census", () => {
     expect(await Bun.file(join(dir, "solvability.json")).exists()).toBe(false);
   });
 
-  it("names an unresolved tool as its own row beside the census count", async () => {
-    const dir = iterationDir("tool-missing");
-    const gate = makeSolvabilityCensusGate(
-      {},
-      probeReturning(
-        [{ taskId: "t1", status: "failed", error: 'toolId "cargo" is not in the resolved tool inventory' }],
-        [
-          {
-            code: "solvability-tool-missing",
-            path: "correctness-model/brief.json",
-            detail:
-              'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
-          },
-        ],
-      ),
-    );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    const missing = feedback.find((row) => JSON.stringify(row).includes("SOLVABILITY_TOOL_MISSING"));
-    expect(missing).toMatchObject({ owner: "correctness-model", severity: "blocking" });
-    expect(missing?.findings?.[0]?.detail).toContain('adapterId "cargo"');
-    expect(JSON.stringify(feedback)).toContain("1 of 1");
+  it("blocks a census that could not execute, keeping its failure record protected", async () => {
+    const { feedback, authorVisible, recorded } = await census("unavailable", probeReturning(null));
+    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
+    expect(authorVisible).not.toContain("bundleSnapshot digest drifted");
+    expect(await recorded()).toContain("bundleSnapshot digest drifted");
   });
 
-  it("routes the known-authored-tool refusal to brief with blocking severity", async () => {
-    const dir = iterationDir("tool-self-authored");
-    const gate = makeSolvabilityCensusGate(
-      {},
-      probeReturning(
-        [{ taskId: "t1", status: "passed" }],
-        [
-          {
-            code: "solvability-tool-self-authored",
-            path: "correctness-model/brief.json",
-            detail:
-              "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
-          },
-        ],
-      ),
-    );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    const row = feedback.find((entry) => JSON.stringify(entry).includes("SOLVABILITY_TOOL_SELF_AUTHORED"));
-    expect(row).toMatchObject({ owner: "brief", severity: "blocking" });
-    expect(row?.findings?.[0]?.detail).toContain("structural-performance (truss-verify)");
-  });
-
-  it("routes a program-argument tool run to the brief owner as blocking", async () => {
-    const dir = iterationDir("tool-program-argument");
-    const gate = makeSolvabilityCensusGate(
-      {},
-      probeReturning(
-        [{ taskId: "t1", status: "passed" }],
-        [
-          {
-            code: "solvability-tool-program-argument",
-            path: "correctness-model/brief.json",
-            detail:
-              "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
-          },
-        ],
-      ),
-    );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    const row = feedback.find((entry) => JSON.stringify(entry).includes("SOLVABILITY_TOOL_PROGRAM_ARGUMENT"));
-    expect(row).toMatchObject({ owner: "brief", severity: "blocking" });
-    expect(row?.findings?.[0]?.detail).toContain("python3, 1808-byte argument");
-  });
-
-  it("ranks the concentration by failure count and stays silent when no failed case names a check", async () => {
-    const dir = iterationDir("concentration");
-    const gate = makeSolvabilityCensusGate(
-      {},
+  it("routes a census non-result to the environment owner without its text", async () => {
+    const { feedback, authorVisible } = await census(
+      "environment",
       probeReturning([
-        { taskId: "t1", status: "failed", failedCheckIds: ["tc-b", "tc-a"] },
-        { taskId: "t2", status: "failed", failedCheckIds: ["tc-b"] },
-        // A failed case with no attributed check adds nothing to the class projection.
-        { taskId: "t3", status: "failed" },
+        { taskId: "t1", status: "passed" },
+        { taskId: "t2", status: "non-result", error: "engine host died pre-ready" },
       ]),
     );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    const authorVisible = JSON.stringify(feedback);
-    expect(authorVisible).toContain("3 of 3");
-    expect(authorVisible).toContain("2 declared truth-check(s): tc-b (2), tc-a (1)");
-    expect(authorVisible).not.toContain("t1");
+    expect(feedback).toMatchObject([{ owner: "environment", severity: "blocking" }]);
+    expect(authorVisible).not.toContain("engine host died");
+  });
+});
+
+describe("a refused declaration reaches the owner who can change it", () => {
+  // Each beside a failed census row, so the tool's own row is proved to sit beside the count
+  // rather than be folded into it. The detail names Builder-authored identities, so it crosses.
+  it.each<ToolRefusal>([
+    [
+      "solvability-tool-missing",
+      "correctness-model",
+      'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
+    ],
+    [
+      "solvability-tool-self-authored",
+      "brief",
+      "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
+    ],
+    [
+      "solvability-tool-program-argument",
+      "brief",
+      "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
+    ],
+  ])("%s goes to %s as its own blocking row", async (code, owner, detail) => {
+    const { feedback, authorVisible } = await census(
+      code,
+      probeReturning(
+        [{ taskId: "t1", status: "failed", error: "the tool did not run" }],
+        [{ code, path: "correctness-model/brief.json", detail }],
+      ),
+    );
+    expect(authorVisible).toContain("1 of 1");
+    expect(feedback).toContainEqual(
+      expect.objectContaining({
+        owner,
+        severity: "blocking",
+        findings: [expect.objectContaining({ code: code.toUpperCase().replaceAll("-", "_"), detail })],
+      }),
+    );
   });
 
-  it("returns no feedback when all supplied reference solves pass", async () => {
-    const dir = iterationDir("clean");
-    const gate = makeSolvabilityCensusGate({}, probeReturning([{ taskId: "t1", status: "passed" }]));
-    expect(await gate(HARNESS, dir, join(dir, "slug"))).toEqual([]);
-  });
-
-  it("routes a writer-inexpressible reference artifact as a representation refusal", async () => {
-    const dir = iterationDir("representation");
-    const gate = makeSolvabilityCensusGate(
-      {},
+  it("routes a writer-inexpressible reference artifact to brief, with its interface detail and no task", async () => {
+    const { feedback, authorVisible } = await census(
+      "representation",
       probeReturning([
         { taskId: "t1", status: "passed" },
         {
@@ -192,24 +178,18 @@ describe("the F2 pre-adoption solvability census", () => {
         },
       ]),
     );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "brief", severity: "blocking" });
-    const authorVisible = JSON.stringify(feedback);
+    expect(feedback).toMatchObject([{ owner: "brief", severity: "blocking" }]);
     expect(authorVisible).toContain("SOLVABILITY_REPRESENTATION_DEFECT");
-    // The detail describes a public authoring interface: writer schema, DraftStore or submit, so it
-    // may reach the Builder provided it identifies no task. That is what this checks — the
-    // disclosure rule itself, not whether the detail shortens the repair.
+    // The detail describes the public authoring interface — writer schema, DraftStore, submit — so
+    // it may cross, provided it identifies no task.
     expect(authorVisible).toContain("nullable root value");
     expect(authorVisible).not.toContain("t2");
   });
 
-  it("deduplicates representation-defect details and withholds beyond the projection cap", async () => {
-    const dir = iterationDir("representation-dedup");
+  it("collapses repeated representation details and names the ones past the projection cap", async () => {
     const repeated = { failureKind: "representation-defect" as const, status: "failed" as const };
-    const gate = makeSolvabilityCensusGate(
-      {},
+    const { authorVisible } = await census(
+      "representation-dedup",
       probeReturning([
         { taskId: "t1", ...repeated, error: "writer omits the notes root" },
         { taskId: "t2", ...repeated, error: "writer omits the notes root" },
@@ -220,41 +200,13 @@ describe("the F2 pre-adoption solvability census", () => {
         })),
       ]),
     );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    const authorVisible = JSON.stringify(feedback);
-    // The repeated detail collapses to one row with its count; the count-first ranking puts it ahead.
     expect(authorVisible).toContain("2 of 11 reference artifacts: writer omits the notes root");
-    // Ten distinct details, eight projected: the remainder is named as withheld, not dropped silently.
     expect(authorVisible).toContain("2 further distinct defect(s)");
   });
 
-  it("records the source identity the census ran under", async () => {
-    const dir = iterationDir("identity");
-    const gate = makeSolvabilityCensusGate({}, probeReturning([{ taskId: "t1", status: "passed" }]));
-    await gate(HARNESS, dir, join(dir, "slug"));
-    const persisted = JSON.parse(await Bun.file(join(dir, "solvability.json")).text());
-    expect(persisted.source?.commit).toMatch(/^[0-9a-f]{40}$/);
-  });
-
-  it("routes a census non-result to the environment owner", async () => {
-    const dir = iterationDir("environment");
-    const gate = makeSolvabilityCensusGate(
-      {},
-      probeReturning([
-        { taskId: "t1", status: "passed" },
-        { taskId: "t2", status: "non-result", error: "engine host died pre-ready" },
-      ]),
-    );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "environment", severity: "blocking" });
-    expect(JSON.stringify(feedback)).not.toContain("engine host died");
-  });
-
-  it("routes a family the census refused, crossing the family but not the tasks inside it", async () => {
-    const dir = iterationDir("family");
-    const gate = makeSolvabilityCensusGate(
-      {},
+  it("routes a family the census refused to tests, crossing the family but not the tasks inside it", async () => {
+    const { feedback, authorVisible, recorded } = await census(
+      "family",
       probeReturning(
         [
           { taskId: "charge-1", status: "passed" },
@@ -271,201 +223,108 @@ describe("the F2 pre-adoption solvability census", () => {
         ],
       ),
     );
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "tests", severity: "blocking" });
-    const authorVisible = JSON.stringify(feedback);
+    expect(feedback).toMatchObject([{ owner: "tests", severity: "blocking" }]);
     expect(authorVisible).toContain("TASK_FAMILY_UNIVERSAL_WITNESS");
-    // Family name, denominator, marked root and remedy cross — all Builder-authored public
-    // identities. Which sibling answered which stays in the protected host evidence.
     expect(authorVisible).toContain(String.raw`family \"charge-firmware\" has 2 tasks`);
-    expect(authorVisible).toContain(String.raw`\"module\"`);
     expect(authorVisible).not.toContain("charge-1");
-    expect(await Bun.file(join(dir, "solvability.json")).text()).toContain("charge-1");
+    expect(await recorded()).toContain("charge-1");
   });
+});
 
-  it("blocks when the census cannot execute at all, keeping the failure record protected", async () => {
-    const dir = iterationDir("unavailable");
-    const gate = makeSolvabilityCensusGate({}, probeReturning(null));
-    const feedback = await gate(HARNESS, dir, join(dir, "slug"));
-    expect(feedback).toHaveLength(1);
-    expect(feedback[0]).toMatchObject({ owner: "correctness-model", severity: "blocking" });
-    expect(JSON.stringify(feedback)).not.toContain("bundleSnapshot digest drifted");
-    expect(await Bun.file(join(dir, "solvability.json")).text()).toContain("bundleSnapshot digest drifted");
-  });
-  /** A slug tree carrying the two files the copied-accept census reads: the recorded task array
-   *  `witnessesOf` pairs its witnesses with, and the accept corpus it compares them against. */
-  function slugWithCorpus(
-    name: string,
-    accepts: Array<{ id: string; taskId: string; artifact: unknown }>,
-  ): string {
-    const slugDir = join(SCRATCH, name, "slug");
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    writeFileSync(
-      join(slugDir, "correctness-model", "tasks.json"),
-      JSON.stringify([
-        {
-          taskId: "bracket-a",
-          family: "bracket",
-          publicInput: { span_mm: 2400 },
-          hidden: [{ expect: "protected" }],
-        },
-      ]),
-    );
-    writeFileSync(
-      join(slugDir, "correctness-model", "controls.json"),
-      JSON.stringify({ accept: accepts, reject: [] }),
-    );
-    return slugDir;
-  }
+/** A slug with the one recorded task the witness pairs with and the accept corpus it is compared to. */
+function slugWithCorpus(name: string, accepts: Accept[]): string {
+  const slugDir = join(SCRATCH, `${name}-slug`);
+  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
+  const task = { taskId: "bracket-a", family: "bracket", publicInput: { span_mm: 2400 }, hidden: [] };
+  writeFileSync(join(slugDir, "correctness-model", "tasks.json"), JSON.stringify([task]));
+  writeFileSync(
+    join(slugDir, "correctness-model", "controls.json"),
+    JSON.stringify({ accept: accepts, reject: [] }),
+  );
+  return slugDir;
+}
 
-  const REFERENCE_ARTIFACT = {
-    design: { members: [{ id: "m1", section: "CHS33.7x2.6" }], totalMass_kg: 278.56 },
-  };
+const copyOf = (id: string): Accept => ({ id, taskId: "bracket-a", artifact: REFERENCE_ARTIFACT });
 
-  /** Read the recorded census back out of solvability.json. */
-  async function acceptIndependence(dir: string): Promise<AcceptIndependence | undefined> {
-    // SAFETY: the file this gate wrote one line earlier, through the shape it writes there.
-    const recorded = JSON.parse(await Bun.file(join(dir, "solvability.json")).text()) as {
-      acceptIndependence?: AcceptIndependence;
-    };
-    return recorded.acceptIndependence;
-  }
+/** The census over a slug whose one witness is the reference artifact for bracket-a. */
+async function independenceOf(name: string, accepts: Accept[]) {
+  const probe = probeReturning([{ taskId: "bracket-a", status: "passed", artifact: REFERENCE_ARTIFACT }]);
+  const run = await census(name, probe, slugWithCorpus(name, accepts));
+  // SAFETY: the file the gate wrote one line earlier, through the shape it writes there.
+  const recorded = JSON.parse(await run.recorded()) as { acceptIndependence?: AcceptIndependence };
+  const advice = run.feedback.filter((entry) => entry.owner === "accept-controls");
+  return { ...run, independence: recorded.acceptIndependence, advice };
+}
 
-  /** A probe whose one witness is the reference artifact for bracket-a. */
-  function referencePassed() {
-    return probeReturning([{ taskId: "bracket-a", status: "passed", artifact: REFERENCE_ARTIFACT }]);
-  }
-
-  /** One accept carrying the reference artifact, under an id of its own. */
-  function copyOf(id: string) {
-    return { id, taskId: "bracket-a", artifact: REFERENCE_ARTIFACT };
-  }
-
-  it("records the accept controls that carry the reference solve's own artifact, and advises on them", async () => {
-    const dir = iterationDir("accept-copy");
-    const gate = makeSolvabilityCensusGate({}, referencePassed());
-    // Six compared, so the comparison is wide enough to reach the floor, and one that does not.
-    // The control ids name no task, so the isolation assertion below reads what it claims to.
-    const feedback = await gate(
-      HARNESS,
-      dir,
-      slugWithCorpus("accept-copy", [
-        // Key order differs from the witness: the question is the value, not the bytes.
-        {
-          id: "acc-copy",
-          taskId: "bracket-a",
-          artifact: { design: { totalMass_kg: 278.56, members: [{ section: "CHS33.7x2.6", id: "m1" }] } },
-        },
-        ...["acc-copy-b", "acc-copy-c", "acc-copy-d", "acc-copy-e"].map(copyOf),
-        {
-          id: "acc-independent",
-          taskId: "bracket-a",
-          artifact: { design: { members: [{ id: "m1", section: "CHS42.4x2.6" }], totalMass_kg: 281.655 } },
-        },
-      ]),
-    );
-    expect(await acceptIndependence(dir)).toEqual({
+describe("accept controls that restate the reference solve", () => {
+  it("advises when fewer than the floor were reached without it, naming controls but not the task", async () => {
+    const { independence, advice, recorded } = await independenceOf("accept-copy", [
+      // Key order differs from the witness: the question is the value, not the bytes.
+      {
+        id: "acc-copy",
+        taskId: "bracket-a",
+        artifact: { design: { totalMass_kg: 278.56, members: [{ section: "CHS33.7x2.6", id: "m1" }] } },
+      },
+      ...["acc-copy-b", "acc-copy-c", "acc-copy-d", "acc-copy-e"].map(copyOf),
+      { id: "acc-independent", taskId: "bracket-a", artifact: INDEPENDENT_ARTIFACT },
+    ]);
+    expect(independence).toEqual({
       accepts: 6,
       compared: 6,
       copiedFromReference: ["acc-copy", "acc-copy-b", "acc-copy-c", "acc-copy-d", "acc-copy-e"],
     });
-    // One independent accept, under the declared floor of five: the corpus nominally calibrates the
-    // checks and actually re-states the reference. Advisory, so it refuses nothing.
-    const row = feedback.find((entry) => entry.owner === "accept-controls");
-    expect(row).toMatchObject({ severity: "advisory" });
-    expect(row?.claim).toContain(
+    expect(advice).toMatchObject([{ severity: "advisory" }]);
+    expect(advice[0]?.claim).toContain(
       "1 of the 6 accept controls compared with a reference witness were reached without it",
     );
-    // Control ids are Builder-authored, so they cross; the task id they are bound to does not.
-    expect(row?.findings?.[0]?.detail).toContain("acc-copy");
-    expect(JSON.stringify(row)).not.toContain("bracket-a");
-    expect(await Bun.file(join(dir, "solvability.json")).text()).toContain("bracket-a");
+    expect(advice[0]?.findings?.[0]?.detail).toContain("acc-copy");
+    expect(JSON.stringify(advice)).not.toContain("bracket-a");
+    expect(await recorded()).toContain("bracket-a");
   });
 
-  it("counts an accept whose task reached no witness as compared with nothing, not reached without the reference", async () => {
-    const dir = iterationDir("accept-uncompared");
-    const gate = makeSolvabilityCensusGate({}, referencePassed());
-    const feedback = await gate(
-      HARNESS,
-      dir,
-      slugWithCorpus("accept-uncompared", [
+  const independents = Array.from({ length: EVALUATOR_CALIBRATION_POLICY.minimumKnownPasses }, (_, at) => ({
+    id: `acc-independent-${String(at)}`,
+    taskId: "bracket-a",
+    artifact: { design: { ...INDEPENDENT_ARTIFACT.design, totalMass_kg: 281.655 + at } },
+  }));
+  it.each<[string, Accept[], Partial<AcceptIndependence>]>([
+    [
+      // Accepts for a task F2 produced no witness for are compared with nothing; subtracting the
+      // copies from every declared accept would read them as reached without the reference.
+      "an accept whose task reached no witness counts as uncompared",
+      [
         ...["acc-copy-a", "acc-copy-b", "acc-copy-c", "acc-copy-d", "acc-copy-e"].map(copyOf),
-        // Three accepts for a task F2 produced no witness for. Subtracting the copies from every
-        // declared accept read these as three artifacts the reference could not produce, which is
-        // the opposite of what a missing witness says, and the row fired on a wholly copied corpus.
-        { id: "acc-span-a", taskId: "span-a", artifact: REFERENCE_ARTIFACT },
-        { id: "acc-span-b", taskId: "span-b", artifact: REFERENCE_ARTIFACT },
-        { id: "acc-span-c", taskId: "span-c", artifact: REFERENCE_ARTIFACT },
-      ]),
-    );
-    expect(await acceptIndependence(dir)).toMatchObject({ accepts: 8, compared: 5 });
-    expect(feedback.filter((entry) => entry.owner === "accept-controls")).toEqual([]);
-  });
-
-  it("says nothing when the corpus still carries the declared floor of independent accepts", async () => {
-    const dir = iterationDir("accept-floor");
-    const gate = makeSolvabilityCensusGate({}, referencePassed());
-    const feedback = await gate(
-      HARNESS,
-      dir,
-      slugWithCorpus("accept-floor", [
-        { id: "acc-copy", taskId: "bracket-a", artifact: REFERENCE_ARTIFACT },
-        ...Array.from({ length: EVALUATOR_CALIBRATION_POLICY.minimumKnownPasses }, (_, at) => ({
-          id: `acc-independent-${String(at)}`,
-          taskId: "bracket-a",
-          artifact: {
-            design: { members: [{ id: "m1", section: "CHS42.4x2.6" }], totalMass_kg: 281.655 + at },
-          },
+        ...["span-a", "span-b", "span-c"].map((taskId) => ({
+          id: `acc-${taskId}`,
+          taskId,
+          artifact: REFERENCE_ARTIFACT,
         })),
-      ]),
-    );
-    // The copy is surplus once the floor is met independently, so it earns no sentence.
-    expect((await acceptIndependence(dir))?.copiedFromReference).toEqual(["acc-copy"]);
-    expect(feedback.filter((entry) => entry.owner === "accept-controls")).toEqual([]);
-  });
-
-  it("says nothing when no accept was reached apart from the reference", async () => {
-    const dir = iterationDir("accept-single");
-    const gate = makeSolvabilityCensusGate({}, referencePassed());
-    const feedback = await gate(
-      HARNESS,
-      dir,
-      slugWithCorpus(
-        "accept-single",
-        ["acc-one", "acc-two", "acc-three", "acc-four", "acc-five"].map(copyOf),
-      ),
-    );
-    // A wholly copied corpus and a domain whose task has one correct answer are the same bytes here.
-    // The `uppercase` candidate the end-to-end gate calls clean is the second, so the row would fire
-    // forever on a candidate with nothing to fix. The copies are still recorded.
-    expect((await acceptIndependence(dir))?.copiedFromReference).toEqual([
-      "acc-five",
-      "acc-four",
-      "acc-one",
-      "acc-three",
-      "acc-two",
-    ]);
-    expect(feedback.filter((entry) => entry.owner === "accept-controls")).toEqual([]);
-  });
-
-  it("counts no copy for an accept authored apart from the reference, nor for a control with no witness", async () => {
-    const dir = iterationDir("accept-independent");
-    const gate = makeSolvabilityCensusGate({}, referencePassed());
-    await gate(
-      HARNESS,
-      dir,
-      slugWithCorpus("accept-independent", [
-        {
-          id: "acc-bracket-a",
-          taskId: "bracket-a",
-          artifact: { design: { members: [{ id: "m1", section: "CHS42.4x2.6" }], totalMass_kg: 281.655 } },
-        },
-        // Same artifact as the witness, but for a task F2 produced no witness for: nothing to compare.
+      ],
+      { accepts: 8, compared: 5 },
+    ],
+    [
+      "a copy beside the floor of independent accepts is surplus",
+      [copyOf("acc-copy"), ...independents],
+      { copiedFromReference: ["acc-copy"] },
+    ],
+    [
+      // A wholly copied corpus and a task with one correct answer are the same bytes here, and the
+      // second has nothing to fix.
+      "no accept reached apart from the reference",
+      ["acc-one", "acc-two", "acc-three", "acc-four", "acc-five"].map(copyOf),
+      { copiedFromReference: ["acc-five", "acc-four", "acc-one", "acc-three", "acc-two"] },
+    ],
+    [
+      "an accept authored apart from the reference, and a copy for a task with no witness",
+      [
+        { id: "acc-bracket-a", taskId: "bracket-a", artifact: INDEPENDENT_ARTIFACT },
         { id: "acc-span-a", taskId: "span-a", artifact: REFERENCE_ARTIFACT },
-      ]),
-    );
-    expect(await acceptIndependence(dir)).toEqual({ accepts: 2, compared: 1, copiedFromReference: [] });
+      ],
+      { accepts: 2, compared: 1, copiedFromReference: [] },
+    ],
+  ])("records and stays silent: %s", async (name, accepts, recorded) => {
+    const { independence, advice } = await independenceOf(name.split(" ").slice(0, 4).join("-"), accepts);
+    expect(independence).toMatchObject(recorded);
+    expect(advice).toEqual([]);
   });
 });

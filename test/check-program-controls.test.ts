@@ -5,7 +5,7 @@ import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluat
 import type { CheckFn } from "../src/truth/correctness-model-contract.ts";
 import { runControls } from "../src/truth/run-controls.ts";
 import { applicableTruthChecks } from "../src/truth/brief.ts";
-import { validateControlReceipts } from "../src/truth/control-receipts.ts";
+import { checkReceiptSet } from "../src/truth/control-receipts.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,
@@ -44,7 +44,7 @@ test("the matching programs accept real solutions and isolate every declared hos
     );
     expect(runs.length).toBe(acceptRuns.length + MATCHING_REJECTS.length);
     expect(result.controlReceipts.every((row) => row.schema === "control-receipt/v2")).toBe(true);
-    expect(validateControlReceipts(corpus, result.controlReceipts)).toEqual([]);
+    expect(checkReceiptSet(corpus, result.controlReceipts).findings).toEqual([]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

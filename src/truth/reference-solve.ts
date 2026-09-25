@@ -374,20 +374,6 @@ async function prepareReferenceSolve(
   return { bundle, policy, request, timeoutMs, lifetime: verifierLifetime };
 }
 
-/** Run only the public reference dependency closure, and run it under the real generated-worker
- *  wall rather than a lighter one, so the witness is produced under the conditions it attests. */
-export async function executeIsolatedReferenceSolve(
-  slugDir: string,
-  task: PublicTask<JsonValue>,
-  timeoutMs = harnessSettings(slugDir).referenceSolveMs,
-  executable = capturedExecPath,
-  verifierLifetime?: VerifierLifetime,
-): Promise<{ artifact: unknown }> {
-  return runReferenceChild(
-    await prepareReferenceSolve(slugDir, task, timeoutMs, executable, verifierLifetime),
-  );
-}
-
 /** A path or permission error names the wall, not the generated solve. */
 export function isReferenceSolveIsolationFailure(cause: unknown): boolean {
   const code = errorCode(cause);

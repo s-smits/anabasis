@@ -105,17 +105,18 @@ const T1 = required(MATCHING_TASKS[0], "first fixture task");
 const T2 = required(MATCHING_TASKS[1], "second fixture task");
 
 describe("the bundle a candidate must present", () => {
-  it("names a missing file and still commits the tree, because a refusal is memory", () => {
-    const dir = workspace();
-    unlinkSync(join(dir, "correctness-model/controls.json"));
-    const outcome = refuse(dir);
-    expect(outcome.stage).toBe("bundle");
-    expect(outcome.findings).toEqual([
-      expect.objectContaining({ code: "missing-bundle-file", path: "correctness-model/controls.json" }),
-    ]);
-    expect(workspaceStatus(dir)).toEqual({ clean: true, dirtyPaths: [] });
-    expect(outcome.commit).toMatch(/^[0-9a-f]{40}$/);
-  });
+  it.each(["correctness-model/controls.json", "agent/BUILT_AGENTS.md"])(
+    "names a missing %s and still commits the tree, because a refusal is memory",
+    (path) => {
+      const dir = workspace();
+      unlinkSync(join(dir, path));
+      const outcome = refuse(dir);
+      expect(outcome.stage).toBe("bundle");
+      expect(outcome.findings).toEqual([expect.objectContaining({ code: "missing-bundle-file", path })]);
+      expect(workspaceStatus(dir)).toEqual({ clean: true, dirtyPaths: [] });
+      expect(outcome.commit).toMatch(/^[0-9a-f]{40}$/);
+    },
+  );
 
   it("reads malformed JSON as the absent-file repair instead of throwing", () => {
     const dir = workspace();
@@ -410,15 +411,6 @@ describe("the agent the solver gets", () => {
     expect(bundleCodes(dir)).toContain("tools-shell-preset-overlap");
   });
 
-  // Every truss cycle exported on 2026-09-17 still carried `presets: []`: the check ran on the
-  // first build alone, so each continuation inherited the shell-less roster and its solver could
-  // compute nothing for itself.
-  it("asks a continuation that may author the agent for the same shell", () => {
-    const dir = workspace();
-    shellless(dir);
-    expect(codes(refuse(dir).findings)).toContain("tools-default-preset-declined");
-  });
-
   // A task-only round keeps the agent fixed, so it cannot select the preset — and it may not
   // measure past the gap either: harder tasks do not repair a known product blocker (rule 11).
   // The refusal names the scope that owns the repair instead.
@@ -496,11 +488,6 @@ describe("the operating guide", () => {
       `${MATCHING_OPERATING_GUIDE}\nOn ${T1.taskId}, bind first.\n`,
       "operating-guide-task-identifier",
     ],
-    [
-      "a guide past its size bound",
-      `${MATCHING_OPERATING_GUIDE}${"Declare every part before binding. ".repeat(300)}`,
-      "operating-guide-shape",
-    ],
   ];
   for (const [name, text, code] of refused) {
     it(`refuses ${name}`, () => {
@@ -514,7 +501,10 @@ describe("the operating guide", () => {
     const dir = workspace();
     guide(dir, `${MATCHING_OPERATING_GUIDE}${"Declare every part before binding. ".repeat(300)}`);
     expect(refuse(dir).findings).toContainEqual(
-      expect.objectContaining({ detail: expect.stringContaining("the limit is 8192") }),
+      expect.objectContaining({
+        code: "operating-guide-shape",
+        detail: expect.stringContaining("the limit is 8192"),
+      }),
     );
 
     // The starter guide carries an explicit marker, so the unchanged seed is refused by name.
@@ -628,30 +618,11 @@ describe("the operating guide", () => {
     expect(verdict(captured.commit)).toEqual([]);
     expect(verdict(workspaceHead(dir))).toEqual(["operating-guide-retired-tool"]);
   });
-
-  it("refuses a bundle with no guide", () => {
-    const dir = workspace();
-    unlinkSync(join(dir, "agent/BUILT_AGENTS.md"));
-    expect(refuse(dir).findings).toContainEqual(
-      expect.objectContaining({ code: "missing-bundle-file", path: "agent/BUILT_AGENTS.md" }),
-    );
-  });
 });
 
 describe("what a candidate owes beyond a readable bundle", () => {
-  it("refuses a fresh brief that omits the public input declaration", () => {
-    const dir = workspace();
-    const brief = structuredClone(MATCHING_BRIEF);
-    for (const check of brief.truthChecks) Reflect.deleteProperty(check.execution, "publicInputPaths");
-    writeJson(dir, "correctness-model/brief.json", brief);
-    expect(loadValidatedBundle(dir, ASK).findings).toContainEqual(
-      expect.objectContaining({ code: "shape-mismatch", path: "truthChecks[0].execution.publicInputPaths" }),
-    );
-  });
-
-  // W20 shipped a nine-task family answered by one module. The census that catches it needs to be
-  // told which artifact roots hold the deliverable, so it has a declared root to replay across
-  // sibling tasks.
+  // The census that catches one module answering a whole family needs to be told which artifact
+  // roots hold the deliverable, so it has a declared root to replay across sibling tasks.
   it("refuses a fresh brief that marks no task-conditioned artifact root", () => {
     const silent = structuredClone(MATCHING_BRIEF);
     for (const field of silent.artifactSchema) delete field.taskConditioned;

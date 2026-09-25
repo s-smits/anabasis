@@ -11,12 +11,7 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
-import {
-  CandidateIsolationRefusal,
-  CandidateIsolationUnavailable,
-  openPathRecord,
-  readPathRecordRows,
-} from "../src/builder/candidate-isolation-runtime.ts";
+import { openPathRecord, readPathRecordRows } from "../src/builder/candidate-isolation-runtime.ts";
 import { deriveCandidateIsolation } from "../src/builder/candidate-isolation.ts";
 import {
   type VmWorkshopCell,
@@ -206,7 +201,7 @@ describe("the workshop microvm runner", () => {
         cwd: f.ossRoot,
         paths: [outside],
       }),
-    ).rejects.toThrow(CandidateIsolationRefusal);
+    ).rejects.toThrow("is outside the candidate workspace access rules");
     expect(existsSync(join(f.capture, "argv"))).toBe(false);
     const rows = readPathRecordRows(f.record.path);
     expect(rows).toHaveLength(1);
@@ -351,7 +346,7 @@ describe("the workshop microvm runner", () => {
         cwd: f.ossRoot,
         paths: [f.ossRoot],
       }),
-    ).rejects.toThrow(CandidateIsolationUnavailable);
+    ).rejects.toThrow('serves only the isolated-workshop profile, not "candidate"');
   });
 
   it("refuses as unavailable when the provisioned key is missing, naming the provision script", async () => {

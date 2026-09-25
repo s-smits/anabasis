@@ -19,13 +19,9 @@ import {
 } from "../meta/filesystem.ts";
 import { basename, dirname, join } from "../meta/path.ts";
 import { BATTERY_FILES, type FingerprintEvidence } from "./fingerprint.ts";
-import {
-  BundleSnapshotIntegrityError,
-  assertTaskSetMatchesFingerprint,
-  verifyTree,
-} from "./bundle-snapshot-verify.ts";
+import { assertTaskSetMatchesFingerprint, verifyTree } from "./bundle-snapshot-verify.ts";
 
-export { BundleSnapshotIntegrityError, assertTaskSetMatchesFingerprint };
+export { assertTaskSetMatchesFingerprint };
 import { runtimeProcess } from "../meta/process.ts";
 import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 

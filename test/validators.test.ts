@@ -6,7 +6,7 @@ import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.t
 import { validateTasks } from "../src/truth/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { resolveJsonPath } from "../src/meta/json-evidence.ts";
-import { projectJsonPaths } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
+import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 
 function greenBrief(overrides: Partial<Brief> = {}): Brief {
   return {
@@ -58,8 +58,6 @@ const task = (taskId: string, family: string, checkId: string) => ({
   hidden: [{ checkId, expectation: true }],
 });
 
-// Algorithm-specific AST proofs retired with the AST interpreter. These checks retain the
-// structural contract, declaration attribution, representation and safe-feedback boundaries.
 describe("brief and task contract", () => {
   it("accepts a valid brief", () => {
     expect(validateBrief(greenBrief()).ok).toBe(true);
@@ -141,7 +139,11 @@ describe("brief and task contract", () => {
     check.execution.artifactPaths = ['$["good"]'];
     expect(validateBrief(brief).ok).toBe(true);
     const artifact = { good: { "main.cpp": "loop", "other.h": "secret" } };
-    expect(projectJsonPaths(artifact, ["$.good['main.cpp']"])).toEqual({ good: { "main.cpp": "loop" } });
+    check.execution.artifactPaths = ["$.good['main.cpp']"];
+    const publicTask = { taskId: "t", family: "f", publicInput: {} };
+    expect(checkPublicInputs(check, { artifact, publicTask }).artifact).toEqual({
+      good: { "main.cpp": "loop" },
+    });
     expect(resolveJsonPath(artifact, '$.good["main.cpp"]')).toEqual({ found: true, value: "loop" });
     // The quoted step is one key: it never splits into `.main` then `.cpp`.
     expect(resolveJsonPath(artifact, "$.good.main.cpp").found).toBe(false);
@@ -218,49 +220,6 @@ describe("brief and task contract", () => {
       { kind: "external", requiredToolIds: ["checker"] },
     ]);
   });
-  it("uncited design-rule constants are rejected (hw22 wrong-rule-content class)", () => {
-    const brief = greenBrief({
-      designRuleConstants: [{ name: "x", value: 1, authority: "", citation: "" }],
-    });
-    expect(codes(validateBrief(brief))).toContain("brief-constant-uncited");
-  });
-  it("rejects empty and duplicate design-rule constant names before first-match lookup", () => {
-    const duplicate = greenBrief({
-      designRuleConstants: [
-        { name: "cap", value: 1, authority: "standard", citation: "section 1" },
-        { name: "cap", value: 2, authority: "standard", citation: "section 2" },
-      ],
-    });
-    expect(codes(validateBrief(duplicate))).toContain("brief-duplicate-design-rule-constant");
-
-    const empty = greenBrief({
-      designRuleConstants: [{ name: " ", value: 1, authority: "standard", citation: "section 1" }],
-    });
-    expect(codes(validateBrief(empty))).toContain("brief-design-rule-constant-name-empty");
-  });
-  it("rejects a join without decoy classes (hw21-24)", () => {
-    const brief = greenBrief({ joins: [{ id: "j", description: "d", decoyClasses: [] }] });
-    expect(codes(validateBrief(brief))).toContain("brief-join-no-decoys");
-  });
-  it("rejects duplicate join ids and duplicate decoy obligations", () => {
-    const duplicateId = greenBrief({
-      joins: [
-        ...greenBrief().joins,
-        { id: "parts-to-slots", description: "duplicate", decoyClasses: ["other"] },
-      ],
-    });
-    expect(codes(validateBrief(duplicateId))).toContain("brief-duplicate-join-id");
-    const duplicateDecoy = greenBrief({
-      joins: [
-        {
-          id: "parts-to-slots",
-          description: "declared parts joined to slots by exact id",
-          decoyClasses: ["alias-swap", "alias-swap"],
-        },
-      ],
-    });
-    expect(codes(validateBrief(duplicateDecoy))).toContain("brief-duplicate-decoy-class");
-  });
   it("names the load failure's owner beside its full diagnostic", () => {
     // Loading runs only Builder-authored bytes, so the diagnostic is authored and crosses in full.
     const project = (detail: string) =>
@@ -287,60 +246,77 @@ describe("brief and task contract", () => {
     // An unrecognised message crosses behind its classification.
     expect(project("boom 0x41").detail).toBe("generated-correctness-model-load: boom 0x41");
   });
-  it("an empty artifactSchema is rejected — no owner for representation (falsifier-claude-007)", () => {
-    expect(codes(validateBrief(greenBrief({ artifactSchema: [] })))).toContain("brief-no-artifact-schema");
+  const constant = (name: string, value: number, citation = "section 1") => ({
+    name,
+    value,
+    authority: citation === "" ? "" : "standard",
+    citation,
   });
-  it("duplicate artifact fields are rejected", () => {
-    const brief = greenBrief({
-      artifactSchema: [
-        { name: "good", "shape": "boolean flag" },
-        { name: "good", "shape": "declared twice" },
-      ],
-    });
-    expect(codes(validateBrief(brief))).toContain("brief-duplicate-artifact-field");
+  const join = (id: string, decoyClasses: string[]) => ({ id, description: "d", decoyClasses });
+  const field = (overrides: Partial<Brief["artifactSchema"][number]>) => ({
+    name: "verdict",
+    "shape": "closed",
+    ...overrides,
   });
-  it("allowedValues must be a non-empty set of distinct scalars", () => {
-    for (const values of [[], [{ deep: true }], ["pass", "pass"]]) {
-      const brief = greenBrief({
-        artifactSchema: [
-          {
-            name: "verdict",
-            "shape": "closed",
-            allowedValues: double<Array<string | number | boolean>>(values),
-          },
-        ],
-      });
-      expect(codes(validateBrief(brief)), JSON.stringify(values)).toContain(
-        "brief-artifact-field-allowed-values-invalid",
-      );
-    }
-    const declared = greenBrief({
-      artifactSchema: [{ name: "verdict", "shape": "closed", allowedValues: ["pass", "fail"] }],
-    });
-    expect(codes(validateBrief(declared))).not.toContain("brief-artifact-field-allowed-values-invalid");
+  it.each<[string, Partial<Brief>, { code?: string; path?: string }]>([
+    [
+      "an uncited constant",
+      { designRuleConstants: [constant("x", 1, "")] },
+      { code: "brief-constant-uncited" },
+    ],
+    [
+      "a duplicate constant name",
+      { designRuleConstants: [constant("cap", 1), constant("cap", 2, "section 2")] },
+      { code: "brief-duplicate-design-rule-constant" },
+    ],
+    [
+      "a blank constant name",
+      { designRuleConstants: [constant(" ", 1)] },
+      { code: "brief-design-rule-constant-name-empty" },
+    ],
+    ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
+    [
+      "a duplicate join id",
+      { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },
+      { code: "brief-duplicate-join-id" },
+    ],
+    [
+      "a duplicate decoy class",
+      { joins: [join("parts-to-slots", ["alias-swap", "alias-swap"])] },
+      { code: "brief-duplicate-decoy-class" },
+    ],
+    ["an empty artifact schema", { artifactSchema: [] }, { code: "brief-no-artifact-schema" }],
+    [
+      "a duplicate artifact field",
+      { artifactSchema: [field({ name: "good" }), field({ name: "good" })] },
+      { code: "brief-duplicate-artifact-field" },
+    ],
+    ...["plan.v2", "1plan", "with space"].map((name): [string, Partial<Brief>, { code: string }] => [
+      `the unaddressable field name ${JSON.stringify(name)}`,
+      { artifactSchema: [field({ name })] },
+      { code: "brief-artifact-field-unaddressable" },
+    ]),
+    ...[[], [{ deep: true }], ["pass", "pass"]].map((values): [string, Partial<Brief>, { code: string }] => [
+      `allowedValues ${JSON.stringify(values)}`,
+      { artifactSchema: [field({ allowedValues: double<Array<string | number | boolean>>(values) })] },
+      { code: "brief-artifact-field-allowed-values-invalid" },
+    ]),
+    ...["yes", 1, false].map((marked): [string, Partial<Brief>, { path: string }] => [
+      `taskConditioned ${JSON.stringify(marked)}`,
+      { artifactSchema: [field({ taskConditioned: double<true>(marked) })] },
+      { path: "artifactSchema[0].taskConditioned" },
+    ]),
+  ])("refuses %s", (_name, overrides, finding) => {
+    expect(validateBrief(greenBrief(overrides)).findings).toContainEqual(expect.objectContaining(finding));
   });
-  it("taskConditioned must be the literal true", () => {
-    for (const marked of ["yes", 1, false]) {
-      const brief = greenBrief({
-        artifactSchema: [{ name: "verdict", "shape": "closed", taskConditioned: double<true>(marked) }],
-      });
-      expect(
-        validateBrief(brief).findings.map((finding) => finding.path),
-        JSON.stringify(marked),
-      ).toContain("artifactSchema[0].taskConditioned");
-    }
-    const declared = greenBrief({
-      artifactSchema: [{ name: "verdict", "shape": "closed", taskConditioned: true }],
-    });
-    expect(validateBrief(declared).findings.map((finding) => finding.path)).not.toContain(
-      "artifactSchema[0].taskConditioned",
+  it("admits a closed value set and a literal taskConditioned marker", () => {
+    const findings = validateBrief(
+      greenBrief({ artifactSchema: [field({ allowedValues: ["pass", "fail"], taskConditioned: true })] }),
+    ).findings;
+    expect(findings.map((finding) => finding.code)).not.toContain(
+      "brief-artifact-field-allowed-values-invalid",
     );
-  });
-  it("artifact field names must be addressable by the declared projection paths", () => {
-    for (const name of ["plan.v2", "1plan", "with space"]) {
-      const brief = greenBrief({ artifactSchema: [{ name, "shape": "unaddressable field" }] });
-      expect(codes(validateBrief(brief)), name).toContain("brief-artifact-field-unaddressable");
-    }
+    expect(findings.map((finding) => finding.path)).not.toContain("artifactSchema[0].taskConditioned");
   });
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));
@@ -348,7 +324,7 @@ describe("brief and task contract", () => {
     expect(found).not.toContain("brief-artifact-root-unread");
   });
   it("a brief in a foreign shape yields shape-mismatch findings naming the fields", () => {
-    // Reproduces the recorded failure shape: parseable JSON without the required Brief fields.
+    // Parseable JSON without the required Brief fields.
     const result = validateBrief({
       correctnessContract: "check-program/v1",
       overview: "rostering",
@@ -427,9 +403,8 @@ describe("the tool contract agrees with the declared answer representation", () 
   ];
   const specCodes = (value: unknown) => validateToolsSpec(value).findings.map((f) => f.code);
 
-  // The preset-agreement table is gone: candidate recording and runtime loading already check the
-  // admitted data against the generated files, and run 80 showed the fileMap row keyed on the
-  // wrong fact. This test retains the requirement that an available tool can prepare the answer.
+  // Candidate recording and runtime loading check the admitted data against the generated files,
+  // so the spec owes only a tool that can prepare the answer.
   it("accepts either preparer regardless of the declared answer shape", () => {
     expect(specCodes(spec(["files"]))).toEqual([]);
     expect(specCodes({ ...spec([], writer), declined: { files: "answers are one number" } })).toEqual([]);
@@ -461,7 +436,7 @@ describe("the tool contract agrees with the declared answer representation", () 
     expect(specCodes(spec([], [{ ...row, conformanceArguments: "ABC" }]))).toEqual(["shape-mismatch"]);
   });
 
-  it("refuses the removed standard flag like any unknown key", () => {
+  it("refuses an unknown key on a tool row", () => {
     const [row] = writer;
     if (row === undefined) throw new Error("fixture has a writer row");
     expect(validateToolsSpec({ presets: [], tools: [{ ...row, standard: true }] }).findings).toEqual([

@@ -152,7 +152,6 @@ export function publishProductVersion(input: {
     staging,
     "build-admissible",
     relative(repoRoot, input.conformancePath ?? acceptedSnapshot),
-    undefined,
     slug,
   );
   const manifest: ProductManifest = {

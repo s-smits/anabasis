@@ -60,7 +60,6 @@ export function advanceClaimStage(
   adoptDir: string,
   stage: ClaimStage,
   evidencePath: string,
-  at: string = new Date().toISOString(),
   slug: string | null = null,
 ): ClaimStageEvidence {
   const claimStages = readClaimStages(adoptDir) ?? { slug: slug ?? basename(adoptDir), steps: [] };
@@ -70,7 +69,7 @@ export function advanceClaimStage(
       `${adoptDir}: claim stages are at "${claimStages.steps.at(-1)?.stage ?? "no evidence"}" — the only admissible next claim stage is "${expected ?? "none: activated is terminal"}", never "${stage}"`,
     );
   }
-  claimStages.steps.push({ stage, at, evidence: evidencePath });
+  claimStages.steps.push({ stage, at: new Date().toISOString(), evidence: evidencePath });
   writeJsonFile(join(adoptDir, CLAIM_STAGES_FILE), claimStages);
   return claimStages;
 }
@@ -80,7 +79,6 @@ export function advanceClaimStage(
 export function recordMeasurement(
   adoptDir: string,
   outcome: { runId: string; measured: boolean; claimCreated: boolean; ready: boolean },
-  at?: string,
 ): ClaimStage | null {
   let evidence = readClaimStages(adoptDir);
   if (evidence === null) return null;
@@ -92,7 +90,7 @@ export function recordMeasurement(
   for (const [stage, earned] of earnedStages) {
     if (!earned) break;
     if (CLAIM_STAGES[evidence.steps.length] === stage) {
-      evidence = advanceClaimStage(adoptDir, stage, outcome.runId, at);
+      evidence = advanceClaimStage(adoptDir, stage, outcome.runId);
     }
   }
   return evidence.steps.at(-1)?.stage ?? null;

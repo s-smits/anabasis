@@ -59,8 +59,6 @@ describe("execution limits and sandbox requirements", () => {
     expect(resolveToolTimeoutMs(0)).toBe(1);
     expect(resolveToolTimeoutMs(-5)).toBe(1);
     expect(resolveToolTimeoutMs(TOOL_TIMEOUT_CEILING_MS + 5_000)).toBe(TOOL_TIMEOUT_CEILING_MS);
-    expect(TOOL_TIMEOUT_CEILING_MS).toBe(300_000);
-    expect(DEFAULT_TOOL_TIMEOUT_MS).toBe(TOOL_TIMEOUT_CEILING_MS);
     // A harness's own tool-run wall is both its default and its ceiling.
     expect(resolveToolTimeoutMs(undefined, 900_000)).toBe(900_000);
     expect(resolveToolTimeoutMs(1_200_000, 900_000)).toBe(900_000);

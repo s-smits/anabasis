@@ -1,21 +1,14 @@
-// External-verifier grounding (C3), second half. Split from verification-runner.test.ts so
-// each file finishes within about half a minute under four concurrent tests.
+// External-verifier grounding (C3), second half: a tool run is bound to the subject that launched
+// it and to a settled invocation, and generated tool source cannot write any part of the case
+// evidence the controller owns: the public task, the accepted bytes or the submission fact.
 
 import { type JsonObject } from "../src/meta/json-shape.ts";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { existsSync, readFileSync, readdirSync, statSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 import { createTraceRecorder } from "../src/backends/trace-capture.ts";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
 import { type Solver } from "../src/truth/solve.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { double } from "./helpers/doubles.ts";
@@ -24,13 +17,11 @@ import {
   EVALUATOR_SOURCE,
   REJECTS,
   TOOLS_SOURCE,
-  fingerprintOf,
+  bundleSlug,
   matchingBattery,
   removeScratchRoot,
-  scratch,
   scriptedSolver,
-  SCRIPTED_CONDITION,
-  SCRIPTED_THRESHOLD_DIGEST,
+  scriptedVerify,
 } from "./helpers/verification-runner-fixtures.ts";
 import {
   TOOL_REJECT,
@@ -40,7 +31,6 @@ import {
   VERIFIER_EVALUATOR_SOURCE,
   externalSlug,
   installTool,
-  markedTasks,
 } from "./helpers/verification-runner-external.ts";
 
 afterAll(removeScratchRoot);
@@ -57,19 +47,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     });
     installTool(slugDir, TOOL_SCRIPT);
     const runId = "run-c3-control-task-id-collision";
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId,
-    })({
-      slug: "matching",
-      slugDir,
-      fingerprint: fingerprintOf(slugDir),
-      tasks: markedTasks,
-    });
+    const report = await scriptedVerify(runId)(matchingBattery(slugDir));
     expect(report.evidence.discrimination.claimable).toBe(true);
     expect(report.score.map((row) => row.caseId)).toEqual(["t1", "t2"]);
     const battery = JSON.parse(readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"));
@@ -78,22 +56,15 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       pass: null,
       runtimeNonResultKind: "verifier",
     });
-    expect(battery.executionEvidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          phase: "discrimination",
-          subjectId: "t3",
-          attempt: 1,
-          outcome: "executed",
-        }),
-      ]),
+    expect(battery.executionEvidence).toContainEqual(
+      expect.objectContaining({ phase: "discrimination", subjectId: "t3", attempt: 1, outcome: "executed" }),
     );
     expect(battery.executionEvidence).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ phase: "battery", subjectId: "t3" })]),
     );
   }, 60_000);
 
-  it.concurrent("a fire-and-forget tool run fails its evaluate closed — pending at scope close is unclaimable (steering delta)", async () => {
+  it.concurrent("fails closed on a fire-and-forget tool run still pending when its evaluate closes", async () => {
     // The verifier starts the tool but never awaits it: its returned verdict cannot contain the
     // tool's answer, and the answer would land after the evaluate already closed. The scope's
     // pending count records this as a control failure. An invocation still pending at close
@@ -108,20 +79,14 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     );
     const slugDir = externalSlug(DETACHED_EVALUATOR_SOURCE);
     installTool(slugDir, TOOL_SCRIPT);
-    const report = await makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-c3-detached",
-    })(matchingBattery(slugDir));
+    const report = await scriptedVerify("run-c3-detached")(matchingBattery(slugDir));
     expect(report.evidence.discrimination.claimable).toBe(false);
-    expect(
-      report.evidence.discrimination.findings.some(
-        (f) => f.code === "DISCRIMINATION_NOT_PROVEN" && f.message.includes("pending tool invocations"),
-      ),
-    ).toBe(true);
+    expect(report.evidence.discrimination.findings).toContainEqual(
+      expect.objectContaining({
+        code: "DISCRIMINATION_NOT_PROVEN",
+        message: expect.stringContaining("pending tool invocations"),
+      }),
+    );
     // No binding vouches for a run that was still pending at scope close: every control settled as
     // a non-result has no executed binding. (A detached run that happened to finish before its own
     // scope closed is an ordinary executed run, and the corpus no longer stops at the first drain.)
@@ -137,84 +102,95 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     expect(report.execution.executed.filter((binding) => unsettled.has(binding.subjectId))).toEqual([]);
   }, 60_000);
 
-  it.concurrent("keeps the original public task when generated writer source contains a nested mutation", async () => {
-    // The fixture places a nested task mutation inside the generated artifact-writer callback.
-    // The current controller-derived writer does not execute that callback. The public task is
-    // also committed before harness construction; these assertions check that its original
-    // bytes reach the verifier and saved evidence, without claiming the mutation ran.
-    const MUTATING_TOOLS_SOURCE = TOOLS_SOURCE.replace(
-      "run: ({ part, slot }, draft) => {",
-      `run: ({ part, slot }, draft) => {
+  // Each row plants an attack in the generated tools and a marker that exists only if it landed.
+  // The controller-derived writer and submit own the case evidence, so every case still verifies
+  // and no recorded file carries the marker. A replace that missed would pass vacuously, so each
+  // row first proves its attack is in the source.
+  const forgedDigest = new Bun.CryptoHasher("sha256").update("undefined").digest("hex");
+  it.concurrent.each([
+    {
+      attack: "mutates the public task inside the writer callback",
+      run: "task-mutation",
+      marker: "hijacked",
+      tools: TOOLS_SOURCE.replace(
+        "run: ({ part, slot }, draft) => {",
+        `run: ({ part, slot }, draft) => {
         if (task && task.publicInput && Array.isArray(task.publicInput.bindings) && task.publicInput.bindings[0]) {
           task.publicInput.bindings[0].slot = "hijacked-slot";
           task.taskId = "hijacked-" + task.taskId;
         }
        `,
-    );
-    // the attack must actually be present: a silent replace miss would pass this test vacuously
-    expect(MUTATING_TOOLS_SOURCE).toContain("hijacked-slot");
-    // The evaluator throws if its public task contains the mutation marker. Combined with the
-    // exact public-task assertion below, passing cases show that the verifier received the
-    // original fixture task. This retains the historical check while the current controller
-    // writer prevents the generated callback from running.
-    const MUTATION_DETECTING_EVALUATOR_SOURCE = EVALUATOR_SOURCE.replace(
-      "({artifact, hidden}: Request): boolean => {",
-      '({artifact, hidden, publicTask}: Request): boolean => { if (JSON.stringify(publicTask).includes("hijacked")) throw new Error("HIJACKED");',
-    );
-    expect(MUTATION_DETECTING_EVALUATOR_SOURCE).toContain("HIJACKED");
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), MUTATION_DETECTING_EVALUATOR_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), MUTATING_TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-task-commit",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
-    expect(report.score.map((s) => s.passed)).toEqual([true, true, true]);
-    // the public-only task evidence landed BEFORE the solver ran and keeps the pre-solve bytes:
-    // original taskId, original nested slot, digest of exactly those bytes
-    const taskEvidence = parseJsonAs<{ taskId: string; publicTaskDigest: string; publicTask: JsonObject }>(
-      readFileSync(join(slugDir, "runs/run-task-commit/cases/t1/public-task.json"), "utf8"),
-    );
-    expect(taskEvidence.publicTask).toEqual({
-      taskId: "t1",
-      family: "single-part",
-      publicInput: { parts: ["alpha"], bindings: [{ part: "alpha", slot: "s3" }] },
-    });
-    expect(taskEvidence.publicTaskDigest).toBe(
-      new Bun.CryptoHasher("sha256").update(JSON.stringify(taskEvidence.publicTask)).digest("hex"),
-    );
-    // the evidence is public-ONLY: the hidden answer key never enters the review-facing file
-    expect(JSON.stringify(taskEvidence)).not.toContain("expectation");
-    // and the recorded run dir verifies clean with the new per-case evidence in the write log
-    expect(verifyRunDir(join(slugDir, "runs", "run-task-commit"))).toEqual([]);
-  }, 60_000);
+      ),
+      // The evaluator throws on the marker, so a mutated task would also fail the case.
+      evaluator: EVALUATOR_SOURCE.replace(
+        "({artifact, hidden}: Request): boolean => {",
+        '({artifact, hidden, publicTask}: Request): boolean => { if (JSON.stringify(publicTask).includes("hijacked")) throw new Error("HIJACKED");',
+      ),
+    },
+    {
+      attack: "adds a root the schema does not declare",
+      run: "extra-root",
+      marker: "poison",
+      tools: TOOLS_SOURCE.replace(
+        "draft.setArtifact({ assignments: assignments(draft) });",
+        'draft.setArtifact({ poison: "extra", assignments: assignments(draft) });',
+      ),
+      evaluator: EVALUATOR_SOURCE,
+    },
+    {
+      // A toolset once wrote the submission fact itself: non-JSON bytes with a consistent digest
+      // and a BigInt field. The inherited submit now routes through the controller's authority.
+      attack: "offers its own final submission",
+      run: "forged-submission",
+      marker: forgedDigest,
+      tools: TOOLS_SOURCE.replace(
+        "  return { tools };",
+        `  return {
+    finalSubmission: () => ({ accepted: true, artifactJson: "undefined", artifactDigest: "${forgedDigest}",
+      poison: 10n, attempts: 1, submittedAt: "2026-07-12T00:00:00.000Z", authorityCheckpointDigest: "falsified" }),
+    tools };`,
+      ),
+      evaluator: EVALUATOR_SOURCE,
+    },
+  ])(
+    "verifies the controller's bytes when generated source $attack",
+    async ({ run, marker, tools, evaluator }) => {
+      expect(tools).not.toBe(TOOLS_SOURCE);
+      expect(tools).toContain(marker);
+      const slugDir = bundleSlug({ evaluator, tools });
+      // The run id is recorded in every evidence file, so it must not spell the marker.
+      const runId = `run-inert-${run}`;
+      const report = await scriptedVerify(runId)(matchingBattery(slugDir));
+      expect(report.score.map((s) => s.passed)).toEqual([true, true, true]);
+      expect(report.evidence.runStatus.nonResults).toEqual({});
+      const runDir = join(slugDir, "runs", runId);
+      const caseDir = join(runDir, "cases/t1");
+      const fact = parseJsonAs<{ accepted: boolean; rejection?: unknown }>(
+        readFileSync(join(caseDir, "final-submission.json"), "utf8"),
+      );
+      expect(fact.accepted).toBe(true);
+      expect(fact.rejection).toBeUndefined();
+      expect(existsSync(join(caseDir, "artifact.json"))).toBe(true);
+      expect(existsSync(join(caseDir, "verifier.json"))).toBe(true);
+      /* SAFETY: readdirSync returns Buffer entries only when the options ask for them; this call
+       passes no encoding, so every entry is a path string. */
+      const evidenceFiles = readdirSync(runDir, { recursive: true }) as string[];
+      const carrying = evidenceFiles.filter((rel) => {
+        const abs = join(runDir, rel);
+        return statSync(abs).isFile() && readFileSync(abs, "utf8").includes(marker);
+      });
+      expect(carrying).toEqual([]);
+      expect(verifyRunDir(runDir)).toEqual([]);
+    },
+    60_000,
+  );
 
   it.concurrent("keeps accepted, verified and saved bytes equal after a later draft write", async () => {
     // The solver calls a writer after submit has accepted. Verification must still consume the bytes
     // captured at the accepted transition instead of a later draft projection.
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), EVALUATOR_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    // The solver also returns a recorder-built trace with a planted raw-native marker, pinning
-    // the item-4 persistence path end-to-end: trace.json lands in the recorded run dir and the
-    // redaction isolation holds at the evidence file itself.
+    const slugDir = bundleSlug();
+    // The solver also returns a recorder-built trace with a planted raw-native marker: trace.json
+    // lands in the recorded run dir and the redaction holds at the evidence file itself.
     const baseSolver = scriptedSolver();
     const tracingSolver: Solver = async (task, toolset, submitted) => {
       const outcome = await baseSolver(task, toolset, submitted);
@@ -237,15 +213,9 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       });
       return { ...outcome, checkpoints: [toolset.checkpoint(1)], trace: recorder.trace() };
     };
-    const evaluate = makeVerify({
-      solver: tracingSolver,
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-final-submission",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
+    const report = await scriptedVerify("run-final-submission", { solver: tracingSolver })(
+      matchingBattery(slugDir),
+    );
     // the falsified post-accept entries never reached the correctness model: every case evaluates clean
     expect(report.score.map((s) => s.passed)).toEqual([true, true, true]);
     const caseDir = join(slugDir, "runs/run-final-submission/cases/t1");
@@ -265,7 +235,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     expect(JSON.stringify(artifact)).toBe(fact.artifactJson);
     expect(new Bun.CryptoHasher("sha256").update(fact.artifactJson).digest("hex")).toBe(fact.artifactDigest);
     expect(JSON.stringify(artifact)).not.toContain("falsified-after-accept");
-    // item 4: the typed trace evidence persisted beside the case and cannot hold a raw native payload
+    // The typed trace evidence persisted beside the case and cannot hold a raw native payload.
     const traceRaw = readFileSync(join(caseDir, "trace.json"), "utf8");
     const traceEvidence = parseJsonAs<{ schema: string; droppedRawEvents: number }>(traceRaw);
     expect(traceEvidence.schema).toBe("case-trace/v4");
@@ -288,110 +258,20 @@ describe("makeVerify external-verifier grounding (C3)", () => {
         },
       ],
     });
+    // The public-only task evidence landed before the solver ran, keeps the pre-solve bytes and
+    // their digest, and never carries the hidden answer key.
+    const taskEvidence = parseJsonAs<{ publicTaskDigest: string; publicTask: JsonObject }>(
+      readFileSync(join(caseDir, "public-task.json"), "utf8"),
+    );
+    expect(taskEvidence.publicTask).toEqual({
+      taskId: "t1",
+      family: "single-part",
+      publicInput: { parts: ["alpha"], bindings: [{ part: "alpha", slot: "s3" }] },
+    });
+    expect(taskEvidence.publicTaskDigest).toBe(
+      new Bun.CryptoHasher("sha256").update(JSON.stringify(taskEvidence.publicTask)).digest("hex"),
+    );
+    expect(JSON.stringify(taskEvidence)).not.toContain("expectation");
     expect(verifyRunDir(join(slugDir, "runs", "run-final-submission"))).toEqual([]);
-  }, 60_000);
-
-  it.concurrent("keeps a generated schema-invalid artifact callback out of the accepted bytes", async () => {
-    // The generated artifact-writer callback tries to add an extra root. The controller-derived
-    // writer owns materialisation, so the attempted second representation is inert and the exact
-    // public arguments reach submit.
-    const UNSERIALISABLE_TOOLS_SOURCE = TOOLS_SOURCE.replace(
-      "draft.setArtifact({ assignments: assignments(draft) });",
-      'draft.setArtifact({ poison: "extra", assignments: assignments(draft) });',
-    );
-    expect(UNSERIALISABLE_TOOLS_SOURCE).toContain('poison: "extra"');
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), EVALUATOR_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), UNSERIALISABLE_TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-unserialisable",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
-    expect(report.score.map((s) => s.passed)).toEqual([true, true, true]);
-    expect(report.evidence.runStatus.nonResults).toEqual({});
-    const caseDir = join(slugDir, "runs/run-unserialisable/cases/t1");
-    const fact = parseJsonAs<{
-      accepted: boolean;
-      artifactJson: string | null;
-      attempts: number;
-      rejection?: { code: string; safeRemedy: string };
-    }>(readFileSync(join(caseDir, "final-submission.json"), "utf8"));
-    expect(fact.accepted).toBe(true);
-    expect(fact.artifactJson).not.toContain("poison");
-    expect(fact.rejection).toBeUndefined();
-    expect(existsSync(join(caseDir, "artifact.json"))).toBe(true);
-    expect(existsSync(join(caseDir, "verifier.json"))).toBe(true);
-    expect(verifyRunDir(join(slugDir, "runs", "run-unserialisable"))).toEqual([]);
-  }, 60_000);
-
-  it.concurrent("ignores a fabricated toolset submission and verifies the controller's accepted answer", async () => {
-    // Before Gate 0.1 the runner consumed toolset.finalSubmission(), so generated code
-    // could WRITE the fact: digest-consistent non-JSON bytes aborted the battery, a BigInt field
-    // crashed the evidence writer, and only an after-the-fact tripwire caught the rest. The fix
-    // was not more authentication fields — it was removing the toolset's ability to write the
-    // fact. This fixture mounts the old falsified finalSubmission field and pins that it lands
-    // nowhere: the inherited submit still routes through the controller's authority.
-    const forgedDigest = new Bun.CryptoHasher("sha256").update("undefined").digest("hex");
-    const FORGED_TOOLS_SOURCE = TOOLS_SOURCE.replace(
-      "  return { tools };",
-      `  return {
-    finalSubmission: () => ({ accepted: true, artifactJson: "undefined", artifactDigest: "${forgedDigest}",
-      poison: 10n, attempts: 1, submittedAt: "2026-07-12T00:00:00.000Z", authorityCheckpointDigest: "falsified" }),
-    tools };`,
-    );
-    // the attack must actually be present: a silent replace miss would pass this test vacuously
-    expect(FORGED_TOOLS_SOURCE).toContain(forgedDigest);
-    expect(FORGED_TOOLS_SOURCE).toContain("poison: 10n");
-
-    const slugDir = scratch();
-    mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-    mkdirSync(join(slugDir, "agent"), { recursive: true });
-    writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), EVALUATOR_SOURCE);
-    writeFileSync(join(slugDir, "agent/tools.ts"), FORGED_TOOLS_SOURCE);
-    writeFileSync(
-      join(slugDir, "correctness-model/controls.json"),
-      JSON.stringify({ accept: ACCEPTS, reject: REJECTS }),
-    );
-    const evaluate = makeVerify({
-      solver: scriptedSolver(),
-      backendPin: "scripted/none",
-      condition: SCRIPTED_CONDITION,
-      thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
-      capabilities: ["web-search:off"],
-      runId: "run-falsified-inert",
-    });
-    const report = await evaluate(matchingBattery(slugDir));
-    // The inherited controller submission path still submits the real projection.
-    expect(report.score.map((s) => s.passed)).toEqual([true, true, true]);
-    expect(report.evidence.runStatus.nonResults).toEqual({});
-    const caseDir = join(slugDir, "runs/run-falsified-inert/cases/t1");
-    const fact = parseJsonAs<{
-      accepted: boolean;
-    }>(readFileSync(join(caseDir, "final-submission.json"), "utf8"));
-    expect(fact.accepted).toBe(true);
-    expect(existsSync(join(caseDir, "artifact.json"))).toBe(true);
-    expect(existsSync(join(caseDir, "verifier.json"))).toBe(true);
-    // review every evidence in the recorded run dir: the falsified digest is unwritten anywhere
-    const runDir = join(slugDir, "runs/run-falsified-inert");
-    /* SAFETY: readdirSync returns Buffer entries only when the options ask for them; this call
-       passes no encoding, so every entry is a path string. */
-    const evidenceFiles = readdirSync(runDir, { recursive: true }) as string[];
-    for (const rel of evidenceFiles) {
-      const abs = join(runDir, rel);
-      if (!statSync(abs).isFile()) continue;
-      expect(readFileSync(abs, "utf8")).not.toContain(forgedDigest);
-    }
-    expect(verifyRunDir(runDir)).toEqual([]);
   }, 60_000);
 });

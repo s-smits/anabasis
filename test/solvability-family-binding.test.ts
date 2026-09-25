@@ -35,37 +35,68 @@ describe("the within-family binding census", () => {
     truthChecks: [{ id: "answer", execution: { artifactPaths: ["$.answer"] } }],
   });
 
-  it.concurrent("names a family whose accepted deliverable answers every one of its tasks", async () => {
-    // W20: both siblings accept the same marked answer, and all three reference solves pass.
+  // Each row is one family shape and the census verdict it owns. `calls` counts host subjects: the
+  // three reference evaluations, plus one per sibling exchange the census had to run.
+  const UNIVERSAL = {
+    code: "TASK_FAMILY_UNIVERSAL_WITNESS",
+    owner: "task-curriculum",
+    path: "correctness-model/tasks.json",
+  };
+  const UNPROVEN = {
+    code: "TASK_FAMILY_BINDING_UNPROVEN",
+    owner: "bh-correctness-model",
+    path: "correctness-model/evaluator.ts",
+  };
+  it.each<[string, Parameters<typeof familyFixture>[0], Array<typeof UNIVERSAL>, number, string | null]>([
+    // Identical marked roots cannot change either passing artifact, so no exchange runs.
+    [
+      "a deliverable that answers every task in its family",
+      { answers: ["A", "A"] },
+      [UNIVERSAL],
+      3,
+      'family "one" has 2 tasks',
+    ],
+    // The brief validator reads `$['answer']` as the root `answer`, so the census must too;
+    // missing it, a family whose tasks each take only their own answer reads as universal.
+    [
+      "a bracketed spelling of the marked root",
+      { answers: ["A", "B"], answerPath: "$['answer']" },
+      [],
+      5,
+      null,
+    ],
+    [
+      "a brief that marks no artifact root, where no census runs",
+      { answers: ["A", "A"], material: false },
+      [],
+      3,
+      null,
+    ],
+    // An exchange whose check threw cannot establish the answer was wrong; the throw is the
+    // correctness model's own, so the finding names its class and not its text.
+    [
+      "an exchanged answer that returns no verdict",
+      { answers: ["A", "B"], nonResultOnMismatch: true },
+      [UNPROVEN],
+      5,
+      "(generated-evaluate-throw)",
+    ],
+  ])("%s", async (_, spec, found, calls, detail) => {
     const log = evaluateLog();
-    const result = await witness(familyFixture({ answers: ["A", "A"] }), {
-      createVerifier: () => countingHost(log),
-    });
+    const result = await witness(familyFixture(spec), { createVerifier: () => countingHost(log) });
 
     expect(statuses(result)).toEqual(["passed", "passed", "passed"]);
-    expect(familyFindings(result)).toMatchObject([
-      {
-        code: "TASK_FAMILY_UNIVERSAL_WITNESS",
-        owner: "task-curriculum",
-        path: "correctness-model/tasks.json",
-      },
-    ]);
-    expect(familyFindings(result)[0]?.detail).toContain('family "one" has 2 tasks');
-    // Identical marked roots cannot change either passing artifact: only the three original
-    // evaluations are needed.
-    expect(log.calls).toBe(3);
-  });
-
-  it.concurrent("reads a bracketed root spelling as the same task-conditioned root", async () => {
-    // The brief validator accepts `$['answer']` as the root `answer`, so the census has to count the
-    // check reading it. Missing it, a hybrid the answer check rejects still reads as unseparated,
-    // and a family whose tasks each take only their own answer is named a universal witness.
-    const result = await witness(familyFixture({ answers: ["A", "B"], answerPath: "$['answer']" }), {
-      createVerifier: () => countingHost(evaluateLog()),
-    });
-
-    expect(statuses(result)).toEqual(["passed", "passed", "passed"]);
-    expect(familyFindings(result)).toEqual([]);
+    expect(familyFindings(result)).toMatchObject(found);
+    expect(familyFindings(result)).toHaveLength(found.length);
+    expect(log.calls).toBe(calls);
+    if (detail !== null) {
+      expect(familyFindings(result)[0]?.detail).toContain(detail);
+    }
+    expect(
+      familyFindings(result)
+        .map((f) => f.detail)
+        .join("\n"),
+    ).not.toContain("check did not settle");
   });
 
   it.concurrent("clears the same family once each task takes only its own deliverable", async () => {
@@ -104,25 +135,6 @@ describe("the within-family binding census", () => {
     expect(readinessLog.calls).toBe(3);
   });
 
-  it.concurrent("leaves family binding unproved when an exchanged-answer evaluation returns no verdict", async () => {
-    // An evaluation without a verdict cannot establish that the exchanged answer was wrong. This is
-    // the check's own throw, so the finding routes to the correctness model and names its class.
-    const fixture = familyFixture({ answers: ["A", "B"], nonResultOnMismatch: true });
-    const result = await witness(fixture, { createVerifier: () => countingHost(evaluateLog()) });
-
-    expect(statuses(result)).toEqual(["passed", "passed", "passed"]);
-    expect(familyFindings(result)).toMatchObject([
-      {
-        code: "TASK_FAMILY_BINDING_UNPROVEN",
-        owner: "bh-correctness-model",
-        path: "correctness-model/evaluator.ts",
-      },
-    ]);
-    expect(familyFindings(result)[0]?.detail).toContain("(generated-evaluate-throw)");
-    expect(familyFindings(result)[0]?.detail).not.toContain("check did not settle");
-    expect(familyFindings(await witness(fixture, {}, "readiness"))).toEqual([]);
-  });
-
   it.concurrent("withholds unrelated operands before a check can misattribute family separation", async () => {
     const result = await witness(externalFamilyFixture(), {
       createVerifier: () =>
@@ -142,18 +154,12 @@ describe("the within-family binding census", () => {
     const result = await witness(familyFixture({ answers: ["A", "B"], dropSiblingHidden: true }));
 
     expect(result.evidence).toBeNull();
-    expect(result.findings.length).toBeGreaterThan(0);
-  });
-
-  it.concurrent("runs no census for a brief that marks no artifact root", async () => {
-    const log = evaluateLog();
-    const result = await witness(familyFixture({ answers: ["A", "A"], material: false }), {
-      createVerifier: () => countingHost(log),
-    });
-
-    expect(statuses(result)).toEqual(["passed", "passed", "passed"]);
-    expect(familyFindings(result)).toEqual([]);
-    expect(log.calls).toBe(3);
+    expect(result.findings).toMatchObject([
+      {
+        code: "solvability-bundleSnapshot-contract-invalid",
+        detail: 'applicable check "answer" requires one hidden operand; absence cannot skip the check',
+      },
+    ]);
   });
 
   it("hands every evaluation its donor, so two donors into one target stay two subjects", async () => {

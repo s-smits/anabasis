@@ -5,7 +5,7 @@
  * inferring ownership from error text, which is the one thing that reads the same whoever caused
  * it.
  */
-export const OWNER_LAYERS = [
+const OWNER_LAYERS = [
   /** Provider/transport/sandbox — never a product fact. */
   "environment",
   /** Artifact schema, draft shape, representation contracts. */

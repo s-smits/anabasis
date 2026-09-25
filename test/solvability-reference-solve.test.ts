@@ -21,9 +21,7 @@ import {
   type SpecimenSpec,
   check,
   codes,
-  countingHost,
   createSolvabilityStarter,
-  evaluateLog,
   failure,
   gate,
   solving,
@@ -33,8 +31,9 @@ import {
   witness,
 } from "./helpers/solvability-specimen.ts";
 import { familyFixture } from "./helpers/solvability-families.ts";
+import { overrideHost } from "./helpers/host-override.ts";
 
-/** water-network-v2-claude-001: the reference selects a row from no public inventory. */
+/** A reference that selects a row from no public inventory, so its membership check fails. */
 function subsetFailureFixture(): Fixture {
   const foreign = { targets: [{ pipeId: "P-404", zoneId: "Z1", inspectionUnits: 1 }] };
   const tasks = ["ta", "tb"].map((taskId, index) => {
@@ -44,7 +43,7 @@ function subsetFailureFixture(): Fixture {
   });
   const membership = { id: "inventory-membership", roots: ["$.targets"], open: true as const };
   return specimen({
-    slug: "water-network-v2-claude-001",
+    slug: "subset-selection",
     verifier: `export function solve() { return ${JSON.stringify(foreign)}; }
 // CHECKS
 export const checks = {
@@ -59,8 +58,6 @@ export const checks = {
     writerRoots: ["targets"],
   });
 }
-
-// ---------------------------------------------------------------------------------------------
 
 afterAll(cleanupScratch);
 
@@ -105,24 +102,27 @@ describe("solvability tied to the checked bundle snapshot", () => {
     const opened: string[] = [];
     const result = await witness(fixture, {
       verifierLifetime: lifetime,
-      createVerifier: () => ({
-        ...countingHost(evaluateLog(), host),
-        openSubject(subject) {
-          opened.push(subject.subjectId);
-          if (subject.subjectId === "self:tb") {
-            const lease = lifetime.begin({ role: "evaluator" });
-            lease.settle({
-              receiptId: lease.id,
-              exit: null,
-              groupReaped: false,
-              outputComplete: false,
-              timedOut: true,
-            });
-            lifetime.assertUsable();
-          }
-          return host.openSubject(subject);
-        },
-      }),
+      createVerifier: () =>
+        overrideHost(
+          {
+            openSubject(subject) {
+              opened.push(subject.subjectId);
+              if (subject.subjectId === "self:tb") {
+                const lease = lifetime.begin({ role: "evaluator" });
+                lease.settle({
+                  receiptId: lease.id,
+                  exit: null,
+                  groupReaped: false,
+                  outputComplete: false,
+                  timedOut: true,
+                });
+                lifetime.assertUsable();
+              }
+              return host.openSubject(subject);
+            },
+          },
+          host,
+        ),
     });
 
     expect(opened.toSorted()).toEqual(["self:ta", "self:tb", "self:tc"]);
@@ -391,61 +391,48 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
     expect(existsSync(marker)).toBe(false);
   });
 
+  const asyncSolve = (body: string) =>
+    `\nexport async function solve() { ${body} }\n// CHECKS\nexport const checks = { answer: () => true };\n`;
+  // After its ready handshake a child's crash or hang is the generated solve's own; a child that
+  // never started because its executable is absent is the host's.
   it.each([
     {
-      session: "crash",
-      solveBody: "process.exit(17);",
-      classification: "generated-solve-crash",
-      timeoutMs: 2_000,
+      child: "crashes after ready",
+      verifier: asyncSolve("process.exit(17);"),
+      options: { referenceSolveTimeoutMs: 2_000 },
+      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      finding: { code: "solvability-witness-failed", classification: "generated-solve-crash" },
     },
     {
       // A pending promise alone may leave no event-loop work and let the child exit, which would
-      // exercise protocol handling rather than the timeout. Keep an interval active. The 750 ms
-      // wall sits above the roughly 85 ms startup observed when this test was added.
-      session: "timeout",
-      solveBody: "return await new Promise(() => { setInterval(() => {}, 60_000); });",
-      classification: "generated-solve-timeout",
-      timeoutMs: 750,
+      // exercise protocol handling rather than the timeout, so an interval keeps it alive. The
+      // 750 ms wall sits well above the child's startup.
+      child: "hangs after ready",
+      verifier: asyncSolve("return await new Promise(() => { setInterval(() => {}, 60_000); });"),
+      options: { referenceSolveTimeoutMs: 750 },
+      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      finding: { code: "solvability-witness-failed", classification: "generated-solve-timeout" },
     },
-  ])(
-    "records a post-ready child $session as a product-owned failed witness",
-    async ({ solveBody, classification, timeoutMs }) => {
-      const result = await witness(
-        specimen({
-          verifier: `\nexport async function solve() { ${solveBody} }\n// CHECKS\nexport const checks = { answer: () => true };\n`,
-        }),
-        { referenceSolveTimeoutMs: timeoutMs },
-      );
-
-      expect(statuses(result)).toEqual(["failed", "failed"]);
-      expect(
-        result.evidence?.cases.every((row) => row.nonResultKind === null && row.failureOwner === "product"),
-      ).toBe(true);
-      expect(result.findings).toContainEqual(
-        expect.objectContaining({
-          code: "solvability-witness-failed",
-          disclosure: expect.objectContaining({ classification }),
-        }),
-      );
+    {
+      child: "cannot spawn at all",
+      verifier: GOOD_VERIFIER,
+      options: { referenceSolveExecutable: join(scratchDir("ana-reference-absent-"), "missing-node-binary") },
+      expected: { status: "non-result", nonResultKind: "reference-solve-host", failureOwner: "environment" },
+      finding: {
+        code: "solvability-reference-solve-host-non-result",
+        classification: "reference-solve-host",
+      },
     },
-  );
+  ])("classifies a reference child that $child", async ({ verifier, options, expected, finding }) => {
+    const result = await witness(specimen({ verifier }), options);
 
-  it.concurrent("keeps an independently evidenced pre-ready spawn failure environment-owned", async () => {
-    const fixture = specimen({ verifier: GOOD_VERIFIER });
-    const result = await witness(fixture, {
-      referenceSolveExecutable: join(fixture.dir, "missing-node-binary"),
-    });
-
-    expect(statuses(result)).toEqual(["non-result", "non-result"]);
-    expect(
-      result.evidence?.cases.every(
-        (row) => row.nonResultKind === "reference-solve-host" && row.failureOwner === "environment",
-      ),
-    ).toBe(true);
+    expect(statuses(result)).toEqual([expected.status, expected.status]);
+    const { status: _status, ...row } = expected;
+    expect(result.evidence?.cases).toMatchObject([row, row]);
     expect(result.findings).toContainEqual(
       expect.objectContaining({
-        code: "solvability-reference-solve-host-non-result",
-        disclosure: expect.objectContaining({ classification: "reference-solve-host" }),
+        code: finding.code,
+        disclosure: expect.objectContaining({ classification: finding.classification }),
       }),
     );
   });

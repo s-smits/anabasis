@@ -20,6 +20,7 @@ import { createVerifierHost } from "../../src/verify/host.ts";
 import type { ToolEntry, VerifierHostHandle } from "../../src/verify/verifier-port.ts";
 import type { SolvabilityStageCache } from "../../src/truth/solvability-stages.ts";
 import { double } from "./doubles.ts";
+import { overrideHost } from "./host-override.ts";
 import { scratchDir } from "./scratch.ts";
 import { type SolvabilityProbeOptions, makeProbeSolvability } from "../../src/truth/solvability.ts";
 import { keyIfDefined, keysIf } from "../../src/meta/optional-key.ts";
@@ -349,18 +350,19 @@ export function evaluateLog(): EvaluateLog {
 }
 
 export function countingHost(log: EvaluateLog, host = createVerifierHost()): VerifierHostHandle {
-  return {
-    openSubject: (subject) => {
-      log.calls += 1;
-      log.subjects.push(subject.subjectId);
-      log.checks[subject.subjectId] = (subject.checks ?? []).map((applicable) => applicable.id);
-      return host.openSubject(subject);
+  return overrideHost(
+    {
+      openSubject: (subject) => {
+        log.calls += 1;
+        log.subjects.push(subject.subjectId);
+        log.checks[subject.subjectId] = (subject.checks ?? []).map((applicable) => applicable.id);
+        return host.openSubject(subject);
+      },
     },
-    tools: () => host.tools(),
-    evidence: () => host.evidence(),
-    executedBindings: () => host.executedBindings(),
-  };
+    host,
+  );
 }
+
 /** A real executable whose content digest the host checks before it launches it. */
 export function installedTool(id: string, body: string): ToolEntry {
   const path = join(scratchDir("ana-solvability-tool-"), id);

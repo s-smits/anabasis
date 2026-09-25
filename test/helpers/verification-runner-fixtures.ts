@@ -25,6 +25,7 @@ import { compilePublicArtifactSchema } from "../../src/solve/public-artifact-sch
 import type { RunCondition } from "../../src/claim/case-record.ts";
 import type { Brief } from "../../src/truth/brief.ts";
 import type { VerificationInput } from "../../src/truth/build-deps.ts";
+import { type VerificationRunnerOptions, makeVerify } from "../../src/truth/verification-runner.ts";
 import { type Toolset } from "../../src/truth/contracts.ts";
 import {
   MATCHING_BRIEF,
@@ -36,6 +37,13 @@ import type { BuildTask, TaskBattery } from "../../src/truth/tasks.ts";
 import { type Solver } from "../../src/truth/solve.ts";
 import { double, required } from "./doubles.ts";
 import { runtimeProcess } from "../../src/meta/process.ts";
+
+/** The three authored files of a fixture bundle a case may replace. */
+interface BundleFiles {
+  evaluator?: string;
+  tools?: string;
+  controls?: { accept: unknown[]; reject: unknown[] };
+}
 
 /** The run condition a scripted battery records: the shipping variant with no adviser removed. */
 export const SCRIPTED_CONDITION: RunCondition = {
@@ -202,23 +210,45 @@ export function scratch(): string {
 /** A slug whose r-ghost reject contains a valid answer, making discrimination unclaimable.
  *  The early-exit and solver-spend tests share this fixture. */
 export function laxVerifierSlug(): string {
-  const slugDir = scratch();
-  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-  mkdirSync(join(slugDir, "agent"), { recursive: true });
-  writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), LAX_EVALUATOR_SOURCE);
-  writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
-  writeFileSync(
-    join(slugDir, "correctness-model/controls.json"),
-    JSON.stringify({
+  return bundleSlug({
+    evaluator: LAX_EVALUATOR_SOURCE,
+    controls: {
       accept: ACCEPTS,
       reject: REJECTS.map((control) =>
         control.id === "r-ghost"
           ? { ...control, artifact: { assignments: [{ part: "alpha", slot: "s3" }] } }
           : control,
       ),
-    }),
+    },
+  });
+}
+
+/** A fresh scratch slug holding the fixture bundle, with any of its three authored files replaced. */
+export function bundleSlug(files: BundleFiles = {}): string {
+  const slugDir = scratch();
+  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
+  mkdirSync(join(slugDir, "agent"), { recursive: true });
+  writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), files.evaluator ?? EVALUATOR_SOURCE);
+  writeFileSync(join(slugDir, "agent/tools.ts"), files.tools ?? TOOLS_SOURCE);
+  writeFileSync(
+    join(slugDir, "correctness-model/controls.json"),
+    JSON.stringify(files.controls ?? { accept: ACCEPTS, reject: REJECTS }),
   );
   return slugDir;
+}
+
+/** makeVerify under the scripted condition every fixture battery records, with the scripted solver
+ *  unless the case replaces it. */
+export function scriptedVerify(runId: string, overrides: Partial<VerificationRunnerOptions> = {}) {
+  return makeVerify({
+    solver: scriptedSolver(),
+    backendPin: "scripted/none",
+    condition: SCRIPTED_CONDITION,
+    thresholdManifestDigest: SCRIPTED_THRESHOLD_DIGEST,
+    capabilities: ["web-search:off"],
+    runId,
+    ...overrides,
+  });
 }
 
 /** evaluate() checks the immutable execution snapshot against the fingerprint, so a direct
@@ -316,18 +346,11 @@ export const REJECTS = [
 ];
 
 export function directPiSlug(): string {
-  const slugDir = scratch();
-  mkdirSync(join(slugDir, "correctness-model"), { recursive: true });
-  mkdirSync(join(slugDir, "agent"), { recursive: true });
-  writeFileSync(join(slugDir, "correctness-model/evaluator.ts"), EVALUATOR_SOURCE);
-  writeFileSync(join(slugDir, "agent/tools.ts"), TOOLS_SOURCE);
   // Only t1-bound rejects: this fixture's non-overwriting consumers record [FIRST_TASK] batteries,
   // where a t2-bound control would be an unresolved task and the two-part cells do not exist.
-  writeFileSync(
-    join(slugDir, "correctness-model/controls.json"),
-    JSON.stringify({ accept: ACCEPTS, reject: REJECTS.filter((control) => control.taskId === "t1") }),
-  );
-  return slugDir;
+  return bundleSlug({
+    controls: { accept: ACCEPTS, reject: REJECTS.filter((control) => control.taskId === "t1") },
+  });
 }
 
 export function directPiSolver(calls: Array<{ id: string; name: string; arguments: JsonObject }>) {

@@ -80,9 +80,8 @@ describe("the public-input paths the conformance probe admits", () => {
     });
     expect(findings).toContainEqual(absentPath("analyze_conflicts"));
     expect(findings).toContainEqual(absentPath("audit_conflicts"));
-    // pr179: 427 unmarked interpreter findings were reduced to the detail-less
-    // generated-execution-unclassified label, which no owner routes. The author projection keeps
-    // the producer, file and detail.
+    // An unmarked finding would project to the detail-less generated-execution-unclassified
+    // label, which no owner routes. The author projection keeps the producer, file and detail.
     for (const finding of findings.filter((f) => f.code === "task-public-path-absent")) {
       expect(projectFindingForAuthor(finding)).toEqual({
         code: finding.code,
@@ -116,7 +115,7 @@ describe("the public-input paths the conformance probe admits", () => {
   });
 
   // A shared reader reading `wind?.pressure` for a family without wind is correct code, so a path
-  // any task of the battery carries is admitted in every family (per-family refusal ended 2026-09-15).
+  // any task of the battery carries is admitted in every family.
   it.concurrent("admits a path one family offers when the task under probe belongs to another", async () => {
     const tasks = [
       {

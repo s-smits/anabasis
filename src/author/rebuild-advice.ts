@@ -321,10 +321,12 @@ function observedIssues(
       out.push({ kind: "non-result", family: family.family, detail, count, denominator: total });
     }
   }
-  // Every complete Judge disagreement is advice by family; the verifier still decides every pass.
+  // A Judge disagreement a second sample repeated is advice by family; one the resample did not
+  // repeat is the Judge's noise, not the battery's. The verifier still decides every pass.
   if (judges.census !== null) {
     const byFamily = new Map<string, { passedFailed: number; failedPassed: number }>();
     for (const row of judges.contested) {
+      if (!row.confirmed) continue;
       const entry = byFamily.get(row.family) ?? { passedFailed: 0, failedPassed: 0 };
       if (row.judge && !row.verifier) entry.passedFailed += 1;
       else entry.failedPassed += 1;

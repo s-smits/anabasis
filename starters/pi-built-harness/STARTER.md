@@ -22,7 +22,7 @@ tools. Six domains at all four tiers, and what each side of a missed aim asks fo
 2. Write the files and extend the seed tests, then run
    `.toolchain/bun --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`.
 3. Begin with `harness_inspect readiness` and page every family. Once one task, an accept and the
-   tools exist, `harness_trial` solves that task blind with your own agent, six per round.
+   tools exist, `harness_trial` solves that task blind with your own agent, one measured case each.
    `correctness_check` runs every gate below without adopting, and reviews changed product bytes
    for some minutes.
 4. `submit` freezes and gates the candidate; a refusal names the code and file to fix.

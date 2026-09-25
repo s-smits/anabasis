@@ -46,7 +46,7 @@ export interface ContextBinding {
   workspace: string;
   /** Recorded batteries of this product, newest first; absent before anything was measured. */
   history?: () => ContextDocument[];
-  /** Passing measured cases' solver traces. */
+  /** Passing measured cases' solver traces and submitted artifacts. */
   traces?: () => ContextDocument[];
   rehearsals: RehearsalTraces;
   user: PreparedUserContext;
@@ -96,7 +96,7 @@ const Params = Type.Object({
 });
 
 const DESCRIPTION =
-  "Ask one question of everything this round may consult; the answer is the lines that bear on it, each cited as id:Lnn. Sources: round (this round's contract, climb readout and advice, and on a continuation the plan view: your EXPERIMENT.json read back with this round's rehearsal verdicts, effort and any advice), workspace (EXPERIMENT.json, MEMORY.md, SCRATCHPAD.md, STARTER.md and starter-pack/*.md, read live), history (every measured battery of this product, newest first, and each one's public tasks), traces (the solver's own record of each passing measured case and passing rehearsal: its turns, tool calls and effort against the solve wall) and user (files supplied with --context, when any were). State the question and the decision it settles. depth cited is the default; overview lists document ids; page reads one id exactly. Workspace files are also readable with read or bash; history, traces and user files only here. All of it is public data or your own notes, never verifier output.";
+  "Ask one question of everything this round may consult; the answer is the lines that bear on it, each cited as id:Lnn. Sources: round (this round's contract, climb readout and advice, and the plan view: your EXPERIMENT.json read back with this round's rehearsal verdicts, effort and any advice), workspace (EXPERIMENT.json, MEMORY.md, SCRATCHPAD.md, STARTER.md and starter-pack/*.md, read live), history (every measured battery of this product, newest first, and each one's public tasks), traces (the solver's own record of each passing measured case and passing rehearsal: its turns, tool calls and effort against the solve wall, and for a measured case the artifact it submitted) and user (files supplied with --context, when any were). State the question and the decision it settles. depth cited is the default; overview lists document ids; page reads one id exactly. Workspace files are also readable with read or bash; history, traces and user files only here. All of it is public data or your own notes, never verifier output.";
 
 /** The solves of this round's passing rehearsals, filled by `harness_trial` as they finish and read
  *  here. One object per round, held by the controller, so the two tools share it without either

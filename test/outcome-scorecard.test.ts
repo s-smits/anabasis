@@ -611,7 +611,7 @@ describe("the run-end numbers", () => {
   const evidence = (
     planDigest: string,
     verdicts: Array<[string, "pass" | "fail" | "not-run"]>,
-    schema = "experiment-evidence/v1",
+    schema = "experiment-evidence/v3",
   ) =>
     JSON.stringify({
       schema,
@@ -650,7 +650,7 @@ describe("the run-end numbers", () => {
     // The hostile neighbour: the right digest under a schema the writer never produced is not read.
     put(
       "epoch-b/rehearsals/experiment-evidence-2.json",
-      evidence("p2", [["t1", "pass"]], "experiment-evidence/v0"),
+      evidence("p2", [["t1", "pass"]], "experiment-evidence/v1"),
     );
     const batteries = climbRunEnd(dir)?.batteries ?? [];
     expect(batteries.map((battery) => battery.trials)).toEqual([

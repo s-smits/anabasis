@@ -64,8 +64,7 @@ interface BuilderSessionInput {
    *  opening would state them twice; after compaction the context tool's round source still has
    *  them. */
   freshContext?: string;
-  /** The round plan's compact view, which every continuation carries; absent when the round asks
-   *  for no plan. */
+  /** The round plan's compact view, which every continuation carries. */
   planView?: () => string;
   /** The operator's cap on session work (`--max-builder-turns`), which model turns and refused
    *  submits share. A turn is one prompt and the tool iterations inside it are free, so a session

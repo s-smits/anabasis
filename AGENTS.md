@@ -258,7 +258,9 @@ live evidence.
    diagnosis reader, the advice packet or any authoring prompt. Public compiler errors and
    generated-module diagnostics may cross, because they describe the public authoring interface
    rather than the answer. The test is exact: change only protected verifier detail, and every
-   model-visible prompt digest must come out unchanged.
+   model-visible prompt digest must come out unchanged. A passing measured case's own submitted
+   artifact is not protected, since the battery already publishes its pass bit; failing artifacts,
+   reference output and F2 output stay withheld.
 
    Two bounded exceptions exist. `harness_trial` returns a single per-task aggregate
    `truth.verdict` — pass, fail or not-run — for the task the caller selected and for the bytes the
@@ -684,7 +686,10 @@ live evidence.
     probability per task, and `readPlan` refuses any other schema. The controller alone writes
     `PlanEvidence` to `<campaignDir>/rehearsals/experiment-evidence*.json`, claiming the next free
     name so no round overwrites another; it sits outside the workspace and the fingerprint, and holds
-    the round's rehearsal verdicts, their effort and the prediction score. Where rehearsals contradict
+    the round's rehearsal verdicts, their effort and the prediction score. Each rehearsal row records
+    the bytes it solved (`publicTaskDigest`, `scoringHash`, `agentHash`), and only a rehearsal at a
+    task's current bytes counts towards the target, the predictions and the score; the advice names
+    each task rehearsed only at earlier bytes. Where rehearsals contradict
     the target or a prediction, `harness_trial`, `correctness_check` and a refused `submit` say so as
     advice that refuses nothing, and `renderPlanView` gives the one compact view that every
     continuation and the context tool's `round/plan` document carry.
@@ -765,16 +770,21 @@ live evidence.
     It takes a question and the decision the answer settles, and returns the lines that bear on it,
     each cited by document and line, over five sources: the round's opening, the
     workspace notes and plan, every measured battery of the product, the solver traces of passing
-    cases, and the `--context` files. Until 2026-09-23 it read the `--context` files alone, and 160
-    recorded sessions called it six times, always over an empty corpus. It offers passing traces
+    cases with the artifact each submitted (`traces/<runId>/<taskId>/artifact`, listed only when
+    its bytes check against the evidence log, and ending in the solver's own `readMargins` lines
+    against each limit the brief publishes, which it omits once that brief's `scoringHash` no
+    longer matches the battery's), and the `--context` files. Until 2026-09-23 it read
+    the `--context` files alone, and 160 recorded sessions called it six times, always over an empty
+    corpus. It offers passing traces
     only, because a measured battery already publishes which cases passed, while a failing trace is
     where the failure sits. `harness_trial` takes one `taskId` and solves it blind with the measured
     Built solver — its own runtime, turn cap, solve wall and confinement — then grades what it
     submitted, returning the rule-4 aggregate verdict, whether it submitted at all, how many turns
     it used, what the solve spent as a plain fact (minutes against the solve wall, tool calls, cost)
-    and any typed non-result, under six rehearsals per round and a 30-second total verifier
-    deadline. Each rehearsal costs one measured case and writes its solve evidence under
-    `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
+    and any typed non-result, graded under the harness's own `check_seconds` and
+    `tool_run_seconds` as a measured battery is. Each rehearsal costs one measured case from the
+    provider budget, which is the only bound on how many a round runs, and writes its solve evidence
+    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
     and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the

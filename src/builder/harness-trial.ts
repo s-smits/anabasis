@@ -36,7 +36,6 @@ import { authorFindingOverview } from "./author-feedback.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import {
-  REHEARSAL_VERIFIER_DEADLINE_MS,
   type SolveCaseEvidence,
   type SolvedCase,
   rehearseCase,
@@ -48,12 +47,6 @@ import type { RehearsalRow } from "../author/experiment-plan.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
 import type { RehearsalTraces } from "./context-tool.ts";
 import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
-
-/** How many blind rehearsals one authoring session may run. Each one costs a measured case, so the
- *  bound is the session's own experiment budget rather than a safety limit: two tasks read at the
- *  start of a round and two after hardening them, with two spare. A Builder that wants more
- *  measurement than that has submit. */
-const MAX_REHEARSALS = 6;
 
 const Params = Type.Object({
   taskId: Type.String({ minLength: 1, maxLength: 256 }),
@@ -418,7 +411,7 @@ function blockedNextAction(stage: string): string {
     return "The call named no task, so nothing was rehearsed. Use harness_inspect readiness to choose an authored taskId and repeat it.";
   }
   if (stage === "cancelled") {
-    return "The host cancelled this call before your solver ran, so nothing was measured and no rehearsal was spent. Repeat it if the round continues.";
+    return "The host cancelled this call before your solver ran, so nothing was measured or charged. Repeat it if the round continues.";
   }
   return "The rehearsal stopped before your solver ran: this candidate could not be read as a bundle. Use harness_inspect readiness, repair it, then repeat the rehearsal.";
 }
@@ -451,13 +444,7 @@ function roundClause(tally: RoundRehearsals): string {
   return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${inOneTurn}.`;
 }
 
-function trialNextAction(
-  status: string,
-  verdict: string,
-  remaining: number,
-  stage: string,
-  tally: RoundRehearsals,
-): string {
+function trialNextAction(status: string, verdict: string, stage: string, tally: RoundRehearsals): string {
   if (status === "blocked") return blockedNextAction(stage);
   if (status === "non-result" || status === "verifier-failed") {
     return "The rehearsal reached no verdict, so this task is unmeasured: it is neither hard nor easy evidence. Repair the named stage and repeat it.";
@@ -469,18 +456,18 @@ function trialNextAction(
     return "The solver ran and submitted no accepted artifact. That is a solver miss, not a check failure: it counts towards difficulty only if a correct answer is reachable from the public task with the tools you published. Read your own tool roster and brief before treating it as a hard task.";
   }
   if (verdict === "pass") {
-    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)} ${String(remaining)} rehearsals left.`;
+    return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)}`;
   }
   // Stated as the mirror of the pass sentence, and with no next task: a miss is the aim of a first
   // battery, so a sentence steering towards an easier task would choose the course for the Builder.
-  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally)} ${String(remaining)} rehearsals left.`;
+  return `Your solver missed this task on its first unaided attempt, so a battery of tasks like it scores near zero.${roundClause(tally)}`;
 }
 
 /** Counts this call into the round before it reads the round back, so a result speaks for every
  *  rehearsal including its own. The tally is updated here rather than by the caller because this is
  *  where the row has already been parsed, and a second parse of the same bytes is a second thing to
  *  keep right. */
-function trialResultSummary(value: unknown, remaining: number, tally: RoundRehearsals) {
+function trialResultSummary(value: unknown, tally: RoundRehearsals) {
   const row = asRecord(value);
   const solve = asRecord(row?.solve);
   const candidate = asRecord(row?.candidate);
@@ -496,48 +483,34 @@ function trialResultSummary(value: unknown, remaining: number, tally: RoundRehea
   if (stage !== "") receipt.stage = stage;
   countRehearsal(tally, verdict, isNumber(solve?.turns) ? solve.turns : null);
   return {
-    validation: { ...counted, rehearsalsLeft: remaining, round: { ...tally } },
+    validation: { ...counted, round: { ...tally } },
     // A body that already named its own cause keeps it. The status alone cannot tell a blank taskId
     // from an unreadable bundle, so recomputing here would write a vaguer sentence over the more
     // specific one the stage produced.
-    nextAction: isString(row?.nextAction)
-      ? row.nextAction
-      : trialNextAction(status, verdict, remaining, stage, tally),
+    nextAction: isString(row?.nextAction) ? row.nextAction : trialNextAction(status, verdict, stage, tally),
     receipt,
   };
 }
 
 export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<typeof Params> {
-  let spent = 0;
-  // Round-scoped, like `spent`, and for the same reason: the tool instance is the round, so neither
-  // count outlives it and neither has anywhere else to live.
+  let ordinal = 0;
+  // Round-scoped, like `ordinal`, and for the same reason: the tool instance is the round, so neither
+  // count outlives it and neither has anywhere else to live. Nothing here rations rehearsals: each one
+  // is a Built solve charged to the run's provider budget, which already owns that spend.
   const tally: RoundRehearsals = { graded: 0, passed: 0, passedInOneTurn: 0 };
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and a ${REHEARSAL_VERIFIER_DEADLINE_MS / 1000}-second total verifier deadline over the accepted bytes. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. Each rehearsal costs one measured case from the run's provider budget, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {
-      if (spent >= MAX_REHEARSALS) {
-        return {
-          text: capturedJsonStringify({
-            status: "blocked",
-            stage: "budget",
-            rehearsalsLeft: 0,
-            nextAction: `This round has spent all ${MAX_REHEARSALS} rehearsals, so no further task can be measured before submit.`,
-          }),
-          details: { taskId: params.taskId, receipt: { outcome: "blocked", stage: "budget" } },
-        };
-      }
-      spent += 1;
-      const result = await runTrial(binding, params.taskId, spent, signal);
-      // The bound rations measurement, and a rehearsal blocked before its solve measured nothing and
-      // cost no case. Charging it would spend a sixth of the session's only difficulty instrument on
-      // a mistyped taskId. Nothing was written under this ordinal either, so the next call reuses it
-      // without colliding with an evidence directory that exists.
-      if (result.status === "blocked") spent -= 1;
-      const summary = trialResultSummary(result, MAX_REHEARSALS - spent, tally);
+      ordinal += 1;
+      const result = await runTrial(binding, params.taskId, ordinal, signal);
+      // A rehearsal blocked before its solve wrote nothing under this ordinal, so the next call reuses
+      // it without colliding with an evidence directory that exists.
+      if (result.status === "blocked") ordinal -= 1;
+      const summary = trialResultSummary(result, tally);
       return {
         text: capturedJsonStringify({
           ...result,

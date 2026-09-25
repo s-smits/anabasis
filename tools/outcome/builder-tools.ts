@@ -27,7 +27,6 @@ import { join } from "../../src/meta/path.ts";
 import { ITERATION_FILE, listIterationDirs } from "../../src/builder/campaign-iterations.ts";
 import {
   type AuthoringAttemptEvidence,
-  type AuthoringSessionQuality,
   readAuthoringAttemptEvidence,
 } from "../../src/author/build-attempt-evidence.ts";
 import {
@@ -114,12 +113,12 @@ export interface EpochToolCensus {
       dir: string;
       outcome: string;
       focusOwner: string | null;
-      repairOwner: string | null;
       findingsHash: string | null;
       /** Detail-free hash over recorded feedback; null when the iteration carries no findings. */
       semanticFindingsHash: string | null;
       workspaceCommit: string | null;
-      sessions: AuthoringSessionQuality[];
+      /** Author calls per session, as the iteration recorded them. */
+      attempts: Record<string, number>;
       /** iteration.json's write time; absent on an in-memory fixture, never on a disk read. */
       mtimeMs?: number;
     }>;
@@ -272,7 +271,7 @@ function numberRecord(value: JsonValue | undefined): Record<string, number> | nu
  *  stall hash with it. Two owners deriving one identity separately is how a census can call a
  *  round a repeat while the loop calls it progress. Null when the row carries no feedback with
  *  findings (a fingerprinted iteration). */
-function semanticFindingsHash(feedback: JsonValue | undefined, stage: string | null): string | null {
+function semanticFindingsHash(feedback: JsonValue | undefined): string | null {
   if (!Array.isArray(feedback)) return null;
   const gates = feedback.flatMap((entry) => {
     const row = plainRecord(entry);
@@ -290,7 +289,7 @@ function semanticFindingsHash(feedback: JsonValue | undefined, stage: string | n
   // repeat it cannot point at. The controller still separates two claim-only refusals, because
   // there the claim is the whole answer.
   if (gates.every((gate) => gate.findings.length === 0)) return null;
-  return semanticFindingsIdentity(gates, stage);
+  return semanticFindingsIdentity(gates);
 }
 
 function iterationAuthoring(epochDir: string): EpochToolCensus["authoring"]["iterations"] {
@@ -303,12 +302,6 @@ function iterationAuthoring(epochDir: string): EpochToolCensus["authoring"]["ite
       throw new Error(`${file}: not a completed authoring iteration evidence`);
     }
     const change = plainRecord(row.workspaceChange);
-    const sessions: AuthoringSessionQuality[] = Object.entries(attempts).map(([stage, count]) => ({
-      stage:
-        /* SAFETY: `attempts` is keyed by authoring stage where the evidence is written; a foreign key reads as an unknown stage in the census and changes no decision. */ stage as AuthoringSessionQuality["stage"],
-      state: row.outcome === "build-failed" && row.stage === stage ? "rejected" : "accepted",
-      attempts: count,
-    }));
     return [
       {
         ordinal:
@@ -316,11 +309,10 @@ function iterationAuthoring(epochDir: string): EpochToolCensus["authoring"]["ite
         dir,
         outcome: row.outcome,
         focusOwner: isString(row.focusOwner) ? row.focusOwner : null,
-        repairOwner: isString(row.repairOwner) ? row.repairOwner : null,
         findingsHash: isString(row.findingsHash) ? row.findingsHash : null,
-        semanticFindingsHash: semanticFindingsHash(row.feedback, isString(row.stage) ? row.stage : null),
+        semanticFindingsHash: semanticFindingsHash(row.feedback),
         workspaceCommit: change !== null && isString(change.commit) ? change.commit : null,
-        sessions,
+        attempts,
         mtimeMs: statSync(file).mtimeMs,
       },
     ];

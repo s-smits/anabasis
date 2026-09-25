@@ -84,10 +84,10 @@ export const CHANNELS = [
     read: null,
     alternative: "return the current packet from harness_inspect feedback",
   },
-  // src/author/rebuild-advice.ts (v1 and v2 renderings)
+  // src/author/rebuild-advice.ts (v1 and later renderings)
   {
     name: "diagnosis",
-    marker: /confidence, points at|layer, intervention /,
+    marker: /confidence, points at|First failure boundary /,
     read: null,
     alternative: "ride the advice packet's inspect route",
   },
@@ -422,8 +422,8 @@ function calibration(rounds, rows) {
 
 function diagnosisOf(value) {
   if (!isRecord(value)) return null;
-  if (isString(value.layer)) {
-    return { side: "harness", layer: value.layer, intervention: value.intervention ?? null };
+  if (isString(value.owner)) {
+    return { side: "harness", owner: value.owner, confidence: value.confidence ?? null };
   }
   const owner = value.interventionClass ?? null;
   return {
@@ -661,9 +661,7 @@ function renderTriage({ triage: t }) {
   if (t.families.length === 0) lines.push("  no failing family in any advice packet");
   for (const f of t.families) {
     const d =
-      f.diagnosis === null
-        ? "no diagnosis"
-        : `diagnosis ${f.diagnosis.layer ?? f.diagnosis.owner} (${f.diagnosis.intervention ?? f.diagnosis.confidence})`;
+      f.diagnosis === null ? "no diagnosis" : `diagnosis ${f.diagnosis.owner} (${f.diagnosis.confidence})`;
     const r =
       f.review === null
         ? "no review"

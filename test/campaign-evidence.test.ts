@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { FeedbackOwner, IterationEvidence } from "../src/author/campaign-types.ts";
+import type { IterationEvidence } from "../src/author/campaign-types.ts";
 import { decorateIterationEvidence } from "../src/run/campaign-evidence.ts";
 import { SOURCE_IDENTITY } from "../src/run/source-identity.ts";
 
@@ -14,8 +14,7 @@ function undecoratedEvidence(): IterationEvidence {
   return {
     ordinal: 1,
     dir: "01-example",
-    outcome: "build-failed",
-    stage: "brief",
+    outcome: "gates-blocked",
     focusOwner: null,
     attempts: { builder: 1 },
     findingsHash: null,
@@ -24,19 +23,18 @@ function undecoratedEvidence(): IterationEvidence {
   };
 }
 
-function decorate(first: boolean, hasResumedCarry: boolean, repairOwner: FeedbackOwner | null) {
+function decorate(first: boolean, hasResumedCarry: boolean) {
   const evidence = undecoratedEvidence();
   const before = structuredClone(evidence);
   const decorated = decorateIterationEvidence(evidence, {
     first,
     hasResumedCarry,
-    repairOwner,
     workspaceChange,
     declaredDiagnosis: { kind: "rebuild-advice", digest: "diagnosis-digest" },
   });
   expect(evidence).toEqual(before);
   expect(decorated).not.toBe(evidence);
-  expect(decorated).toMatchObject({ source: SOURCE_IDENTITY, repairOwner, workspaceChange });
+  expect(decorated).toMatchObject({ source: SOURCE_IDENTITY, workspaceChange });
   expect(decorated).not.toHaveProperty("consumedEvidenceDigests");
   expect(decorated).not.toHaveProperty("admissionLineage");
   return decorated;
@@ -49,13 +47,11 @@ describe("iteration evidence decoration", () => {
       "a fresh first iteration uses the declared diagnosis",
       true,
       false,
-      "brief",
       { kind: "rebuild-advice", digest: "diagnosis-digest" },
     ],
-    ["a resumed first iteration uses carried provenance", true, true, "brief", CARRY],
-    ["a later iteration without an owner uses carried provenance", false, false, null, CARRY],
-    ["a later routed iteration uses carried provenance", false, false, "correctness-model", CARRY],
-  ] as const)("%s", (_title, first, resumed, owner, diagnosisInput) => {
-    expect(decorate(first, resumed, owner).diagnosisInput).toEqual(diagnosisInput);
+    ["a resumed first iteration uses carried provenance", true, true, CARRY],
+    ["a later iteration uses carried provenance", false, false, CARRY],
+  ] as const)("%s", (_title, first, resumed, diagnosisInput) => {
+    expect(decorate(first, resumed).diagnosisInput).toEqual(diagnosisInput);
   });
 });

@@ -153,37 +153,17 @@ describe("run observer", () => {
     observer.iteration({
       ordinal: 11,
       outcome: "gates-blocked",
-      stage: "conformance",
       focusOwner: "correctness-model",
       findingsHash: "abc123",
     });
-    observer.iteration({
-      ordinal: 12,
-      outcome: "fingerprinted",
-      stage: null,
-      focusOwner: null,
-      findingsHash: null,
-    });
-    observer.iteration({
-      ordinal: 13,
-      outcome: "build-failed",
-      stage: "conformance",
-      focusOwner: "correctness-model",
-      findingsHash: "abc123",
-    });
+    observer.iteration({ ordinal: 12, outcome: "fingerprinted", focusOwner: null, findingsHash: null });
     const emitted = rows(root);
     expect(emitted.map((row) => [row.type, row.level, row.ordinal, row.focusOwner])).toEqual([
       ["iteration-settled", "warning", 11, "correctness-model"],
       ["iteration-settled", "default", 12, null],
-      ["iteration-settled", "error", 13, "correctness-model"],
     ]);
-    // The finding digest lets a reader count consecutive occurrences of the same findings, and the
-    // stage says whether a repeated block is one wall or several.
-    expect(emitted.map((row) => [row.findingsHash, row.stage])).toEqual([
-      ["abc123", "conformance"],
-      [null, null],
-      ["abc123", "conformance"],
-    ]);
+    // The finding digest lets a reader count consecutive occurrences of the same findings.
+    expect(emitted.map((row) => row.findingsHash)).toEqual(["abc123", null]);
   });
 
   it("refuses event data that tries to replace the controller envelope", () => {
@@ -310,12 +290,11 @@ describe("run observer", () => {
     const root = mkdtempSync(join(tmpdir(), "ana-observer-tree-"));
     const observer = startFullRunObservation(root, "demo", "run-tree", "build me a harness");
     observeAnalysisResult(observer, "demo", "run-tree", {
-      judges: {
-        findings: [{ claim: "controls are thin", evidence: "census.json", proposedOwner: "controls" }],
-        exit: { kind: "advisory" },
-      },
+      judges: { exit: { kind: "advisory" } },
       admission: {
-        admitted: [{ claim: "controls are thin", evidence: "census.json", proposedOwner: "controls" }],
+        admitted: [
+          { claim: "controls are thin", evidence: "census.json", owner: "correctness-model/controls.json" },
+        ],
         feedback: [],
       },
     });

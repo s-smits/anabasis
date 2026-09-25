@@ -13,12 +13,13 @@ import {
   type AdmittedClimbRow,
   type ClimbBatteriesRead,
   climbThresholds,
-  priorPublicFingerprints,
   readClimbBatteries,
 } from "./climb-history.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+// admitted-history public battery prints only the repeated-condition refusal read.
+// import { priorPublicFingerprints } from "./climb-history.ts";
 import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
-import { lastBatteryOf } from "../author/experiment-plan.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
@@ -28,6 +29,7 @@ import { selectedProductDir } from "./product-versions.ts";
 import { type ProbeLanding, adoptedTaskCount, batterySizingGate } from "./battery-sizing.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { fixedProductBoundary } from "./fixed-product-policy.ts";
+import type { BuildClause } from "./loop-terminal.ts";
 import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
 import type { IterationInput } from "./full-run-round.ts";
 import { type NextMove, epochPassOf } from "./next-move.ts";
@@ -38,7 +40,11 @@ import { errorMessage } from "../meta/runtime-values.ts";
 
 type BuildStepResult = {
   build: FullRunOutcome["build"];
-  clauses: string[];
+  /** Why the step produced nothing to measure; null for a built, reused or stopped step, whose
+   *  stop reason is the round decision's own. */
+  buildClause: BuildClause | null;
+  /** The clause's own sentence, when it has more to say than its name. */
+  buildDetail: string | null;
   /** Which experiment the session ran under; null when no session opened. */
   experiment: HarnessExperiment | null;
   experimentAuthoring?: ExperimentAuthoring;
@@ -63,12 +69,23 @@ function buildBeforeSession(input: IterationInput, decision: NextMove): BuildSte
   const fixedBoundary = fixedProductBoundary(input.args.productPolicy, move);
   if (fixedBoundary !== null) {
     observer.phase({ phase: "build", state: "failed", summary: fixedBoundary });
-    return { build: "stopped", clauses: [fixedBoundary], experiment: null };
+    return {
+      build: "stopped",
+      buildClause: "fixed-product-boundary",
+      buildDetail: fixedBoundary,
+      experiment: null,
+    };
   }
   if (move === "measure") {
     observer.phase({ phase: "build", state: "completed", summary: "Current adopted harness reused" });
     observer.phase({ phase: "adopt", state: "completed", summary: "Current domain tree already adopted" });
-    return { build: "reused", clauses: [], experiment: null, ...remeasuredAuthoring(input) };
+    return {
+      build: "reused",
+      buildClause: null,
+      buildDetail: null,
+      experiment: null,
+      ...remeasuredAuthoring(input),
+    };
   }
   if (move === "stop") {
     observer.phase({
@@ -76,7 +93,7 @@ function buildBeforeSession(input: IterationInput, decision: NextMove): BuildSte
       state: "failed",
       summary: `Controller stopped before build: ${decision.reason}`,
     });
-    return { build: "stopped", clauses: [decision.reason], experiment: null };
+    return { build: "stopped", buildClause: null, buildDetail: null, experiment: null };
   }
   return null;
 }
@@ -137,15 +154,21 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
 /** The refusal alone leaves the campaign free to open another session on the same tree, so the
  *  same clause repeats against one commit invocation after invocation with nothing counting them.
  *  `unchangedCandidateSubmissions` is the durable per-commit tally counting this record, so
- *  reaching the ceiling adds the exact `authoring-stalled` literal the terminal reads, beside a
- *  clause naming the commit and the count. */
-function unchangedCandidateClauses(outcome: BuildOutcome, unchangedCommit: string): string[] {
+ *  reaching the ceiling turns the retryable `candidate-unchanged` into `authoring-stalled`, with a
+ *  sentence naming the commit and the count. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, unchanged-candidate-strike): kept: a round that settles on its own entry tree has nothing new to measure
+function unchangedCandidateClause(
+  outcome: BuildOutcome,
+  unchangedCommit: string,
+): Pick<BuildStepResult, "buildClause" | "buildDetail"> {
   const records = outcome.buildAdmissible ? outcome.unchangedCandidateSubmissions : 0;
-  if (records < POLICY.loop.unchangedCandidateStrikes) return ["candidate-unchanged"];
-  return [
-    "authoring-stalled",
-    `candidate-unchanged: workspace commit ${unchangedCommit.slice(0, 9)} was recorded unchanged ${records} time(s), at the declared ceiling of ${POLICY.loop.unchangedCandidateStrikes}`,
-  ];
+  if (records < POLICY.loop.unchangedCandidateStrikes) {
+    return { buildClause: "candidate-unchanged", buildDetail: null };
+  }
+  return {
+    buildClause: "authoring-stalled",
+    buildDetail: `candidate-unchanged: workspace commit ${unchangedCommit.slice(0, 9)} was recorded unchanged ${records} time(s), at the declared ceiling of ${POLICY.loop.unchangedCandidateStrikes}`,
+  };
 }
 
 /** Settle what one Builder session produced: an unchanged candidate is refused with its tally, a
@@ -162,7 +185,7 @@ function settleBuildOutcome(
       ? outcome.experimentScope.actual
       : requestedExperiment;
   const buildAdmissible = outcome.buildAdmissible && outcome.adopted;
-  const outcomeClauses = outcome.buildAdmissible ? [] : outcome.clauses;
+  const outcomeClause = outcome.buildAdmissible ? null : outcome.clause;
   const iteration = outcome.iterations.at(-1);
   // The commit of a candidate unchanged from the start of its round, through the same predicate
   // as the campaign's recorded count, so the refusal and the count cannot disagree about what
@@ -170,9 +193,9 @@ function settleBuildOutcome(
   const unchangedCommit =
     move !== "rebuild" || iteration === undefined ? null : unchangedCandidateCommit(iteration);
   if (buildAdmissible && unchangedCommit !== null) {
-    const clauses = unchangedCandidateClauses(outcome, unchangedCommit);
-    observeBuildFailed(observer, move, clauses);
-    return { build: "build-failed", clauses, experiment };
+    const unchanged = unchangedCandidateClause(outcome, unchangedCommit);
+    observeBuildFailed(observer, move, unchanged);
+    return { build: "build-failed", ...unchanged, experiment };
   }
   if (buildAdmissible) {
     // A span only a failure closes reads backwards: a run whose builds all succeed opens a build
@@ -183,11 +206,12 @@ function settleBuildOutcome(
     if (move === "build") {
       observer.phase({ phase: "adopt", state: "completed", summary: "Built harness adopted" });
     }
-  } else observeBuildFailed(observer, move, outcomeClauses);
+  } else observeBuildFailed(observer, move, { buildClause: outcomeClause, buildDetail: null });
   const admitted = move === "build" ? "adopted" : "candidate";
   return {
     build: buildAdmissible ? admitted : "build-failed",
-    clauses: [...outcomeClauses],
+    buildClause: outcomeClause,
+    buildDetail: null,
     experiment,
   };
 }
@@ -198,8 +222,7 @@ function settleBuildOutcome(
  *  author reads what was recorded — whenever one exists, and a rebuild also reads the issue
  *  register's advice. A first build with nothing measured behind it reads neither: its reason
  *  states no measurement. The advice packet is families, kinds and counts by construction
- *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the admitted-history
- *  prints the repeat refusal compares a task-only experiment with and the sizing landing. The
+ *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the sizing landing. The
  *  history pages read every recorded model pin and threshold manifest with its condition labels:
  *  another condition enters no placement or allowance, and its public tasks stay readable. */
 function composeAuthoringMemory(
@@ -237,8 +260,9 @@ function composeAuthoringMemory(
     advisoryNote,
     measured,
     band: climbThresholds(manifestPath).band,
-    priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
-    lastBattery: readout === null ? undefined : lastBatteryOf(readout.rows),
+    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+    // admitted-history public battery prints only the repeated-condition refusal read.
+    // priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
   };
 }
 
@@ -254,7 +278,10 @@ export async function runBuildStep(
   const { move } = decision;
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const memory = composeAuthoringMemory(input, decision, domainDir, difficulty);
-  const { priorPublicTaskFingerprints, advice, band } = memory;
+  const { advice, band } = memory;
+  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+  // admitted-history public battery prints only the repeated-condition refusal read.
+  // const { priorPublicTaskFingerprints } = memory;
   const tasks = batterySizingGate(
     manifest.expectedTasks,
     adoptedTaskCount(domainDir),
@@ -303,8 +330,9 @@ export async function runBuildStep(
         experiment: "build",
         productVersionId: input.runId,
         band,
-        priorPublicTaskFingerprints,
-        ...keyIfDefined("lastBattery", memory.lastBattery),
+        // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+        // admitted-history public battery prints only the repeated-condition refusal read.
+        // priorPublicTaskFingerprints,
         ...keyIfDefined("measured", memory.measured),
         // Reopen on the exact evidence identity. The round starts from adopted bytes, and a
         // redesign is the Builder's harness_reset call. Reusing this epoch preserves in-flight
@@ -314,7 +342,10 @@ export async function runBuildStep(
       },
     )
     .catch((cause: unknown) => {
-      observeBuildFailed(observer, move, [`build-threw: ${errorMessage(cause)}`]);
+      observeBuildFailed(observer, move, {
+        buildClause: null,
+        buildDetail: `build-threw: ${errorMessage(cause)}`,
+      });
       throw cause;
     });
   const result = settleBuildOutcome(move, outcome, "build", observer);
@@ -344,7 +375,12 @@ export async function runBuildStep(
 /** A failed build step must reach the progress stream with its typed clause. Without this row a
  *  pre-session refusal ends the stream at "Build step started (<move>)", because the campaign
  *  rethrows a `BuildAgentTurnNonResult` before any row is written. */
-function observeBuildFailed(observer: RunObserver, move: string, clauses: readonly string[]): void {
-  const detail = clauses.length > 0 ? clauses.join("; ") : "no clause recorded";
+function observeBuildFailed(
+  observer: RunObserver,
+  move: string,
+  ended: Pick<BuildStepResult, "buildClause" | "buildDetail">,
+): void {
+  const said = [ended.buildClause, ended.buildDetail].filter((part) => part !== null);
+  const detail = said.length === 0 ? "no clause recorded" : said.join("; ");
   observer.phase({ phase: "build", state: "failed", summary: `Build step failed (${move}): ${detail}` });
 }

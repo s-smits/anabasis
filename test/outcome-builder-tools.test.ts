@@ -359,8 +359,7 @@ describe("the census across a campaign's epochs", () => {
       JSON.stringify({
         ordinal: 1,
         dir: "01-matching",
-        outcome: "build-failed",
-        stage: "tests",
+        outcome: "gates-blocked",
         attempts: { brief: 1, tests: 2 },
       }),
     );
@@ -374,10 +373,6 @@ describe("the census across a campaign's epochs", () => {
         outcome: "non-result",
         terminal: { role: "tests", status: "aborted", attribution: null },
         authorCalls: { brief: 1, tests: 1 },
-        sessions: [
-          { stage: "brief", state: "accepted", attempts: 1 },
-          { stage: "tests", state: "non-result", attempts: 1 },
-        ],
         source: null,
         writtenAt: "2026-07-29T10:00:00.000Z",
       }),
@@ -385,10 +380,7 @@ describe("the census across a campaign's epochs", () => {
     const report = builderToolsReport(campaign);
     expect(report.epochs[0]?.authoring.iterations[0]).toMatchObject({
       ordinal: 1,
-      sessions: [
-        { stage: "brief", state: "accepted", attempts: 1 },
-        { stage: "tests", state: "rejected", attempts: 2 },
-      ],
+      attempts: { brief: 1, tests: 2 },
     });
     expect(report.epochs[0]?.authoring.nonResults[0]).toMatchObject({
       terminal: { role: "tests", status: "aborted" },
@@ -477,12 +469,10 @@ describe("the census across a campaign's epochs", () => {
       "04-domain/iteration.json": JSON.stringify({
         ordinal: 4,
         outcome: "gates-blocked",
-        stage: null,
         attempts: { tests: 1 },
-        findingsHash: semanticFindingsIdentity(
-          [{ owner: "tests", claim: "one claim", findings: controllerFindings }],
-          null,
-        ),
+        findingsHash: semanticFindingsIdentity([
+          { owner: "tests", claim: "one claim", findings: controllerFindings },
+        ]),
         feedback: [{ owner: "tests", claim: "one claim", findings: controllerFindings }],
       }),
     });
@@ -514,47 +504,39 @@ describe("the census across a campaign's epochs", () => {
         ],
       },
     ];
-    const first = semanticFindingsIdentity(round("87597ec2-2d8b-48c4-8759-dfabb08efae3"), null);
-    expect(semanticFindingsIdentity(round("10021380-6853-44e5-a436-97bd5280357f"), null)).toBe(first);
+    const first = semanticFindingsIdentity(round("87597ec2-2d8b-48c4-8759-dfabb08efae3"));
+    expect(semanticFindingsIdentity(round("10021380-6853-44e5-a436-97bd5280357f"))).toBe(first);
     // Hostile: a genuinely different diagnosis at the same owner must still separate, or the stall
     // rule would end a session that was making progress.
     expect(
-      semanticFindingsIdentity(
-        [
-          {
-            owner: "oracle",
-            claim,
-            findings: [{ code: "DISCRIMINATION_REJECT_PASSED", path: "grader/controls.json" }],
-          },
-        ],
-        null,
-      ),
+      semanticFindingsIdentity([
+        {
+          owner: "oracle",
+          claim,
+          findings: [{ code: "DISCRIMINATION_REJECT_PASSED", path: "grader/controls.json" }],
+        },
+      ]),
     ).not.toBe(first);
     // A gate that names no finding rows still separates on its claim, the only answer it gave.
-    expect(semanticFindingsIdentity([{ owner: "tests", claim: "authoring finding 1" }], null)).not.toBe(
-      semanticFindingsIdentity([{ owner: "tests", claim: "authoring finding 2" }], null),
+    expect(semanticFindingsIdentity([{ owner: "tests", claim: "authoring finding 1" }])).not.toBe(
+      semanticFindingsIdentity([{ owner: "tests", claim: "authoring finding 2" }]),
     );
-    // So must the same finding raised at a different build stage.
-    expect(semanticFindingsIdentity(round("87597ec2-2d8b-48c4-8759-dfabb08efae3"), "bundle")).not.toBe(first);
     // A grouped census finding keeps one code for every control, so progress shows only in the ids
     // its author projection names: repairing one of two rejected accepts is not a repeat, rewording is.
     const grouped = (detail: string) =>
-      semanticFindingsIdentity(
-        [
-          {
-            owner: "correctness-model",
-            claim,
-            findings: [
-              controllerValidatedFinding({
-                code: "DISCRIMINATION_ACCEPT_REJECTED",
-                path: "correctness-model/controls.json",
-                detail,
-              }),
-            ],
-          },
-        ],
-        null,
-      );
+      semanticFindingsIdentity([
+        {
+          owner: "correctness-model",
+          claim,
+          findings: [
+            controllerValidatedFinding({
+              code: "DISCRIMINATION_ACCEPT_REJECTED",
+              path: "correctness-model/controls.json",
+              detail,
+            }),
+          ],
+        },
+      ]);
     expect(grouped('2 valid example(s) were rejected on [span]: "a1", "a2"')).not.toBe(
       grouped('1 valid example(s) were rejected on [span]: "a2"'),
     );

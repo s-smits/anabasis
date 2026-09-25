@@ -145,8 +145,7 @@ export function expectedBuiltToolNames(spec: ToolsSpec, options: { publicResourc
   ].sort();
 }
 
-/** The preset list is well formed and something prepares the answer. Whether a fresh candidate
- *  selected a shell has one owner, `solverShellFindings` in candidate-check. */
+/** The preset list is well formed and something prepares the answer. */
 function presetFindings(spec: ToolsSpec): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const unknown = spec.presets.filter(
@@ -198,6 +197,9 @@ function reservedName(
   return null;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, tools-spec-structure): kept: the structural rules (fields,
+// presets, reserved and repeated names) are what let the worker register one stable roster across the
+// battery.
 export function validateToolsSpec(value: unknown): ValidationResult {
   const fieldFindings = toolsFieldFindings(value);
   if (fieldFindings.length > 0) return { ok: false, findings: fieldFindings };

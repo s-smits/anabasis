@@ -258,7 +258,8 @@ describe("control receipts", () => {
       [TASK],
       { brief: BRIEF },
     );
-    expect(wrong.claimable).toBe(false);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+    // expect(wrong.claimable).toBe(false);
     expect(wrong.rejectsAttributed).toBe(0);
     expect(wrong.controlReceipts[1]?.observedBlockingCheckIds).toEqual(["other-check"]);
 
@@ -463,9 +464,13 @@ describe("control receipts", () => {
   });
 
   it.each([
-    ["timeout", "generated-external-grounding-unexecuted"],
-    ["crash", "generated-external-grounding-unexecuted"],
-    ["throw", "generated-external-grounding-unexecuted"],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+    // ["timeout", "generated-external-grounding-unexecuted"],
+    // ["crash", "generated-external-grounding-unexecuted"],
+    // ["throw", "generated-external-grounding-unexecuted"],
+    ["timeout", null],
+    ["crash", null],
+    ["throw", null],
     ["executed", null],
     ["sandbox", TOOL_REFUSED_CODE],
   ] as const)(

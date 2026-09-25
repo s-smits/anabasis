@@ -37,8 +37,8 @@ Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
 - `hidden: "required"` demands exactly one `{checkId, expectation}` row on every applicable task;
   `"none"` forbids one. Applicability never depends on that row, and a missing required row
   refuses evaluation.
-- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`, and cite
-  it. A private row may describe search choices, never an unpublished validity rule. Private rows
+- Publish each rule in a public `ruleDecisions` row, optionally scoped by `families`. A private
+  row may describe search choices, never an unpublished validity rule. Private rows
   are also a ceiling: at least one decision a passing answer needs stays out of the public
   projection — the rule rows, the constants, the schema, the operating guide and your tool text
   together. A private row no check reads, such as the order your own reference happened to search
@@ -50,15 +50,13 @@ Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
   present task publishes the same number: it grades today's battery correctly and silently forbids
   the next one from varying that input, so the demand can then only move by magnitude. Declaring
   the path in `publicInputPaths` does not do it; the code that decides has to read it.
-- Mark every root holding the material deliverable `"taskConditioned": true`; a brief marking
-  none is refused. A multi-file answer is one root with `fileMap: true` and the `files` preset.
+- A multi-file answer is one root with `fileMap: true` and the `files` preset.
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
   holding the limit, the `designRuleConstants` row naming it, the artifact path reporting the
   bounded value, and `"atMost"` or `"atLeast"`. The last two are an optional pair, but declare
   them: all four make one public comparison the harness runs on each prepared answer and returns as
-  a margin, and a boundary without them is never measured. Put one applicable task exactly on the
-  value, in one exact public unit: samples merely either side leave > and >= indistinguishable.
+  a margin, and a boundary without them is never measured.
 
 ```ts
 import type { CheckFn } from "@ana/correctness-model-bundle";
@@ -76,8 +74,7 @@ it. The host runs every reference answer through the same checks as controls and
 
 ### Artifact schema and what the solver reads
 
-- `artifactSchema` has one `{name, shape, allowedValues?, fileMap?, taskConditioned?,
-  openMapPaths?}` row per artifact root. The writer and submit schema compile from your accept
+- `artifactSchema` has one `{name, shape, allowedValues?, fileMap?, openMapPaths?}` row per artifact root. The writer and submit schema compile from your accept
   controls: an object admits only the key sets those accepts show. A record keyed by task data,
   such as `{partId: address}`, lists its dotted path in `openMapPaths` (`"$"` for the root) so
   any key is admitted while each value keeps its shape; a declared path no accept reaches is
@@ -102,9 +99,9 @@ your own algorithm, with optional `execution.requiredToolIds`; or `{"kind":"exte
 never both. Authored execution proves your algorithm even when an installed interpreter runs it;
 it does not become independent domain evidence, and a tool call cannot change the mode.
 
-The deciding computation stays in `correctness-model/`. An `agent/` module that ships the
-computations a correctness-model module decides with is refused: the solver's own roster would
-then answer the question the battery asks. The solver may still analyse its candidate and check it
+Keep the deciding computation in `correctness-model/`. An `agent/` module that ships the
+computations a correctness-model module decides with answers the question the battery asks from
+the solver's own roster. The solver may still analyse its candidate and check it
 against published limits — write that capability in the agent's own code, and let the check decide
 through an installed domain tool wherever the field has one.
 
@@ -142,12 +139,10 @@ Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come fr
 
 ## Task battery and controls
 
-`tasks.json` is an array of `{taskId, family, publicInput, hidden}`. Use at least two families
-and unique task ids that are safe directory names. Every check applies to at least one task,
-every declared public input path exists on each applicable task, and every required hidden row
-is `{checkId, expectation}`; tool checks need no synthetic hidden marker. Each family realises
-at least two distinct values at a public input path its checks declare, varying a condition
-that changes the required result.
+`tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are
+safe directory names. Every check applies to at least one task, every declared public input path
+exists on each applicable task, and every required hidden row is `{checkId, expectation}`; tool
+checks need no synthetic hidden marker.
 
 `controls.json` is `{accept: [...], reject: [...]}` with at least 5 known-correct and 5
 deliberately incorrect rows, each meaningfully different. Every row has `id`, `taskId` and
@@ -178,8 +173,8 @@ placeholder is missing evidence.
 {"presets": [<preset id>], "tools": [{"name": string, "kind": string, "description": string, "conformanceArguments"?: object}], "declined": {<preset id>: <reason>}}
 ```
 
-- `starter-pack/add-ons.json` lists each add-on and what it adds. Exactly one of `files` and
-  `shell` is selected, since both carry the shell the solver needs: take `files` when the answer is
+- `starter-pack/add-ons.json` lists each add-on and what it adds. Select one of `files` and
+  `shell`, since both carry the shell the solver needs: take `files` when the answer is
   files, `shell` otherwise, and record the other in `declined`. `public-data` composes with either
   and is worth taking when a task carries more public data than a solver reads by hand.
 - Never list or implement a preset tool, nor a starter tool: `save_candidate`,
@@ -263,11 +258,11 @@ export const createDomainHarness: DomainHarnessFactory = (task) => {
 ## Agent operating guide contract
 
 `agent/BUILT_AGENTS.md` offers domain guidance and is appended to the agent's system prompt once
-per task, so it stays under 8,192 bytes. The system prompt owns the universal rules and
+per task, so keep it short. The system prompt owns the universal rules and
 `agent/tools-spec.json` owns what each tool does; the guide explains how tools combine and how
 results inform the next decision, for every task in the battery, and leaves the solving method to
 the solver. Reusable algorithms are allowed; task identifiers, copied task text, answers, hidden
-facts and protected verifier behaviour are not, and a guide naming a task is refused. State rules
+facts and protected verifier behaviour are not. State rules
 and tool behaviour, not how limits were set or how hard the tasks are. A `ruleDecisions` row you
 declared private belongs nowhere in this file: writing its recipe here in your own words publishes
 it as surely as copying the row.

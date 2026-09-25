@@ -92,7 +92,7 @@ describe("brief and task contract", () => {
       '"slot-binding"',
     );
   });
-  it("admits safe task identities and refuses path-like, duplicate and single-family batteries", () => {
+  it("admits safe task identities and refuses path-like and duplicate ones", () => {
     const brief = greenBrief();
     const second = task("bb", "b", "slot-binding");
     expect(validateTasks(brief, { tasks: [task("aa_1.2-3", "a", "ghost-ref"), second] }).ok).toBe(true);
@@ -104,9 +104,6 @@ describe("brief and task contract", () => {
     expect(codes(validateTasks(brief, { tasks: [task("bb", "a", "ghost-ref"), second] }))).toContain(
       "tasks-duplicate-id",
     );
-    expect(
-      codes(validateTasks(brief, { tasks: [task("aa", "a", "ghost-ref"), task("bb", "a", "ghost-ref")] })),
-    ).toContain("tasks-single-family");
   });
   it("names the missing keys of a malformed object row", () => {
     const brief = greenBrief();
@@ -166,14 +163,6 @@ describe("brief and task contract", () => {
     check.execution.publicInputPaths = ["$.batchSize"];
     check.numericBoundaries = [{ publicInputPath: "$.batchSize", constantName: "max-batch-size" }];
     expect(validateBrief(brief).ok).toBe(true);
-    const battery = (batchSize: number) => ({
-      tasks: [
-        { ...task("aa", "a", "ghost-ref"), publicInput: { batchSize } },
-        task("bb", "b", "slot-binding"),
-      ],
-    });
-    expect(validateTasks(brief, battery(220)).ok).toBe(true);
-    expect(codes(validateTasks(brief, battery(219)))).toContain("tasks-numeric-boundary-missing");
     expect(
       codes(validateTasks(brief, { tasks: [task("aa", "a", "ghost-ref"), task("bb", "b", "slot-binding")] })),
     ).toContain("tasks-public-rule-path-missing");
@@ -185,8 +174,11 @@ describe("brief and task contract", () => {
     check.execution.artifactPaths = ["$.missing"];
     expect(codes(validateBrief(brief))).toContain("brief-check-artifact-root-undeclared");
     check.execution.artifactPaths = ["$.good"];
-    brief.artifactSchema.push({ name: "unused", "shape": "string" });
-    expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
+    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
+    // root is measured, or its absence that it is not.
+    // brief.artifactSchema.push({ name: "unused", "shape": "string" });
+    // expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
     check.joinIds = ["unknown"];
     expect(codes(validateBrief(brief))).toEqual(
       expect.arrayContaining(["brief-check-join-undeclared", "brief-join-check-ownership-invalid"]),
@@ -259,11 +251,14 @@ describe("brief and task contract", () => {
     ...overrides,
   });
   it.each<[string, Partial<Brief>, { code?: string; path?: string }]>([
-    [
-      "an uncited constant",
-      { designRuleConstants: [constant("x", 1, "")] },
-      { code: "brief-constant-uncited" },
-    ],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
+    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
+    // right.
+    // [
+    //   "an uncited constant",
+    //   { designRuleConstants: [constant("x", 1, "")] },
+    //   { code: "brief-constant-uncited" },
+    // ],
     [
       "a duplicate constant name",
       { designRuleConstants: [constant("cap", 1), constant("cap", 2, "section 2")] },
@@ -274,7 +269,10 @@ describe("brief and task contract", () => {
       { designRuleConstants: [constant(" ", 1)] },
       { code: "brief-design-rule-constant-name-empty" },
     ],
-    ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
+    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
+    // declared class.
+    // ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
     [
       "a duplicate join id",
       { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },
@@ -301,27 +299,23 @@ describe("brief and task contract", () => {
       { artifactSchema: [field({ allowedValues: double<Array<string | number | boolean>>(values) })] },
       { code: "brief-artifact-field-allowed-values-invalid" },
     ]),
-    ...["yes", 1, false].map((marked): [string, Partial<Brief>, { path: string }] => [
-      `taskConditioned ${JSON.stringify(marked)}`,
-      { artifactSchema: [field({ taskConditioned: double<true>(marked) })] },
-      { path: "artifactSchema[0].taskConditioned" },
-    ]),
   ])("refuses %s", (_name, overrides, finding) => {
     expect(validateBrief(greenBrief(overrides)).findings).toContainEqual(expect.objectContaining(finding));
   });
-  it("admits a closed value set and a literal taskConditioned marker", () => {
+  it("admits a closed value set", () => {
     const findings = validateBrief(
-      greenBrief({ artifactSchema: [field({ allowedValues: ["pass", "fail"], taskConditioned: true })] }),
+      greenBrief({ artifactSchema: [field({ allowedValues: ["pass", "fail"] })] }),
     ).findings;
     expect(findings.map((finding) => finding.code)).not.toContain(
       "brief-artifact-field-allowed-values-invalid",
     );
-    expect(findings.map((finding) => finding.path)).not.toContain("artifactSchema[0].taskConditioned");
   });
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));
     expect(found).toContain("brief-no-truth-checks");
-    expect(found).not.toContain("brief-artifact-root-unread");
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
+    // unread-root rule this assertion keeps quiet is commented out.
+    // expect(found).not.toContain("brief-artifact-root-unread");
   });
   it("a brief in a foreign shape yields shape-mismatch findings naming the fields", () => {
     // Parseable JSON without the required Brief fields.
@@ -416,7 +410,6 @@ describe("the tool contract agrees with the declared answer representation", () 
     ]);
   });
 
-  // Whether a candidate selected a shell has one owner, solverShellFindings in candidate-check.
   it("reads a declined default preset and refuses a blank reason", () => {
     expect(specCodes(spec([], writer))).toEqual([]);
     // A blank reason is a shape defect, reported before the contract is read.

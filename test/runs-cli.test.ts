@@ -677,9 +677,9 @@ describe("the climb wording batteries were authored under", () => {
   const RETIRED_SCHEMA = "difficulty-decision/v3";
 
   /** One `difficulty-decisions/` record in the shape `recordDifficultyDecision` writes. A null
-   *  frame omits the field, which under the current schema is an incomplete record rather than an older one. The
-   *  schema is a parameter because a recorded corpus holds more than one, and the action cannot say
-   *  which: `placed` belongs to both the retired vocabulary and the current one. */
+   *  frame omits the field, which under the current schema is an incomplete record rather than an
+   *  older one. The schema is a parameter because a recorded corpus holds more than one, and the
+   *  record's body cannot say which. */
   function writeDecision(
     campaignDir: string,
     runId: string,
@@ -695,7 +695,6 @@ describe("the climb wording batteries were authored under", () => {
       difficulty: {
         admitted: 1,
         decision: {
-          action: "placed",
           rationale: `${runId} placed on the band`,
           evidence: [{ runId, batterySha256: "c".repeat(64) }],
           placement: { passes: 9, n: 25, zone: "on-aim" },

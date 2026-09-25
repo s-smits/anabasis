@@ -8,10 +8,10 @@ deterministic trigger, which is the capitalised text before the first colon of a
 a lane has something to read; it does not say what the answer is, and a lane that contradicts its
 trigger with evidence is a useful result. Nothing here changes a score. The verifier owns every
 pass, and a lane's product is one finding with one owner, the exact evidence it cites and the
-observation that would reverse it. The owner is one of the nine `FeedbackOwner` values in
-`src/author/campaign-types.ts` — `brief`, `tests`, `instructions`, `tools-spec`,
-`accept-controls`, `controls`, `correctness-model`, `fingerprint`, `environment` — when the
-Builder can repair it, and a named controller source file when it cannot. Lanes 7 and 23 are
+observation that would reverse it. The owner is a `FeedbackOwner` — one of the nine bundle files
+of `BUNDLE_FILES` in `src/author/feedback-routing.ts`, such as `correctness-model/evaluator.ts` or
+`agent/tools-spec.json`, or `environment` — when the Builder can repair it, and a named controller
+source file when it cannot. Lanes 7 and 23 are
 isolated and never share a session with another lane.
 
 Each lane body opens with one paragraph beginning `Starts from`, which the manifest carries
@@ -105,7 +105,7 @@ broke its protocol is a representation defect.
 partition of `case-record.jsonl` through the shared classifier in `src/claim/case-record.ts`, with
 `truthOk` and `pass` left `null` where unknown. Only verified cases enter a capability rate; zero
 verified cases give an operational result and no capability result at all; an entirely unaccepted
-battery is `no-difficulty-evidence`. Say whether an unaccepted submit sits inside or outside each
+battery is placed nowhere. Say whether an unaccepted submit sits inside or outside each
 denominator and name the owner of that answer. Join each admitted battery to its own
 `battery.json` through `readBatteryJoinSlice` (`src/truth/battery-record.ts`): `skipped-precase`
 is the only recorded zero-row disposition, an absent record is absent evidence, and a
@@ -200,8 +200,7 @@ The question is whether a check written against the public authoring interface c
 through the real host contract. Follow one consequential request across the public types and
 examples, the generated check, the projection, the tool input binding, the worker transport, the
 wall and the host result, selecting one legitimate use and its nearest forbidden counterpart. Read
-`conformance.json` (`tool-conformance/v4`), the `solvability-tool-program-argument` clause in the
-gate findings, `agent/config.yaml` (`tool_run_seconds`, `check_seconds`) and the worker's
+`conformance.json` (`tool-conformance/v4`), the gate findings, `agent/config.yaml` (`tool_run_seconds`, `check_seconds`) and the worker's
 handshake evidence. Separate a valid boundary refusing unsupported work from incompatible
 producer and consumer contracts and from an interface refusal whose public explanation was lost. A
 passing runtime double proves only that double's contract; prefer an existing real-host probe, and
@@ -218,9 +217,8 @@ guide naming one, and from a tool payload whose return names the value a check w
 
 The question is whether the guide, the tool descriptions and the tool payloads tell the solver the
 truth about the roster and the walls. `agent/BUILT_AGENTS.md` naming a tool `tools-spec.json` does
-not declare sends the solver after a call it cannot make; a `presets` field with neither `files`
-nor `shell` is refused by `solverShellFindings` (`src/author/candidate-check.ts`), so read the
-roster the Built prompt derived before charging a missing call to the solver. A payload that hands
+not declare sends the solver after a call it cannot make, and a `presets` field may carry neither
+`files` nor `shell`, so read the roster the Built prompt derived before charging a missing call to the solver. A payload that hands
 over a decision — admissible values per role, the argmax of a published function — is a publication
 question for lane 8, but the payload's `text` against its `details` is this lane's: every promised
 value belongs in `text`, and a tool whose result drops bytes must say where the rest is. Read
@@ -255,7 +253,7 @@ Starts from block 1c's `REACH-ONLY CHECKS (lane 6)` and block 1's `UNTRIPPED IN 
 The question is whether each check can fail on a shipping artifact at all. Two mechanisms recur:
 reject controls that reach only where shipping never goes, which is what `UNTRIPPED IN SHIPPING`
 counts, and a label or id a check cannot bind to the geometry it is meant to constrain, so a
-`taskConditioned` root can be replaced without moving the verdict. Read the claim's
+deliverable root can be replaced without moving the verdict. Read the claim's
 `externalCheckCoverage` (host-attested launches and reject controls per check-and-tool pair),
 `controls.json` beside `tasks.json`, the `checkReceipts` of each shipping `verifier.json`, and the
 Epoch Reviewer's `probe_check` rows, whose `probeIds` say which checks moved when one artifact path
@@ -312,11 +310,11 @@ Starts from block 6's `REHEARSAL NOT-RUN (lane 9)`.
 
 The question is which families the rehearsal instrument could grade at all. `harness_trial`
 (`src/builder/harness-trial.ts`) solves one task blind with the measured Built solver and grades
-it under `REHEARSAL_VERIFIER_DEADLINE_MS` in `src/truth/solve-case.ts`, a fixed total for the
-whole verifier run, while the harness's own `check_seconds` and `tool_run_seconds` in
-`agent/config.yaml` may be ten times their default. A family whose check compiles for longer than
-the rehearsal deadline returns `not-run` however the solver did, and the one instrument meant to
-catch a too-easy battery before payment can then grade only the fast families. Read each
+it through `rehearseCase` in `src/truth/solve-case.ts` under the harness's own `check_seconds`
+and `tool_run_seconds` from `agent/config.yaml`, the walls the battery grades under. A run recorded
+before that change graded under a fixed 30-second total instead, so there a family whose check
+compiles for longer returns `not-run` however the solver did, and the one instrument meant to
+catch a too-easy battery before payment could grade only the fast families. Read each
 `customCalls[]` row with `tool: "harness_trial"` in `builder-execution*.json` for its
 `target.taskId` and `semantic.truthVerdict`, the family of each target, the compile and tool-run
 durations in the graded battery's `verifier.json`, and the harness's declared walls. A `not-run`
@@ -334,14 +332,14 @@ The question is whether the Builder's prediction gets better round over round. E
 submit carries an `experimentProposal`, and `EXPERIMENT.json` declares `target{comparator,
 verifiedPasses}`, `families[]` with a level and move each, and per-task `predictions[]`
 (`src/author/experiment-plan.ts`). Each battery's `difficulty-decisions/<runId>-<digest>.json`
-(`difficulty-decision/v6`) records the `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the
+(`difficulty-decision/v7`) records the `ClimbReadout`: `placement.zone`, `aim`, `toAim`, the
 Wilson interval, the target's `result` and `missedBy`, and the `allowance` with its `rounds` and
 `side`. The battery contract's own sentences are `FRAME` in `src/run/climb-readout-frame.ts`, so
 compare per round, in claim `createdAt` order, the counts the Builder was told (first battery,
 no-limit, aim), the comparator and count it declared, and the count it measured, and say whether
 the error closes. A target above the aim is a choice the placement reads as over-aim; a met target
 on an unchanged public task set predicts a repeat, not a harder battery; and a streak counts
-`POLICY.climb.offAimStreakRounds` on one side of the aim, so say which side and whether the
+consecutive rounds on one side of the aim, so say which side and whether the
 comparator named it. Do not prescribe the route, which is the Builder's. The decision it changes
 is the next round's comparator; it routes to the Builder prompt when the counts were not stated
 and to `tests` when the task set did not move.
@@ -380,22 +378,23 @@ write reads the seed's empty `tasks.json`, `publicTaskRows` throws through `capt
 (`src/run/experiment-freeze.ts`), and `src/review/epoch-reviewer.ts` records the file under
 `coverage.missing`, so the early reviews carry `incomplete` for a file that was in their reads;
 nothing was authored, so no finding was missed, and the defect is the label. Read
-`analysis/<runId>-epoch-review.json` (`epoch-review/v4`), the review files timed by their UUIDv7
+`analysis/<runId>-epoch-review.json` (`epoch-review/v5`), the review files timed by their UUIDv7
 names, and the orientation `placeOnBand` gave the reviewer. Do not read the reviewer's claim text
 as a finding. The decision it changes is the reviewer prompt and the coverage label, both owned by
 `src/review/`; this lane selects no `FeedbackOwner`.
 
 **13. Public-safe feedback sufficiency.**
 
-Starts from a `curriculum-defect` or `harness-defect` finding admitted in one round whose named
+Starts from a defect finding admitted in one round whose named
 gap the next round's bytes did not touch, from an ambiguous repeated repair, and from a source
 delta touching `src/review/epoch-review-public.ts`.
 
 The question is whether the model-visible projection kept the permitted information needed to act.
 Derive the allowed public facts from the measured contract before reading what the projection
-drops, then follow one consequential finding from `epoch-review/v4` through `publicAct`
+drops, then follow one consequential finding from `epoch-review/v5` through `publicAct`
 (`src/review/epoch-review-public.ts`) into the served kickoff prompt (`prompt-ingested`, role
-`builder`, in `observability/<runId>.jsonl`). For a curriculum defect the projection is one fixed
+`builder`, in `observability/<runId>.jsonl`). For a defect owned by `correctness-model/tasks.json`
+the projection is one fixed
 sentence asking that the fresh battery's tasks differ in what they demand of the named
 `publicInputPath`, so a concrete gap — no task with a reversed load case, no limit that binds —
 reaches the Builder as a template; read whether the Builder's own notes recorded the gap
@@ -409,7 +408,7 @@ correction at the projection owner, `src/review/epoch-review-public.ts`; this la
 
 **14. Finding routing and recurrence.**
 
-Starts from block 4d's `FINDINGS WITHOUT PROPOSED OWNER (lane 14)` and `ADVISORY FINDING RECURS
+Starts from block 4d's `FINDINGS WITHOUT OWNER (lane 14)` and `ADVISORY FINDING RECURS
 UNROUTED (lane 14)`, and from the `yield` lane's `epoch-reviewer` component.
 
 The question is what each finding became: finding, admission, owner, then next-round bytes. A
@@ -433,21 +432,21 @@ finding itself keeps the owner it named.
 Starts from the triage table the `handoff` lane prints, from any advice issue with a count, and
 from a completed epoch review beside a failing family.
 
-The question is whether the diagnosis, the Epoch Reviewer and the advice packet agreed on which
-side owned a failing family, and whether the successor repaired that side. Read the advice
-packet's issues (`lastSeenRunId`, state, `dispute`), the diagnosis reading
-(`diagnosis-reading/v2`, `src/review/diagnosis-reader.ts`) with its cause, cited `boundary` and
-`falsifier`, the battery's `-epoch-review.json` findings, `probeIds` and `disputes`, the
-successor's decision-row `operation`, and the reviews timed by their UUIDv7 names. Per failing
-family report the diagnosis's cause and the reviewer's kind, whether the reviewer disputed the
-issue or showed through `probe_check` a changed value that moved no check, whether the packet
-withheld the agent advice for a disputed issue, and whether the successor's attributed operation
-repaired the named side; then time it, from the first failing battery to the first
-evaluation-side review. A probe that moved no check is a lead to a loose check, not proof of one,
-and a task probe repairs neither side. Do not read the failed traces, which lane 25 owns. The
-decision it changes is which side the next round reopens; it routes to `correctness-model` or
-`controls` when the evaluation side was named and never repaired, and to `src/author/rebuild-advice.ts`
-when the packet dropped the side.
+The question is whether the diagnosis, the Epoch Reviewer and the advice packet agreed on which side
+owned a failing family, and whether the successor repaired that side. Read the advice packet's
+issues (`lastSeenRunId`, state, `dispute`), the diagnosis reading (`diagnosis-reading/v3`,
+`src/review/diagnosis-reader.ts`) with its owner, cause, cited `boundary` and `falsifier`, the
+battery's `-epoch-review.json` findings, `probeIds` and `disputes`, the successor's decision-row
+`operation`, and the reviews timed by their UUIDv7 names. Per failing family report the diagnosis's
+owner and cause and whether the reviewer recorded a defect, whether the reviewer disputed the issue
+or showed through `probe_check` a changed value that moved no check, whether the packet withheld the
+agent advice for a disputed issue, and whether the successor's attributed operation repaired the
+named side; then time it, from the first failing battery to the first evaluation-side review. A
+probe that moved no check is a lead to a loose check, not proof of one, and a task probe repairs
+neither side. Do not read the failed traces, which lane 25 owns. The decision it changes is which
+side the next round reopens; it routes to `correctness-model/evaluator.ts` or
+`correctness-model/controls.json` when the evaluation side was named and never repaired, and to
+`src/author/rebuild-advice.ts` when the packet dropped the side.
 
 **16. Judge disagreement adjudication.**
 
@@ -539,9 +538,7 @@ decision rows' `operation` from `src/gate/experiment-admission.ts` — `task-pro
 `harness-intervention`, `evaluation-correction`, `repeat`, `new-baseline`, decided by which of
 `agentHash`, `correctnessModelHash`, `scoringHash` and `taskSetHash` moved — and the plan's
 declared `scope`. Attribution follows accepted bytes and never the plan's name: a plan declaring
-`tasks` whose bytes moved the evaluator receives build attribution, and a repeated public
-condition on a fixed product is refused (`climb-battery-repeats-history`) however the ids,
-families or levels were renamed. `adjusted` deliberately states no direction, because a moved limit
+`tasks` whose bytes moved the evaluator receives build attribution. `adjusted` deliberately states no direction, because a moved limit
 is a climb only when it moves inward, and the difficulty decision's `allowance.sameSchema` counts
 rounds that re-posed the same public schemas under new values. Do not read a new hash, id, family
 name or longer description as a harder problem; the Builder names the public requirement that

@@ -180,7 +180,13 @@ function batteryLines(detail: RunDetail): string[] {
       tally === undefined
         ? "no cases"
         : `${tally.passed}/${tally.verified} verified, ${tally.unaccepted}u ${tally.nonResults}n`,
-      decision?.action ?? "-",
+      decision === undefined
+        ? "-"
+        : [
+            decision.placement?.zone ?? "unplaced",
+            ...(decision.repeated ? ["repeated failures"] : []),
+            ...(decision.conflict ? ["family conflict"] : []),
+          ].join(", "),
       truncate(decision?.rationale ?? "", 62),
     ];
   });

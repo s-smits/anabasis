@@ -26,13 +26,12 @@
  *
  * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
  * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
- * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its layer, intervention, boundary
- * and falsifier, which the diagnosis reader drew from solver traces and public context alone; its
- * causal argument stays recorded here.
+ * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its owner, boundary and falsifier,
+ * which the diagnosis reader drew from solver traces and public context alone; its causal argument
+ * stays recorded here.
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
-import { authorSessionOwner } from "../analyse/finding-owner.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -41,7 +40,6 @@ import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
 import {
-  findingSeverity,
   namedSubject,
   type AdmittedEvidence,
   type AnalysisFinding,
@@ -49,6 +47,10 @@ import {
 } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
+import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
+import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
+import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { type BundleFile, isBundleFile } from "./feedback-routing.ts";
 import {
   type BatteryCondition,
   type ConditionGap,
@@ -56,7 +58,7 @@ import {
   conditionGaps,
 } from "./issue-condition.ts";
 
-export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v6";
+export const REBUILD_ADVICE_SCHEMA = "rebuild-advice/v8";
 const REBUILD_ADVICE_LATEST = "rebuild-advice-latest.json";
 
 /** Batteries of recorded absence after which a fix reads as confirmed rather than tentative. */
@@ -75,23 +77,20 @@ type AdviceIssueKind =
   /** The Judge failed what the verifier passed: a disclosure about the verifier's accept. */
   | "judge-failed-verifier-passed";
 
-/** Where in the harness the diagnosis reader locates a failure: the part of the Built Harness a
- *  repair would touch. `solver` says the harness gave the solver what it needed and the solve still
- *  went wrong, which is a finding in its own right rather than an abstention. */
-export const DIAGNOSIS_LAYERS = [
-  "operating-guide",
-  "tool-contract",
-  "tool-behaviour",
-  "representation",
-  "walls",
-  "missing-tool",
+/** Where the diagnosis reader locates a failure: a bundle file the solver reads, which is the file
+ *  a repair would change, or `solver` when the harness gave the solver what it needed and the solve
+ *  still went wrong, which is a finding in its own right rather than an abstention. The reader reads
+ *  solves, not the evaluation, so no file under `correctness-model/` other than the brief it
+ *  publishes is offered. */
+export const DIAGNOSIS_OWNERS = [
+  BRIEF_FILE,
+  BUILT_AGENTS_FILE,
+  TOOLS_SPEC_FILE,
+  GENERATED_TOOLS_FILE,
+  HARNESS_CONFIG_FILE,
   "solver",
-] as const;
-export type DiagnosisLayer = (typeof DIAGNOSIS_LAYERS)[number];
-
-/** The kind of change the diagnosis proposes, independent of which file carries it. */
-export const DIAGNOSIS_INTERVENTIONS = ["publish", "correct", "extend", "raise-wall", "none"] as const;
-export type DiagnosisIntervention = (typeof DIAGNOSIS_INTERVENTIONS)[number];
+] as const satisfies readonly (BundleFile | "solver")[];
+export type DiagnosisOwner = (typeof DIAGNOSIS_OWNERS)[number];
 
 /** A structured reading of why one or more issues' solves failed, located at a step of a recorded
  *  trace, with the observation that would refute it. It is advice: it selects no owner and changes
@@ -100,8 +99,7 @@ export type IssueDiagnosis = {
   /** The battery whose traces it was read from, so an aging issue shows whether its diagnosis still
    *  describes the battery in front of the author. */
   runId: string;
-  layer: DiagnosisLayer;
-  intervention: DiagnosisIntervention;
+  owner: DiagnosisOwner;
   /** The first observed failure boundary: the tool called at that step, or null when the boundary is
    *  the solve's end (a wall, a missing submission), and what the trace shows there. */
   boundary: { tool: string | null; reading: string };
@@ -164,17 +162,18 @@ type AdviceFamilyRow = {
   publicInputs: string | null;
 };
 
+/** A finding no bundle file holds, which is therefore an observation and always advice: the
+ *  environment's, or one the controller could not place. */
 type AdviceFinding = {
-  kind: AnalysisFinding["kind"];
+  owner: "environment" | null;
   claim: string;
-  severity: "blocking" | "advisory";
-  /** Public identities retained only to key repeated unowned diagnosis findings. `hostRule` is
+  /** Public identities retained only to key repeated unplaced findings. `hostRule` is
    *  carried because `recurrence` reads the previous packet's own findings: dropped here, a host
    *  finding's run of consecutive packets restarts at one every round. */
   checkId?: string;
   artifactSchemaPath?: string;
   hostRule?: string;
-  /** Set from the second consecutive packet carrying the same unowned diagnosis, so the author
+  /** Set from the second consecutive packet carrying the same unplaced finding, so the author
    *  reads a recurrence rather than what looks like a fresh open question each round. */
   repeated?: { count: number; since: string };
 };
@@ -480,23 +479,22 @@ export function attachIssueReadings(
   };
 }
 
-/** The recurrence key of an unowned diagnosis, which is the subject it named and nothing else.
- *  Every other finding has no key. It used to fall through to the kind itself, the constant
- *  `diagnosis-uncertain` every finding reaching here shares, so any two in consecutive packets read
- *  as one diagnosis recurring. A diagnosis the reviewer could not attribute is exactly the case
- *  with no identity to derive, so it gets none. */
-function unownedDiagnosisIdentity(
-  finding: Pick<AnalysisFinding, "kind" | "checkId" | "artifactSchemaPath" | "hostRule">,
+/** The recurrence key of an unplaced finding, which is the subject it named and nothing else. An
+ *  environment finding has no key, and neither has an unplaced one naming no subject: two of those
+ *  in consecutive packets are not the same observation recurring merely because both could not be
+ *  placed. */
+function unplacedIdentity(
+  finding: Pick<AnalysisFinding, "owner" | "checkId" | "artifactSchemaPath" | "hostRule">,
 ): string | null {
-  return finding.kind === "diagnosis-uncertain" ? namedSubject(finding) : null;
+  return finding.owner === null ? namedSubject(finding) : null;
 }
 
-/** How many consecutive packets have carried this unowned diagnosis, read off the previous packet's
+/** How many consecutive packets have carried this unplaced finding, read off the previous packet's
  *  own findings. A separate history array said the same thing a second time, and an identity absent
  *  from one round already left the chain, so a reappearance after a gap counts from one again
  *  without anything having to remember the gap. */
 function recurrence(previous: RebuildAdvicePacket | null, identity: string): AdviceFinding["repeated"] {
-  const prior = (previous?.findings ?? []).find((finding) => unownedDiagnosisIdentity(finding) === identity);
+  const prior = (previous?.findings ?? []).find((finding) => unplacedIdentity(finding) === identity);
   if (previous === null || prior === undefined) return undefined;
   return { count: (prior.repeated?.count ?? 1) + 1, since: prior.repeated?.since ?? previous.runId };
 }
@@ -539,36 +537,24 @@ export function deriveRebuildAdvice(
             contestedFamilies: [...new Set(judges.contested.map((row) => row.family))].sort(),
           },
     // Per-case findings never leave the controller, and these aggregate rows are already
-    // author-visible by construction. A routed row reaches the same session again as feedback, so
-    // only rows that route nowhere are new information here; the test is the routing predicate and
-    // not the rendered claim, because two findings may carry the same text and dropping both
-    // because one routed would lose the one that did not.
-    //
-    // A judge-disagreement row is the one kind that predicate reads wrong. It routes nowhere, so
-    // the predicate calls it new, but `judge.reason` above is the same string from the same
-    // producer, and the duplicate also spends one of the four rendered finding slots. The Judge
-    // exit has one owner here, the judge block, and the admission record keeps the row either way.
-    // A controller defect is dropped because it is not the author's to repair.
-    findings: admission.admitted
-      .filter(
-        (finding) =>
-          finding.subject === undefined &&
-          finding.kind !== "judge-disagreement" &&
-          finding.kind !== "controller-defect" &&
-          authorSessionOwner(finding).owner === null,
-      )
-      .map((finding) => {
-        const identity = unownedDiagnosisIdentity(finding);
-        return {
-          kind: finding.kind,
+    // author-visible by construction. A finding a bundle file holds reaches the same session again
+    // as feedback to that file, so only the rows no file holds are new information here; the test
+    // is the owner and not the rendered claim, because two findings may carry the same text and
+    // dropping both because one routed would lose the one that did not.
+    findings: admission.admitted.flatMap((finding) => {
+      if (finding.subject !== undefined || isBundleFile(finding.owner)) return [];
+      const identity = unplacedIdentity(finding);
+      return [
+        {
+          owner: finding.owner,
           claim: finding.claim,
-          severity: findingSeverity(finding),
           ...keyIfDefined("checkId", finding.checkId),
           ...keyIfDefined("artifactSchemaPath", finding.artifactSchemaPath),
           ...keyIfDefined("hostRule", finding.hostRule),
           ...keyIfDefined("repeated", identity === null ? undefined : recurrence(previous, identity)),
-        };
-      }),
+        },
+      ];
+    }),
   };
 }
 
@@ -633,8 +619,8 @@ function issueLine(issue: AdviceIssue): string {
   return `- [${issueStatusWord(issue)}] ${issue.family}: ${issue.count}/${issue.denominator} ${words} (first seen ${issue.firstSeenRunId}, last seen ${issue.lastSeenRunId})${diagnosis}`;
 }
 
-/** The diagnosis as the author reads it: where the harness failed, what kind of change it points
- *  to, and what would prove it wrong. The cause stays in review evidence, because the boundary and
+/** The diagnosis as the author reads it: which file the failure points to, where the solve failed,
+ *  and what would prove it wrong. The cause stays in review evidence, because the boundary and
  *  the falsifier are the parts a next pass can check against its own traces, and a causal paragraph
  *  is the part an author adopts without checking. The support counts say how far one reading was
  *  sampled, so a reading drawn from one case does not read like a pattern. */
@@ -646,7 +632,7 @@ export function diagnosisLine(diagnosis: IssueDiagnosis): string {
       : `, ${support.contrasts} passing contrast${support.contrasts === 1 ? "" : "s"}`;
   const where = boundary.tool === null ? "at the solve's end" : `at a call to ${boundary.tool}`;
   const reading = /[.!?]$/.test(boundary.reading) ? boundary.reading : `${boundary.reading}.`;
-  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.layer} layer, intervention ${diagnosis.intervention}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
+  return `diagnosis (${diagnosis.runId}, ${diagnosis.confidence} confidence: holds for ${support.cases} of ${support.shown} sampled of ${support.matching} failing cases${contrasts}): ${diagnosis.owner}. First failure boundary ${where}: ${reading} Falsifier: ${diagnosis.falsifier}`;
 }
 
 /** What is failing now, largest first, capped. A fixed issue is deliberately absent: which families
@@ -683,26 +669,17 @@ function unmeasuredLine(issues: readonly AdviceIssue[]): string | null {
   return `Unmeasured issues — absent from this battery, but their family did not rerun under the condition that observed them, so the absence is not a fix: ${shown.join("; ")}${more > 0 ? `; ${String(more)} more` : ""}.`;
 }
 
-/** Public finding text, capped in count and in length. A finding that routes to no owner is the one
- *  row the controller could not place, so it is the row most likely to grow, and the cap therefore
- *  belongs to the boundary rather than to any one producer feeding it.
- *
- *  Blocking sorts first because the cap cuts the tail. Unsorted, a blocking finding can sit behind
- *  three advisory ones that arrived first and leave the packet saying "1 further admitted
- *  finding(s) omitted" without saying the omitted row was the blocking one. A blocking finding is
- *  an admitted, cited demonstration of a violated requirement, the strongest row this packet
- *  carries, while an advisory is a lead. Within one severity the admitted order stands. */
+/** Public finding text, capped in count and in length, in admitted order. A finding no bundle file
+ *  holds is the row the controller could not route, so it is the row most likely to grow, and the
+ *  cap therefore belongs to the boundary rather than to any one producer feeding it. */
 function findingLines(findings: readonly AdviceFinding[]): string[] {
-  const ordered = [...findings].sort(
-    (a, b) => Number(b.severity === "blocking") - Number(a.severity === "blocking"),
-  );
-  const lines = ordered.slice(0, RENDERED_FINDINGS).map((finding) => {
+  const lines = findings.slice(0, RENDERED_FINDINGS).map((finding) => {
     const repeated =
       finding.repeated === undefined
         ? ""
         : ` (recurring: ${String(finding.repeated.count)} consecutive packets since ${finding.repeated.since})`;
     const claim = boundText(finding.claim, FINDING_CLAIM_BYTES).shown;
-    return `- [${finding.severity}] ${finding.kind}: ${claim}${repeated}`;
+    return `- ${finding.owner ?? "unplaced"}: ${claim}${repeated}`;
   });
   const omitted = findings.length - lines.length;
   return omitted > 0

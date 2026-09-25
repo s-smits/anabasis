@@ -249,7 +249,11 @@ function currentSubmitIdentity(row: EvidenceRecord): boolean {
     isPositiveInteger(row.turn) &&
     isNonNegativeInteger(row.atMs) &&
     (row.outcome === "accepted" || row.outcome === "refused") &&
-    (row.stage === null || row.stage === "bundle" || row.stage === "validation" || row.stage === "gates") &&
+    (row.stage === null ||
+      row.stage === "bundle" ||
+      row.stage === "validation" ||
+      row.stage === "conformance" ||
+      row.stage === "gates") &&
     isString(row.commit) &&
     row.commit.length > 0 &&
     isBoolean(row.terminal) &&

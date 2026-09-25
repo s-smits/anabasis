@@ -40,8 +40,9 @@ import {
 import { batteryRunDirs } from "#src/claim/trace-read.ts";
 import { claimsDirFor } from "#src/run/claim-write.ts";
 import { readClimbBatteries } from "#src/run/climb-history.ts";
-import { readClimbReadout } from "#src/run/climb-readout.ts";
-import { allowanceStop } from "#src/run/next-move.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+// import { readClimbReadout } from "#src/run/climb-readout.ts";
+// import { allowanceStop } from "#src/run/next-move.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
@@ -80,15 +81,6 @@ export interface Row {
   act: Move | null;
   detail: string;
 }
-
-/** A settled climb decision's move, keyed by the three actions that name their own and by the zone
- *  `placeOnBand` gave a placed battery. The zones absent here are the band reading its own score. */
-const MOVES = new Map<string, Move>([
-  ["too-hard", "reserved"],
-  ["repeated-failure-set", "surgical"],
-  ["family-conflict", "surgical"],
-  ["no-difficulty-evidence", "overhaul"],
-]);
 
 /** The move each controller ending implies. The compiler holds the keys to both owners' closed
  *  sets, so a code either one gains cannot read as a move nobody chose. A settled ending asks for
@@ -671,8 +663,9 @@ export function renderStatus(run: RunStatus, detail: "files" | "summary"): strin
 
 function decisionText(row: DifficultyDecisions["rows"][number]): string {
   const placement =
-    row.placement === null ? "" : `, ${row.placement.passes}/${row.placement.n} ${row.placement.zone}`;
-  return `battery ${row.runId}: ${row.action}${placement}`;
+    row.placement === null ? "unplaced" : `${row.placement.passes}/${row.placement.n} ${row.placement.zone}`;
+  const facts = [row.repeated && "repeated failures", row.conflict && "family conflict"];
+  return [`battery ${row.runId}: ${placement}`, ...facts.filter((fact) => fact !== false)].join(", ");
 }
 
 function caseLine(battery: string, row: Case): string {
@@ -821,6 +814,15 @@ function bundleRows(previous: RunStatus, current: RunStatus, add: Add): void {
   }
 }
 
+/** A settled climb decision's move. A repeated failure set or a family conflict names its own
+ *  surgical move, a battery placed nowhere measured nothing and asks for an overhaul, and a
+ *  too-hard zone reserves; the other zones are the band reading its own score. */
+function decisionMove(row: DifficultyDecisions["rows"][number]): Move | null {
+  if (row.repeated || row.conflict) return "surgical";
+  if (row.placement === null) return "overhaul";
+  return row.placement.zone === "too-hard" ? "reserved" : null;
+}
+
 /** Climb decisions as each lands; a first pass reads the newest alone. Then the controller's own
  *  off-aim stop, in its own words, once per sentence. */
 function climbRows(previous: RunStatus | null, current: RunStatus, add: Add): void {
@@ -832,7 +834,7 @@ function climbRows(previous: RunStatus | null, current: RunStatus, add: Add): vo
   for (const row of rows.slice(
     previous === null ? Math.max(rows.length - 1, 0) : previous.difficulty.rows.length,
   )) {
-    const move = MOVES.get(row.action === "placed" ? (row.placement?.zone ?? "") : row.action) ?? null;
+    const move = decisionMove(row);
     add(move === null ? "info" : "stop", decisionText(row), move);
   }
   const [was, climb] = [previous?.climb ?? null, current.climb];
@@ -990,7 +992,9 @@ function climbOf(repoRoot: string, slug: string): RunStatus["climb"] {
     if (pin === null) {
       return { error: `newest battery (${newest.createdAt}) records no backend pin` };
     }
-    return { stop: allowanceStop(readClimbReadout(domainDir, pin, claims, manifest)) };
+    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+    // return { stop: allowanceStop(readClimbReadout(domainDir, pin, claims, manifest)) };
+    return { stop: null };
   } catch (error) {
     return { error: errorMessage(error) };
   }

@@ -1,41 +1,22 @@
-import { routableOwner } from "../author/feedback-routing.ts";
-import type { FeedbackOwner } from "../author/campaign-types.ts";
+import { isBundleFile } from "../author/feedback-routing.ts";
+import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
 import type { AnalysisFinding } from "./iteration-analysis.ts";
 
-export type NoRouteReason =
-  | "per-case-detail"
-  | "environment-non-result"
-  | "judge-advisory-only"
-  | "not-builder-owned-surface"
-  | "diagnosis-uncertain";
+/** The only author-session owner admitted for a finding, or null. Per-case detail never crosses to
+ *  authoring at all, and a finding about no bundle file is not the Builder's to repair. */
+export function authorSessionOwner(finding: AnalysisFinding): FeedbackOwner | null {
+  return finding.subject === undefined && isBundleFile(finding.owner) ? finding.owner : null;
+}
 
-type FindingOwnerResult = { owner: FeedbackOwner } | { owner: null; reason: NoRouteReason };
+/** A defect blocks unless its producer explicitly said advisory; an observation never does. */
+export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["severity"] {
+  return finding.defect ? (finding.severity ?? "blocking") : "advisory";
+}
 
-/** Derive the only author-session owner admitted for a finding, and say why when there is none:
- *  every branch that returns no owner returns a reason, so a finding that reaches no author session
- *  is lineage with a cause rather than a row that quietly disappeared. Task-set findings route to
- *  the task author. A harness defect routes only to a declared Builder-owned surface, which is why
- *  it is checked against `routableOwner` rather than trusted: the finding's producer proposes an
- *  owner and the closed set decides. Per-case detail never crosses to authoring at all, a Judge
- *  disagreement is advice that selects no owner, and a controller defect is not the Builder's to
- *  repair. */
-export function authorSessionOwner(finding: AnalysisFinding): FindingOwnerResult {
-  if (finding.subject !== undefined) return { owner: null, reason: "per-case-detail" };
-  switch (finding.kind) {
-    case "hardness":
-    case "curriculum-defect":
-      return { owner: "tests" };
-    case "environment-non-result":
-      return { owner: null, reason: "environment-non-result" };
-    case "diagnosis-uncertain":
-      return { owner: null, reason: "diagnosis-uncertain" };
-    case "judge-disagreement":
-      return { owner: null, reason: "judge-advisory-only" };
-    case "controller-defect":
-      return { owner: null, reason: "not-builder-owned-surface" };
-    case "harness-defect":
-      return finding.proposedOwner !== null && routableOwner(finding.proposedOwner)
-        ? { owner: finding.proposedOwner }
-        : { owner: null, reason: "not-builder-owned-surface" };
-  }
+/** A defect repaired where it sits: every defect but one in the task set, which asks for a fresh
+ *  battery rather than a repair. Only this one settles vetoed rows against its check, carries a
+ *  repair order, escalates when it recurs and owes the probes it rests on. */
+export function contractDefect(finding: { defect: boolean | null; owner: string | null }): boolean {
+  return finding.defect === true && finding.owner !== TASKS_FILE;
 }

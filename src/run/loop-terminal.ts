@@ -2,6 +2,7 @@
  *  for exit status, and launchers can read them from recorded terminals. Keep that interpretation
  *  separate from full-run-round.ts, which decides when a round should end.
  *  This module recognises those decisions without making another one. */
+import type { CampaignClause } from "../author/campaign-types.ts";
 
 /**
  * The terminal codes callers recognise. A reason starts with a code, optionally followed by a
@@ -22,6 +23,30 @@ const LOOP_TERMINAL_CODES = [
 ] as const;
 
 export type LoopTerminalCode = (typeof LOOP_TERMINAL_CODES)[number];
+
+/** Why a round's build step ended without a candidate to measure: a refused campaign's one clause,
+ *  a candidate identical to its round's entry tree, or a move the fixed-product policy refuses. */
+export type BuildClause = CampaignClause | "candidate-unchanged" | "fixed-product-boundary";
+
+/** The terminal each build clause ends the run with. Null lets the round retry within the shared
+ *  unresolved-authoring allowance, because a Builder session is stochastic and one bad round is
+ *  not a verdict on the product; a clause whose next round would fail the same way ends at once. */
+export const CLAUSE_ENDINGS = {
+  "campaign-binding-mismatch": "build-failed",
+  "improvement-memory-missing": "build-failed",
+  "authoring-stalled": "build-failed",
+  "environment-blocked": "environment-blocked",
+  "budget-limited": "budget-limited",
+  "fixed-product-boundary": "fixed-product-boundary",
+  "iterations-exhausted": null,
+  "no-progress": null,
+  "candidate-unchanged": null,
+} as const satisfies Record<BuildClause, LoopTerminalCode | null>;
+
+/** Whether a recorded string names a build clause, for readers of recorded iteration rows. */
+export function isBuildClause(value: string): value is BuildClause {
+  return Object.hasOwn(CLAUSE_ENDINGS, value);
+}
 
 /** The code a terminal string carries, or null when it carries none — an unrecognised ending is
  *  not silently read as a success. */

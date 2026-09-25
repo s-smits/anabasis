@@ -1,16 +1,12 @@
 /**
- * Remembered F2 stages: a census reuses a reference solve or a family transplant only when its key
- * — every byte and constant the stage read — still matches, and remembers neither a cut nor a host
- * non-result.
+ * Remembered F2 stages: a census reuses a reference solve only when its key — every byte and
+ * constant the stage read — still matches, and never remembers one the wall cut.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch } from "./helpers/scratch.ts";
 import { createSolvabilityStageCache } from "../src/truth/solvability-stages.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
 import type { VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import { createVerifierHost } from "../src/verify/host.ts";
-import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
-import { double, required } from "./helpers/doubles.ts";
+import { required } from "./helpers/doubles.ts";
 import {
   GOOD_VERIFIER,
   countingHost,
@@ -24,7 +20,6 @@ import {
   testLifetime,
 } from "./helpers/solvability-specimen.ts";
 import { familyFixture } from "./helpers/solvability-families.ts";
-import { overrideHost } from "./helpers/host-override.ts";
 
 /** Counts reference-solve children through the protected lifetime every child must lease. */
 function countingLifetime() {
@@ -46,7 +41,7 @@ function countingLifetime() {
 afterAll(cleanupScratch);
 
 describe("remembered F2 stages", () => {
-  it("reuses every reference solve across an evaluator-only change and re-runs the transplants", async () => {
+  it("reuses every reference solve across an evaluator-only change", async () => {
     const stages = createSolvabilityStageCache();
     const counted = countingLifetime();
     const fixture = familyFixture({ answers: ["A", "B"] });
@@ -54,17 +49,13 @@ describe("remembered F2 stages", () => {
 
     expect(statuses(first)).toEqual(["passed", "passed", "passed"]);
     expect(sources(first)).toEqual(["executed", "executed", "executed"]);
-    expect(first.evidence?.familyBinding).toMatchObject({
-      source: "executed",
-      producedUnder: first.evidence?.bundleSnapshotId,
-    });
     expect(counted.launches.reference).toBe(3);
 
     const revised = revise(
       fixture,
       "evaluator.ts",
-      "const wrong = request.artifact?.answer !== expected;",
-      "const wrong = [expected].indexOf(request.artifact?.answer) < 0;",
+      "return request.artifact?.answer === expected;",
+      "return [expected].indexOf(request.artifact?.answer) >= 0;",
     );
     const log = evaluateLog();
     const second = await probe({
@@ -85,22 +76,16 @@ describe("remembered F2 stages", () => {
     // The submission path and the evaluation still ran on the changed snapshot.
     expect(second.evidence?.cases.every((row) => row.submissionPath !== null)).toBe(true);
     expect(log.subjects.filter((subject) => subject.startsWith("self:"))).toHaveLength(3);
-    expect(second.evidence?.familyBinding).toMatchObject({
-      source: "executed",
-      producedUnder: second.evidence?.bundleSnapshotId,
-    });
-    expect(second.evidence?.familyBinding?.key).not.toBe(first.evidence?.familyBinding?.key);
-    expect(log.subjects.some((subject) => subject.startsWith("family:"))).toBe(true);
   });
 
-  it("re-runs the reference solves and the transplants when the reference changes its witnesses", async () => {
+  it("re-runs the reference solves when the reference changes its witnesses", async () => {
     const stages = createSolvabilityStageCache();
     const counted = countingLifetime();
     const fixture = revise(
       familyFixture({ answers: ["A", "B"] }),
       "evaluator.ts",
-      "const wrong = request.artifact?.answer !== expected;",
-      "const wrong = String(request.artifact?.answer).toLowerCase() !== String(expected).toLowerCase();",
+      "return request.artifact?.answer === expected;",
+      "return String(request.artifact?.answer).toLowerCase() === String(expected).toLowerCase();",
     );
     const run = probe({ verifierLifetime: counted.lifetime });
     const first = await run(fixture, stages);
@@ -118,11 +103,9 @@ describe("remembered F2 stages", () => {
     expect(counted.launches.reference).toBe(6);
     expect(sources(second)).toEqual(["executed", "executed", "executed"]);
     expect(keys(second)?.some((key) => keys(first)?.includes(key) === true)).toBe(false);
-    expect(second.evidence?.familyBinding?.source).toBe("executed");
-    expect(second.evidence?.familyBinding?.key).not.toBe(first.evidence?.familyBinding?.key);
   });
 
-  it("remembers neither a reference solve the wall cut nor a transplant census a host non-result stopped", async () => {
+  it("remembers no reference solve the wall cut", async () => {
     const stages = createSolvabilityStageCache();
     const counted = countingLifetime();
     const slow = specimen({
@@ -135,33 +118,6 @@ describe("remembered F2 stages", () => {
     expect(stages.referenceSolves.size).toBe(0);
     await cut(slow, stages);
     expect(counted.launches.reference).toBe(4);
-
-    const fixture = familyFixture({ answers: ["A", "B"] });
-    const outage = (subjectId: string) =>
-      new VerifierExecutionNonResult(
-        double<VerifierExecutionEvidence>({
-          phase: "solvability",
-          subjectId,
-          toolId: "answer-tool",
-          checkId: "answer",
-          outcome: "sandbox",
-        }),
-      );
-    const failing = overrideHost({
-      openSubject: (subject) => {
-        if (subject.subjectId.startsWith("family:")) throw outage(subject.subjectId);
-        return createVerifierHost().openSubject(subject);
-      },
-    });
-    await expect(
-      probe({ verifierLifetime: counted.lifetime, createVerifier: () => failing })(fixture, stages),
-    ).rejects.toBeInstanceOf(VerifierExecutionNonResult);
-    expect(stages.familyBindings.size).toBe(0);
-
-    // The reference solves settled before the outage and stay remembered; the census runs afresh.
-    const recovered = await probe({ verifierLifetime: counted.lifetime })(fixture, stages);
-    expect(sources(recovered)).toEqual(["reused", "reused", "reused"]);
-    expect(recovered.evidence?.familyBinding?.source).toBe("executed");
   });
 
   it("misses the reference-solve memory when the wall constant changes", async () => {

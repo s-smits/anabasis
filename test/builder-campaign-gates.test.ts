@@ -133,7 +133,7 @@ describe("a gate run two callers may share", () => {
           if (gateDirs.length === 1 && (change === "preview-blocks" || change === "host-recovers")) {
             return [
               blockingRow(
-                change === "host-recovers" ? "environment" : "correctness-model",
+                change === "host-recovers" ? "environment" : "correctness-model/evaluator.ts",
                 "preview refused",
               ),
             ];
@@ -200,7 +200,7 @@ describe("a gate run two callers may share", () => {
           gateCalls += 1;
           return readFileSync(join(workspace, ".toolchain/bin/field-engine"), "utf8").includes("exit 0")
             ? []
-            : [blockingRow("correctness-model", "installed tool failed")];
+            : [blockingRow("correctness-model/evaluator.ts", "installed tool failed")];
         },
         open: async (tools) =>
           scriptedSession(async () => {
@@ -245,7 +245,7 @@ describe("a gate run two callers may share", () => {
         { campaignDir, ...FRESH_BUILD, maxTurns: 1 },
         {
           ...BARE,
-          gates: async () => [blockingRow("correctness-model", "installed tool failed")],
+          gates: async () => [blockingRow("correctness-model/evaluator.ts", "installed tool failed")],
           open: session.open,
         },
       );
@@ -268,7 +268,9 @@ describe("a gate run two callers may share", () => {
     expect(resumeCampaignMemory(campaignDir, "matching", KICKOFF_HASH).clause).toBeNull();
   });
 
-  it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+  // it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
+  it("publishes submit's run before its first await, so a preview started meanwhile joins it", async () => {
     const campaignDir = scratchDir("ana-submit-publishes-");
     const workspace = join(campaignDir, "workspace");
     let probeLoads = 0;
@@ -305,15 +307,23 @@ describe("a gate run two callers may share", () => {
             release.resolve();
             await Promise.all([submitting, joining]);
             expect(probeLoads).toBe(1);
+            // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+            // joined = await replyText(check(tools), "check-2");
+            // expect(probeLoads).toBe(1);
+            // await submitTool(tools).execute("submit-2", {});
+            // expect(probeLoads).toBe(2);
+            // A runtime non-result is no verdict on the bytes, so a later call on them runs again.
             joined = await replyText(check(tools), "check-2");
-            expect(probeLoads).toBe(1);
-            await submitTool(tools).execute("submit-2", {});
             expect(probeLoads).toBe(2);
+            await submitTool(tools).execute("submit-2", {});
+            expect(probeLoads).toBe(3);
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
-    expect(joined).toContain("preview-attempt-spent");
+    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+    // expect(joined).toContain("preview-attempt-spent");
+    expect(joined).not.toContain("preview-attempt-spent");
   });
 
   it.concurrent("keeps one session across a post-record gate refusal and admits only the clean resubmission", async () => {
@@ -334,7 +344,7 @@ describe("a gate run two callers may share", () => {
         campaignDir,
         ...FRESH_BUILD,
         maxTurns: 3,
-        admissionLineage: { digest: "packet-settled", reason: "agenda-consumed" },
+        admissionLineage: { digest: "packet-settled" },
       },
       {
         open: async (tools): Promise<HostSession> => {
@@ -366,7 +376,7 @@ describe("a gate run two callers may share", () => {
           return gateCalls === 1
             ? [
                 {
-                  ...blockingRow("tests", "first gate refusal", "test gate"),
+                  ...blockingRow("correctness-model/tasks.json", "first gate refusal", "test gate"),
                   findings: [
                     { code: "test-gate", path: "correctness-model/tasks.json", detail: "repair once" },
                   ],
@@ -381,10 +391,7 @@ describe("a gate run two callers may share", () => {
     expect(gateCalls).toBe(2);
     expect(outcome.buildAdmissible).toBe(true);
     expect(outcome.iterations.map((row) => row.outcome)).toEqual(["gates-blocked", "fingerprinted"]);
-    expect(outcome.iterations[0]?.admissionLineage).toEqual({
-      digest: "packet-settled",
-      reason: "agenda-consumed",
-    });
+    expect(outcome.iterations[0]?.admissionLineage).toEqual({ digest: "packet-settled" });
     expect(outcome.iterations[1]?.admissionLineage).toBeUndefined();
     expect(outcome.iterations[1]?.diagnosisInput).toEqual({ kind: "in-campaign-carry", digest: null });
     if (outcome.buildAdmissible) {
@@ -459,7 +466,7 @@ describe("the receipts a gate run records", () => {
           },
           open: async (tools) =>
             scriptedSession(async () => {
-              proposeExperiment(workspace);
+              writeFileSync(join(workspace, "EXPERIMENT.json"), "{}");
               texts.push(
                 await replyText(check(tools), "check"),
                 await replyText(submitTool(tools), "submit"),
@@ -469,7 +476,7 @@ describe("the receipts a gate run records", () => {
         },
       ),
     );
-    for (const text of texts) expect(text).toContain("rebuild-evaluation-unmoved");
+    for (const text of texts) expect(text).toContain("experiment-plan-schema");
     expect(outcome.buildAdmissible).toBe(false);
     expect(outcome.iterations).toEqual([]);
     expect(gateDirs).toHaveLength(1);
@@ -578,7 +585,7 @@ describe("the receipts a gate run records", () => {
           };
           return [
             {
-              ...blockingRow("correctness-model", "a reject passed", "census.json"),
+              ...blockingRow("correctness-model/evaluator.ts", "a reject passed", "census.json"),
               findings: [controllerValidatedFinding(finding)],
             },
           ];
@@ -644,7 +651,7 @@ describe("the receipts a gate run records", () => {
     );
     expect(gateDirs.map((dir) => dir.split("/").pop())).toEqual(["full-1", "census-1"]);
     expect(new Set(gateDirs.map((dir) => dir.split("/").slice(0, -1).join("/"))).size).toBe(1);
-    expect(texts[1]).toContain("refused at bundle");
+    expect(texts[1]).toContain("refused at conformance");
     expect(JSON.parse(required(texts[2], "second check"))).toMatchObject({
       status: "clear",
       repeated: expect.any(String),
@@ -740,7 +747,7 @@ describe("a check that names an installed tool", () => {
           }),
       },
     );
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(opening).toContain("Task count: exactly 5 tasks.");
     for (const expected of ["tool-missing", "tasks-exact-census", "requires exactly 5 tasks; found 4"]) {
       expect(reply).toContain(expected);
@@ -801,11 +808,11 @@ describe("a check that names an installed tool", () => {
     const campaignDir = scratchDir("ana-primary-census-candidate-");
     const verifier = toolHost(campaignDir, "#!/bin/sh\nkill -9 $$\n");
     const { outcome, turns, iteration } = await censusThrough(campaignDir, verifier);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(turns).toBe(2);
     expect(iteration.feedback).toEqual([
       expect.objectContaining({
-        owner: "correctness-model",
+        owner: "correctness-model/evaluator.ts",
         claim: 'control census: runs of tool "fwcheck" reached no completed run',
       }),
     ]);
@@ -831,7 +838,7 @@ describe("a check that names an installed tool", () => {
       },
     });
     const { outcome, turns, iteration } = await censusThrough(campaignDir, verifier);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["environment-blocked"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "environment-blocked" });
     expect(turns).toBe(1);
     expect(iteration.focusOwner).toBe("environment");
     expect(iteration.feedback).toEqual([

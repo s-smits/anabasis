@@ -23,7 +23,7 @@ import {
   scopeVmWorkshopCell,
   vmWorkshopCellFromEnv,
 } from "../builder/vm-workshop-cell.ts";
-import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
+import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { Solver } from "../truth/solve.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -96,11 +96,7 @@ export function campaignBuilderMount(
     epochDir: campaignDir,
     iterationDir: workspace,
     ossRoot,
-    ...keysIf(vmCell !== null, () => ({
-      sharedCellRoot: /* SAFETY: keysIf runs only when vmCell !== null. */ (
-        vmCell as NonNullable<typeof vmCell>
-      ).hostShareRoot,
-    })),
+    ...keyIfDefined("sharedCellRoot", vmCell?.hostShareRoot),
   };
   const workshopPolicy = deriveCandidateIsolation(binding, "workshop");
   const authorPolicy = deriveCandidateIsolation(binding, "author");
@@ -112,11 +108,7 @@ export function campaignBuilderMount(
     policy: workshopPolicy,
     exportBinding,
     record,
-    ...keysIf(vmCell !== null, () => ({
-      runner: createVmWorkshopRunner(
-        /* SAFETY: keysIf runs only when vmCell !== null. */ vmCell as NonNullable<typeof vmCell>,
-      ),
-    })),
+    ...keyIfDefined("runner", vmCell === null ? undefined : createVmWorkshopRunner(vmCell)),
   });
   const custom = [createPublicSourceTool(workshop), createVerifierWorkshopTool(workshop)];
   const fileTools = createBuilderTools({

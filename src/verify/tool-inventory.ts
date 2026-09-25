@@ -2,7 +2,7 @@
  * The tool inventory: which installed executables a candidate snapshot's checks may run. It is
  * derived, never declared. A brief names its tools by adapterId; this resolves each id against the
  * candidate workspace's `.toolchain` tree first and the host search path second, hashes the
- * executable and records where it came from. A missing id is therefore a `verifier-required` fact
+ * executable and records where it came from. A missing id is therefore a `tool-missing` finding
  * the Builder can act on by installing the tool, and never a refusal of the check's logic.
  *
  * It replaced a declared registry, `correctness-model/engines.json`, and its admission chain.

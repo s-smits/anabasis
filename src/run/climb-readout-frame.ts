@@ -33,8 +33,8 @@ export const FRAME = {
     rowLimit: "{from} or more finds no limit",
     rowNoLimit: "no count finds no limit",
     exactFirst:
-      "Expect about {first} of {n} verified cases to pass. Later batteries aim for {lo} to {hi} of {n}, where the limit is measured.",
-    exactContinuation: "Aim for {lo} to {hi} of {n}, where the limit is measured.",
+      "Expect about {first} of {n} verified cases to pass. Later batteries aim for {lo} to {hi} of {n}, the calibration target.",
+    exactContinuation: "Aim for {lo} to {hi} of {n}, the calibration target.",
     noLimit:
       "A battery passing {from} of {n} or more before a harder battery of the same product has failed found no limit, and proves neither complete checks nor difficult tasks.",
     noLimitAtSize:
@@ -42,32 +42,28 @@ export const FRAME = {
     close: "After each battery the climb readout states where it landed, read against these counts.",
   },
   firstBattery:
-    "Difficulty: This first battery is a diagnostic baseline. Its purpose is to find where the harness fails, not to confirm that it works. {targets} You decide what makes these tasks demanding; a new identifier, level label, family name or longer wording decides nothing. Each family must vary a shared publicInput condition declared by its applicable truth checks. {boundary}",
+    "Difficulty: This first battery is a diagnostic baseline. Its purpose is to find where the harness fails, not to confirm that it works. {targets} You decide what makes these tasks demanding; a new identifier, level label, family name or longer wording decides nothing. {boundary}",
   continuation: [
     "Choose the next useful experiment from the original request, the adopted product, the public tasks, the recorded measurements and admitted feedback; scores and intervals are observations, not instructions. {targets}",
-    `${PLAN_TEMPLATE} Write it before preview or submit; gap, change and expectedResult hold at most 2,000 UTF-8 bytes each and a move at most 300. The gap is what the evidence so far fails to establish, the change what you will test, and the expected result the observation that would support or contradict it. The target is your prediction of verified passes over this battery's slots, fixed before measurement: at-most when this battery should pass fewer cases than the last one did, at-least when more. A target every outcome meets predicts nothing, and one your own rehearsals contradict is not yet your prediction. Each family names its ladder level and the move that puts it there, and each prediction is the probability that the solver passes that task. The next round reports whether that target was met and, when it was missed, by how much, and scores your predictions against the verdicts.`,
+    `${PLAN_TEMPLATE} Write it before preview or submit. The gap is what the evidence so far fails to establish, the change what you will test, and the expected result the observation that would support or contradict it. The target is your prediction of verified passes over this battery's slots, fixed before measurement: at-most when this battery should pass fewer cases than the last one did, at-least when more. A target every outcome meets predicts nothing, and one your own rehearsals contradict is not yet your prediction. Each family names its ladder level and the move that puts it there, and each prediction is the probability that the solver passes that task. The next round reports whether that target was met and, when it was missed, by how much, and scores your predictions against the verdicts.`,
     'Move one part per experiment, so that its result says which change caused it: the tasks, the product, or an evaluation correction alone (scope "product"; the controller attributes an evaluator-only change as an evaluation correction). Accepted bytes that move the tasks and the product together are recorded as a build, and their result credits neither.',
-    'Scope "tasks" keeps the agent and the scoring program (brief.json and evaluator.ts with every module it imports) fixed and redesigns the task and control battery, with the reference solve and tests moving alongside. What you change is yours: no axis, step size, family mix or parent bijection is prescribed. Name the public requirement that changed and the reasoning it adds, found in the request\'s field rather than invented for the battery; extra cases on the same rule establish coverage, and a new identifier, level label, family name, longer wording or a re-tuned published number establishes neither. Unchanged tasks say nothing about a changed subset.',
-    'Scope "product" repairs or extends tools, instructions, representation or evaluation. Start from adopted work and keep what solves; do not strip useful automation to force manual calculation, and fix a known evaluator defect before claiming a task-only challenge. A changed evaluator or agent is a new measurement condition and does not by itself answer a battery that found no limit: a solver tool that reproduces your reference solve, or reports every margin a check reads, makes that battery easier still.',
-    "Implement the proposal in this workspace and call parameterless submit once your rehearsals agree with its target. The controller checks the captured bytes against your scope, keeps every admission and solvability gate and records intent beside the result; rewording the proposal neither changes candidate bytes nor resets refusal limits. Unaccepted submissions and environment failures bound nothing. Keep the task count and task-bound controls valid, construct solvable tasks and retain every requested capability. {boundary}",
+    'Scope "tasks" keeps the agent and the scoring program (brief.json and evaluator.ts with every module it imports) fixed and redesigns the task and control battery, with the reference solve and tests moving alongside. What you change is yours: no axis, step size, family mix or parent bijection is prescribed. Name the public requirement that changed and the reasoning it adds, found in the request\'s field rather than invented for the battery; extra cases on the same rule establish coverage, a new identifier, level label, family name or longer wording establishes neither, and a re-tuned published number is harder demand only where a witness of yours reaches it and a rehearsal shows your solver does not. Unchanged tasks say nothing about a changed subset.',
+    'Scope "product" repairs or extends tools, instructions, representation or evaluation. Start from adopted work and keep what solves; do not strip useful automation to force manual calculation, and fix a known evaluator defect before claiming a task-only challenge. A changed evaluator or agent is a new measurement condition and does not by itself answer a battery that found no limit: a solver tool that reproduces your reference solve makes that battery easier still.',
+    "Implement the proposal in this workspace and call parameterless submit. The controller keeps every admission and solvability gate and records intent beside the result; rewording the proposal neither changes candidate bytes nor resets refusal limits. Unaccepted submissions and environment failures bound nothing. Keep the task count and task-bound controls valid, construct solvable tasks and retain every requested capability. {boundary}",
   ],
   /** How a placed battery's zone reads in a sentence. */
   zoneWords: {
     "too-easy": "significantly too easy",
     "too-hard": "significantly too hard",
     "under-aim": "in range, below the aim",
-    "on-aim": "at the limit",
+    "on-aim": "on the calibration target",
     "over-aim": "in range, above the aim; the limit is not yet measured",
   },
-  /** Why the round's decision was taken, recorded on the decision and rendered as its reading. */
+  /** The decision's rationale: where the battery landed, or why it landed nowhere. */
   decision: {
     none: "no battery is recorded; run one before reading difficulty",
     refused:
       "all {n} attempts were refused at submission admission — zero cases were truth-verified, so this battery carries no difficulty evidence; a wall of rejections is a harness or environment defect (a writer tool the artifact schema refuses, a broken verifier, a crash) at least as often as a hard curriculum",
-    repeated:
-      "the same {cases} case(s) failed in both of the last two batteries of one recorded task set ({scores}) — a failing core that persists between batteries is a stuck harness, not a difficulty level, so the aggregate rate is not difficulty evidence",
-    conflict:
-      'family "{easy}" sits entirely above the band (Wilson floor {floor}) while family "{hard}" sits entirely below it (Wilson ceiling {ceiling}) — one battery covers a saturated family and an infeasible one, so the aggregate rate is not difficulty evidence; the families need separate changes',
     unplaced:
       "the deciding sample of {passes}/{n} cannot be placed against target range [{lo}, {hi}], so this battery carries no difficulty evidence",
     placed: "{passes}/{n}, Wilson interval [{wlo}, {whi}] against target range [{lo}, {hi}]: {zone}",
@@ -82,7 +78,7 @@ export const FRAME = {
     legend:
       "Rows are newest first. `product` and `taskSet` alias the recorded product and task-set identities, P1, T1 and so on in order of first appearance. `passed` is out of `verified`; `unaccepted` attempts produced no accepted submission and `nonResults` failed in the environment. `deciding` is the sample the row is read over, and `target` is the author's declared prediction with its result. `effort` is the most any one case of that battery spent — model turns, wall-clock minutes and tool calls, over the cases that recorded a solver block — to read against the walls its agent/config.yaml declares; a measure no case recorded reads the same em dash an absent value reads, never a zero.",
     zones:
-      "`zone` is where each battery landed against `aim`, read over `deciding` — the changed public-input subset when one was recorded, the whole battery otherwise — and `toAim` is how many passing cases from that aim it was, negative above it. `too-easy` and `over-aim` are both above the aim, `too-hard` and `under-aim` both below it; only `on-aim` measured a limit. A row with `setAside` instead of a zone recorded a shape whose pooled rate is not difficulty evidence.",
+      "`zone` is where each battery landed against `aim`, read over `deciding` — the changed public-input subset when one was recorded, the whole battery otherwise — and `toAim` is how many passing cases from that aim it was, negative above it. `too-easy` and `over-aim` are both above the aim, `too-hard` and `under-aim` both below it; `on-aim` reached the calibration target, which by itself proves no limit. A row with no zone had no truth-verified case in its deciding sample, or too few cases for any pass count to land on the aim.",
     omittedRows: "{count} older row(s) are not shown here.",
     proposal:
       "Latest proposal ({runId}, {operation}): gap — {gap} Change — {change} Expected — {expectedResult} Target — {target}.",
@@ -92,13 +88,20 @@ export const FRAME = {
       "The result tests the declared pass-count target, not causal benefit or increased task demand. Correctness-model file changes identify bundle movement; their scoring semantics remain unproven.",
     reading:
       "Reading: the deciding sample ({population}) passed {passes} of {n} (Wilson interval [{wlo}, {whi}], target range [{blo}, {bhi}], aim {lo} to {hi} of {n}): {zone}.",
-    setAside: "Reading: {rationale}.",
+    unplaced: "Reading: {rationale}.",
+    repeated:
+      "The same {cases} cases failed in both of the last two batteries of one recorded task set ({scores}). A failing core that persists between batteries is as often a stuck harness as a difficulty level, and the zone above counts it either way.",
+    conflict:
+      'Family "{easy}" sits entirely above the band while family "{hard}" sits entirely below it, so the pooled rate averages a saturated family with an infeasible one; the families need separate changes.',
     belowLadder:
       'Read "When a battery lands below the aim" in starter-pack/difficulty-ladder.md first: a rule the checks apply and the brief does not publish, and an answer the writer cannot express, both read exactly like difficulty from here.',
     aboveLadder:
-      'Read "When a battery lands above the aim" in starter-pack/difficulty-ladder.md first: it names the three things every hard and frontier row carries, where to find them in the request\'s own field, and the one move left when your tasks already carry all three.',
+      'Read "When a battery lands above the aim" in starter-pack/difficulty-ladder.md first: it names the three things every hard and frontier row carries, where to find them in the request\'s own field, and the moves left when your tasks already carry all three.',
+    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+    // allowance:
+    //   "Off-aim allowance: {rounds} of {limit} consecutive rounds have ended {side} the aim or with a refused claim ({placed} placed {side} it, {refused} claim-refused) across {products} product identities; at {limit} the campaign stops.",
     allowance:
-      "Off-aim allowance: {rounds} of {limit} consecutive rounds have ended {side} the aim or with a refused claim ({placed} placed {side} it, {refused} claim-refused) across {products} product identities; at {limit} the campaign stops.",
+      "Off-aim streak: {rounds} consecutive rounds have ended {side} the aim or with a refused claim ({placed} placed {side} it, {refused} claim-refused) across {products} product identities.",
     sameSchema:
       "{count} of the batteries placed {side} the aim before the latest one posed its set of public task schemas: the same fields carrying the same value types, differing at most in the values published in them.",
     families: "Families of the latest admitted battery (passes of attempts, Wilson interval): {families}.",
@@ -107,7 +110,7 @@ export const FRAME = {
     calibration:
       "Predictions bound to {runId}: {scored} scored task(s), {expected} passes expected and {observed} observed, Brier score {brier} (0 is exact; predicting 0.5 for every task scores 0.25).",
     allPass:
-      "The latest battery passed every one of its {verified} verified cases, so it found no limit. The next battery needs a reasoning step this solver has not yet been asked to take, found in what the request's field demands: declare it per family as a new move in EXPERIMENT.json. A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+      "The latest battery passed every one of its {verified} verified cases, so it found no limit. The next battery needs a demand this solver has not yet met, found in what the request's field holds: declare it per family as a new move in EXPERIMENT.json. A longer list of named states is not one; a re-tuned number is one only where a witness of yours reaches it and a rehearsal shows your solver does not.",
     excluded: "{summary}.",
     history:
       "The context tool's history source holds every row, complete proposals and older public tasks, and its traces source holds the solver's own record of every passing case; different product identities are separate conditions.",

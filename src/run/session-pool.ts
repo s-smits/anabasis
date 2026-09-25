@@ -7,9 +7,9 @@
  * batch stop, allowing its caller to decide whether another Judge batch should run.
  *
  * Neither limit is a bare constant any more. The Built limit is an operator setting read from
- * `ANA_BUILT_CONCURRENCY`; the Judge limit is a default that only a judge session declaring its own
- * census width departs from, and it declares that once rather than per call. Callers in one run
- * otherwise share the same limits. They bound simultaneous work here; provider and campaign budgets
+ * `ANA_BUILT_CONCURRENCY`; the Judge limit is a default that `ANA_REVIEW_CONCURRENCY` or a judge
+ * session declaring its own census width departs from, and it declares that once rather than per
+ * call. Callers in one run otherwise share the same limits. They bound simultaneous work here; provider and campaign budgets
  * own total paid-call limits separately. The ordered callback may overlap processing a result with
  * later solves, while the pool still waits for started workers before returning or throwing.
  *
@@ -63,11 +63,18 @@ export function builtSolveConcurrency(
   declared: number = BUILT_SOLVE_MAX_CONCURRENCY,
   env: Record<string, string | undefined> = Bun.env,
 ): number {
-  const raw = env.ANA_BUILT_CONCURRENCY;
-  if (raw === undefined || raw === "") return declared;
-  if (!/^[1-9]\d*$/.test(raw)) {
-    throw new Error(`ANA_BUILT_CONCURRENCY must be a positive integer, got "${raw}"`);
-  }
+  return operatorWidth("ANA_BUILT_CONCURRENCY", declared, env);
+}
+
+/** The Judge batch width: `ANA_REVIEW_CONCURRENCY` where the operator sets it, the default otherwise. */
+export function reviewConcurrency(env: Record<string, string | undefined> = Bun.env): number {
+  return operatorWidth("ANA_REVIEW_CONCURRENCY", JUDGE_MAX_CONCURRENCY, env);
+}
+
+function operatorWidth(name: string, fallback: number, env: Record<string, string | undefined>): number {
+  const raw = env[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^[1-9]\d*$/.test(raw)) throw new Error(`${name} must be a positive integer, got "${raw}"`);
   return Number(raw);
 }
 
@@ -157,7 +164,7 @@ export async function runJudgeBatches<Input, Output>(
   inputs: readonly Input[],
   invoke: (input: Input, index: number) => Promise<Output>,
   acceptBatch: (batch: readonly Output[]) => boolean,
-  width: number = JUDGE_MAX_CONCURRENCY,
+  width: number = reviewConcurrency(),
 ): Promise<void> {
   const batchSize = Math.max(1, Math.min(Math.floor(width), inputs.length));
   for (let offset = 0; offset < inputs.length; offset += batchSize) {

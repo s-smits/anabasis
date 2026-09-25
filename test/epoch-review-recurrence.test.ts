@@ -6,13 +6,14 @@
  * an agent-side defect advises on its first reading and blocks on its second, and a probe that
  * actually executed may block on the first.
  */
+import { EVALUATOR_FILE } from "../src/meta/bundle-layout.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { CITATIONS, DEMO, REVIEW_IDENTITY, call, reviewState } from "./helpers/review-fixtures.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { ownerTier } from "../src/author/feedback-routing.ts";
+import { ownerSide } from "../src/author/feedback-routing.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
@@ -111,7 +112,13 @@ describe("a condition is reviewed once", () => {
 
   test("recurrence counts distinct measured conditions, not duplicate findings or replay files", () => {
     const root = dir();
-    const finding = { kind: "harness-defect", checkId: "bounds", claim: "private", evidence: "e" };
+    const finding = {
+      defect: true,
+      owner: EVALUATOR_FILE,
+      checkId: "bounds",
+      claim: "private",
+      evidence: "e",
+    };
     write(root, "r1", { status: "completed", condition: condition("t1"), findings: [finding, finding] });
     write(root, "r1-replay", { status: "completed", condition: condition("t1"), findings: [finding] });
     write(root, "r2-partial", {
@@ -128,7 +135,13 @@ describe("a condition is reviewed once", () => {
 
   test("review procedure changes do not count as new measured conditions, and incomplete identities are excluded", () => {
     const root = dir();
-    const finding = { kind: "harness-defect", checkId: "bounds", claim: "private", evidence: "e" };
+    const finding = {
+      defect: true,
+      owner: EVALUATOR_FILE,
+      checkId: "bounds",
+      claim: "private",
+      evidence: "e",
+    };
     const current = condition("t1");
     write(root, "old-prompt", {
       status: "completed",
@@ -167,8 +180,8 @@ describe("a condition is reviewed once", () => {
       recurring: new Map([["bounds", 1]]),
     });
     const args = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       checkId: "bounds",
       severity: "advisory",
       claim: "a possible boundary gap",
@@ -179,13 +192,13 @@ describe("a condition is reviewed once", () => {
     expect(state.findings.map((row) => row.severity)).toEqual(["advisory", "advisory", undefined]);
   });
 
-  test("a harness defect whose check an earlier review named is admitted as blocking", async () => {
+  test("a defect whose check an earlier review named is admitted as blocking", async () => {
     const root = dir();
     const prior = {
-      kind: "harness-defect",
+      defect: true,
       claim: "private prose",
       evidence: "e",
-      proposedOwner: "brief",
+      owner: "correctness-model/brief.json",
       severity: "advisory",
       checkId: "sections-minimal-mass",
       artifactSchemaPath: "layout.members",
@@ -204,8 +217,8 @@ describe("a condition is reviewed once", () => {
       recurring,
     });
     const named = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -225,10 +238,10 @@ describe("a condition is reviewed once", () => {
     // below a root still identifies a place, so that is what counts as an identity.
     const root = dir();
     const unnamed = (artifactSchemaPath: string, claim: string) => ({
-      kind: "harness-defect",
+      defect: true,
       claim,
       evidence: "e",
-      proposedOwner: "correctness-model",
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       artifactSchemaPath,
     });
@@ -255,8 +268,8 @@ describe("a condition is reviewed once", () => {
     // own demonstration earned stands.
     const identities = { schemaRoots: ["files", "design"], checkIds: [] };
     const named = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -277,10 +290,10 @@ describe("a condition is reviewed once", () => {
         ...named,
         artifactSchemaPath: "design.members",
       }),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
   });
 
-  test("an agent-side harness defect advises on its first reading and blocks on its second", async () => {
+  test("an agent-side defect advises on its first reading and blocks on its second", async () => {
     // Without the floor, a first blocking tools-spec finding can send a harness that passed its
     // whole battery back to the starter seed. It is the owner's tier that decides who gets the
     // floor, so the two tiers are pinned first — every reading below turns on them.
@@ -288,19 +301,19 @@ describe("a condition is reviewed once", () => {
     // Read the severity assertions with the writer in mind: `recordFinding` only writes a
     // `severity` field when it demotes, so `"advisory"` is a demotion and `undefined` is the
     // requested blocking standing unchanged.
-    expect(ownerTier("tools-spec")).toBe("agent");
-    expect(ownerTier("correctness-model")).toBe("rebuild");
+    expect(ownerSide("agent/tools-spec.json")).toBe("agent");
+    expect(ownerSide(EVALUATOR_FILE)).toBe("correctness-model");
     const state = reviewState();
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check", "budget-check"] };
     const first = recordFindingTool([], [], "e", state, { identities, recurring: new Map() });
     const named = {
-      kind: "harness-defect",
+      defect: true,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
       claim: "the tool supplies the remaining decision",
     };
-    await call(first, { ...named, owner: "tools-spec", checkId: "shortcut-check" });
+    await call(first, { ...named, owner: "agent/tools-spec.json", checkId: "shortcut-check" });
     expect(state.findings[0]?.severity).toBe("advisory");
     // The identical finding on an evaluation owner is admitted blocking on its first reading,
     // because the floor is the agent tier's alone. All that settles is the severity; what the
@@ -308,7 +321,7 @@ describe("a condition is reviewed once", () => {
     const evaluatorSide = reviewState();
     await call(recordFindingTool([], [], "e", evaluatorSide, { identities, recurring: new Map() }), {
       ...named,
-      owner: "correctness-model",
+      owner: EVALUATOR_FILE,
       checkId: "budget-check",
     });
     expect(evaluatorSide.findings[0]?.severity).toBeUndefined();
@@ -319,7 +332,7 @@ describe("a condition is reviewed once", () => {
       recordFindingTool([], [], "e", second, { identities, recurring: new Map([["shortcut-check", 1]]) }),
       {
         ...named,
-        owner: "tools-spec",
+        owner: "agent/tools-spec.json",
         checkId: "shortcut-check",
       },
     );
@@ -334,8 +347,8 @@ describe("a condition is reviewed once", () => {
     // author needs, so it crosses whether the finding is held at advice or not.
     const identities = { schemaRoots: ["layout"], checkIds: ["shortcut-check"] };
     const named = {
-      kind: "harness-defect",
-      owner: "tools-spec",
+      defect: true,
+      owner: "agent/tools-spec.json",
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -373,7 +386,7 @@ describe("a condition is reviewed once", () => {
     // Held at advice by the ceiling, and deferred on top of that: the same line still crosses. This
     // is the round the ceiling was written for, and the round that used to project a bare check id.
     const worn = probed(new Map([["shortcut-check", 2]]));
-    expect(await call(worn.tool, { ...named, probeIds: [1] })).toBe("recorded harness-defect as advisory");
+    expect(await call(worn.tool, { ...named, probeIds: [1] })).toBe("recorded defect as advisory");
     const deferred = publicEpochReview(
       { status: "completed", ...worn.state },
       { brief: null, deferAdvisory: true },
@@ -401,12 +414,12 @@ describe("a condition is reviewed once", () => {
 
   test("a probe-backed agent-side defect blocks on its first reading, and an uncited probe does not", async () => {
     // The agent-tier floor above exists because a reviewer reading source can only suspect: a
-    // harness defect that concedes no current artifact distinguishes the two readings can go no
+    // defect that concedes no current artifact distinguishes the two readings can go no
     // further than advice. A probe row is the candidate's own declared checks ruling on the
     // candidate's own accept control, so the first-occurrence floor does not apply to it.
     const named = {
-      kind: "harness-defect",
-      owner: "tools-spec",
+      defect: true,
+      owner: "agent/tools-spec.json",
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -437,7 +450,7 @@ describe("a condition is reviewed once", () => {
         ...named,
         probeIds: [1],
       }),
-    ).toBe("recorded harness-defect as blocking");
+    ).toBe("recorded defect as blocking");
     expect(backed.findings[0]?.severity).toBeUndefined();
     expect(backed.findings[0]?.claim).toContain("Executed probes: 1");
 
@@ -449,7 +462,7 @@ describe("a condition is reviewed once", () => {
         ...named,
         probeIds: [1],
       }),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
     expect(refused.findings[0]?.claim).not.toContain("Executed probes");
 
     // A pair that returned without deciding is not a result. `runControls` does not throw when a
@@ -463,7 +476,7 @@ describe("a condition is reviewed once", () => {
         ...named,
         probeIds: [1],
       }),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
     expect(unsettled.findings[0]?.claim).not.toContain("Executed probes");
 
     // Nor is a changed artifact informative against an original the checks already refuse.
@@ -474,7 +487,7 @@ describe("a condition is reviewed once", () => {
         ...named,
         probeIds: [1],
       }),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
 
     // Every other limit still applies: two prior conditions hold the defect at advice.
     const worn = reviewState();
@@ -487,17 +500,17 @@ describe("a condition is reviewed once", () => {
           probeIds: [1],
         },
       ),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
   });
 
   test("a defect recorded after a probe ran must say whether it rests on it", async () => {
-    // A review can run all eight probes, write a harness defect whose own claim narrates what they
+    // A review can run all eight probes, write a defect whose own claim narrates what they
     // returned, and still leave `probeIds` unset. That finding is not probe-backed: it takes the
     // source-derived advisory floor, and its recorded claim carries no link to the rows that
     // support it. Asking costs one argument.
     const named = {
-      kind: "harness-defect",
-      owner: "tools-spec",
+      defect: true,
+      owner: "agent/tools-spec.json",
       severity: "advisory",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -537,7 +550,7 @@ describe("a condition is reviewed once", () => {
         ...named,
         probeIds: [],
       }),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
     expect(silent.findings[0]?.claim).not.toContain("Executed probes");
 
     // A probe that decided nothing is not evidence, so there is nothing to ask about.
@@ -545,34 +558,34 @@ describe("a condition is reviewed once", () => {
     inconclusive.probes.rows.push({ ...ran(1), baseline: side("fail", ["shortcut-check"]) });
     expect(
       await call(recordFindingTool([], [], "e", inconclusive, { identities, recurring: new Map() }), named),
-    ).toBe("recorded harness-defect as advisory");
+    ).toBe("recorded defect as advisory");
 
-    // Only a harness-defect can be admitted blocking on a probe, so only it is asked.
+    // Only a defect can be admitted blocking on a probe, so only it is asked.
     const observed = reviewState();
     observed.probes.rows.push(ran(1));
     expect(
       await call(recordFindingTool([], [], "e", observed, { identities, recurring: new Map() }), {
-        kind: "hardness",
+        defect: false,
         claim: "the mass limits leave no headroom",
         severity: "advisory",
       }),
-    ).toBe("recorded hardness as advisory");
+    ).toBe("recorded observation as advisory");
   });
 
-  test("the same check named at a moved path, and under another kind, still counts as recurrence", async () => {
-    // One check can be recorded as a harness defect at an artifact path and then, in the next
-    // review, as hardness at no path. An identity keyed on the path and the kind reads those two
-    // namings as two defects and never escalates.
+  test("the same check named at a moved path, and under another placement, still counts as recurrence", async () => {
+    // One check can be recorded as a defect at an artifact path and then, in the next review, as an
+    // observation of hardness at no path. An identity keyed on the path and the placement reads
+    // those two namings as two defects and never escalates.
     const root = dir();
     write(root, "r1", {
       status: "completed",
       condition: condition("t1"),
       findings: [
         {
-          kind: "harness-defect",
+          defect: true,
           claim: "private prose",
           evidence: "e",
-          proposedOwner: "correctness-model",
+          owner: EVALUATOR_FILE,
           severity: "advisory",
           checkId: "change-budget",
           artifactSchemaPath: "layout.members",
@@ -584,9 +597,10 @@ describe("a condition is reviewed once", () => {
       condition: condition("t2"),
       findings: [
         {
-          kind: "hardness",
+          defect: false,
           claim: "private prose",
           evidence: "e",
+          owner: "correctness-model/tasks.json",
           severity: "advisory",
           checkId: "other-check",
         },
@@ -602,15 +616,15 @@ describe("a condition is reviewed once", () => {
       recurring: recurringDefects(root, condition("next")),
     });
     const named = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       severity: "advisory",
       claim: "the same check again",
       demonstration: DEMO,
       citations: CITATIONS,
     };
-    // The path moved and the earlier kind differed; the check is the declared decision, so both
-    // escalate. A check no review has named stays where the reviewer put it.
+    // The path moved and the earlier placement differed; the check is the declared decision, so
+    // both escalate. A check no review has named stays where the reviewer put it.
     await call(tool, { ...named, checkId: "change-budget" });
     expect(state.findings[0]?.severity).toBeUndefined();
     await call(tool, { ...named, checkId: "fresh-check" });
@@ -624,10 +638,10 @@ describe("a condition is reviewed once", () => {
     // its next finding stays advisory; this test does not prescribe the next experiment.
     const root = dir();
     const finding = {
-      kind: "harness-defect",
+      defect: true,
       claim: "private prose",
       evidence: "e",
-      proposedOwner: "correctness-model",
+      owner: EVALUATOR_FILE,
       checkId: "target-compiles",
       artifactSchemaPath: "files",
     };
@@ -636,8 +650,8 @@ describe("a condition is reviewed once", () => {
     expect(recurringDefects(root, condition("next")).get("target-compiles")).toBe(2);
     const identities = { schemaRoots: ["files"], checkIds: ["target-compiles"] };
     const named = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       severity: "blocking",
       citations: CITATIONS,
       demonstration: DEMO,
@@ -666,17 +680,18 @@ describe("a condition is reviewed once", () => {
   });
 
   test("an unattributed observation is not an earlier naming of its check", async () => {
-    // A `diagnosis-uncertain` recorded on a check in one round would otherwise be enough, on its
-    // own, to force the next round's harness defect on that same check to blocking.
+    // An unplaced observation recorded on a check in one round would otherwise be enough, on its
+    // own, to force the next round's defect on that same check to blocking.
     const root = dir();
     write(root, "r1", {
       status: "completed",
       condition: condition("t1"),
       findings: [
         {
-          kind: "diagnosis-uncertain",
+          defect: false,
           claim: "private prose",
           evidence: "e",
+          owner: null,
           severity: "advisory",
           checkId: "topology",
         },
@@ -687,9 +702,10 @@ describe("a condition is reviewed once", () => {
       condition: condition("t2"),
       findings: [
         {
-          kind: "hardness",
+          defect: false,
           claim: "private prose",
           evidence: "e",
+          owner: "correctness-model/tasks.json",
           severity: "advisory",
           checkId: "capacity",
         },
@@ -702,13 +718,13 @@ describe("a condition is reviewed once", () => {
       recurring: recurringDefects(root, condition("next")),
     });
     const named = {
-      kind: "harness-defect",
-      owner: "correctness-model",
+      defect: true,
+      owner: EVALUATOR_FILE,
       claim: "the same check again",
       citations: CITATIONS,
       demonstration: DEMO,
     };
-    // The uncertain naming does not escalate; the positive one still does.
+    // The unplaced naming does not escalate; the positive one still does.
     await call(tool, { ...named, severity: "advisory", checkId: "topology" });
     expect(state.findings[0]?.severity).toBe("advisory");
     await call(tool, { ...named, severity: "advisory", checkId: "capacity" });

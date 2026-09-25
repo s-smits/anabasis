@@ -104,6 +104,7 @@ function smallestSizeHoldingTooEasy(landed: ProbeLanding, requested: number, ban
  *  `POLICY.climb.band` directly, so a manifest override moved the placement while the size that
  *  would have held it stayed on the code-owned ceiling. The default is that code-owned row, for a
  *  caller with no manifest. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, battery-sizing): kept: the size is part of the measurement condition, so it is refused rather than silently clamped
 export function batterySizingGate(
   requested: number,
   adoptedTasks: number | null,

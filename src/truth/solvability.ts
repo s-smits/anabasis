@@ -1,8 +1,8 @@
 /**
  * F2: run the generated reference solve for every task and verify what it produced. The controller
  * owns everything that makes the result usable as evidence — the task bytes, the committed public
- * solve input, schema validation, ordinary verification, tool scopes, family comparisons and the
- * snapshot identity checks — so the candidate cannot supply its own witness. Reference artifacts
+ * solve input, schema validation, ordinary verification, tool scopes and the snapshot identity
+ * checks — so the candidate cannot supply its own witness. Reference artifacts
  * stay protected: they never become controls or Built Harness inputs, since an answer key that
  * reached the solver would make the battery measure recall rather than solving.
  *
@@ -13,30 +13,34 @@
  * The census runs as stages, each reading declared bytes:
  *
  * 1. contract: the immutable snapshot's brief, tasks, correctness model and compiled schema;
- * 2. tool admission: the resolved installed tools and the candidate's authored digests;
+ * 2. tool admission: the resolved installed tools;
  * 3. cases, in lanes: the reference solve (reference-solve.ts, remembered by its key), then the
  *    public submission path and the ordinary evaluation, which always run on this snapshot;
- * 4. program arguments: the tool rows the case evaluations recorded;
- * 5. family transplants (adoption only): family-binding.ts, remembered by its key;
- * 6. snapshot drift, then evidence.
+ * 4. snapshot drift, then evidence.
  */
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+// Stage 2 also read the candidate's authored digests, and a stage between the cases and the drift
+// check read the tool rows the case evaluations recorded for program arguments.
 
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import { harnessSettings } from "./harness-config.ts";
-import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
+import type {
+  SolvabilityCaseEvidence,
+  SolvabilityEvidence,
+  SolvabilityFailure,
+  SolvabilityNonResult,
+} from "../claim/readiness.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
   type BundleSnapshot,
   ensureBundleSnapshot,
 } from "../claim/bundle-snapshot.ts";
 import { sha256 } from "../meta/digest.ts";
-import type { OwnerLayer } from "../meta/owner.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
-import { bundleEvaluator } from "./evaluator-process-bundle.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import type { BuiltStarter } from "../solve/built-starter.ts";
 import type { GeneratedToolStarterOptions } from "../solve/generated-tool-worker.ts";
@@ -45,15 +49,12 @@ import { createVerifierHost } from "../verify/host.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
-import {
-  programArgumentChecks,
-  programArgumentRemedy,
-  selfGroundedChecks,
-  selfGroundedRemedy,
-} from "../verify/self-grounding.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+// import { programArgumentChecks, programArgumentRemedy } from "../verify/self-grounding.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+// import { selfGroundedChecks, selfGroundedRemedy } from "../verify/self-grounding.ts";
 import { validateBrief } from "./brief-validator.ts";
 import { type Brief, type ContractFinding, externalChecksOf, generatedExecutionFinding } from "./brief.ts";
-import { type FamilyWitness, familyBindingStage } from "./family-binding.ts";
 import { loadFailureFinding } from "./load-fault.ts";
 import type { BuildDeps } from "./build-deps.ts";
 import { loadCorrectnessModel } from "./contracts.ts";
@@ -65,6 +66,7 @@ import { loadSolvabilityPublicSchema } from "./solvability-artifact-schema.ts";
 import { evaluateWitness, type WitnessCensus } from "./solvability-witness.ts";
 import type { CheckFailureDetail } from "./predicate.ts";
 import {
+  type SolvabilityAttribution,
   type SolvabilitySubmissionOutcome,
   UNATTRIBUTED,
   submitSolvabilityReferenceArtifact,
@@ -83,9 +85,8 @@ import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.
 import type { JsonValue } from "../meta/json-shape.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
-export const SOLVABILITY_READINESS_POLICY =
+export const SOLVABILITY_POLICY =
   "falsifier-solvability/v15:authored-executable-bytes+check-program+captured-controller-primitives+typed-pre-ready-environment-outcome+ready-owned-process-failures+bounded-lifetime+public-reference-package+confined-pid+full-census+canonical-full-task+writer-draft-materialise-submit-accept+compiled-public-submit-schema+ordinary-evaluate+bundleSnapshot-drift-refusal+optional-writer-call-trace";
-export const SOLVABILITY_PROBE_POLICY = `${SOLVABILITY_READINESS_POLICY}+task-conditioned-family-binding`;
 
 export interface SolvabilityProbeOptions {
   /** Protected controller-owned process receipts; no generated child runs without this owner. */
@@ -107,8 +108,6 @@ export interface SolvabilityProbeOptions {
 interface SolvabilityContract {
   bundleSnapshot: BundleSnapshot;
   evaluator: CheckRunner;
-  /** Portable digest of the evaluator bundle `evaluator` runs. */
-  evaluatorDigest: string;
   brief: Brief;
   tasks: BuildTask[];
   publicArtifactSchema: PublicArtifactSchema | null;
@@ -130,23 +129,25 @@ interface SolvabilityCaseSession {
   stages: SolvabilityStageCache | undefined;
 }
 
-/** The submission outcome plus the facts only the solve side knows. */
+/** The submission outcome plus the stage receipt only the solve side knows. */
 type ReferenceSubmissionAttempt = SolvabilitySubmissionOutcome & {
-  /** The solve reported a path or permission error matching the isolation-failure classifier. */
-  solveIsolationViolation: boolean;
   referenceSolve: SolvabilityStageReceipt | null;
 };
 
-/** The finding code and owner a failed case routes to. */
-interface Attribution {
-  code: string;
-  owner: OwnerLayer;
-}
+/** The finding code each unpassed case routes to. A host stop that interrupts the census is
+ *  admitted once as `verifier-cleanup-pending`, however many cases it left without a verdict. */
+const CASE_CODE = {
+  "representation-defect": "solvability-representation-defect",
+  isolation: "solvability-reference-solve-isolation",
+  witness: "solvability-witness-failed",
+  "reference-solve-host": "solvability-reference-solve-host-non-result",
+  "submission-path-host": "solvability-submission-path-host-non-result",
+  sandbox: "verifier-cleanup-pending",
+} as const satisfies Record<SolvabilityFailure | SolvabilityNonResult, string>;
 
-/** One task's census record, with a witness when it passes and a finding when it fails. */
+/** One task's census record, with a finding when it fails. */
 interface SolvabilityCaseOutcome {
   row: SolvabilityCaseEvidence;
-  witness: FamilyWitness | null;
   finding: ContractFinding | null;
 }
 
@@ -225,12 +226,8 @@ async function loadSolvabilityContract(
     };
   }
   let evaluator: CheckRunner;
-  let evaluatorDigest: string;
   try {
-    // Both calls share one bundle per package identity, so the digest names the same bytes the
-    // runner executes rather than a second build of the same source.
     evaluator = await loadCorrectnessModel(bundleSnapshot.dir, verifierLifetime);
-    evaluatorDigest = (await bundleEvaluator(bundleSnapshot.dir)).portableDigest;
   } catch (error) {
     return {
       ok: false,
@@ -260,7 +257,6 @@ async function loadSolvabilityContract(
     value: {
       bundleSnapshot,
       evaluator,
-      evaluatorDigest,
       brief,
       tasks,
       publicArtifactSchema: publicSchema.schema,
@@ -284,7 +280,6 @@ function bundleSnapshotDriftFinding(
         code: "solvability-bundleSnapshot-drift",
         path: `${BUNDLE_SNAPSHOT_DIRECTORY}/${bundleSnapshot.id}`,
         detail: errorMessage(error),
-        owner: "bh-correctness-model",
       },
       "generated-bundleSnapshot-drift",
     );
@@ -293,12 +288,11 @@ function bundleSnapshotDriftFinding(
 
 /** Stage 2: resolve tools exactly as measurement will. A missing tool refuses before any witness
  *  runs, because otherwise a whole battery of product failures is charged to a verifier that never
- *  started. An external check whose executable digest matches candidate-authored source is refused
- *  as well: a different digest or a different installation directory still does not make the
- *  instrument independent of the author. */
+ *  started. */
 function admitTools(
   contract: SolvabilityContract,
-  fingerprint: FingerprintEvidence,
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+  // fingerprint: FingerprintEvidence,
   options: SolvabilityProbeOptions,
 ) {
   const { brief, bundleSnapshot } = contract;
@@ -307,27 +301,33 @@ function admitTools(
     toolIds: externalChecks.map((check) => check.adapterId),
     toolTree: bundleSnapshot.toolTree,
   });
-  const externalIds = new Set(
-    brief.truthChecks
-      .filter((check) => check.execution.evidence.kind === "external")
-      .map((check) => check.id),
-  );
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+  // // An external check whose executable digest matches candidate-authored source is refused as
+  // // well: a different digest or a different installation directory still does not make the
+  // // instrument independent of the author. The external-check id set is read only here and by the
+  // // archived program-argument rule.
+  // const externalIds = new Set(
+  //   brief.truthChecks
+  //     .filter((check) => check.execution.evidence.kind === "external")
+  //     .map((check) => check.id),
+  // );
   const findings: ContractFinding[] = [];
-  const authored = new Set(
-    [...fingerprint.agentFiles, ...fingerprint.correctnessModelFiles].map((file) => file.sha256),
-  );
-  const selfGrounded = selfGroundedChecks(
-    externalChecks.filter((check) => externalIds.has(check.checkId)),
-    resolved.inventory,
-    authored,
-  );
-  if (selfGrounded.length > 0) {
-    findings.push({
-      code: "solvability-tool-self-authored",
-      path: BRIEF_FILE,
-      detail: selfGroundedRemedy(selfGrounded),
-    });
-  }
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+  // const authored = new Set(
+  //   [...fingerprint.agentFiles, ...fingerprint.correctnessModelFiles].map((file) => file.sha256),
+  // );
+  // const selfGrounded = selfGroundedChecks(
+  //   externalChecks.filter((check) => externalIds.has(check.checkId)),
+  //   resolved.inventory,
+  //   authored,
+  // );
+  // if (selfGrounded.length > 0) {
+  //   findings.push({
+  //     code: "solvability-tool-self-authored",
+  //     path: BRIEF_FILE,
+  //     detail: selfGroundedRemedy(selfGrounded),
+  //   });
+  // }
   const unresolved = [...resolved.missing, ...resolved.invalid];
   if (options.createVerifier === undefined && unresolved.length > 0) {
     findings.push({
@@ -336,7 +336,9 @@ function admitTools(
       detail: `external-verifier check(s) name tool(s) [${unresolved.join(", ")}] that resolve neither under .toolchain nor on the host PATH; install the tool or ground the check differently`,
     });
   }
-  return { inventory: resolved.inventory, externalIds, findings };
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+  // return { inventory: resolved.inventory, externalIds, findings };
+  return { inventory: resolved.inventory, findings };
 }
 
 /** Solve one task, or reuse the keyed solve, and submit it. The submission path always runs on this
@@ -368,7 +370,7 @@ async function attemptReferenceSubmission(
       artifact: solved.outcome.artifact,
       ...keyIfDefined("createStarter", session.options.createSolvabilityStarter),
     });
-    return { ...submitted, solveIsolationViolation: false, referenceSolve };
+    return { ...submitted, referenceSolve };
   } catch (caught) {
     if (caught instanceof VerifierOperationalStop) throw caught;
     const typed = caught instanceof ReferenceSolveProcessFailure ? caught : null;
@@ -376,35 +378,43 @@ async function attemptReferenceSubmission(
       ...UNATTRIBUTED,
       error: errorMessage(caught),
       authorClassification: typed?.kind ?? "generated-solve-throw",
-      nonResultKind: typed?.owner === "environment" ? "reference-solve-host" : null,
-      failureOwner: typed?.owner ?? "product",
-      solveIsolationViolation: isReferenceSolveIsolationFailure(caught),
+      attribution: solveAttribution(typed, caught),
       referenceSolve,
     };
   }
 }
 
-function failureAttribution(attempt: ReferenceSubmissionAttempt): Attribution {
-  if (attempt.nonResultKind === "submission-path-host") {
-    return { code: "solvability-submission-path-host-non-result", owner: "environment" };
+/** A host that failed before the solve child was ready owns the case; otherwise a solve that broke
+ *  the isolation wall is the candidate's, and any other throw is left for the checks to name. */
+function solveAttribution(
+  typed: ReferenceSolveProcessFailure | null,
+  caught: unknown,
+): SolvabilityAttribution | null {
+  if (typed?.kind === "reference-solve-host") return { nonResultKind: "reference-solve-host" };
+  return isReferenceSolveIsolationFailure(caught) ? { failure: "isolation" } : null;
+}
+
+/** The status half of a case row. A host attribution makes it a non-result whatever the checks
+ *  said; a pass needs the submission path it traversed; anything else failed, as a witness unless
+ *  the attempt already named the failure. */
+function caseVerdict(attempt: ReferenceSubmissionAttempt, passed: boolean, error: string | null) {
+  const { attribution, submissionPath } = attempt;
+  const detail = error ?? "reference artifact did not earn a truth verdict";
+  if (attribution !== null && "nonResultKind" in attribution) {
+    return {
+      status: "non-result",
+      nonResultKind: attribution.nonResultKind,
+      submissionPath: null,
+      error: detail,
+    } as const;
   }
-  if (attempt.nonResultKind !== null) {
-    return { code: "solvability-reference-solve-host-non-result", owner: "environment" };
-  }
-  if (attempt.failureKind === "representation-defect") {
-    return { code: "solvability-representation-defect", owner: "bh-representation" };
-  }
-  return {
-    code: attempt.solveIsolationViolation
-      ? "solvability-reference-solve-isolation"
-      : "solvability-witness-failed",
-    owner: "bh-correctness-model",
-  };
+  if (passed && submissionPath !== null) return { status: "passed", submissionPath, error: null } as const;
+  const failure = attribution?.failure ?? "witness";
+  return { status: "failed", failure, submissionPath, error: detail } as const;
 }
 
 /** Stage 3, one case: solve, submit, verify and record. A passed row carries no failure
- *  attribution, and an unpassed row always names an owner — including when the attempt itself never
- *  said who, since a row with no owner routes to nobody and is read by no one. */
+ *  attribution, and an unpassed one always yields a finding whose code names what failed. */
 async function runSolvabilityCase(
   session: SolvabilityCaseSession,
   task: BuildTask,
@@ -419,6 +429,7 @@ async function runSolvabilityCase(
   if (accepted !== null && error === null) {
     const verified = await evaluateWitness(session.census, fullTaskJson, accepted, `self:${task.taskId}`);
     ({ result, error, authorClassification, predicateFailures } = verified);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a reference solve its own checks reject shows before any paid solve that no pass is reachable through the declared path
     if (result !== null && blockingFailure(result)) {
       const blocked = failedCheckIds(result);
       error = `reference artifact was rejected${blocked.length > 0 ? ` on [${blocked.join(", ")}]` : " without an attributed check"}`;
@@ -432,36 +443,19 @@ async function runSolvabilityCase(
     publicTaskDigest: committed.publicTaskDigest,
     artifactDigest: accepted === null ? null : sha256(accepted),
     artifact: accepted === null ? null : capturedJsonParse(accepted),
-    status: passed ? "passed" : attempt.nonResultKind === null ? "failed" : "non-result",
-    nonResultKind: attempt.nonResultKind,
-    failureOwner: passed ? null : (attempt.failureOwner ?? "product"),
-    failureKind: passed ? null : attempt.failureKind,
-    submissionPath: attempt.submissionPath,
     referenceSolve: attempt.referenceSolve,
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
-    error,
+    ...caseVerdict(attempt, passed, error),
   };
-  if (passed) {
-    return {
-      row,
-      witness:
-        accepted === null
-          ? null
-          : { taskId: task.taskId, family: task.family, artifact: capturedJsonParse(accepted) },
-      finding: null,
-    };
-  }
-  const attribution = failureAttribution(attempt);
+  if (row.status === "passed") return { row, finding: null };
   const finding = {
-    code: attribution.code,
+    code: CASE_CODE[row.status === "failed" ? row.failure : row.nonResultKind],
     path: `correctness-model/tasks.json#${task.taskId}`,
-    detail: error ?? "reference artifact did not earn a truth verdict",
-    owner: attribution.owner,
+    detail: row.error,
   };
   return {
     row,
-    witness: null,
     finding:
       authorClassification === null ? finding : generatedExecutionFinding(finding, authorClassification),
   };
@@ -470,10 +464,9 @@ async function runSolvabilityCase(
 /** The host stopped a verifier child it could not reap; the environment owns the rest of the census. */
 function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
   return {
-    code: "verifier-cleanup-pending",
+    code: CASE_CODE.sandbox,
     path: TASKS_FILE,
     detail: stop.message,
-    owner: "environment",
   };
 }
 
@@ -488,17 +481,13 @@ async function solveInLanes(
   cut: () => boolean,
 ) {
   const cases: SolvabilityCaseEvidence[] = [];
-  const witnesses: FamilyWitness[] = [];
   const findings: ContractFinding[] = [];
-  /** Canonical full-task bytes for the family comparisons. */
-  const taskJson = new Map<string, string>();
   let stopped = false;
   const settled = await inLanes(
     [...tasks].sort((a, b) => compareCodeUnits(a.taskId, b.taskId)),
     CENSUS_LANES,
     async (task) => {
       const fullTaskJson = capturedJsonStringify(task);
-      taskJson.set(task.taskId, fullTaskJson);
       // One commit for the whole case: `view()` re-parses its own bytes on each call, so every
       // reader gets an independent object and no stage can hand the next one a mutated task.
       const roundTripped: unknown = capturedJsonParse(fullTaskJson);
@@ -524,7 +513,6 @@ async function solveInLanes(
     if (slot === undefined) break;
     if ("outcome" in slot) {
       cases.push(slot.outcome.row);
-      if (slot.outcome.witness !== null) witnesses.push(slot.outcome.witness);
       if (slot.outcome.finding !== null) findings.push(slot.outcome.finding);
       continue;
     }
@@ -536,53 +524,51 @@ async function solveInLanes(
       artifact: null,
       status: "non-result",
       nonResultKind: "sandbox",
-      failureOwner: "environment",
-      failureKind: null,
       submissionPath: null,
       referenceSolve: null,
       failedCheckIds: [],
       predicateFailures: [],
       error: errorMessage(slot.stop),
     });
-    if (!findings.some((finding) => finding.code === "verifier-cleanup-pending")) {
+    if (!findings.some((finding) => finding.code === CASE_CODE.sandbox)) {
       findings.push(cleanupPending(slot.stop));
     }
   }
-  return { cases, witnesses, findings, taskJson };
+  return { cases, findings };
 }
 
-/** Stage 4: external checks whose arguments match the program-text rule. Program text passed as an
- *  argument makes an attested interpreter execute candidate-authored logic, which is authored
- *  computation wearing an installed tool's digest, and it is the ordinary way an authored check
- *  reaches for an interpreter rather than a corner case. The rule detects some such cases and
- *  proves no provenance, so it refuses the shape rather than claiming to establish independence. */
-function programArgumentFindings(
-  verifier: VerifierHostHandle,
-  externalIds: ReadonlySet<string>,
-): ContractFinding[] {
-  const checks = programArgumentChecks(verifier.evidence(), externalIds);
-  if (checks.length === 0) return [];
-  return [
-    {
-      code: "solvability-tool-program-argument",
-      path: BRIEF_FILE,
-      detail: programArgumentRemedy(checks),
-    },
-  ];
-}
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+// /** Stage 4: external checks whose arguments match the program-text rule. Program text passed as an
+//  *  argument makes an attested interpreter execute candidate-authored logic, which is authored
+//  *  computation wearing an installed tool's digest, and it is the ordinary way an authored check
+//  *  reaches for an interpreter rather than a corner case. The rule detects some such cases and
+//  *  proves no provenance, so it refuses the shape rather than claiming to establish independence. */
+// function programArgumentFindings(
+//   verifier: VerifierHostHandle,
+//   externalIds: ReadonlySet<string>,
+// ): ContractFinding[] {
+//   const checks = programArgumentChecks(verifier.evidence(), externalIds);
+//   if (checks.length === 0) return [];
+//   return [
+//     {
+//       code: "solvability-tool-program-argument",
+//       path: BRIEF_FILE,
+//       detail: programArgumentRemedy(checks),
+//     },
+//   ];
+// }
 
 /** One policy-owned implementation for the mandatory BuildDeps solvability probe, so adoption and
  *  readiness cannot diverge on what F2 means. */
-export function makeProbeSolvability(
-  options: SolvabilityProbeOptions = {},
-  purpose: "adoption" | "readiness" = "adoption",
-): BuildDeps["probeSolvability"] {
+export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): BuildDeps["probeSolvability"] {
   return async ({ slugDir, fingerprint, operandCommitment, stopped: cut = () => false, stages }) => {
     const loaded = await loadSolvabilityContract(slugDir, fingerprint, options.verifierLifetime);
     if (!loaded.ok) return { evidence: null, findings: [loaded.finding] };
     const contract = loaded.value;
     const { bundleSnapshot, evaluator, brief } = contract;
-    const tools = admitTools(contract, fingerprint, options);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+    // const tools = admitTools(contract, fingerprint, options);
+    const tools = admitTools(contract, options);
     // A known admission refusal cannot earn an F2 witness, so keep the findings and open neither
     // the verifier nor the reference solver for a candidate that already cannot be adopted.
     if (tools.findings.length > 0) return { evidence: null, findings: tools.findings };
@@ -612,38 +598,10 @@ export function makeProbeSolvability(
     };
     const solved = await solveInLanes(session, contract.tasks, cut);
     if (cut()) return { evidence: null, findings: [] };
-    const findings = [...solved.findings, ...programArgumentFindings(verifier, tools.externalIds)];
-    // Only adoption decides family discrimination; a readiness call has already re-verified
-    // every public solve above and has nothing to add here. The witness count is required to equal
-    // the case count because a missing witness already refuses the candidate, so a comparison run
-    // over the remainder would describe a set no adoption will ever use.
-    let familyBinding: SolvabilityStageReceipt | null = null;
-    try {
-      if (
-        purpose === "adoption" &&
-        solved.cases.length > 0 &&
-        solved.witnesses.length === solved.cases.length
-      ) {
-        const stage = await familyBindingStage({
-          brief,
-          witnesses: solved.witnesses,
-          taskJson: solved.taskJson,
-          census,
-          evaluator,
-          evaluatorDigest: contract.evaluatorDigest,
-          inventory: tools.inventory,
-          producedUnder: bundleSnapshot.id,
-          memory: stages?.familyBindings,
-          stopped: cut,
-        });
-        findings.push(...stage.findings);
-        familyBinding = stage.receipt;
-      }
-    } catch (error) {
-      if (!(error instanceof VerifierOperationalStop)) throw error;
-      findings.push(cleanupPending(error));
-    }
-    // The wall stopped admitting transplants; a partial family census reports no evidence.
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+    // const findings = [...solved.findings, ...programArgumentFindings(verifier, tools.externalIds)];
+    const findings = [...solved.findings];
+    // A cut census reports no evidence.
     if (cut()) return { evidence: null, findings };
     const drift = bundleSnapshotDriftFinding(slugDir, fingerprint, bundleSnapshot);
     if (drift !== null && !findings.some((finding) => finding.code === "verifier-cleanup-pending")) {
@@ -651,15 +609,14 @@ export function makeProbeSolvability(
     }
     if (drift !== null) findings.push(drift);
     const evidence: SolvabilityEvidence = {
-      schema: "solvability/v8",
-      policy: purpose === "adoption" ? SOLVABILITY_PROBE_POLICY : SOLVABILITY_READINESS_POLICY,
+      schema: "solvability/v10",
+      policy: SOLVABILITY_POLICY,
       correctnessModelHash: fingerprint.correctnessModelHash,
       taskSetHash: contract.taskSetHash,
       bundleSnapshotId: bundleSnapshot.id,
       verifierEnvironmentHash: executionEvidence(verifier).verifierEnvironmentHash,
       operandCommitmentKeyId: operandCommitment.keyId,
       toolRuns: verifier.evidence().length,
-      familyBinding,
       cases: solved.cases,
     };
     return { evidence, findings };

@@ -19,11 +19,17 @@ import type { SolvabilityEvidence } from "../src/claim/readiness.ts";
 import { type WrittenRunClaim, writeRunClaim } from "../src/run/claim-write.ts";
 import { driveBattery, loadRecordedTasks } from "../src/run/run-driver.ts";
 import * as sourceIdentity from "../src/run/source-identity.ts";
-import { SOLVABILITY_READINESS_POLICY } from "../src/truth/solvability.ts";
+import { SOLVABILITY_POLICY } from "../src/truth/solvability.ts";
 import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { double } from "./helpers/doubles.ts";
-import { MATCHING_BRIEF, MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixture.ts";
+import {
+  MATCHING_ACCEPTS,
+  MATCHING_BRIEF,
+  MATCHING_REJECTS,
+  MATCHING_TASKS,
+  scriptedMatchingSolver,
+} from "./helpers/matching-fixture.ts";
 import { fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
@@ -176,7 +182,7 @@ describe("a claim written from a recorded battery", () => {
       expect.objectContaining({ checkId: "parts-assigned", toolId: "cat", attestedLaunches: 4 }),
     );
     expect(JSON.parse(readFileSync(created.evidencePath, "utf8")).solvability.policy).toBe(
-      SOLVABILITY_READINESS_POLICY,
+      SOLVABILITY_POLICY,
     );
   }, 60_000);
 
@@ -275,6 +281,28 @@ describe("a claim written from a recorded battery", () => {
     },
     60_000,
   );
+});
+
+describe("a reject control that passes the check it names", () => {
+  it("is measured, and the battery it records supports a claim", async () => {
+    // r-ghost carries t1's valid answer, so the check it names passes it. The battery start and the
+    // claim read that as a weak control rather than a broken candidate.
+    const { write } = await recordedBattery("passing-reject", (slugDir) => {
+      const reject = MATCHING_REJECTS.map((control) =>
+        control.id === "r-ghost"
+          ? { ...control, artifact: { assignments: [{ part: "alpha", slot: "s3" }] } }
+          : control,
+      );
+      writeFileSync(
+        join(slugDir, "correctness-model/controls.json"),
+        JSON.stringify({ accept: MATCHING_ACCEPTS, reject }),
+      );
+    });
+    const created = await write("passing-reject");
+    expect(created.clauses).toEqual([]);
+    expect(created.created).toBe(true);
+    expect(created.statement).toMatchObject({ n: 4, passed: 4 });
+  }, 60_000);
 });
 
 describe("the write refuses a battery whose recorded bytes no longer stand behind the score", () => {

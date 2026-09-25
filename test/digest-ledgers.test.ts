@@ -130,38 +130,38 @@ test("a turn retry is an explicit allowance wait on the provider's own clause al
   const censored = roleSpendLines({
     ...options,
     tallies: batteryTallies([caseRecordRow("t1", "f", { runId: "run", ...providerNonResult })]),
-    decisions: [{ runId: "next", action: "placed", evidenceRunIds: ["run"] }],
+    decisions: [{ runId: "next", zone: "on-aim", evidenceRunIds: ["run"] }],
   }).join("\n");
   expect(censored).toContain(
     "run: graded 0 · provider non-results 1 · first ? last ? · CENSORED (provider non-results; the typed kind is the evidence, the message is not)",
   );
-  expect(censored).toContain("DECISION ON CENSORED BATTERY (lane 24): next placed read run");
+  expect(censored).toContain("DECISION ON CENSORED BATTERY (lane 24): next on-aim read run");
 });
 
 test("an epoch review counts a finding unrouted only when the author router gives it no owner", async () => {
   const campaign = join(tmpdir(), `digest-ledgers-${crypto.randomUUID()}`);
-  const finding = (kind: string, proposedOwner: string | null) => ({ kind, proposedOwner });
+  const finding = (defect: boolean, owner: string | null) => ({ defect, owner });
   await Bun.write(
     join(campaign, "analysis", "authoring-a-epoch-review.json"),
     JSON.stringify({
       schema: EPOCH_REVIEW_SCHEMA,
       status: "completed",
       findings: [
-        finding("curriculum-defect", null),
-        finding("harness-defect", null),
-        finding("harness-defect", "brief"),
+        finding(true, "correctness-model/tasks.json"),
+        finding(false, null),
+        finding(true, "correctness-model/brief.json"),
       ],
       reads: [],
     }),
   );
-  // A curriculum finding names no owner and still routes, to `tests`, so it is not unrouted.
+  // A finding routes to the bundle file it names, whether or not it is a defect; one naming none is unrouted.
   expect(admissionLedgerLines({ campaign }).join("\n")).toContain(
     "authoring-a: epoch review completed · findings 3 · unrouted 1 · reads 0",
   );
   // A review of another schema is refused by name rather than read for its findings.
   await Bun.write(
     join(campaign, "analysis", "run-b-epoch-review.json"),
-    JSON.stringify({ status: "completed", findings: [finding("harness-defect", null)], reads: [] }),
+    JSON.stringify({ status: "completed", findings: [finding(false, null)], reads: [] }),
   );
   const refused = admissionLedgerLines({ campaign }).join("\n");
   expect(refused).toContain(`run-b: epoch review refused, not ${EPOCH_REVIEW_SCHEMA}`);

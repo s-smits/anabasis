@@ -9,7 +9,14 @@
  * the bytes moved decides the scope, never the loop that asked for the round, and a reopened or
  * resumed workspace keeps the edits it was interrupted in.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import {
@@ -91,11 +98,11 @@ describe("the opening a round composes", () => {
           }),
       },
     );
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(turns).toBe(3);
   });
 
-  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster", async () => {
+  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster with the plan view", async () => {
     // The contract has one owner and two readers; comparing both against what the round actually
     // served, rather than against the renderer, is what catches the readers drifting apart.
     const campaignDir = scratchDir("ana-contract-readers-");
@@ -103,6 +110,7 @@ describe("the opening a round composes", () => {
     let delivered = "";
     let served = "";
     let roster: string[] = [];
+    let plan = "";
     await expect(
       runBuilderCampaign(
         { campaignDir, ...FRESH_BUILD, advisoryNote: note },
@@ -118,6 +126,13 @@ describe("the opening a round composes", () => {
                 action: "readiness",
               });
               served = inspected.content[0]?.text ?? "{}";
+              const page = await namedTool(tools, "context").execute("context-1", {
+                question: "what does the round plan need",
+                decides: "whether to write EXPERIMENT.json",
+                depth: "page",
+                id: "round/plan",
+              });
+              plan = page.content[0]?.text ?? "";
               return { status: "failed", errorMessages: ["stop after prompt proof"] };
             }),
         },
@@ -132,6 +147,8 @@ describe("the opening a round composes", () => {
     expect(roster).toEqual(expect.arrayContaining(["harness_inspect", "harness_trial", "submit"]));
     // No adoption gate is supplied, so correctness_check is not registered.
     expect(roster).not.toContain("correctness_check");
+    // A first round scores its rehearsals only against a plan it was shown how to write.
+    expect(plan).toContain("Round plan: EXPERIMENT.json is not written yet. Write EXPERIMENT.json as");
   });
 
   it.concurrent("opens a probe round on the range it may choose in, not one size", async () => {
@@ -149,12 +166,12 @@ describe("the opening a round composes", () => {
 
   it.concurrent("projects carried repair evidence at the opening boundary without its raw detail", async () => {
     const raw = {
-      ...blockingRow("tests", "RAW_PROTECTED_CLAIM", "RAW_PROTECTED_EVIDENCE"),
+      ...blockingRow("correctness-model/tasks.json", "RAW_PROTECTED_CLAIM", "RAW_PROTECTED_EVIDENCE"),
       findings: [{ code: "RAW_PROTECTED_CODE", path: "RAW_PROTECTED_PATH", detail: "RAW_PROTECTED_DETAIL" }],
     };
     const delivered = await openingPrompt({ ...FRESH_BUILD, priorEvidence: packet("e".repeat(64), [raw]) });
     expect(delivered).toContain(
-      "tests (correctness-model/tasks.json): [blocking] generated-execution-unclassified: a check failed while executing your generated code and carries no public detail; use harness_inspect for static diagnostics, harness_trial for the generated solve path, or verifier_workshop for the correctnessModel path",
+      "correctness-model/tasks.json: [blocking] generated-execution-unclassified: a check failed while executing your generated code and carries no public detail; use harness_inspect for static diagnostics, harness_trial for the generated solve path, or verifier_workshop for the correctnessModel path",
     );
     expect(delivered).not.toContain("RAW_PROTECTED");
   });
@@ -234,14 +251,20 @@ describe("the admission a repair earns", () => {
         ...FRESH_BUILD,
         maxTurns: 3,
         priorEvidence: packet("packet-verifier", [
-          blockingRow("correctness-model", "repair the verifier only", "packet.json"),
+          blockingRow("correctness-model/evaluator.ts", "repair the verifier only", "packet.json"),
         ]),
       },
       {
         ...BARE,
         gates: async () => {
           gateCalls += 1;
-          return [blockingRow("correctness-model", "repair the verifier only", `census-${gateCalls}.json`)];
+          return [
+            blockingRow(
+              "correctness-model/evaluator.ts",
+              "repair the verifier only",
+              `census-${gateCalls}.json`,
+            ),
+          ];
         },
         open: async (tools) => {
           let turns = 0;
@@ -256,7 +279,7 @@ describe("the admission a repair earns", () => {
             // The drift and a bundle break go in together: the refusal commits both without
             // settling, and the follow-up submit's own diff carries only the guide restore.
             writeFileSync(join(workspace, "agent/tools.ts"), "// cross-owner rewrite\n");
-            writeFileSync(join(workspace, "agent/BUILT_AGENTS.md"), "");
+            rmSync(join(workspace, "agent/BUILT_AGENTS.md"));
             await submit.execute("submit-2", {});
             writeFileSync(
               join(workspace, "agent/BUILT_AGENTS.md"),
@@ -269,14 +292,13 @@ describe("the admission a repair earns", () => {
       },
     );
     expect(gateCalls).toBe(2);
-    expect(outcome).toMatchObject({ buildAdmissible: false, clauses: ["iterations-exhausted"] });
+    expect(outcome).toMatchObject({ buildAdmissible: false, clause: "iterations-exhausted" });
     expect(outcome.iterations[1]).toMatchObject({
-      repairOwner: null,
       workspaceChange: {
         baseCommit: outcome.iterations[0]?.workspaceChange?.baseCommit,
         changedPaths: expect.arrayContaining(["agent/tools.ts", "agent/BUILT_AGENTS.md"]),
       },
-      feedback: [blockingRow("correctness-model", "repair the verifier only", "census-2.json")],
+      feedback: [blockingRow("correctness-model/evaluator.ts", "repair the verifier only", "census-2.json")],
     });
     expect(readFileSync(join(workspace, "agent/tools.ts"), "utf8")).toBe("// cross-owner rewrite\n");
   });
@@ -293,7 +315,7 @@ describe("the admission a repair earns", () => {
       "agent/tools.ts",
     ];
     const advisory: CampaignFeedback = {
-      owner: "tests",
+      owner: "correctness-model/tasks.json",
       severity: "advisory",
       claim: "add harder cases",
       evidence: "packet.json",
@@ -311,15 +333,13 @@ describe("the admission a repair earns", () => {
     );
     expect(outcome.buildAdmissible).toBe(true);
     expect(outcome.iterations[0]).toMatchObject({
-      repairOwner: null,
       workspaceChange: { changedPaths: expect.arrayContaining(changed) },
     });
   });
 
   it.concurrent("admits a model-proposed controls repair and records the proposal captured at submit", async () => {
-    const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-rebuild-unmoved-");
+    const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-controls-repair-");
     let captured: ReturnType<typeof proposeExperiment> | undefined;
-    let reply = "";
     const outcome = await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 1, experiment: "build", adoptedDir },
       {
@@ -332,13 +352,12 @@ describe("the admission a repair earns", () => {
           scriptedSession(async () => {
             touch(workspace, "correctness-model/controls.json");
             captured = proposeExperiment(workspace);
-            reply = await replyText(submitTool(tools), "rebuild-unmoved");
+            await replyText(submitTool(tools), "controls-repair");
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
     expect(outcome.buildAdmissible).toBe(true);
-    expect(reply).not.toContain("rebuild-evaluation-unmoved");
     expect(outcome.experimentProposal).toEqual(captured);
     expect(outcome.iterations[0]?.experimentProposal).toEqual(captured);
     expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toEqual(captured);
@@ -372,7 +391,7 @@ describe("the admission a repair earns", () => {
     expect(outcome.buildAdmissible).toBe(true);
     for (const sentence of [
       "no axis, step size, family mix or parent bijection is prescribed",
-      "extra cases on the same rule establish coverage, and a new identifier",
+      "extra cases on the same rule establish coverage, a new identifier",
       "Move one part per experiment",
       "recorded as a build, and their result credits neither",
       "fix a known evaluator defect before claiming a task-only challenge",
@@ -396,8 +415,12 @@ describe("the admission a repair earns", () => {
         maxTurns: 1,
         experiment: "build",
         priorEvidence: packet("packet-controls", [
-          blockingRow("correctness-model", "check the evaluator", "packet.json"),
-          blockingRow("controls", "the reject control set covers no case for this check", "packet.json"),
+          blockingRow("correctness-model/evaluator.ts", "check the evaluator", "packet.json"),
+          blockingRow(
+            "correctness-model/controls.json",
+            "the reject control set covers no case for this check",
+            "packet.json",
+          ),
         ]),
       },
       {
@@ -420,9 +443,8 @@ describe("the admission a repair earns", () => {
       experimentScope: { actual: "build", freeze: null },
     });
     expect(censusRuns).toBe(1);
-    expect(outcome.iterations[0]).toMatchObject({ repairOwner: null });
-    expect(prompt).toContain("- controls (correctness-model/controls.json):");
-    expect(prompt).toContain("- correctness-model (correctness-model/evaluator.ts):");
+    expect(prompt).toContain("- correctness-model/controls.json:");
+    expect(prompt).toContain("- correctness-model/evaluator.ts:");
   });
 
   it.concurrent("admits a coherent broader repair and records build scope with the drift it froze", async () => {
@@ -446,7 +468,7 @@ describe("the admission a repair earns", () => {
         experiment: "build",
         adoptedDir,
         priorEvidence: packet("packet-tests", [
-          blockingRow("tests", "repair the tests closure", "packet.json"),
+          blockingRow("correctness-model/tasks.json", "repair the tests closure", "packet.json"),
         ]),
       },
       { ...BARE, gates: async () => [], open: session.open },
@@ -482,7 +504,7 @@ describe("the admission a repair earns", () => {
       experiment: "build",
       adoptedDir,
       priorEvidence: packet("evaluation-seed", [
-        blockingRow("correctness-model", "Correct the evaluator", "packet.json"),
+        blockingRow("correctness-model/evaluator.ts", "Correct the evaluator", "packet.json"),
       ]),
     };
     const helper = join(workspace, "correctness-model/repair-helper.ts");

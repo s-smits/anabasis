@@ -2,7 +2,11 @@
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Value } from "typebox/value";
-import type { SolvabilityCaseEvidence, SolvabilitySubmissionPathEvidence } from "../claim/readiness.ts";
+import type {
+  SolvabilityFailure,
+  SolvabilityNonResult,
+  SolvabilitySubmissionPathEvidence,
+} from "../claim/readiness.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
 import type {
@@ -38,17 +42,21 @@ type SolvabilitySubmissionResult =
   | { status: "non-result"; detail: string };
 type SolvabilitySubmissionPathFailure = Exclude<SolvabilitySubmissionResult, { status: "accepted" }>;
 
+/** Who a failed attempt belongs to before its answer is checked: a failure the candidate owns, a
+ *  host that stopped it, or `null` while nothing has gone wrong or the checks alone will decide. */
+export type SolvabilityAttribution =
+  | { failure: SolvabilityFailure }
+  | { nonResultKind: SolvabilityNonResult };
+
 /** One reference artifact's submission result, before any truth verdict exists. A failed outcome
- *  already carries its whole attribution — owner, kind and the author-visible classification — so a
+ *  already carries its whole attribution — kind and the author-visible classification — so a
  *  reader never has to infer who owns the failure from the message text. */
 export interface SolvabilitySubmissionOutcome {
   artifactJson: string | null;
   submissionPath: SolvabilitySubmissionPathEvidence | null;
   error: string | null;
   authorClassification: GeneratedExecutionClassification | null;
-  nonResultKind: SolvabilityCaseEvidence["nonResultKind"];
-  failureOwner: SolvabilityCaseEvidence["failureOwner"];
-  failureKind: SolvabilityCaseEvidence["failureKind"];
+  attribution: SolvabilityAttribution | null;
 }
 
 /** The attribution an attempt carries until something goes wrong. */
@@ -57,9 +65,7 @@ export const UNATTRIBUTED: SolvabilitySubmissionOutcome = {
   submissionPath: null,
   error: null,
   authorClassification: null,
-  nonResultKind: null,
-  failureOwner: null,
-  failureKind: null,
+  attribution: null,
 };
 
 /** No writer types this marker object where a reference answer writes null, so a schema that
@@ -90,15 +96,12 @@ type StarterOpener = () => Promise<OpenedStarter>;
 function refusal(
   error: string,
   authorClassification: GeneratedExecutionClassification,
-  attribution: Partial<
-    Pick<SolvabilitySubmissionOutcome, "failureKind" | "nonResultKind" | "failureOwner">
-  > = {},
+  attribution: SolvabilityAttribution | null = null,
   artifactJson: string | null = null,
 ): SolvabilitySubmissionOutcome {
   return {
     ...UNATTRIBUTED,
-    failureOwner: "product",
-    ...attribution,
+    attribution,
     error,
     authorClassification,
     artifactJson,
@@ -131,11 +134,9 @@ function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonVa
  * `Type.Union([Type.String(), Type.Null()])`, the agent wrote `""` on the rows the answer leaves
  * absent, and eight of twenty-five cases failed on that alone with every other field correct.
  *
- * Only the empty string counts here, not the wider absence vocabulary of
- * `src/run/representation-census.ts`. That census reads what the reference answer wrote and may
- * assess an "n/a" in the domain; this reads what a writer permits the agent to write, where "n/a" or
- * "none" can be legitimate free text. The narrow rule is the empty string standing beside a
- * reference null.
+ * Only the empty string counts here, not a wider absence vocabulary: this reads what a writer
+ * permits the agent to write, where "n/a" or "none" can be legitimate free text. The narrow rule is
+ * the empty string standing beside a reference null.
  *
  * The comparison uses the writer schema and the reference artifact without running the verifier, and
  * its findings still travel the protected submission-result feedback path.
@@ -477,8 +478,8 @@ export async function submitSolvabilityReferenceArtifact(
     options.task.taskId,
     artifact,
   );
-  if (schemaError !== null) return refusal(schemaError, "generated-solve-result", {}, serialized);
-  const representationDefect = { failureKind: "representation-defect" } as const;
+  if (schemaError !== null) return refusal(schemaError, "generated-solve-result", null, serialized);
+  const representationDefect = { failure: "representation-defect" } as const;
   if (options.publicArtifactSchema === null) {
     return refusal(
       "the recorded accept corpus did not compile a public submission schema",
@@ -507,7 +508,7 @@ export async function submitSolvabilityReferenceArtifact(
     return refusal(
       traversed.detail,
       "submission-path-host",
-      { nonResultKind: "submission-path-host", failureOwner: "environment" },
+      { nonResultKind: "submission-path-host" },
       serialized,
     );
   }

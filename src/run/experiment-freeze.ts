@@ -21,7 +21,7 @@ import {
 } from "../claim/conformance-evidence.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { HarnessAuthoring, HarnessExperiment } from "../critic/types.ts";
-import { type Brief, controllerValidatedFinding } from "../truth/brief.ts";
+import type { Brief } from "../truth/brief.ts";
 import { briefPublicResources, judgePublicTaskOf } from "../truth/public-resources.ts";
 import { validateBrief } from "../truth/brief-validator.ts";
 import type { BuildTask } from "../truth/tasks.ts";
@@ -292,16 +292,8 @@ function batteryFileHash(dir: string, file: string): string | null {
   return existsSync(path) ? sha256(readFileSync(path)) : null;
 }
 
-/** Shared refusal for an unchanged experiment; the controller projects it for the author. */
-const REBUILD_EVALUATION_UNMOVED = controllerValidatedFinding({
-  code: "rebuild-evaluation-unmoved",
-  path: TASKS_FILE,
-  detail:
-    "this proposal keeps the adopted agent, scoring program, installed verifier, tasks and controls byte-identical. Revise the experiment and change the package before another measurement; a differently worded proposal is not a changed condition",
-});
-
-/** The adopted tree's identity, or null when it cannot be read: this early check only refuses an
- * unmoved candidate it can prove, and leaves an unreadable baseline to the full validation. */
+/** The adopted tree's identity, or null when it cannot be read, which a caller reads as no proved
+ *  baseline rather than as a failure. */
 export function readableFingerprint(dir: string): FingerprintEvidence | null {
   try {
     const fingerprint = fingerprintSlug(dir);
@@ -309,32 +301,6 @@ export function readableFingerprint(dir: string): FingerprintEvidence | null {
   } catch {
     return null;
   }
-}
-
-/** The author-facing refusal for the same rebuild admission rule. */
-export function rebuildEvaluationUnmovedRefusal(input: {
-  adoptedDir: string;
-  candidate: FreezeFingerprint;
-  commit: string;
-  verifierEnvironmentHash: string | null;
-}) {
-  const adopted = readableFingerprint(input.adoptedDir);
-  if (adopted === null) return null;
-  if (
-    adopted.taskSetHash === null ||
-    adopted.agentHash !== input.candidate.agentHash ||
-    adopted.scoringHash !== input.candidate.scoringHash ||
-    adopted.taskSetHash !== input.candidate.taskSetHash ||
-    recordedVerifierEnvironmentHash(input.adoptedDir) !== input.verifierEnvironmentHash
-  ) {
-    return null;
-  }
-  return {
-    ok: false as const,
-    stage: "gates" as const,
-    commit: input.commit,
-    findings: [REBUILD_EVALUATION_UNMOVED],
-  };
 }
 
 /** Authored evaluation bytes: the scoring program and the battery pair. Installed tools have a
@@ -367,7 +333,7 @@ function evaluationFreeze(
     if (verifier.state === "unproven" && clauses.length === 0) return verifier;
     if (verifier.state === "held") {
       clauses.push(
-        `${REBUILD_EVALUATION_UNMOVED.code}: the scoring program, installed verifier, hidden expectations and controls stayed byte-identical, so this evaluation correction moved nothing`,
+        "evaluation-unmoved: the scoring program, installed verifier, hidden expectations and controls stayed byte-identical, so this evaluation correction moved nothing",
       );
     }
   }

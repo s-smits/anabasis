@@ -116,7 +116,7 @@ could change.
 | 4b `TARGET MISSED` or `OFF-AIM STREAK`; the `handoff` calibration table; a `climb` edge label beside a placement | 10 |
 | 6 `SUBMITTED BYTES NEVER REHEARSED` or `REHEARSAL CONTRADICTS TARGET`; the `yield` `harness-trial` row | 11 |
 | the `yield` `epoch-reviewer` row; a review the census marks incomplete | 12 |
-| 4d `FINDINGS WITHOUT PROPOSED OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
+| 4d `FINDINGS WITHOUT OWNER` or `ADVISORY FINDING RECURS UNROUTED`; the `yield` `epoch-reviewer` row | 14 |
 | the `handoff` triage table | 15 |
 | 2b `CENSUS WITH DISAGREEMENT` | 16 |
 | the `handoff` census table | 17 |
@@ -146,7 +146,10 @@ sharp question, and they fall into six groups. One independent `gpt-5.6-luna` se
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.
-When the operator asks for Luna, run one session per lane and never group lanes.
+When the operator asks for Luna, run one session per lane and never group lanes. A Luna or Codex
+lane is read-only. A native lane, a Claude subagent run from `prompts/`, may also repair a finding
+it proved, one commit per finding in a worktree of its own and never a push; the primary folds
+those commits in the way it folds any lane's.
 
 Product validity:
 
@@ -270,7 +273,8 @@ lands beside it as `<name>.md` as it finishes.
 result per task and matching prompt, report and heading identities. Under each owed `## lane_NN`
 heading the report carries `### Started from`, `### Evidence read`, `### Findings` and
 `### Not established`, each once, in that order and non-empty, and every finding names an
-`owner:` from the nine `FeedbackOwner` values plus `controller-source` and `judge`
+`owner:` from the `FeedbackOwner` values — the bundle file at fault, such as
+`correctness-model/evaluator.ts`, or `environment` — plus `controller-source` and `judge`
 (`FINDING_OWNERS` in `manifest-reporting.mjs`, which the leaf prompt spells out). A report that
 breaks that shape is refused with the exact section named; a failed or absent report is
 missing work, and one retry is permitted within the authorised cap. It then scaffolds
@@ -384,7 +388,8 @@ evidence supports a probe or a hold. End the recommendations with `What to do ne
 Consolidate and Overhaul, where a section may report no justified change. Use
 [an independent review packet](references/external-review.md) only when another method can settle
 a consequential dispute, and [the plan questions](references/improvement-plan-questions.md) when
-the operator asks what to change next. A review alone authorises no source edit, PR or launch.
+the operator asks what to change next. A review alone authorises no PR or launch, and no source
+edit beyond the native lanes' own commits.
 
 ## The archive and the note
 

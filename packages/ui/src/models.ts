@@ -95,8 +95,7 @@ export interface RunRequest {
 }
 
 export interface DifficultyDecision {
-  action: string | null;
-  /** Where the battery stood: the band zone of a placed decision. Null for a set-aside. */
+  /** Where the battery stood: the band zone, or null when the decision placed it nowhere. */
   standing: string | null;
   rationale: string | null;
   admitted: number | null;

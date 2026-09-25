@@ -175,7 +175,7 @@ type BatteryJoinSlice = { disposition: BatteryDisposition; caseCount: number };
 export const SUBMIT_MAX_ATTEMPTS = 3;
 /**
  * Thrown when every battery case is an environment-owned non-result: zero cases were verified and
- * every kind belongs to ENVIRONMENT_OWNED_NONRESULT_KINDS. The battery produced operational
+ * every kind is environment-owned (`environmentBlockedBattery`). The battery produced operational
  * evidence but no capability measurement. This class represents the whole battery, unlike
  * VerifierExecutionNonResult, which represents one execution. It contains all the case kinds and
  * is raised after their evidence has been recorded, beyond the census gate's responsibility. It
@@ -215,11 +215,11 @@ export function batteryDisposition(
   cases: readonly { runtimeNonResult: string | null }[],
 ): BatteryDisposition {
   if (plan === "skipped") return "skipped-precase";
-  const neverAttempted = cases.filter(
-    (row) => row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true,
-  );
-  return neverAttempted.length > 0 ? "provider-stopped" : "completed";
+  return cases.some(neverAttempted) ? "provider-stopped" : "completed";
 }
+
+const neverAttempted = (row: { runtimeNonResult: string | null }) =>
+  row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true;
 
 /**
  * The human sentence recorded beside the disposition. "complete" is truthful only where the battery
@@ -245,9 +245,7 @@ export function batteryTerminalReason(
     }
     return "complete";
   }
-  const never = cases.filter(
-    (row) => row.runtimeNonResult?.startsWith(NEVER_ATTEMPTED_PREFIX) === true,
-  ).length;
+  const never = cases.filter(neverAttempted).length;
   return `${PROVIDER_STOPPED_REASON_PREFIX} ${String(never)} of ${String(cases.length)} cases were never attempted`;
 }
 

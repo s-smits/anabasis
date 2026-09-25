@@ -9,43 +9,47 @@ import { join } from "../src/meta/path.ts";
 import { deriveCandidateIsolation, guardPath } from "../src/builder/candidate-isolation.ts";
 import { makeIsolationRepo, seedFile } from "./helpers/isolation-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-const DENY_OUTSIDE_ALLOW = "deny/outside-allow";
-const DENY_MEASURED = "deny/measured";
+
+type Mode = "read" | "write";
+/** Each row asserts one decision; a reason of null checks the decision alone. */
+type Row = readonly [Mode, string, "allow" | "deny", string | null];
 
 const SCRATCH = realpathSync.native(scratchDir("ana-isolation-"));
 afterAll(cleanupScratch);
 const { repoRoot, binding } = makeIsolationRepo(SCRATCH, "repo");
+const { iterationDir, epochDir, ossRoot } = binding;
 const policy = deriveCandidateIsolation(binding, "author");
 
-describe("guardPath decisions", () => {
-  const read = (path: string) => guardPath(policy, "read", "read", path);
-  const write = (path: string) => guardPath(policy, "write", "write", path);
+function expectRows(rows: readonly Row[]): void {
+  for (const [mode, path, decision, reason] of rows) {
+    const expected = reason === null ? { decision } : { decision, reason };
+    expect(guardPath(policy, mode, mode, path), `${mode} ${path}`).toMatchObject(expected);
+  }
+}
+const deny = (mode: Mode, reason: string | null) => (path: string) => [mode, path, "deny", reason] as const;
 
+describe("guardPath decisions", () => {
   it("allows the candidate's own interfaces and denies every protected class", () => {
-    expect(read(join(binding.iterationDir, "slug", "correctness-model", "brief.json")).decision).toBe(
-      "allow",
-    );
-    expect(read(join(repoRoot, "node_modules", "pkg", "index.js")).decision).toBe("allow");
-    expect(read(join(binding.epochDir, "backends.json")).decision).toBe("allow");
-    for (const [path, reason] of [
-      [join(repoRoot, "asks", "hw", "ask.md"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "asks", "hw", "verifier.py"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "asks", "other", "ask.md"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "domains", "adopted", "tasks.json"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "src", "verify", "host.ts"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "controller-private.txt"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "operator-policy.json"), DENY_OUTSIDE_ALLOW],
-      [join(binding.epochDir, "late-panel.txt"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, ".env"), "deny/secret"],
-      [join(repoRoot, ".git", "config"), "deny/git-history"],
-      [join(binding.iterationDir, "census.json"), DENY_MEASURED],
-      [join(binding.iterationDir, "iteration.json"), DENY_MEASURED],
-      [join(binding.iterationDir, "solvability.json"), DENY_MEASURED],
-    ] as const) {
-      const decision = read(path);
-      expect(decision.decision, path).toBe("deny");
-      expect(decision.decision === "deny" && decision.reason, path).toBe(reason);
-    }
+    expectRows([
+      ["read", join(iterationDir, "slug", "correctness-model", "brief.json"), "allow", null],
+      ["read", join(repoRoot, "node_modules", "pkg", "index.js"), "allow", null],
+      ["read", join(epochDir, "backends.json"), "allow", null],
+      ...[
+        join(repoRoot, "asks", "hw", "ask.md"),
+        join(repoRoot, "asks", "hw", "verifier.py"),
+        join(repoRoot, "asks", "other", "ask.md"),
+        join(repoRoot, "domains", "adopted", "tasks.json"),
+        join(repoRoot, "src", "verify", "host.ts"),
+        join(repoRoot, "controller-private.txt"),
+        join(repoRoot, "operator-policy.json"),
+        join(epochDir, "late-panel.txt"),
+      ].map(deny("read", "deny/outside-allow")),
+      ["read", join(repoRoot, ".env"), "deny", "deny/secret"],
+      ["read", join(repoRoot, ".git", "config"), "deny", "deny/git-history"],
+      ...["census.json", "iteration.json", "solvability.json"]
+        .map((name) => join(iterationDir, name))
+        .map(deny("read", "deny/measured")),
+    ]);
   });
 
   it("denies the Builder every input the operator projections read, including its own path record", () => {
@@ -55,117 +59,97 @@ describe("guardPath decisions", () => {
     // the isolation observed rather than what the Builder wrote. tools/outcome reads the denied side of
     // that line — per-case outcomes are per-task failure localisation (tenet 4) — so the census,
     // the scan, and the trace projection are host-side readers and reach no session.
-    expect(read(join(binding.epochDir, "builder-session.json")).decision).toBe("allow");
-    for (const [path, reason] of [
-      [join(binding.epochDir, "builder-path-record.jsonl"), DENY_MEASURED],
-      [join(binding.epochDir, "verifier-workshop.jsonl"), DENY_MEASURED],
-      [join(binding.epochDir, `verifier-proposal-${"a".repeat(64)}.json`), DENY_MEASURED],
-      [join(binding.epochDir, `verifier-admission-${"a".repeat(64)}.json`), DENY_MEASURED],
-      [join(binding.iterationDir, ".bundle-snapshots", "accepted", "agent", "tools.ts"), DENY_MEASURED],
-      [join(binding.iterationDir, "case-record.jsonl"), DENY_MEASURED],
-      [join(repoRoot, "campaigns", "hw", "case-record.jsonl"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "tools", "outcome", "cli.ts"), DENY_OUTSIDE_ALLOW],
-      [join(repoRoot, "tools", "outcome", "scan.ts"), DENY_OUTSIDE_ALLOW],
-    ] as const) {
-      const decision = read(path);
-      expect(decision.decision, path).toBe("deny");
-      expect(decision.decision === "deny" && decision.reason, path).toBe(reason);
-    }
+    expectRows([
+      ["read", join(epochDir, "builder-session.json"), "allow", null],
+      ...[
+        join(epochDir, "builder-path-record.jsonl"),
+        join(epochDir, "verifier-workshop.jsonl"),
+        join(epochDir, `verifier-proposal-${"a".repeat(64)}.json`),
+        join(epochDir, `verifier-admission-${"a".repeat(64)}.json`),
+        join(iterationDir, ".bundle-snapshots", "accepted", "agent", "tools.ts"),
+        join(iterationDir, "case-record.jsonl"),
+      ].map(deny("read", "deny/measured")),
+      ...[
+        join(repoRoot, "campaigns", "hw", "case-record.jsonl"),
+        join(repoRoot, "tools", "outcome", "cli.ts"),
+        join(repoRoot, "tools", "outcome", "scan.ts"),
+      ].map(deny("read", "deny/outside-allow")),
+    ]);
   });
 
   it("confines ordinary author writes to the iteration dir and keeps .oss isolated", () => {
-    expect(write(join(binding.iterationDir, "slug", "out.ts")).decision).toBe("allow");
-    expect(write(join(binding.ossRoot, "clone", "x.py")).decision).toBe("deny");
-    expect(write(join(repoRoot, "src", "evil.ts")).decision).toBe("deny");
-    expect(write(join(repoRoot, "domains", "adopted", "tasks.json")).decision).toBe("deny");
-    expect(write(join(binding.iterationDir, "census.json")).decision).toBe("deny");
+    expectRows([
+      ["write", join(iterationDir, "slug", "out.ts"), "allow", null],
+      ...[
+        join(ossRoot, "clone", "x.py"),
+        join(repoRoot, "src", "evil.ts"),
+        join(repoRoot, "domains", "adopted", "tasks.json"),
+        join(iterationDir, "census.json"),
+      ].map(deny("write", null)),
+    ]);
   });
 
   // Run 52 wrote package replacements into the workspace, so generated imports used those files
   // instead of the controller links. Writes are now refused, and the census still detects any
   // replacement created through another route.
   it("denies writing the controller-linked runtime closure under any workspace resolution root", () => {
-    for (const root of ["node_modules", "agent/node_modules", "correctness-model/node_modules"]) {
-      for (const [scope, packageName] of [
-        ["@ana", "agent-bundle"],
-        ["@earendil-works", "pi-ai"],
-      ] as const) {
-        const decision = write(join(binding.iterationDir, root, scope, packageName, "index.ts"));
-        expect(decision.decision, `${root}/${scope}`).toBe("deny");
-        expect(decision.decision === "deny" && decision.reason, `${root}/${scope}`).toBe(
-          "deny/module-shadow",
-        );
-      }
-    }
-    const sourceShadow = write(join(binding.iterationDir, "node_modules", "src", "solve", "draft-tool.ts"));
-    expect(sourceShadow.decision).toBe("deny");
-    expect(sourceShadow.decision === "deny" && sourceShadow.reason).toBe("deny/module-shadow");
-    const packageShadow = write(join(binding.iterationDir, "node_modules", "left-pad", "index.js"));
-    expect(packageShadow.decision).toBe("deny");
-    expect(packageShadow.decision === "deny" && packageShadow.reason).toBe("deny/module-shadow");
+    expectRows(
+      [
+        ...["node_modules", "agent/node_modules", "correctness-model/node_modules"].flatMap((root) =>
+          ["@ana/agent-bundle", "@earendil-works/pi-ai"].map((pkg) =>
+            join(iterationDir, root, pkg, "index.ts"),
+          ),
+        ),
+        join(iterationDir, "node_modules", "src", "solve", "draft-tool.ts"),
+        join(iterationDir, "node_modules", "left-pad", "index.js"),
+      ].map(deny("write", "deny/module-shadow")),
+    );
   });
 
   it("denies measured evidence by path segment, not leaf basename (the hostile corpus)", () => {
     // Two classes the leaf-only check missed live: the verifier non-result evidence (carries
     // stderrTail/command/args — protected verifier detail) and a dynamic leaf under a directory
     // whose NAME is protected. writeCompleted's tmp form must be as denied as its target.
-    for (const [path, label] of [
-      [join(binding.iterationDir, "verifier-non-result.json"), "plain verifier non-result"],
-      [join(binding.iterationDir, "slug", "verifier-non-result.json"), "nested verifier non-result"],
-      [
-        join(binding.iterationDir, "verifier-non-result.json.tmp-4242-1690000000000"),
-        "mid-write completed-json tmp form",
-      ],
-      [
-        join(binding.epochDir, "evidence-builder-authoring", "02-1690000000000-4242.json"),
-        "dynamic leaf under a protected directory name",
-      ],
-      [
-        join(binding.epochDir, "evidence-builder-authoring", "sub", "x.json"),
-        "nested under a protected directory name",
-      ],
-      [join(binding.iterationDir, "census.json", "report.json"), "prefix as directory segment"],
-      [join(binding.epochDir, "evidence", "attempt.json"), "directory literally named evidence"],
-      [join(binding.iterationDir, "conformance.json"), "conformance leaf"],
-      [join(binding.iterationDir, "discrimination-report.json"), "discrimination leaf"],
-      [join(binding.iterationDir, "census.json.bak"), "prefix-stem suffix stays denied"],
-      [join(binding.iterationDir, "case-17", "trace.json"), "case- as directory segment"],
-    ] as const) {
-      const decision = read(path);
-      expect(decision.decision, label).toBe("deny");
-      expect(decision.decision === "deny" && decision.reason, label).toBe(DENY_MEASURED);
-      expect(write(path).decision, `${label} (write)`).toBe("deny");
-    }
+    const measured = [
+      join(iterationDir, "verifier-non-result.json"),
+      join(iterationDir, "slug", "verifier-non-result.json"),
+      join(iterationDir, "verifier-non-result.json.tmp-4242-1690000000000"),
+      join(epochDir, "evidence-builder-authoring", "02-1690000000000-4242.json"),
+      join(epochDir, "evidence-builder-authoring", "sub", "x.json"),
+      join(iterationDir, "census.json", "report.json"),
+      join(epochDir, "evidence", "attempt.json"),
+      join(iterationDir, "conformance.json"),
+      join(iterationDir, "discrimination-report.json"),
+      join(iterationDir, "census.json.bak"),
+      join(iterationDir, "case-17", "trace.json"),
+    ];
+    expectRows([...measured.map(deny("read", "deny/measured")), ...measured.map(deny("write", null))]);
     // False-positive guards: names near a prefix without matching it stay inside the Builder's
     // own readable tree — over-denying here would starve legitimate authored files.
-    for (const name of ["census2.json", "xcensus.json", "casefoo.json"]) {
-      const decision = read(join(binding.iterationDir, "slug", name));
-      expect(decision.decision, name).toBe("allow");
-      expect(decision.decision === "allow" && decision.reason, name).toBe("allow/candidate-tree");
-    }
+    expectRows(
+      ["census2.json", "xcensus.json", "casefoo.json"].map(
+        (name) => ["read", join(iterationDir, "slug", name), "allow", "allow/candidate-tree"] as const,
+      ),
+    );
   });
 
   it("judges a symlink at its target, never its name", () => {
-    const link = join(binding.iterationDir, "slug", "innocent.md");
+    const link = join(iterationDir, "slug", "innocent.md");
     symlinkSync(join(repoRoot, "asks", "hw", "verifier.py"), link);
-    const decision = guardPath(policy, "read", "read", link);
-    expect(decision.decision).toBe("deny");
-    expect(decision.decision === "deny" && decision.reason).toBe(DENY_OUTSIDE_ALLOW);
+    expectRows([["read", link, "deny", "deny/outside-allow"]]);
   });
 
   it("denies a sibling created after derivation by a standing rule, digest unchanged", () => {
     const before = policy.digest;
-    mkdirSync(join(repoRoot, "domains", "new-sibling"), { recursive: true });
-    seedFile(join(repoRoot, "domains", "new-sibling", "tasks.json"), "LATE-ANSWERS\n");
-    mkdirSync(join(repoRoot, "campaigns", "hw", "epoch-2"), { recursive: true });
-    seedFile(join(repoRoot, "campaigns", "hw", "epoch-2", "backends.json"), "{}\n");
-    expect(
-      guardPath(policy, "read", "read", join(repoRoot, "domains", "new-sibling", "tasks.json")).decision,
-    ).toBe("deny");
-    expect(
-      guardPath(policy, "read", "read", join(repoRoot, "campaigns", "hw", "epoch-2", "backends.json"))
-        .decision,
-    ).toBe("deny");
+    const late = [
+      join(repoRoot, "domains", "new-sibling", "tasks.json"),
+      join(repoRoot, "campaigns", "hw", "epoch-2", "backends.json"),
+    ];
+    for (const path of late) {
+      mkdirSync(join(path, ".."), { recursive: true });
+      seedFile(path, "LATE\n");
+    }
+    expectRows(late.map(deny("read", null)));
     expect(policy.digest).toBe(before);
   });
 });

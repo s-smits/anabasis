@@ -65,15 +65,12 @@ There is no fifth owner. A row with no owner is a defect.
 
 ## Authoring and validation
 
-```text
-kickoff → brief → tests → tools-spec → instructions → accept-controls
-       → controls → correctness-model → environment → fingerprint
-```
-
-`SessionBuildStage` in `src/author/campaign-types.ts` retains these validation and reporting
-labels. They are not a sequence of separate model sessions: the Builder authors the whole bundle
-in one persistent session. `instructions` identifies the operating guide; `correctness-model`
-identifies the evaluator. A finding filed against `verifier` reaches no routable owner.
+A finding's owner is the bundle file at fault — one of the nine `BUNDLE_FILES` in
+`src/author/feedback-routing.ts`, from `correctness-model/brief.json` to `agent/config.yaml` — or
+`environment`, which no bundle edit repairs. The path's prefix says which half of the bundle a
+repair reopens. The files are not a sequence of separate model sessions: the Builder authors the
+whole bundle in one persistent session. A finding filed against a name that is not one of them
+reaches no owner.
 
 The Builder inspects, writes and rehearses its bundle, then submits one captured candidate. A turn
 that spends `AUTHOR_FIRST_TOOL_CALLS` (16 in `src/author/author-first.ts`) tool calls without

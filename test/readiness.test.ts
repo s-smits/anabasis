@@ -49,7 +49,7 @@ const CONFORMANCE: ConformanceEvidence = {
 };
 
 const SOLVABILITY: SolvabilityEvidence = {
-  schema: "solvability/v8",
+  schema: "solvability/v10",
   policy: "probe/v1",
   correctnessModelHash: "g".repeat(64),
   taskSetHash: "t".repeat(64),
@@ -57,7 +57,6 @@ const SOLVABILITY: SolvabilityEvidence = {
   verifierEnvironmentHash: null,
   operandCommitmentKeyId: "readiness-test-key",
   toolRuns: 0,
-  familyBinding: null,
   cases: ["task-1", "task-2"].map((taskId) => ({
     taskId,
     fullTaskDigest: `${taskId}-full`,
@@ -67,9 +66,6 @@ const SOLVABILITY: SolvabilityEvidence = {
     status: "passed" as const,
     failedCheckIds: [],
     predicateFailures: [],
-    nonResultKind: null,
-    failureOwner: null,
-    failureKind: null,
     referenceSolve: null,
     submissionPath: {
       schema: "solvability-submission-path/v1",
@@ -140,20 +136,29 @@ describe("assessReadiness — readiness assessed separately from the score claim
     expect(agreed.ready).toBe(true);
   });
 
-  it("a passing reference solve needs evidence that it used the public submission path", () => {
+  it("a reference solve the host stopped is a non-result, not a failed witness", () => {
     const verdict = assessReadiness(
       input({
         solvability: {
           ...SOLVABILITY,
           cases: SOLVABILITY.cases.map((row, index) =>
-            index === 0 ? { ...row, submissionPath: null } : row,
+            index === 0
+              ? {
+                  ...row,
+                  status: "non-result" as const,
+                  nonResultKind: "sandbox" as const,
+                  submissionPath: null,
+                  error: "stopped",
+                }
+              : row,
           ),
         },
       }),
     );
     expect(verdict.ready).toBe(false);
-    expect(verdict.clauses.map((c) => c.clause)).toEqual(["solvability-submission-path-missing"]);
-    expect(verdict.clauses[0]?.detail).toContain("1 passed witness case(s)");
+    expect(verdict.clauses.map((c) => c.clause)).toEqual(["solvability-non-result"]);
+    expect(verdict.clauses[0]?.detail).toContain("1/2 constructive witness case(s) earned no verdict");
+    expect(verdict.clauses[0]?.detail).toContain("(sandbox)");
   });
 
   it.each<[string, Partial<ReadinessInput>, string[]]>([

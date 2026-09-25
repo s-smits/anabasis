@@ -2,6 +2,8 @@
  * an owner never limits which safe findings the Builder can read. */
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { projectFindingForAuthor } from "../truth/brief.ts";
+import { REFERENCE_SOLVE_ENTRY } from "../truth/evaluator-process-bundle.ts";
+import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
 import type { CampaignFeedback, FeedbackOwner } from "./campaign-types.ts";
 import {
   AGENT_DIR,
@@ -13,48 +15,29 @@ import {
   TOOLS_SPEC_FILE,
 } from "../meta/bundle-layout.ts";
 
-const OWNER_FILES = {
-  brief: [BRIEF_FILE],
-  tests: [TASKS_FILE],
-  instructions: [BUILT_AGENTS_FILE],
-  "tools-spec": [TOOLS_SPEC_FILE],
-  "accept-controls": [],
-  controls: [CONTROLS_FILE],
-  "correctness-model": [EVALUATOR_FILE],
-  fingerprint: [GENERATED_TOOLS_FILE],
-} satisfies Partial<Record<FeedbackOwner, readonly string[]>>;
+/** The files a Builder writes, and so the files a finding can name as the one at fault. An owner
+ *  is one of these or `environment`, so "which part is at fault" and "which file to open" have one
+ *  answer, and the side a repair reopens is the path's own prefix. */
+export const BUNDLE_FILES = [
+  BRIEF_FILE,
+  TASKS_FILE,
+  CONTROLS_FILE,
+  EVALUATOR_FILE,
+  REFERENCE_SOLVE_ENTRY,
+  TOOLS_SPEC_FILE,
+  GENERATED_TOOLS_FILE,
+  BUILT_AGENTS_FILE,
+  HARNESS_CONFIG_FILE,
+] as const satisfies readonly (`agent/${string}` | `correctness-model/${string}`)[];
+export type BundleFile = (typeof BUNDLE_FILES)[number];
 
-type RoutableOwner = keyof typeof OWNER_FILES;
-export const BUILDER_OWNED: ReadonlySet<FeedbackOwner> = new Set(
-  // SAFETY: the literal table above contains exactly the RoutableOwner keys.
-  Object.keys(OWNER_FILES) as RoutableOwner[],
-);
-
-/** A narrow operation must serve every blocking owner. */
-export const BATTERY_SERVED: ReadonlySet<FeedbackOwner> = new Set(["tests", "controls"]);
-export const EVALUATION_SERVED: ReadonlySet<FeedbackOwner> = new Set([
-  "correctness-model",
-  "accept-controls",
-  "controls",
-]);
-
-export function routableOwner(owner: FeedbackOwner | null): owner is RoutableOwner {
-  return owner !== null && BUILDER_OWNED.has(owner);
+export function isBundleFile(owner: FeedbackOwner | null): owner is BundleFile {
+  return owner !== null && owner !== "environment";
 }
 
-export function routableOwnerOf(value: string | null): FeedbackOwner | null {
-  for (const owner of BUILDER_OWNED) if (owner === value) return owner;
-  return null;
-}
-
-export function ownerWritableFiles(owner: RoutableOwner): readonly string[] {
-  return OWNER_FILES[owner];
-}
-
-export function ownerTier(owner: FeedbackOwner): "agent" | "rebuild" | "stop" {
-  if (owner === "environment") return "stop";
-  const files = routableOwner(owner) ? OWNER_FILES[owner] : [];
-  return files.length > 0 && files.every((file) => file.startsWith(AGENT_DIR)) ? "agent" : "rebuild";
+/** The half of the bundle a repair of this file reopens. */
+export function ownerSide(file: BundleFile): "agent" | "correctness-model" {
+  return file.startsWith(AGENT_DIR) ? "agent" : "correctness-model";
 }
 
 /** Optional evidence label only. Null means an empty or mixed-owner agenda, never no work. */
@@ -63,30 +46,18 @@ export function feedbackOwner(feedback: readonly CampaignFeedback[]): FeedbackOw
   return owners.size === 1 ? (feedback[0]?.owner ?? null) : null;
 }
 
-/** The owner label with the file it names. Nothing model-visible mapped "instructions" to
- *  agent/BUILT_AGENTS.md, and it showed: most packets pointing at that owner preceded a successor
- *  that had left the guide byte-identical. Naming the file is what turns the label into an
- *  address. */
-function ownerTarget(owner: FeedbackOwner): string {
-  const files = routableOwner(owner) ? ownerWritableFiles(owner) : [];
-  return files.length === 0 ? owner : `${owner} (${files.join(", ")})`;
-}
-
 /** How a feedback row reaches the Builder: one line per projected finding, or one line naming the
  *  owner when the row has no findings. Each row names the owner's file rather than the finding's
- *  recorded path, which is controller evidence the Builder cannot open. */
+ *  recorded path, which is controller evidence the Builder cannot open. The owner is that file, so
+ *  the label is already an address. */
 export function advisory(feedback: CampaignFeedback[]): string | undefined {
   if (feedback.length === 0) return undefined;
   return feedback
     .flatMap((row) => {
       const projected = (row.findings ?? []).map(projectFindingForAuthor);
       return projected.length === 0
-        ? [
-            `- ${ownerTarget(row.owner)}: [${row.severity}] a previous ${row.owner} finding remains; inspect the public contract`,
-          ]
-        : projected.map(
-            (finding) => `- ${ownerTarget(row.owner)}: [${row.severity}] ${finding.code}: ${finding.detail}`,
-          );
+        ? [`- ${row.owner}: [${row.severity}] a previous finding remains; inspect the public contract`]
+        : projected.map((finding) => `- ${row.owner}: [${row.severity}] ${finding.code}: ${finding.detail}`);
     })
     .join("\n");
 }

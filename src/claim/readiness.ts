@@ -26,26 +26,24 @@ export interface SolvabilitySubmissionPathEvidence {
   };
 }
 
+/** Why a reference solve failed: a valid answer the writer cannot carry, a solve that broke the
+ *  isolation wall, or an answer the checks rejected or never received. */
+export type SolvabilityFailure = "representation-defect" | "isolation" | "witness";
+/** Why a reference solve earned no verdict. A host failure before the child is ready is a
+ *  non-result; after solving starts, crashes, timeouts and protocol errors are product failures. */
+export type SolvabilityNonResult = "reference-solve-host" | "submission-path-host" | "sandbox";
+
 /** One full-task solve run by the controller. The isolated solver sees only the public task. Its
  * answer passes through the public writer, DraftStore and controller-owned submit before checking.
- * The reference answer stays private. */
-export interface SolvabilityCaseEvidence {
+ * The reference answer stays private. `status` decides which attribution a row can carry, so a
+ * passed row has none and an unpassed row has exactly one. */
+export type SolvabilityCaseEvidence = {
   taskId: string;
   fullTaskDigest: string;
   publicTaskDigest: string;
   artifactDigest: string | null;
   /** Stable JSON reference answer, kept on the private checking side; null when absent. */
   artifact: JsonValue;
-  status: "passed" | "failed" | "non-result";
-  /** A host failure before the child is ready is a non-result. After solving starts, crashes,
-   * timeouts and protocol errors are product failures and this stays `null`. */
-  nonResultKind: "reference-solve-host" | "submission-path-host" | "sandbox" | null;
-  /** Who owns an unsuccessful solve. Passed rows use `null`. */
-  failureOwner: "environment" | "product" | null;
-  /** Set when a valid reference answer cannot pass through the writer. */
-  failureKind: "representation-defect" | null;
-  /** Present only when writer → DraftStore → materialise → submit → accept completed. */
-  submissionPath: SolvabilitySubmissionPathEvidence | null;
   /** The reference-solve stage key, and whether this census executed it or reused the outcome a
    *  census over `producedUnder` recorded under the same key. Null when the solve failed before its
    *  bytes could be keyed, or never started. The submission path and evaluation always run here. */
@@ -54,13 +52,26 @@ export interface SolvabilityCaseEvidence {
   /** Private check failures recalculated by the controller. They remain under `.build/` or `runs/`
    * and never enter the agent bundle or public task. */
   predicateFailures: CheckFailureDetail[];
-  error: string | null;
-}
+} & (
+  | {
+      status: "passed";
+      /** writer → DraftStore → materialise → submit → accept, which every pass traversed. */
+      submissionPath: SolvabilitySubmissionPathEvidence;
+      error: null;
+    }
+  | {
+      status: "failed";
+      failure: SolvabilityFailure;
+      submissionPath: SolvabilitySubmissionPathEvidence | null;
+      error: string;
+    }
+  | { status: "non-result"; nonResultKind: SolvabilityNonResult; submissionPath: null; error: string }
+);
 
 /** Full-task solve evidence created from the fixed accepted bundle. It identifies the exact
  * correctness model, task set, bundle and checking code. */
 export interface SolvabilityEvidence {
-  schema: "solvability/v8";
+  schema: "solvability/v10";
   policy: string;
   correctnessModelHash: string;
   taskSetHash: string;
@@ -70,11 +81,8 @@ export interface SolvabilityEvidence {
   verifierEnvironmentHash: string | null;
   /** Public id of the temporary HMAC key used to hash compared values; never the key itself. */
   operandCommitmentKeyId: string;
-  /** How many tool runs this census made. A reused family-binding stage contributes none; its
-   *  runs belong to the census that produced it. Per-run facts stay with the host. */
+  /** How many tool runs this census made. Per-run facts stay with the host. */
   toolRuns: number;
-  /** The family transplant census stage; null when it did not run (readiness, or a missing witness). */
-  familyBinding: SolvabilityStageReceipt | null;
   cases: SolvabilityCaseEvidence[];
 }
 
@@ -123,6 +131,7 @@ export function assessReadiness(input: ReadinessInput): ReadinessVerdict {
     });
   }
 
+  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a scored external check with no tool run on any verified case leaves the score without tool evidence
   // An external check with no tool runs on applicable verified cases has no tool evidence for
   // the score. Report the check ids so the missing execution can be investigated.
   for (const finding of inertToolFindings(
@@ -158,20 +167,21 @@ export function assessReadiness(input: ReadinessInput): ReadinessVerdict {
           "the constructive proof and scored claim were verified under different verifier environments — they cannot jointly support readiness",
       });
     }
-    const failed = input.solvability.cases.filter((c) => c.status !== "passed");
-    if (input.solvability.cases.length === 0 || failed.length > 0) {
+    const { cases } = input.solvability;
+    const failed = cases.filter((c) => c.status === "failed");
+    if (cases.length === 0 || failed.length > 0) {
       clauses.push({
         clause: "solvability-failed",
-        detail: `${failed.length}/${input.solvability.cases.length} constructive witness case(s) failed; every authored task must serialize, conform to the artifact schema, and pass the fingerprinted correctnessModel`,
+        detail: `${failed.length}/${cases.length} constructive witness case(s) failed; every authored task must serialize, conform to the artifact schema, and pass the fingerprinted correctnessModel`,
       });
     }
-    const pathless = input.solvability.cases.filter(
-      (c) => c.status === "passed" && c.submissionPath === null,
-    );
-    if (pathless.length > 0) {
+    // A case the host stopped before its verdict proves nothing either way, so it is named as a
+    // non-result rather than counted among the answers the checks rejected.
+    const stopped = cases.flatMap((c) => (c.status === "non-result" ? [c.nonResultKind] : []));
+    if (stopped.length > 0) {
       clauses.push({
-        clause: "solvability-submission-path-missing",
-        detail: `${pathless.length} passed witness case(s) carry no submission-path evidence — a pass without the writer → DraftStore → submit traversal proves direct construction, not the public submission path`,
+        clause: "solvability-non-result",
+        detail: `${stopped.length}/${cases.length} constructive witness case(s) earned no verdict: the host stopped them (${[...new Set(stopped)].join(", ")}) before the reference answer was checked`,
       });
     }
   }

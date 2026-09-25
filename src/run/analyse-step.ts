@@ -143,7 +143,6 @@ export async function analyseStep(
   ) => {
     const admission = admitFindings(repoRoot, analysis, [
       ...hostFindings(repoRoot, analysis),
-      ...judges.findings,
       ...reviewFindings,
     ]);
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });

@@ -76,6 +76,7 @@ function movedToolsNote(baseline: Map<string, string> | null, observed: Map<stri
   return names.length === 0 ? "" : ` (moved: ${names.map((name) => `"${name}"`).join(", ")})`;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: measurement refuses a worker whose contract differs across tasks, so the gate must refuse it first
 /** The finding for a task whose generated tools expose a different worker contract than the first
  *  opened task did, naming the tools that moved when the per-tool interfaces can say which. */
 export function workerBindingDriftFindings(
@@ -92,6 +93,7 @@ export function workerBindingDriftFindings(
   ]);
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: a generated tool worker that does not settle cannot run a battery case to its end
 /** One refusal per probed worker that did not settle. A close-handshake timeout after all probes
  *  have settled concerns host cleanup rather than the agent bytes, so refusing on it rejects a
  *  candidate that the next submit accepts unchanged, round after round. The Built slot already

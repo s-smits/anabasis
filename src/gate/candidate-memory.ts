@@ -2,29 +2,26 @@
  * What an authoring session remembers about the candidates it has submitted, and the one owner
  * of the repetition-stop policy that memory enforces.
  *
- * Two rules end repeated work. The in-session no-op counter strikes a byte-identical resubmit of
- * a refused condition (POLICY.loop.noopSubmitStrikes); the persisted identical-diagnosis ceiling
- * counts refused authoring passes across rounds (POLICY.loop.stalledFindingsRepeats). Each repeat
- * below its ceiling is steered with its count, rather than ending the session, because ending on
- * the first repeat kills sessions whose transcript already records a concrete next move. There is
- * no changed-tree cycle strike and no no-submit strike (operator decision), since a changed tree
- * carrying the same diagnosis is ordinary repair rather than a stall.
+ * One rule ends repeated work: the in-session no-op counter strikes a byte-identical resubmit of a
+ * refused condition (POLICY.loop.noopSubmitStrikes). Each repeat below its ceiling is steered with
+ * its count, rather than ending the session, because ending on the first repeat kills sessions
+ * whose transcript already records a concrete next move. There is no changed-tree cycle strike and
+ * no no-submit strike (operator decision), since a changed tree carrying the same diagnosis is
+ * ordinary repair rather than a stall.
  *
- * The counts exist because unbounded repetition is expensive rather than merely untidy: an
+ * The count exists because unbounded repetition is expensive rather than merely untidy: an
  * unbounded session will pay for census and F2 a dozen times in one provider turn on bytes it has
- * already checked, or make a hundred submissions. Bounding it wrongly is expensive too. Charging a
- * commit for a worker crash it did not cause strikes the same tree twice, and a tool that keeps
- * failing produces a no-verdict record on every tree it touches, so no candidate identity ever
- * repeats while the session burns its submits. That last shape is why the tool no-verdict count
- * keeps its own owner (tool-non-result.ts): it counts a failing tool across trees, and its count
- * outlives a session.
+ * already checked, or make a hundred submissions. Bounding it wrongly is expensive too: charging a
+ * commit for a worker crash it did not cause strikes the same tree twice.
  */
-import type { AuthorRepairFinding } from "../author/campaign-types.ts";
-import {
-  type ToolNonResultCounts,
-  ToolNonResultStrikes,
-  chargeSealedNonResult,
-} from "../author/tool-non-result.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
+// import type { AuthorRepairFinding } from "../author/campaign-types.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+// import {
+//   type ToolNonResultCounts,
+//   ToolNonResultStrikes,
+//   chargeSealedNonResult,
+// } from "../author/tool-non-result.ts";
 import { POLICY } from "../critic/policy.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 import { createValidationMemory } from "./validation-pipeline.ts";
@@ -33,7 +30,8 @@ import { createValidationMemory } from "./validation-pipeline.ts";
 type MemoryCarry = {
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
-  toolNonResultRefusals: Readonly<ToolNonResultCounts>;
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+  // toolNonResultRefusals: Readonly<ToolNonResultCounts>;
 };
 
 type Refusal = { terminal?: boolean; findings: ContractFinding[] };
@@ -43,6 +41,7 @@ type Refusal = { terminal?: boolean; findings: ContractFinding[] };
  * tree is repair, not a kept refusal. A seed key and count restore strikes already spent before
  * this invocation, so a resumed session continues the count instead of restarting it.
  */
+// Gate audit 2026-09-25 (docs/gate-audit.md, noop-submit-strike): kept: a byte-identical resubmit of a refused candidate cannot earn a different verdict
 class NoopStrikes {
   constructor(
     private key: string | null,
@@ -56,30 +55,31 @@ class NoopStrikes {
   }
 }
 
-/** How many gates-blocked iterations in a row, this one included, recorded `findingsHash`. */
-export function findingsRepeatRun(
-  priorBlockedFindingsHashes: readonly string[],
-  findingsHash: string,
-): number {
-  const differs = priorBlockedFindingsHashes.findLastIndex((hash) => hash !== findingsHash);
-  return priorBlockedFindingsHashes.length - differs;
-}
-
-/** The steering between the second identical diagnosis and the ceiling. Without it a session can
- *  record one findings hash round after round on as many different trees, with nothing telling the
- *  author the diagnosis has not moved, so each round reads as a fresh refusal. Projected where it
- *  is rendered. */
-export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {
-  const ceiling = POLICY.loop.stalledFindingsRepeats;
-  return {
-    ...controllerValidatedFinding({
-      code: "authoring-repeated-findings",
-      path: "submit",
-      detail: `the findings above are the same as for the previous ${repeats - 1} refused authoring pass(es) — repeat ${repeats} of ${ceiling}. Re-read each finding's detail and path and change what it names; the round ends at ${ceiling} identical diagnoses in a row`,
-    }),
-    severity: "advisory",
-  };
-}
+// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
+// /** How many gates-blocked iterations in a row, this one included, recorded `findingsHash`. */
+// export function findingsRepeatRun(
+//   priorBlockedFindingsHashes: readonly string[],
+//   findingsHash: string,
+// ): number {
+//   const differs = priorBlockedFindingsHashes.findLastIndex((hash) => hash !== findingsHash);
+//   return priorBlockedFindingsHashes.length - differs;
+// }
+//
+// /** The steering between the second identical diagnosis and the ceiling. Without it a session can
+//  *  record one findings hash round after round on as many different trees, with nothing telling the
+//  *  author the diagnosis has not moved, so each round reads as a fresh refusal. Projected where it
+//  *  is rendered. */
+// export function repeatedFindingsFinding(repeats: number): AuthorRepairFinding {
+//   const ceiling = POLICY.loop.stalledFindingsRepeats;
+//   return {
+//     ...controllerValidatedFinding({
+//       code: "authoring-repeated-findings",
+//       path: "submit",
+//       detail: `the findings above are the same as for the previous ${repeats - 1} refused authoring pass(es) — repeat ${repeats} of ${ceiling}. Re-read each finding's detail and path and change what it names; the round ends at ${ceiling} identical diagnoses in a row`,
+//     }),
+//     severity: "advisory",
+//   };
+// }
 
 /** The session's last words on a terminal stall. */
 function authoringStalledFinding(strikes: number) {
@@ -105,16 +105,18 @@ export class CandidateMemory<R extends Refusal> {
   /** Gate runs, preview results and F2 stage results for this session. */
   readonly validation = createValidationMemory();
   private readonly noop: NoopStrikes;
-  /** Refused control censuses charged to each tool id across the whole campaign. */
-  private readonly toolNonResults: ToolNonResultStrikes;
-  /** Gate-run directories already charged: a run preview and submit share is charged once. */
-  private readonly charged = new Set<string>();
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+  // /** Refused control censuses charged to each tool id across the whole campaign. */
+  // private readonly toolNonResults: ToolNonResultStrikes;
+  // /** Gate-run directories already charged: a run preview and submit share is charged once. */
+  // private readonly charged = new Set<string>();
   /** Set when a strike reaches its ceiling. */
   stalled = false;
 
   constructor(carry: MemoryCarry) {
     this.noop = new NoopStrikes(carry.lastBlockedCandidateId, carry.lastBlockedCandidateStrikes);
-    this.toolNonResults = new ToolNonResultStrikes(carry.toolNonResultRefusals);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+    // this.toolNonResults = new ToolNonResultStrikes(carry.toolNonResultRefusals);
   }
 
   /** The refusal this exact condition already earned (A → B → A): answering from memory keeps the
@@ -147,10 +149,11 @@ export class CandidateMemory<R extends Refusal> {
     return refusal;
   }
 
-  /** One strike per executed gate run whose host recorded a no-verdict result in `runDir`. */
-  chargeToolNonResult(runDir: string) {
-    if (this.charged.has(runDir)) return null;
-    this.charged.add(runDir);
-    return chargeSealedNonResult(this.toolNonResults, runDir);
-  }
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+  // /** One strike per executed gate run whose host recorded a no-verdict result in `runDir`. */
+  // chargeToolNonResult(runDir: string) {
+  //   if (this.charged.has(runDir)) return null;
+  //   this.charged.add(runDir);
+  //   return chargeSealedNonResult(this.toolNonResults, runDir);
+  // }
 }

@@ -144,7 +144,7 @@ export function acceptIndependenceFeedback(independence: AcceptIndependence): Ca
   if (independence.compared < floor || independent === 0 || independent >= floor) return [];
   return [
     {
-      owner: "accept-controls",
+      owner: CONTROLS_FILE,
       severity: "advisory",
       claim: `accept-control independence: ${String(independent)} of the ${String(independence.compared)} accept controls compared with a reference witness were reached without it, under the declared floor of ${String(floor)}`,
       evidence:

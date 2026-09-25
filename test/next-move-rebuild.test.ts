@@ -1,10 +1,7 @@
 /**
  * The next move after a measured round. The host admits the round and the Builder chooses what
- * changes in it, so the host has three answers only: a blocking environment row stops, a spent
- * off-aim allowance stops, and everything else reopens the adopted product. The stop is the one
- * move whose sentence reaches the operator as the run's last word, so it has to say exactly what
- * the streak showed: a run whose batteries kept landing above the aim did not find a limit, which
- * is not the same as there being none to find.
+ * changes in it, so the host has two answers only: a blocking environment row stops, and everything
+ * else reopens the adopted product, however long an off-aim streak has run.
  *
  * The on-disk cases hold the reopen key: steady when the checkout moves, different when the
  * adopted product is another retained version.
@@ -14,6 +11,7 @@ import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CampaignFeedback, FeedbackOwner } from "../src/author/campaign-types.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { loadRepoEnv } from "../src/backends/env.ts";
 import { backendPinOf, resolveSlots } from "../src/backends/resolve.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
@@ -21,14 +19,16 @@ import { claimsDirFor } from "../src/run/claim-write.ts";
 import { BATTERY_SIZE } from "../src/run/battery-sizing.ts";
 import { decideNextMove, selectNextMoveFromDisk } from "../src/run/next-move.ts";
 import type { ClimbReadout, OffAimAllowance } from "../src/run/climb-readout.ts";
-import { POLICY } from "../src/critic/policy.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+// import { POLICY } from "../src/critic/policy.ts";
 import { ControllerLedger } from "../src/run/controller-ledger.ts";
 import { FEEDBACK_POLICY } from "../src/analyse/iteration-analysis.ts";
 import { SHIPPING_VARIANT } from "../src/run/run-driver.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 
 const SLUG = "bridge-truss-design";
-const LIMIT = POLICY.climb.offAimStreakRounds;
+// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+// const LIMIT = POLICY.climb.offAimStreakRounds;
 const scratch: string[] = [];
 
 const rows = (severity: CampaignFeedback["severity"], ...owners: FeedbackOwner[]): CampaignFeedback[] =>
@@ -49,7 +49,7 @@ function streak(
 ): ClimbReadout {
   return {
     band: [0.2, 0.5],
-    decision: { action: "no-difficulty-evidence", rationale: "fixture", evidence: [] },
+    decision: { placement: null, rationale: "fixture", evidence: [] },
     admitted: placed,
     excluded: Array.from({ length: excluded }, (_, i) => ({
       runId: `r${String(i)}`,
@@ -62,63 +62,76 @@ function streak(
   };
 }
 
-describe("the off-aim stop", () => {
-  it("stops at the allowance and leaves the round to the Builder one round before it", () => {
-    const stop = decideNextMove("adopted", [], streak(LIMIT));
-    expect(stop.move).toBe("stop");
-    expect(stop.reason).toContain(`${String(LIMIT)} consecutive rounds ended above the aim`);
-    expect(stop).not.toHaveProperty("seed");
-    expect(decideNextMove("adopted", [], streak(LIMIT - 1)).move).toBe("rebuild");
-  });
+// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+// describe("the off-aim stop", () => {
+//   it("stops at the allowance and leaves the round to the Builder one round before it", () => {
+//     const stop = decideNextMove("adopted", [], streak(LIMIT));
+//     expect(stop.move).toBe("stop");
+//     expect(stop.reason).toContain(`${String(LIMIT)} consecutive rounds ended above the aim`);
+//     expect(stop).not.toHaveProperty("seed");
+//     expect(decideNextMove("adopted", [], streak(LIMIT - 1)).move).toBe("rebuild");
+//   });
+//
+//   it("counts claim-refused rounds inside the streak, and never refusals alone", () => {
+//     const refused = decideNextMove("adopted", [], streak(1, "above", LIMIT - 1));
+//     expect(refused.move).toBe("stop");
+//     expect(refused.reason).toContain(`(1 placed above the aim, ${String(LIMIT - 1)} claim-refused)`);
+//     // Refusals with no placement are a different failure with its own owner; they still count as
+//     // an observed round, so the move is a rebuild and not a first measurement.
+//     expect(decideNextMove("adopted", [], streak(0, "above", 0, 5)).move).toBe("rebuild");
+//   });
+//
+//   it("says a streak above the aim found no limit, and never that none is reachable", () => {
+//     const { reason } = decideNextMove("adopted", [], streak(LIMIT));
+//     expect(reason).toContain("This run did not find a limit");
+//     expect(reason).toContain("it does not establish that another product would add no evidence");
+//     expect(reason).not.toMatch(/no limit (is|was) reachable|cannot be (reached|found)/i);
+//   });
+//
+//   it("claims nothing about a limit when the streak ran below the aim", () => {
+//     const { move, reason } = decideNextMove("adopted", [], streak(LIMIT, "below"));
+//     expect(move).toBe("stop");
+//     expect(reason).toContain(`${String(LIMIT)} consecutive rounds ended below the aim`);
+//     expect(reason).not.toContain("did not find a limit");
+//   });
+//
+//   it("stops on a blocking environment row before it reads the streak", () => {
+//     const blocked = decideNextMove("adopted", rows("blocking", "environment"), streak(LIMIT));
+//     expect(blocked.reason).toContain("environment outside the product");
+//     expect(blocked.reason).not.toContain("off-aim");
+//   });
+// });
 
-  it("counts claim-refused rounds inside the streak, and never refusals alone", () => {
-    const refused = decideNextMove("adopted", [], streak(1, "above", LIMIT - 1));
-    expect(refused.move).toBe("stop");
-    expect(refused.reason).toContain(`(1 placed above the aim, ${String(LIMIT - 1)} claim-refused)`);
-    // Refusals with no placement are a different failure with its own owner; they still count as
-    // an observed round, so the move is a rebuild and not a first measurement.
+describe("an off-aim streak", () => {
+  it("leaves the round to the Builder however long the streak has run, on either side", () => {
+    expect(decideNextMove("adopted", [], streak(3))).toMatchObject({ move: "rebuild", seed: "adopted" });
+    expect(decideNextMove("adopted", [], streak(3, "below")).move).toBe("rebuild");
+    expect(decideNextMove("adopted", [], streak(1, "above", 2)).move).toBe("rebuild");
+    // Refusals with no placement still count as an observed round: a rebuild, not a first measurement.
     expect(decideNextMove("adopted", [], streak(0, "above", 0, 5)).move).toBe("rebuild");
   });
 
-  it("says a streak above the aim found no limit, and never that none is reachable", () => {
-    const { reason } = decideNextMove("adopted", [], streak(LIMIT));
-    expect(reason).toContain("This run did not find a limit");
-    expect(reason).toContain("it does not establish that another product would add no evidence");
-    expect(reason).not.toMatch(/no limit (is|was) reachable|cannot be (reached|found)/i);
-  });
-
-  it("claims nothing about a limit when the streak ran below the aim", () => {
-    const { move, reason } = decideNextMove("adopted", [], streak(LIMIT, "below"));
-    expect(move).toBe("stop");
-    expect(reason).toContain(`${String(LIMIT)} consecutive rounds ended below the aim`);
-    expect(reason).not.toContain("did not find a limit");
-  });
-
-  it("stops on a blocking environment row before it reads the streak", () => {
-    const blocked = decideNextMove("adopted", rows("blocking", "environment"), streak(LIMIT));
+  it("stops on a blocking environment row whatever the streak", () => {
+    const blocked = decideNextMove("adopted", rows("blocking", "environment"), streak(3));
+    expect(blocked.move).toBe("stop");
     expect(blocked.reason).toContain("environment outside the product");
-    expect(blocked.reason).not.toContain("off-aim");
   });
 });
 
 describe("the reopen route", () => {
-  it.each([
-    "brief",
-    "tests",
-    "instructions",
-    "tools-spec",
-    "accept-controls",
-    "controls",
-    "correctness-model",
-    "fingerprint",
-  ] as const)("reopens the adopted product on blocking %s feedback and names the owner", (owner) => {
-    const move = decideNextMove("adopted", rows("blocking", owner));
-    expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
-    expect(move.reason).toContain(owner);
-  });
+  it.each([...BUNDLE_FILES])(
+    "reopens the adopted product on blocking %s feedback and names the owner",
+    (owner) => {
+      const move = decideNextMove("adopted", rows("blocking", owner));
+      expect(move).toMatchObject({ move: "rebuild", seed: "adopted" });
+      expect(move.reason).toContain(owner);
+    },
+  );
 
   it("stops only on blocking environment feedback, and builds when nothing is adopted", () => {
-    expect(decideNextMove("adopted", rows("blocking", "environment", "tests")).move).toBe("stop");
+    expect(
+      decideNextMove("adopted", rows("blocking", "environment", "correctness-model/tasks.json")).move,
+    ).toBe("stop");
     expect(decideNextMove("adopted", rows("advisory", "environment")).move).toBe("rebuild");
     expect(decideNextMove("none", rows("blocking", "environment")).move).toBe("build");
     expect(decideNextMove("adopted", null).move).toBe("measure");
@@ -176,7 +189,7 @@ function writeBlockingTests(root: string, runId: string): void {
       digest: "d".repeat(64),
       admitted: [],
       refused: [],
-      feedback: rows("blocking", "tests"),
+      feedback: rows("blocking", "correctness-model/tasks.json"),
     }),
   );
 }
@@ -209,18 +222,29 @@ describe("the next move on disk", () => {
     expect(selectAs(moved, "round-3", version).decision.reopenKey).not.toBe(first.decision.reopenKey);
   });
 
-  it("leaves saturated batteries to the Builder until the allowance is spent, then stops honestly", () => {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+  // it("leaves saturated batteries to the Builder until the allowance is spent, then stops honestly", () => {
+  //   const root = scratchRepo();
+  //   for (let i = 1; i < LIMIT; i += 1) {
+  //     sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
+  //   }
+  //   const open = selectAs(root, "round-1").decision;
+  //   expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
+  //   expect(open.reason).toContain("Builder");
+  //   sealSaturatedBattery(root, `saturated-${String(LIMIT)}`, `2026-08-10T0${String(LIMIT)}:00:00Z`);
+  //   const stopped = selectAs(root, "round-2").decision;
+  //   expect(stopped.move).toBe("stop");
+  //   expect(stopped.reason).toContain("This run did not find a limit");
+  //   expect(stopped).not.toHaveProperty("reopenKey");
+  // });
+
+  it("leaves saturated batteries to the Builder however many have landed", () => {
     const root = scratchRepo();
-    for (let i = 1; i < LIMIT; i += 1) {
+    for (let i = 1; i <= 3; i += 1) {
       sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
     }
     const open = selectAs(root, "round-1").decision;
     expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
     expect(open.reason).toContain("Builder");
-    sealSaturatedBattery(root, `saturated-${String(LIMIT)}`, `2026-08-10T0${String(LIMIT)}:00:00Z`);
-    const stopped = selectAs(root, "round-2").decision;
-    expect(stopped.move).toBe("stop");
-    expect(stopped.reason).toContain("This run did not find a limit");
-    expect(stopped).not.toHaveProperty("reopenKey");
   });
 });

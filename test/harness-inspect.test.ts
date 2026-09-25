@@ -464,13 +464,10 @@ describe("harness_inspect", () => {
 
     writeFileSync(join(dir, "agent/tools.ts"), "export const tools: string[] = [];\n");
     expect(agentModule(await inspect<TypecheckBody>(dir, "readiness"))?.diagnostics).toBe(0);
+    // Readiness previews its findings and never pages one: exact paging reads what a gate recorded.
     expect(await inspect(dir, "readiness", undefined, { group: 1, field: "detail" })).toMatchObject({
-      findings: {
-        totalGroups: 0,
-        group: 1,
-        stale: true,
-        navigation: expect.stringContaining("without group"),
-      },
+      status: "blocked",
+      nextAction: expect.stringContaining("repeat with action feedback"),
     });
   });
 

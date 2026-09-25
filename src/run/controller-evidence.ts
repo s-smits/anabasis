@@ -23,6 +23,7 @@ import {
   savedStopClause,
 } from "./controller-stop-evidence.ts";
 import { controllerAbortClause } from "./controller-abort-clause.ts";
+import { type BuildClause, isBuildClause } from "./loop-terminal.ts";
 import { capturedJsonStringify, parseJsonAs } from "../meta/json-runtime.ts";
 import {
   isBoolean,
@@ -90,8 +91,11 @@ export interface ControllerRunState {
 type ControllerIteration = {
   runId: string;
   terminal: string | null;
-  /** Build reasons from this round, such as a repair refused before the session started. */
-  buildClauses: string[];
+  /** Why this round's build produced nothing to measure, such as a repair refused before the
+   *  session started; null when it built, reused or stopped. */
+  buildClause: BuildClause | null;
+  /** The clause's own sentence, when it has more to say than its name. */
+  buildDetail: string | null;
   /** Evidence paths for a `candidate-held` terminal: the recorded promotion row. Absent for every
    * other outcome. */
   terminalEvidence?: string[];
@@ -459,14 +463,14 @@ function iterationRowWellFormed(
   index: number,
   selector: string,
 ): row is Partial<ControllerIteration> &
-  Pick<ControllerIteration, "runId" | "terminal" | "buildClauses" | "measured"> {
+  Pick<ControllerIteration, "runId" | "terminal" | "buildClause" | "buildDetail" | "measured"> {
   return !(
     !isObject(entry) ||
     !isString(row.runId) ||
     row.runId !== controllerIterationRunId(selector, index + 1) ||
     (row.terminal !== null && !isString(row.terminal)) ||
-    !Array.isArray(row.buildClauses) ||
-    row.buildClauses.some((clause) => !isString(clause)) ||
+    (row.buildClause !== null && !(isString(row.buildClause) && isBuildClause(row.buildClause))) ||
+    (row.buildDetail !== null && !isString(row.buildDetail)) ||
     !isBoolean(row.measured)
   );
 }
@@ -482,7 +486,8 @@ function readIterations(terminalPath: string, selector: string, value: JsonValue
     return {
       runId: row.runId,
       terminal: row.terminal,
-      buildClauses: [...row.buildClauses],
+      buildClause: row.buildClause,
+      buildDetail: row.buildDetail,
       measured: row.measured,
     };
   });

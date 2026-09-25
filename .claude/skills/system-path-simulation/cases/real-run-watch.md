@@ -18,6 +18,10 @@ passed it; the real `fullrun` from the one-liner is the smallest slice that meas
 3. **Launch through `launch-run`** on the resolved stack head. Nothing else changes: the preset's
    one-liner, no context files, no extra flags.
 4. **Watch through recorded bytes**, not the log alone:
+   - `bun run runs pulse <runId>`, which looks every 290 s and prints only what moved since the
+     last look — a round opened, the first clear preview, a rehearsal against its prediction, a
+     battery with its placement and off-aim streak, a quiet Builder, a non-result, the terminal —
+     each with the campaign file to read next;
    - `fullrun.log` lines naming `correctness_check`, `submit`, a refusal, adoption, a battery, a
      terminal or `[safeguard]`;
    - the iteration feedback rows for the owner and code of every refusal, under the campaign's

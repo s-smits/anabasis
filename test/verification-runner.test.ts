@@ -29,6 +29,7 @@ import {
   fingerprintOf,
   laxVerifierSlug,
   matchingBattery,
+  rejectedAcceptSlug,
   removeScratchRoot,
   scriptedSolver,
   scriptedVerify,
@@ -139,10 +140,10 @@ describe("an unclaimable control census ends the run before the paid loop", () =
   };
 
   it.concurrent("writes the skip as readable evidence, spends no solve and no judge turn", async () => {
-    // The slug is assembled directly: the build loop's control probe would normally block a lax
-    // verifier before evaluation, and drift between probe time and evaluation time is the case
-    // this guards.
-    const slugDir = laxVerifierSlug();
+    // The slug is assembled directly: the build loop's control probe would normally block a rejected
+    // accept before evaluation, and drift between probe time and evaluation time is the case this
+    // guards.
+    const slugDir = rejectedAcceptSlug();
     let judgeInvocations = 0;
     const report = await scriptedVerify("run-early-exit", {
       solver: async () => {

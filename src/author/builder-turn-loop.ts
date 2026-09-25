@@ -177,6 +177,7 @@ export async function runBuilderTurn(
  *  CLI's own tools as well as the hosted ones; a backend that reports none leaves the count alone,
  *  because an unknown tally is not the same as zero calls. A round that settled in this turn is
  *  left as it settled. The run may retry the build, and the conversation continues either way. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, no-progress): kept: turns with no successful tool call change nothing, and the clause is retryable on the same conversation
 function countIdleTurn(state: BuilderTurnState, calls: AgentTurnResult["toolCalls"]): void {
   if (calls === undefined) return;
   state.idleTurns = calls.total > calls.failed ? 0 : state.idleTurns + 1;

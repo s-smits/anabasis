@@ -80,7 +80,7 @@ describe("publishesAdmissionPointer", () => {
 });
 
 const row = (over: Partial<CampaignFeedback>): CampaignFeedback => ({
-  owner: "correctness-model",
+  owner: "correctness-model/evaluator.ts",
   severity: "blocking",
   claim: "the census disagreed with the verifier on enough verified cases",
   evidence: "campaigns/bridge-truss/analysis/r1.json (analysis 0123456789ab)",
@@ -92,7 +92,7 @@ describe("blocksReplacement", () => {
   it("blocks on any admitted blocking row, not only the Judge's dispute", () => {
     // The Judge's dispute is one such row.
     expect(blocksReplacement([row({})])).toBe(true);
-    // A host harness-defect is another. Reading only the Judge left the unbound-external-result
+    // A host defect is another. Reading only the Judge left the unbound-external-result
     // finding recorded on disk and never read, and the next selector climbed again on a harness
     // whose checker admits ungrounded verdicts.
     expect(blocksReplacement([row({ claim: "run r1 recorded 3 unbound-external-result finding(s)" })])).toBe(

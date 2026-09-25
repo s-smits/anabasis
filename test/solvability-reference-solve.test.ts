@@ -10,7 +10,7 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { SOLVABILITY_PROBE_POLICY, makeProbeSolvability } from "../src/truth/solvability.ts";
+import { SOLVABILITY_POLICY, makeProbeSolvability } from "../src/truth/solvability.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import {
@@ -68,7 +68,7 @@ describe("solvability tied to the checked bundle snapshot", () => {
 
     expect(result.findings).toEqual([]);
     expect(result.evidence).toMatchObject({
-      policy: SOLVABILITY_PROBE_POLICY,
+      policy: SOLVABILITY_POLICY,
       correctnessModelHash: fixture.fingerprint.correctnessModelHash,
       taskSetHash: fixture.fingerprint.taskSetHash,
       cases: [
@@ -130,7 +130,6 @@ describe("solvability tied to the checked bundle snapshot", () => {
     expect(result.evidence?.cases[1]).toMatchObject({
       status: "non-result",
       nonResultKind: "sandbox",
-      failureOwner: "environment",
     });
     expect(result.findings.filter((finding) => finding.code === "verifier-cleanup-pending")).toHaveLength(1);
     await expect(gate(fixture, result, { verifierLifetime: lifetime })).rejects.toBeInstanceOf(
@@ -144,7 +143,7 @@ describe("solvability tied to the checked bundle snapshot", () => {
   it.concurrent("persists named program failures and operand commitments in the evaluate-side evidence", async () => {
     const result = await witness(subsetFailureFixture());
 
-    expect(result.evidence?.schema).toBe("solvability/v8");
+    expect(result.evidence?.schema).toBe("solvability/v10");
     expect(result.evidence?.operandCommitmentKeyId).toBe(OPERAND.keyId);
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(result.evidence?.cases[0]?.predicateFailures).toMatchObject([
@@ -196,7 +195,7 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
     expect(finding?.disclosure).toEqual({ class: "withheld", classification: "generated-evaluate-throw" });
     expect(result.evidence?.cases[0]).toMatchObject({
       status: "failed",
-      nonResultKind: null,
+      failure: "witness",
       error: expect.stringContaining('"expectation":"A"'),
     });
   });
@@ -230,7 +229,7 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
     });
     const feedback = await gate(fixture, result);
     expect(feedback).toContainEqual(
-      expect.objectContaining({ owner: "correctness-model", severity: "blocking" }),
+      expect.objectContaining({ owner: "correctness-model/evaluator.ts", severity: "blocking" }),
     );
     expect(JSON.stringify(feedback)).not.toContain("test-writer-schema.json");
     expect(readFileSync(join(fixture.dir, "solvability.json"), "utf8")).toContain(
@@ -297,6 +296,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "reads the adjacent correctness-model task data",
       body: READS_ADJACENT_TASKS,
       code: "solvability-reference-solve-isolation",
+      failure: "isolation",
       error: /ENOENT|no such file/i,
       classification: null,
     },
@@ -304,6 +304,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "replaces a JSON intrinsic",
       body: 'JSON.stringify = () => "falsified"; return { answer: task.publicInput.expected };',
       code: "solvability-witness-failed",
+      failure: "witness",
       error: null,
       classification: "generated-solve-throw",
     },
@@ -311,6 +312,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "writes to the hidden fields of the task it was handed",
       body: 'task.hidden[0].expectation = "FALSIFIED"; return { answer: "FALSIFIED" };',
       code: "solvability-witness-failed",
+      failure: "witness",
       error: null,
       classification: null,
     },
@@ -318,6 +320,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "marks its own artifact as solver-provenanced",
       body: "return { answer: { value: task.publicInput.expected, __referenceSolver: true } };",
       code: "solvability-witness-failed",
+      failure: "witness",
       error: /__referenceSolver/,
       classification: null,
       schema: OBJECT_ANSWER,
@@ -329,9 +332,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
 
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(codes(result)).toContain(row.code);
-    expect(
-      result.evidence?.cases.every((c) => c.nonResultKind === null && c.failureOwner === "product"),
-    ).toBe(true);
+    expect(result.evidence?.cases).toMatchObject([{ failure: row.failure }, { failure: row.failure }]);
     if (row.error !== null) expect(failure(result)).toMatch(row.error);
     if (row.classification !== null) {
       expect(result.findings).toContainEqual(
@@ -400,7 +401,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "crashes after ready",
       verifier: asyncSolve("process.exit(17);"),
       options: { referenceSolveTimeoutMs: 2_000 },
-      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      expected: { status: "failed", failure: "witness" },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-crash" },
     },
     {
@@ -410,14 +411,14 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "hangs after ready",
       verifier: asyncSolve("return await new Promise(() => { setInterval(() => {}, 60_000); });"),
       options: { referenceSolveTimeoutMs: 750 },
-      expected: { status: "failed", nonResultKind: null, failureOwner: "product" },
+      expected: { status: "failed", failure: "witness" },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-timeout" },
     },
     {
       child: "cannot spawn at all",
       verifier: GOOD_VERIFIER,
       options: { referenceSolveExecutable: join(scratchDir("ana-reference-absent-"), "missing-node-binary") },
-      expected: { status: "non-result", nonResultKind: "reference-solve-host", failureOwner: "environment" },
+      expected: { status: "non-result", nonResultKind: "reference-solve-host" },
       finding: {
         code: "solvability-reference-solve-host-non-result",
         classification: "reference-solve-host",

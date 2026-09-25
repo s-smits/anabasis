@@ -155,7 +155,7 @@ describe("public validity declared by truth checks", () => {
     );
   });
 
-  it("requires an accept per applicable check and family and one reject per check and per family", () => {
+  it("admits a complete corpus and refuses a reject naming a check outside its task's family", () => {
     const brief = publicReferenceBrief();
     const tasks = [task("alpha-task", "alpha", "a"), task("beta-task", "beta", "b")];
     const accept = tasks.map((bound) => {
@@ -177,25 +177,29 @@ describe("public validity declared by truth checks", () => {
     }));
     expect(validateControls(brief, { accept, reject }, tasks)).toEqual({ ok: true, findings: [] });
 
-    expect(validateControls(brief, { accept: accept.slice(0, 1), reject }, tasks).findings).toEqual([
-      expect.objectContaining({
-        code: "controls-public-rule-positive-missing",
-        detail: 'public rule "catalog-member" has no task-bound accept in family "beta"',
-      }),
-    ]);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): a
+    // missing accept in one family is refused by the coverage rule.
+    // expect(validateControls(brief, { accept: accept.slice(0, 1), reject }, tasks).findings).toEqual([
+    //   expect.objectContaining({
+    //     code: "controls-public-rule-positive-missing",
+    //     detail: 'public rule "catalog-member" has no task-bound accept in family "beta"',
+    //   }),
+    // ]);
 
-    // One reject per check and one per family, not one per cell: a diagonal clears both. The missing
-    // reject refusals are owned by controls.test.ts.
     const first = required(brief.truthChecks[0], "first check");
-    const twoChecks = { ...brief, truthChecks: [...brief.truthChecks, { ...first, id: "second-rule" }] };
-    const diagonal = [
-      required(reject[0], "alpha reject"),
-      { ...required(reject[1], "beta reject"), expectedCheckId: "second-rule" },
-    ];
-    expect(validateControls(twoChecks, { accept, reject: diagonal }, tasks)).toEqual({
-      ok: true,
-      findings: [],
-    });
+    // Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): a
+    // diagonal clearing the per-check and per-family reject coverage is that rule's accepted side.
+    // // One reject per check and one per family, not one per cell: a diagonal clears both. The missing
+    // // reject refusals are owned by controls.test.ts.
+    // const twoChecks = { ...brief, truthChecks: [...brief.truthChecks, { ...first, id: "second-rule" }] };
+    // const diagonal = [
+    //   required(reject[0], "alpha reject"),
+    //   { ...required(reject[1], "beta reject"), expectedCheckId: "second-rule" },
+    // ];
+    // expect(validateControls(twoChecks, { accept, reject: diagonal }, tasks)).toEqual({
+    //   ok: true,
+    //   findings: [],
+    // });
 
     // The census runs a reject's named check alone, so a check outside its task's families is refused here.
     brief.truthChecks.push({

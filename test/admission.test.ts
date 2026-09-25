@@ -33,7 +33,7 @@ const DIGEST = "packet-1";
 const UNRECORDED = { scoringHash: null, taskSetHash: null };
 
 const FEEDBACK: CampaignFeedback = {
-  owner: "tests",
+  owner: "correctness-model/tasks.json",
   severity: "blocking",
   claim: "two families share one check",
   evidence: "cases 3 and 7",
@@ -99,7 +99,7 @@ describe("what the next build is told", () => {
     // Recording null for both would leave a review unable to tell an empty agenda from an absent one.
     const root = repo();
     store(root, packet({ feedback: [] }));
-    expect(read(root)).toEqual({ priorEvidence: null, lineage: { digest: DIGEST, reason: "no-feedback" } });
+    expect(read(root)).toEqual({ priorEvidence: null, lineage: { digest: DIGEST } });
   });
 });
 
@@ -142,7 +142,7 @@ describe("whether the evaluation that labelled the findings is the adopted one",
     store(root, packet({ observedEvaluation: { scoringHash: null, taskSetHash: "another-battery" } }));
     expect(read(root)).toEqual({
       priorEvidence: null,
-      lineage: { digest: DIGEST, reason: "evaluation-identity-unadopted" },
+      lineage: { digest: DIGEST },
     });
   });
 
@@ -167,7 +167,7 @@ describe("how many times one packet may be reused", () => {
     expect(settle(root, "run-b", true)).toBe(true);
     expect(read(root)).toEqual({
       priorEvidence: null,
-      lineage: { digest: DIGEST, reason: "agenda-consumed" },
+      lineage: { digest: DIGEST },
     });
   });
 
@@ -175,7 +175,7 @@ describe("how many times one packet may be reused", () => {
     const root = repo();
     store(root, packet());
     expect(settle(root, "run-a", false)).toBe(true);
-    expect(read(root).lineage?.reason).toBe("agenda-consumed");
+    expect(read(root)).toEqual({ priorEvidence: null, lineage: { digest: DIGEST } });
   });
 
   it("records one attempt per run id, so a repeated settlement is not a second attempt", () => {

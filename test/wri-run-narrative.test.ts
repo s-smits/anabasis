@@ -77,8 +77,8 @@ function campaignWith(rows: ProseRow[], reviews: Array<{ atMs: number; claims: s
         status: "completed",
         probes: [],
         findings: review.claims.map((claim) => ({
-          kind: "harness-defect",
-          proposedOwner: "tools-spec",
+          defect: true,
+          owner: "agent/tools-spec.json",
           claim,
         })),
       }),

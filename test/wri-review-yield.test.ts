@@ -62,12 +62,12 @@ function iterations(root: string): void {
 }
 
 describe("review-yield: current advice readers", () => {
-  it("reads a null proposal's actual admission route and refuses an unrelated feedback join", () => {
+  it("reads an observation's admission route and refuses an unrelated feedback join", () => {
     const root = campaign();
     iterations(root);
     const finding = {
-      kind: "hardness" as const,
-      proposedOwner: null,
+      defect: false,
+      owner: "correctness-model/tasks.json" as const,
       claim: "private assessment",
       evidence: "analysis/run-a-epoch-review.json",
     };
@@ -86,12 +86,12 @@ describe("review-yield: current advice readers", () => {
       3,
     );
     const feedback = {
-      owner: "tests",
-      findings: [{ code: "hardness", path: finding.evidence, detail: "public projection" }],
+      owner: "correctness-model/tasks.json",
+      findings: [{ code: "observation", path: finding.evidence, detail: "public projection" }],
     };
     record(root, "run-a", "admission", { admitted: projected.findings, feedback: [feedback] }, 4);
     expect(epochReviewer(root).runs[0]?.consumer).toMatchObject({
-      value: { admitted: 1, routedOwners: ["tests"] },
+      value: { admitted: 1, routedOwners: ["correctness-model/tasks.json"] },
     });
     expect(JSON.stringify(epochReviewer(root))).not.toContain("private assessment");
     record(
@@ -114,10 +114,10 @@ describe("review-yield: current advice readers", () => {
     iterations(root);
     const findings = [
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "private assessment",
         evidence: "private",
-        proposedOwner: "instructions" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const disputes = [{ issueId: "issue-a", reason: "private reason" }];
@@ -178,16 +178,16 @@ describe("review-yield: current advice readers", () => {
     iterations(root);
     const findings = [
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "instructions" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
       {
-        kind: "harness-defect" as const,
+        defect: true,
         claim: "a second private assessment",
         evidence: "analysis/run-a-epoch-review.json",
-        proposedOwner: "instructions" as const,
+        owner: "agent/BUILT_AGENTS.md" as const,
       },
     ];
     const review = {
@@ -199,12 +199,12 @@ describe("review-yield: current advice readers", () => {
       coverage: { opened: 2 },
     };
     record(root, "run-a", "epoch-review", review, 3);
-    // The recorded admission was written by another revision of publicEpochReview: same kind, owner
+    // The recorded admission was written by another revision of publicEpochReview: same placement
     // and evidence file, a claim sentence this tree cannot reproduce. Both rows are admitted.
     const projection = publicEpochReview({ status: "completed", findings, disputes: [] });
     const olderWording = projection.findings.map((finding, index) => ({
       ...finding,
-      claim: `The epoch review reported ${finding.kind} in ${finding.proposedOwner}: check \`some-check-${index}\`; repair the enforcement in that owner's files.`,
+      claim: `The epoch review reported ${finding.defect ? "defect" : "observation"} in ${finding.owner}: check \`some-check-${index}\`; repair the enforcement in that owner's files.`,
     }));
     record(root, "run-a", "admission", { admitted: olderWording }, 4);
     record(
@@ -310,8 +310,7 @@ describe("review-yield: harness-trial reader", () => {
 describe("review-yield: diagnosis reader", () => {
   const diagnosis = {
     runId: "run-a",
-    layer: "tool-contract",
-    intervention: "correct",
+    owner: "agent/tools-spec.json",
     boundary: { tool: "write_layout", reading: "failed tool call" },
     cause: "public interface mismatch",
     falsifier: "the interface agrees",

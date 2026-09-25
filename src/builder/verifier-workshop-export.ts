@@ -19,6 +19,7 @@ import type { IsolatedRequest } from "./candidate-isolation-runtime.ts";
 import { existingWorkshopPath, VerifierWorkshopRequestRefusal } from "./verifier-workshop-input.ts";
 import { VERIFIER_WORKSHOP } from "./capability-modes.ts";
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, workshop-export-limits): kept: the tool description states both, and no-overwrite keeps an export from following an existing path or symlink
 const MAX_EXPORT_BYTES = 64 * 1024 * 1024;
 
 export type WorkshopExportBinding = ReturnType<typeof workshopExportBinding>;
@@ -40,13 +41,17 @@ function refuse(message: string): never {
   throw new VerifierWorkshopRequestRefusal(message);
 }
 
+function guardOrRefuse(binding: WorkshopExportBinding, mode: "read" | "write", target: string): void {
+  const decision = guardPath(binding.policy, VERIFIER_WORKSHOP, mode, target);
+  if (decision.decision === "deny") refuse(decision.message);
+}
+
 function exportTarget(binding: WorkshopExportBinding, destination: string): string {
   const target = resolve(binding.root, destination);
   if (isAbsolute(destination) || !containsPath(target, binding.root) || target === binding.root) {
     refuse("export destination must be a relative file path under candidate .toolchain, such as bin/checker");
   }
-  const decision = guardPath(binding.policy, VERIFIER_WORKSHOP, "write", target);
-  if (decision.decision !== "allow") refuse(decision.message);
+  guardOrRefuse(binding, "write", target);
   // An existing file, directory or dangling symlink must never be overwritten by a transfer.
   try {
     lstatSync(target);
@@ -141,8 +146,7 @@ export async function exportWorkshopFile(
       },
       binding.policy,
     );
-    const decision = guardPath(binding.policy, VERIFIER_WORKSHOP, "read", target);
-    if (decision.decision !== "allow") refuse(decision.message);
+    guardOrRefuse(binding, "read", target);
     // The confined copy compared its own view; the candidate is what this host reads back.
     let landed = false;
     try {

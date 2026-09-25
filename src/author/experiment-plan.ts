@@ -5,18 +5,14 @@
  * result, a pass-count target, each family's ladder level and the move that puts it there, and a
  * predicted pass probability per task. The controller writes the other file, `experiment-evidence.json`
  * under the campaign directory, which the Builder can neither read nor write directly: every
- * rehearsal's aggregate verdict, what the solve spent and how the plan's predictions scored against
- * those verdicts. It sits outside the workspace, so it is in no candidate diff, no fingerprint and
- * no `scoringHash`.
+ * rehearsal's aggregate verdict, what the solve spent, the bytes it solved, the prediction the plan
+ * stated for it before its verdict arrived and how those predictions scored. It sits outside the
+ * workspace, so it is in no candidate diff, no fingerprint and no `scoringHash`.
  *
  * The plan used to be read in four places with three shapes of its own — a capture, a submission
- * parse, a recorded-authoring check and a readout — and its change prose was read against the
- * fingerprint in a module of its own. Here the schema, the one strict reader, the capture, the
- * evidence file, the scoring, the advice and the compact view live together, so the context tool,
- * every continuation, `correctness_check` and `submit` all show the same reading. Admission keeps its
- * refusal policy and asks this module the three questions that read a plan: did the named files
- * move, is the target reachable, and does a climb after a battery that found no limit declare a new
- * move.
+ * parse, a recorded-authoring check and a readout. Here the schema, the one strict reader, the
+ * capture, the evidence file, the scoring, the advice and the compact view live together, so the
+ * context tool, every continuation, `correctness_check` and `submit` all show the same reading.
  *
  * Intent never changes a score or a gate outcome by itself. The reader is strict for a different
  * reason: a plan edited with a shell tool can lose a field without noticing, and a plan read
@@ -24,9 +20,8 @@
  */
 import { Type, type Static } from "typebox";
 import { Check as validateSchema } from "typebox/value";
-import { BATTERY_FILES, type FingerprintEvidence } from "../claim/fingerprint.ts";
+import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import {
   closeSync,
   constants,
@@ -44,18 +39,23 @@ import { join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { effortPhrase, type SolveEffort } from "../builder/solver-trace-text.ts";
-import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
+import { type ContractFinding, controllerValidatedFinding, requiredToolsOf } from "../truth/brief.ts";
+import { readValidatedBrief } from "../truth/public-resources.ts";
+import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { resolveToolInventory } from "../verify/tool-inventory.ts";
+import type { BuildTask } from "../truth/tasks.ts";
+import { loadRecordedTasks } from "../run/run-driver.ts";
+import { aimCounts } from "../claim/battery-difficulty.ts";
+import { POLICY } from "../critic/policy.ts";
 import { EXPERIMENT_FILE, MEMORY_FILE } from "./builder-memory.ts";
 
 const PLAN_SCHEMA = "experiment-plan/v2";
-export const EVIDENCE_SCHEMA = "experiment-evidence/v1";
+export const EVIDENCE_SCHEMA = "experiment-evidence/v3";
 export const EVIDENCE_STEM = "experiment-evidence";
-const TEXT_MAX_BYTES = 2_000;
-const MOVE_MAX_BYTES = 300;
 const PLAN_MAX_BYTES = 16_384;
 /** Bytes kept of each free-text line the compact view quotes. */
 const VIEW_MAX_BYTES = 320;
-/** A prediction this far from a verdict is stated as contradicted by it. */
+/** Rehearsal passes this far from the passes their predictions expected are stated as advice. */
 const CONTRADICTED_BY = 0.8;
 const LADDER_FILE = "starter-pack/difficulty-ladder.md";
 const RISK_HEADING = "## Risk";
@@ -107,21 +107,6 @@ export const ExperimentSubmissionSchema = Type.Object(
 );
 export type ExperimentSubmission = Static<typeof ExperimentSubmissionSchema>;
 
-/** A bundle-relative path with a source or data suffix, as the prose spells it. Deliberately
- *  narrow: a sentence about "the evaluator" names no file and is read as naming nothing. */
-const PATH_TOKEN = /[A-Za-z0-9._\-/]*[A-Za-z0-9._-]\.(?:ts|tsx|json|md|ya?ml)\b/g;
-
-type NamedFile = { path: string; state: "moved" | "unmoved" | "unresolved" };
-
-/** The newest measured battery as the plan admission reads it. */
-export type LastBattery = {
-  /** Above the aim, or every verified case passed: the battery found no limit. */
-  noLimit: boolean;
-  passed: number;
-  verified: number;
-  plan: ExperimentSubmission | null;
-};
-
 /** One rehearsal as the evidence file records it: the aggregate verdict rule 4 lets a rehearsal
  *  return, and what the solve spent. No check, no verifier output and no failure location. */
 export type RehearsalRow = SolveEffort & {
@@ -130,6 +115,10 @@ export type RehearsalRow = SolveEffort & {
   verdict: "pass" | "fail" | "not-run";
   wallMinutes: number;
 };
+
+/** A rehearsal with the `rehearsalBytes` digest its task held when it was recorded, and the pass
+ *  probability the plan then stated for it, which the Builder wrote before it saw the verdict. */
+type RecordedRehearsal = RehearsalRow & { bytes: string | null; predicted: number | null };
 
 export type PredictionScore = { scored: number; brier: number; expected: number; observed: number };
 
@@ -142,17 +131,14 @@ const refusal = (code: string, detail: string) => ({
   findings: [controllerValidatedFinding({ code, path: EXPERIMENT_FILE, detail })],
 });
 
-const blankOrOver = (text: string, max: number) =>
-  text.trim() === "" || new TextEncoder().encode(text).byteLength > max;
-
-/** Whatever `readPlan` refuses beyond the schema: blank or oversized text and a family or task
- *  named twice, which would give one name two moves or two predictions. */
+/** Whatever `readPlan` refuses beyond the schema: blank text and a family or task named twice,
+ *  which would give one name two moves or two predictions. */
 function planTextRefusal(plan: ExperimentPlan): string | null {
-  if ([plan.gap, plan.change, plan.expectedResult].some((field) => blankOrOver(field, TEXT_MAX_BYTES))) {
-    return `gap, change and expectedResult each hold 1 to ${TEXT_MAX_BYTES.toLocaleString("en-US")} UTF-8 bytes.`;
+  if ([plan.gap, plan.change, plan.expectedResult].some((field) => field.trim() === "")) {
+    return "gap, change and expectedResult each hold some text.";
   }
-  if (plan.families.some((row) => row.family.trim() === "" || blankOrOver(row.move, MOVE_MAX_BYTES))) {
-    return `Each family names itself and states its move in 1 to ${MOVE_MAX_BYTES} UTF-8 bytes.`;
+  if (plan.families.some((row) => row.family.trim() === "" || row.move.trim() === "")) {
+    return "Each family names itself and states its move.";
   }
   const families = plan.families.map((row) => row.family.trim());
   const tasks = plan.predictions.map((row) => row.taskId);
@@ -162,6 +148,8 @@ function planTextRefusal(plan: ExperimentPlan): string | null {
   return null;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is read only in its one
+// schema, so its target and predictions are scored against what the Builder actually declared.
 /** The one reading of a plan. A plan without this schema is refused by name rather than read as
  *  whatever fields it still has: the shape before it carried no families and no predictions, and
  *  reading it would score a battery against a plan that declared neither. */
@@ -227,6 +215,8 @@ function capturedPlanBytes(workspace: string): string {
   }
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is captured once from a
+// bounded regular file, so it is fixed before the round that tests it.
 /** Capture the plan once, independently of candidate identity, so it is fixed before the round
  *  that tests it and cannot be tuned to the result. Rewording it produces a new digest and nothing
  *  else: it establishes membership in a new experiment, not a harder one. */
@@ -244,96 +234,6 @@ export function captureExperimentSubmission(
   }
   if (!parsed.ok) return parsed;
   return { ok: true, experiment: { ...parsed.plan, digest: hashJsonValue(parsed.plan) } };
-}
-
-// ---------------------------------------------------------------------------------------------
-// Admission questions. Each returns the refusal detail or null; the refusal policy is the caller's.
-
-/** Resolve one named path against both trees. A path neither bundle carries under either spelling
- *  is `unresolved`: the prose may be naming a workspace note, and an absent file proves nothing. */
-function resolveNamed(path: string, adopted: FingerprintEvidence, candidate: FingerprintEvidence): NamedFile {
-  const leaf = path.split("/").pop() ?? path;
-  // tasks.json and controls.json sit outside correctnessModelFiles; one hash covers the pair.
-  if (BATTERY_FILES.some((name) => name === leaf)) {
-    return { path, state: adopted.taskSetHash === candidate.taskSetHash ? "unmoved" : "moved" };
-  }
-  for (const [prefix, before, after] of [
-    [AGENT_DIR, adopted.agentFiles, candidate.agentFiles],
-    [CORRECTNESS_MODEL_DIR, adopted.correctnessModelFiles, candidate.correctnessModelFiles],
-  ] as const) {
-    const inner = path.startsWith(prefix) ? path.slice(prefix.length) : path;
-    const was = before.find((file) => file.path === inner)?.sha256 ?? null;
-    const is = after.find((file) => file.path === inner)?.sha256 ?? null;
-    if (was === null && is === null) continue;
-    return { path, state: was === is ? "unmoved" : "moved" };
-  }
-  return { path, state: "unresolved" };
-}
-
-/** When the plan's change names bundle files and none of them moved. A single moved file settles
- *  it: prose that names an unchanged file for context is not a false declaration. The change can
- *  declare a repair across three rounds while the file keeps one hash throughout, and nothing else
- *  reads the prose against the snapshot. */
-export function unmovedChangeDetail(
-  change: string,
-  adopted: FingerprintEvidence,
-  candidate: FingerprintEvidence,
-): string | null {
-  const paths = new Set(
-    [...change.matchAll(PATH_TOKEN)].flatMap((match) => {
-      const path = match[0].replace(/^\.\//, "").replace(/^\/+/, "");
-      return path.length > 0 ? [path] : [];
-    }),
-  );
-  const named = [...paths].map((path) => resolveNamed(path, adopted, candidate));
-  const unmoved = named.flatMap((file) => (file.state === "unmoved" ? [file.path] : []));
-  if (unmoved.length === 0 || named.some((file) => file.state === "moved")) return null;
-  return `The change names ${unmoved.join(", ")}, and every one of them is byte-identical to the adopted product. Make the change in the bytes, or rewrite the change to name what this candidate actually moved; submit again in this session.`;
-}
-
-/** When the target counts more verified passes than the battery has slots. */
-export function unreachableTargetDetail(plan: ExperimentPlan, slots: number): string | null {
-  const count = plan.target.verifiedPasses;
-  return count > slots
-    ? `The target counts ${count} verified passes, but the submitted battery has ${slots} task slots. Bind a count within the battery before measuring.`
-    : null;
-}
-
-/** The newest battery whose claim stands, read off the recorded readout rows; undefined when none
- *  stands. A battery above the aim or passing every verified case found no limit. */
-export function lastBatteryOf(
-  rows: ReadonlyArray<{
-    claimRefusal: string | null;
-    zone: string | null;
-    passed: number | null;
-    verified: number;
-    experiment: { proposal: unknown } | null;
-  }>,
-): LastBattery | undefined {
-  const row = rows.find(
-    (item): item is typeof item & { passed: number } => item.claimRefusal === null && item.passed !== null,
-  );
-  if (row === undefined) return undefined;
-  const above = row.zone === "over-aim" || row.zone === "too-easy";
-  return {
-    noLimit: above || (row.verified > 0 && row.passed === row.verified),
-    passed: row.passed,
-    verified: row.verified,
-    plan: row.experiment === null ? null : parseExperimentSubmission(row.experiment.proposal),
-  };
-}
-
-const sameWords = (text: string) => text.trim().replaceAll(/\s+/g, " ").toLocaleLowerCase();
-
-/** When a plan declares a climb — a target below the last battery's passes — after a battery that
- *  found no limit, and every family it names declares the move the last plan declared. A family
- *  the last plan did not name is a new move. This compares declarations, never semantic difficulty,
- *  and without a last plan there is nothing to compare, so it never fires. */
-export function repeatedMoveDetail(last: LastBattery | undefined, plan: ExperimentPlan): string | null {
-  if (last?.noLimit !== true || last.plan === null || plan.target.verifiedPasses >= last.passed) return null;
-  const before = new Map(last.plan.families.map((row) => [row.family, sameWords(row.move)]));
-  if (plan.families.some((row) => before.get(row.family) !== sameWords(row.move))) return null;
-  return `The last battery passed ${last.passed} of ${last.verified} verified cases and found no limit, and this plan declares a climb to ${plan.target.comparator} ${plan.target.verifiedPasses}, but every family declares the move the last battery's plan declared. This compares the declared moves, not semantic difficulty: name for at least one family the new reasoning step its tasks now demand of the solver, and make the tasks demand it.`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -361,35 +261,94 @@ export function predictionScore(
   };
 }
 
-const rehearsalVerdicts = (rows: readonly RehearsalRow[]) =>
+/** The digest each workspace task would be rehearsed at now: the whole task row with its hidden
+ *  operands, the scoring program, the agent and the tools the brief requires as they resolve, so a
+ *  verdict stops counting once any of them moves. Null when the bundle does not fingerprint or its
+ *  tasks do not load, because an identity that cannot be read is unknown rather than changed. */
+function rehearsalBytes(workspace: string): ReadonlyMap<string, string> | null {
+  const fingerprint = fingerprintSlug(workspace);
+  if (!fingerprint.ok) return null;
+  let tasks: BuildTask[];
+  try {
+    tasks = loadRecordedTasks(workspace);
+  } catch {
+    return null;
+  }
+  const checks = readValidatedBrief(workspace)?.truthChecks ?? [];
+  const toolIds = checks.flatMap((check) => requiredToolsOf(check.execution));
+  const { inventory } = resolveToolInventory({ toolIds, toolTree: bundleSnapshotToolTree(workspace) });
+  // Identity and bytes, not location: a workspace carried to a new pass keeps its rehearsals.
+  const tools = Object.values(inventory).map(({ id, digest }) => [id, digest]);
+  const { scoringHash, agentHash } = fingerprint;
+  return new Map(tasks.map((task) => [task.taskId, hashJsonValue([task, scoringHash, agentHash, tools])]));
+}
+
+/** Each task's latest graded verdict, among the rehearsals whose recorded bytes are known and equal
+ *  the bytes it holds now; none counts while the current bytes are unknown. */
+const rehearsalVerdicts = (rows: readonly RecordedRehearsal[], now: ReadonlyMap<string, string> | null) =>
   new Map(
     rows.flatMap(
       (row): Array<[string, boolean]> =>
-        row.verdict === "not-run" ? [] : [[row.taskId, row.verdict === "pass"]],
+        row.verdict === "not-run" || row.bytes === null || row.bytes !== now?.get(row.taskId)
+          ? []
+          : [[row.taskId, row.verdict === "pass"]],
     ),
   );
 
-/** Where the plan and the rehearsals disagree, as advice only: rehearsal passes past an at-most
- *  target, and a prediction the verdict contradicts. Neither refuses anything, because a rehearsal
- *  is one blind solve and the measured battery is the evidence. */
-function planAdvice(plan: ExperimentPlan, rows: readonly RehearsalRow[]): string[] {
-  const verdicts = rehearsalVerdicts(rows);
+/** Each graded rehearsal against the prediction recorded with it, so a task rehearsed twice counts
+ *  twice and a prediction revised after its verdict leaves the score as it was. */
+function scoredBeforeVerdicts(rows: readonly RecordedRehearsal[]): PredictionScore | null {
+  const graded = rows.flatMap((row, index) =>
+    row.verdict === "not-run" || row.predicted === null
+      ? []
+      : [{ taskId: String(index), pass: row.predicted, verdict: row.verdict === "pass" }],
+  );
+  return predictionScore(graded, new Map(graded.map((row) => [row.taskId, row.verdict])));
+}
+
+/** Where the plan and the rehearsals disagree, as advice only: a target above the aim, which the
+ *  readout would otherwise say only after a battery measured it, rehearsal passes past an at-most
+ *  target, predictions made before their verdicts that expected another pass count, which revising
+ *  them afterwards does not unsay, and tasks rehearsed only at bytes since changed.
+ *  None refuses anything, because a rehearsal is one blind solve and the measured battery is the
+ *  evidence. */
+function planAdvice(
+  plan: ExperimentPlan,
+  rows: readonly RecordedRehearsal[],
+  now: ReadonlyMap<string, string> | null,
+): string[] {
+  const verdicts = rehearsalVerdicts(rows, now);
   const passed = [...verdicts].flatMap(([taskId, pass]) => (pass ? [taskId] : []));
   const advice: string[] = [];
   const { comparator, verifiedPasses } = plan.target;
+  const slots = now?.size ?? 0;
+  const [lo, hi] = aimCounts(slots, POLICY.climb.band);
+  if (slots > 0 && hi >= lo && verifiedPasses > hi) {
+    advice.push(
+      `Advice: the target, ${comparator} ${verifiedPasses} verified passes, lies above the aim of ${lo} to ${hi} of ${slots}, so a battery meeting it would find no limit.`,
+    );
+  }
   if (comparator === "at-most" && passed.length > verifiedPasses) {
     advice.push(
       `Advice: rehearsals already passed ${passed.length} distinct task(s) (${passed.join(", ")}) against a target of at most ${verifiedPasses} verified passes.`,
     );
   }
-  const contradicted = plan.predictions.flatMap((row) => {
-    const verdict = verdicts.get(row.taskId);
-    if (verdict === undefined || Math.abs(row.pass - (verdict ? 1 : 0)) < CONTRADICTED_BY) return [];
-    return [`${row.taskId} predicted ${row.pass} and ${verdict ? "passed" : "failed"}`];
-  });
-  if (contradicted.length > 0) {
+  const score = scoredBeforeVerdicts(rows);
+  if (score !== null && Math.abs(score.observed - score.expected) >= CONTRADICTED_BY) {
     advice.push(
-      `Advice: rehearsal verdicts contradict ${contradicted.length} prediction(s): ${contradicted.join("; ")}.`,
+      `Advice: before their verdicts, your predictions for this round's ${score.scored} graded rehearsal(s) expected ${score.expected} passes and ${score.observed} passed.`,
+    );
+  }
+  const stale = new Set(
+    rows.flatMap((row) => (verdicts.has(row.taskId) || row.verdict === "not-run" ? [] : [row.taskId])),
+  );
+  if (now === null && rows.some((row) => row.verdict !== "not-run")) {
+    advice.push(
+      "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target until they do.",
+    );
+  } else if (stale.size > 0) {
+    advice.push(
+      `Advice: rehearsed only at bytes that have since changed, so not counted towards the target: ${[...stale].join(", ")}.`,
     );
   }
   return advice;
@@ -410,11 +369,10 @@ export function currentPlan(workspace: string): ExperimentSubmission | null {
 }
 
 /** The controller's evidence about the round plan: every rehearsal of the round, written through to
- *  its own `experiment-evidence*.json` in `dir` after each one, beside the prediction score the
- *  current plan earns against them. One object per round, held by the controller and read by the
- *  plan view; a null `dir` keeps the rows in memory only. */
+ *  its own `experiment-evidence*.json` in `dir` at each read of the plan, submit included, so the file
+ *  names the plan that stood last. One object per round; a null `dir` keeps the rows in memory only. */
 export class PlanEvidence {
-  private readonly rows: RehearsalRow[] = [];
+  private readonly rows: RecordedRehearsal[] = [];
   private path: string | undefined;
 
   constructor(
@@ -424,30 +382,26 @@ export class PlanEvidence {
 
   /** Records one rehearsal and returns the plan's advice after it. */
   record(row: RehearsalRow): string[] {
-    this.rows.push(row);
+    const predicted = currentPlan(this.workspace)?.predictions.find(({ taskId }) => taskId === row.taskId);
+    const bytes = rehearsalBytes(this.workspace)?.get(row.taskId) ?? null;
+    this.rows.push({ ...row, bytes, predicted: predicted?.pass ?? null });
+    return this.advice();
+  }
+
+  /** The advice the current plan earns against this round's rehearsals. */
+  advice(): string[] {
     const plan = currentPlan(this.workspace);
-    if (this.dir !== null) {
+    if (this.dir !== null && this.rows.length > 0) {
       mkdirSync(this.dir, { recursive: true });
       this.path ??= claimEvidenceFile(this.dir);
       writeCompleted(this.path, {
         schema: EVIDENCE_SCHEMA,
         planDigest: plan?.digest ?? null,
         rehearsals: this.rows,
-        predictionScore:
-          plan === null ? null : predictionScore(plan.predictions, rehearsalVerdicts(this.rows)),
+        predictionScore: scoredBeforeVerdicts(this.rows),
       });
     }
-    return plan === null ? [] : planAdvice(plan, this.rows);
-  }
-
-  list(): readonly RehearsalRow[] {
-    return this.rows;
-  }
-
-  /** The advice the current plan earns against this round's rehearsals. */
-  advice(): string[] {
-    const plan = currentPlan(this.workspace);
-    return plan === null ? [] : planAdvice(plan, this.rows);
+    return plan === null ? [] : planAdvice(plan, this.rows, rehearsalBytes(this.workspace));
   }
 
   view(): string {
@@ -487,7 +441,7 @@ function riskLine(workspace: string): string | null {
   return line === undefined || line.startsWith("## ") ? null : clip(line);
 }
 
-function planLines(workspace: string, rows: readonly RehearsalRow[]): string[] {
+function planLines(workspace: string, rows: readonly RecordedRehearsal[]): string[] {
   if (!existsSync(join(workspace, EXPERIMENT_FILE))) {
     return [`Round plan: ${EXPERIMENT_FILE} is not written yet. ${PLAN_TEMPLATE}`];
   }
@@ -502,7 +456,7 @@ function planLines(workspace: string, rows: readonly RehearsalRow[]): string[] {
   return [
     `Round plan (${PLAN_SCHEMA}, ${plan.scope} scope): target ${plan.target.comparator} ${plan.target.verifiedPasses} verified passes; ${plan.predictions.length} task prediction(s) summing to ${Math.round(expected * 10) / 10} expected passes.`,
     `Families: ${plan.families.map((row) => `${row.family} at ${row.level} — ${clip(row.move)}`).join("; ")}.`,
-    ...planAdvice(plan, rows),
+    ...planAdvice(plan, rows, rehearsalBytes(workspace)),
   ];
 }
 
@@ -519,7 +473,7 @@ function rehearsalLines(rows: readonly RehearsalRow[]): string[] {
  *  the target, each family's level and move, the prediction total, this round's rehearsals with
  *  their effort as plain facts, any advice, the ladder's frontier row, the MEMORY.md risk line and
  *  where the full files are. */
-function renderPlanView(workspace: string, rows: readonly RehearsalRow[]): string {
+function renderPlanView(workspace: string, rows: readonly RecordedRehearsal[]): string {
   const frontier = frontierRow(workspace);
   const risk = riskLine(workspace);
   return [

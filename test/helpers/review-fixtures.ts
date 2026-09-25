@@ -53,8 +53,7 @@ export const REVIEW_IDENTITY = {
  *  cause is the one field that stays in the record; the render test checks that it does. */
 export const READING: IssueDiagnosis = {
   runId: "r2",
-  layer: "tool-contract",
-  intervention: "correct",
+  owner: "agent/tools-spec.json",
   boundary: {
     tool: "write_layout",
     reading: "the writer's second call omits the joint list the schema requires",

@@ -48,7 +48,7 @@ type ClimbRunEnd = {
   band: [number, number];
   /** Placed batteries whose point count sat inside the band. */
   onAim: number;
-  /** Batteries the decision placed at all; a refused claim or a set-aside shape is not placed. */
+  /** Batteries the decision placed at all; a refused claim or an unplaced battery is not counted. */
   placed: number;
   /** Oldest first. */
   batteries: Array<{

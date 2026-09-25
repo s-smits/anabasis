@@ -229,6 +229,17 @@ describe("groupAuthorFindings", () => {
     expect(advised).toBe(`${text}\nAdvice: a stand-in line.`);
   });
 
+  it("previews twenty readiness groups, counts the rest and sends exact paging to feedback", () => {
+    const overview = (count: number) =>
+      authorFindingOverview(Array.from({ length: count }, (_, i) => row(`G${i}`, `detail ${i}`)));
+    expect(overview(21).groups).toHaveLength(20);
+    expect(overview(21).navigation).toStartWith(
+      "1 more group is not shown; correctness_check records every finding, and harness_inspect feedback",
+    );
+    expect(overview(22).navigation).toStartWith("2 more groups are not shown; ");
+    expect(overview(20).navigation).toStartWith("correctness_check records every finding");
+  });
+
   it("cuts a long variant line and a long field preview on whole code points, and says so", () => {
     // Each é is two UTF-8 bytes, so a byte bound that fell inside one would split it.
     const long = `receipt ${"é".repeat(200)}`;

@@ -114,27 +114,26 @@ and each is here because moving it cost something.
 9. **A tool is what the host hashed.** `toolId` resolves once at submit, under the candidate's
    `.toolchain` first and then the host PATH, and every run records its digest, source, inputs,
    exit and outcome.
-10. **Approach the limit from above.** A battery the solver mostly passes, arrived at before a
-    harder one failed, has found no limit: it proves neither that the checks are complete nor that
-    the tasks are difficult. So a first battery is deliberately overly complex, around 3 verified
-    of 25, and later batteries aim for a count inside `climb.band` — 0.20 to 0.50, which is 5 to 12
-    of 25 — because that is where the limit can actually be measured. `placeOnBand` owns the
-    reading: the Wilson interval decides whether a battery is significantly too easy or too hard,
-    and the point count decides whether it sits under, on or over the aim. **No course is
-    prescribed**, and the reason is recorded. Campaign 3fd52f9e-28 moved only its published
-    magnitudes for four consecutive batteries, which is exactly what a prescribed three-stage
-    course had told it to do. So the prompts state the counts the band implies and leave the route
-    to the Builder, and they are the sole owner of those counts. `renderBatteryContract`
-    (`src/run/climb-readout.ts`) states the first battery's count, the count that would find no
-    limit and the aim, per size; a continuation states the aim and never the first battery's count.
-    Every sentence it and the climb readout send is a line of `FRAME`
+10. **Bracket a witnessed capability boundary.** Every admitted task has a verifier-accepted
+    witness, which proves it feasible (optimum ≤ reference ≤ limit) and never difficult: run
+    371f8f's solver beat the Builder's own reference on 5 of 6 tasks. So seek tasks beyond the
+    fixed solver's observed capability, by whatever stronger witness the Builder chooses, and locate
+    the transition by blind measurement. A first battery authored above it, about 3 verified of 25,
+    is a hypothesis rather than a prerequisite. Later batteries aim inside `climb.band`, 0.20 to
+    0.50 or 5 to 12 of 25, the calibration target: on-band means on that target, not a proved
+    limit. `placeOnBand` reads it: the Wilson interval decides too easy or too hard, the point
+    count under, on or over the aim. An unbracketed boundary is reported unlocated, not met with
+    manufactured failures. **No course is prescribed**, because campaign 3fd52f9e-28 moved only its
+    published magnitudes for four consecutive batteries, exactly as a prescribed three-stage course
+    had told it to, so the prompts alone state the band's counts and the route is the Builder's.
+    `renderBatteryContract` (`src/run/climb-readout.ts`) states the first battery's count, the
+    count that would find no limit and the aim, per size; a continuation never states the first
+    count. Every sentence it and the climb readout send is a line of `FRAME`
     (`src/run/climb-readout-frame.ts`), and `FRAME_REVISION` is recorded in
-    `difficulty-decision/v6`, so rewording a sentence creates a new recorded condition rather than
-    a tidier one. The readout states each family's solve effort, as median and most minutes against
-    `solve_minutes` and median tool calls, and scores the plan's per-task predictions against the
-    verdicts. Effort is stated as a fact and never read as difficulty, because within a battery
-    minutes and tool calls do not separate the cases that passed from those that failed. Useful
-    adopted work is retained.
+    `difficulty-decision/v7`, so rewording one is a new recorded condition. The readout states each
+    family's solve effort (median and most minutes against `solve_minutes`, median tool calls) and
+    scores the plan's per-task predictions, but never reads effort as difficulty: within a battery
+    it does not separate passes from fails. Useful adopted work is retained.
 
 ## Evidence and implementation status
 
@@ -195,8 +194,8 @@ window in the comparison.
 
 Report the identities, and report verified, unaccepted and non-result counts separately. Difficulty
 gets its own denominator: once any case is truth-verified, door-rejected attempts count as
-difficulty failures. A battery that is entirely unaccepted is `no-difficulty-evidence` — rebuild,
-with no capability rate and no difficulty strike. An unproven served-model identity refuses the
+difficulty failures. A battery that is entirely unaccepted is placed nowhere — rebuild, with no
+capability rate and no difficulty strike. An unproven served-model identity refuses the
 identity claim, and that is all it does: it does not reclassify a scored case as an environment
 non-result.
 
@@ -259,7 +258,9 @@ live evidence.
    diagnosis reader, the advice packet or any authoring prompt. Public compiler errors and
    generated-module diagnostics may cross, because they describe the public authoring interface
    rather than the answer. The test is exact: change only protected verifier detail, and every
-   model-visible prompt digest must come out unchanged.
+   model-visible prompt digest must come out unchanged. A passing measured case's own submitted
+   artifact is not protected, since the battery already publishes its pass bit; failing artifacts,
+   reference output and F2 output stay withheld.
 
    Two bounded exceptions exist. `harness_trial` returns a single per-task aggregate
    `truth.verdict` — pass, fail or not-run — for the task the caller selected and for the bytes the
@@ -287,7 +288,7 @@ live evidence.
    proposal for the next difficulty. The Built Harness owns its own solving method. Code may
    validate declared structure and realised bytes, but it must not start choosing domain content
    because reasoning about that content looks difficult. In particular: no autonomous scheduler, no
-   model-written claim check, no deterministic harness-defect classifier.
+   model-written claim check, no deterministic classifier of harness defects.
 
 6. **Use evidence as evidence.** Apply the identities, case kinds and denominators above. After
    five consecutive provider non-results, stop scheduling new battery cases: let the in-flight
@@ -301,14 +302,14 @@ live evidence.
    Tool evidence counts attempted, completed, failed and could-not-run actions separately, and a
    submit result joins to its attempt by session and turn, never by whatever is nearby. A clause
    that exists only in stdout is not durable evidence. An admission packet that routes no owner is
-   lineage with a reason — `no-feedback`, `agenda-consumed` or `evaluation-identity-unadopted` —
-   and it selects no owner. Unknown usage or cost stays `null` rather than reading as zero, and a
-   turn the provider costed is kept separate from one the transport estimated. The reason is worth
-   spelling out: a streamed frame's `usage` is not final, an interrupted turn never receives the
-   result message carrying the turn's account, and each frame repeats the whole cached input while
-   none of them carries a cost. A total that holds estimated turns therefore bounds nothing in
-   either direction. `usage.estimatedTurns` counts them beside `reportedTurns`, and on an older
-   record it is absent, which means unknown rather than zero.
+   recorded as lineage, by its digest alone, and it selects no owner; why it routed none is read
+   from the packet that digest names. Unknown usage or cost stays `null` rather than reading as
+   zero, and a turn the provider costed is kept separate from one the transport estimated. The
+   reason is worth spelling out: a streamed frame's `usage` is not final, an interrupted turn never
+   receives the result message carrying the turn's account, and each frame repeats the whole cached
+   input while none of them carries a cost. A total that holds estimated turns therefore bounds
+   nothing in either direction. `usage.estimatedTurns` counts them beside `reportedTurns`, and on an
+   older record it is absent, which means unknown rather than zero.
 
    Order harness versions and checkpoints by recorded commit time, not by directory order or file
    mtime. Per-case external and differential grounding coverage applies only to truth-verified
@@ -323,11 +324,11 @@ live evidence.
    sensor.
 
 7. **Give every decision one owner.** Every actionable piece of evidence names its producer, the
-   exact evidence it cites and the active owner. `FeedbackOwner` is a closed set of nine:
-   `brief`, `tests`, `instructions`, `tools-spec`, `accept-controls`, `controls`,
-   `correctness-model`, `fingerprint`, `environment` (`FEEDBACK_OWNERS`,
-   `src/author/campaign-types.ts`). Repair ownership names
-   the defective contract; it is not a write mask and not an automatic reset. Preserve in-flight
+   exact evidence it cites and the active owner. An owner is one bundle file or `environment`:
+   the nine paths of `BUNDLE_FILES` in `src/author/feedback-routing.ts`, under `agent/` and
+   `correctness-model/`, so "which part is at fault" and "which file to open" have one answer, and
+   the half of the bundle a repair reopens is the path's own prefix (`ownerSide`). Repair ownership
+   names the defective file; it is not a write mask and not an automatic reset. Preserve in-flight
    work, and let the accepted bytes decide attribution.
 
    A claim-only `CampaignFeedback` row carries routing metadata rather than a controller-validated
@@ -336,9 +337,7 @@ live evidence.
    controller-owned campaign carry, projected exactly once at the model-visible boundary. An
    unmarked finding fails closed to `generated-execution-unclassified`. Opt a generated finding
    into author-visible detail only where the producer composed that detail from public authoring
-   identities — control ids, mutation classes, family names, declared check ids. When rebuild-tier
-   rows tie, pick the owner whose declared closure settles the most rows, and let arrival order be
-   the last tie-break.
+   identities — control ids, mutation classes, family names, declared check ids.
 
 8. **Spend complexity only when it changes a useful decision.** Map each concept as
    `owner → live consumer → decision changed → evidence → hostile test`. Reuse readers and owners,
@@ -433,9 +432,10 @@ live evidence.
    Every ordinary accept and reject control is still task-bound and still verified through its
    declared check by the verifier.
 
-   Each subject gets a fresh Judge session, in groups of at most five, stopping after five
-   consecutive provider errors, with a 30-minute hard wall per turn, and the first valid verdict
-   stands. The Judge sees the original request, the bound public task, the submitted artifact, the
+   Each subject gets a fresh Judge session, in groups of at most five (`ANA_REVIEW_CONCURRENCY`
+   sets another width), stopping after five consecutive provider errors, with a 30-minute hard
+   wall per turn, and the first valid verdict stands. The Judge sees the original request, the
+   bound public task, the submitted artifact, the
    public schema and design rules, the projected tool contract and the declared runtime facts. It
    never sees the Built prompt, the solve trace, verifier output or a reference artifact, and two
    artifacts are never compared inside one prompt. `judgeDeAnchoring` in `thresholds.frozen.yaml`
@@ -464,21 +464,21 @@ live evidence.
    and up to two passing solves of the same family, every one compiled by `compileSolve`
    (`src/review/solve-steps.ts`) into numbered steps such as `c04.s7` and `c04.end`. Beside them
    sit the measured harness's walls, its declared tool descriptions, its operating guide and a
-   census of every solve's tool use. Its one tool, `record_diagnosis`, takes a harness layer from
-   `DIAGNOSIS_LAYERS`, an intervention from `DIAGNOSIS_INTERVENTIONS`, a first observed failure
-   boundary, a cause and a falsifier. It refuses a boundary that is not a shown step of a solve the
-   reading names, a contrast that is not a step of a shown passing solve, a solver-layer reading
-   that proposes a change, and any text naming a task. One reading may cover several issues that
+   census of every solve's tool use. Its one tool, `record_diagnosis`, takes an owner from
+   `DIAGNOSIS_OWNERS` — a harness file the solver reads, or `solver` for no change — a first
+   observed failure boundary, a cause and a falsifier. It refuses an owner the solver does not read,
+   a boundary that is not a shown step of a solve the reading names, a contrast that is not a step
+   of a shown passing solve, and any text naming a task. One reading may cover several issues that
    share a flaw. Confidence is computed from how many sampled solves the reading holds for and
    whether it cites a contrast, never stated by the model.
 
    The reader opens no `verifier.json`, Judge record or accepted artifact, and records
    `promptDigest`, so a change to protected detail alone leaves that digest unchanged — which is
-   also why its boundary and falsifier may reach the author. The rebuild advice renders the layer,
-   the intervention, the boundary and the falsifier with the support counts, and keeps the cause in
-   the record, where the Epoch Reviewer reads it beside each standing issue. The reader selects no
-   owner. Treat a timeout as diagnosable unless the battery
-   evidence proves the environment owns it.
+   also why its boundary and falsifier may reach the author. The rebuild advice renders the owner,
+   the boundary and the falsifier with the support counts, and keeps the cause in the record, where
+   the Epoch Reviewer reads it beside each standing issue. The owner a reading names is advice: it
+   routes no feedback. Treat a timeout as diagnosable unless the battery evidence proves the
+   environment owns it.
 
    The Epoch Reviewer runs once per measured-condition digest, and may record routable findings or
    dispute a standing issue. It labels each finding advisory or blocking, and blocking requires a
@@ -491,7 +491,8 @@ live evidence.
    a question; the finding is still owed to whatever the request demands and the tasks leave
    undemanded. Since 2026-09-24, "nothing demonstrated" no longer answers that question at or
    above the aim, after a review of a full pass recorded nothing and the round moved on. The
-   reviewer either records one advisory curriculum-defect naming the undemanded obligation, or
+   reviewer either records one advisory defect owned by `correctness-model/tasks.json` naming the
+   undemanded obligation, or
    says family by family which obligation each family demands and why none is left. The shapes it
    is pointed at are sibling tasks differing only in published values, limits the first candidate
    clears widely, a solver tool reporting every margin a check reads, and a rule no practitioner
@@ -518,19 +519,20 @@ live evidence.
    declared checks over the original and the changed artifact and reports which checks moved. At
    most eight per review (`PROBE_BUDGET`), accept controls only, on a path that already exists. A
    probe whose original did not pass, or whose changed artifact reached no verdict, is not evidence.
-   Every harness-defect finding cites its `probeIds`, or sends `[]` for a source-only reading, and a
-   probe-backed harness defect may be admitted blocking on first occurrence. Otherwise a first
-   agent-side defect stays advisory, and recurrence is keyed by the declared check the finding
-   names, or by the artifact path when it names no check — but only a path below a declared schema
-   root. A bare root is not an identity: `schemaPath` requires the first segment alone, so a
-   one-root domain offers exactly one word for the whole artifact, and across the recorded corpus
-   every campaign that fell back to a path collapsed to a single constant. Run 17f9de demoted a new
-   finding on two recurrences that belonged to other defects; the same collapse raises one at a
-   single recurrence, which is how a 25-of-25 harness came to be reset. Only curriculum or
-   evaluation-side defects may dispute an issue, and a dispute keeps the issue counted while
-   withholding the agent advice. Public candidate analysis and checks of published limits are
-   legitimate solving support — call a tool an answer shortcut only when it supplies the remaining
-   decision the solver was meant to make.
+   A finding is a defect, naming the bundle file at fault, or an observation, which names a file or
+   none and is always advisory. Every defect not owned by the task set cites its `probeIds`, or
+   sends `[]` for a source-only reading, and a probe-backed defect may be admitted blocking on first
+   occurrence. Otherwise a first defect whose owner sits under `agent/` stays advisory, and
+   recurrence is keyed by the declared check the finding names, or by the artifact path when it
+   names no check — but only a path below a declared schema root. A bare root is not an identity:
+   `schemaPath` requires the first segment alone, so a one-root domain offers exactly one word for
+   the whole artifact, and across the recorded corpus every campaign that fell back to a path
+   collapsed to a single constant. Run 17f9de demoted a new finding on two recurrences that belonged
+   to other defects; the same collapse raises one at a single recurrence, which is how a 25-of-25
+   harness came to be reset. Only a defect owned under `correctness-model/` may dispute an issue,
+   and a dispute keeps the issue counted while withholding the agent advice. Public candidate
+   analysis and checks of published limits are legitimate solving support — call a tool an answer
+   shortcut only when it supplies the remaining decision the solver was meant to make.
 
    An authoring review reads two things the Builder never sees. One is the bytes the Built solver
    submitted in each of the round's blind rehearsals, beside the one verdict they earned; the
@@ -558,15 +560,13 @@ live evidence.
       fixed — that is `brief.json` and `evaluator.ts` with every module it imports, which is what
       `scoringHash` covers — and changes the battery and its task-bound controls, and with them the
       reference solve and the tests. Conformance, controls and F2 all run again before measurement.
-      A known product blocker cannot be evaded by changing tasks or relabelling scope.
     - **Environment recovery** keeps the product bytes fixed, and a provider coming back cannot be
       reported as a product improvement.
 
     There is **one authoring path**. The separate fixed-harness session that prescribed a selected
     level, a family composition and a parent lineage through `DIFFICULTY.json` is gone: across 33
     recorded rounds it never once left the too-easy zone. What it taught is kept in the open path
-    as the task freeze, the changed public-input subset and the refusal of a repeated public
-    condition.
+    as the task freeze and the changed public-input subset.
 
     A measured candidate with at least one verified case and a written claim is selected through
     the retained-product transaction. A zero-verified or environment-blocked candidate is held with
@@ -603,12 +603,11 @@ live evidence.
     rather than resetting the spend.
 
     The controller loop ceilings live in `src/critic/policy.ts`: `environmentBlockedRounds 3`,
-    `buildFailedRounds 3`, `stalledFindingsRepeats 8`,
-    `noopSubmitStrikes 3`, `unchangedCandidateStrikes 3`, `toolNonResultRefusals 3`, and
-    `climb.offAimStreakRounds 3` — consecutive rounds reading one side of the aim, counted in
-    batteries, where a round whose claim was refused counts behind a placement but never on its
-    own. Runs 17f9de and c1d2a7 each reached three, and the operator stopped each by hand there.
-    Nothing is held fixed while the streak runs; the Builder keeps choosing what to change.
+    `buildFailedRounds 3`, `noopSubmitStrikes 3` and `unchangedCandidateStrikes 3`. The off-aim
+    streak — consecutive rounds reading one side of the aim, counted in batteries, where a round
+    whose claim was refused counts behind a placement but never on its own — is a readout fact and
+    stops nothing, because the route after it belongs to the Builder. Nothing is held fixed while
+    the streak runs; the Builder keeps choosing what to change.
 
 11. **Distinguish task demands from coverage and repair.** A level is an ordinal label, not an
     explanation of difficulty. New hashes, new ids, new family names, longer descriptions or more
@@ -618,21 +617,22 @@ live evidence.
     condition rather than proof of a difficulty advance.
 
     The demand comes from the request's own field, never from a rule the Builder adds to it. Five
-    runs read together on 2026-09-24 showed three ways of looking harder while measuring less:
+    runs read together on 2026-09-24 showed three ways of looking harder that nothing measured:
     - The firmware Builders invented duty and report rules the request never held, so a failing
       battery measured the solver's reading of the author's wording.
     - The truss Builders lengthened a listed set of load cases and called that a tier.
-    - Both shipped solver tools that reported every margin a check reads. That turns any task into
-      propose, read the failing state, adjust, and a tool returning the value a check compares
-      against is the reference solve under another name.
+    - Both shipped solver tools that reported every margin a check reads, so a solver could
+      propose, read the failing state and adjust. That evaluates a candidate and synthesises none.
+    None of these, nor tightening a feasible limit toward a stronger witness (a legitimate route),
+    proves a task harder or easier by itself; blind measurement decides.
 
     So the prompts now say it once each: `starter-pack/difficulty-ladder.md` owns the argument,
-    `STARTER.md` owns the six-line entry, and the Builder system prompt owns the clauses. Above the
-    aim, the one move left once the tasks carry all three things of a hard row is to take the set
-    out of the task statement and out of the tools, because adding members to a listed set is
-    coverage. The same pass tied submit to the rehearsals: a Builder submits once a clear preview
-    and its own `harness_trial` results agree with the aim, and a target every outcome meets
-    predicts nothing.
+    `STARTER.md` owns the tier entry, the Builder system prompt owns the clauses, and the round's
+    own text — `roundPrompt` and the `FRAME` battery contract — owns when to submit and when a
+    limit only the reference search reaches is a difficulty: when the solver cannot run that search
+    inside its walls. The same pass tied submit to the rehearsals: a Builder submits once a clear
+    preview and its own `harness_trial` results agree with the aim, and a target every outcome
+    meets predicts nothing.
 
     Battery size has one owner, and it is not the file named after it: the numbers sit in
     `POLICY.battery` in `src/critic/policy.ts`, beside the loop ceilings, as `floor 5`,
@@ -640,13 +640,13 @@ live evidence.
     re-exports them and owns the decisions taken from them. A fresh product measures **probe
     batteries of 5 to 10 tasks**, sized by the Builder, until one of them passes some but not all
     of its scored cases; only then the requested size. An out-of-range size fails rather than being clamped, because a silently changed size is
-    a silently changed measurement condition. `ClimbAction` is `placed | no-difficulty-evidence |
-    repeated-failure-set | family-conflict`: one name for a decision that has a band placement, and
-    three for recorded shapes whose rate is not difficulty evidence. The reading itself belongs to
-    `placement.zone`, which `placeOnBand` has already decided. `climb`, `hold-limit` and `ease`
-    were a second, lossier encoding of those five zones, and every consumer either re-switched on
-    the zone or tested `=== "climb"`, which is `zone === "too-easy"` spelled differently
-    (2026-09-18). No source file and no row of `thresholds.frozen.yaml` carries the
+    a silently changed measurement condition. A difficulty decision carries
+    `placement: BandPlacement | null`, null when its deciding sample holds no verified case or
+    `placeOnBand` refused it, and states a repeated failure set or a family conflict as a fact
+    beside the placement rather than in place of it. Until `difficulty-decision/v7` those two shapes
+    were actions that set the zone aside, so a battery whose same cases failed twice was placed
+    nowhere and dropped out of the off-aim streak however far above the aim it read. The reading
+    itself belongs to `placement.zone`, which `placeOnBand` has already decided. No source file and no row of `thresholds.frozen.yaml` carries the
     `climb.limitHoldRounds = 4` this contract used to cite, and that absence is the design prior
     rather than a defect — the route after a battery at the limit belongs to the Builder.
 
@@ -654,7 +654,7 @@ live evidence.
     direction-bound words changed: the streak stops where the product crossed the aim, and a
     battery below the aim reads the same scores, repeated task sets, attribution and calibration
     that a battery above it reads. Until 2026-09-18 the streak counted the above-aim side alone,
-    which is the side a first battery is deliberately authored away from. A target enters the
+    the side a first battery's suggested count sits away from. A target enters the
     calibration count only when its comparator names the side the streak is on, so the Builder is
     told which comparator to declare. Sample size has one owner too, the Wilson interval at
     `climb.confidence` 0.95 two-sided, whose single quantile is `REPORTING_Z` in
@@ -663,28 +663,24 @@ live evidence.
     along with the duplicate Wilson implementation, and the `minLevelN` floor, which discarded a
     placement whenever the Builder had changed fewer than four tasks.
 
-    At authoring validation, at least one shared `publicInput` path declared by each family's
-    applicable truth checks must hold two distinct values. The comparison is per declared path, so
-    a check declaring a coarse one is satisfied by any change anywhere inside it: 18 firmware tasks
-    passed that validation while every one of them published the same display, the single
-    peripheral the request had named. Declared variation proves coverage, and not semantic
-    difficulty or actual verifier dependence.
+    Declared variation proves coverage, and not semantic difficulty or actual verifier dependence:
+    18 firmware tasks varied a declared public path while every one of them published the same
+    display, the single peripheral the request had named. That is why no validation rule asks a
+    family's tasks to vary any longer.
 
     An open continuation records `EXPERIMENT.json` before preview or submit. Intent cannot change a
-    score, override a gate or make identical bytes new. Refuse a repeated public condition on a
-    fixed product even after the ids, families or levels have been renamed. After a battery that
-    found no limit — above the aim, or every verified case passed — a plan declaring a climb below
-    that count must declare, for at least one family, a `move` the last battery's plan did not;
-    `repeatedMoveDetail` refuses it under `climb-battery-repeats-history` otherwise, and says it
-    compared declarations rather than semantic difficulty. Changed bytes establish membership
-    rather than semantic difficulty, and with no observations the result stays unknown.
+    score, override a gate or make identical bytes new. Changed bytes establish membership rather
+    than semantic difficulty, and with no observations the result stays unknown.
 
     `src/author/experiment-plan.ts` owns the plan's two files. The Builder alone writes
     `EXPERIMENT.json`, as `experiment-plan/v2` with a level and a move per family and a pass
     probability per task, and `readPlan` refuses any other schema. The controller alone writes
     `PlanEvidence` to `<campaignDir>/rehearsals/experiment-evidence*.json`, claiming the next free
     name so no round overwrites another; it sits outside the workspace and the fingerprint, and holds
-    the round's rehearsal verdicts, their effort and the prediction score. Where rehearsals contradict
+    the round's rehearsal verdicts, their effort and the prediction score. Each rehearsal row records
+    the bytes it solved (`publicTaskDigest`, `scoringHash`, `agentHash`), and only a rehearsal at a
+    task's current bytes counts towards the target, the predictions and the score; the advice names
+    each task rehearsed only at earlier bytes. Where rehearsals contradict
     the target or a prediction, `harness_trial`, `correctness_check` and a refused `submit` say so as
     advice that refuses nothing, and `renderPlanView` gives the one compact view that every
     continuation and the context tool's `round/plan` document carry.
@@ -692,7 +688,7 @@ live evidence.
 12. **Evaluate the requested artifact, not decorative output.** Every artifact-schema root must be
     reached by a material truth check, and every advertised capability must map to checks that can
     fail on real tasks. A root that could be removed or replaced without changing the verdict is
-    unverified decoration: refuse it before paid measurement. F2 runs **every** authored task's
+    unverified decoration. F2 runs **every** authored task's
     reference solve before adoption — an earlier version solved only `tasks[0]` — and what it
     proves is the submission path, not end-user correctness. A checker-required artifact path,
     suffix or entrypoint is part of public validity, so publish it in the brief and the operating
@@ -705,31 +701,22 @@ live evidence.
     constant within an affected family when no other applicable check derives it from artifact
     content.
 
-    Controls are what calibrate the checks. At least 5 accepts and 5 rejects — an authoring
-    requirement the Builder is told, rather than a size the gate measures, and it is worth knowing
-    which before you go looking for the code that enforces it. The floor is declared as
+    Controls are what calibrate the checks. At least 5 accepts and 5 rejects is an authoring
+    requirement the Builder is told, rather than a size the gate measures. The floor is declared as
     `evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in
     `thresholds.frozen.yaml`, bound through `src/claim/calibration.ts`, and asserted into the
-    starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number. What
-    the gate then runs is `validateControls` and `publicRuleFindings` (`src/truth/controls.ts`),
-    and both check coverage alone: every applicable check-by-family cell, every declared check's
-    reject, every family's reject. Of the nine places in `src` and `tools` that read
-    `corpus.accept.length` or `corpus.reject.length`, seven report the number and two test it for
-    zero; none compares it against five. The floor's one non-test consumer is
-    `acceptIndependenceFeedback` (`src/run/accept-control-independence.ts`), where it bounds a row
-    that is explicitly advisory and refuses no candidate. That is by design rather than a gap:
-    `thresholds.frozen.yaml`'s own comment records the minimum falling from 20 to 5 on 2026-09-14
-    "since the per-check and per-family witnesses already say what a corpus must cover", and those
-    witnesses are what the next three sentences describe. Every applicable
-    check-by-family cell needs one passing task-bound accept. Every applicable check needs one
-    reject that fails on its declared check, and every family needs at least one such reject, where
-    one reject may serve both — that is the operator decision of 2026-09-15, replacing one reject
-    per cell, which had asked a 6-check, 5-family truss for 30 rejects. Build each reject from the
-    known-correct accept for the same task and then change one fact; further checks may well fail
-    on it (operator decision 2026-09-14). A reject that fails elsewhere but not on its named check
-    provides no discrimination evidence. `taskConditioned` roots are replayed across sibling tasks,
-    numeric boundaries get a task sitting on the value, and a root no check reads is refused before
-    measurement.
+    starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number; its
+    one non-test consumer is `acceptIndependenceFeedback`
+    (`src/run/accept-control-independence.ts`), which is advisory and refuses no candidate. What the
+    gate runs over the corpus is `validateControls` (`src/truth/controls.ts`): every control binds a
+    real task and names checks, joins and boundaries the brief declares, and each reject's named
+    check applies to its task. The census then runs every control, and an accept that fails a check
+    refuses the candidate. Build each reject from the known-correct accept for the same task and
+    then change one fact; further checks may well fail on it (operator decision 2026-09-14). A
+    reject that fails elsewhere but not on its named check provides no discrimination evidence. One
+    deliverable passing every sibling task is not refused: that is what a ladder of tightening
+    limits looks like, and a transplant census that refused it until 2026-09-25 made Builders invent
+    constraints to get past it.
 
 13. **Set one representation contract before tools and truth depend on it.** The public artifact
     schema, the writer tool schema, the DraftStore representation, submit compilation, the F2
@@ -756,21 +743,27 @@ live evidence.
 
     Keep the authoring areas separate by authority. `harness_inspect` is static and read-only, with
     four modes: `readiness`, `task`, `coverage`, `feedback`. Readiness is the whole static view in
-    one call, and a named `group` or `family` pages the findings or a family it cannot fit.
+    one call; a named `family` lists a family it cannot fit, and findings past its first page are
+    read exactly through `feedback` once `correctness_check` has recorded them.
     `context` (`src/builder/context-tool.ts`) is where everything else a round may consult is read.
     It takes a question and the decision the answer settles, and returns the lines that bear on it,
     each cited by document and line, over five sources: the round's opening, the
     workspace notes and plan, every measured battery of the product, the solver traces of passing
-    cases, and the `--context` files. Until 2026-09-23 it read the `--context` files alone, and 160
-    recorded sessions called it six times, always over an empty corpus. It offers passing traces
+    cases with the artifact each submitted (`traces/<runId>/<taskId>/artifact`, listed only when
+    its bytes check against the evidence log, and ending in the solver's own `readMargins` lines
+    against each limit the brief publishes, which it omits once that brief's `scoringHash` no
+    longer matches the battery's), and the `--context` files. Until 2026-09-23 it read
+    the `--context` files alone, and 160 recorded sessions called it six times, always over an empty
+    corpus. It offers passing traces
     only, because a measured battery already publishes which cases passed, while a failing trace is
     where the failure sits. `harness_trial` takes one `taskId` and solves it blind with the measured
     Built solver — its own runtime, turn cap, solve wall and confinement — then grades what it
     submitted, returning the rule-4 aggregate verdict, whether it submitted at all, how many turns
     it used, what the solve spent as a plain fact (minutes against the solve wall, tool calls, cost)
-    and any typed non-result, under six rehearsals per round and a 30-second total verifier
-    deadline. Each rehearsal costs one measured case and writes its solve evidence under
-    `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
+    and any typed non-result, graded under the harness's own `check_seconds` and
+    `tool_run_seconds` as a measured battery is. Each rehearsal costs one measured case from the
+    provider budget, which is the only bound on how many a round runs, and writes its solve evidence
+    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
     and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
@@ -810,15 +803,8 @@ live evidence.
     Every fresh `tools-spec.json` is to give the solver a shell through the `presets` field:
     `"files"` for a file-shaped answer, or `"shell"` beside an artifact-writer, and never both,
     since `files` already carries the shell. That is the operator decision of 2026-09-14, taken
-    after truss epochs kept declining `files`, whose draft files become the answer. The gate
-    enforces it — and this paragraph said the opposite until 2026-09-18. `solverShellFindings` in
-    `src/author/candidate-check.ts` refuses a spec with neither preset: on a fresh build, on a
-    continuation that may author the agent, and on a task-only round, which cannot select the
-    preset itself, so that refusal names the product round that can. `validateToolsSpec` is indeed
-    satisfied by `presets: []` beside an artifact-writer, so the refusal lives one layer up — but
-    no recorded bundle ever took that opening: all nine exported across campaigns 3fd52f9e-28 and
-    -10, the two of 2026-09-17 included, declare `presets: ["shell"]`. Read a measured battery's
-    roster anyway before attributing its failures to it. A Built turn is bounded by silence, one
+    after truss epochs kept declining `files`, whose draft files become the answer. Read a measured
+    battery's roster before attributing its failures to it. A Built turn is bounded by silence, one
     model call plus one command at its ceiling; a solve the whole-solve wall stops after it had
     called a tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
 
@@ -880,11 +866,12 @@ live evidence.
     process restart loses the conversation, because nothing about it is durable.
 
     `correctness_check` runs the same validation sequence submit runs, control census included, on
-    the exact immutable snapshot, as often as the bytes change. A blocked or runtime-non-result
-    preview is remembered as spent for those bytes, and unchanged bytes spend nothing. Preview and
+    the exact immutable snapshot, as often as the bytes change. A preview that reached a verdict is
+    remembered for those bytes, so unchanged bytes return its rows at no cost, and one that ended
+    without a verdict, a runtime non-result among them, is forgotten and runs again. Preview and
     submit share an in-flight gate in either call order when the candidate and installed-tool
     identities match, and submit reuses only a clear result. A thrown or host-refused gate is
-    forgotten, while the preview attempt stays spent. A refused candidate repeats by
+    forgotten too. A refused candidate repeats by
     controller-owned candidate identity, not by workspace commit. Never cache a typed runtime
     non-result as a verdict on candidate bytes.
 
@@ -920,11 +907,9 @@ child and constructs the aggregate verdict; there is no second predicate anywher
 A check declares its evidence kind. `authored` computation may name `execution.requiredToolIds`,
 including an interpreter for the Builder's own algorithm, and it keeps authored semantics.
 `external` evidence declares an installed tool as the deciding instrument: flags and names are
-passed as args, and leaf-bound files or stdin as operands. `solvability-tool-program-argument`
-refuses an external check with a multi-line argument or one over 256 bytes. The self-authored check
-refuses when every required executable's digest matches known candidate-authored source. Those are
-bounded detections rather than a general proof of provenance — an installed interpreter running the
-Builder's algorithm is still authored computation. Coverage rows carry the declared evidence kind.
+passed as args, and leaf-bound files or stdin as operands. Nothing proves provenance: an installed
+interpreter running the Builder's algorithm is still authored computation, and the claim's recorded
+tool source and digest are what disclose it. Coverage rows carry the declared evidence kind.
 Preserve the selected command path through inventory, attestation and execution, because identical
 hardlink bytes can dispatch differently under different names. Keep compilation, host simulation,
 target execution and hardware operation as separate scopes.
@@ -947,6 +932,13 @@ timeout after all conformance probes have settled remains cleanup evidence and d
 candidate. Provider and credential failures end the session with a typed terminal clause. The gate
 never compares two candidates and never judges quality: it admits a candidate that satisfies its
 own declared contract, and refuses everything else with the exact finding.
+
+The gate audit of 2026-09-25 put every refusal to one question: are we at least 98% sure it
+refuses something actually wrong? A component that passed carries a `Gate audit 2026-09-25 … kept`
+line above its producer. One the audit was unsure of is commented out in place, with its call sites
+and tests, each block under a `Gate audit 2026-09-25 … commented out (unsure)` line, and
+`docs/gate-audit.md` lists both kinds with what each refused and how to restore it. A commented-out
+refusal is not enforced, so do not describe it to a model as a rule.
 
 ### Identities, walls and process facts
 

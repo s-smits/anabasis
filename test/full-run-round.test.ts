@@ -17,7 +17,12 @@ import {
   nextUnresolvedAuthoringStall,
   terminalEvidenceFor,
 } from "../src/run/full-run-round.ts";
-import { type LoopTerminalCode, fullRunExitStatus, loopTerminalCode } from "../src/run/loop-terminal.ts";
+import {
+  type BuildClause,
+  type LoopTerminalCode,
+  fullRunExitStatus,
+  loopTerminalCode,
+} from "../src/run/loop-terminal.ts";
 import { double } from "./helpers/doubles.ts";
 
 type Move = IterationResult["decision"]["move"];
@@ -36,19 +41,22 @@ function result(
     nextReason?: string | undefined;
     promoted?: boolean;
     experiment?: "build" | "climb";
-    clauses?: string[];
+    clause?: BuildClause | null;
+    detail?: string;
     measured?: boolean;
     admissionDigest?: string | undefined;
     admissionBasisDigest?: string | undefined;
   } = {},
 ): IterationResult {
+  const failedClause = build === "build-failed" ? "iterations-exhausted" : null;
   return double({
     decision: { move: over.move ?? "measure", reason: over.reason ?? "r" },
     admissionBasisDigest: over.admissionBasisDigest ?? null,
     nextDecision:
       over.nextMove === undefined ? null : { move: over.nextMove, reason: over.nextReason ?? "next reason" },
     build,
-    buildClauses: over.clauses ?? (build === "build-failed" ? ["iterations-exhausted"] : []),
+    buildClause: over.clause === undefined ? failedClause : over.clause,
+    buildDetail: over.detail ?? null,
     steps: {
       promotion:
         over.promoted === undefined
@@ -85,11 +93,6 @@ describe("loopTerminal", () => {
       failedRetry("build"),
       { ...quiet, authoringStall: { key: "k", rounds: 2 } },
     ],
-    [
-      "an unroutable packet answered by the rebuild it ordered",
-      result("build-failed", { move: "rebuild", nextMove: "rebuild", clauses: ["repair-unroutable"] }),
-      quiet,
-    ],
     ["a held build into a lawful measure", held("build", "measure"), quiet],
     ["a held rebuild into a lawful measure", held("rebuild", "measure"), quiet],
     ["a held rebuild into a fresh rebuild", held("rebuild", "rebuild"), quiet],
@@ -97,6 +100,13 @@ describe("loopTerminal", () => {
     ["an adopted fresh build, whether or not its evidence changed", result("adopted"), quiet],
     ["a reused measurement", result("reused", { measured: true }), quiet],
     ["a reused round that measured nothing", result("reused"), quiet],
+    ...(["no-progress", "candidate-unchanged"] as const).map(
+      (clause): [string, IterationResult, LoopState] => [
+        `a ${clause} retry inside the strike ceiling`,
+        result("build-failed", { move: "rebuild", nextMove: "rebuild", clause }),
+        quiet,
+      ],
+    ),
     ["two blocked batteries, one short of the allowance", result("reused"), { ...quiet, blockedRounds: 2 }],
   ])("continues %s", (_name, round, loop) => {
     expect(loopTerminal(round, loop)).toBeNull();
@@ -121,7 +131,10 @@ describe("loopTerminal", () => {
     ],
     [
       "a fixed-product boundary clause, verbatim",
-      result("build-failed", { clauses: ["fixed-product-boundary: the product is fixed"] }),
+      result("stopped", {
+        clause: "fixed-product-boundary",
+        detail: "fixed-product-boundary: the product is fixed",
+      }),
       quiet,
       "fixed-product-boundary: the product is fixed",
     ],
@@ -147,14 +160,20 @@ describe("loopTerminal", () => {
       quiet,
       "stopped: blocking feedback belongs to environment",
     ],
-    ...[["environment-blocked"], ["authoring-stalled"], ["authoring-stalled", "environment-blocked"]].map(
-      (clauses): [string, IterationResult, LoopState, string] => [
-        `a retry carrying ${clauses.join(" + ")}, which has its own owner`,
-        result("build-failed", { move: "rebuild", nextMove: "rebuild", clauses }),
-        quiet,
-        buildFailed,
-      ],
-    ),
+    ...(
+      [
+        ["environment-blocked", "environment-blocked:"],
+        ["budget-limited", "budget-limited:"],
+        ["authoring-stalled", buildFailed],
+        ["campaign-binding-mismatch", buildFailed],
+        ["improvement-memory-missing", buildFailed],
+      ] as const
+    ).map(([clause, ending]): [string, IterationResult, LoopState, string] => [
+      `a retry carrying ${clause}, which a next round would meet again`,
+      result("build-failed", { move: "rebuild", nextMove: "rebuild", clause }),
+      quiet,
+      ending,
+    ]),
     [
       "a failed build at the strike ceiling",
       failedRetry("build"),
@@ -213,7 +232,7 @@ describe("the shared unresolved-authoring allowance", () => {
       admissionBasisDigest: basis,
       admissionDigest: produced,
     });
-  const failedWith = (over: { clauses?: string[]; reason?: string }) =>
+  const failedWith = (over: { detail?: string; reason?: string }) =>
     result("build-failed", { move: "rebuild", nextMove: "rebuild", ...over });
   const heldEnding = "candidate-held: 3 unresolved authoring rounds";
   const failedEnding = "build-failed";
@@ -221,11 +240,11 @@ describe("the shared unresolved-authoring allowance", () => {
   it.each<[string, IterationResult[], string]>([
     ["held, failed and held alternating", [heldOn(undefined), failedRetry(), heldOn(undefined)], heldEnding],
     [
-      "an A/B alternation of clauses",
+      "an A/B alternation of clause details",
       [
-        failedWith({ clauses: ["A: first"] }),
-        failedWith({ clauses: ["B: second"] }),
-        failedWith({ clauses: ["A: first"] }),
+        failedWith({ detail: "A: first" }),
+        failedWith({ detail: "B: second" }),
+        failedWith({ detail: "A: first" }),
       ],
       failedEnding,
     ],
@@ -248,6 +267,17 @@ describe("the shared unresolved-authoring allowance", () => {
     for (const round of rounds) stall = nextUnresolvedAuthoringStall(stall, round);
     expect(stall?.rounds).toBe(AUTHORING_STALL_LIMIT);
     expect(loopTerminal(rounds.at(-1)!, { ...quiet, authoringStall: stall })).toStartWith(ending);
+  });
+
+  it("leaves a zero-verified hold out of the allowance", () => {
+    const nonzero = heldOn(undefined);
+    const zeroVerified: IterationResult = {
+      ...nonzero,
+      steps: { ...nonzero.steps, promotion: double({ decision: "held", battery: { verified: 0 } }) },
+    };
+    const stall = nextUnresolvedAuthoringStall(null, nonzero);
+    expect(nextUnresolvedAuthoringStall(stall, zeroVerified)).toBe(stall);
+    expect(nextUnresolvedAuthoringStall(null, zeroVerified)).toBeNull();
   });
 
   it("opens a new stall each round the consumed basis advances", () => {

@@ -9,7 +9,6 @@ import {
   VERIFIER_CONTRACT_HINTS,
   type VerifierContractCode,
 } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import type { OwnerLayer } from "../meta/owner.ts";
 /**
  * The brief contract, authored by the Builder and checked by `validateBrief` during candidate
  * validation. The same requirements apply to every backend.
@@ -81,11 +80,6 @@ export type ArtifactField = {
   allowedValues?: Array<string | number | boolean>;
   /** Open file map: safe relative POSIX paths to text contents; control filenames stay examples. */
   fileMap?: true;
-  /** This root holds a deliverable that must depend on the task, rather than a report or other
-   * supporting field. The family census in solvability.ts exchanges these roots between tasks
-   * in the same family. Put content that must change with the answer under a marked root;
-   * leave support that belongs to the destination task under an unmarked root. */
-  taskConditioned?: true;
   /** Dotted paths under this field whose objects are keyed by data, not by a fixed field list —
    * e.g. ["busAddresses"] for a {partId: busAddress} record under this root, or ["$"] for the
    * root itself. A declared path compiles open over keys and closed over its value shape; control
@@ -190,9 +184,6 @@ export type ContractFinding = {
   /** The public control or task id this row repeats for, quoted in `detail`. Author feedback folds
    *  rows that read the same apart from it into one repair; the producer states it, no reader guesses. */
   subject?: string;
-  /** Optional finding-level attribution when a terminal phase retains evidence owned by more
-   * than one layer. The producer attaches it; evidence readers never infer it from prose. */
-  owner?: OwnerLayer;
 };
 
 type UndisclosedFinding = Omit<ContractFinding, "disclosure">;
@@ -243,11 +234,6 @@ export function externalChecksOf(
       kind: check.execution.evidence.kind,
     })),
   );
-}
-
-/** The artifact-schema roots marked `taskConditioned: true`: the material deliverable roots. */
-export function taskConditionedRoots(brief: Brief): string[] {
-  return brief.artifactSchema.flatMap((field) => (field.taskConditioned === true ? [field.name] : []));
 }
 
 /** A withheld fact: the author reads its classification alone. */
@@ -323,6 +309,9 @@ export function recordView(value: unknown): Record<string, JsonValue> | null {
   return isRecord(value) ? value : null;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, bundle-shape): kept: a bundle file that does not parse into its
+// declared shape cannot be read by anything downstream, so the refusal names the field instead of crashing a
+// reader.
 /** A shape finding that names what is wrong before what was expected, because the author reads a
  *  bounded detail and the tail is what gets cut. Leading with the expected shape spends that budget
  *  on a long schema and leaves "got object" as all that survives, which names neither the missing

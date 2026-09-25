@@ -9,19 +9,8 @@ import type { ControlCorpus } from "../truth/controls.ts";
 import type { TaskBattery } from "../truth/tasks.ts";
 import type { ToolsSpec } from "../truth/tools-spec.ts";
 import type { ExperimentSubmission } from "./experiment-plan.ts";
+import type { BundleFile } from "./feedback-routing.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
-
-export type SessionBuildStage =
-  | "kickoff"
-  | "brief"
-  | "tests"
-  | "tools-spec"
-  | "instructions"
-  | "accept-controls"
-  | "controls"
-  | "correctness-model"
-  | "environment"
-  | "fingerprint";
 
 export interface BuiltHarness {
   brief: Brief;
@@ -33,23 +22,8 @@ export interface BuiltHarness {
   conformance: ConformanceEvidence | null;
 }
 
-// Every owner here must be one some route can actually select. `routableOwnerOf` returns a key of
-// `OWNER_FILES` or null, so an owner absent from that table can only arrive as a literal, and two
-// that arrived neither way -- `judge` and `unknown` -- have gone. An owner nothing produces still
-// widens every exhaustive switch over this type and still reads to the next author as a route that
-// exists, which is the cost a closed set is supposed to avoid paying.
-const FEEDBACK_OWNERS = [
-  "brief",
-  "tests",
-  "instructions",
-  "tools-spec",
-  "accept-controls",
-  "controls",
-  "correctness-model",
-  "fingerprint",
-  "environment",
-] as const;
-export type FeedbackOwner = (typeof FEEDBACK_OWNERS)[number];
+/** One bundle file the finding holds at fault, or the environment, which no bundle edit repairs. */
+export type FeedbackOwner = BundleFile | "environment";
 
 export type CampaignFeedback = {
   owner: FeedbackOwner;
@@ -72,17 +46,12 @@ export type DiagnosisInput = {
   digest: string | null;
 };
 
-/** A current-policy admission packet that seeded no owner: the digest the build read and the
- * reason it carried nothing. Lineage is evidence, never a decision -- a build with lineage and no
- * `priorEvidence` takes exactly the same course as one with neither. */
-export type AdmissionLineage = {
-  digest: string;
-  /** "evaluation-identity-unadopted": the packet was observed under a correctness model or battery
-   *  pair this tree does not have, so its rows stay recorded and select no owner. */
-  reason: "no-feedback" | "agenda-consumed" | "evaluation-identity-unadopted";
-};
+/** A current-policy admission packet that seeded no owner, by the digest the build read. Why it
+ * seeded none is read from the packet that digest names. Lineage is evidence, never a decision --
+ * a build with lineage and no `priorEvidence` takes exactly the same course as one with neither. */
+export type AdmissionLineage = { digest: string };
 
-type IterationOutcome = "fingerprinted" | "gates-blocked" | "build-failed";
+type IterationOutcome = "fingerprinted" | "gates-blocked";
 
 export type IterationEvidence = {
   experimentProposal?: ExperimentSubmission;
@@ -90,7 +59,6 @@ export type IterationEvidence = {
   ordinal: number;
   dir: string;
   outcome: IterationOutcome;
-  stage: SessionBuildStage | null;
   focusOwner: FeedbackOwner | null;
   attempts: Record<string, number>;
   findingsHash: string | null;
@@ -108,7 +76,6 @@ export type IterationEvidence = {
   admissionLineage?: AdmissionLineage;
   diagnosisInput?: DiagnosisInput | null;
   source?: SourceIdentity | null;
-  repairOwner?: FeedbackOwner | null;
   workspaceChange?: WorkspaceChange;
 };
 
@@ -116,11 +83,9 @@ export type CampaignClause =
   | "campaign-binding-mismatch"
   | "improvement-memory-missing"
   | "environment-blocked"
-  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one diagnosis repeated to stalledFindingsRepeats
-  | "repair-unroutable"
-  | "carried-battery-unreadable" // a battery exists but cannot be read; do not compare it
-  | "carried-exam-drift"
-  | "verifier-required"
+  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+  // | "verifier-required"
   | "iterations-exhausted"
   | "no-progress" // a Builder round went STALLED_TURNS turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
@@ -142,7 +107,7 @@ export type CampaignOutcome = (
        *  inside one invocation or across fourteen. */
       unchangedCandidateSubmissions: number;
     }
-  | { buildAdmissible: false; clauses: CampaignClause[]; iterations: IterationEvidence[] }
+  | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
 ) & { experimentProposal?: ExperimentSubmission };
 
 /** Author-safe finding with its recorded routing severity. */

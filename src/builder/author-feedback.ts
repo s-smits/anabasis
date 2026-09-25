@@ -31,7 +31,7 @@ export type AuthorCheckStage = "bundle" | "validation" | "conformance" | "gates"
 interface AuthorRefusalIdentity {
   attempt: number;
   turn: number;
-  stage: "bundle" | "validation" | "gates";
+  stage: AuthorCheckStage;
   commit: string;
 }
 export interface AuthorFeedbackQuery {
@@ -183,6 +183,7 @@ export function authorFindingOverview(
       ? GROUP_PAGE_ROWS
       : Math.min(GROUP_PAGE_ROWS, Math.max(1, Math.trunc(limit)));
   const range = windowRange(groups.length, offset, rows);
+  const hidden = groups.length - range.to;
   return {
     totalFindings: findings.length,
     totalGroups: groups.length,
@@ -198,18 +199,16 @@ export function authorFindingOverview(
       groups.length === 0
         ? "No author-visible findings are present."
         : action === "readiness"
-          ? 'Use harness_inspect {"action":"readiness"} with group and field to read an exact code, path or detail, including a group past this page; use offset for later characters.'
-          : `Use harness_inspect {"action":"${action}"} with group and field to read an exact code, path or detail; use offset for later characters or, without group, later groups.`,
+          ? `${hidden > 0 ? `${hidden} more ${hidden === 1 ? "group is" : "groups are"} not shown; ` : ""}correctness_check records every finding, and harness_inspect feedback then pages any group exactly with group and field.`
+          : 'Use harness_inspect {"action":"feedback"} with group and field to read an exact code, path or detail; use offset for later characters or, without group, later groups.',
   };
 }
 
 /** One exact field page of a group, or the overview when no group is named. */
-export function authorFindingPage(
-  findings: readonly ContractFinding[],
-  query: AuthorFeedbackQuery = {},
-  action: FindingAction = "readiness",
-) {
-  if (query.group === undefined) return authorFindingOverview(findings, query.offset, query.limit, action);
+export function authorFindingPage(findings: readonly ContractFinding[], query: AuthorFeedbackQuery = {}) {
+  if (query.group === undefined) {
+    return authorFindingOverview(findings, query.offset, query.limit, "feedback");
+  }
   const groups = groupAuthorFindings(findings);
   const number = Math.trunc(query.group);
   const group = number < 1 ? undefined : groups[number - 1];
@@ -292,23 +291,23 @@ export class BuilderAuthorFeedback {
       available: true as const,
       source: latest.source,
       ...identity,
-      ...authorFindingPage(latest.findings, query, "feedback"),
+      ...authorFindingPage(latest.findings, query),
       note: "Use group and field to read every code, path or detail in exact character pages.",
     };
   }
 }
 
 /** Gate feedback as submit and correctness_check both show it. A row without controller-validated
- *  findings keeps its prose claim in the evidence and hands the author only the name of the gate
- *  that refused, since an unvalidated claim is routing metadata rather than a finding. */
+ *  findings keeps its prose claim in the evidence and hands the author only the file it names,
+ *  since an unvalidated claim is routing metadata rather than a finding. */
 export function gateFeedbackFindings(feedback: readonly CampaignFeedback[]): ContractFinding[] {
   return feedback.flatMap((row) =>
     row.findings !== undefined && row.findings.length > 0
       ? row.findings
       : [
           controllerValidatedFinding({
-            code: `gate-${row.owner}`,
-            path: "submit",
+            code: "gate-unvalidated",
+            path: row.owner,
             detail: "this gate produced no controller-validated finding; no public detail is available",
           }),
         ],

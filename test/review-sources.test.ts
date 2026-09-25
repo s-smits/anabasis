@@ -10,7 +10,7 @@ import {
   reviewVerifierEvidence,
   reviewCoverage,
 } from "../src/review/review-sources.ts";
-import { BUILDER_OWNED, ownerWritableFiles, routableOwner } from "../src/author/feedback-routing.ts";
+import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
@@ -40,7 +40,7 @@ const quoted = (state: SourceReadState, path: string, quote: string) =>
 
 function coreTree() {
   const root = scratchDir("ana-review-core-");
-  for (const path of [...BUILDER_OWNED].filter(routableOwner).flatMap(ownerWritableFiles)) {
+  for (const path of BUNDLE_FILES) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), "{}");
   }
@@ -139,7 +139,8 @@ describe("review coverage tied to recorded execution", () => {
                     const recorder = input.tools.find((tool) => tool.name === "record_finding")!;
                     expect(
                       await call(recorder, {
-                        kind: "curriculum-defect",
+                        defect: true,
+                        owner: "correctness-model/tasks.json",
                         severity: "advisory",
                         claim: "Only one count is sampled.",
                         publicInputPath: "$.count",
@@ -148,8 +149,8 @@ describe("review coverage tied to recorded execution", () => {
                     const source = input.tools.find((tool) => tool.name === "read_source")!;
                     await call(source, { path: "agent/tools.ts" });
                     const finding = {
-                      kind: "harness-defect",
-                      owner: "tools-spec",
+                      defect: true,
+                      owner: "agent/tools-spec.json",
                       severity: "blocking",
                       claim: "Private source-derived concern.",
                       demonstration: "Private specimen demonstrating the missing public obligation.",
@@ -198,7 +199,7 @@ describe("review coverage tied to recorded execution", () => {
       expect(result.admission).toEqual({
         continuations: 1,
         citationRefusals: 1,
-        severityAdjusted: [{ owner: "tools-spec", requested: "blocking", admitted: "advisory" }],
+        severityAdjusted: [{ owner: "agent/tools-spec.json", requested: "blocking", admitted: "advisory" }],
       });
       expect(JSON.stringify(result.admission)).not.toMatch(
         /PRIVATE_UNREAD_QUOTE|Private source-derived|Private specimen/,
@@ -665,16 +666,16 @@ describe("review coverage tied to recorded execution", () => {
           const finding = tools.find((tool) => tool.name === "record_finding")!;
           expect(
             await call(finding, {
-              kind: "harness-defect",
+              defect: true,
               claim: "the writer exceeds the upper bound",
-              owner: "tools-spec",
+              owner: "agent/tools-spec.json",
               severity: "advisory",
               checkId: "bounds",
               demonstration:
                 "The request limits count to ten; this writer always returns eleven, so its output violates that limit. This is source-derived.",
               citations: [{ path, quote }],
             }),
-          ).toBe(`recorded harness-defect as ${taskSetHash === "t2" ? "blocking" : "advisory"}`);
+          ).toBe(`recorded defect as ${taskSetHash === "t2" ? "blocking" : "advisory"}`);
           return { pin: reviewSlotPin(review), text: "A source-derived boundary gap.", error: null };
         },
       });
@@ -732,9 +733,9 @@ describe("review coverage tied to recorded execution", () => {
           const reader = tools.find((tool) => tool.name === "read_source")!;
           const finding = tools.find((tool) => tool.name === "record_finding")!;
           const args = {
-            kind: "harness-defect",
+            defect: true,
             claim: "the upper bound is not enforced",
-            owner: "correctness-model",
+            owner: "correctness-model/evaluator.ts",
             severity: "blocking",
             checkId: "bounds",
             demonstration:
@@ -746,7 +747,7 @@ describe("review coverage tied to recorded execution", () => {
           expect(
             await call(finding, { ...args, citations: [{ path: sourcePath, quote: "return true;" }] }),
           ).toContain("actually returned");
-          expect(await call(finding, args)).toBe("recorded harness-defect as blocking");
+          expect(await call(finding, args)).toBe("recorded defect as blocking");
           if (mode !== "incomplete") {
             for (const path of reviewInventory(root).files) await call(reader, { path });
           }

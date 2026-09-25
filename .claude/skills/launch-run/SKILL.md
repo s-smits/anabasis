@@ -89,7 +89,14 @@ bun run runs show <runId>       # opening identity, authoring, batteries by clai
 bun run runs stop <runId> --yes # the stop below, with the service and worktree read from the receipt
 bun run runs resume <runId>     # the same prompt, pins, budget and project as a new run in that campaign
 bun run runs pause              # why a fullrun cannot be paused, and what to use instead
+bun run runs pulse [<runId> ...] # what moved since the last look, every 290 s; --once for one look
 ```
+
+`pulse` watches every open run, or the ones named, and prints a status line per run in the terms
+of its stage, then one line per event: `◆` a stage worth reading, `⚠` something that may be wrong,
+`·` a smaller fact, each with the campaign file that holds it. The first look has nothing to differ
+from, so it prints the status lines alone. A file written in a schema this tree no longer reads is
+named as unread rather than shown as empty.
 
 `stop` and `resume` print their plan and do nothing without `--yes`. A run whose process is gone
 but which recorded no terminal reads `orphaned`, never `live`. A live run's provider-turn counter

@@ -1561,9 +1561,9 @@ were written: what a reversal is worth is the reason the first answer looked rig
   line, a call to the module that already owns it, and two refusal sentences that are most of the
   content.
 - The **two non-result kind sets**, `VERIFIER_EXECUTION_NON_RESULT_KINDS` and
-  `ENVIRONMENT_OWNED_NONRESULT_KINDS` (one row). Five members overlap and the difference is the
-  decision: `crash` and `protocol` are not environment-owned. Merging destroys what the sets are
-  for.
+  `ENVIRONMENT_OWNED_NONRESULT_KINDS` (one row). Four members overlap and the difference is the
+  decision: `timeout`, `crash` and `protocol` are not environment-owned. Merging destroys what the
+  sets are for.
 
 **The per-family row was the one left open, and it closed by asking which count each copy meant.**
 `metrics` folded inside a larger pass and `rebuild-advice` built a Map from a reshaped row, and

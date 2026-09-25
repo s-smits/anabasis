@@ -131,7 +131,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
     write(join(dir, "claims", `${claim.runId}.json`), { schema: "run-claim/v1", ...claim });
   }
   write(join(dir, "difficulty-decisions", `${SECOND}-x.json`), {
-    schema: "difficulty-decision/v6",
+    schema: "difficulty-decision/v7",
     difficulty: {
       rows: [
         { runId: RUN, passed: 1, verified: 3, unaccepted: 0, zone: "on-aim", target: null, operation: null },
@@ -275,7 +275,7 @@ describe("round hand-offs", () => {
     const unversioned = campaign();
     write(join(unversioned, "difficulty-decisions", `${SECOND}-x.json`), { difficulty: { rows: [] } });
     expect(() => buildHandoffs({ campaign: unversioned, runId: RUN })).toThrow(
-      `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v6`,
+      `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v7`,
     );
   });
 

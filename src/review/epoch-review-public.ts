@@ -1,12 +1,14 @@
 /** Authoring receives typed findings and the reviewed public obligations, never review prose. */
 import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { AnalysisFinding, AnalysisFindingKind } from "../analyse/iteration-analysis.ts";
+import type { AnalysisFinding } from "../analyse/iteration-analysis.ts";
+import { contractDefect } from "../analyse/finding-owner.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
 import type { Brief } from "../truth/brief.ts";
 import { publicRuleDecisions } from "../truth/public-resources.ts";
 import type { EpochReviewEvidence } from "./epoch-review-findings.ts";
-import { EVALUATION_SERVED, ownerWritableFiles, routableOwner } from "../author/feedback-routing.ts";
+import { isBundleFile } from "../author/feedback-routing.ts";
+import { EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
 /** What the reviewed candidate supplies: the public contract, and the contested rows the review
  *  settled against it. */
@@ -17,18 +19,14 @@ type ReviewContract = {
   deferAdvisory?: boolean;
 };
 
-/** Hardness and an uncertain diagnosis describe what the review observed; neither demonstrates a
- *  defect, so neither may read as an order to edit the product. Under the ordinary sentence a
- *  diagnosis-uncertain finding reaches the Builder as "inspect and repair that contract" followed
- *  by the blanket repair instruction, which is an order built out of an admitted uncertainty. */
-const isObservation = (kind: AnalysisFindingKind): boolean =>
-  kind === "hardness" || kind === "diagnosis-uncertain";
-
-/** What the finding asks of its owner. A demonstrated defect is repaired; a curriculum concern
- *  names the public input to move in the fresh battery, not an enforcement the tasks do not own;
- *  an observation asks for nothing.
+/** What the finding asks of its owner. A demonstrated defect is repaired; a defect in the task set
+ *  names the public input to move in the fresh battery, not an enforcement the tasks do not own; an
+ *  observation asks for nothing. Measured hardness and an undecided reading are both observations,
+ *  and neither may read as an order to edit the product: under the ordinary sentence an undecided
+ *  reading would reach the Builder as "inspect and repair that contract" followed by the blanket
+ *  repair instruction, which is an order built out of an admitted uncertainty.
  *
- *  The curriculum sentence says which way to vary, because the vague form does harm. "Vary this in
+ *  The task-set sentence says which way to vary, because the vague form does harm. "Vary this in
  *  the fresh battery", read against a published limit, invites the author to move that limit from
  *  one battery to the next, which changes the published magnitudes over a task set that has not
  *  moved and leaves the battery exactly as easy as it was. The variation this finding is about is
@@ -36,29 +34,25 @@ const isObservation = (kind: AnalysisFindingKind): boolean =>
  *  input. And "let this input differ" was met by permuting values inside one template, which
  *  satisfies that validation and leaves one condition measured many times, so the sentence asks for
  *  a difference in what the tasks demand rather than in what they publish. */
-function publicAct(kind: AnalysisFindingKind, deferred: boolean): string {
+function publicAct(finding: AnalysisFinding, deferred: boolean): string {
   if (deferred) return "this is advisory and asks for no change before submit";
-  if (kind === "curriculum-defect") {
+  if (!finding.defect) return "this is an observation, not a demonstrated defect, and asks for no repair";
+  if (finding.owner === TASKS_FILE) {
     return "make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it; it does not ask for a published limit to move between batteries";
-  }
-  if (kind === "hardness") return "this records the measured difficulty there and asks for no repair";
-  if (kind === "diagnosis-uncertain") {
-    return "the review could not decide from its evidence whether that contract is met, which is an observation and not a demonstrated defect, and asks for no repair";
   }
   return "inspect and repair that contract";
 }
 
-/** Where the Builder acts, from the identity the finding names; owner and kind stay controller
- *  fields. The owner label decides nothing on its own — one finding can move from brief to
- *  correctness-model and back between rounds — and a Builder acts on the check id, input path or
- *  file beside the label rather than on the label itself. */
+/** The file where the Builder acts. A finding owned by the task set stays with the tasks; any other
+ *  is placed by the identity it names before its owner: a check lives in the evaluator and a bare
+ *  public input in the tasks, whichever file the reviewer chose, because one finding can move
+ *  between owners from round to round while its identity stays. */
 function publicGroup(finding: AnalysisFinding): string {
-  const owner = finding.proposedOwner;
-  if (finding.kind === "curriculum-defect" || owner === "tests") return "tasks";
-  if (finding.checkId !== undefined || finding.unobserved === true) return "evaluator";
-  if (finding.publicInputPath !== undefined && finding.artifactSchemaPath === undefined) return "tasks";
-  if (!routableOwner(owner)) return "unplaced";
-  return EVALUATION_SERVED.has(owner) ? "evaluator" : "solver surface";
+  const { owner } = finding;
+  if (owner === TASKS_FILE) return TASKS_FILE;
+  if (finding.checkId !== undefined || finding.unobserved === true) return EVALUATOR_FILE;
+  if (finding.publicInputPath !== undefined && finding.artifactSchemaPath === undefined) return TASKS_FILE;
+  return isBundleFile(owner) ? owner : "unplaced";
 }
 
 /** The public sentence for one finding, composed from typed identities alone. A template sentence
@@ -67,8 +61,8 @@ function publicGroup(finding: AnalysisFinding): string {
  *  authoring identities, so they cross; the reviewer's claim is not one and never enters this
  *  sentence. */
 function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: Brief | null): string {
-  const heading = `Epoch review (${publicGroup(finding)})`;
-  const files = routableOwner(finding.proposedOwner) ? ownerWritableFiles(finding.proposedOwner) : [];
+  const group = publicGroup(finding);
+  const heading = `Epoch review (${group})`;
   const named = [
     ...(finding.checkId === undefined ? [] : [`check \`${finding.checkId}\``]),
     ...(finding.artifactSchemaPath === undefined ? [] : [`artifact path \`${finding.artifactSchemaPath}\``]),
@@ -99,12 +93,15 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     return `${heading}: ${gap}${input}; add a check that observes what the delivered artifact does there.`;
   }
   if (named === "" && inputPath === null) {
-    return `${heading}: ${files.length === 0 ? "no check, path or file named" : files.join(", ")}; ${isObservation(finding.kind) ? "it is an observation and asks for no repair" : deferred ? "it is advisory and asks for no change before submit" : "inspect that contract for a mismatch"}.`;
+    const defectAct = deferred
+      ? "it is advisory and asks for no change before submit"
+      : "inspect that contract for a mismatch";
+    return `${heading}: ${group === "unplaced" ? "no check, path or file named" : "no check or path named"}; ${finding.defect ? defectAct : "it is an observation and asks for no repair"}.`;
   }
-  return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding.kind, deferred)}.`;
+  return `${heading}: ${named === "" ? (inputPath ?? "the contract") : `${named}${input}`}; ${publicAct(finding, deferred)}.`;
 }
 
-/** The contested rows a finding settles: a harness-defect on a check the row names, over an
+/** The contested rows a finding settles: a contract defect on a check the row names, over an
  *  artifact the reviewer opened. A second case naming the same check is not settled by reading
  *  the first, so the public counts and families come from the opened cases alone. */
 function settledRows(
@@ -112,7 +109,7 @@ function settledRows(
   rows: readonly ContestedCase[],
   opened: readonly string[],
 ): ContestedCase[] {
-  if (finding.kind !== "harness-defect" || finding.checkId === undefined) return [];
+  if (!contractDefect(finding) || finding.checkId === undefined) return [];
   return rows.filter(
     (row) =>
       row.checkIds.includes(finding.checkId ?? "") && row.artifact !== null && opened.includes(row.artifact),
@@ -134,7 +131,7 @@ function publicFinding(
   opened: readonly string[],
 ) {
   const deferred = contract.deferAdvisory === true && finding.severity === "advisory";
-  const repairable = !deferred && !isObservation(finding.kind) && finding.kind !== "curriculum-defect";
+  const repairable = !deferred && contractDefect(finding);
   const check = contract.brief?.truthChecks.find((candidate) => candidate.id === finding.checkId);
   const rules =
     contract.brief === null || check === undefined
@@ -189,7 +186,7 @@ function publicFinding(
   // Without this line the round projects that check name a third time, which is the repetition the
   // ceiling exists to stop.
   const probed =
-    isObservation(finding.kind) || (finding.probes ?? []).length === 0
+    !finding.defect || (finding.probes ?? []).length === 0
       ? []
       : [
           `Executed against this candidate's own declared checks: ${(finding.probes ?? [])

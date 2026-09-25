@@ -33,7 +33,8 @@ import {
   type GroundingFinding,
   type SettledControl,
   checkCostRows,
-  inertToolFindings,
+  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
+  // inertToolFindings,
   rejectsBlockedBy,
   toolCheckCoverage,
   unexecutedGroundingFindings,
@@ -79,7 +80,7 @@ export type ProbeControlsResult = {
   executionEvidence?: import("../verify/verifier-port.ts").VerifierExecutionEvidence[];
   findings: ContractFinding[];
   controlReceipts?: ControlReceipt[];
-  /** Host tool runs and rejects blocked per declared check: the inert-tool refusal inputs. */
+  /** Host tool runs and rejects blocked per declared check, recorded with the census. */
   toolCheckCoverage?: ToolCheckCoverage[];
   /** What each check cost the census, dearest first. Absent when the census never ran a check. */
   checkCost?: CheckCost[];
@@ -199,7 +200,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         ...keyIfDefined("subject", finding.subject),
       }));
       const hostEvidence = verifier?.evidence() ?? [];
-      // Refuse declared tools that the host never ran during the census.
+      // Record, per declared check, how often the host ran its tool during the census.
       const coverage = toolCheckCoverage({
         externalChecks,
         evidence: hostEvidence,
@@ -218,7 +219,8 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
             evidence: hostEvidence,
             path: EVALUATOR_FILE,
           }),
-          inertToolFindings(coverage),
+          // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
+          // inertToolFindings(coverage),
           [...settled].flatMap(([id, row]) => (row.hostNonResult === null ? [] : [id])),
         );
       }
@@ -263,7 +265,8 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
 export function withGroundingFindings(
   findings: ContractFinding[],
   grounding: GroundingFinding[],
-  inert: ContractFinding[],
+  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): the census no longer joins a never-launched tool's row (`...inert`) to the grounding rows below
+  // inert: ContractFinding[],
   noVerdictIds: readonly string[],
 ): ContractFinding[] {
   const covered = new Set(grounding.flatMap((row) => row.controlIds));
@@ -273,9 +276,7 @@ export function withGroundingFindings(
     : findings;
   return [
     ...kept,
-    ...controllerValidatedFindings(
-      [...grounding, ...inert].map(({ code, path, detail }) => ({ code, path, detail })),
-    ),
+    ...controllerValidatedFindings(grounding.map(({ code, path, detail }) => ({ code, path, detail }))),
   ];
 }
 

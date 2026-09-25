@@ -22,7 +22,6 @@ import { wilsonInterval } from "../src/claim/estimation.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { type ClimbBattery, countUnaccepted } from "../src/run/climb-history.ts";
 import {
-  type ClimbAction,
   type DifficultyDecision,
   decideDifficulty,
   renderBatteryContract,
@@ -36,9 +35,8 @@ const EIGHT = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8"];
  *  to none of its neighbours, and the same few tasks failing throughout. */
 const CORE = ["service.tablet", "service.monitor", "service.router"];
 
-/** The zone a decision placed its sample in, or the set-aside it recorded instead. */
-const placedZone = (decision: DifficultyDecision): BandZone | ClimbAction =>
-  decision.action === "placed" ? decision.placement.zone : decision.action;
+/** The zone a decision placed its sample in, or null where it placed it nowhere. */
+const placedZone = (decision: DifficultyDecision): BandZone | null => decision.placement?.zone ?? null;
 
 function battery(overrides: Partial<ClimbBattery> & Pick<ClimbBattery, "n" | "passed">): ClimbBattery {
   return {
@@ -86,7 +84,7 @@ describe("placeOnBand — one count, one zone", () => {
     [-1, 4],
     [1.5, 4],
   ])("has no placement for %s of %s — null, never a fabricated zone", (passes, n) => {
-    // The same null the interval returns. An unmeasured battery must not read as "at the limit".
+    // The same null the interval returns. An unmeasured battery must not read as "on the calibration target".
     expect(placeOnBand(passes, n, BAND)).toBeNull();
     expect(wilsonInterval(passes, n)).toBeNull();
   });
@@ -146,7 +144,9 @@ describe("placeOnBand — one count, one zone", () => {
     expect(continuation(25)).not.toContain("the first battery above");
     expect(renderBatteryContract(25)).toContain("Expect about 3 of 25 verified cases to pass");
     expect(continuation(25)).toContain("does not by itself answer a battery that found no limit");
-    expect(continuation(25)).toContain("longer wording or a re-tuned published number establishes neither");
+    expect(continuation(25)).toContain(
+      "a re-tuned published number is harder demand only where a witness of yours reaches it and a rehearsal shows your solver does not",
+    );
     // A smaller battery restates every count from its own size.
     expect(bandLandmarks(10, POLICY.climb.band)).toEqual({
       tooHardUpTo: null,
@@ -207,7 +207,7 @@ describe("decideDifficulty — the placement of the latest battery", () => {
 
   it("carries the placement, so the note words the same numbers the decision used", () => {
     const decision = decideDifficulty([battery({ runId: "run-x", n: 100, passed: 90 })]);
-    if (decision.action !== "placed") throw new Error(`expected a placement, got ${decision.action}`);
+    if (decision.placement === null) throw new Error(`expected a placement: ${decision.rationale}`);
     expect(decision.placement).toEqual(place(90, 100));
     // The full band, not the crossed bound alone: "too easy" without a lower edge invites
     // overshooting into too hard.
@@ -219,7 +219,7 @@ describe("decideDifficulty — the placement of the latest battery", () => {
   it.each([
     [5, "significantly too hard"],
     [90, "significantly too easy"],
-    [40, "limit"],
+    [40, "on the calibration target"],
   ])("words %s of 100 as %s", (passed, words) => {
     expect(decideDifficulty([battery({ n: 100, passed })]).rationale).toContain(words);
   });
@@ -258,14 +258,14 @@ describe("decideDifficulty — the placement of the latest battery", () => {
     ],
   ])("decides a task-only experiment on its changed subset: %s", (_name, recorded, zone, passes, n) => {
     const decision = decideDifficulty([recorded]);
-    if (decision.action !== "placed") throw new Error(`expected a placement, got ${decision.action}`);
+    if (decision.placement === null) throw new Error(`expected a placement: ${decision.rationale}`);
     expect(decision.placement).toEqual(place(passes, n));
     expect(decision.placement.zone).toBe(zone);
     expect(decision.rationale).toContain(`${passes}/${n}`);
   });
 });
 
-describe("decideDifficulty — the batteries whose rate is not difficulty evidence", () => {
+describe("decideDifficulty — the batteries placed nowhere", () => {
   it.each<[string, ClimbBattery[], string]>([
     ["an empty history", [], "no battery"],
     // The 20 of 25 the whole battery scored cannot stand in for a subset that measured nothing.
@@ -297,9 +297,12 @@ describe("decideDifficulty — the batteries whose rate is not difficulty eviden
       ],
       "zero cases were truth-verified",
     ],
-  ])("has no difficulty evidence on %s", (_name, history, named) => {
+  ])("places nothing on %s", (_name, history, named) => {
     const decision = decideDifficulty(history);
-    expect(decision.action).toBe("no-difficulty-evidence");
+    expect(decision.placement).toBeNull();
+    // A wall of refusals evaluated nothing, so it states no repeat and no family conflict either.
+    expect(decision).not.toHaveProperty("repeated");
+    expect(decision).not.toHaveProperty("conflict");
     expect(decision.evidence).toHaveLength(history.length);
     expect(decision.rationale).toContain(named);
   });
@@ -320,15 +323,15 @@ describe("decideDifficulty — the batteries whose rate is not difficulty eviden
 });
 
 describe("decideDifficulty — a failing set that did not move", () => {
-  it("reports the repeat, its size and both denominators, and no task id", () => {
+  it("states the repeat, its size and both denominators beside the placement, and no task id", () => {
     const decision = decideDifficulty([
       { ...stuck("r1", EIGHT), passed: 17, n: 25 },
       { ...stuck("r2", EIGHT.toReversed()), passed: 19, n: 25 },
     ]);
-    expect(decision.action).toBe("repeated-failure-set");
-    expect(decision.rationale).toContain("the same 8 case(s) failed");
-    expect(decision.rationale).toContain("17/25 then 19/25");
-    for (const id of EIGHT) expect(decision.rationale).not.toContain(id);
+    expect(decision.repeated).toEqual({ cases: 8, scores: ["17/25", "19/25"] });
+    // The repeat is a fact beside the zone, never instead of it.
+    expect(placedZone(decision)).toBe(place(19, 25).zone);
+    for (const id of EIGHT) expect(JSON.stringify(decision)).not.toContain(`"${id}"`);
   });
 
   it.each<[string, string[], string[]]>([
@@ -338,8 +341,8 @@ describe("decideDifficulty — a failing set that did not move", () => {
     ["a rotating margin around one core", [...CORE, "fw.b", "fw.c"], [...CORE, "fw.b", "build.d"]],
     ["the core alone after a wider set", [...CORE, "fw.b", "build.d"], [...CORE]],
     ["an identical set", [...CORE, "fw.b"], [...CORE, "fw.b"]],
-  ])("refuses on %s", (_arrangement, before, now) => {
-    expect(decideDifficulty([stuck("r1", before), stuck("r2", now)]).action).toBe("repeated-failure-set");
+  ])("finds the core on %s", (_arrangement, before, now) => {
+    expect(decideDifficulty([stuck("r1", before), stuck("r2", now)]).repeated).toBeDefined();
   });
 
   it("keys on the task set, because two measurements of one set have different battery digests", () => {
@@ -349,8 +352,8 @@ describe("decideDifficulty — a failing set that did not move", () => {
       decideDifficulty([
         { ...stuck("r1", EIGHT), batterySha256: "sha-run-1" },
         { ...stuck("r2", EIGHT), batterySha256: "sha-run-2" },
-      ]).action,
-    ).toBe("repeated-failure-set");
+      ]).repeated,
+    ).toBeDefined();
   });
 
   it.each<[string, () => ClimbBattery[]]>([
@@ -392,8 +395,10 @@ describe("decideDifficulty — a failing set that did not move", () => {
         stuck("r3", EIGHT),
       ],
     ],
-  ])("matches nothing on %s, and decides by the interval instead", (_arrangement, history) => {
-    expect(decideDifficulty(history()).action).toBe("placed");
+  ])("matches nothing on %s", (_arrangement, history) => {
+    const decision = decideDifficulty(history());
+    expect(decision).not.toHaveProperty("repeated");
+    expect(decision.placement).not.toBeNull();
   });
 
   it("is not fired by a perfect battery repeated — an empty failing set matches nothing", () => {
@@ -404,7 +409,7 @@ describe("decideDifficulty — a failing set that did not move", () => {
 });
 
 describe("decideDifficulty — two families pulling the pooled rate apart", () => {
-  it("reads one family entirely above the band beside one entirely below it as a conflict", () => {
+  it("states one family entirely above the band beside one entirely below it as a conflict", () => {
     // 25/50 sits inside the band while one family never fails and another never passes. A blank or
     // unmeasured family row beside them is no party to the conflict.
     const items = [
@@ -414,10 +419,8 @@ describe("decideDifficulty — two families pulling the pooled rate apart", () =
       family("infeasible", 0, 25),
     ];
     const decision = decideDifficulty([battery({ n: 50, passed: 25, measured: { items } })]);
-    expect(decision.action).toBe("family-conflict");
-    expect(decision.rationale).toContain('"saturated"');
-    expect(decision.rationale).toContain('"infeasible"');
-    expect(decision.rationale).toContain("the families need separate changes");
+    expect(decision.conflict).toEqual({ easy: "saturated", hard: "infeasible" });
+    expect(placedZone(decision)).toBe(place(25, 50).zone);
   });
 
   it.each([
@@ -429,7 +432,9 @@ describe("decideDifficulty — two families pulling the pooled rate apart", () =
     ],
     // At n=3 even 3/3 has a floor near 0.44: the widths already encode the sample size.
     ["each family is too thin to separate", [family("saturated", 3, 3), family("infeasible", 0, 3)], 6, 3],
-  ])("places the battery when %s", (_name, items, n, passed) => {
-    expect(decideDifficulty([battery({ n, passed, measured: { items } })]).action).toBe("placed");
+  ])("states no conflict when %s", (_name, items, n, passed) => {
+    const decision = decideDifficulty([battery({ n, passed, measured: { items } })]);
+    expect(decision).not.toHaveProperty("conflict");
+    expect(decision.placement).not.toBeNull();
   });
 });

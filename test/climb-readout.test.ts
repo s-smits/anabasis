@@ -1,8 +1,8 @@
 /**
  * One reading per recorded battery, and every rendering reads that same one. The reading is where a
  * battery's sample, its placement on the band and its declared target are settled, so most of what
- * is pinned below is what must not be settled quietly: a battery refused whole takes its own row
- * instead of being placed as too hard, a claim-refused battery stays in the table with its refusal
+ * is pinned below is what must not be settled quietly: a battery refused whole is placed nowhere
+ * instead of as too hard, a repeated failing core is stated beside its zone rather than instead of it, a claim-refused battery stays in the table with its refusal
  * and counts inside the allowance, and every non-result counts in the prediction's favour before a
  * target is called missed.
  *
@@ -28,12 +28,13 @@ import {
   renderBatteryContract,
   renderReadout,
 } from "../src/run/climb-readout.ts";
-import { FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
+import { FRAME, FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
 import type { ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
+import { STARTER_LADDER } from "./helpers/starter-contracts.ts";
 
 const BAND: [number, number] = [0.2, 0.5];
 const DOMAIN = "/nonexistent-domain";
@@ -175,21 +176,42 @@ describe("one reading per battery", () => {
     });
   });
 
-  it("sets a battery refused whole aside in its own row instead of placing it too hard", () => {
+  it("places a battery refused whole nowhere instead of placing it too hard", () => {
     const readout = readoutOf(
       row("r1", 0, { passed: 3, n: 10 }),
       row("r2", 1, { passed: 0, n: 25, unaccepted: 25 }),
     );
-    expect(readout.rows.map((item) => [item.runId, item.zone, item.setAside])).toEqual([
-      ["r2", null, "no-difficulty-evidence"],
-      ["r1", "on-aim", null],
+    expect(readout.rows.map((item) => [item.runId, item.zone])).toEqual([
+      ["r2", null],
+      ["r1", "on-aim"],
     ]);
     const text = render(readout);
-    expect(text).toContain("| no-difficulty-evidence |");
+    expect(text).toContain("| unplaced |");
     expect(text).not.toContain("| too-hard |");
     expect(text).toContain("Reading: all 25 attempts were refused at submission admission");
-    // A set-aside round ends the allowance's run of misses.
+    // An unplaced round ends the allowance's run of misses.
     expect(readout.allowance).toBeNull();
+  });
+
+  it("states a repeated failing core beside the zone, and counts the round in the streak", () => {
+    const failed = ["core-a", "core-b"];
+    const readout = readoutOf(
+      row("r1", 0, { passed: 8, n: 10, failed }),
+      row("r2", 1, { passed: 8, n: 10, failed }),
+    );
+    expect(readout.decision).toMatchObject({
+      placement: { zone: "over-aim" },
+      repeated: { cases: 2, scores: ["8/10", "8/10"] },
+    });
+    const text = render(readout);
+    expect(text).toContain("| over-aim |");
+    expect(text).toContain(
+      "The same 2 cases failed in both of the last two batteries of one recorded task set (8/10 then 8/10).",
+    );
+    // The reading points above the aim, so the repeat carries the below-the-aim pointer itself.
+    expect(text).toContain(FRAME.readout.belowLadder);
+    expect(text).not.toContain("core-a");
+    expect(readout.allowance).toMatchObject({ rounds: 2, placed: 2, side: "above" });
   });
 
   it("keeps a claim-refused battery in the table with its refusal, and counts it inside the allowance", () => {
@@ -213,7 +235,6 @@ describe("one reading per battery", () => {
       passed: null,
       deciding: null,
       zone: null,
-      setAside: null,
       families: null,
       effort: null,
       claimRefusal: "verifier environment unbound",
@@ -229,7 +250,7 @@ describe("one reading per battery", () => {
     });
     const text = render(readout);
     expect(text).toContain("| claim refused: verifier environment unbound |");
-    expect(text).toContain("Off-aim allowance: 3 of 3 consecutive rounds have ended above the aim");
+    expect(text).toContain("Off-aim streak: 3 consecutive rounds have ended above the aim");
     expect(text).toContain(
       "Families of the latest admitted battery (passes of attempts, Wilson interval): beams 11/11",
     );
@@ -343,9 +364,10 @@ describe("rendering", () => {
       "The latest battery passed every one of its 5 verified cases, so it found no limit.",
     );
     expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
-    // A re-tuned number or a longer list of named states is coverage, not a new move.
+    // Named states are coverage; a re-tuned number is a move only when a witness reaches it and the
+    // solver does not, because a limit at the author's own reference is one the solver beats.
     expect(allPass).toContain(
-      "A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+      "A longer list of named states is not one; a re-tuned number is one only where a witness of yours reaches it and a rehearsal shows your solver does not.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
     // Refused attempts are not verified, so a battery passing every verified case is still all-pass.
@@ -353,6 +375,30 @@ describe("rendering", () => {
       "every one of its 3 verified cases",
     );
   });
+
+  it.each([
+    ["above", 4, "ladder"],
+    ["below", 0, "ladder"],
+    ["on", 2, "none"],
+  ] as const)(
+    "steers a battery %s the aim without calling a tuned number or an eased one no move",
+    (_side, passed, ladder) => {
+      // The readout, the continuation contract and the ladder section the readout points to, as one text.
+      const readout = readoutOf(row("r1", 0, { passed, n: 5 }));
+      const text = [
+        render(readout),
+        renderBatteryContract(5, 5, BAND, true),
+        ladder === "ladder" ? STARTER_LADDER : "",
+      ]
+        .join("\n")
+        .replace(/\s+/g, " ");
+      expect(text).not.toMatch(/re-tuned (published )?number establishes neither/);
+      expect(text).not.toContain("does not mean loosening");
+      // Reaching the calibration target proves no capability limit.
+      expect(text).not.toMatch(/at the limit|measured a limit|where the limit is measured/);
+      if (ladder === "none") expect(text).toContain("on the calibration target.");
+    },
+  );
 
   it("renders nothing protected: failed task ids never reach the text, and changing them changes nothing", () => {
     const a = row("r1", 0, { passed: 3, n: 10, failed: ["secret-alpha", "secret-beta"] });
@@ -401,9 +447,9 @@ describe("rendering", () => {
     const declared: [number, number] = [0.6, 0.9];
     const battery = row("r1", 0, { passed: 4, n: 5 });
     const readout = climbReadout(historyOf(battery), declared, () => null);
-    expect(readout.decision).toMatchObject({ action: "placed", placement: { zone: "on-aim", aim: [3, 4] } });
+    expect(readout.decision).toMatchObject({ placement: { zone: "on-aim", aim: [3, 4] } });
     const text = render(readout);
-    expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): at the limit.");
+    expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): on the calibration target.");
     expect(renderBatteryContract(5, 5, declared, true)).toContain("Aim for 3 to 4 of 5");
     expect(historyBody(readout, [battery]).band).toEqual(declared);
   });

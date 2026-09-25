@@ -8,7 +8,6 @@
  * candidate (conformance, census, F2) are proved by their own files; this one owns the contract
  * that decides whether those stages ever run.
  */
-import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import {
   mkdirSync,
   mkdtempSync,
@@ -21,18 +20,26 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { commitAll, initWorkspace, workspaceHead, workspaceStatus } from "../src/author/domain-repo.ts";
+import { initWorkspace, workspaceHead, workspaceStatus } from "../src/author/domain-repo.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only the
+// retired-tool cases below read it.
+// import { commitAll } from "../src/author/domain-repo.ts";
 import { freshCandidateFindings } from "../src/author/fresh-candidate-contract.ts";
 import {
   type CandidateCheckContext,
   type CandidateCheckOutcome,
   loadValidatedBundle,
   checkCandidate,
-  retiredToolFindings,
+  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only
+  // the retired-tool cases below read it.
+  // retiredToolFindings,
   validatedBundle,
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
-import { type Brief, projectFindingForAuthor } from "../src/truth/brief.ts";
+import { projectFindingForAuthor } from "../src/truth/brief.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): only the
+// published-rule cases below read it.
+// import type { Brief } from "../src/truth/brief.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
@@ -40,7 +47,9 @@ import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_ACCEPTS,
   MATCHING_BRIEF,
-  MATCHING_OPERATING_GUIDE,
+  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy, operating-guide-retired-tool):
+  // commented out (unsure): only the guide cases below read it.
+  // MATCHING_OPERATING_GUIDE,
   MATCHING_REJECTS,
   MATCHING_TASKS,
   MATCHING_TOOLS_SPEC,
@@ -136,7 +145,9 @@ describe("the bundle a candidate must present", () => {
     const { findings, brief } = loadValidatedBundle(dir, ASK);
     expect(brief).toBeNull();
     const named = findings.map(({ code, path }) => `${code} ${path}`);
-    expect(named).toContain("operating-guide-shape agent/BUILT_AGENTS.md");
+    // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): a blank
+    // guide is no longer refused by shape.
+    // expect(named).toContain("operating-guide-shape agent/BUILT_AGENTS.md");
     expect(named).toContain("shape-mismatch correctness-model/controls.json");
     expect(named.some((row) => row.startsWith("tools-"))).toBe(true);
     expect(named.some((row) => row.includes("correctnessContract"))).toBe(true);
@@ -290,149 +301,111 @@ describe("what the refusal may tell the author", () => {
   });
 });
 
-/** run23 stated its panel frame, ordering, threshold and latch rules in `decisions`, which the
- *  public projection withholds, and the family scored 0 of 35 against a checker that enforced them.
- *  A check may cite the rule it enforces, and the citation must resolve to a row the Built Harness
- *  actually receives. */
-describe("the rules the solver receives", () => {
-  const findingsFor = (brief: Brief) => freshCandidateFindings({ brief, corpus: corpus() });
-
-  const accepted: Array<[string, (brief: Brief) => void]> = [
-    // truss eaf98f: "model-resolution-rule" governed "design-audit", whose checks cite other rules.
-    // The reverse family-coverage rule was removed 2026-09-15.
-    [
-      "a rule governing a family no citing check applies to",
-      (brief) => {
-        required(brief.ruleDecisions?.[0], "public rule").families = ["single-part", "two-part"];
-        for (const check of brief.truthChecks) check.execution.families = ["single-part"];
-      },
-    ],
-    [
-      "a rule that lists no family at all",
-      (brief) => {
-        delete required(brief.ruleDecisions?.[0], "public rule").families;
-      },
-    ],
-    // Controls decide whether a check reads the rule's inputs; a declared-path match proved nothing
-    // and refused ancestor paths such as `$.limits` for `$.limits.slenderness` (run 077e56).
-    [
-      "a check citing a decision about paths it does not list",
-      (brief) => {
-        required(brief.ruleDecisions?.[0], "public rule").publicInputPaths = ["$.usedAreas"];
-      },
-    ],
-  ];
-  for (const [name, change] of accepted) {
-    it(`accepts ${name}`, () => {
-      const brief = structuredClone(MATCHING_BRIEF);
-      change(brief);
-      expect(findingsFor(brief)).toEqual([]);
-    });
-  }
-
-  // Each row names the identity its refusal must carry: an unpublished rule names the check that
-  // owes one, a dangling citation names the decision id nothing declares.
-  const refused: Array<[string, string, string, (brief: Brief) => void]> = [
-    [
-      "a check that cites no rule",
-      "brief-rule-unpublished",
-      'truth check "parts-assigned"',
-      (brief) => {
-        required(brief.truthChecks[0], "first check").citedDecisionIds = [];
-      },
-    ],
-    // A check may depend on a hidden operand or an external engine. Its assertion alone does not
-    // publish the rule the Built Harness has to satisfy.
-    [
-      "a hidden-expectation check that publishes no rule at all",
-      "brief-rule-unpublished",
-      'truth check "expected-binding"',
-      (brief) => {
-        for (const check of brief.truthChecks) delete check.citedDecisionIds;
-      },
-    ],
-    [
-      "a citation resolving to no declared decision",
-      "brief-cited-decision-withheld",
-      '"binding-completeness"',
-      (brief) => {
-        brief.ruleDecisions = [];
-      },
-    ],
-  ];
-  for (const [name, code, identity, change] of refused) {
-    it(`refuses ${name}`, () => {
-      const brief = structuredClone(MATCHING_BRIEF);
-      change(brief);
-      expect(findingsFor(brief)).toContainEqual(
-        expect.objectContaining({ code, detail: expect.stringContaining(identity) }),
-      );
-    });
-  }
-
-  it("refuses a check citing a decision the projection withholds, naming identities and not the statement", () => {
-    const brief = structuredClone(MATCHING_BRIEF);
-    const decision = required(brief.ruleDecisions?.[0], "public rule");
-    decision.visibility = "private";
-    const found = findingsFor(brief);
-    expect(found).toContainEqual(
-      expect.objectContaining({
-        code: "brief-cited-decision-withheld",
-        path: "truthChecks[0].citedDecisionIds",
-        detail: expect.stringContaining('truth check "parts-assigned"'),
-      }),
-    );
-    const detail = found.find((row) => row.code === "brief-cited-decision-withheld")?.detail ?? "";
-    expect(detail).toContain('"binding-completeness"');
-    expect(detail).not.toContain(decision.statement);
-  });
-});
+// Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): these cases pin the
+// published-rule citation refusals and their accepted neighbours.
+// /** run23 stated its panel frame, ordering, threshold and latch rules in `decisions`, which the
+//  *  public projection withholds, and the family scored 0 of 35 against a checker that enforced them.
+//  *  A check may cite the rule it enforces, and the citation must resolve to a row the Built Harness
+//  *  actually receives. */
+// describe("the rules the solver receives", () => {
+//   const findingsFor = (brief: Brief) => freshCandidateFindings({ brief, corpus: corpus() });
+//
+//   const accepted: Array<[string, (brief: Brief) => void]> = [
+//     // truss eaf98f: "model-resolution-rule" governed "design-audit", whose checks cite other rules.
+//     // The reverse family-coverage rule was removed 2026-09-15.
+//     [
+//       "a rule governing a family no citing check applies to",
+//       (brief) => {
+//         required(brief.ruleDecisions?.[0], "public rule").families = ["single-part", "two-part"];
+//         for (const check of brief.truthChecks) check.execution.families = ["single-part"];
+//       },
+//     ],
+//     [
+//       "a rule that lists no family at all",
+//       (brief) => {
+//         delete required(brief.ruleDecisions?.[0], "public rule").families;
+//       },
+//     ],
+//     // Controls decide whether a check reads the rule's inputs; a declared-path match proved nothing
+//     // and refused ancestor paths such as `$.limits` for `$.limits.slenderness` (run 077e56).
+//     [
+//       "a check citing a decision about paths it does not list",
+//       (brief) => {
+//         required(brief.ruleDecisions?.[0], "public rule").publicInputPaths = ["$.usedAreas"];
+//       },
+//     ],
+//   ];
+//   for (const [name, change] of accepted) {
+//     it(`accepts ${name}`, () => {
+//       const brief = structuredClone(MATCHING_BRIEF);
+//       change(brief);
+//       expect(findingsFor(brief)).toEqual([]);
+//     });
+//   }
+//
+//   // Each row names the identity its refusal must carry: an unpublished rule names the check that
+//   // owes one, a dangling citation names the decision id nothing declares.
+//   const refused: Array<[string, string, string, (brief: Brief) => void]> = [
+//     [
+//       "a check that cites no rule",
+//       "brief-rule-unpublished",
+//       'truth check "parts-assigned"',
+//       (brief) => {
+//         required(brief.truthChecks[0], "first check").citedDecisionIds = [];
+//       },
+//     ],
+//     // A check may depend on a hidden operand or an external engine. Its assertion alone does not
+//     // publish the rule the Built Harness has to satisfy.
+//     [
+//       "a hidden-expectation check that publishes no rule at all",
+//       "brief-rule-unpublished",
+//       'truth check "expected-binding"',
+//       (brief) => {
+//         for (const check of brief.truthChecks) delete check.citedDecisionIds;
+//       },
+//     ],
+//     [
+//       "a citation resolving to no declared decision",
+//       "brief-cited-decision-withheld",
+//       '"binding-completeness"',
+//       (brief) => {
+//         brief.ruleDecisions = [];
+//       },
+//     ],
+//   ];
+//   for (const [name, code, identity, change] of refused) {
+//     it(`refuses ${name}`, () => {
+//       const brief = structuredClone(MATCHING_BRIEF);
+//       change(brief);
+//       expect(findingsFor(brief)).toContainEqual(
+//         expect.objectContaining({ code, detail: expect.stringContaining(identity) }),
+//       );
+//     });
+//   }
+//
+//   it("refuses a check citing a decision the projection withholds, naming identities and not the statement", () => {
+//     const brief = structuredClone(MATCHING_BRIEF);
+//     const decision = required(brief.ruleDecisions?.[0], "public rule");
+//     decision.visibility = "private";
+//     const found = findingsFor(brief);
+//     expect(found).toContainEqual(
+//       expect.objectContaining({
+//         code: "brief-cited-decision-withheld",
+//         path: "truthChecks[0].citedDecisionIds",
+//         detail: expect.stringContaining('truth check "parts-assigned"'),
+//       }),
+//     );
+//     const detail = found.find((row) => row.code === "brief-cited-decision-withheld")?.detail ?? "";
+//     expect(detail).toContain('"binding-completeness"');
+//     expect(detail).not.toContain(decision.statement);
+//   });
+// });
 
 describe("the agent the solver gets", () => {
-  const shellless = (dir: string) =>
-    writeJson(dir, "agent/tools-spec.json", {
-      ...readSpec(dir),
-      presets: [],
-      declined: { files: "answers are structured records" },
-    });
-
-  // Operator decision 2026-09-14: 62 truss epochs declined the files preset with a reason, since
-  // its draft files become the answer, and their solvers then had no shell at all.
-  it("refuses a spec without a shell whatever reason it records", () => {
+  it("refuses a spec declaring both the files and the shell preset", () => {
     const dir = workspace();
-    expect(bundleCodes(dir)).not.toContain("tools-default-preset-declined");
-    shellless(dir);
-    expect(bundleCodes(dir)).toContain("tools-default-preset-declined");
-    writeJson(dir, "agent/tools-spec.json", {
-      ...readSpec(dir),
-      presets: ["files", "shell"],
-      declined: undefined,
-    });
+    writeJson(dir, "agent/tools-spec.json", { ...readSpec(dir), presets: ["files", "shell"] });
     expect(bundleCodes(dir)).toContain("tools-shell-preset-overlap");
-  });
-
-  // A task-only round keeps the agent fixed, so it cannot select the preset — and it may not
-  // measure past the gap either: harder tasks do not repair a known product blocker (rule 11).
-  // The refusal names the scope that owns the repair instead.
-  it("refuses a task-only round on the same agent and names the scope that repairs it", () => {
-    const dir = workspace();
-    shellless(dir);
-    writeJson(dir, "EXPERIMENT.json", {
-      scope: "tasks",
-      target: { comparator: "at-least", verifiedPasses: 3 },
-      gap: "The battery leaves a public requirement unmeasured.",
-      change: "Raise that requirement in the public tasks.",
-      ...PLAN_FIELDS,
-      expectedResult: "The next measurement separates the two conditions.",
-    });
-    const outcome = refuse(dir, { experimentProposalRequired: true });
-    expect(outcome.findings).toContainEqual(
-      expect.objectContaining({
-        code: "tools-default-preset-declined",
-        path: "presets",
-        detail: expect.stringContaining("propose a product round"),
-      }),
-    );
   });
 
   // Run 8x checked for one file-map root only when starting the worker, so an invalid bundle
@@ -475,165 +448,156 @@ describe("the agent the solver gets", () => {
   }
 });
 
-/** The Built Harness reads this guide. Validation checks for nonempty bounded text carrying no
- *  task identifier; it does not judge whether the advice is useful. The Builder remains
- *  responsible for writing a procedure that serves the domain. */
-describe("the operating guide", () => {
-  const guide = (dir: string, text: string) => writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), text);
+// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): these cases pin
+// the empty, oversized, placeholder and task-naming guide refusals and their accepted neighbours.
+// /** The Built Harness reads this guide. Validation checks for nonempty bounded text carrying no
+//  *  task identifier; it does not judge whether the advice is useful. The Builder remains
+//  *  responsible for writing a procedure that serves the domain. */
+// describe("the operating guide", () => {
+//   const guide = (dir: string, text: string) => writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), text);
+//
+//   const refused: Array<[string, string, string]> = [
+//     ["an empty guide", "  \n", "operating-guide-shape"],
+//     [
+//       `a guide naming task ${T1.taskId}`,
+//       `${MATCHING_OPERATING_GUIDE}\nOn ${T1.taskId}, bind first.\n`,
+//       "operating-guide-task-identifier",
+//     ],
+//   ];
+//   for (const [name, text, code] of refused) {
+//     it(`refuses ${name}`, () => {
+//       const dir = workspace();
+//       guide(dir, text);
+//       expect(codes(refuse(dir).findings)).toContain(code);
+//     });
+//   }
+//
+//   it("names the size bound and the starter placeholder in its refusal", () => {
+//     const dir = workspace();
+//     guide(dir, `${MATCHING_OPERATING_GUIDE}${"Declare every part before binding. ".repeat(300)}`);
+//     expect(refuse(dir).findings).toContainEqual(
+//       expect.objectContaining({
+//         code: "operating-guide-shape",
+//         detail: expect.stringContaining("the limit is 8192"),
+//       }),
+//     );
+//
+//     // The starter guide carries an explicit marker, so the unchanged seed is refused by name.
+//     guide(
+//       dir,
+//       readFileSync(join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"), "utf8"),
+//     );
+//     expect(refuse(dir).findings).toContainEqual(
+//       expect.objectContaining({
+//         code: "operating-guide-shape",
+//         path: "agent/BUILT_AGENTS.md",
+//         detail: expect.stringContaining("starter placeholder marker"),
+//       }),
+//     );
+//   });
+//
+//   // The scan uses identifier boundaries: `t1x` and `slot-t1` hold a task id inside a longer word,
+//   // and a substring search would refuse the whole candidate over either. Declared advisers and
+//   // readers are ordinary guide content; their names are not answers.
+//   const accepted: Array<[string, string]> = [
+//     [
+//       "prose holding a task id only inside longer words",
+//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:name-the-slot -->\nName each slot t1x, not slot-t1, and check the output.\n`,
+//     ],
+//     [
+//       "plain prose with no rule marker",
+//       "# Operating Guide\n\nDeclare every part before binding a slot to it.\n",
+//     ],
+//     [
+//       "a repeated legacy rule marker",
+//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:understand-before-writing -->\nDeclare again.\n`,
+//     ],
+//     [
+//       "a guide coordinating a declared advisor",
+//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:review-before-submit -->\nRun hint before binding a slot.\n`,
+//     ],
+//   ];
+//   for (const [name, text] of accepted) {
+//     it(`accepts ${name}`, () => {
+//       const dir = workspace();
+//       guide(dir, text);
+//       accept(dir);
+//     });
+//   }
 
-  const refused: Array<[string, string, string]> = [
-    ["an empty guide", "  \n", "operating-guide-shape"],
-    [
-      `a guide naming task ${T1.taskId}`,
-      `${MATCHING_OPERATING_GUIDE}\nOn ${T1.taskId}, bind first.\n`,
-      "operating-guide-task-identifier",
-    ],
-  ];
-  for (const [name, text, code] of refused) {
-    it(`refuses ${name}`, () => {
-      const dir = workspace();
-      guide(dir, text);
-      expect(codes(refuse(dir).findings)).toContain(code);
-    });
-  }
-
-  it("names the size bound and the starter placeholder in its refusal", () => {
-    const dir = workspace();
-    guide(dir, `${MATCHING_OPERATING_GUIDE}${"Declare every part before binding. ".repeat(300)}`);
-    expect(refuse(dir).findings).toContainEqual(
-      expect.objectContaining({
-        code: "operating-guide-shape",
-        detail: expect.stringContaining("the limit is 8192"),
-      }),
-    );
-
-    // The starter guide carries an explicit marker, so the unchanged seed is refused by name.
-    guide(
-      dir,
-      readFileSync(join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"), "utf8"),
-    );
-    expect(refuse(dir).findings).toContainEqual(
-      expect.objectContaining({
-        code: "operating-guide-shape",
-        path: "agent/BUILT_AGENTS.md",
-        detail: expect.stringContaining("starter placeholder marker"),
-      }),
-    );
-  });
-
-  // The scan uses identifier boundaries: `t1x` and `slot-t1` hold a task id inside a longer word,
-  // and a substring search would refuse the whole candidate over either. Declared advisers and
-  // readers are ordinary guide content; their names are not answers.
-  const accepted: Array<[string, string]> = [
-    [
-      "prose holding a task id only inside longer words",
-      `${MATCHING_OPERATING_GUIDE}\n<!-- rule:name-the-slot -->\nName each slot t1x, not slot-t1, and check the output.\n`,
-    ],
-    [
-      "plain prose with no rule marker",
-      "# Operating Guide\n\nDeclare every part before binding a slot to it.\n",
-    ],
-    [
-      "a repeated legacy rule marker",
-      `${MATCHING_OPERATING_GUIDE}\n<!-- rule:understand-before-writing -->\nDeclare again.\n`,
-    ],
-    [
-      "a guide coordinating a declared advisor",
-      `${MATCHING_OPERATING_GUIDE}\n<!-- rule:review-before-submit -->\nRun hint before binding a slot.\n`,
-    ],
-  ];
-  for (const [name, text] of accepted) {
-    it(`accepts ${name}`, () => {
-      const dir = workspace();
-      guide(dir, text);
-      accept(dir);
-    });
-  }
-
-  // A guide names tools the solver will not have when the roster moved and the guide did not. The
-  // workspace's own history is what tells a retired tool from any other word in a code span, so the
-  // case declares one, commits, and then retires it.
-  const retire = (dir: string, name: string): void => {
-    const retired = { name, kind: "advisor", description: "an adviser this bundle later removed" };
-    writeJson(dir, "agent/tools-spec.json", {
-      ...MATCHING_TOOLS_SPEC,
-      tools: [...MATCHING_TOOLS_SPEC.tools, retired],
-    });
-    commitAll(dir, "declare an adviser");
-    writeJson(dir, "agent/tools-spec.json", MATCHING_TOOLS_SPEC);
-  };
-
-  it("refuses a guide still naming a tool this bundle has since retired", () => {
-    const dir = workspace();
-    retire(dir, "signal_reference");
-    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
-    expect(refuse(dir).findings).toContainEqual(
-      expect.objectContaining({
-        code: "operating-guide-retired-tool",
-        path: "agent/BUILT_AGENTS.md",
-        detail: expect.stringContaining("signal_reference"),
-      }),
-    );
-  });
-
-  it("refuses each retired tool a guide names on its own, so every finding names one tool", () => {
-    const dir = workspace();
-    retire(dir, "signal_reference");
-    commitAll(dir, "retire the first adviser");
-    retire(dir, "pin_advisor");
-    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\`, then \`pin_advisor(slot)\`.\n`);
-    const retired = refuse(dir).findings.filter((finding) => finding.code === "operating-guide-retired-tool");
-    expect(retired.map((finding) => finding.detail)).toEqual([
-      expect.stringContaining("names pin_advisor as a tool"),
-      expect.stringContaining("names signal_reference as a tool"),
-    ]);
-  });
-
-  const unretired: Array<[string, string]> = [
-    ["the retired name in prose only", "The old signal_reference adviser is gone; bind from the parts list."],
-    ["the retired name inside a longer code token", "Read `signal_reference_table` in the public input."],
-    ["a current tool in a code span", "Run `hint` before binding a slot."],
-    ["a field that was never a tool", "Every row carries a `slot` and a `part`."],
-  ];
-  for (const [name, line] of unretired) {
-    it(`accepts ${name}`, () => {
-      const dir = workspace();
-      retire(dir, "signal_reference");
-      guide(dir, `${MATCHING_OPERATING_GUIDE}\n${line}\n`);
-      accept(dir);
-    });
-  }
-
-  // The Builder keeps committing while a preview runs, so the workspace's HEAD can move past the
-  // captured candidate before its history is read. The verdict belongs to the captured bytes.
-  it("reads the history the candidate was captured at, not the history HEAD has reached since", () => {
-    const dir = workspace();
-    guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
-    const captured = checkCandidate(dir, ASK);
-    if (!captured.ok) throw new Error(JSON.stringify(captured.findings));
-    retire(dir, "signal_reference");
-    commitAll(dir, "retire the adviser");
-    const verdict = (commit: string) =>
-      codes(retiredToolFindings(dir, commit, captured.snapshotDir, captured.bundle.toolsSpec));
-    expect(verdict(captured.commit)).toEqual([]);
-    expect(verdict(workspaceHead(dir))).toEqual(["operating-guide-retired-tool"]);
-  });
-});
+// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): these
+// cases pin the retired-tool scan over the workspace history.
+//   // A guide names tools the solver will not have when the roster moved and the guide did not. The
+//   // workspace's own history is what tells a retired tool from any other word in a code span, so the
+//   // case declares one, commits, and then retires it.
+//   const retire = (dir: string, name: string): void => {
+//     const retired = { name, kind: "advisor", description: "an adviser this bundle later removed" };
+//     writeJson(dir, "agent/tools-spec.json", {
+//       ...MATCHING_TOOLS_SPEC,
+//       tools: [...MATCHING_TOOLS_SPEC.tools, retired],
+//     });
+//     commitAll(dir, "declare an adviser");
+//     writeJson(dir, "agent/tools-spec.json", MATCHING_TOOLS_SPEC);
+//   };
+//
+//   it("refuses a guide still naming a tool this bundle has since retired", () => {
+//     const dir = workspace();
+//     retire(dir, "signal_reference");
+//     guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
+//     expect(refuse(dir).findings).toContainEqual(
+//       expect.objectContaining({
+//         code: "operating-guide-retired-tool",
+//         path: "agent/BUILT_AGENTS.md",
+//         detail: expect.stringContaining("signal_reference"),
+//       }),
+//     );
+//   });
+//
+//   it("refuses each retired tool a guide names on its own, so every finding names one tool", () => {
+//     const dir = workspace();
+//     retire(dir, "signal_reference");
+//     commitAll(dir, "retire the first adviser");
+//     retire(dir, "pin_advisor");
+//     guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\`, then \`pin_advisor(slot)\`.\n`);
+//     const retired = refuse(dir).findings.filter((finding) => finding.code === "operating-guide-retired-tool");
+//     expect(retired.map((finding) => finding.detail)).toEqual([
+//       expect.stringContaining("names pin_advisor as a tool"),
+//       expect.stringContaining("names signal_reference as a tool"),
+//     ]);
+//   });
+//
+//   const unretired: Array<[string, string]> = [
+//     ["the retired name in prose only", "The old signal_reference adviser is gone; bind from the parts list."],
+//     ["the retired name inside a longer code token", "Read `signal_reference_table` in the public input."],
+//     ["a current tool in a code span", "Run `hint` before binding a slot."],
+//     ["a field that was never a tool", "Every row carries a `slot` and a `part`."],
+//   ];
+//   for (const [name, line] of unretired) {
+//     it(`accepts ${name}`, () => {
+//       const dir = workspace();
+//       retire(dir, "signal_reference");
+//       guide(dir, `${MATCHING_OPERATING_GUIDE}\n${line}\n`);
+//       accept(dir);
+//     });
+//   }
+//
+//   // The Builder keeps committing while a preview runs, so the workspace's HEAD can move past the
+//   // captured candidate before its history is read. The verdict belongs to the captured bytes.
+//   it("reads the history the candidate was captured at, not the history HEAD has reached since", () => {
+//     const dir = workspace();
+//     guide(dir, `${MATCHING_OPERATING_GUIDE}\nCall \`signal_reference\` before binding a slot.\n`);
+//     const captured = checkCandidate(dir, ASK);
+//     if (!captured.ok) throw new Error(JSON.stringify(captured.findings));
+//     retire(dir, "signal_reference");
+//     commitAll(dir, "retire the adviser");
+//     const verdict = (commit: string) =>
+//       codes(retiredToolFindings(dir, commit, captured.snapshotDir, captured.bundle.toolsSpec));
+//     expect(verdict(captured.commit)).toEqual([]);
+//     expect(verdict(workspaceHead(dir))).toEqual(["operating-guide-retired-tool"]);
+//   });
+// });
 
 describe("what a candidate owes beyond a readable bundle", () => {
-  // The census that catches one module answering a whole family needs to be told which artifact
-  // roots hold the deliverable, so it has a declared root to replay across sibling tasks.
-  it("refuses a fresh brief that marks no task-conditioned artifact root", () => {
-    const silent = structuredClone(MATCHING_BRIEF);
-    for (const field of silent.artifactSchema) delete field.taskConditioned;
-    expect(freshCandidateFindings({ brief: silent, corpus: corpus() })).toContainEqual(
-      expect.objectContaining({ code: "brief-material-root-missing", path: "artifactSchema" }),
-    );
-    expect(
-      codes(freshCandidateFindings({ brief: structuredClone(MATCHING_BRIEF), corpus: corpus() })),
-    ).not.toContain("brief-material-root-missing");
-  });
-
   it("refuses an accept the public schema cannot hold", () => {
     const rows = corpus();
     Object.assign(required(rows.accept[0], "first accept"), { artifact: { assignments: () => undefined } });
@@ -642,22 +606,24 @@ describe("what a candidate owes beyond a readable bundle", () => {
     );
   });
 
-  it("applies the family variation floor at admission and not to a rehearsal", () => {
-    const dir = workspace();
-    const tasks = structuredClone(MATCHING_TASKS);
-    for (const task of tasks) {
-      delete task.intendedFeatures;
-      task.publicInput = required(
-        tasks.find((member) => member.family === task.family),
-        "family sibling",
-      ).publicInput;
-    }
-    writeJson(dir, "correctness-model/tasks.json", tasks);
-    expect(bundleCodes(dir, { exactTasks: 2 })).toContain("tasks-structural-variation-shortfall");
-    expect(codes(loadValidatedBundle(dir, { ...ASK, exactTasks: 2 }, "rehearsal").findings)).not.toContain(
-      "tasks-structural-variation-shortfall",
-    );
-  });
+  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): the variation floor
+  // at admission is the rule this case pins.
+  // it("applies the family variation floor at admission and not to a rehearsal", () => {
+  //   const dir = workspace();
+  //   const tasks = structuredClone(MATCHING_TASKS);
+  //   for (const task of tasks) {
+  //     delete task.intendedFeatures;
+  //     task.publicInput = required(
+  //       tasks.find((member) => member.family === task.family),
+  //       "family sibling",
+  //     ).publicInput;
+  //   }
+  //   writeJson(dir, "correctness-model/tasks.json", tasks);
+  //   expect(bundleCodes(dir, { exactTasks: 2 })).toContain("tasks-structural-variation-shortfall");
+  //   expect(codes(loadValidatedBundle(dir, { ...ASK, exactTasks: 2 }, "rehearsal").findings)).not.toContain(
+  //     "tasks-structural-variation-shortfall",
+  //   );
+  // });
 
   // Levels are ordinal labels, not difficulty: only a kickoff-pinned level is enforced, and that
   // has its own finding (tasks-kickoff-level-mismatch).

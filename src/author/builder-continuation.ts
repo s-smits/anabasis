@@ -46,7 +46,7 @@ interface GoalState {
   readonly maxTurns: number | undefined;
   /** Zero for a caller that keeps no start time; under a minute is not stated. */
   readonly elapsedMs: number;
-  /** The round plan's compact view, on a continuation that asks for a plan. */
+  /** The round plan's compact view, restated at every turn boundary. */
   readonly planView?: string;
 }
 
@@ -74,6 +74,7 @@ function goalFacts(goal: GoalState): string {
  *  candidate" to "repair and resubmit". No specific file is named, because a repair that keeps
  *  tasks fixed must not edit correctness-model/tasks.json and a build may: which files are
  *  permitted is the opening's to state, not this line's. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, continuation-nudge): kept: a prompt line that refuses nothing
 function nextAction(goal: GoalState): string {
   const stop = " Do not replace the candidate with an explanation of why you stopped.";
   if (goal.attempts > 0) {

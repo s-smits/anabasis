@@ -69,7 +69,7 @@ import { type CompiledSolve, type SolveWalls, batteryCensus, compileSolve } from
 import { DIAGNOSIS_SYSTEM_PROMPT, recordDiagnosisTool } from "./diagnosis-tool.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v2";
+export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v3";
 
 /** Issues offered per reading, worst share first. */
 const MAX_ISSUES = 6;

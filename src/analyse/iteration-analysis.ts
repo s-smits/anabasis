@@ -8,7 +8,7 @@
  * Owner routing is deliberately not "every failure goes to an author session". Only findings about
  * Builder-authored files may reopen one, because reopening is what costs a round: an environment
  * non-result is rerun with the harness unchanged, genuine hardness belongs to the climb, and a
- * Judge disagreement is advice that never seeds an actionable finding.
+ * Judge disagreement stays in the Judge's own record as advice rather than becoming a finding.
  *
  * Admission then checks that citations exist. A finding whose cited evidence is not on disk is
  * refused whatever produced it, so nothing reaches the next round on the strength of a pointer
@@ -19,7 +19,8 @@ import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { isAbsolute, join, relative } from "../meta/path.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
-import { authorSessionOwner } from "./finding-owner.ts";
+import type { BundleFile } from "../author/feedback-routing.ts";
+import { authorSessionOwner, findingSeverity } from "./finding-owner.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
 import { checkerUnboundFinding } from "./checker-unbound.ts";
 import {
@@ -37,7 +38,6 @@ import { controllerValidatedFindings } from "../truth/brief.ts";
 import { type BundleSnapshotFact, batteryPath } from "../truth/battery-record.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
-import type { NoRouteReason } from "./finding-owner.ts";
 
 export type CaseEvidence = CaseVerdict & {
   taskId: string;
@@ -112,30 +112,23 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/9-complete-repair-agenda";
+export const FEEDBACK_POLICY = "severity-route/11-owner-defect";
 
-/** The closed finding vocabulary the router understands. Producers are the host and the Judge
- *  review; routing depends on the finding kind, not its producer. */
-export type AnalysisFindingKind =
-  | "environment-non-result"
-  | "harness-defect"
-  | "curriculum-defect"
-  | "controller-defect"
-  | "hardness"
-  | "diagnosis-uncertain"
-  /** Judge/verifier disagreement: advice by family, never routed and never blocking. */
-  | "judge-disagreement";
+/** A finding states two facts: where it sits and whether it is a defect. Only a bundle file can
+ *  hold a defect, so a defect with no owner, or one owned by the environment, has no spelling. An
+ *  observation may still name the file it is about, as measured hardness names the task set, and
+ *  one naming no file is unplaced. */
+export type AnalysisFinding = FindingBody & FindingPlacement;
+export type FindingPlacement =
+  | { owner: BundleFile; defect: boolean }
+  | { owner: "environment" | null; defect: false };
 
-export type AnalysisFinding = {
-  kind: AnalysisFindingKind;
+type FindingBody = {
   claim: string;
   /** Evidence pointer relative to repoRoot; admission requires it to exist on disk. */
   evidence: string;
-  /** Author session proposal — consulted only for harness-defect findings. */
-  proposedOwner: FeedbackOwner | null;
-  /** Feedback severity when routed to an author session. Absent means blocking, because a
-   *  diagnosed defect demands reopening; advisory is for disclosures whose next move belongs to a
-   *  more calibrated owner, and an advisory restatement is outranked at promotion. */
+  /** Feedback severity when routed to an author session. Absent on a defect means blocking,
+   *  because a diagnosed defect demands reopening; an observation is always advisory. */
   severity?: "advisory";
   /** Per-case identity. A finding that carries one never reaches an author session, because the
    *  no-hints rule protects the failure location of an individual task; a finding without a subject
@@ -150,8 +143,9 @@ export type AnalysisFinding = {
   /** The fixed host rule that produced this finding, for the findings a rule produced rather than
    *  a model observed. It names the subject the way `checkId` does, and it is what makes recurrence
    *  supportable for a host finding that names no check: the same rule fired again, which is an
-   *  observation, where two free-text observations resembling one another is an inference. A
-   *  model-produced finding never carries one. */
+   *  observation, where two free-text observations resembling one another is an inference. Every
+   *  host finding carries one and a model-produced finding never does, which is how a reader tells
+   *  a recorded fact from a reviewer's hypothesis. */
   hostRule?: string;
   /** No declared check observes the obligation at all, so no existing check should be repaired for
    *  it. Without the flag a review names the nearest check instead, and the Builder dutifully
@@ -177,13 +171,9 @@ export interface AdmittedEvidence {
   refused: Array<{ finding: AnalysisFinding; reason: string }>;
   /** Author-session routed findings as campaign feedback for iteration N+1. */
   feedback: CampaignFeedback[];
-  /** One controller-owned route result for every admitted finding, including no-route reasons. */
-  findingRoutes: AdmissionFindingRoute[];
+  /** One controller-owned route result for every admitted finding; a null owner routed nowhere. */
+  findingRoutes: Array<{ findingDigest: string; owner: FeedbackOwner | null; defect: boolean }>;
 }
-
-type AdmissionFindingRoute =
-  | { findingDigest: string; kind: AnalysisFindingKind; owner: FeedbackOwner }
-  | { findingDigest: string; kind: AnalysisFindingKind; owner: null; reason: NoRouteReason };
 
 /** The subject one finding named, in the public authoring identities it carries: its declared
  *  check, else the host rule that produced it, else a path naming a place *below* a declared root.
@@ -359,7 +349,7 @@ export function deriveIterationAnalysis(
  *  all-verified-fail battery yields no deterministic finding here, because whether that is a
  *  harness defect or genuine hardness is the model's question and the rebuild advice packet carries
  *  the counts either way. An unaccepted case establishes only that no accepted submission exists,
- *  so it is recorded as `diagnosis-uncertain` and never proposes an owner. */
+ *  so it is recorded as an unplaced observation. */
 export function hostFindings(repoRoot: string, analysis: IterationAnalysis): AnalysisFinding[] {
   const findings: AnalysisFinding[] = [];
   const record = join("campaigns", analysis.slug, CASE_RECORD_FILE);
@@ -369,10 +359,10 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
     // failures carry a cause the evidence never supported into the next round, and only a rerun
     // exposes it.
     findings.push({
-      kind: "diagnosis-uncertain",
+      owner: null,
+      defect: false,
       claim: `${unaccepted.length} of ${analysis.cases.length} attempt(s) produced no accepted submission and have no truth verdict; the counts alone do not establish why submission was absent`,
       evidence: record,
-      proposedOwner: null,
       severity: "advisory",
       hostRule: "unaccepted-without-verdict",
     });
@@ -389,35 +379,28 @@ export function hostFindings(repoRoot: string, analysis: IterationAnalysis): Ana
   const checkerOutage = checkerUnboundFinding(repoRoot, analysis);
   if (nonResults > 0) {
     findings.push({
-      kind: "environment-non-result",
+      owner: "environment",
+      defect: false,
       claim: `${nonResults} case(s) ended in environment-owned runtime non-results — censored from the denominator; ${
         checkerOutage === null
           ? "rerun without changing the harness"
           : "part of them are the check's own unbound results, routed to their owner beside this note; repair before rerunning"
       }`,
       evidence: record,
-      proposedOwner: null,
+      hostRule: "environment-owned-non-results",
     });
   }
   if (checkerOutage !== null) findings.push(checkerOutage);
-  // An all-pass battery deliberately adds nothing here. It once added an advisory harness-defect
-  // with owner "tests", which named a defect the harness does not have and an owner the evidence
+  // An all-pass battery deliberately adds nothing here. It once added an advisory defect
+  // owned by the task set, which named a defect the harness does not have and an owner the evidence
   // had not chosen, and restated in a fifth dialect what the packet already says four other ways.
   // The climb readout owns the sentence "this battery found no limit".
   return findings;
 }
 
-/** Which findings demand a reopen by default: a diagnosed defect is blocking unless its producer
- *  explicitly said advisory, while hardness and every disclosure, the Judge's included, stay
- *  advisory because their next move belongs to someone better calibrated than the finding. */
-export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["severity"] {
-  const defect = finding.kind === "harness-defect" || finding.kind === "curriculum-defect";
-  return defect ? (finding.severity ?? "blocking") : "advisory";
-}
-
 /** Controller admission: the shape is typed, the citations must exist on disk, and only findings
  *  that route to an author session become campaign feedback. Everything else stays disclosed in the
- *  recorded packet with its typed no-route reason rather than disappearing at the partition, and an
+ *  recorded packet with a null route rather than disappearing at the partition, and an
  *  aggregate no-route row may still enter rebuild advice from there. */
 export function admitFindings(
   repoRoot: string,
@@ -436,16 +419,11 @@ export function admitFindings(
   // Content identity of the packet — what iteration N+1 records as consumed.
   const digest = hashJsonBytes(analysis);
   const routed: Array<{ finding: AnalysisFinding; owner: FeedbackOwner }> = [];
-  const findingRoutes: AdmissionFindingRoute[] = [];
+  const findingRoutes: AdmittedEvidence["findingRoutes"] = [];
   for (const finding of admitted) {
-    const route = authorSessionOwner(finding);
-    const findingDigest = hashJsonValue(finding);
-    if (route.owner === null) {
-      findingRoutes.push({ findingDigest, kind: finding.kind, owner: null, reason: route.reason });
-    } else {
-      findingRoutes.push({ findingDigest, kind: finding.kind, owner: route.owner });
-      routed.push({ finding, owner: route.owner });
-    }
+    const owner = authorSessionOwner(finding);
+    findingRoutes.push({ findingDigest: hashJsonValue(finding), owner, defect: finding.defect });
+    if (owner !== null) routed.push({ finding, owner });
   }
   const feedback: CampaignFeedback[] = routed.map(({ finding, owner }) => ({
     owner,
@@ -455,7 +433,7 @@ export function admitFindings(
     // This array is what the author input renders into the reopened prompt, so it is
     // controller-marked for the author isolation to admit it; an unmarked packet is refused there.
     findings: controllerValidatedFindings([
-      { code: finding.kind, path: finding.evidence, detail: finding.claim },
+      { code: finding.defect ? "defect" : "observation", path: finding.evidence, detail: finding.claim },
     ]),
   }));
   return { digest, admitted, refused, feedback, findingRoutes };

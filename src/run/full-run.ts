@@ -31,7 +31,7 @@ import { buildHarness, resolveBuilderCondition } from "./harness-build.ts";
 import { type HarnessMeasureResult, measureHarness } from "./harness-measure.ts";
 import type { ClaimStage } from "./claim-stages.ts";
 import type { PromotionEvidence } from "./candidate-promotion.ts";
-import { fullRunExitStatus } from "./loop-terminal.ts";
+import { type BuildClause, fullRunExitStatus } from "./loop-terminal.ts";
 import type { NextMove } from "./next-move.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
@@ -87,7 +87,8 @@ export interface FullRunOutcome {
   slug: string;
   project: ProjectIdentity;
   build: "adopted" | "reused" | "candidate" | "stopped" | "build-failed";
-  buildClauses: string[];
+  buildClause: BuildClause | null;
+  buildDetail: string | null;
   decision: NextMove;
   promotion: PromotionEvidence | null;
   measure: HarnessMeasureResult | null;
@@ -267,7 +268,8 @@ function recordRound(
   slug: string,
 ): void {
   pending.terminal = terminal;
-  pending.buildClauses = [...result.buildClauses];
+  pending.buildClause = result.buildClause;
+  pending.buildDetail = result.buildDetail;
   // Only a terminal with something to cite carries evidence; every other round leaves the recorded
   // iteration row without the key rather than writing an empty list that reads as "cited nothing".
   const cited = terminalEvidenceFor(terminal, result, slug);
@@ -285,7 +287,8 @@ function startIteration(state: ControllerRunState, baseRunId: string, round: num
   const pending: ControllerIteration = {
     runId,
     terminal: null,
-    buildClauses: [] satisfies string[],
+    buildClause: null,
+    buildDetail: null,
     measured: false,
   };
   state.iterations.push(pending);
@@ -303,7 +306,8 @@ function fullRunOutcome(
     slug: manifest.slug,
     project,
     build: completed.build,
-    buildClauses: completed.buildClauses,
+    buildClause: completed.buildClause,
+    buildDetail: completed.buildDetail,
     decision: completed.decision,
     ...completed.steps,
     absentSteps,

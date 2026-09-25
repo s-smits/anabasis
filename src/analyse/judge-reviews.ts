@@ -13,7 +13,7 @@ import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../cla
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../truth/judge-prompt-policy.ts";
 import type { JudgeSubjectEvidence } from "../truth/judge.ts";
-import type { AnalysisFinding, IterationAnalysis } from "./iteration-analysis.ts";
+import type { IterationAnalysis } from "./iteration-analysis.ts";
 import { type ContestedCase, type ContestedSubject, contestedCases, isVetoed } from "./judge-contested.ts";
 import { readValidatedBrief } from "../truth/public-resources.ts";
 import { parseJsonAs, capturedJsonParse, hashJsonBytes } from "../meta/json-runtime.ts";
@@ -51,7 +51,7 @@ export type JudgeExit = {
   reason: string;
 };
 
-export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v11";
+export const JUDGE_REVIEWS_SCHEMA = "judge-reviews/v12";
 
 export type JudgeReviewsResult = {
   schema: typeof JUDGE_REVIEWS_SCHEMA;
@@ -70,7 +70,6 @@ export type JudgeReviewsResult = {
   /** Why the review is incomplete; null when every offered battery verdict returned. */
   provisional: string | null;
   exit: JudgeExit;
-  findings: AnalysisFinding[];
   absent: string[];
 };
 
@@ -204,26 +203,6 @@ function judgeExit(contested: readonly ContestedCase[], verified: number): Judge
   };
 }
 
-/** One advisory row naming the contested families. A family is an authoring identity; the no-hints
- *  rule withholds task ids, which are failure locations. */
-function exitFindings(
-  analysis: IterationAnalysis,
-  exit: JudgeExit,
-  contested: readonly ContestedCase[],
-): AnalysisFinding[] {
-  if (exit.kind === "none") return [];
-  const families = [...new Set(contested.map((row) => row.family))].sort();
-  return [
-    {
-      kind: "judge-disagreement",
-      claim: `${exit.reason}; the contested cases lie in families: ${families.join(", ")}`,
-      evidence: join("campaigns", analysis.slug, "analysis", `${analysis.runId}-judges.json`),
-      proposedOwner: null,
-      severity: "advisory",
-    },
-  ];
-}
-
 /** Revalidate the battery's recorded main-Judge review, name every contradiction, and state the
  *  advisory Judge exit. No model call happens on this path. */
 export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDeps): JudgeReviewsResult {
@@ -253,7 +232,6 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
     },
     provisional,
     exit,
-    findings: exitFindings(analysis, exit, contested),
     absent,
   };
   safeguardJudgeReview(

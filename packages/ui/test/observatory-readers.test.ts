@@ -365,18 +365,17 @@ describe("controller metadata", () => {
   it("quotes the selector's own reason from the run's last round", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-aaaa1111.json`, {
-      schema: "difficulty-decision/v6",
+      schema: "difficulty-decision/v7",
       difficulty: {
-        decision: { action: "no-difficulty-evidence", rationale: "first round" },
+        decision: { placement: null, rationale: "first round" },
         admitted: 1,
         excluded: [],
       },
     });
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-i02-bbbb2222.json`, {
-      schema: "difficulty-decision/v6",
+      schema: "difficulty-decision/v7",
       difficulty: {
         decision: {
-          action: "placed",
           placement: { zone: "too-easy" },
           rationale: "pass-rate interval floor 0.805 sits above the target ceiling 0.75",
         },
@@ -385,7 +384,6 @@ describe("controller metadata", () => {
       },
     });
     const difficulty = readDifficulty(root, SLUG, RUN, []);
-    expect(difficulty?.action).toBe("placed");
     expect(difficulty?.standing).toBe("too-easy");
     expect(difficulty?.rationale).toContain("0.805");
     expect(difficulty?.excluded).toEqual(["r1: recorded under variant repair-off"]);
@@ -394,15 +392,14 @@ describe("controller metadata", () => {
   it("reads the zone and the named exclusions of a placed record", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-cccc3333.json`, {
-      schema: "difficulty-decision/v6",
+      schema: "difficulty-decision/v7",
       difficulty: {
-        decision: { action: "placed", rationale: "6/25 …: at the limit", placement: { zone: "on-aim" } },
+        decision: { rationale: "6/25 …: at the limit", placement: { zone: "on-aim" } },
         admitted: 3,
         excluded: [{ runId: "r2", reason: "claim refused", claimRefused: true }],
       },
     });
     const difficulty = readDifficulty(root, SLUG, RUN, []);
-    expect(difficulty?.action).toBe("placed");
     expect(difficulty?.standing).toBe("on-aim");
     expect(difficulty?.excluded).toEqual(["r2: claim refused"]);
   });
@@ -431,7 +428,7 @@ describe("controller metadata", () => {
     const issues: EvidenceIssue[] = [];
     expect(readDifficulty(root, SLUG, RUN, issues)).toBeNull();
     expect(issues.map((issue) => issue.message)).toEqual([
-      "difficulty decision is difficulty-decision/v3, not difficulty-decision/v6; refused",
+      "difficulty decision is difficulty-decision/v3, not difficulty-decision/v7; refused",
     ]);
   });
   it("separates a difficulty decision that was never recorded from one that held", () => {

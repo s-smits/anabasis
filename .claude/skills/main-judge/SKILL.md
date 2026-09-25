@@ -54,11 +54,10 @@ is allowed when public facts cannot decide. Do not say what would make an artifa
 Every complete boolean disagreement is recorded without a materiality threshold, and none of them
 changes a score. `judgeExit` in `src/analyse/judge-reviews.ts` has two kinds: `none` when the Judge
 agreed on every reviewed verified case, and `advisory` otherwise, with counts in both directions.
-It produces one advisory `judge-disagreement` finding that routes to no owner. Disagreements in
-both directions enter the rebuild advice packet as advisory rows named by family; only families
-and counts cross to authoring. Reviews recorded as `judge-reviews/v9` or earlier may carry a
-`blocking` exit and a threshold, and stored `judge-verifier-dispute` feedback rows are dropped
-when an admission packet is read.
+It records no finding and routes to no owner (`judge-reviews/v12`). Disagreements in both
+directions enter the rebuild advice packet as advisory rows named by family, and the exit reason
+is its judge line; only families and counts cross to authoring. A review recorded under another
+schema is refused rather than read.
 
 A recorded claim also names the case ids that disagreed on that battery. Those ids sit beside the
 claim; they change no score, readiness, adoption or statement.

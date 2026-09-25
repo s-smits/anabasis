@@ -6,17 +6,19 @@
  * These are doubled evidence rows for testing what the gate projects. A test that needs the census
  * to actually run over a bundle on disk wants `solvability-specimen.ts` instead.
  */
+import type { SolvabilityFailure } from "../../src/claim/readiness.ts";
 import type { BuildDeps } from "../../src/truth/build-deps.ts";
 import { double } from "./doubles.ts";
 
 export interface CaseSpec {
   taskId: string;
   status: "passed" | "failed" | "non-result";
-  /** The reference artifact the representation census reads; omitted means the row carries none. */
+  /** The reference artifact the witness readers take; omitted means the row carries none. */
   artifact?: unknown;
   /** Declared truth-checks this case's evaluate rejected; the concentration projection reads them. */
   failedCheckIds?: string[];
-  failureKind?: "representation-defect";
+  /** A failed row's attribution; omitted means the checks rejected the witness. */
+  failure?: SolvabilityFailure;
   error?: string;
 }
 
@@ -29,14 +31,13 @@ export function solvabilityCase(spec: CaseSpec) {
     artifactDigest: "artifact" in spec ? "a" : null,
     artifact: spec.artifact ?? null,
     status,
-    nonResultKind: status === "non-result" ? "reference-solve-host" : null,
-    failureOwner: status === "passed" ? null : status === "non-result" ? "environment" : "product",
-    failureKind: spec.failureKind ?? null,
+    ...(status === "failed" && { failure: spec.failure ?? "witness" }),
+    ...(status === "non-result" && { nonResultKind: "reference-solve-host" }),
     submissionPath: null,
     referenceSolve: null,
     failedCheckIds: spec.failedCheckIds ?? [],
     predicateFailures: [],
-    error: spec.error ?? null,
+    error: spec.error ?? (status === "passed" ? null : "reference artifact did not earn a truth verdict"),
   };
 }
 
@@ -58,6 +59,6 @@ export function probeReturning(
             },
           ],
         }
-      : { evidence: { schema: "solvability/v8", cases: specs.map(solvabilityCase) }, findings };
+      : { evidence: { schema: "solvability/v10", cases: specs.map(solvabilityCase) }, findings };
   return () => Promise.resolve(double<Awaited<ReturnType<BuildDeps["probeSolvability"]>>>(result));
 }

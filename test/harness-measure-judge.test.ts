@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { admitFindings, deriveIterationAnalysis } from "../src/analyse/iteration-analysis.ts";
+import { deriveIterationAnalysis } from "../src/analyse/iteration-analysis.ts";
 import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
 import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
 import type { JudgeAttempt, JudgeSession } from "../src/truth/judge.ts";
@@ -159,7 +159,7 @@ describe("the census Judge on a measured round", () => {
     const analysis = deriveIterationAnalysis(repo, "bridge-truss", "m6-census");
     expect(analysis.battery.claimCreated).toBe(true);
     const reviews = runJudgeReviews(analysis, { repoRoot: repo, judgePin: null });
-    expect(reviews.schema).toBe("judge-reviews/v11");
+    expect(reviews.schema).toBe("judge-reviews/v12");
     expect(reviews.provisional).toBeNull();
     expect(reviews.census?.runId).toBe("m6-census");
     expect(reviews.coverage).toMatchObject({ reviewable: 4, reviewed: 4 });
@@ -171,12 +171,7 @@ describe("the census Judge on a measured round", () => {
       verifierPassJudgeFail: 1,
       verified: 4,
     });
-    expect(reviews.findings).toEqual([
-      expect.objectContaining({ kind: "judge-disagreement", severity: "advisory", proposedOwner: null }),
-    ]);
     expect(reviews.absent).toEqual([]);
-    // An advisory disagreement routes to no author session: it changes no owner and no reopen.
-    expect(admitFindings(repo, analysis, reviews.findings).feedback).toEqual([]);
   }, 240_000);
 
   it.concurrent("sends no control subject to the Judge after four disagreements, and blocks nothing", async () => {
@@ -252,9 +247,5 @@ describe("the census Judge on a measured round", () => {
       verifierFailJudgePass: 0,
       verifierPassJudgeFail: 4,
     });
-    expect(reviews.findings).toEqual([
-      expect.objectContaining({ kind: "judge-disagreement", severity: "advisory", proposedOwner: null }),
-    ]);
-    expect(admitFindings(repo, analysis, reviews.findings).feedback).toEqual([]);
   }, 240_000);
 });

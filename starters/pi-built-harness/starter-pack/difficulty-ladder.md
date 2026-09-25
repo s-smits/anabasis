@@ -2,8 +2,7 @@
 
 None of these six is your domain, and none of them is a domain this loop runs. They are here so
 that "harder" means something specific while you author, rather than a bigger number in the same
-task. The rows show the scale and nothing else: they name no requirement for you to adopt. **We aim
-for frontier**, and we reach it with what the request's own field demands.
+task. The rows show the scale and nothing else: they name no requirement for you to adopt.
 
 ## Four tiers
 
@@ -137,28 +136,31 @@ and replaying byte streams through the program it builds.
 The solver is a capable model with a shell. Anything it can settle by searching, it will search:
 it writes its own optimiser, runs it for as long as the wall allows and reads your published rules
 back out of the brief. So the tier is set by whether the answer has to be right about something the
-search cannot enumerate cheaply, and three changes that feel harder measure exactly the same:
+search cannot enumerate cheaply, and two changes that feel harder measure exactly the same:
 
-- **A tighter number on a rule the tasks already had.** The solver's search finds the same kind of
-  answer closer to the limit, and the reasoning is unchanged.
 - **More cases of a rule the tasks already had.** That is coverage, worth having and not a tier.
 - **A new rule that only removes candidates.** A clearance, an exclusion, a forbidden pairing: the
   solver filters and searches what is left. A rule raises the tier only when satisfying it spends
   something the other limits need, so the answer has to be re-planned rather than re-filtered.
 
-What does move it is the set. The answer that wins at nominal is not the one that survives the set,
-so the solver gives something up before it knows what it is buying; and once the set is a region
-rather than a list, the solver has to find its own worst case before it can report one.
+A tighter number proves nothing alone. Where the task optimises, a limit asks the solver to search
+as well as the witness that reached it, and your reference solve is a weak witness: a solver with a
+shell and its whole wall beats a reference that searched for minutes, so a limit set at your
+reference's value, or a hair above it, asks for nothing the solver lacks. A limit is a demand when a
+longer search of yours reached it and a rehearsal shows your solver missing it, and not before.
+
+The set moves the tier without that race. The answer that wins at nominal is not the one that
+survives the set, so the solver gives something up before it knows what it is buying; and once the
+set is a region rather than a list, the solver has to find its own worst case before it can report
+one.
 
 Three things you publish can give the tier back without a word of the tasks changing.
 
-**Your tools.** An adviser that reports every margin under the verified model across every listed
-state turns any feasible task into iterate-until-clear: propose, read the one failing state, adjust,
-ask again. Keep the analysis — a solver without one fails on arithmetic, which measures nothing —
-but then the difficulty has to live where that adviser cannot reach: a region the verifier searches
-again, a class the answer declares, a sequence whose early steps close later ones. Say in
-EXPERIMENT.json which one your tasks rely on. A tool that returns the very value a check compares
-against is the reference solve under another name.
+**Your tools.** The analysis stays, because a solver without one fails on arithmetic, which
+measures nothing; but beside an adviser reporting every margin across every listed state, the
+difficulty lives only where it cannot reach: a region the verifier searches again, a class the
+answer declares, a sequence whose early steps close later ones, a limit trial and error does not
+reach. Say in EXPERIMENT.json which one your tasks rely on.
 
 **A number no admissible answer can breach.** Take the answer a solver that ignores an obligation
 would produce and read it against every published limit and tolerance. If it clears them all, the
@@ -199,18 +201,19 @@ usually missing the last two:
 3. A duty to report the value each limit was read against, checked against the answer itself.
 
 Find each in the request's field, never in a rule you add to it. If your tasks already carry all
-three and still land above the aim, the move left is to take the set out of the task statement and
-out of your tools; adding members to a listed set is coverage. If the field genuinely holds none of
-the three, say so in EXPERIMENT.json's gap and raise the demand the other way: more of the request's
-own capabilities in each task, working through their real interfaces at once. Then check the
-numbers you already publish against the two above — a rule that cannot be broken as published keeps
-a battery above the aim whatever is added beside it.
+three and still land above the aim, one move left is to take the set out of the task statement and
+out of your tools, since adding members to a listed set is coverage; another is a limit only a
+longer search of yours reaches, once a rehearsal shows your solver missing it. If the field
+genuinely holds none of the three, say so in EXPERIMENT.json's gap and raise the demand the other
+way: more of the request's own capabilities in each task, working through their real interfaces at
+once. Then check the numbers you already publish against the two above — a rule that cannot be
+broken as published keeps a battery above the aim whatever is added beside it.
 
 ## When a battery lands below the aim
 
-The first battery is authored above what you believe the solver handles, so landing here is the
-course working. A later battery still below it usually is not, because three things read exactly
-like difficulty from the outside. Settle them in this order before easing anything:
+A first battery landing here is the course working. A later battery still here usually is not,
+because three things read exactly like difficulty from the outside. Settle them in this order before
+easing anything:
 
 1. **Could the answer be read?** A rule your checks apply and your brief does not publish fails
    every task. So does a rule you wrote yourself that a practitioner could read two ways: every
@@ -223,6 +226,5 @@ like difficulty from the outside. Settle them in this order before easing anythi
    stuck path or an unpublished rule. A battery that is genuinely hard fails different tasks.
 
 Only then is the battery telling you about the tasks. Ease the whole battery rather than a subset,
-since the distance to the aim is stated in cases, by giving back one of the three things above. It
-does not mean loosening a published number on a rule the tasks already had, which moves the count as
-little as tightening one did.
+since the distance to the aim is stated in cases, by giving back one of the three things above.
+Relaxing a published constraint you chose yourself is another way back toward the band.

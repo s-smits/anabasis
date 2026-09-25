@@ -172,9 +172,6 @@ interface GradedOutcome {
   solverOrigin: boolean;
 }
 
-/** The whole verifier deadline for one rehearsal, stated in `harness_trial`'s own description. */
-export const REHEARSAL_VERIFIER_DEADLINE_MS = 30_000;
-
 const nonResult = (reason: string, nonResultKind: NonResultKind): CaseOutcome => ({
   kind: "non-result",
   reason,
@@ -374,14 +371,12 @@ function lifetimeUsable(lifetime: VerifierLifetime | undefined): boolean {
   return true;
 }
 
-/** Why a rehearsal produced no verdict. A deadline or a cancellation is read from the signals
- *  rather than from the error, because an abort surfaces as whatever the aborted stage happened to
- *  throw, which names the stage and not the cause. */
-function rehearsalFailure(error: unknown, signal: AbortSignal, callerSignal: AbortSignal | undefined) {
+/** Why a rehearsal produced no verdict. A cancellation is read from the caller's signal rather
+ *  than from the error, because an abort surfaces as whatever the aborted stage happened to throw,
+ *  which names the stage and not the cause. */
+function rehearsalFailure(error: unknown, callerSignal: AbortSignal | undefined) {
   if (error instanceof VerifierOperationalStop) return { status: "non-result", kind: "cleanup-pending" };
-  if (signal.aborted) {
-    return { status: "non-result", kind: callerSignal?.aborted === true ? "cancelled" : "timeout" };
-  }
+  if (callerSignal?.aborted === true) return { status: "non-result", kind: "cancelled" };
   if (error instanceof EvaluatorProcessFailure && ["timeout", "crash", "sandbox"].includes(error.kind)) {
     return { status: "non-result", kind: error.kind };
   }
@@ -392,7 +387,13 @@ function rehearsalFailure(error: unknown, signal: AbortSignal, callerSignal: Abo
  *  status and the one aggregate `truthOk` bit leave this boundary; the raw evaluator result, its
  *  failing check ids and every verifier diagnostic stay private. That single bit is the author's own
  *  check program run over the author's own bytes, and it is the only instrument in the authoring
- *  loop that can show a Builder its battery is easier than the target it stated. */
+ *  loop that can show a Builder its battery is easier than the target it stated.
+ *
+ *  It grades under the walls a measured battery grades under and no tighter one: each check gets
+ *  the harness's own `gate.check_seconds`, which `loadCorrectnessModel` reads from the snapshot,
+ *  and each tool run its `tool_run_seconds`. A fixed total over the whole grading returned
+ *  `not-run` for any harness whose checks outlast it, which spent the solve and graded nothing on
+ *  exactly the tasks the battery would have graded. */
 export async function rehearseCase(
   workspace: string,
   brief: Brief,
@@ -405,10 +406,8 @@ export async function rehearseCase(
     return { status: "not-run" };
   }
   if (lifetime === undefined) return { status: "non-result", kind: "verifierUnavailable" };
-  const deadline = AbortSignal.timeout(REHEARSAL_VERIFIER_DEADLINE_MS);
-  const signal = callerSignal === undefined ? deadline : AbortSignal.any([callerSignal, deadline]);
   try {
-    signal.throwIfAborted();
+    callerSignal?.throwIfAborted();
     lifetime.assertUsable();
     const checks = applicableTruthChecks(brief, task);
     const { verifier, missingTools } = resolveVerifier({
@@ -418,17 +417,20 @@ export async function rehearseCase(
       verifierLifetime: lifetime,
     });
     if (missingTools.length > 0) return { status: "non-result", kind: "verifierUnavailable" };
-    const evaluate = evaluateCheckProgram(brief, await loadCorrectnessModel(workspace, lifetime, signal));
+    const evaluate = evaluateCheckProgram(
+      brief,
+      await loadCorrectnessModel(workspace, lifetime, callerSignal),
+    );
     // Reuse battery execution without recording a case or publishing the raw verdict.
     const scoped = await runCaseScope(
       { brief, evaluate, verifier, verifierLifetime: lifetime, runId: "harness-trial" },
       solved,
       final.artifactJson,
-      signal,
+      callerSignal,
     );
     if (scoped.cleanupPending) return { status: "non-result", kind: "cleanup-pending" };
     if (scoped.failure !== null) throw scoped.failure;
-    signal.throwIfAborted();
+    callerSignal?.throwIfAborted();
     // The battery's own decision over the same evidence, so a grounded check that returned true
     // without ever running its tool is no pass here either; only the aggregate bit leaves.
     const subject = { phase: "battery" as const, subjectId: task.taskId, attempt: 1 };
@@ -445,7 +447,7 @@ export async function rehearseCase(
     if (outcome.kind === "non-result") return { status: "non-result", kind: outcome.nonResultKind };
     return { status: "completed", truthOk: outcome.kind === "truth" ? outcome.truthOk : null };
   } catch (error) {
-    return rehearsalFailure(error, signal, callerSignal);
+    return rehearsalFailure(error, callerSignal);
   }
 }
 
@@ -479,6 +481,7 @@ function acceptedOutcome(
   // that was skipped could only ever have withheld a pass, never created one. A case that failed
   // to compile is filed here rather than as a non-result.
   const failed = [...blockingFailedCheckIds(scoped.verdict)];
+  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a verified case whose externally grounded check ran no tool has no tool evidence behind its verdict
   if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
     // The unattributed verifier kind belongs to generated behaviour, not the environment.
     return nonResult(

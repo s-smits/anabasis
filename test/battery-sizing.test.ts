@@ -196,7 +196,12 @@ describe("runBuildStep battery sizing", () => {
         ...keyIfDefined("note", options?.advisoryNote),
         ...keyIfDefined("band", options?.band),
       });
-      return double({ buildAdmissible: false, adopted: false, clauses: ["fixture-stop"], iterations: [] });
+      return double({
+        buildAdmissible: false,
+        adopted: false,
+        clause: "iterations-exhausted",
+        iterations: [],
+      });
     };
     await runBuildStep(
       double({

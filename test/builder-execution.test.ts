@@ -139,9 +139,7 @@ describe("the submission rows", () => {
       turn: 1,
       stage: "validation",
       commit: "a1b2c3d",
-      findings: [
-        { code: "tasks-self-reported-expectation", path: "tasks", detail: "d", owner: "task-curriculum" },
-      ],
+      findings: [{ code: "tasks-self-reported-expectation", path: "tasks", detail: "d" }],
     });
     const accepted = recorder.recordSubmit({
       turn: 2,
@@ -153,7 +151,6 @@ describe("the submission rows", () => {
           code: "tasks-multiplicity-unobservable",
           path: "tasks",
           detail: "the bounded search cannot enumerate an externally decided task",
-          owner: "task-curriculum",
         },
       ],
       terminal: false,

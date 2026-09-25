@@ -49,12 +49,13 @@ function adviceIssues(campaignDir, runId) {
   return packet?.schema === REBUILD_ADVICE_SCHEMA && Array.isArray(packet.issues) ? packet.issues : null;
 }
 
-/** A finding's producer-owned identity: kind, owner and the evidence file it cites. The public
- *  claim sentence is written at admission time, so another revision of that projection words the
- *  same admitted finding differently; joining on it would report the finding as not consumed. */
+/** A finding's producer-owned identity: its owner, whether it is a defect, and the evidence file it
+ *  cites. The public claim sentence is written at admission time, so another revision of that
+ *  projection words the same admitted finding differently; joining on it would report the finding
+ *  as not consumed. */
 function epochFindingKey(finding) {
   if (!isRecord(finding)) return null;
-  return JSON.stringify([finding.kind ?? null, finding.proposedOwner ?? null, finding.evidence ?? null]);
+  return JSON.stringify([finding.owner ?? null, finding.defect ?? null, finding.evidence ?? null]);
 }
 
 /** Multiplicity-aware: two findings may share a key, and each admitted row is consumed once. */
@@ -239,7 +240,7 @@ function routedOwners(feedback, projected, admitted) {
   const matches = (item) =>
     projected.findings.some(
       (finding) =>
-        item.code === finding.kind &&
+        item.code === (finding.defect === true ? "defect" : "observation") &&
         item.path === finding.evidence &&
         admitted?.some((hit) => epochFindingKey(hit) === epochFindingKey(finding)),
     );
@@ -283,7 +284,7 @@ function epochRow(campaignDir, runId) {
   const feedback = Array.isArray(admission?.feedback) ? admission.feedback : null;
   const kinds = {};
   for (const finding of projected.findings) {
-    const key = `${finding.kind}/${finding.proposedOwner ?? "unowned"}`;
+    const key = `${finding.defect === true ? "defect" : "observation"}/${finding.owner ?? "unowned"}`;
     kinds[key] = (kinds[key] ?? 0) + 1;
   }
   const consumed = (hits ?? 0) + (disputes ?? 0);

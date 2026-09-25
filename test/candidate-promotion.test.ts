@@ -225,8 +225,8 @@ describe("promoteCandidate — one battery, one decision", () => {
         expect(
           decideDifficulty([
             { runId: "failed-l2", batterySha256: "fixture", n: 25, passed: 0, unaccepted: 25, measured },
-          ]).action,
-        ).toBe("no-difficulty-evidence");
+          ]).placement,
+        ).toBeNull();
         return;
       }
       const claims = join(root, "campaigns", SLUG, "claims");
@@ -249,10 +249,7 @@ describe("promoteCandidate — one battery, one decision", () => {
         domainDir: selectedProductDir(root, SLUG),
         builder: { kind: "codex", model: "fixture", reasoningEffort: "low" },
       });
-      expect(selected.readout?.decision).toMatchObject({
-        action: "placed",
-        placement: { zone: "too-hard" },
-      });
+      expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-hard" } });
       expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
       expect(selected.kickoff).toBe("build trusses");
       let calls = 0;

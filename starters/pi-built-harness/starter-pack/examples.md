@@ -15,7 +15,7 @@ parsing binary telemetry frames".
 ```text
 Families   fixed-header decode | TLV payloads | CRC-guarded frames | reassembly across buffers |
            endianness variants. Left out: frame encryption and authentication.
-Root       files {fileMap: true, taskConditioned: true}, holding the entrypoint the task names.
+Root       files {fileMap: true}, holding the entrypoint the task names.
 Checks     target-compiles     external ["cc"]; cites compile-contract (entrypoint, C17, signatures)
            decode-behaviour    external ["cc"]; compiles, then runs cell:build/driver on each
                                published scenario's stdin; cites decode-contract, scenario-contract
@@ -39,7 +39,7 @@ radial low-voltage distribution feeders".
 ```text
 Families   residential radial | industrial feeder with motor inrush | mixed feeder with PV
            backfeed | long rural feeder governed by voltage drop. Left out: harmonics, protection.
-Root       network {taskConditioned: true}: buses, lines with a catalogue conductor id and length,
+Root       network: buses, lines with a catalogue conductor id and length,
            the reported total cost. Every check reads under it.
 Checks     catalogue-conformance authored; every line names one published conductor and copies
                                  its published ampacity and impedance; cites catalogue-rule
@@ -55,10 +55,10 @@ Checks     catalogue-conformance authored; every line names one published conduc
                                    artifactPath: "$.network.totalCost", direction: "atMost"}]
 Join       lines-to-buses, owned by catalogue-conformance,
            decoyClasses ["ghost-bus", "alias-swap-conductor-id"]
-Constant   ampacity-reference-ambient = 30 degC, authority IEC 60364-5-52 Table B.52.14; one
-           task sits exactly at 30 so > and >= separate, with a reject there carrying
-           targetsBoundary {publicInputPath: "$.ambientTempC", constantName: "ampacity-reference-ambient"}
-Constant   feeder-cost-budget, with one task exactly at it, as every declared boundary requires
+Constant   ampacity-reference-ambient = 30 degC, authority IEC 60364-5-52 Table B.52.14; a reject
+           at it carries targetsBoundary {publicInputPath: "$.ambientTempC",
+           constantName: "ampacity-reference-ambient"}
+Constant   feeder-cost-budget, the limit each task publishes at $.costBudget
 Accepts    the minimal compliant sizing, and one conductor size up still inside the budget
 Reject     one line endpoint renamed to a bus no bus row declares, everything else identical;
            mutationClass "ghost-bus", targetsJoin lines-to-buses, decoyClass "ghost-bus",
@@ -123,7 +123,7 @@ One rostering domain runs through the brief, tasks, controls, evaluator and refe
       "decoyClasses": ["alias-swap"]
     }
   ],
-  "artifactSchema": [{"name": "assignments", "shape": "array of {staffId, shiftId} rows", "taskConditioned": true}],
+  "artifactSchema": [{"name": "assignments", "shape": "array of {staffId, shiftId} rows"}],
   "designRuleConstants": [],
   "correctnessContract": "check-program/v1"
 }
@@ -172,8 +172,7 @@ One rostering domain runs through the brief, tasks, controls, evaluator and refe
     {
       "name": "files",
       "shape": "map of safe relative POSIX paths to file contents, including the main.py entrypoint",
-      "fileMap": true,
-      "taskConditioned": true
+      "fileMap": true
     }
   ],
   "designRuleConstants": [],

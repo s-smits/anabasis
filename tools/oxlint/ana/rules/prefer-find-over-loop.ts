@@ -27,8 +27,8 @@ import { asSubject, onlyStatement, statementBelow } from "../shared/statements.t
  * from the element keeps it: `case-record.ts` walks a key list and returns
  * `` `${key} must be a non-empty string` ``, so the rewrite is a `find` *and* a second statement,
  * which is not shorter and is not what the message promised. And a `Set` or a `Map` has no
- * `find` at all: `feedback-routing.ts` walks `BUILDER_OWNED`, which two lines above answers
- * `.has(owner)`. The rule reads both from the file — a name declared `new Set(…)` or `new Map(…)`,
+ * `find` at all, even where the module walks one and asks it `.has(…)` two lines later. The rule
+ * reads both from the file — a name declared `new Set(…)` or `new Map(…)`,
  * or asked `.has(…)` anywhere in the same module, is not an array — so that the admission test
  * holds at every site it reports: the method is legal where the loop was, it is shorter, and no
  * other rule in this tree asks for a loop.

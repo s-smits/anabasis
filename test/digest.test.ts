@@ -225,12 +225,11 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "0.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "placed-0",
         difficulty: {
           band: [0.2, 0.5],
           decision: {
-            action: "placed",
             rationale: "5/6, Wilson interval [0.436, 0.970] against target range [0.2, 0.5]",
             placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim: -2 },
           },
@@ -243,26 +242,24 @@ describe("digest", () => {
     writeFileSync(
       join(dir, "1.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "unplaced-1",
         difficulty: {
-          decision: { action: "no-difficulty-evidence", rationale: "no batteries recorded" },
+          decision: { placement: null, rationale: "no batteries recorded" },
           admitted: 0,
           excluded: [],
         },
       }),
     );
     const digest = digestOf(paths);
-    expect(digest).toContain(
-      "placed-0: action placed over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1",
-    );
-    expect(digest).toContain("unplaced-1: action no-difficulty-evidence · admitted 0 excluded 0");
+    expect(digest).toContain("placed-0: over-aim · 5/6 aim [2,3] toAim -2 · admitted 1 excluded 1");
+    expect(digest).toContain("unplaced-1: unplaced · admitted 0 excluded 0");
     expect(digest).not.toMatch(/(?:STOP|BROADEN|REBUILD) DUE/);
   });
 
-  // Only the version separates a retired meaning from a current one, since `placed` is spelled the same
-  // in both vocabularies. A refusal must not read as the empty-section sentence either: absence says read
-  // the controller's decision reasons, refusal says read the campaign with the tree that wrote it.
+  // Only the version separates a retired meaning from a current one, since a placement is spelled the
+  // same in both vocabularies. A refusal must not read as the empty-section sentence either: absence says
+  // read the controller's decision reasons, refusal says read the campaign with the tree that wrote it.
   it.each([
     [
       "an unversioned pre-v5 record",
@@ -272,12 +269,13 @@ describe("digest", () => {
     ["a v3 record", { schema: "difficulty-decision/v3", runId: "old-0" }, "difficulty-decision/v3"],
     ["a v4 record", { schema: "difficulty-decision/v4", runId: "old-4" }, "difficulty-decision/v4"],
     ["a v5 record", { schema: "difficulty-decision/v5", runId: "old-5" }, "difficulty-decision/v5"],
+    ["a v6 record", { schema: "difficulty-decision/v6", runId: "old-6" }, "difficulty-decision/v6"],
   ])("refuses %s by name rather than reading it or calling it never recorded", (_title, record, reason) => {
     const paths = fixture();
     mkdirSync(join(paths.campaign, "difficulty-decisions"));
     writeFileSync(join(paths.campaign, "difficulty-decisions", "0.json"), JSON.stringify(record));
     const digest = digestOf(paths);
-    expect(digest).toContain(`refused, not difficulty-decision/v6 — 0.json: ${reason}`);
+    expect(digest).toContain(`refused, not difficulty-decision/v7 — 0.json: ${reason}`);
     expect(digest).not.toContain(record.runId);
     expect(digest).not.toContain("no recorded difficulty decisions");
     expect(digest).not.toMatch(/satClimbs|satLevelled|satRange|satBroadens|THRESHOLD DRIFT/);
@@ -291,11 +289,11 @@ describe("digest", () => {
       writeFileSync(
         join(dir, "0.json"),
         JSON.stringify({
-          schema: "difficulty-decision/v6",
+          schema: "difficulty-decision/v7",
           // run-4 graded 1 and passed 1, so a decision that read it above the aim and got a
           // perfect battery back is lane 5's question.
           runId: "run-4",
-          difficulty: { decision: { action: "placed", placement: { zone } }, admitted: 1, excluded: [] },
+          difficulty: { decision: { placement: { zone } }, admitted: 1, excluded: [] },
         }),
       );
       return digestOf(paths);
@@ -370,7 +368,7 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "analysis", "run-1-judges.json"),
       JSON.stringify({
-        schema: "judge-reviews/v11",
+        schema: "judge-reviews/v12",
         runId: "run-1",
         census: null,
         // t9 was never a verified case of run-1, so its row is not attributed.
@@ -656,10 +654,10 @@ describe("digest", () => {
     writeFileSync(
       join(paths.campaign, "difficulty-decisions", "run-3.json"),
       JSON.stringify({
-        schema: "difficulty-decision/v6",
+        schema: "difficulty-decision/v7",
         runId: "run-3",
         difficulty: {
-          decision: { action: "placed", placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
+          decision: { placement: { zone: "on-aim" }, evidence: [{ runId: "run-2" }] },
         },
       }),
     );
@@ -691,7 +689,7 @@ describe("digest", () => {
       "run-2: graded 0 · provider non-results 2 · first 2026-09-08T00:00:00.000Z last 2026-09-08T00:01:30.000Z" +
       " · CENSORED (provider non-results; the typed kind is the evidence, the message is not)";
     expect(digest).toContain(censoredRow);
-    expect(digest).toContain("DECISION ON CENSORED BATTERY (lane 24): run-3 placed read run-2");
+    expect(digest).toContain("DECISION ON CENSORED BATTERY (lane 24): run-3 on-aim read run-2");
     expect(digest).toContain("epoch-aa/builder-execution.json: turn retries 2 · waited 11 min in total");
     expect(digest).toContain(
       "EXPLICIT ALLOWANCE WAIT (lane 24): epoch-aa/builder-execution.json turn 3 attempt 1/3 failed waited 10 min (explicit allowance)",
@@ -723,7 +721,7 @@ describe("digest", () => {
     expect(refused).not.toContain('absent step "epoch review"');
   });
 
-  it("counts an advisory finding's recurrence over measured reviews by kind and declared check", () => {
+  it("counts an advisory finding's recurrence over measured reviews by placement and declared check", () => {
     const paths = fixture();
     const analysis = join(paths.campaign, "analysis");
     mkdirSync(analysis, { recursive: true });
@@ -733,10 +731,10 @@ describe("digest", () => {
         JSON.stringify({ schema: EPOCH_REVIEW_SCHEMA, status: "completed", findings, reads: [] }),
       );
     const advisory = {
-      kind: "harness-defect",
+      defect: true,
       severity: "advisory",
       checkId: "alpha-check",
-      proposedOwner: "brief",
+      owner: "correctness-model/brief.json",
     };
     review("run-1", [advisory]);
     const once = digestOf(paths);
@@ -745,10 +743,10 @@ describe("digest", () => {
     // An authoring checkpoint reads the same bytes a measured review reads, so it is no recurrence.
     review("authoring-01a0b788-f000-7000-8000-000000000000", [advisory]);
     expect(digestOf(paths)).not.toContain("ADVISORY FINDING RECURS UNROUTED");
-    review("run-2", [advisory, { kind: "harness-defect", severity: "advisory" }]);
+    review("run-2", [advisory, { defect: true, severity: "advisory" }]);
     const twice = digestOf(paths);
     expect(twice).toContain(
-      "ADVISORY FINDING RECURS UNROUTED (lane 14): harness-defect alpha-check advisory in 2 measured reviews (run-1, run-2)",
+      "ADVISORY FINDING RECURS UNROUTED (lane 14): defect alpha-check advisory in 2 measured reviews (run-1, run-2)",
     );
     expect(twice).toContain("advisory findings naming no check: 1 (no recurrence identity)");
     // A review of another schema is refused by name rather than read for its findings.
@@ -870,13 +868,10 @@ describe("digest", () => {
       writeFileSync(
         join(dir, `${name}.json`),
         JSON.stringify({
-          schema: "difficulty-decision/v6",
+          schema: "difficulty-decision/v7",
           runId,
           difficulty: {
-            decision: {
-              action: "placed",
-              placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim },
-            },
+            decision: { placement: { passes: 5, n: 6, zone: "over-aim", aim: [2, 3], toAim } },
             admitted: 1,
             excluded: [],
             rows,
@@ -950,7 +945,7 @@ describe("digest", () => {
     mkdirSync(join(paths.campaign, "analysis"), { recursive: true });
     const judges = (disagreements: number) =>
       JSON.stringify({
-        schema: "judge-reviews/v11",
+        schema: "judge-reviews/v12",
         runId: "run-1",
         contested: [],
         census: {
@@ -982,7 +977,7 @@ describe("digest", () => {
       JSON.stringify({ census: { judge: "on", disagreements: 1 }, exit: { kind: "completed" } }),
     );
     const refused = digestOf(paths);
-    expect(refused).toContain("refused, not judge-reviews/v11 — run-1-judges.json");
+    expect(refused).toContain("refused, not judge-reviews/v12 — run-1-judges.json");
     expect(refused).not.toContain("CENSUS WITH DISAGREEMENT");
   });
 
@@ -1012,11 +1007,11 @@ describe("digest", () => {
       join(paths.campaign, "analysis", "run-1-admission.json"),
       JSON.stringify({
         admitted: [
-          { kind: "contract", proposedOwner: null },
-          { kind: "contract", proposedOwner: "correctness-model" },
+          { defect: false, owner: null },
+          { defect: true, owner: "correctness-model/evaluator.ts" },
         ],
         refused: [],
-        feedback: [{ owner: "correctness-model" }],
+        feedback: [{ owner: "correctness-model/evaluator.ts" }],
         policy: "epoch-review/v3",
       }),
     );
@@ -1027,11 +1022,9 @@ describe("digest", () => {
     expect(digest).toContain("REPEATED CONDITION (lane 20): run-1, run-4");
     expect(digest).toContain("run-2: task set unobservable — no manifest-verified battery record");
     expect(digest).toContain(
-      "run-1: admitted 2 ((none) 1, correctness-model 1) · refused 0 · feedback owners {correctness-model} · policy epoch-review/v3",
+      "run-1: admitted 2 ((none) 1, correctness-model/evaluator.ts 1) · refused 0 · feedback owners {correctness-model/evaluator.ts} · policy epoch-review/v3",
     );
-    expect(digest).toContain(
-      "FINDINGS WITHOUT PROPOSED OWNER (lane 14): 1 of 2 admitted findings name no owner",
-    );
+    expect(digest).toContain("FINDINGS WITHOUT OWNER (lane 14): 1 of 2 admitted findings name no owner");
   });
 
   it("each measured product keeps its check corpus, join targets and case denominator", () => {

@@ -18,21 +18,16 @@
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { type AnalysisFinding, namedSubject } from "../analyse/iteration-analysis.ts";
+import { type AnalysisFinding, type FindingPlacement, namedSubject } from "../analyse/iteration-analysis.ts";
+import { contractDefect } from "../analyse/finding-owner.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
-import {
-  BUILDER_OWNED,
-  ownerTier,
-  ownerWritableFiles,
-  routableOwner,
-  routableOwnerOf,
-} from "../author/feedback-routing.ts";
+import { BUNDLE_FILES, type BundleFile, ownerSide } from "../author/feedback-routing.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { type JsonValue, isString } from "../meta/json-shape.ts";
+import { type JsonValue, isBoolean, isString } from "../meta/json-shape.ts";
 import { keyIfNotNull, keysIf } from "../meta/optional-key.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import {
@@ -42,11 +37,11 @@ import {
   probeCitationRefusal,
 } from "./review-probe.ts";
 import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } from "./review-sources.ts";
-import { BRIEF_FILE } from "../meta/bundle-layout.ts";
+import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
 
-export const EPOCH_REVIEW_SCHEMA = "epoch-review/v4";
+export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
 /** Product identity; review procedure belongs to the review request. */
 export type MeasuredCondition = {
   /** Null when the recorded fields cannot establish a measured condition. */
@@ -140,6 +135,8 @@ const DEMONSTRATION_MIN_CHARS = 40;
 const CITATIONS_UNBOUND =
   "citations must quote passages actually returned by read_source; read the source and retry";
 const SEVERITY_REQUIRED = "severity must explicitly be advisory or blocking";
+const DEFECT_AND_CLAIM_REQUIRED = "defect and claim are required";
+const DEFECT_OWNER_REQUIRED = "a defect must name the bundle file at fault as its owner";
 
 /** Everything one `record_finding` call offers, as the rules below read it. The raw `args` stay
  *  beside the parsed values because two rules ask whether a field was supplied at all, which a
@@ -150,7 +147,7 @@ const SEVERITY_REQUIRED = "severity must explicitly be advisory or blocking";
 interface FindingCase {
   parsed: FindingArgs;
   args: Record<string, JsonValue>;
-  owner: ReturnType<typeof routableOwnerOf>;
+  owner: BundleFile | null;
   citations: string | null;
   state: ReviewState;
   identities: BriefIdentities;
@@ -160,7 +157,7 @@ interface FindingCase {
 type FindingRule = (subject: FindingCase) => string | null;
 
 type FindingSeverity = "advisory" | "blocking";
-type FindingVerdict = { why: string } | { severity: FindingSeverity };
+type FindingVerdict = { why: string } | { severity: FindingSeverity; placement: FindingPlacement };
 
 /** The public identities a finding may name, and how often each defect identity recurred. */
 type FindingPriors = {
@@ -242,12 +239,12 @@ export function conditionAlreadyReviewed(
  *  Rereviews of the current condition, duplicate findings within one review and replay files all
  *  add no vote, because the question is how many separate measured conditions named the defect.
  *
- *  Any kind that makes a positive claim counts as a naming, not only `harness-defect`: a check
- *  reported as a harness defect in one review and as hardness in the next is still that check being
- *  named a second time. `diagnosis-uncertain` is the one kind excluded, because it is the reviewer
- *  saying it could not attribute what it saw, and counting it would let an unattributed observation
- *  force the next finding on that check to blocking. An observation the reviewer could not
- *  attribute is not a first naming; the next positive claim about that check is. */
+ *  Any finding placed in a file counts as a naming, not only a defect: a check reported as a defect
+ *  in one review and as an observation of hardness in the next is still that check being named a
+ *  second time. An unplaced finding is the one excluded, because it is the reviewer saying it could
+ *  not attribute what it saw, and counting it would let an unattributed observation force the next
+ *  finding on that check to blocking. An observation the reviewer could not attribute is not a
+ *  first naming; the next placed claim about that check is. */
 export function recurringDefects(analysisDir: string, current: MeasuredCondition): Map<string, number> {
   const seen = new Map<string, Set<string>>();
   const currentKey = current.digest;
@@ -256,7 +253,7 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
     const priorKey = review.condition == null ? null : measuredConditionOf(review.condition).digest;
     if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
     for (const finding of review.findings) {
-      if (finding.kind === "diagnosis-uncertain") continue;
+      if (finding.owner === null) continue;
       const identity = namedSubject(finding);
       if (identity === null) continue;
       const conditions = seen.get(identity) ?? new Set<string>();
@@ -271,11 +268,11 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  narrows the repair the Builder may then make: the continuation decides scope, and this function
  *  decides the admitted severity alone.
  *
- *  Only a harness defect is limited at all, and one review may reopen at most one authoring area,
- *  because a second blocking defect in a single reading is a reason to inspect the review rather
- *  than to reopen twice. An agent-tier defect on first occurrence stays advisory because a reviewer
- *  reading source can only suspect, and one suspicion is enough to discard an entire working
- *  product. A first finding still reaches authoring, as advice carrying its recorded owner.
+ *  An observation is always advice. A defect is limited, and one review may reopen at most one
+ *  authoring area, because a second blocking defect in a single reading is a reason to inspect the
+ *  review rather than to reopen twice. A first defect owned under `agent/` stays advisory, because
+ *  a reviewer reading source can only suspect, and one suspicion is enough to discard an entire
+ *  working product. A first finding still reaches authoring, as advice carrying its recorded owner.
  *
  *  Escalation is therefore once per defect identity and not more. A defect named in three
  *  consecutive reviews forces two rebuilds and survives both, because the public projection
@@ -288,27 +285,16 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  control and over one changed field, and the row records what they decided. The reviewer still
  *  owes the demonstration, the citations and the one-reopen cap. */
 function admitSeverity(
-  kind: string,
-  proposedOwner: ReturnType<typeof routableOwnerOf>,
+  { owner, defect }: FindingPlacement,
   chosen: FindingSeverity,
   host: { blockingAlready: boolean; recurrences: number; demonstrated: boolean; probeBacked: boolean },
 ): FindingSeverity {
-  if (kind !== "harness-defect") return chosen;
-  if (host.blockingAlready) return "advisory";
-  if (!host.demonstrated) return "advisory";
+  if (!defect || host.blockingAlready || !host.demonstrated) return "advisory";
   if (host.recurrences >= 2) return "advisory";
   if (host.recurrences === 1) return "blocking";
   if (host.probeBacked) return chosen;
-  return proposedOwner !== null && ownerTier(proposedOwner) === "agent" ? "advisory" : chosen;
+  return ownerSide(owner) === "agent" ? "advisory" : chosen;
 }
-
-const FINDING_KINDS = [
-  "harness-defect",
-  "curriculum-defect",
-  "controller-defect",
-  "hardness",
-  "diagnosis-uncertain",
-] as const;
 
 export function briefIdentities(root: string): BriefIdentities {
   const names = (value: JsonValue | undefined, key: string): string[] =>
@@ -338,7 +324,7 @@ function findingArgs(args: Record<string, JsonValue>) {
   const chosen = read("severity");
   const severity: FindingSeverity | null = chosen === "advisory" || chosen === "blocking" ? chosen : null;
   return {
-    kind: read("kind"),
+    defect: isBoolean(args.defect) ? args.defect : null,
     claim: read("claim").trim(),
     owner: optional("owner"),
     severity,
@@ -378,8 +364,7 @@ function demonstrated(demonstration: string | null): boolean {
 
 /** Reopening an owner and suspending a standing issue require the same source-bound case. */
 const blockingEvidence: FindingRule = ({ parsed, citations }) => {
-  const claimed =
-    (parsed.kind === "harness-defect" && parsed.severity === "blocking") || parsed.disputes !== "";
+  const claimed = (parsed.defect === true && parsed.severity === "blocking") || parsed.disputes !== "";
   if (!claimed) return null;
   if (!demonstrated(parsed.demonstration)) {
     return "blocking or disputing requires a concrete case in `demonstration`; otherwise record advisory without disputesIssue";
@@ -392,23 +377,19 @@ const blockingEvidence: FindingRule = ({ parsed, citations }) => {
 /** Only the evaluation side may argue that a standing issue belongs to the evaluation. */
 const disputeEligibility: FindingRule = ({ parsed, owner }) => {
   if (parsed.disputes === "") return null;
-  const evaluationSide =
-    parsed.kind === "curriculum-defect" ||
-    (parsed.kind === "harness-defect" && owner !== null && ownerTier(owner) === "rebuild");
-  return evaluationSide
+  return parsed.defect === true && owner !== null && ownerSide(owner) === "correctness-model"
     ? null
-    : "this finding cannot dispute an issue: only curriculum or evaluation-side defects may suspend diagnosis; omit disputesIssue and retry";
+    : "this finding cannot dispute an issue: only a defect owned under correctness-model/ may suspend diagnosis; omit disputesIssue and retry";
 };
 
-/** What a curriculum defect owes: the public input path the fresh battery should move. The claim
- *  itself never crosses to authoring, so a curriculum defect naming no identity projects as "the
- *  epoch review reported curriculum-defect in the public contract; inspect that contract for a
- *  mismatch", which names nothing the task author can act on — the same empty sentence however many
- *  rounds report it. A public input path is a public authoring identity, so unlike the claim it
- *  crosses whole. */
-const curriculumInput: FindingRule = ({ parsed }) =>
-  parsed.kind === "curriculum-defect" && parsed.publicInputPath === null
-    ? "a curriculum-defect must name, in `publicInputPath`, the public task input the fresh battery should vary; without it the finding reaches the task author as an empty sentence"
+/** What a task-set defect owes: the public input path the fresh battery should move. The claim
+ *  itself never crosses to authoring, so a task-set defect naming no identity projects as "no check
+ *  or path named; inspect that contract for a mismatch", which names nothing the task author can act
+ *  on — the same empty sentence however many rounds report it. A public input path is a public
+ *  authoring identity, so unlike the claim it crosses whole. */
+const curriculumInput: FindingRule = ({ parsed, owner }) =>
+  parsed.defect === true && owner === TASKS_FILE && parsed.publicInputPath === null
+    ? `a defect owned by ${TASKS_FILE} must name, in \`publicInputPath\`, the public task input the fresh battery should vary; without it the finding reaches the task author as an empty sentence`
     : null;
 
 const schemaPath: FindingRule = ({ parsed, identities }) => {
@@ -437,17 +418,13 @@ const publicInput: FindingRule = ({ parsed, taskIds }) => {
 const FINDING_RULES: readonly FindingRule[] = [
   ({ state }) =>
     state.findings.length >= MAX_FINDINGS ? `a review records at most ${MAX_FINDINGS} findings` : null,
-  ({ parsed }) =>
-    FINDING_KINDS.some((known) => known === parsed.kind) && parsed.claim !== ""
-      ? null
-      : "kind and claim are required",
+  ({ parsed }) => (parsed.defect !== null && parsed.claim !== "" ? null : DEFECT_AND_CLAIM_REQUIRED),
   ({ parsed }) => (parsed.severity === null ? SEVERITY_REQUIRED : null),
   ({ parsed, taskIds }) =>
     taskIds.some((taskId) => mentionsTask(parsed.claim, taskId))
       ? "a claim may not name an individual task; write about the family"
       : null,
-  ({ parsed, owner }) =>
-    parsed.kind === "harness-defect" && owner === null ? "a harness-defect must name a routable owner" : null,
+  ({ parsed, owner }) => (parsed.defect === true && owner === null ? DEFECT_OWNER_REQUIRED : null),
   // An empty list cites nothing, the same as leaving the field out, rather than failing to bind.
   ({ args, citations }) =>
     args.citations !== undefined &&
@@ -457,7 +434,8 @@ const FINDING_RULES: readonly FindingRule[] = [
       : null,
   blockingEvidence,
   disputeEligibility,
-  ({ parsed, state, args }) => probeCitationRefusal(parsed.kind, state.probes, args.probeIds),
+  ({ parsed, owner, state, args }) =>
+    probeCitationRefusal({ defect: parsed.defect, owner }, state.probes, args.probeIds),
   curriculumInput,
   ({ parsed }) =>
     parsed.unobserved && parsed.checkId !== null
@@ -477,11 +455,15 @@ function findingVerdict(subject: FindingCase): FindingVerdict {
     const why = rule(subject);
     if (why !== null) return { why };
   }
-  // A rule above already refused a missing severity; this repeat carries that into the type rather
-  // than deciding anything. Both spellings read the same constant so they cannot drift apart.
-  return subject.parsed.severity === null
-    ? { why: SEVERITY_REQUIRED }
-    : { severity: subject.parsed.severity };
+  // Rules above already refused a missing defect or severity and an unowned defect; these repeats
+  // carry that into the type rather than deciding anything. Each pair reads one constant so the two
+  // cannot drift apart.
+  const { defect, severity } = subject.parsed;
+  const { owner } = subject;
+  if (defect === null) return { why: DEFECT_AND_CLAIM_REQUIRED };
+  if (severity === null) return { why: SEVERITY_REQUIRED };
+  if (owner !== null) return { severity, placement: { owner, defect } };
+  return defect ? { why: DEFECT_OWNER_REQUIRED } : { severity, placement: { owner, defect } };
 }
 
 /** The finding as the campaign record keeps it. The demonstration, the citations and the probe
@@ -491,13 +473,14 @@ function findingVerdict(subject: FindingCase): FindingVerdict {
  *  author may read, and the projection had no other way to reach it. */
 function recordedFinding(
   subject: FindingCase,
+  placement: FindingPlacement,
   admitted: FindingSeverity,
   probes: readonly ReviewProbeRow[],
   evidencePath: string,
 ): AnalysisFinding {
-  const { parsed, citations, owner } = subject;
+  const { parsed, citations } = subject;
   return {
-    kind: /* SAFETY: the second rule proved `kind` is one of FINDING_KINDS, every member of which is an AnalysisFindingKind. */ parsed.kind as AnalysisFinding["kind"],
+    ...placement,
     claim:
       (parsed.demonstration === null
         ? parsed.claim
@@ -505,7 +488,6 @@ function recordedFinding(
       (citations === null ? "" : `\n\nSource citations:\n${citations}`) +
       (probes.length === 0 ? "" : `\n\nExecuted probes: ${probes.map((row) => row.id).join(", ")}`),
     evidence: evidencePath,
-    proposedOwner: owner,
     ...keysIf(admitted === "advisory", () => ({ severity: "advisory" as const })),
     ...keyIfNotNull("checkId", parsed.checkId),
     ...keyIfNotNull("artifactSchemaPath", parsed.artifactSchemaPath),
@@ -518,18 +500,23 @@ function recordedFinding(
 }
 
 /** The schema the reviewer reads; the rules above are what the host applies to what it returns. */
-function findingParameters(owners: readonly string[], surfaces: string, disputable: readonly string[]) {
+function findingParameters(disputable: readonly string[]) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["kind", "claim", "severity"],
+    required: ["defect", "claim", "severity"],
     properties: {
-      kind: { type: "string", enum: [...FINDING_KINDS] },
+      defect: {
+        type: "boolean",
+        description:
+          "True for a demonstrated defect in the bundle file named as owner; false for an observation, which asks for no repair.",
+      },
       claim: { type: "string", minLength: 1 },
       owner: {
         type: "string",
-        enum: [...owners],
-        description: `Required for harness-defect: name the root contract at fault, not a limit on the repair. Direct ownership: ${surfaces}. The Builder may make a broader repair; the controller determines evaluation-only or build attribution from the candidate bytes. A tests finding starts battery re-authoring with the harness fixed.`,
+        enum: [...BUNDLE_FILES],
+        description:
+          "The bundle file the finding is about. Required for a defect: the file at fault, not a limit on the repair. The Builder may make a broader repair; the controller determines evaluation-only or build attribution from the candidate bytes. A correctness-model/tasks.json defect starts battery re-authoring with the harness fixed. Leave it out of an observation no file holds.",
       },
       severity: {
         type: "string",
@@ -540,7 +527,7 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
       demonstration: {
         type: "string",
         description:
-          "Required to record or escalate a harness-defect as blocking, or to dispute an issue: the concrete input or artifact the opened source mishandles and the declared requirement it violates. Explain the strongest alternative interpretation and what observation would refute your claim. A source-derived case is not an executed result; say which it is. Without a concrete case, record advice without disputing an issue.",
+          "Required to record or escalate a defect as blocking, or to dispute an issue: the concrete input or artifact the opened source mishandles and the declared requirement it violates. Explain the strongest alternative interpretation and what observation would refute your claim. A source-derived case is not an executed result; say which it is. Without a concrete case, record advice without disputing an issue.",
       },
       citations: {
         type: "array",
@@ -567,7 +554,7 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
         type: "string",
         enum: [...disputable],
         description:
-          "The 12-character id of a standing issue this finding argues belongs to the evaluation. Only curriculum-defect or harness-defect with an evaluation-side owner may dispute an issue; omit this field for solving-agent defects, hardness and uncertainty.",
+          "The 12-character id of a standing issue this finding argues belongs to the evaluation. Only a defect owned under correctness-model/ may dispute an issue; omit this field for an agent/ defect and for an observation.",
       },
       checkId: {
         type: "string",
@@ -586,12 +573,12 @@ function findingParameters(owners: readonly string[], surfaces: string, disputab
         type: "array",
         items: { type: "number" },
         description:
-          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed harness-defect may be admitted blocking on its first occurrence.",
+          "The probe_check numbers whose executed result this finding rests on. Cite only probes that ran: a probe-backed defect may be admitted blocking on its first occurrence.",
       },
       publicInputPath: {
         type: "string",
         description:
-          "A `$.`-prefixed JSON path into the public task input the finding is about. Required for curriculum-defect: name the input the fresh battery should vary, because the claim itself does not reach the task author and this path is the whole of what it will read.",
+          "A `$.`-prefixed JSON path into the public task input the finding is about. Required for a defect owned by correctness-model/tasks.json: name the input the fresh battery should vary, because the claim itself does not reach the task author and this path is the whole of what it will read.",
       },
     },
   };
@@ -610,24 +597,18 @@ export function recordFindingTool(
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
   const recurring = priors.recurring ?? new Map<string, number>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
-  const owners = [...BUILDER_OWNED].filter(routableOwner);
-  // Each owner's writable files, so the reviewer sees what an owner covers before choosing one.
-  // This exposes existing file ownership rather than copying routing policy into the description.
-  const surfaces = owners
-    .map((owner) => `${owner}: ${ownerWritableFiles(owner).join(", ") || "no direct file"}`)
-    .join("; ");
   return {
     name: "record_finding",
     label: "Record a finding",
     description:
-      "Record one finding supported by evidence about the measured harness. Use harness-defect with an owner when opened source shows a defect in a component the Builder owns; curriculum-defect when the task set is what is wrong; hardness when the tasks are simply harder than the harness. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. The claim stays in controller evidence; the next Builder receives typed findings with public identities and the relevant published requirements. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.",
-    parameters: readerParameters(findingParameters(owners, surfaces, [...byPrefix.keys()])),
+      "Record one finding supported by evidence about the measured harness. Record defect true with the bundle file at fault when opened source shows it violates the request or a declared requirement — correctness-model/tasks.json when the task set is what is wrong. Record defect false for an observation the next pass would act differently for knowing: tasks that are harder than the harness, or evidence you could not decide. Name no owner when no file holds it. Set disputesIssue when this finding argues that a standing issue comes from the evaluation rather than the harness, which suspends that issue for the next authoring pass. The claim stays in controller evidence; the next Builder receives typed findings with public identities and the relevant published requirements. Fill checkId, artifactSchemaPath and publicInputPath whenever you know them so the next authoring pass can locate the affected contract. Write the claim about the family or contract and never name a task.",
+    parameters: readerParameters(findingParameters([...byPrefix.keys()])),
     execute: (_id: string, args: Record<string, JsonValue>) => {
       const parsed = findingArgs(args);
       const subject: FindingCase = {
         parsed,
         args,
-        owner: routableOwnerOf(parsed.owner),
+        owner: BUNDLE_FILES.find((file) => file === parsed.owner) ?? null,
         citations: findingCitations(args, state),
         state,
         identities,
@@ -640,23 +621,21 @@ export function recordFindingTool(
         return Promise.resolve(readerToolText(`refused: ${verdict.why}`));
       }
       // One review reopens at most one authoring area, so a finding recorded after a blocking
-      // harness-defect is admitted advisory however strong its own case is: a second blocking
-      // defect in one reading is a reason to inspect the review, not to reopen twice.
-      const blockingAlready = state.findings.some(
-        (row) => row.kind === "harness-defect" && row.severity === undefined,
-      );
+      // defect is admitted advisory however strong its own case is: a second blocking defect in
+      // one reading is a reason to inspect the review, not to reopen twice.
+      const blockingAlready = state.findings.some((row) => row.defect && row.severity === undefined);
       const identity = namedSubject(parsed);
       const recurrences =
-        parsed.kind === "harness-defect" && identity !== null ? (recurring.get(identity) ?? 0) : 0;
+        contractDefect(verdict.placement) && identity !== null ? (recurring.get(identity) ?? 0) : 0;
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
-      const admitted = admitSeverity(parsed.kind, subject.owner, verdict.severity, {
+      const admitted = admitSeverity(verdict.placement, verdict.severity, {
         blockingAlready,
         recurrences,
         demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
         probeBacked: probes.length > 0,
       });
-      state.findings.push(recordedFinding(subject, admitted, probes, evidencePath));
+      state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,
@@ -670,7 +649,7 @@ export function recordFindingTool(
       }
       return Promise.resolve(
         readerToolText(
-          `recorded ${parsed.kind} as ${admitted}${issueId === undefined ? "" : `, disputing issue ${parsed.disputes}`}`,
+          `recorded ${verdict.placement.defect ? "defect" : "observation"} as ${admitted}${issueId === undefined ? "" : `, disputing issue ${parsed.disputes}`}`,
         ),
       );
     },

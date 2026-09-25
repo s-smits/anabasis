@@ -39,8 +39,8 @@ const review = {
 
 /** The mass finding as that review recorded it, citing the probes the rows below number 5 and 6. */
 const MASS_FINDING = {
-  kind: "harness-defect",
-  owner: "correctness-model",
+  defect: true,
+  owner: "correctness-model/evaluator.ts",
   severity: "blocking",
   claim: "The mass checker weakens the published strict unrounded mass limit by 0.05 kg.",
   demonstration: DEMO,
@@ -92,7 +92,7 @@ async function massReview() {
     identities: { schemaRoots: ["design"], checkIds: ["catalogue-mass-budget"] },
     recurring: new Map(),
   });
-  expect(await call(tool, MASS_FINDING)).toStartWith("recorded harness-defect");
+  expect(await call(tool, MASS_FINDING)).toStartWith("recorded defect");
   return state;
 }
 
@@ -138,8 +138,8 @@ const tool = (tools: ReadonlyMap<string, ReaderTool>, name: string) => required(
 async function answerFinding(tools: ReadonlyMap<string, ReaderTool>, probeIds: JsonValue[]) {
   await call(tool(tools, "read_source"), { path: "correctness-model/evaluator.ts" });
   return call(tool(tools, "record_finding"), {
-    kind: "harness-defect",
-    owner: "correctness-model",
+    defect: true,
+    owner: "correctness-model/evaluator.ts",
     severity: "advisory",
     claim: "The answer check refuses a lowercase answer, which the public rule also refuses.",
     citations: [{ path: "correctness-model/evaluator.ts", quote: "publicInput.input.toUpperCase()" }],
@@ -232,7 +232,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
         value: MARKER,
       });
       expect(ran).toContain("1 declared check(s) moved: answer");
-      expect(await answerFinding(tools, [1])).toStartWith("recorded harness-defect");
+      expect(await answerFinding(tools, [1])).toStartWith("recorded defect");
     });
     const carried = required(carriedDemonstrations(first.result), "the first review's demonstrations");
     expect(
@@ -245,7 +245,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
       expect(await call(tool(tools, "probe_check"), parseJsonAs<Record<string, JsonValue>>(line))).toContain(
         "1 declared check(s) moved: answer",
       );
-      expect(await answerFinding(tools, [1])).toStartWith("recorded harness-defect");
+      expect(await answerFinding(tools, [1])).toStartWith("recorded defect");
     });
     expect(second.result.probes?.map(({ change, movedCheckIds }) => ({ change, movedCheckIds }))).toEqual([
       { change: { value: MARKER }, movedCheckIds: ["answer"] },
@@ -279,7 +279,7 @@ describe("the probes an authoring review rested its findings on, carried to the 
       "carried rows",
     );
     const { prompt, result } = await reviewed(root, "authoring-3", carried, async (tools) => {
-      expect(await answerFinding(tools, [1])).toStartWith("recorded harness-defect");
+      expect(await answerFinding(tools, [1])).toStartWith("recorded defect");
     });
     expect(prompt).toContain(`"value":${JSON.stringify(MARKER)}}: moved answer.`);
     expect(result.probes).toBeUndefined();

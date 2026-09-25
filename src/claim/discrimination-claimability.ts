@@ -5,10 +5,11 @@
 import type { FindingDisclosure } from "../truth/brief.ts";
 
 type DiscriminationClaimabilityCode =
-  // NOT_PROVEN means evaluation could not finish; the two verdict codes select the needed repair.
+  // NOT_PROVEN means evaluation could not finish; ACCEPT_REJECTED selects the needed repair.
   | "DISCRIMINATION_NOT_PROVEN"
   | "DISCRIMINATION_ACCEPT_REJECTED"
-  | "DISCRIMINATION_REJECT_PASSED"
+  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+  // | "DISCRIMINATION_REJECT_PASSED"
   // From runControls and the solve path: an external engine's consumed verdict disagrees with the
   // verifier's verdict for the same checkId, or the verifier reports an environment non-result
   // without the exact host result for this subject and with no pending invocation when evaluation

@@ -84,7 +84,8 @@ export function recordedController(input: {
     return {
       runId,
       terminal: "completed",
-      buildClauses: [],
+      buildClause: null,
+      buildDetail: null,
       measured: battery,
     };
   };

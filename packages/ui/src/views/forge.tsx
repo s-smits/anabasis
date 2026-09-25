@@ -45,8 +45,10 @@ export function ForgeView({ run, onOpen }: { run: RunView; onOpen: (path: string
         />
         <MetricCard
           label="Difficulty"
-          value={difficulty?.standing ?? "—"}
-          detail={difficulty?.action ?? "No difficulty decision recorded"}
+          value={difficulty === null ? "—" : (difficulty.standing ?? "unplaced")}
+          detail={
+            difficulty === null ? "No difficulty decision recorded" : `${difficulty.admitted ?? "?"} admitted`
+          }
         />
         <MetricCard
           label="Built on"

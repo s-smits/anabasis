@@ -1,8 +1,7 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { Brief, BriefTruthCheck, ContractFinding } from "./brief.ts";
-import { applicableTruthChecks, fieldFinding, finding, jsonPathFinding } from "./brief.ts";
+import { fieldFinding, finding, jsonPathFinding } from "./brief.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
-import { resolvePredicatePath } from "./predicate.ts";
 import type { MarginDirection, PublishedMargin } from "../solve/published-margin.ts";
 
 const DIRECTIONS = ["atMost", "atLeast"] as const;
@@ -25,13 +24,6 @@ export type NumericBoundaryDeclaration = {
 type NumericBoundaryObligation = NumericBoundaryDeclaration & {
   checkId: string;
   value: number;
-};
-
-type BoundaryTask = {
-  taskId: string;
-  family: string;
-  publicInput: unknown;
-  hidden?: readonly { checkId: string }[];
 };
 
 function completeBoundary(
@@ -148,21 +140,6 @@ export function numericBoundaryObligations(brief: Brief): NumericBoundaryObligat
     (check.numericBoundaries ?? []).flatMap((boundary) => {
       const value = constants.get(boundary.constantName);
       return value === undefined ? [] : [{ checkId: check.id, ...boundary, value }];
-    }),
-  );
-}
-
-/** Tasks that exercise one check at the declared equality value. */
-export function boundaryWitnessTaskIds(
-  brief: Brief,
-  tasks: readonly BoundaryTask[],
-  boundary: NumericBoundaryObligation,
-): ReadonlySet<string> {
-  return new Set(
-    tasks.flatMap((task) => {
-      if (!applicableTruthChecks(brief, task).some((check) => check.id === boundary.checkId)) return [];
-      const value = resolvePredicatePath(task.publicInput, boundary.publicInputPath);
-      return value.found && value.value === boundary.value ? [task.taskId] : [];
     }),
   );
 }

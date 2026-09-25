@@ -9,8 +9,7 @@
  *
  * Routing is the other half. An environment failure that reads as a product failure sends the
  * Builder to repair something that was never broken, and a declaration the author made — a tool
- * that resolves nowhere, one only the author wrote, one handed its program as an argument — must
- * reach the owner who can change that declaration.
+ * that resolves nowhere — must reach the owner who can change that declaration.
  *
  * Every case here hands the gate a probe double: what runs the census over a real bundle is
  * `solvability-*.test.ts` beside this one, and constant reference output across inputs is measured
@@ -64,7 +63,7 @@ describe("the census projects counts and keeps locations host-side", () => {
         },
       ]),
     );
-    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/reference/index.ts", severity: "blocking" }]);
     expect(authorVisible).toContain("1 of 2");
     expect(authorVisible).toContain("tc-physics-session (1)");
     expect(authorVisible).not.toContain("t2");
@@ -110,7 +109,7 @@ describe("the census projects counts and keeps locations host-side", () => {
 
   it("blocks a census that could not execute, keeping its failure record protected", async () => {
     const { feedback, authorVisible, recorded } = await census("unavailable", probeReturning(null));
-    expect(feedback).toMatchObject([{ owner: "correctness-model", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
     expect(authorVisible).not.toContain("bundleSnapshot digest drifted");
     expect(await recorded()).toContain("bundleSnapshot digest drifted");
   });
@@ -134,19 +133,21 @@ describe("a refused declaration reaches the owner who can change it", () => {
   it.each<ToolRefusal>([
     [
       "solvability-tool-missing",
-      "correctness-model",
+      "correctness-model/evaluator.ts",
       'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
     ],
-    [
-      "solvability-tool-self-authored",
-      "brief",
-      "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
-    ],
-    [
-      "solvability-tool-program-argument",
-      "brief",
-      "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
-    ],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+    // [
+    //   "solvability-tool-self-authored",
+    //   "brief",
+    //   "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
+    // ],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+    // [
+    //   "solvability-tool-program-argument",
+    //   "brief",
+    //   "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
+    // ],
   ])("%s goes to %s as its own blocking row", async (code, owner, detail) => {
     const { feedback, authorVisible } = await census(
       code,
@@ -173,12 +174,12 @@ describe("a refused declaration reaches the owner who can change it", () => {
         {
           taskId: "t2",
           status: "failed",
-          failureKind: "representation-defect",
+          failure: "representation-defect",
           error: "nullable root value was omitted by the writer schema",
         },
       ]),
     );
-    expect(feedback).toMatchObject([{ owner: "brief", severity: "blocking" }]);
+    expect(feedback).toMatchObject([{ owner: "correctness-model/brief.json", severity: "blocking" }]);
     expect(authorVisible).toContain("SOLVABILITY_REPRESENTATION_DEFECT");
     // The detail describes the public authoring interface — writer schema, DraftStore, submit — so
     // it may cross, provided it identifies no task.
@@ -187,7 +188,7 @@ describe("a refused declaration reaches the owner who can change it", () => {
   });
 
   it("collapses repeated representation details and names the ones past the projection cap", async () => {
-    const repeated = { failureKind: "representation-defect" as const, status: "failed" as const };
+    const repeated = { failure: "representation-defect" as const, status: "failed" as const };
     const { authorVisible } = await census(
       "representation-dedup",
       probeReturning([
@@ -202,32 +203,6 @@ describe("a refused declaration reaches the owner who can change it", () => {
     );
     expect(authorVisible).toContain("2 of 11 reference artifacts: writer omits the notes root");
     expect(authorVisible).toContain("2 further distinct defect(s)");
-  });
-
-  it("routes a family the census refused to tests, crossing the family but not the tasks inside it", async () => {
-    const { feedback, authorVisible, recorded } = await census(
-      "family",
-      probeReturning(
-        [
-          { taskId: "charge-1", status: "passed" },
-          { taskId: "charge-2", status: "passed" },
-        ],
-        [
-          {
-            code: "TASK_FAMILY_UNIVERSAL_WITNESS",
-            path: "correctness-model/tasks.json",
-            owner: "task-curriculum",
-            detail:
-              'family "charge-firmware" has 2 tasks, and one accepted deliverable satisfies every one of them: moving only the task-conditioned root(s) "module" between siblings leaves every sibling passing',
-          },
-        ],
-      ),
-    );
-    expect(feedback).toMatchObject([{ owner: "tests", severity: "blocking" }]);
-    expect(authorVisible).toContain("TASK_FAMILY_UNIVERSAL_WITNESS");
-    expect(authorVisible).toContain(String.raw`family \"charge-firmware\" has 2 tasks`);
-    expect(authorVisible).not.toContain("charge-1");
-    expect(await recorded()).toContain("charge-1");
   });
 });
 
@@ -252,7 +227,7 @@ async function independenceOf(name: string, accepts: Accept[]) {
   const run = await census(name, probe, slugWithCorpus(name, accepts));
   // SAFETY: the file the gate wrote one line earlier, through the shape it writes there.
   const recorded = JSON.parse(await run.recorded()) as { acceptIndependence?: AcceptIndependence };
-  const advice = run.feedback.filter((entry) => entry.owner === "accept-controls");
+  const advice = run.feedback.filter((entry) => entry.owner === "correctness-model/controls.json");
   return { ...run, independence: recorded.acceptIndependence, advice };
 }
 

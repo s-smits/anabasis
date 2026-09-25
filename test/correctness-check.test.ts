@@ -63,8 +63,8 @@ interface Session {
   trialsDir?: string;
   experimentProposalRequired?: true;
   planAdvice?: () => string[];
-  /** Extra validation sequence input, e.g. a rebuild experiment with an adopted baseline. */
-  validation?: Partial<Pick<PipelineInput, "experiment" | "adoptedDir" | "toolsProbes">>;
+  /** Extra validation sequence input, e.g. an adopted baseline. */
+  validation?: Partial<Pick<PipelineInput, "adoptedDir" | "toolsProbes">>;
 }
 
 /** What the census gate returns when the F2 witness ended as an environment non-result: the gate
@@ -161,7 +161,7 @@ function session(dir: string, options: Session) {
 
 const GATE_FEEDBACK: CampaignFeedback[] = [
   {
-    owner: "tests",
+    owner: "correctness-model/tasks.json",
     severity: "blocking",
     claim: 'check "answer" does not require a hidden operand for this family',
     evidence: "task validation",
@@ -180,13 +180,13 @@ const GATE_FEEDBACK: CampaignFeedback[] = [
     evidence: "protected host evidence",
   },
   {
-    owner: "brief",
+    owner: "correctness-model/brief.json",
     severity: "advisory",
     claim: "advisory only",
     evidence: "representation census",
   },
   {
-    owner: "accept-controls",
+    owner: "correctness-model/controls.json",
     severity: "advisory",
     claim: "GATE_AUTHOR_PROSE beside a validated finding",
     evidence: "pre-adoption F2 census",
@@ -294,8 +294,8 @@ describe("correctness_check", () => {
     expect(description).not.toMatch(/stops the stages|skips F2|family isolation/);
   });
 
-  it.each(["none", "agent", "evaluator", "controls"] as const)(
-    "rebuild preview admits changed bytes and refuses an unchanged package: %s",
+  it.each(["agent", "evaluator", "controls"] as const)(
+    "rebuild preview admits changed bytes: %s",
     async (change) => {
       const adoptedDir = workspace("build-baseline");
       writeBoundRepresentation(
@@ -304,32 +304,25 @@ describe("correctness_check", () => {
         readFileSync(join(adoptedDir, "agent/tools-spec.json"), "utf8"),
       );
       const dir = workspace(`build-${change}`);
-      if (change !== "none") {
-        const file =
-          change === "agent"
-            ? "agent/BUILT_AGENTS.md"
-            : change === "evaluator"
-              ? "correctness-model/evaluator.ts"
-              : "correctness-model/controls.json";
-        const path = join(dir, file);
-        writeFileSync(path, readFileSync(path, "utf8") + "\n");
-      }
+      const file =
+        change === "agent"
+          ? "agent/BUILT_AGENTS.md"
+          : change === "evaluator"
+            ? "correctness-model/evaluator.ts"
+            : "correctness-model/controls.json";
+      const path = join(dir, file);
+      writeFileSync(path, readFileSync(path, "utf8") + "\n");
       let gates = 0;
       const { check } = session(dir, {
-        validation: { experiment: "build", adoptedDir },
+        validation: { adoptedDir },
         gate: async () => {
           gates++;
           return [];
         },
       });
       const body = await check();
-      // The gates run beside an admission refusal, so one check reports both.
       expect(gates).toBe(1);
-      if (change === "none") {
-        expect(codesOf(body)).toEqual(["rebuild-evaluation-unmoved"]);
-      } else {
-        expect(body.status).toBe("clear");
-      }
+      expect(body.status).toBe("clear");
     },
   );
 
@@ -355,7 +348,7 @@ describe("correctness_check", () => {
     writeFileSync(join(dir, EXPERIMENT_FILE), JSON.stringify(proposal));
     const { check } = session(dir, {
       experimentProposalRequired: true,
-      validation: { experiment: "build", adoptedDir },
+      validation: { adoptedDir },
       gate: async () => [],
     });
     expect(await check()).toMatchObject({
@@ -385,7 +378,7 @@ describe("correctness_check", () => {
       const dir = workspace("readable-candidate");
       let gates = 0;
       const { check } = session(dir, {
-        validation: { experiment: "build", adoptedDir },
+        validation: { adoptedDir },
         gate: async () => {
           gates++;
           return [];
@@ -565,13 +558,19 @@ describe("correctness_check", () => {
     });
     const first = await check();
     expect(first.status).toBe("findings");
-    expect(codesOf(first)).toEqual(["gate-environment"]);
-    // The reserved attempt still stands, exactly as it does for a blocked outcome, so the same
-    // tree cannot buy the paid validation sequence again; it is refused instead of answered from memory.
+    expect(codesOf(first)).toEqual(["gate-unvalidated"]);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+    // // The reserved attempt still stands, exactly as it does for a blocked outcome, so the same
+    // // tree cannot buy the paid validation sequence again; it is refused instead of answered from memory.
+    // const second = await check();
+    // expect(gateCalls).toBe(1);
+    // expect(second.repeated).toBeUndefined();
+    // expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
+    // A host outage is no verdict on these bytes, so the same tree runs again rather than reading it back.
     const second = await check();
-    expect(gateCalls).toBe(1);
+    expect(gateCalls).toBe(2);
     expect(second.repeated).toBeUndefined();
-    expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
+    expect(codesOf(second)).toEqual(["gate-unvalidated"]);
   });
 
   it("previews every distinct candidate and answers unchanged bytes from memory", async () => {
@@ -604,14 +603,14 @@ describe("correctness_check", () => {
     expect(body.status).toBe("findings");
     expect(body.stage).toBe("gates");
     // An advisory row crosses the author boundary the way a blocking one does: the validated
-    // finding keeps its detail, the row that carries none arrives as the gate's name, and the
+    // finding keeps its detail, the row that carries none arrives as gate-unvalidated at its owner's path, and the
     // claim beside either stays behind. It used to arrive as a count with nowhere to read it.
     expect(body.advisory).toEqual({
       rows: 2,
       findings: [
         {
-          code: "gate-brief",
-          path: "submit",
+          code: "gate-unvalidated",
+          path: "correctness-model/brief.json",
           detail: "this gate produced no controller-validated finding; no public detail is available",
         },
         {
@@ -621,7 +620,7 @@ describe("correctness_check", () => {
         },
       ],
     });
-    expect(codesOf(body)).toEqual(["tasks-hidden-operand-unexpected", "gate-environment"]);
+    expect(codesOf(body)).toEqual(["tasks-hidden-operand-unexpected", "gate-unvalidated"]);
     const blocking = GATE_FEEDBACK.filter((row) => row.severity === "blocking");
     const refusal = {
       ...authorFindingOverview(gateFeedbackFindings(blocking)),
@@ -640,7 +639,7 @@ describe("correctness_check", () => {
       candidateId: expect.any(String),
       reason: "refused-gates",
       // Which gates refused the tree survives the session on the receipt, never in the text.
-      findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
+      findingCodes: ["gate-unvalidated", "tasks-hidden-operand-unexpected"],
     });
     expect(JSON.stringify(body)).not.toContain("findingCodes");
     answer = [];
@@ -672,7 +671,9 @@ describe("correctness_check", () => {
     });
   });
 
-  it("keeps the stored rows when a check is blocked or spent, so no code reads as resolved", async () => {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+  // it("keeps the stored rows when a check is blocked or spent, so no code reads as resolved", async () => {
+  it("keeps the stored rows when a check is blocked, however often, so no code reads as resolved", async () => {
     // A blocked call used to record zero rows in the store and report every earlier code resolved,
     // though nothing had judged the changed tree.
     const dir = workspace("validation sequence-blocked-store");
@@ -689,8 +690,10 @@ describe("correctness_check", () => {
     expect(nested(blocked, "findings").sinceLast).toBeUndefined();
     expect(nested(blocked, "findings").navigation).toContain("replaced nothing");
     expect(receipt()).not.toHaveProperty("resolved");
-    const spent = await check();
-    expect(codesOf(spent)).toEqual(["preview-attempt-spent"]);
+    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+    // const spent = await check();
+    // expect(codesOf(spent)).toEqual(["preview-attempt-spent"]);
+    expect((await check()).status).toBe("blocked");
     expect(receipt()).not.toHaveProperty("resolved");
     expect(feedback.page()).toMatchObject({ available: true, source: "correctness_check", totalFindings: 2 });
     // The next complete result is compared with the last complete one.
@@ -786,10 +789,45 @@ describe("correctness_check", () => {
     expect(rowsOf(joined)).toEqual(rowsOf(body));
   });
 
-  it("a blocked outcome spends the snapshot's attempt: the same tree cannot buy the validation sequence again", async () => {
-    // The uncached paths — a thrown conformance load, a thrown gate, a typed generated-runtime
-    // non-result — never enter `previews`, so before attempt reservation each repeat re-ran the
-    // paid validation sequence without reaching any ceiling. The slot is now reserved before the first stage.
+  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+  // it("a blocked outcome spends the snapshot's attempt: the same tree cannot buy the validation sequence again", async () => {
+  //   // The uncached paths — a thrown conformance load, a thrown gate, a typed generated-runtime
+  //   // non-result — never enter `previews`, so before attempt reservation each repeat re-ran the
+  //   // paid validation sequence without reaching any ceiling. The slot is now reserved before the first stage.
+  //   const dir = workspace("blocked-repeat");
+  //   let gateCalls = 0;
+  //   const { check } = session(dir, {
+  //     gate: async () => {
+  //       gateCalls += 1;
+  //       throw new Error("verifier host refused");
+  //     },
+  //   });
+  //   const first = await check();
+  //   expect(first.status).toBe("blocked");
+  //   const second = await check();
+  //   expect(gateCalls).toBe(1);
+  //   expect(second.status).toBe("findings");
+  //   expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
+  //   expect(JSON.stringify(second)).toContain("already spent their preview attempt");
+  // });
+  //
+  // it("distinct blocked snapshots each run once and stay unremembered", async () => {
+  //   const dir = workspace("blocked-distinct");
+  //   let gateCalls = 0;
+  //   const { check } = session(dir, {
+  //     gate: async () => {
+  //       gateCalls += 1;
+  //       throw new Error("verifier host refused");
+  //     },
+  //   });
+  //   expect((await check()).status).toBe("blocked");
+  //   expect(codesOf(await check())).toEqual(["preview-attempt-spent"]);
+  //   writeFileSync(join(dir, "correctness-model", "guide.md"), "# changed once\n");
+  //   expect((await check()).status).toBe("blocked");
+  //   expect(gateCalls).toBe(2);
+  // });
+
+  it("a blocked outcome is no verdict: the same tree runs the validation sequence again", async () => {
     const dir = workspace("blocked-repeat");
     let gateCalls = 0;
     const { check } = session(dir, {
@@ -798,29 +836,11 @@ describe("correctness_check", () => {
         throw new Error("verifier host refused");
       },
     });
-    const first = await check();
-    expect(first.status).toBe("blocked");
+    expect((await check()).status).toBe("blocked");
     const second = await check();
-    expect(gateCalls).toBe(1);
-    expect(second.status).toBe("findings");
-    expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
-    expect(JSON.stringify(second)).toContain("already spent their preview attempt");
-  });
-
-  it("distinct blocked snapshots each run once and stay unremembered", async () => {
-    const dir = workspace("blocked-distinct");
-    let gateCalls = 0;
-    const { check } = session(dir, {
-      gate: async () => {
-        gateCalls += 1;
-        throw new Error("verifier host refused");
-      },
-    });
-    expect((await check()).status).toBe("blocked");
-    expect(codesOf(await check())).toEqual(["preview-attempt-spent"]);
-    writeFileSync(join(dir, "correctness-model", "guide.md"), "# changed once\n");
-    expect((await check()).status).toBe("blocked");
     expect(gateCalls).toBe(2);
+    expect(second.status).toBe("blocked");
+    expect(second.repeated).toBeUndefined();
   });
 
   it("records a clear preview only from a preview that returned a complete clear report", async () => {
@@ -844,9 +864,11 @@ describe("correctness_check", () => {
   it("records no clear preview when admission refused beside clear gates", async () => {
     const dir = workspace("clear-admission-refused");
     writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
+    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
     const { check, memory } = session(dir, {
       gate: async () => [],
-      validation: { experiment: "build", adoptedDir: dir },
+      experimentProposalRequired: true,
+      validation: { adoptedDir: dir },
     });
     const body = await check();
     expect(body.stage).toBe("validation");
@@ -857,15 +879,17 @@ describe("correctness_check", () => {
   it("a cached refusal still returns repeated instead of re-running its stages", async () => {
     const dir = workspace("refused-memo");
     writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
+    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
     let gateCalls = 0;
-    // A rebuild whose candidate never moved off the adopted tree refuses at admission; the gates
-    // still run once beside it, and the executed stages are remembered by condition.
+    // A continuation whose plan does not parse refuses at admission; the gates still run once
+    // beside it, and the executed stages are remembered by condition.
     const { check } = session(dir, {
       gate: async () => {
         gateCalls += 1;
         return [];
       },
-      validation: { experiment: "build", adoptedDir: dir },
+      experimentProposalRequired: true,
+      validation: { adoptedDir: dir },
     });
     const first = await check();
     expect(first.status).toBe("findings");

@@ -52,9 +52,8 @@ function tasks(prefix: string): BuildTask[] {
   }));
 }
 
-/** Record two passing levels through the real evidence writer, then ask the disk selector. Two,
- * because a third would reach the off-aim allowance and stop the campaign; family scope is what
- * this file is about, and test/next-move-rebuild.test.ts owns the allowance itself. */
+/** Record two passing levels through the real evidence writer, then ask the disk selector. Family
+ * scope is what this file is about, and test/next-move-rebuild.test.ts owns the off-aim streak. */
 function saturatedRoot(brief: typeof MATCHING_BRIEF, previous: BuildTask[]): string {
   const root = mkdtempSync(join(tmpdir(), "ana-broaden-scope-"));
   scratch.push(root);
@@ -130,11 +129,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
     const named = ["measured-0", "measured-1", "fresh-0", "fresh-1"];
     for (const check of brief.truthChecks) check.execution.families = scope === "all" ? "all" : named;
     if (scope === "exhausted") brief.truthChecks[0]!.execution.families = ["measured-0", "measured-1"];
-    const validation = validateTasks(
-      brief,
-      { tasks: fresh },
-      { authoring: true, exactTasks: previous.length },
-    );
+    const validation = validateTasks(brief, { tasks: fresh }, { exactTasks: previous.length });
     // A check scoped away from every fresh family leaves its hidden operands unread; that row names it.
     if (scope === "exhausted") {
       expect(validation.findings.map((row) => row.code)).toContain("tasks-hidden-operand-unexpected");
@@ -151,10 +146,7 @@ it.each(["all", "unmeasured", "exhausted"] as const)(
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
     });
     expect(selected.decision).toMatchObject({ move: "rebuild", seed: "adopted" });
-    expect(selected.readout?.decision).toMatchObject({
-      action: "placed",
-      placement: { zone: "too-easy" },
-    });
+    expect(selected.readout?.decision).toMatchObject({ placement: { zone: "too-easy" } });
     expect(selected.decision).not.toHaveProperty("final");
     expect(selected.kickoff).toBe("assign parts to slots");
     expect(selected.decision.reopenKey).toMatch(/^experiment:[a-f0-9]{64}$/);
@@ -179,7 +171,7 @@ async function assertRebuildRound(
     return double({
       buildAdmissible: false,
       adopted: false,
-      clauses: ["iterations-exhausted"],
+      clause: "iterations-exhausted",
       iterations: [],
     });
   };
@@ -213,7 +205,8 @@ async function assertRebuildRound(
     decision: selected.decision,
     nextDecision: selected.decision,
     build: built.build,
-    buildClauses: built.clauses,
+    buildClause: built.buildClause,
+    buildDetail: built.buildDetail,
     admissionBasisDigest: selected.prior?.digest ?? null,
     steps: { promotion: null, measure: null },
   });
@@ -245,8 +238,8 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
       builder: { kind: "codex", model: "test-model", reasoningEffort: "low" },
     });
   const alone = select();
-  // Two more passing batteries, newer than the run's own: a third same-side round would spend the
-  // allowance and stop the campaign, so either one entering the readout shows at once.
+  // Two more passing batteries, newer than the run's own: a third same-side round would lengthen
+  // the off-aim streak, so either one entering the readout shows at once.
   recordBattery(root, "other-pin", previous, { level: 2, condition: { backendPin: "other-model" } });
   recordBattery(root, "other-thresholds", previous, {
     level: 3,
@@ -273,7 +266,7 @@ it("keeps another pin's and another threshold's public tasks readable, outside t
     return double({
       buildAdmissible: false,
       adopted: false,
-      clauses: ["iterations-exhausted"],
+      clause: "iterations-exhausted",
       iterations: [],
     });
   };

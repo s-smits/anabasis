@@ -110,19 +110,18 @@ function readCompleted(campaignDir: string): CompletedPass[] {
     .slice(-LOOKBACK);
 }
 
-/** One line per completed pass: what it ended as, where it died, how hard its sessions worked and
+/** One line per completed pass: what it ended as, which owner it named, how hard it worked and
  *  what it proposed. A recorded proposal runs to about 2,000 bytes with its digest, so the line
  *  keeps the parts that answer a repeat: the gap and change say what was tried, the target what was
  *  expected, and the admitted scope what the bytes actually did. */
 function summarise({ evidence, label }: CompletedPass): string {
-  const where = evidence.stage ? ` at ${evidence.stage}` : "";
   const focus = evidence.focusOwner ? `, part ${evidence.focusOwner}` : "";
   const retried = Object.entries(evidence.attempts)
     .filter(([, count]) => count > 1)
     .map(([session, count]) => `${session} x${count}`);
   const retries = retried.length === 0 ? "" : ` (retried ${retried.join(", ")})`;
   const proposal = parseExperimentSubmission(evidence.experimentProposal);
-  if (proposal === null) return `${label} ${evidence.outcome}${where}${focus}${retries}`;
+  if (proposal === null) return `${label} ${evidence.outcome}${focus}${retries}`;
   const target = `, target ${proposal.target.comparator} ${proposal.target.verifiedPasses} verified passes`;
   const admitted =
     evidence.experimentScope === undefined
@@ -131,7 +130,7 @@ function summarise({ evidence, label }: CompletedPass): string {
   const gap = boundText(proposal.gap, PROPOSAL_FIELD_BYTES).shown;
   const change = boundText(proposal.change, PROPOSAL_FIELD_BYTES).shown;
   const proposed = `; proposed ${proposal.scope} scope, gap "${gap}", change "${change}"${target}; ${admitted}`;
-  return `${label} ${evidence.outcome}${where}${focus}${retries}${proposed}`;
+  return `${label} ${evidence.outcome}${focus}${retries}${proposed}`;
 }
 
 /**

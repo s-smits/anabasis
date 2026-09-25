@@ -207,8 +207,7 @@ export function scratch(): string {
   return dir;
 }
 
-/** A slug whose r-ghost reject contains a valid answer, making discrimination unclaimable.
- *  The early-exit and solver-spend tests share this fixture. */
+/** A slug whose r-ghost reject contains a valid answer, so that reject passes the check it names. */
 export function laxVerifierSlug(): string {
   return bundleSlug({
     evaluator: LAX_EVALUATOR_SOURCE,
@@ -219,6 +218,20 @@ export function laxVerifierSlug(): string {
           ? { ...control, artifact: { assignments: [{ part: "alpha", slot: "s3" }] } }
           : control,
       ),
+    },
+  });
+}
+
+/** A slug whose one accept binds alpha to a slot its task does not expect, so the verifier rejects
+ *  a declared-valid example and discrimination is unclaimable. */
+export function rejectedAcceptSlug(): string {
+  return bundleSlug({
+    controls: {
+      accept: ACCEPTS.map((control) => ({
+        ...control,
+        artifact: { assignments: [{ part: "alpha", slot: "s4" }] },
+      })),
+      reject: REJECTS,
     },
   });
 }

@@ -102,7 +102,8 @@ export function readDifficultyDecisions(campaign) {
     const decision = isRecord(counters.decision) ? counters.decision : {};
     rows.push({
       runId: isString(record.runId) ? record.runId : name,
-      action: isString(decision.action) ? decision.action : null,
+      repeated: isRecord(decision.repeated),
+      conflict: isRecord(decision.conflict),
       placement: placementOf(decision),
       // Where the decision placed the battery it read, repeated at the top level because the
       // check-informativeness block keys its perfect-battery lead on it.
@@ -131,17 +132,17 @@ function sideOf(placement) {
 
 function decisionLine(row) {
   const placement = row.placement;
-  const head = `${row.runId}: action ${row.action ?? "?"}`;
   const placed =
     placement === null
-      ? ""
+      ? " unplaced"
       : ` ${placement.zone ?? "?"} · ${placement.passes ?? "?"}/${placement.n ?? "?"}` +
         ` aim [${placement.aim === null ? "?" : placement.aim.join(",")}] toAim ${placement.toAim ?? "?"}`;
+  const facts = `${row.repeated ? " · repeated failures" : ""}${row.conflict ? " · family conflict" : ""}`;
   const allowance =
     row.allowance === null
       ? ""
       : ` · allowance ${row.allowance.rounds ?? "?"} round(s) ${row.allowance.side ?? "?"} over ${row.allowance.products ?? "?"} product(s)`;
-  return `${head}${placed} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
+  return `${row.runId}:${placed}${facts} · admitted ${row.admitted ?? "-"} excluded ${row.excluded}${allowance}`;
 }
 
 /** The longest run of consecutive placements on one off-aim side, ending at its last member. */
@@ -576,7 +577,7 @@ function censoringLines({ tallies, batteryOf, decisions }) {
     const hit = decision.evidenceRunIds.filter((runId) => censored.includes(runId));
     if (hit.length > 0) {
       lines.push(
-        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.action ?? "?"} read ${hit.join(", ")}`,
+        `DECISION ON CENSORED BATTERY (lane 24): ${decision.runId} ${decision.zone ?? "unplaced"} read ${hit.join(", ")}`,
       );
     }
   }
@@ -604,7 +605,7 @@ function admissionLines(dir, admissions) {
     const refused = Array.isArray(record?.refused) ? record.refused : [];
     const owners = new Map();
     for (const finding of admitted) {
-      const owner = isString(finding?.proposedOwner) ? finding.proposedOwner : "(none)";
+      const owner = isString(finding?.owner) ? finding.owner : "(none)";
       owners.set(owner, (owners.get(owner) ?? 0) + 1);
     }
     unrouted += owners.get("(none)") ?? 0;
@@ -621,7 +622,7 @@ function admissionLines(dir, admissions) {
   }
   if (unrouted > 0) {
     lines.push(
-      `FINDINGS WITHOUT PROPOSED OWNER (lane 14): ${unrouted} of ${admittedTotal} admitted findings name no owner; the actual route is in admission feedback`,
+      `FINDINGS WITHOUT OWNER (lane 14): ${unrouted} of ${admittedTotal} admitted findings name no owner; the actual route is in admission feedback`,
     );
   }
   return lines;
@@ -639,8 +640,7 @@ function reviewLines(dir, reviews) {
       continue;
     }
     const findings = record.findings.filter((finding) => isRecord(finding));
-    // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
-    const unroutable = findings.filter((finding) => authorSessionOwner(finding).owner === null).length;
+    const unroutable = findings.filter((finding) => authorSessionOwner(finding) === null).length;
     lines.push(
       `${label}: epoch review ${record.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record.reads) ? record.reads.length : "?"}`,
     );
@@ -649,14 +649,14 @@ function reviewLines(dir, reviews) {
     if (name.startsWith("authoring-")) continue;
     for (const finding of findings) {
       if (finding.severity !== "advisory") continue;
-      // A finding recurs under its kind and the declared check it names. One naming no check has
-      // no identity here, since a bare artifact root collapses every finding of one kind onto one
-      // word.
+      // A finding recurs under whether it is a defect and the declared check it names. One naming
+      // no check has no identity here, since a bare artifact root collapses every such finding onto
+      // one word.
       if (!isString(finding.checkId)) {
         unidentified += 1;
         continue;
       }
-      const key = `${finding.kind} ${finding.checkId}`;
+      const key = `${finding.defect === true ? "defect" : "observation"} ${finding.checkId}`;
       recurrence.set(key, [...new Set([...(recurrence.get(key) ?? []), label])]);
     }
   }

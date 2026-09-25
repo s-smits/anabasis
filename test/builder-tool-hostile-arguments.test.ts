@@ -186,7 +186,7 @@ describe("context under hostile arguments", () => {
 
 describe("harness_inspect under hostile arguments", () => {
   const CASES: Array<[string, JsonObject]> = [
-    ["a readiness finding page", { action: "readiness", group: 1, field: "detail" }],
+    ["a finding selector on readiness", { action: "readiness", group: 1, field: "detail" }],
     ["a task with no id", { action: "task" }],
     ["an unknown task id", { action: "task", taskId: "no-such-task" }],
     ["a traversal where a task id belongs", { action: "task", taskId: "../../correctness-model/tasks.json" }],

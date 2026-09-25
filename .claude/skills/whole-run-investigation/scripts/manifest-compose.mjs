@@ -14,6 +14,7 @@ import { CommandFailure } from "#skills/main/cli.ts";
 import {
   DIGEST_VERDICTS,
   ISOLATED_ANGLES,
+  FIX_AUTHORITY,
   leafPrompt,
   PUBLIC_ONLY_LANE,
   SHA256 as SHA_256,
@@ -491,7 +492,7 @@ function writeNativePrompts(outPath, instructions, tasks) {
   for (const task of tasks) {
     writeFileSync(
       join(promptsDir, `${task.name}.md`),
-      `${instructions.trimEnd()}\n\n---\n\n# Your assignment\n\n${task.task}\n`,
+      `${instructions.trimEnd()}\n\n---\n\n# Your assignment\n\n${task.task}\n\n${FIX_AUTHORITY}\n`,
     );
   }
   console.log(`\nnative transport: ${promptsDir} (${tasks.length} self-contained prompts)`);

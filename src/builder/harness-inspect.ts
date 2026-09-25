@@ -44,12 +44,7 @@ import { publicInputPathsByFamily } from "../truth/public-input-paths.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import {
-  type AuthorFeedbackQuery,
-  BuilderAuthorFeedback,
-  authorFindingOverview,
-  authorFindingPage,
-} from "./author-feedback.ts";
+import { type AuthorFeedbackQuery, BuilderAuthorFeedback, authorFindingOverview } from "./author-feedback.ts";
 import { characterWindow, LIST_WINDOW_ROWS, windowRange } from "./read-window.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import {
@@ -73,13 +68,12 @@ const Params = Type.Object({
   family: Type.Optional(Type.String()),
   group: Type.Optional(
     Type.Number({
-      description: "1-based finding group. Only readiness and feedback accept finding selectors.",
+      description: "1-based finding group, for feedback only.",
     }),
   ),
   field: Type.Optional(
     Type.Union([Type.Literal("code"), Type.Literal("path"), Type.Literal("detail")], {
-      description:
-        "Exact finding field for readiness or feedback; defaults to detail when group is supplied.",
+      description: "Exact finding field for feedback; defaults to detail when group is supplied.",
     }),
   ),
   /** 1-based family row, public path, or character offset. */
@@ -392,22 +386,15 @@ function readinessState(bundle: Bundle, workspace: string, rehearsal: Bundle) {
 
 /** The whole static view in one call: files, findings, module compilation, the tool roster, the
  *  installed tools, the brief, the tasks and families, the controls and the trials to start with.
- *  A named group pages one exact finding instead, since the findings are the only part too long to
- *  fit; a named family lists that family's task ids and public-input paths. */
+ *  The findings show as previews, and `correctness_check` records them for `feedback` to page
+ *  exactly; a named family lists that family's task ids and public-input paths. */
 function readinessView(
   bundle: Bundle,
   workspace: string,
   { offset, limit }: InspectParams,
   rehearsal: Bundle,
-  query: AuthorFeedbackQuery,
 ) {
   const state = readinessState(bundle, workspace, rehearsal);
-  if (query.group !== undefined) {
-    return {
-      staticStatus: state.staticStatus,
-      findings: authorFindingPage(state.findings, query, "readiness"),
-    };
-  }
   const tasks: readonly BuildTask[] = rehearsal.battery?.tasks ?? [];
   const allFamilies = familyRows(tasks);
   const range = windowRange(allFamilies.length, offset, rowLimit(limit));
@@ -417,7 +404,7 @@ function readinessView(
     staticStatus: state.staticStatus,
     files: state.files,
     missing: state.missing,
-    findings: authorFindingOverview(state.findings, undefined, undefined, "readiness"),
+    findings: authorFindingOverview(state.findings),
     modules: state.modules,
     brief:
       brief === null
@@ -469,7 +456,7 @@ function readinessNextAction(
     return "Run harness_trial on a suggested task for early feedback. Repair the admission findings before correctness_check or submit.";
   }
   if (!staticChecksClear) {
-    return `Repair every missing file, installed tool, finding and module diagnostic before trial or submit; name a group to page one finding exactly.${
+    return `Repair every missing file, installed tool, finding and module diagnostic before trial or submit.${
       more ? ` Then read the remaining families with readiness offset ${nextOffset}.` : ""
     }`;
   }
@@ -479,10 +466,10 @@ function readinessNextAction(
   return "Use coverage to reconcile public rules, declared check inputs and one-fact controls. Read each suggested task's exact public projection when its values matter, then run harness_trial on contrasting families. Static checks do not establish runtime behaviour or correctness.";
 }
 
-function readinessResult(binding: HarnessInspectBinding, params: InspectParams, query: AuthorFeedbackQuery) {
+function readinessResult(binding: HarnessInspectBinding, params: InspectParams) {
   const { workspace, context } = binding;
   const rehearsal = loadValidatedBundle(workspace, context, "rehearsal");
-  if (params.family !== undefined && query.group === undefined) {
+  if (params.family !== undefined) {
     const view = familyView(rehearsal, params.family, params);
     return {
       text: capturedJsonStringify({ action: params.action, ...view }),
@@ -490,7 +477,7 @@ function readinessResult(binding: HarnessInspectBinding, params: InspectParams, 
     };
   }
   const bundle = loadValidatedBundle(workspace, context, "admission");
-  const view = readinessView(bundle, workspace, params, rehearsal, query);
+  const view = readinessView(bundle, workspace, params, rehearsal);
   const body =
     "files" in view && binding.contract !== undefined ? { ...view, contract: binding.contract } : view;
   const count = view.findings.totalFindings;
@@ -525,22 +512,18 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
     name: "harness_inspect",
     label: "Harness inspect",
     description:
-      "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. readiness is the whole static view in one call: required files, validation findings and module typecheck diagnostics, the brief, tasks, families, controls, the tool roster agent/tools.ts must register, installed tools and sample trials, so you see what the gate would refuse before a preview spends the attempt; name group (and field) to page one finding exactly, or family to list its task ids and public-input paths. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit findings.",
+      "Static, read-only candidate inspection. It does not execute generated tools, conformance, or a verifier. readiness is the whole static view in one call: required files, validation findings and module typecheck diagnostics, the brief, tasks, families, controls, the tool roster agent/tools.ts must register, installed tools and sample trials, so you see what the gate would refuse before a preview runs it; name family to list its task ids and public-input paths. Use coverage to join public rules, check inputs and declared controls, optionally filtered by family; offset and limit page exact text. These declarations do not prove semantic coverage. Use task with taskId or family for the exact task-specific public projection. The solver also reads the public resources (validity assertions, rule decisions, artifact schema, constants and value sets) and the operating guide, so audit the three together: an obligation you enforce but cannot find in any of them is one you enforce in private. Use feedback after correctness_check or submit: it pages every recorded finding, and group and field read one exactly.",
     parameters: Params,
     run: async (params) => {
       // A selector an action cannot honour is refused here, before the validation and tsc work is
       // repeated to produce a result that answers a different question from the one asked.
-      if (
-        (params.group !== undefined || params.field !== undefined) &&
-        params.action !== "readiness" &&
-        params.action !== "feedback"
-      ) {
+      if ((params.group !== undefined || params.field !== undefined) && params.action !== "feedback") {
         return {
           text: capturedJsonStringify({
             action: params.action,
             status: "blocked",
             nextAction:
-              "Finding selectors require readiness for the candidate's own findings, or feedback for correctness_check and submit findings. Repeat with that action and the same group and field.",
+              "Finding selectors page recorded correctness_check and submit findings; repeat with action feedback and the same group and field.",
           }),
           details: {
             action: params.action,
@@ -548,14 +531,15 @@ export function createHarnessInspectTool(binding: HarnessInspectBinding): AgentT
           },
         };
       }
-      const query: AuthorFeedbackQuery = {
-        ...keyIfDefined("group", params.group),
-        ...keyIfDefined("field", params.field),
-        ...keyIfDefined("offset", params.offset),
-        ...keyIfDefined("limit", params.limit),
-      };
-      if (params.action === "feedback") return feedbackResult(feedback, query);
-      if (params.action === "readiness") return readinessResult(binding, params, query);
+      if (params.action === "feedback") {
+        return feedbackResult(feedback, {
+          ...keyIfDefined("group", params.group),
+          ...keyIfDefined("field", params.field),
+          ...keyIfDefined("offset", params.offset),
+          ...keyIfDefined("limit", params.limit),
+        });
+      }
+      if (params.action === "readiness") return readinessResult(binding, params);
       const bundle = loadValidatedBundle(
         binding.workspace,
         binding.context,

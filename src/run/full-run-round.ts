@@ -19,6 +19,7 @@ import { productVersionDir, selectedProductDir } from "./product-versions.ts";
 import { runBuildStep } from "./full-run-build-step.ts";
 import type { FullRunArgs } from "./launch-arguments.ts";
 import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
+import { type BuildClause, CLAUSE_ENDINGS } from "./loop-terminal.ts";
 import { type NextMove, epochPassOf, selectNextMoveFromDisk } from "./next-move.ts";
 import { recordDifficultyDecision } from "./difficulty-decision.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -65,7 +66,8 @@ export interface IterationResult {
   /** Digest of the active admission/difficulty basis read before authoring. */
   admissionBasisDigest?: string | null;
   build: FullRunOutcome["build"];
-  buildClauses: string[];
+  buildClause: BuildClause | null;
+  buildDetail: string | null;
   steps: CandidateEvaluation;
 }
 
@@ -206,7 +208,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
       ? null
       : {
           evidence: relative(repoRoot, placement.path),
-          action: placement.evidence.difficulty.decision.action,
+          zone: placement.evidence.difficulty.decision.placement?.zone ?? null,
           rationale: placement.evidence.difficulty.decision.rationale,
         },
   );
@@ -256,7 +258,8 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
     measuredTree: relative(repoRoot, measureDir),
     admissionBasisDigest: prior?.digest ?? null,
     build: built.build,
-    buildClauses: built.clauses,
+    buildClause: built.buildClause,
+    buildDetail: built.buildDetail,
     steps,
   };
 }
@@ -288,6 +291,7 @@ export function nextBlockedRounds(prev: number, result: IterationResult): number
   return delivered ? 0 : prev + 1;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, environment-blocked-ceiling): kept: batteries of typed non-results create no evidence, so remeasuring the same environment buys nothing (rule 15)
 function loopGuardTerminal(loop: LoopState): string | null {
   if (loop.budget.status() === "budget_limited") {
     return "budget-limited: the campaign model-call budget is spent (--iteration-budget raises it)";
@@ -317,29 +321,30 @@ export function terminalEvidenceFor(
 }
 
 /** A failed authoring round whose recomputed decision still names an authoring move may try again,
- *  because a Builder session is stochastic and a single bad round is not a verdict on the product;
- *  without the retry a campaign dies on its first failed round. The retry is bounded by the shared
- *  unresolved-authoring allowance rather than being free, and a clause that already carries its own
- *  bounded escalation or its own owner — `authoring-stalled`, `environment-blocked` — stays
- *  terminal, since retrying it would only spend the allowance on the same wall. */
+ *  when `CLAUSE_ENDINGS` gives its clause no ending of its own; without the retry a campaign dies
+ *  on its first failed round. The retry is bounded by the shared unresolved-authoring allowance
+ *  rather than being free. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, build-failed-ceiling): kept: a round that admits no candidate measures nothing, so its retries share one bounded allowance
 function buildFailedTerminal(result: IterationResult, loop: LoopState): string | null {
   if (result.nextDecision?.move === "stop") return `stopped: ${result.nextDecision.reason}`;
   const retryMove = result.nextDecision?.move;
+  const ending = result.buildClause === null ? null : CLAUSE_ENDINGS[result.buildClause];
   if (
     (retryMove === "build" || retryMove === "rebuild") &&
     unresolvedAuthoringRounds(loop) < AUTHORING_STALL_LIMIT &&
-    !result.buildClauses.some((clause) => clause === "authoring-stalled" || clause === "environment-blocked")
+    ending === null
   ) {
     return loopGuardTerminal(loop);
   }
-  const clauses = result.buildClauses.length > 0 ? ` (${result.buildClauses.join(", ")})` : "";
+  const named = [result.buildClause, result.buildDetail].filter((part) => part !== null);
+  const clause = named.length > 0 ? ` (${named.join("; ")})` : "";
   // The terminal says the final iteration failed, not the run: a later failed authoring round does
   // not erase the cases earlier rounds measured, and a run can end this way holding dozens of them.
-  return `build-failed: the final iteration produced no build-admissible candidate${clauses}; earlier recorded iterations keep their own evidence`;
+  return `${ending ?? "build-failed"}: the final iteration produced no build-admissible candidate${clause}; earlier recorded iterations keep their own evidence`;
 }
 
-/** A held candidate keeps its packet and shares the unresolved-authoring allowance with a failed
- *  build, so an authoring round may continue into a further measure or rebuild. What decides
+/** A held candidate keeps its packet and, once its battery verified a case, shares the
+ *  unresolved-authoring allowance with a failed build, so an authoring round may continue into a further measure or rebuild. What decides
  *  whether the next round is a new experiment is the active admission and decision key, not the
  *  wording of the clauses: clause prose alone cannot reset an allowance. */
 function heldCandidateTerminal(result: IterationResult, loop: LoopState): string | null {
@@ -366,8 +371,9 @@ function heldCandidateTerminal(result: IterationResult, loop: LoopState): string
 /** Settle every terminal between completed rounds; null continues. */
 export function loopTerminal(result: IterationResult, loop: LoopState): string | null {
   const { build, decision } = result;
-  const productBoundary = result.buildClauses.find((clause) => clause.startsWith("fixed-product-boundary:"));
-  if (productBoundary !== undefined) return productBoundary;
+  if (result.buildClause === "fixed-product-boundary" && result.buildDetail !== null) {
+    return result.buildDetail;
+  }
   if (build === "stopped") return `stopped: ${decision.reason}`;
   if (build === "build-failed") return buildFailedTerminal(result, loop);
   if (build === "candidate" && result.steps.promotion?.decision !== "promoted") {
@@ -379,8 +385,8 @@ export function loopTerminal(result: IterationResult, loop: LoopState): string |
 /**
  * Counts unresolved authoring rounds under one active admission and decision basis.
  *
- * A failed build and a held candidate are the same unresolved authoring problem as far as this
- * guard is concerned, so they share one state. That is what makes `held -> failed -> held` reach
+ * A failed build and a held candidate whose battery verified a case are the same unresolved
+ * authoring problem as far as this guard is concerned, so they share one state. That is what makes `held -> failed -> held` reach
  * the same finite allowance as three failed builds, instead of resetting one counter every time
  * the outcome changes shape.
  *
@@ -415,8 +421,12 @@ export function nextUnresolvedAuthoringStall(
 /** Identity of one unresolved authoring round, or null for a round that authored no unresolved candidate. */
 function unresolvedAuthoringKey(result: IterationResult): string | null {
   const { promotion } = result.steps;
+  // Gate audit 2026-09-25 (docs/gate-audit.md, held-candidate-ceiling): commented out (unsure): a zero-verified battery is the hard battery prior 10 asks for, not an authoring stall
+  // const unresolved =
+  //   result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
   const unresolved =
-    result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
+    result.build === "build-failed" ||
+    (result.build === "candidate" && promotion?.decision === "held" && promotion.battery?.verified !== 0);
   if (!unresolved) return null;
   // Key the round by what it consumed. A produced digest is new for every analysed round by
   // construction, so preferring it gives each unresolved round its own key and the declared

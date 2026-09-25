@@ -81,7 +81,7 @@ function review(
   },
 ): JudgeReviewsResult {
   return {
-    schema: "judge-reviews/v11",
+    schema: "judge-reviews/v12",
     slug: "fixture",
     runId: RUN,
     judgePin: "claude/claude-opus-5",
@@ -92,7 +92,6 @@ function review(
     coverage: { reviewable: 2, reviewed: 2 },
     provisional: null,
     exit,
-    findings: [],
     absent: [],
   };
 }
@@ -242,7 +241,7 @@ describe("the evidence-bound judge projection", () => {
     const report = judgeReport(dir, RUN);
     expect(report).toMatchObject({ available: false });
     if (report.available) throw new Error("unreachable");
-    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v11");
+    expect(report.reason).toContain("judge-reviews/v10 is not judge-reviews/v12");
   });
 
   it("is reachable from the CLI as --judge", () => {

@@ -30,7 +30,9 @@ import {
   currentThresholdDigest,
 } from "./climb-battery-admission.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
+import { type PredictionScore, predictionScore } from "../author/experiment-plan.ts";
 import { productHistoryDirs } from "./product-versions.ts";
+import { HarnessConfigError, harnessSettings } from "../truth/harness-config.ts";
 
 /** Named where the refusals are decided and re-exported here, because this module is the face
  *  every reader of climb evidence goes through. */
@@ -86,19 +88,30 @@ export type ClimbFamilySummary = {
 };
 
 /** The most any one of a battery's cases spent, over the cases that recorded a solver block:
- *  model turns, wall-clock minutes and tool calls, null for a measure none recorded. Passes alone
- *  read a battery solved inside a tenth of its declared walls and one that used them alike — run
- *  1aa6e6 passed 6 of 6 with no case past 1 turn of its 24 or 15 minutes of its 120, run fa03b7
- *  passed 6 of 6 with a case at 68 of the same 120, and both reached their author as "6 of 6, too
- *  easy". `CaseRecord.solver` records it for investigation and scoring still does not read it: it
- *  is the solver's own behaviour, the measured form of the turns `harness_trial` returns for a
- *  rehearsal, and no verifier detail, task location or verdict enters. */
+ *  model turns, wall-clock minutes and tool calls, null for a measure none recorded. It is the
+ *  solver's own behaviour, the measured form of the effort `harness_trial` returns for a
+ *  rehearsal, stated as a fact beside the verdicts and never read as difficulty: within a battery,
+ *  minutes and tool calls do not separate the cases that passed from those that failed. No verifier
+ *  detail, task location or verdict enters. */
 export type ClimbEffort = {
   cases: number;
   turns: number | null;
   minutes: number | null;
   toolCalls: number | null;
 };
+
+/** One family's solve effort over its cases that recorded a solver block: the median and the most
+ *  minutes, read against the product's `solve_minutes`, and the median tool calls. A plain fact,
+ *  like `ClimbEffort`, and no reading of difficulty. */
+export type FamilyEffort = {
+  family: string;
+  cases: number;
+  medianMinutes: number | null;
+  maxMinutes: number | null;
+  medianToolCalls: number | null;
+};
+
+type CaseRows = NonNullable<BatteryEvidence["cases"]>;
 
 /** One battery's recorded authoring memory. Task bodies stay at
  *  `runs/<runId>/cases/<taskId>/public-task.json`; `publicTaskProjection` digest-reads them. */
@@ -111,6 +124,17 @@ interface ClimbAuthoringRow {
   familySummary: ClimbFamilySummary[];
   /** Null when no case recorded any measure, which an older battery's rows will not have. */
   effort: ClimbEffort | null;
+  /** Per family, over the cases that name one and recorded a solver block. */
+  familyEffort: FamilyEffort[];
+  /** The plan's per-task predictions scored against the scored cases' verdicts; null when the
+   *  battery bound no plan or no prediction names a scored task. */
+  calibration: PredictionScore | null;
+  /** The scored cases that passed, by task id: which solver traces the Builder may read as a
+   *  passing solve. Rule 4 lets a measured battery publish each task's aggregate bit. */
+  passedTaskIds: string[];
+  /** The `solve_minutes` wall of the product that recorded this battery, which the effort of its
+   *  cases is read against; null when that product's agent/config.yaml does not parse. */
+  solveWallMinutes: number | null;
   experimentAuthoring?: ExperimentAuthoring;
 }
 
@@ -199,10 +223,10 @@ function familySummary(measured: MeasuredDifficulty): ClimbFamilySummary[] {
     .sort((a, b) => a.family.localeCompare(b.family));
 }
 
-/** A case that recorded no solver block is not a case that spent nothing, so it is left out; a
- *  battery whose cases recorded none reads null, as an older battery's rows do. */
-function solveEffort(cases: NonNullable<BatteryEvidence["cases"]>): ClimbEffort | null {
-  const spent = cases.flatMap((row) => {
+/** What each case spent. A case that recorded no solver block is not a case that spent nothing, so
+ *  it is left out. */
+function caseSpend(cases: CaseRows) {
+  return cases.flatMap((row) => {
     if (!isRecord(row.solver)) return [];
     const { turns, toolCalls, startedAt, endedAt } = row.solver;
     // An unparseable instant leaves NaN and a reversed pair a negative, and neither is at least
@@ -211,14 +235,47 @@ function solveEffort(cases: NonNullable<BatteryEvidence["cases"]>): ClimbEffort 
       isString(startedAt) && isString(endedAt) ? Date.parse(endedAt) - Date.parse(startedAt) : Number.NaN;
     return [
       {
+        family: isString(row.family) ? row.family : null,
         turns: isNumber(turns) ? turns : null,
         minutes: ms >= 0 ? Number((ms / 60_000).toFixed(1)) : null,
         toolCalls: isNumber(toolCalls) ? toolCalls : null,
       },
     ];
   });
+}
+
+function median(values: readonly number[]): number | null {
+  const sorted = values.toSorted((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length === 0) return null;
+  const value = sorted.length % 2 === 1 ? sorted[mid] : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  return value === undefined ? null : Number(value.toFixed(1));
+}
+
+function familyEffort(cases: CaseRows): FamilyEffort[] {
+  const byFamily = Map.groupBy(
+    caseSpend(cases).filter((row) => row.family !== null && row.family.trim() !== ""),
+    (row) => row.family ?? "",
+  );
+  return [...byFamily]
+    .map(([family, rows]) => {
+      const minutes = rows.map((row) => row.minutes).filter(isNumber);
+      return {
+        family,
+        cases: rows.length,
+        medianMinutes: median(minutes),
+        maxMinutes: minutes.length === 0 ? null : Math.max(...minutes),
+        medianToolCalls: median(rows.map((row) => row.toolCalls).filter(isNumber)),
+      };
+    })
+    .sort((a, b) => a.family.localeCompare(b.family));
+}
+
+/** A battery whose cases recorded no solver block reads null, as an older battery's rows do. */
+function solveEffort(cases: CaseRows): ClimbEffort | null {
+  const spent = caseSpend(cases);
   if (spent.length === 0) return null;
-  const most = (measure: keyof (typeof spent)[number]): number | null => {
+  const most = (measure: "turns" | "minutes" | "toolCalls"): number | null => {
     const recorded = spent.map((row) => row[measure]).filter(isNumber);
     return recorded.length === 0 ? null : Math.max(...recorded);
   };
@@ -230,7 +287,21 @@ function solveEffort(cases: NonNullable<BatteryEvidence["cases"]>): ClimbEffort 
   };
 }
 
-function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): AdmittedClimbRow {
+/** The bound plan's predictions against the scored verdicts. Only the aggregate score leaves here;
+ *  the per-task pairs are the battery's own published pass bits and are not restated. */
+function calibrationOf(evidence: BatteryEvidence, scored: CaseRows): PredictionScore | null {
+  const predictions = evidence.experimentAuthoring?.proposal.predictions;
+  if (predictions === undefined) return null;
+  const verdicts = new Map(
+    scored.flatMap((row) => (isString(row.taskId) ? [[row.taskId, row.pass === true] as const] : [])),
+  );
+  return predictionScore(predictions, verdicts);
+}
+
+function admittedClimbRow(
+  admitted: Extract<BatteryAdmission, { ok: true }>,
+  wallMinutes: number | null,
+): AdmittedClimbRow {
   const { evidence, measured } = admitted;
   const scored = (evidence.cases ?? []).filter((row) => isBoolean(row.pass));
   // Which cases failed, not only how many; one id-less row makes the set unknown, not smaller.
@@ -252,6 +323,10 @@ function admittedClimbRow(admitted: Extract<BatteryAdmission, { ok: true }>): Ad
       caseIds: (evidence.cases ?? []).map((row) => (isString(row.taskId) ? row.taskId : null)),
       familySummary: familySummary(measured),
       effort: solveEffort(evidence.cases ?? []),
+      familyEffort: familyEffort(evidence.cases ?? []),
+      calibration: calibrationOf(evidence, scored),
+      passedTaskIds: scored.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
+      solveWallMinutes: wallMinutes,
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
     },
     battery: {
@@ -297,11 +372,12 @@ export function readClimbBatteries(
   for (const dir of productHistoryDirs(domainDir)) {
     const root = join(dir, "runs");
     if (!existsSync(root)) continue;
+    const wall = solveWallMinutes(dir);
     for (const name of readdirSync(root)) {
       const admission = admitBattery(join(root, name), name, runPin, thresholdDigest, claimsDir);
       if (admission === null) continue;
       if (admission.excluded !== null) excluded.push(admission.excluded);
-      if (admission.ok) history.push(admittedClimbRow(admission));
+      if (admission.ok) history.push(admittedClimbRow(admission, wall));
     }
   }
   history.sort(
@@ -309,6 +385,23 @@ export function readClimbBatteries(
   );
   excluded.sort((a, b) => a.runId.localeCompare(b.runId));
   return { history, admitted: history.filter((row) => row.excludedReason === null), excluded };
+}
+
+function solveWallMinutes(productDir: string): number | null {
+  try {
+    return harnessSettings(productDir).solveMs / 60_000;
+  } catch (cause) {
+    if (cause instanceof HarnessConfigError) return null;
+    throw cause;
+  }
+}
+
+/** The one retained directory holding `runId`, or null when none or several do. */
+export function retainedRunDir(domainDir: string, runId: string): string | null {
+  const matches = productHistoryDirs(domainDir)
+    .map((dir) => join(dir, "runs", runId))
+    .filter(existsSync);
+  return matches.length === 1 ? (matches[0] ?? null) : null;
 }
 
 export function excludedSummary(excluded: readonly ExcludedBattery[], admitted: number): string | null {
@@ -336,11 +429,8 @@ export function publicTaskProjection(
   if (caseIds.length === 0) return { refusal: "no verified case identifiers" };
   const ids = caseIds.filter((id): id is string => id !== null);
   if (ids.length !== caseIds.length) return { refusal: "a verified case states no task identifier" };
-  const matches = productHistoryDirs(domainDir)
-    .map((dir) => join(dir, "runs", runId))
-    .filter(existsSync);
-  const runDir = matches[0];
-  if (matches.length !== 1 || runDir === undefined) {
+  const runDir = retainedRunDir(domainDir, runId);
+  if (runDir === null) {
     return { refusal: "the admitted battery has no unique retained run directory" };
   }
   const violations = verifyRunDir(runDir);
@@ -349,6 +439,16 @@ export function publicTaskProjection(
   if (extra.length > 0) {
     return { refusal: `${extra.length} case projection(s) beyond the verified case rows — refused as extra` };
   }
+  return recordedPublicTasks(runDir, ids, violations);
+}
+
+/** The public tasks one run directory recorded for `ids`, each read through the evidence log and
+ *  bound to its case identity, and refused whole when any one cannot be vouched for. */
+export function recordedPublicTasks(
+  runDir: string,
+  ids: readonly string[],
+  violations = verifyRunDir(runDir),
+): { tasks: unknown[] } | { refusal: string } {
   const tasks: unknown[] = [];
   for (const id of ids) {
     const recorded = recordedEvidence(runDir, `cases/${id}/public-task.json`, violations);

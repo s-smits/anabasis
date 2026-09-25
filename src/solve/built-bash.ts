@@ -25,7 +25,14 @@ import {
   writeFileSync,
 } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
-import { type AgentTool, type AgentToolResult, createBashTool } from "@earendil-works/pi-agent-core";
+import {
+  type AgentTool,
+  type AgentToolResult,
+  FileError,
+  createBashTool,
+  err,
+  ok,
+} from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { refuseDestructiveCommand } from "../builder/command-guard.ts";
@@ -51,6 +58,11 @@ import { asError } from "../meta/runtime-values.ts";
 export const BUILT_BASH_TOOL = "bash";
 /** Installed program names the description lists before it elides the rest. */
 const LISTED_PROGRAMS = 20;
+
+/** Where a cut command's whole output is kept: the session home, which the next command of this
+ *  session can read and every other session's command cannot, and which is removed with the
+ *  session. Pi's own default is the host temporary directory, open to every later solve's reads. */
+const SHELL_OUTPUT_DIR = ".shell-output";
 
 /** The worker side of the draft exchange, with the answer root the draft fills. */
 export interface BuiltFilePort {
@@ -101,6 +113,27 @@ interface ReadTree {
   leftOut: number;
   /** The agent's own paths whose new bytes cannot be carried, so their previous text was kept. */
   reverted: string[];
+}
+
+/** Pi's execution environment with its spill directory moved into the session home. Pi asks for a
+ *  temporary directory only to store a cut command's output, so this is the one place to move. */
+class SessionHomeSpill extends NodeExecutionEnv {
+  constructor(
+    cwd: string,
+    shellEnv: OptionalEnvValues,
+    private readonly spillRoot: string,
+  ) {
+    super({ cwd, shellPath: "/bin/sh", shellEnv });
+  }
+
+  override async createTempDir(prefix: string | undefined): ReturnType<NodeExecutionEnv["createTempDir"]> {
+    try {
+      mkdirSync(this.spillRoot, { recursive: true, mode: 0o700 });
+      return ok(mkdtempSync(join(this.spillRoot, prefix ?? "tmp-")));
+    } catch (error) {
+      return err(new FileError("unknown", `cannot store the whole output: ${asError(error).message}`));
+    }
+  }
 }
 
 function draftFolder(root: string): string {
@@ -163,6 +196,20 @@ function shellBudgetClause(
     return `\n\nYour ${asked} s is above the ${shellMaxSeconds} s this harness allows one command, so it ran as ${seconds} s — the most there is, and ${cheaper}.`;
   }
   return `\n\nThat is the whole ${shellMaxSeconds} s this harness allows one command, so ${cheaper}.`;
+}
+/** What the command printed, or why it failed. Pi's cut notice names the stored file and stops
+ *  there, and the solver's read tool cannot open it, because that tool reaches the draft alone. So
+ *  the notice also names the tool that can. */
+function shellReport(failure: Error | null, result: AgentToolResult<unknown> | null, store: string): string {
+  const text =
+    failure?.message ??
+    (result?.content ?? [])
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("")
+      .trim();
+  const at = text.lastIndexOf(`Full output: ${store}/`);
+  const end = at < 0 ? -1 : text.indexOf("]", at);
+  return end < 0 ? text : `${text.slice(0, end)} — read it with this shell.${text.slice(end)}`;
 }
 /** Whether the command could run this entry by name. A venv's `bin` is about a third files that
  *  cannot: `activate` and its .bat, .csh, .fish, .nu, .ps1 and _this.py siblings, `deactivate.bat`
@@ -365,7 +412,8 @@ export function createBuiltBashTool({
         // for want of it; the clause above says so and gets the same short value again, so the
         // floor is enforced here rather than left to advice.
         const seconds = Math.min(Math.max(asked, timeouts.shellDefaultSeconds), timeouts.shellMaxSeconds);
-        const execution = { env: new NodeExecutionEnv({ cwd: work, shellPath: "/bin/sh", shellEnv: env }) };
+        const store = join(home, SHELL_OUTPUT_DIR);
+        const execution = { env: new SessionHomeSpill(work, env, store) };
         // A non-zero exit throws, so it is caught into a value rather than left to unwind: the
         // files the command wrote before failing are still its work, collected before the re-raise.
         const outcome = await executePiTool(
@@ -382,12 +430,7 @@ export function createBuiltBashTool({
           (error: unknown) => ({ result: null, failure: asError(error) }),
         );
         const budget = shellBudgetClause(outcome.failure, asked, seconds, timeouts);
-        const reported =
-          (outcome.failure?.message ??
-            (outcome.result?.content ?? [])
-              .map((part) => (part.type === "text" ? part.text : ""))
-              .join("")
-              .trim()) + budget;
+        const reported = shellReport(outcome.failure, outcome.result, store) + budget;
         if (port === null) {
           // The shell preset once rethrew the runner's error untouched, which is how the budget
           // clause missed the preset most solves are given. Rewrapped only when there is a clause.

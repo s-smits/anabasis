@@ -71,9 +71,11 @@ interface TerminalFacts {
   outcome: string | null;
   terminalReason: string | null;
   abortClause: string | null;
-  /** Battery run ids in recorded iteration order. */
+  /** Iteration run ids in recorded order. */
   iterations: string[];
-  denominator: { total: number; verified: number; unaccepted: number; nonResults: number } | null;
+  /** The iterations that measured a battery, each under its own run id. The terminal records no
+   *  counts, so a reader derives them from the case rows for these ids. */
+  measured: string[];
   turnsUsed: number | null;
   byRole: Array<{ role: string; turns: number }>;
 }
@@ -177,22 +179,12 @@ function openingFacts(opening: JsonObject): OpeningFacts {
   };
 }
 
-function denominatorFacts(terminal: JsonObject): TerminalFacts["denominator"] {
-  const recorded = nested(terminal, "denominator");
-  const total = numberOr(recorded?.total);
-  const verified = numberOr(recorded?.verified);
-  const unaccepted = numberOr(recorded?.unaccepted);
-  const nonResults = numberOr(recorded?.nonResults);
-  if (total === null || verified === null || unaccepted === null || nonResults === null) return null;
-  return { total, verified, unaccepted, nonResults };
-}
-
-function iterationRunIds(terminal: JsonObject): string[] {
+function iterationRunIds(terminal: JsonObject, rounds: "every" | "measured"): string[] {
   const rows = terminal.iterations;
   if (!Array.isArray(rows)) return [];
   const ids: string[] = [];
   for (const row of rows) {
-    const id = isRecord(row) ? stringOr(row.runId) : null;
+    const id = isRecord(row) && (rounds === "every" || row.measured === true) ? stringOr(row.runId) : null;
     if (id !== null) ids.push(id);
   }
   return ids;
@@ -214,8 +206,8 @@ function terminalFacts(terminal: JsonObject): TerminalFacts {
     outcome: stringOr(terminal.outcome),
     terminalReason: stringOr(terminal.terminalReason),
     abortClause: stringOr(terminal.abortClause),
-    iterations: iterationRunIds(terminal),
-    denominator: denominatorFacts(terminal),
+    iterations: iterationRunIds(terminal, "every"),
+    measured: iterationRunIds(terminal, "measured"),
     turnsUsed: numberOr(nested(terminal, "providerResourceBudget")?.used),
     byRole: roleTurns(terminal),
   };

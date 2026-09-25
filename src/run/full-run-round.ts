@@ -50,7 +50,7 @@ export interface IterationInput {
   /** A deadline or signal stop checked between every potentially paid stage. */
   stopRequested?: () => Error | null;
   absentSteps: string[];
-  recordBatteryRun?: (runId: string) => void;
+  markMeasured?: () => void;
   /** Given the kickoff the epoch is bound on. */
   onOpening?: (kickoff: string, epochPass: string | undefined) => void;
   report: (decision: NextMove) => void;
@@ -90,9 +90,6 @@ export interface LoopState {
   blockedRounds: number;
   /** The one unresolved authoring stall counter; null before the first unresolved round. */
   authoringStall: UnresolvedAuthoringStall | null;
-  /** Trailing consecutive completed measurements the selector answered with the evidence-free
-   *  measure decision again — the battery ran, and yet nothing it produced reached the selector. */
-  stalledMeasureRounds: number;
 }
 
 /** One finite allowance for unresolved authoring work under an unchanged admission or decision
@@ -232,7 +229,7 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
     measureDir,
     absentSteps: input.absentSteps,
     ...keyIfDefined("experimentAuthoring", built.experimentAuthoring),
-    ...keyIfDefined("recordBatteryRun", input.recordBatteryRun),
+    ...keyIfDefined("markMeasured", input.markMeasured),
     ...keyIfDefined("safeguardContext", input.safeguardContext),
     deps,
     observer,
@@ -264,11 +261,32 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
   };
 }
 
-/** The per-round counters have one owner. They read a finished `IterationResult` and answer only
- *  "how many rounds in a row", which the terminals below then compare against policy; keeping them
- *  here as well would give the loop's counting two homes. They are re-exported so their callers and
- *  tests keep addressing this module. */
-export { nextBlockedRounds, nextStalledMeasureRounds } from "./full-run-round-counters.ts";
+/**
+ * Count consecutive environment-blocked batteries. A null claim after an executed battery states
+ * exactly that (harness-measure claims contract): every attempted case recorded as a typed
+ * non-result of an environment-owned kind, which is what `BatteryVerificationNonResult` is raised
+ * on after the battery record is already on disk. Rounds that ran no battery leave the counter
+ * unchanged — only a completed measurement can say whether the environment recovered.
+ *
+ * A provider-stopped battery that still created a claim measured enough cases to be read, so it
+ * resets the counter like any other delivery. One whose claim was refused counts instead. Read as a
+ * delivery it would reset the counter on a battery that was almost entirely non-results, the
+ * declared allowance would never engage, and authoring round after authoring round would open
+ * against a dead provider until the Builder's own turn was refused. A dead provider is not
+ * remeasured merely because rounds remain.
+ */
+export function nextBlockedRounds(prev: number, result: IterationResult): number {
+  const { measure } = result.steps;
+  if (measure === null) return prev;
+  // Whether the environment carried this battery far enough to say anything. A written claim
+  // normally proves it completed turns, with one exception: the provider-stop rule ends scheduling
+  // after five consecutive provider non-results and records the battery `provider-stopped`, and
+  // the claim it then writes is a refusal for that same dead provider rather than evidence that
+  // the provider worked.
+  const delivered =
+    measure.claim !== null && (measure.claim.created || measure.disposition !== "provider-stopped");
+  return delivered ? 0 : prev + 1;
+}
 
 function loopGuardTerminal(loop: LoopState): string | null {
   if (loop.budget.status() === "budget_limited") {
@@ -276,12 +294,6 @@ function loopGuardTerminal(loop: LoopState): string | null {
   }
   if (loop.blockedRounds >= POLICY.loop.environmentBlockedRounds) {
     return `environment-blocked: ${loop.blockedRounds} consecutive batteries were stopped by the provider or recorded only typed non-results, so none of them produced a claim — another measurement creates no evidence; restore the environment and rerun`;
-  }
-  // Checked after the environment guard, because a dead provider raises both guards at once and
-  // the owner that matters is the provider. Reporting it as an analysis stall would send the next
-  // reader to inspect the admission path for a defect that is not there.
-  if (loop.stalledMeasureRounds >= POLICY.loop.stalledMeasureRounds) {
-    return `measurement-stalled: ${loop.stalledMeasureRounds} consecutive completed measurements admitted no feedback and created no difficulty evidence — another identical battery creates nothing the selector can read; inspect the analysis and admission path, then rerun`;
   }
   return null;
 }

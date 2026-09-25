@@ -80,15 +80,16 @@ export function scriptedBuilderRuntime(
                 throw new Error(`scripted turn called "${name}", which the campaign roster does not carry`);
               }
               byName[name] = (byName[name] ?? 0) + 1;
-              emit({ type: "tool_started", toolName: name, args: params });
+              const toolCallId = `scripted-${turn}-${name}`;
+              emit({ type: "tool_started", toolName: name, toolCallId, args: params });
               try {
                 // The roster's own parameter schema is not read here; the script states the arguments.
-                const result = await tool.execute(`scripted-${turn}-${name}`, double(params));
-                emit({ type: "tool_ended", toolName: name, isError: false, args: params });
+                const result = await tool.execute(toolCallId, double(params));
+                emit({ type: "tool_ended", toolName: name, toolCallId, isError: false });
                 return result;
               } catch (cause) {
                 failedByName[name] = (failedByName[name] ?? 0) + 1;
-                emit({ type: "tool_ended", toolName: name, isError: true, args: params });
+                emit({ type: "tool_ended", toolName: name, toolCallId, isError: true });
                 throw cause;
               }
             };

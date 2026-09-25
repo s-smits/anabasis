@@ -8,7 +8,7 @@ import type { Brief, ContractFinding } from "../truth/brief.ts";
 import type { ControlCorpus } from "../truth/controls.ts";
 import type { TaskBattery } from "../truth/tasks.ts";
 import type { ToolsSpec } from "../truth/tools-spec.ts";
-import type { ExperimentSubmission } from "./experiment-proposal.ts";
+import type { ExperimentSubmission } from "./experiment-plan.ts";
 import type { WorkspaceChange } from "./domain-repo.ts";
 
 export type SessionBuildStage =
@@ -33,6 +33,11 @@ export interface BuiltHarness {
   conformance: ConformanceEvidence | null;
 }
 
+// Every owner here must be one some route can actually select. `routableOwnerOf` returns a key of
+// `OWNER_FILES` or null, so an owner absent from that table can only arrive as a literal, and two
+// that arrived neither way -- `judge` and `unknown` -- have gone. An owner nothing produces still
+// widens every exhaustive switch over this type and still reads to the next author as a route that
+// exists, which is the cost a closed set is supposed to avoid paying.
 const FEEDBACK_OWNERS = [
   "brief",
   "tests",
@@ -43,8 +48,6 @@ const FEEDBACK_OWNERS = [
   "correctness-model",
   "fingerprint",
   "environment",
-  "judge",
-  "unknown",
 ] as const;
 export type FeedbackOwner = (typeof FEEDBACK_OWNERS)[number];
 

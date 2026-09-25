@@ -1,5 +1,6 @@
 # The composed gate on GitHub Actions: the same deterministic runtime, typecheck, lint and test
-# boundary as the pre-push hook in .githooks/pre-push.
+# boundary as the pre-push hook in .githooks/pre-push. The hook is what gates a change; this is not
+# a required check, so a pull request merges without it.
 #
 # It runs once a day against main rather than on every push or pull request, because the pre-push
 # hook already runs this gate on every source push, which catches nearly everything first. What only
@@ -21,7 +22,8 @@
 name: gate
 on:
   schedule:
-    # 03:17 UTC, off the top of the hour, where scheduled runs queue longest.
+    # 03:17 UTC, off the top of the hour, where scheduled runs queue longest. A scheduled run always
+    # checks out the default branch, so this is main as it stands that day.
     - cron: "17 3 * * *"
   workflow_dispatch:
 concurrency:
@@ -67,7 +69,7 @@ jobs:
     needs: changed
     if: needs.changed.outputs.run == 'true'
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -76,7 +78,10 @@ jobs:
       - name: Install ripgrep
         # Three builder-tools tests read rg output and fail without naming the missing binary.
         run: brew install ripgrep
-      - run: bun install --frozen-lockfile
+      - name: Prepare dependencies
+        # Through the script every worktree uses, so the checkout carries the dependency marker and
+        # the trees tests stage clone its node_modules instead of installing their own.
+        run: bash scripts/worktree.sh setup "$GITHUB_WORKSPACE"
       - run: bun run gate
 
   linux:
@@ -87,7 +92,7 @@ jobs:
     needs: changed
     if: needs.changed.outputs.run == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -123,5 +128,8 @@ jobs:
                 --bind / / --proc /proc --dev /dev /bin/true
           echo "bubblewrap $installed confines on this runner"
 
-      - run: bun install --frozen-lockfile
+      - name: Prepare dependencies
+        # Through the script every worktree uses, so the checkout carries the dependency marker and
+        # the trees tests stage clone its node_modules instead of installing their own.
+        run: bash scripts/worktree.sh setup "$GITHUB_WORKSPACE"
       - run: bun run gate

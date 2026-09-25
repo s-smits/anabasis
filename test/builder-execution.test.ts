@@ -1,8 +1,17 @@
-import { describe, expect, it } from "bun:test";
-import { BuilderExecutionRecorder, isCandidateSubmit } from "../src/author/builder-execution.ts";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { afterAll, describe, expect, it } from "bun:test";
+import { writeFileSync } from "../src/meta/filesystem.ts";
+import { join } from "../src/meta/path.ts";
+import {
+  BuilderExecutionRecorder,
+  isCandidateSubmit,
+  submitProjection,
+} from "../src/author/builder-execution.ts";
 import { turnEventRecorder } from "../src/author/builder-turn-loop.ts";
+import { sha256 } from "../src/meta/digest.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { isCurrentExecutionRecord } from "../tools/outcome/builder-execution-current.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const commit = (letter: string) => letter.repeat(40);
 
@@ -14,6 +23,7 @@ describe("builder execution submission events", () => {
       target: { comparator: "at-least" as const, verifiedPasses: 0 },
       gap: "Public gap",
       change: "Proposed repair",
+      ...PLAN_FIELDS,
       expectedResult: "Next measured result",
     };
     recorder.recordSubmit({
@@ -58,6 +68,30 @@ describe("builder execution submission events", () => {
     });
   });
 
+  it("records a preview's refusing codes and the strict reader refuses a non-string code", () => {
+    const recorder = new BuilderExecutionRecorder(Date.now());
+    const sequence = recorder.customToolStarted("correctness_check", {});
+    recorder.customToolFinished(sequence, "returned", {
+      details: {
+        receipt: {
+          outcome: "findings",
+          stage: "gates",
+          findings: 2,
+          findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
+        },
+      },
+    });
+    const evidence = recorder.finish("turn-bound");
+    expect(evidence.customCalls[0]?.semantic?.findingCodes).toEqual([
+      "gate-environment",
+      "tasks-hidden-operand-unexpected",
+    ]);
+    expect(isCurrentExecutionRecord(evidence)).toBe(true);
+    const altered = JSON.parse(JSON.stringify(evidence));
+    altered.customCalls[0].semantic.findingCodes = [7];
+    expect(isCurrentExecutionRecord(altered)).toBe(false);
+  });
+
   it("keeps a controller terminal in the raw rows but excludes it from candidate trees", () => {
     const recorder = new BuilderExecutionRecorder(Date.now());
     recorder.recordSubmit({
@@ -89,7 +123,7 @@ describe("builder execution submission events", () => {
     });
 
     const evidence = recorder.finish("terminal-refusal");
-    expect(evidence.schema).toBe("builder-execution/v5");
+    expect(evidence.schema).toBe("builder-execution/v6");
     expect(evidence.submits).toHaveLength(3);
     expect(evidence.submits.map((row) => row.kind)).toEqual([
       "candidate",
@@ -97,8 +131,8 @@ describe("builder execution submission events", () => {
       "controller-terminal",
     ]);
     expect(evidence.submits.at(-1)).toMatchObject({ commit: "budget-limited", terminal: true });
-    expect(evidence.uniqueCandidateTrees).toBe(2);
-    expect(evidence.firstSubmitMs).not.toBeNull();
+    expect(submitProjection(evidence.submits).uniqueCandidateTrees).toBe(2);
+    expect(submitProjection(evidence.submits).firstSubmitMs).not.toBeNull();
   });
 
   it("counts a real candidate that happens to terminate, while kind helpers stay schema-blind", () => {
@@ -116,7 +150,7 @@ describe("builder execution submission events", () => {
       terminal: true,
     });
     const evidence = recorder.finish("terminal-refusal");
-    expect(evidence.uniqueCandidateTrees).toBe(1);
+    expect(submitProjection(evidence.submits).uniqueCandidateTrees).toBe(1);
     expect(evidence.submits[0]).toMatchObject({ kind: "candidate", terminal: true, commit: commit("c") });
   });
 
@@ -373,22 +407,62 @@ it("bounds custom-tool receipts while aggregate counting remains a separate exac
 
 it("records only closed custom-tool actions", () => {
   const recorder = new BuilderExecutionRecorder();
+  // A context call records its depth, defaulting to cited, and never the question it asked; a depth
+  // outside the closed set records as unknown.
   const sequence = recorder.customToolStarted("context", {
-    action: "private-action-text",
-    query: "private-query-text",
+    depth: "private-depth-text",
+    question: "private-question-text",
   });
   recorder.customToolFinished(sequence, "returned");
+  const asked = recorder.customToolStarted("context", { question: "private-question-text" });
+  recorder.customToolFinished(asked, "returned");
   const evidence = recorder.finish("recorded");
-  expect(evidence.customCalls[0]?.action).toBe("unknown");
+  expect(evidence.customCalls.map((call) => call.action)).toEqual(["unknown", "cited"]);
   expect(JSON.stringify(evidence)).not.toContain("private-");
-  for (const action of ["coverage", "history"]) {
+  for (const action of ["coverage", "feedback"]) {
     const next = recorder.customToolStarted("harness_inspect", { action });
     recorder.customToolFinished(next, "returned");
   }
   expect(
     recorder
       .finish("recorded")
-      .customCalls.slice(1)
+      .customCalls.slice(2)
       .map((call) => call.action),
-  ).toEqual(["coverage", "history"]);
+  ).toEqual(["coverage", "feedback"]);
+});
+
+describe("the handover a round leaves in its workspace", () => {
+  afterAll(cleanupScratch);
+
+  it("digests each handover file as it stands when the record is written, and null for a missing one", () => {
+    const workspace = scratchDir("handovers-");
+    writeFileSync(join(workspace, "EXPERIMENT.json"), '{"gap":"one"}');
+    writeFileSync(join(workspace, "MEMORY.md"), "# notes\n");
+    const recorder = new BuilderExecutionRecorder(Date.now());
+    recorder.handoversIn(workspace);
+    const checkpoint = recorder.finish("in-flight");
+    writeFileSync(join(workspace, "MEMORY.md"), "# notes\nThe round learned one thing.\n");
+    const settled = recorder.finish("recorded");
+
+    expect(checkpoint.handovers).toEqual({
+      "EXPERIMENT.json": sha256('{"gap":"one"}'),
+      "MEMORY.md": sha256("# notes\n"),
+      "SCRATCHPAD.md": null,
+    });
+    expect(settled.handovers?.["MEMORY.md"]).toBe(sha256("# notes\nThe round learned one thing.\n"));
+    expect(isCurrentExecutionRecord(settled)).toBe(true);
+  });
+
+  it("leaves the field off when no workspace was named, and the reader refuses a malformed one", () => {
+    const bare = new BuilderExecutionRecorder(Date.now()).finish("recorded");
+    expect("handovers" in bare).toBe(false);
+    expect(isCurrentExecutionRecord(bare)).toBe(true);
+    for (const handovers of [
+      { "EXPERIMENT.json": "not-a-digest", "MEMORY.md": null, "SCRATCHPAD.md": null },
+      { "EXPERIMENT.json": null, "MEMORY.md": null },
+      { "EXPERIMENT.json": null, "MEMORY.md": null, "SCRATCHPAD.md": null, "NOTES.md": null },
+    ]) {
+      expect(isCurrentExecutionRecord({ ...bare, handovers })).toBe(false);
+    }
+  });
 });

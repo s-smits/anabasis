@@ -28,8 +28,8 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
  * of answers, and naming a set of answers is the job a name is for: `LockFile` spells out
  * absent, unreadable and read, and hiding all three behind the function that produces them
  * reads worse at every call site. An object shape written out is a declaration with its fields,
- * often a doc comment on each — `CaseTracePointer` explains at its `sha256` field why the digest
- * may be null — and it is also the one case `anti-slop/no-known-value-widening` refuses: an
+ * often a doc comment on each — `SlotChoice` explains at its `model` field why a defaulted model
+ * is still recorded — and it is also the one case `anti-slop/no-known-value-widening` refuses: an
  * anonymous object type on a return value discards the evidence a named contract carries, and
  * that rule gates. A body too wide for the signature is the same failure at one line; inlining
  * `Pick<CaseRecord, "acceptedSubmit" | "truthOk" | "pass" | …>` produced a 160-character

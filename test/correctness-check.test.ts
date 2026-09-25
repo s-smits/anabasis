@@ -1,3 +1,4 @@
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required, text } from "./helpers/doubles.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
@@ -63,6 +64,7 @@ interface Session {
   feedback?: BuilderAuthorFeedback;
   trialsDir?: string;
   experimentProposalRequired?: true;
+  planAdvice?: () => string[];
   /** Extra validation sequence input, e.g. a rebuild experiment with an adopted baseline. */
   validation?: Partial<Pick<PipelineInput, "experiment" | "adoptedDir" | "toolsProbes">>;
 }
@@ -145,7 +147,8 @@ function session(dir: string, options: Session) {
         },
       ),
     expectedTasks: 4,
-    ...keyIfDefined("feedback", options.feedback),
+    feedback: options.feedback ?? new BuilderAuthorFeedback(),
+    planAdvice: options.planAdvice ?? (() => []),
   });
   let receipt: BuilderCustomToolSemantic | undefined;
   const check = async () => {
@@ -275,6 +278,24 @@ it("rechecks changed installed-tool or interpreter bytes, preserves every trial 
 });
 
 describe("correctness_check", () => {
+  // The description names what runs and what it returns; how the stages stop one another is each
+  // stage receipt's to say, so a second account of that order in the description is one to drift.
+  it("describes the gates it runs without narrating their stop order", () => {
+    const { description } = createCorrectnessCheckTool({
+      preview: () => {
+        throw new Error("the description needs no preview");
+      },
+      expectedTasks: 4,
+      feedback: new BuilderAuthorFeedback(),
+      planAdvice: () => [],
+    });
+    for (const gate of ["installed tools", "EXPERIMENT.json", "conformance", "control census", "F2"]) {
+      expect(description).toContain(gate);
+    }
+    expect(description).toContain("submit remains the only acceptance path");
+    expect(description).not.toMatch(/stops the stages|skips F2|family isolation/);
+  });
+
   it.each(["none", "agent", "evaluator", "controls"] as const)(
     "rebuild preview admits changed bytes and refuses an unchanged package: %s",
     async (change) => {
@@ -330,6 +351,7 @@ describe("correctness_check", () => {
       target: { comparator: "at-least", verifiedPasses: 2 },
       gap: "Gap.",
       change: "Change.",
+      ...PLAN_FIELDS,
       expectedResult: "Result.",
     };
     writeFileSync(join(dir, EXPERIMENT_FILE), JSON.stringify(proposal));
@@ -393,6 +415,24 @@ describe("correctness_check", () => {
     expect(existsSync(trialsDir)).toBe(false);
     expect(nested(body, "findings").totalFindings).toBeGreaterThan(0);
     expect(nested(body, "truth").verdict).toBe("not-run");
+    expect(body.planAdvice).toBeUndefined();
+  });
+
+  // The plan's disagreement with the round's rehearsals rides beside the result and refuses nothing.
+  it("carries the round plan's advice beside the result without changing it", async () => {
+    let advice: string[] = [];
+    const { check } = session(workspace("advised", false), {
+      gate: async () => [],
+      planAdvice: () => advice,
+    });
+    expect((await check()).planAdvice).toBeUndefined();
+    advice = [
+      "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
+    ];
+    const body = await check();
+    expect(body.planAdvice).toEqual(advice);
+    expect(body.status).toBe("findings");
+    expect(body.stage).toBe("bundle");
   });
 
   it("reaches the gate on a valid tree, records the trial under trials/<snapshotId> and reports coverage", async () => {
@@ -601,7 +641,10 @@ describe("correctness_check", () => {
       findings: 2,
       candidateId: expect.any(String),
       reason: "refused-gates",
+      // Which gates refused the tree survives the session on the receipt, never in the text.
+      findingCodes: ["gate-environment", "tasks-hidden-operand-unexpected"],
     });
+    expect(JSON.stringify(body)).not.toContain("findingCodes");
     answer = [];
     writeFileSync(join(dir, "correctness-model", "guide.md"), "# repaired\n");
     const repaired = await check();
@@ -616,6 +659,7 @@ describe("correctness_check", () => {
       resolved: 2,
       introduced: 0,
     });
+    expect(receipt()?.findingCodes).toBeUndefined();
     const page = feedback.page({ group: 1, field: "detail" });
     expect(page).toMatchObject({ available: true, source: "correctness_check", check: { stage: "gates" } });
     // A later submit refusal replaces the trial page, and the identity says which it is.

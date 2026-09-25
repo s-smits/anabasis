@@ -8,6 +8,7 @@
  * attribution from accepted bytes, the real census, solvability and adoption path, and the real
  * recorded evidence the next round reads.
  */
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
@@ -177,6 +178,7 @@ function writeProposal(workspace: string, change: string, verifiedPasses: number
       scope: "tasks",
       gap: "the measured battery says nothing about inputs the solver has not been asked to uppercase",
       change,
+      ...PLAN_FIELDS,
       expectedResult: "fewer verified passes on the same product, from the longer inputs alone",
       target: { comparator: "at-most", verifiedPasses },
     }),
@@ -285,8 +287,12 @@ describe("the climb: one product, three batteries, one fixed competence", () => 
       ["rebuild", "candidate", "promoted"],
     ]);
     expect(outcome.rounds.map((round) => round.buildClauses)).toEqual([[], [], []]);
-    const batteries = outcome.rounds.flatMap((round) => round.batteryRunIds);
-    expect(batteries).toEqual(["climb", "climb-i02", "climb-i03"]);
+    expect(outcome.rounds.map((round) => [round.runId, round.measured])).toEqual([
+      ["climb", true],
+      ["climb-i02", true],
+      ["climb-i03", true],
+    ]);
+    const batteries = outcome.rounds.map((round) => round.runId);
 
     // The competence never moved, so every miss is an input past the ceiling and nothing else.
     for (const [index, inputs] of [EASY, HARDER, HARDEST].entries()) {
@@ -385,7 +391,11 @@ describe("the climb: one product, three batteries, one fixed competence", () => 
       ["rebuild", "candidate"],
       ["stop", "stopped"],
     ]);
-    expect(outcome.rounds.flatMap((round) => round.batteryRunIds)).toEqual(["hold", "hold-i02", "hold-i03"]);
+    expect(outcome.rounds.filter((round) => round.measured).map((round) => round.runId)).toEqual([
+      "hold",
+      "hold-i02",
+      "hold-i03",
+    ]);
     expect(outcome.rounds.at(-1)?.buildClauses.join(" ")).toContain(
       "3 consecutive rounds ended above the aim",
     );

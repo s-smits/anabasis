@@ -25,6 +25,7 @@ import {
   SYSTEM_SERVICE_RULES,
   runDataDenyRules,
   traversalMetadataRules,
+  verifierTempSiblingDenyRules,
 } from "../verify/wall-policy.ts";
 
 /** The Seatbelt profile text and the identity it was derived under. Both travel together, because
@@ -146,6 +147,12 @@ function splitScratchRoots(policy: CandidateAccessPolicy) {
 const HIDDEN_TASKS_DENY_RULES = `${runDataDenyRules([HIDDEN_TASKS_DENY_PATTERN]).join("\n")}
 (deny file-write* (regex #"${HIDDEN_TASKS_DENY_PATTERN}"))`;
 
+// The product's own trees sit in the temporary directory both cells may otherwise write. A verifier
+// cell holds a check's tool output, which is protected verifier detail; the tool cache store is what
+// a later verification starts from; Built scratch and a host session's CLI state belong to other
+// sessions. So every one of them is shut after every grant, whichever TMPDIR the launch froze.
+const VERIFIER_TEMP_DENY_RULES = verifierTempSiblingDenyRules().join("\n");
+
 /**
  * One profile text, in one rule order, for both cells.
  *
@@ -158,7 +165,8 @@ const HIDDEN_TASKS_DENY_RULES = `${runDataDenyRules([HIDDEN_TASKS_DENY_PATTERN])
  * The order is the policy, because SBPL takes the last matching rule:
  *
  *   base → close home and host writes → platform/scratch grants → close the repository →
- *   the policy's own grants → final cross-cell, measured-evidence and hidden-task denies.
+ *   the policy's own grants → final cross-cell, measured-evidence, hidden-task and verifier
+ *   temp-tree denies.
  *
  * What remains different between the cells is passed in as values rather than as a second copy of
  * that order: the workshop imports the platform profile, names the Mach services a confined
@@ -213,7 +221,7 @@ function profileText(
       "deny file-write*",
       policy.writeDenyRoots.map((root) => `  (subpath ${sb(root)})`),
     ),
-    `${measuredDenyRules}\n${HIDDEN_TASKS_DENY_RULES}`,
+    `${measuredDenyRules}\n${HIDDEN_TASKS_DENY_RULES}\n${VERIFIER_TEMP_DENY_RULES}`,
   ].join("");
   // The cell's own HOME and caches are granted after the config-name denies, and that order is
   // exactly what gives the cell its exemption from them: a cell writes its own `.env` and its own

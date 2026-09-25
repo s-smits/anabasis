@@ -51,9 +51,6 @@ interface BuilderTurnInput {
   kickoff: string;
   /** The operator's turn cap; absent, the round has none. */
   maxTurns?: number;
-  /** The session driver owns its transcript projection; this callback keeps it complete even
-   *  when this loop classifies a failed turn before it can return. */
-  onTurnCompleted?(turn: number, result: AgentTurnResult): void;
   observer?: RunObserver;
   turnTimeoutMs?: number;
   attemptGate?: ModelAttemptGate;
@@ -65,6 +62,8 @@ interface BuilderTurnInput {
   authoring: { workspace: string; paths: readonly string[]; openingIdentity: string };
   /** When the session opened, so the continuation can read elapsed time and not only turns. */
   openedAtMs: number;
+  /** The round plan's compact view, read afresh at each turn boundary. */
+  planView?: () => string;
 }
 
 /** The turn's event sink, including at most one liveness checkpoint per minute. */
@@ -149,7 +148,10 @@ function turnRetryContext(input: BuilderTurnInput): TurnRetryContext {
   };
 }
 
-export async function runBuilderTurn(input: BuilderTurnInput): Promise<{ prompt: string }> {
+/** The next turn's prompt, and the text this turn returned for a caller that reads it. */
+export async function runBuilderTurn(
+  input: BuilderTurnInput,
+): Promise<{ prompt: string; assistantText: string | undefined }> {
   const { state } = input;
   state.activeTurn = input.turn;
   observeBuilderTurn(input.observer, { prompt: input.prompt, turn: input.turn });
@@ -158,7 +160,6 @@ export async function runBuilderTurn(input: BuilderTurnInput): Promise<{ prompt:
     input.recorder.turnCompleted(result);
     observeTurnTools(input.observer, input.turn, result.toolCalls);
     input.checkpoint();
-    input.onTurnCompleted?.(input.turn, result);
     if (result.status !== "completed") {
       const errors = result.errorMessages ?? [];
       if (state.accepted === null && !state.terminal) {
@@ -167,7 +168,7 @@ export async function runBuilderTurn(input: BuilderTurnInput): Promise<{ prompt:
       }
     }
     countIdleTurn(state, result.toolCalls);
-    return { prompt: nextTurnPrompt(input, result) };
+    return { prompt: nextTurnPrompt(input, result), assistantText: result.assistantText };
   }
 }
 
@@ -207,6 +208,7 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
     activeTurn: state.activeTurn,
     maxTurns: input.maxTurns,
     elapsedMs: Date.now() - input.openedAtMs,
+    ...keyIfDefined("planView", input.planView?.()),
   };
   return [
     continuePrompt(goal),

@@ -61,7 +61,7 @@ function fixture(): DigestFixture {
       claim: {
         statement: {
           groundings: [
-            { checkId: "alpha-check", kind: "intrinsic", adapterId: null },
+            { checkId: "alpha-check", kind: "authored", adapterId: null },
             { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
           ],
         },
@@ -73,7 +73,7 @@ function fixture(): DigestFixture {
     join(domain, "correctness-model", "brief.json"),
     JSON.stringify({
       truthChecks: [
-        { id: "alpha-check", grounding: { kind: "intrinsic" } },
+        { id: "alpha-check", grounding: { kind: "authored" } },
         { id: "beta-check", grounding: { kind: "external-verifier" } },
       ],
     }),
@@ -285,7 +285,7 @@ describe("trace-digest", () => {
     const paths = fixture();
     const claimPath = join(paths.campaign, "claims", "run-1.json");
     const groundings = [
-      { checkId: "alpha-check", kind: "intrinsic", adapterId: null },
+      { checkId: "alpha-check", kind: "authored", adapterId: null },
       { checkId: "beta-check", kind: "external-verifier", adapterId: "beta-engine" },
     ];
     // A claim from the installed-tools source: no registry provenance, an environment hash instead.

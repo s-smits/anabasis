@@ -71,10 +71,6 @@ export type ControlReceipt = {
   nonResultKind: NonResultKind | null;
 };
 
-/** The receipt fields safe to show to a model. The shape currently matches `ControlReceipt`, but
- * the separate name keeps future private fields from crossing this boundary by accident. */
-export type PublicControlReceipt = ControlReceipt;
-
 /** The battery evidence file and the two per-case files a reader opens beside it, named once for
  *  the writers, the joiner and every reader. */
 export const BATTERY_FILE = "battery.json";
@@ -143,7 +139,7 @@ export type BatteryRecord = {
   /** Every invocation evidence (verdicts and non-results) — request/result digests, outcome,
    *  host-derived command digest. The durable form of "the tool ran, on these bytes". */
   executionEvidence: HostVerifierExecutionEvidence[];
-  /** Execution counts for each declared intrinsic check over verifier-verified cases. The claim
+  /** Execution counts for each declared authored check over verifier-verified cases. The claim
    *  gate reads these counts to detect a check that never ran at all, which no per-case verdict
    *  discloses. Recording them with the battery rather than deriving them at claim time preserves
    *  the evidence in the evidence log, so a later reader inspects the same counts the gate read. */
@@ -177,20 +173,6 @@ type BatteryJoinSlice = { disposition: BatteryDisposition; caseCount: number };
 /** The controller-owned submit attempt budget (Gate 0.1/0.4): the evaluator constructs one
  *  authority per case with this hard budget; generated code receives only the port. */
 export const SUBMIT_MAX_ATTEMPTS = 3;
-export function publicControlReceipt(receipt: ControlReceipt): PublicControlReceipt {
-  return {
-    schema: receipt.schema,
-    controlId: receipt.controlId,
-    taskId: receipt.taskId,
-    kind: receipt.kind,
-    expectedOutcome: receipt.expectedOutcome,
-    expectedCheckId: receipt.expectedCheckId,
-    observedOutcome: receipt.observedOutcome,
-    observedBlockingCheckIds: [...receipt.observedBlockingCheckIds],
-    nonResultKind: receipt.nonResultKind,
-  };
-}
-
 /**
  * Thrown when every battery case is an environment-owned non-result: zero cases were verified and
  * every kind belongs to ENVIRONMENT_OWNED_NONRESULT_KINDS. The battery produced operational

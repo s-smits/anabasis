@@ -21,7 +21,6 @@ import { execTextSync, spawnTextSync } from "./helpers/bun-spawn-sync.ts";
 
 const repositoryRoot = join(import.meta.dir, "..");
 const hook = join(repositoryRoot, ".githooks", "pre-push");
-const prepareHook = join(repositoryRoot, ".githooks", "prepare-commit-msg");
 const fixture = mkdtempSync(join(tmpdir(), "ana-pre-push-routing-"));
 const fakeBin = join(fixture, "bin");
 
@@ -31,6 +30,7 @@ mkdirSync(fakeBin);
 writeFileSync(
   join(fakeBin, "bun"),
   '#!/bin/sh\nprintf \'%s\\t%s\\t%s\\n\' "$ANA_TEST_WORKERS" "$*" "$ANA_TESTED_COMMIT" >> "$ANA_HOOK_MARKER"\n' +
+    '[ -z "${ANA_FAKE_HOST_WALL:-}" ] || { printf \'(pass) one\\n(fail) two\\n%s\\n(pass) two\\n\' "$ANA_FAKE_HOST_WALL"; sleep 2; }\n' +
     '[ -z "${ANA_FAKE_GATE_OUTPUT:-}" ] || { printf \'%s\\n\' "$ANA_FAKE_GATE_OUTPUT"; exit 1; }\n',
 );
 chmodSync(join(fakeBin, "bun"), 0o755);
@@ -56,7 +56,7 @@ const source = git("rev-parse", "HEAD");
 
 afterAll(() => rmSync(fixture, { recursive: true, force: true }));
 
-function runHook(local: string, remote: string, markerName: string, gateOutput = "") {
+function runHook(local: string, remote: string, markerName: string, gateOutput = "", hostWall = "") {
   const marker = join(fixture, markerName);
   const result = spawnTextSync("sh", [hook], {
     cwd: fixture,
@@ -68,6 +68,8 @@ function runHook(local: string, remote: string, markerName: string, gateOutput =
       ANA_HOOK_MARKER: marker,
       ANA_TEST_WORKERS: "9",
       ANA_FAKE_GATE_OUTPUT: gateOutput,
+      ANA_FAKE_HOST_WALL: hostWall,
+      ANA_PUSH_PULSE_SECONDS: "1",
     },
   });
   return { ...result, marker };
@@ -136,8 +138,7 @@ describe("pre-push proof routing", () => {
     expect(existsSync(result.marker)).toBe(false);
   });
 
-  // A static failure names every finding to the pusher and parks them for the fix commit on top,
-  // so the history pairs the failing commit with a repair that records what was wrong.
+  // A static failure names every finding to the pusher, and the fix goes into the commit it names.
   const lint = [
     "src/a.ts:2:10: error anti-slop(require-safety-comment-for-type-assertion): no SAFETY",
     "src/a.ts:1:30: error ana(unproven-unknown-parameter): never proved",
@@ -150,13 +151,6 @@ describe("pre-push proof routing", () => {
     "ana(unproven-unknown-parameter) src/a.ts:1:30 never proved",
     "oxlint(unused-directive) src/c.ts:1:1 Unused oxlint-disable directive (no problems were reported).",
   ];
-
-  function prepareMessage(text: string): string {
-    const file = join(fixture, "COMMIT_EDITMSG_TEST");
-    writeFileSync(file, text);
-    expect(spawnTextSync("sh", [prepareHook, file, "message"], { cwd: fixture }).status).toBe(0);
-    return readFileSync(file, "utf8");
-  }
 
   it("lists each static finding and says how to publish the fix", () => {
     const result = runHook(source, docs, "lint-failure-marker", lint);
@@ -176,26 +170,115 @@ describe("pre-push proof routing", () => {
     expect(terminal.stderr).toContain("\nsource-policy(file-size) src/b.ts 915 nonblank lines exceeds 888\n");
   });
 
-  it("appends the findings to the commit made on top of the failing one, and to no other", () => {
-    expect(runHook(source, docs, "lint-fix-marker", lint).status).toBe(1);
-    const fixed = prepareMessage("Fix the lint\n\nCo-Authored-By: A <a@localhost>\n");
-    const trailers = execTextSync("git", ["interpret-trailers", "--parse"], { cwd: fixture, stdin: fixed });
-    expect(trailers.trim().split("\n")).toEqual([
-      "Co-Authored-By: A <a@localhost>",
-      `Gate-Fix: lint ${source.slice(0, 9)}`,
-      ...findings.map((finding) => `Gate-Finding: ${finding}`),
-    ]);
-
-    const pending = join(fixture, ".git", "ana-gate", "fix-forward");
-    writeFileSync(pending, readFileSync(pending, "utf8").replace(source, base));
-    expect(prepareMessage("Unrelated work\n")).toBe("Unrelated work\n");
-  });
-
   it("asks for no fix commit when the failure is a test", () => {
     const tests = ["(fail) owner > counts [4.00ms]", " 1 fail", 'error: script "test" exited with code 1'];
     const result = runHook(source, docs, "test-failure-marker", tests.join("\n"));
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("THE GATE FAILED");
     expect(result.stderr).not.toContain("DID NOT GO THROUGH");
+  });
+
+  // Last, because it moves HEAD: the tests above name `source` as the checked-out tree.
+  it("gates every earlier commit on its own and stops at the first that fails", () => {
+    writeFileSync(join(fixture, "src", "owner.ts"), "export const owner = 3;\n");
+    git("add", "src/owner.ts");
+    git("commit", "-qm", "second");
+    const second = git("rev-parse", "HEAD");
+    const calls = (marker: string): string[][] =>
+      readFileSync(marker, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => line.split("\t"));
+
+    const pass = runHook(second, docs, "per-commit-marker");
+    expect(pass.status).toBe(0);
+    expect(
+      calls(pass.marker).map(([, args, commit]) => [
+        args?.startsWith("run gate --static /") === true ? "static" : args,
+        commit,
+      ]),
+    ).toEqual([
+      ["static", source],
+      ["run gate", second],
+    ]);
+
+    const fail = runHook(second, docs, "per-commit-failure-marker", lint);
+    expect(fail.status).toBe(1);
+    expect(fail.stderr).toContain(`${source.slice(0, 9)} FAILS lint ON ITS OWN`);
+    for (const finding of findings) expect(fail.stderr).toContain(`\n${finding}\n`);
+    expect(fail.stderr).toContain(`git commit --fixup=${source.slice(0, 9)}`);
+    expect(calls(fail.marker)).toHaveLength(1);
+  });
+
+  // The wrapper prints its host-wall lines in colour, so the recorded shape begins with an escape.
+  const red = "\u001b[0m\u001b[31m";
+
+  // An earlier commit's pass keeps its output in a log, so it names the log and pulses rather than
+  // reading as a hung push, and says a failure is being rerun, in the wrapper's words for why, rather
+  // than reporting it as final. The pulse ends with that pass: none of its lines follows the tip's
+  // gate starting. The wrapper lines here are the shapes tools/runtime/test-suite.ts prints.
+  it("names each earlier commit's log and pulses only while its pass runs", () => {
+    const wall = `${red}host-wall: 1 test(s) failed on time alone, none on an assertion; running their 1 file(s) again in one fresh process: test/two.test.ts`;
+    const result = runHook(git("rev-parse", "HEAD"), docs, "pulse-marker", "", wall);
+    expect(result.status).toBe(0);
+    const log = /Log: (\/\S+-[0-9a-f]{9}\.log)/.exec(result.stderr)?.[1] ?? "";
+    expect(readFileSync(log, "utf8")).toContain("(pass) two");
+    const pulses = [
+      ...result.stderr.matchAll(
+        /still running after 0 min: 2 tests passed, 1 failed so far; 1 test\(s\) failed on time alone, none on an assertion, so the failed files are running again in one fresh process and that run decides\./g,
+      ),
+    ];
+    expect(pulses.length).toBeGreaterThan(0);
+    const tipGate = result.stderr.indexOf("running bun run gate");
+    expect(pulses.every((line) => line.index < tipGate)).toBe(true);
+  }, 20_000);
+
+  // The idle wall's retry is the wrapper's other rerun, and an `error:` line is the wrapper keeping
+  // the failures, so that pulse promises no rerun at all.
+  const said: [string, string, string][] = [
+    [
+      "an idle-wall retry",
+      "idle-wall: retrying 1 interrupted and 0 unfinished file(s) one at a time in one fresh process: test/two.test.ts",
+      "1 failed so far; the idle wall ended the suite, so its 1 interrupted and 0 unfinished file(s) are running again one at a time and that run decides.",
+    ],
+    [
+      "a host-wall error",
+      `${red}host-wall: error: the host reached a load average of 20.0 on 8 cores, but 1 file(s) printed no result at all: test/two.test.ts`,
+      "1 failed so far.\n",
+    ],
+  ];
+  for (const [name, wall, pulse] of said) {
+    it(`pulses what the wrapper said after ${name}`, () => {
+      const result = runHook(git("rev-parse", "HEAD"), docs, `pulse-${name.replaceAll(" ", "-")}`, "", wall);
+      expect(result.stderr).toContain(pulse);
+    }, 20_000);
+  }
+
+  // A stacked push moves a pull request's head beneath the tip, and that head is where the pull
+  // request ends, so it gets the whole gate rather than the per-commit pass.
+  it("gives the head of every pushed branch the whole gate", () => {
+    const tip = git("rev-parse", "HEAD");
+    const parent = git("rev-parse", "HEAD^1");
+    const result = runHookWithRefs(
+      [
+        `refs/heads/parent ${parent} refs/heads/parent ${docs}`,
+        `refs/heads/main ${tip} refs/heads/main ${docs}`,
+      ],
+      "branch-head-marker",
+    );
+    expect(result.status).toBe(0);
+    const calls = readFileSync(result.marker, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split("\t"));
+    expect(
+      calls.map(([, args, commit]) => [
+        args?.startsWith("run gate --at /") === true ? "whole" : args,
+        commit,
+      ]),
+    ).toEqual([
+      ["whole", parent],
+      ["run gate", tip],
+    ]);
   });
 });

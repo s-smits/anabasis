@@ -2,16 +2,33 @@
 # A source push is the integration boundary: run the repository's single full gate instead of
 # reimplementing its runtime admission, typecheck, lint, or test steps here. A push whose
 # published tree differs only on the named documentation surfaces gets a diff check and stops.
+# Every earlier commit the push publishes gets the gate's static steps and its nearby tests, because
+# the history is read as well as run: an agent that finds a red commit followed by its repair
+# learns that pushing red is the way work goes (operator decision 2026-09-24).
 set -eu
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
+
+# These are surrounding text/evidence surfaces. Scripts, fixtures, configuration and every
+# source root remain outside the exception even if their extension happens to be Markdown.
+changes_source() {
+  ! git diff --quiet "$1" "$2" -- . \
+    ':(exclude)AGENTS.md' \
+    ':(exclude)CLAUDE.md' \
+    ':(exclude)README.md' \
+    ':(exclude)docs/**' \
+    ':(exclude).claude/**/*.md'
+}
 
 # Git hands the hook one line per ref on stdin: `<local ref> <local sha> <remote ref> <remote sha>`.
 # A push that only deletes remote refs (local sha all zeros) publishes no bytes from this tree, so
 # the gate has nothing to prove and would only hold the queue. New remote refs run the full gate:
 # without a remote tree there is no stable documentation-only baseline.
 publishes=0
+published=""
+heads=""
+already_remote=""
 documentation_only=1
 documentation_diff_ok=1
 # The gate tests this checkout, so the checkout is the tested identity. Reading it from the ref
@@ -25,6 +42,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   0000000000000000000000000000000000000000) ;;
   *)
     publishes=1
+    published="$published $local_sha"
     if ! git merge-base --is-ancestor "$local_sha" "$tested_commit"; then
       echo "pre-push: $local_ref ($local_sha) is not contained in the checked-out tree ($tested_commit)," >&2
       echo "pre-push: so the gate would prove other bytes. Check that commit out and push from there." >&2
@@ -33,19 +51,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     case "$remote_sha" in
     0000000000000000000000000000000000000000) documentation_only=0 ;;
     *)
-      git diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
-      # These are surrounding text/evidence surfaces. Scripts, fixtures, configuration and every
-      # source root remain outside the exception even if their extension happens to be Markdown.
-      if ! git diff --quiet "$remote_sha" "$local_sha" -- . \
-        ':(exclude)AGENTS.md' \
-        ':(exclude)CLAUDE.md' \
-        ':(exclude)README.md' \
-        ':(exclude)docs/**' \
-        ':(exclude).claude/**/*.md'; then
+      already_remote="$already_remote $remote_sha"
+      git --no-pager diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
+      if changes_source "$remote_sha" "$local_sha"; then
         documentation_only=0
+        heads="$heads $local_sha"
       fi
       ;;
     esac
+    [ "$remote_sha" != 0000000000000000000000000000000000000000 ] || heads="$heads $local_sha"
     ;;
   esac
 done
@@ -78,15 +92,12 @@ fi
 # a copy of HEAD rather than this working tree.
 export ANA_TESTED_COMMIT="$tested_commit"
 
-echo "pre-push: running bun run gate (runtime, typecheck, lint, tests)." >&2
-set -- bun run gate
-
 # A gate failure has to survive a truncated view of this hook's output. `git push … 2>&1 | tail -15`
 # is the ordinary way an agent or a script runs a push, and it loses twice: the failing test scrolls
 # past the kept window, and the pipeline reports tail's status, so an exit of 0 reads as a green
 # push. The hook cannot change the caller's pipe, so it keeps the whole run in a file and repeats
 # the failing lines at the very end, where the smallest tail still shows them.
-gate_dir=$(git rev-parse --git-path ana-gate)
+gate_dir=$(git rev-parse --path-format=absolute --git-path ana-gate)
 mkdir -p "$gate_dir"
 log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
 status_file="$gate_dir/status.$$"
@@ -94,6 +105,110 @@ status_file="$gate_dir/status.$$"
 # Keep enough history to compare a failure with the run before it, and no more.
 old_logs=$(ls -1t "$gate_dir"/pre-push-*.log 2>/dev/null | tail -n +11)
 [ -z "$old_logs" ] || printf '%s\n' "$old_logs" | xargs rm -f
+
+# A static step fails on the bytes the author wrote, never on the machine, so its findings go to the
+# pusher one per line, `<rule> <location> <message>`, the rule in its tool's own spelling.
+# A gate run under a terminal ends its log lines in CR and colours them; both go first.
+static_findings() {
+  tr -d '\r' <"$2" | sed "s/$(printf '\033')\[[0-9;]*m//g" | case "$1" in
+  lint)
+    sed -nE -e 's/^([^ ]+:[0-9]+:[0-9]+): (error|warning) ([A-Za-z0-9_@/-]+\([A-Za-z0-9_/-]+\)): (.*)/\3 \1 \4/p' \
+      -e 's/^([^ ]+:[0-9]+:[0-9]+): warning: (Unused .*directive.*)/oxlint(unused-directive) \1 \2/p'
+    ;;
+  typecheck) sed -nE 's/^([^ ]+\([0-9]+,[0-9]+\)): error (TS[0-9]+): (.*)/\2 \1 \3/p' ;;
+  source-policy) sed -nE 's/^([a-z]+(-[a-z]+)*): ([^ :]+): (.*)/source-policy(\1) \3 \4/p' ;;
+  complexity) sed -nE 's/^  ([^ ]+) — (.*)/complexity(cyclomatic) \1 \2/p' ;;
+  esac
+}
+
+# A pass that keeps its output in a log prints nothing for minutes, which reads exactly like a hung
+# push, so each interval says how far the tests in that log have got. A failure the test wrapper has
+# sent back for a rerun is not yet a verdict, so the pulse says when that rerun is under way, in the
+# wrapper's own words for why. Only the wrapper's two rerun lines count: a `host-wall: error:` or
+# `idle-wall: error:` line means the failures stand. The wrapper colours the line, so it is matched
+# anywhere in the line rather than at its start. Killing the pulse's sleep ends its loop; the kill
+# after it only covers a pulse caught between two sleeps.
+pulse_seconds=${ANA_PUSH_PULSE_SECONDS:-60}
+pulse() {
+  started=$(date +%s)
+  while sleep "$pulse_seconds"; do
+    passed=$(grep -c '(pass)' "$2" 2>/dev/null) || true
+    failed=$(grep -c '(fail)' "$2" 2>/dev/null) || true
+    rerun=$(sed -n \
+      -e 's/.*host-wall: \(.*\); running their .*/; \1, so the failed files are running again in one fresh process and that run decides/p' \
+      -e 's/.*idle-wall: retrying \(.*\) one at a time .*/; the idle wall ended the suite, so its \1 are running again one at a time and that run decides/p' \
+      "$2" 2>/dev/null | head -1) || true
+    minutes=$(( ($(date +%s) - started) / 60 ))
+    echo "pre-push: $1 still running after $minutes min: ${passed:-0} tests passed, ${failed:-0} failed so far$rerun." >&2
+  done
+}
+stop_pulse() {
+  pkill -P "$1" 2>/dev/null || true
+  kill "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+}
+
+# Every commit a push publishes has to pass on its own: an earlier one gets the static steps and the
+# tests near what it changed over a checkout of its own bytes, and the tip gets the whole gate below.
+# The head of any other branch the push moves is where a pull request ends, so it gets the whole
+# gate too, even when it changes documentation alone. A commit already on a remote was held to
+# whatever applied when it went up, and an earlier one that changes documentation alone has nothing
+# for the static steps to read.
+earlier=$(git rev-list --reverse --topo-order $published --not $already_remote --remotes)
+checked=""
+for commit in $earlier; do
+  [ "$commit" != "$tested_commit" ] || continue
+  case " $heads " in *" $commit "*) ;; *)
+    if parent=$(git rev-parse -q --verify "$commit^1"); then
+      changes_source "$parent" "$commit" || continue
+    fi
+    ;;
+  esac
+  checked="$checked $commit"
+done
+if [ -n "$checked" ]; then
+  tree=$(mktemp -d "${TMPDIR:-/tmp}/ana-commit-gate.XXXXXX")
+  git worktree add -q --detach "$tree" HEAD
+  trap 'git worktree remove --force "$tree" >/dev/null 2>&1 || true' EXIT
+  count=$(printf '%s\n' $checked | wc -l | tr -d ' ')
+  index=0
+  for commit in $checked; do
+    index=$((index + 1))
+    short=$(git rev-parse --short=9 "$commit")
+    case " $heads " in
+    *" $commit "*) mode=--at what="the whole gate, as the head of a pushed branch" ;;
+    *) mode=--static what="the static steps and its nearby tests" ;;
+    esac
+    commit_log="$gate_dir/pre-push-$(date -u +%Y%m%dT%H%M%SZ)-$$-$short.log"
+    echo "pre-push: commit $index of $count, $short: $what. Log: $commit_log" >&2
+    git -C "$tree" checkout -q --detach "$commit"
+    pulse "$short" "$commit_log" &
+    pulse_pid=$!
+    if ANA_TESTED_COMMIT="$commit" bun run gate "$mode" "$tree" >"$commit_log" 2>&1; then
+      stop_pulse "$pulse_pid"
+      continue
+    fi
+    stop_pulse "$pulse_pid"
+    failed_step=$(sed -n 's/^gate: step \([a-z-]*\) failed .*/\1/p' "$commit_log" | tail -1)
+    findings=$(static_findings "$failed_step" "$commit_log" | head -50)
+    {
+      echo
+      echo "pre-push: $short FAILS ${failed_step:-the gate} ON ITS OWN. Nothing was pushed."
+      echo "pre-push: full output: $commit_log"
+      if [ -n "$findings" ]; then printf '%s\n' "$findings"; else tail -30 "$commit_log"; fi
+      echo "-------------------------------------------------------------------------------"
+      echo "pre-push: every published commit must pass by itself, so the fix belongs in $short,"
+      echo "pre-push: not in a commit on top. Stage it, then:"
+      echo "pre-push:   git commit --fixup=$short"
+      echo "pre-push:   GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash $short~1"
+      echo "pre-push: and push again. Later commits that conflict with the fix stop the rebase there."
+    } >&2
+    exit 1
+  done
+fi
+
+echo "pre-push: running bun run gate (runtime, typecheck, lint, tests)." >&2
+set -- bun run gate
 
 # `set -e` inside the group would skip the status line, and the pipeline's own status is tee's.
 # Write the gate's exact exit code to a file instead of inferring it.
@@ -111,23 +226,6 @@ fi
 # refusing script Bun's lowercase `error: …`, `bun run` its `script "test" exited with code 1`.
 failing=$(grep -nE '^gate: step .* failed|error TS[0-9]+|^\(fail\)|timed out after [0-9]+ms|^[[:space:]]*[0-9]+ fail$|^[[:space:]]*(FAIL|×|✗)|tests? failed|Found [0-9]+ (error|warning)|^[[:space:]]*[Ee]rror:|exited with code [1-9]' "$log" | tail -40)
 
-# A static step fails on the bytes the author wrote, never on the machine, so the commit it failed
-# on records what the author got wrong (operator decision 2026-09-21). That commit stays and the
-# next commit on top is the fix: prepare-commit-msg appends these findings to it as trailers, so the
-# history pairs each mistake with its repair and `git log` can count the rules agents keep breaking.
-# One line per finding, `<rule> <location> <message>`, the rule in its tool's own spelling.
-# A gate run under a terminal ends its log lines in CR and colours them; both go first.
-static_findings() {
-  tr -d '\r' <"$2" | sed "s/$(printf '\033')\[[0-9;]*m//g" | case "$1" in
-  lint)
-    sed -nE -e 's/^([^ ]+:[0-9]+:[0-9]+): (error|warning) ([A-Za-z0-9_@/-]+\([A-Za-z0-9_/-]+\)): (.*)/\3 \1 \4/p' \
-      -e 's/^([^ ]+:[0-9]+:[0-9]+): warning: (Unused .*directive.*)/oxlint(unused-directive) \1 \2/p'
-    ;;
-  typecheck) sed -nE 's/^([^ ]+\([0-9]+,[0-9]+\)): error (TS[0-9]+): (.*)/\2 \1 \3/p' ;;
-  source-policy) sed -nE 's/^([a-z]+(-[a-z]+)*): ([^ :]+): (.*)/source-policy(\1) \3 \4/p' ;;
-  complexity) sed -nE 's/^  ([^ ]+) — (.*)/complexity(cyclomatic) \1 \2/p' ;;
-  esac
-}
 failed_step=$(sed -n 's/^gate: step \([a-z-]*\) failed .*/\1/p' "$log" | tail -1)
 short=$(git rev-parse --short=9 "$tested_commit")
 static=0
@@ -136,11 +234,6 @@ case "$failed_step" in
 typecheck | lint | source-policy | complexity)
   static=1
   findings=$(static_findings "$failed_step" "$log" | head -50)
-  {
-    echo "$tested_commit"
-    echo "Gate-Fix: $failed_step $short"
-    printf '%s\n' "$findings" | sed -e '/^$/d' -e 's/^/Gate-Finding: /'
-  } >"$gate_dir/fix-forward"
   ;;
 esac
 
@@ -160,11 +253,9 @@ esac
   fi
   echo "-------------------------------------------------------------------------------"
   if [ "$static" -eq 1 ]; then
-    echo "pre-push: YOUR PUSH DID NOT GO THROUGH: $failed_step failed on $short. To publish:"
-    echo "pre-push:   1. fix the findings above; leave $short as it is (no amend, squash or rebase)."
-    echo "pre-push:   2. commit the fix directly on top; that commit's message gets the findings"
-    echo "pre-push:      appended as Gate-Finding trailers, so the history keeps what went wrong."
-    echo "pre-push:   3. push again: both commits go up together."
+    echo "pre-push: YOUR PUSH DID NOT GO THROUGH: $failed_step failed on $short. Every published"
+    echo "pre-push: commit must pass by itself, so the fix belongs in $short, not in a commit on top:"
+    echo "pre-push:   git commit --amend   (with the fix staged), then push again."
   fi
   echo "pre-push: THE GATE FAILED (exit $status). Nothing was pushed. Log: $log"
 } >&2

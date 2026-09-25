@@ -20,8 +20,7 @@ import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import type { RuntimePlatform, RuntimeSignal } from "../meta/runtime-values.ts";
 import { sha256OfFile } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
-import { runtimeProcess } from "../meta/process.ts";
-import { trustedExecPath } from "../truth/trusted-runtime.ts";
+import { runtimeProcess, capturedExecPath } from "../meta/process.ts";
 import {
   type ReadRootMetadata,
   sameReadRootMetadata,
@@ -134,9 +133,9 @@ function underSystemRoot(path: string): boolean {
  */
 export function nodeRuntimeReadRoots(): string[] {
   const roots = new Set<string>();
-  const candidates = [trustedExecPath];
+  const candidates = [capturedExecPath];
   try {
-    candidates.push(realpathSync.native(trustedExecPath));
+    candidates.push(realpathSync.native(capturedExecPath));
   } catch {
     // An unresolvable executable is not a candidate.
   }

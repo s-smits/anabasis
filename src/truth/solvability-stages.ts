@@ -10,9 +10,9 @@
  * every reference solve — a quarter of an hour on a full battery — though no byte the reference
  * solve reads has moved.
  */
+import { capturedStructuredClone } from "../meta/json-runtime.ts";
 import type { ContractFinding } from "./brief.ts";
 import type { ReferenceSolveOutcome } from "./reference-solve.ts";
-import { trustedStructuredClone } from "./trusted-runtime.ts";
 
 /** How one stage's result entered this census. */
 export interface SolvabilityStageReceipt {
@@ -53,11 +53,11 @@ export async function throughStage<T>(
   const hit = memory?.get(key);
   if (hit !== undefined) {
     return {
-      value: trustedStructuredClone(hit.value),
+      value: capturedStructuredClone(hit.value),
       receipt: { key, source: "reused", producedUnder: hit.producedUnder },
     };
   }
   const { value, settled } = await execute();
-  if (settled) memory?.set(key, { value: trustedStructuredClone(value), producedUnder });
+  if (settled) memory?.set(key, { value: capturedStructuredClone(value), producedUnder });
   return { value, receipt: { key, source: "executed", producedUnder } };
 }

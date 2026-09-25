@@ -46,6 +46,9 @@ export interface ToolEntry {
   /** sha256 of that interpreter's bytes as the cell's search path resolved it at snapshot time;
    *  absent for a binary or an interpreter that could not be found. */
   interpreterDigest?: string;
+  /** `name==version` of the Python distributions beside a script's interpreter, sorted; absent
+   *  when there are none. Installation only, and outside every identity hash. */
+  packages?: string[];
 }
 
 /** toolId → resolved entry. toolId is the adapterId a brief's external-verifier declaration
@@ -176,6 +179,21 @@ export type VerifierExecutionEvidence = {
     subjectId: string;
     attempt: number;
     requestId: string;
+  };
+  /** The tool cache this run's cell started from (`engine-cell-env.ts`), beside the tool digest it
+   *  is keyed by, so a verdict that ran warm reads differently from one that ran clean. Absent when
+   *  the host has no tool tree to key a cache by, and on a reused answer, which restored nothing. */
+  cache?: {
+    /** Derived from the tool tree, `toolDigest` and the interpreter's digest. */
+    key: string;
+    /** The store tree the cache was restored from and stored back to. */
+    path: string;
+    start: "warm" | "cold";
+    /** Why a cold start was cold: nothing stored yet, or a stored tree the host refused. */
+    coldReason?: string;
+    /** Whether this run replaced the stored tree: only a gate run that executed and wrote to the
+     *  cache does, never a battery run. */
+    published: boolean;
   };
 };
 

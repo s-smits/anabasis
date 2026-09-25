@@ -17,6 +17,7 @@ type SdkMessageParam = import("claude-agent-sdk-bridge").SDKUserMessage["message
 type ContentBlockParam = Exclude<SdkMessageParam["content"], string>[number];
 type Base64ImageSource = Extract<Extract<ContentBlockParam, { type: "image" }>["source"], { type: "base64" }>;
 import { deleteSession } from "cc-session-io";
+import { type QueryTally, takeCompactSummaries } from "./compact-summary.js";
 import { isNumber, isString, typeName } from "../../src/meta/json-shape.ts";
 import { type BuiltinToolObserver, cliOwnedBuiltin } from "./cli-builtins.js";
 import { messageContentToText } from "./convert.js";
@@ -49,6 +50,8 @@ type BridgeProviderSettings = {
 	autoCompactWindow?: number;
 	/** v4 boundary: observes each CLI compaction with its pre-compaction token count. */
 	onCompaction?: (tokensBefore: number) => void;
+	/** v4 boundary: observes the summary each CLI compaction wrote, read from the transcript at turn end. */
+	onCompactionSummary?: (summary: string) => void;
 	/** v4 boundary: the environment the CLI child starts from, this process's own when absent. Its
 	 *  CLAUDE_CONFIG_DIR also names where the bridge writes and deletes session files, so two bridges
 	 *  in one process keep their credentials and sessions apart. */
@@ -281,10 +284,9 @@ async function consumeQuery(
 	settings: BridgeProviderSettings,
 	sdkQuery: ReturnType<typeof query>,
 	turn: Pick<TurnTools, "model" | "toPi">,
-	wasAborted: () => boolean,
 	queryCtx: QueryContext,
-): Promise<{ capturedSessionId?: string | undefined; sawResult: boolean }> {
-	let capturedSessionId: string | undefined;
+	tally: QueryTally,
+): Promise<{ sawResult: boolean }> {
 	let sawResult = false;
 	const { model } = turn;
 	const tools: TurnTools = {
@@ -294,7 +296,7 @@ async function consumeQuery(
 	};
 
 	for await (const message of sdkQuery) {
-		if (wasAborted()) break;
+		if (tally.aborted) break;
 		// Ahead of the currentPiStream guard: nothing else closes the CLI's stdin
 		// now that the prompt is a streamed generator (isSingleUserTurn=false), so
 		// missing this would hang the query forever.
@@ -312,13 +314,14 @@ async function consumeQuery(
 		}
 		// v4: the CLI may compact between tool round-trips, while no Pi stream is open.
 		if (message.type === "system" && message.subtype === "compact_boundary") {
+			tally.compactions += 1;
 			settings.onCompaction?.(message.compact_metadata.pre_tokens);
 		}
 		// Query-scoped, like the result identity and the compaction report above: the CLI announces
 		// the session before the first turn, so reading it below the turn guard loses it whenever no
 		// Pi stream is open yet.
 		if (message.type === "system" && message.subtype === "init" && message.session_id) {
-			capturedSessionId = message.session_id;
+			tally.sessionId = message.session_id;
 		}
 		if (!queryCtx.currentPiStream || !queryCtx.turnOutput) continue;
 
@@ -350,7 +353,14 @@ async function consumeQuery(
 		}
 	}
 
-	return { capturedSessionId, sawResult };
+	return { sawResult };
+}
+
+/** v4 boundary: hands the host each summary the CLI wrote in this query: a stopped query from its
+ *  abort, a settled one before its settle may delete the transcript. */
+function reportCompactSummaries(bridge: Bridge, tally: QueryTally, fallbackSessionId: string | undefined, cwd: string): void {
+	const summaries = takeCompactSummaries(tally, fallbackSessionId, cwd, bridge.configDir);
+	for (const summary of summaries) bridge.settings.onCompactionSummary?.(summary);
 }
 
 /** v4 boundary: a provider refusal (a 429, a spent allowance) arrives as a result with is_error
@@ -625,7 +635,7 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 	});
 
 	// 3. Start SDK query and claim it for this context
-	let wasAborted = false;
+	const tally: QueryTally = { aborted: false, compactions: 0, sessionId: undefined };
 	const sdkQuery = query({ prompt: promptStream.stream, options: queryOptions });
 	queryCtx.activeQuery = sdkQuery;
 	active.add(queryCtx);
@@ -644,7 +654,7 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 		}
 	};
 	const onAbort = () => {
-		wasAborted = true;
+		tally.aborted = true;
 		// Terminate the input generator and settle its acks — the pump abandons
 		// iteration on abort, so an in-flight push would otherwise hang forever
 		// and take tool-result delivery with it.
@@ -655,6 +665,7 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 		// v4 boundary: the stop is recorded now, not when the stopped CLI exits. Until then the next
 		// prompt, carrying this turn's tool results, routed into this query as a steer and failed as
 		// aborted, and its sync missed the abort (live check of 2026-09-22, round two after end_round).
+		reportCompactSummaries(bridge, tally, continuity.state()?.sessionId, cwd);
 		continuity.aborted();
 		active.delete(abortCtx);
 		if (bridge.top === abortCtx) bridge.top = new QueryContext();
@@ -668,11 +679,11 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 	}
 
 	// Background consumer — runs until query ends
-	consumeQuery(bridge.settings, sdkQuery, { model, toPi: customToolNameToPi }, () => wasAborted, queryCtx)
-		.then(async ({ capturedSessionId, sawResult }) => {
+	consumeQuery(bridge.settings, sdkQuery, { model, toPi: customToolNameToPi }, queryCtx, tally)
+		.then(async ({ sawResult }) => {
 
 			// --- Abort detection in normal completion path ---
-			if (wasAborted || options?.signal?.aborted === true) {
+			if (tally.aborted || options?.signal?.aborted === true) {
 				if (queryCtx.turnOutput) {
 					queryCtx.turnOutput.stopReason = "aborted";
 					queryCtx.turnOutput.errorMessage = "Operation aborted";
@@ -685,7 +696,9 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 			}
 
 			// --- Capture session ID ---
+			const capturedSessionId = tally.sessionId;
 			const sessionId = capturedSessionId ?? continuity.state()?.sessionId;
+			reportCompactSummaries(bridge, tally, sessionId, cwd);
 			if (syncResult.held) {
 				// The session this turn started is not the one the bridge is tracking.
 				if (hasText(capturedSessionId) && capturedSessionId !== continuity.state()?.sessionId) {
@@ -707,7 +720,8 @@ function streamClaudeAgentSdk(bridge: Bridge, model: Model<Api>, transcript: Con
 			else failCurrentStream(queryCtx, "claude stream ended before the turn completed");
 		})
 		.catch((error) => {
-			if (!wasAborted && options?.signal?.aborted !== true) continuity.failed();
+			reportCompactSummaries(bridge, tally, continuity.state()?.sessionId, cwd);
+			if (!tally.aborted && options?.signal?.aborted !== true) continuity.failed();
 			promptStream.fail(asError(error));
 			if (queryCtx.turnOutput) {
 				queryCtx.turnOutput.stopReason = options?.signal?.aborted === true ? "aborted" : "error";

@@ -79,6 +79,10 @@ function fixture(artifact: JsonObject = { first: "A", second: "B" }) {
       source: "host",
       kind: "script",
       interpreter: "sh",
+      // The shebang is absolute, so this is the digest `resolveToolInventory` would have pinned.
+      // Naming an interpreter and not pinning it says it could not be found at snapshot time, and
+      // the host refuses a tool whose interpreter resolves only once it is about to grade.
+      interpreterDigest: sha256OfFile("/bin/sh"),
     },
   } as const;
   const lifetime = createVerifierLifetime({ root: join(root, "receipts") });

@@ -38,6 +38,25 @@ export const READ_ROOT_AGGREGATE_MAX_BYTES = 32n * 1024n * 1024n * 1024n;
 export const READ_ROOT_AGGREGATE_MAX_DURATION_MS = 10 * 60 * 1000;
 const READ_ROOT_READ_CHUNK_BYTES = 1024 * 1024;
 
+/**
+ * Digests this process already read, by path, reused only while the whole metadata tuple matches
+ * and only for a file that had settled before it was read. The second condition is what makes the
+ * reuse sound. A metadata tuple alone cannot stand in for bytes, because ext4 stamps ctime at the
+ * kernel's coarse clock resolution and a same-size rewrite inside one granule leaves device, inode,
+ * mode, size, mtime and ctime all identical. But every change to a file sets its ctime to the
+ * current time, so once a file's ctime lies well before the moment its bytes were read, any later
+ * change stamps a ctime at or after that moment and can no longer equal the recorded one. A file
+ * changed within the settling window is never remembered and is reread on every attestation.
+ *
+ * The runtime closures around every confined execution are the files this pays for: the Bun
+ * executable and its images are hashed before the policy, before the spawn and after the close of
+ * every evaluator and reference-solve child, and rereading tens of megabytes three times per
+ * control was most of what a control census spent in its own process. The assumption left is a
+ * realtime clock that does not step backwards past the window while the process runs.
+ */
+const DIGEST_BY_METADATA = new Map<string, { metadata: ReadRootMetadata; digest: string }>();
+const SETTLED_BEFORE_READ_NS = 2_000_000_000n;
+
 type ReadRootKind = "directory" | "file" | "symlink";
 
 /** Private metadata. It is deliberately kept out of the condition digest: an inode number or an
@@ -216,6 +235,11 @@ const READ_ROOT_OPEN_FLAGS = (() => {
   return O_RDONLY | O_NONBLOCK | O_NOFOLLOW;
 })();
 
+/** Whether a digest read at `readStartedNs` may be reused for this unchanged metadata. */
+export function settledBeforeRead(metadata: ReadRootMetadata, readStartedNs: bigint): boolean {
+  return BigInt(metadata.ctimeNs) + SETTLED_BEFORE_READ_NS <= readStartedNs;
+}
+
 /** One read buffer shared by every file digest. The walk is synchronous, so no two reads overlap
  *  and a shared buffer is safe; allocating a zeroed 1 MiB buffer per file instead made a root of
  *  20,000 one-byte files cost two seconds in memset alone. */
@@ -230,6 +254,9 @@ function readFileDigest(
   if (expected.kind !== "file") throw new Error(`read root expected a regular file: ${path}`);
   const size = BigInt(expected.size);
   reserveBytes(budget, size, path);
+  const known = DIGEST_BY_METADATA.get(path);
+  if (known !== undefined && sameReadRootMetadata(known.metadata, expected)) return known.digest;
+  const readStartedNs = BigInt(Date.now()) * 1_000_000n;
   // O_NONBLOCK prevents a path replaced with a FIFO between lstat and open from blocking the host
   // on a writer that never arrives, and O_NOFOLLOW refuses a replacement with a symlink. Neither
   // covers a replacement with another regular file, nor a race that swaps the path back before the
@@ -261,7 +288,11 @@ function readFileDigest(
     if (!sameReadRootMetadata(expected, closed)) {
       throw new Error(`read root file descriptor changed after reading: ${path}`);
     }
-    return hasher.digest("hex");
+    const digest = hasher.digest("hex");
+    if (settledBeforeRead(expected, readStartedNs)) {
+      DIGEST_BY_METADATA.set(path, { metadata: expected, digest });
+    }
+    return digest;
   } finally {
     closeSync(handle);
   }

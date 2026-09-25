@@ -5,6 +5,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { redactProviderDiagnostic } from "#src/backends/diagnostic-redaction.ts";
 import { readAnalysis } from "./common.mjs";
 import { REBUILD_ADVICE_SCHEMA } from "#src/author/rebuild-advice.ts";
+import { DIAGNOSIS_READING_SCHEMA } from "#src/review/diagnosis-reader.ts";
 import { isRecord, isString } from "#src/meta/json-shape.ts";
 
 /** A finding's producer-owned identity: kind, owner and the evidence file it cites. The public
@@ -36,7 +37,7 @@ export function currentDiagnosis(campaignDir, runId) {
   if (evidence === null) {
     return {
       runId,
-      evidenceSchema: "diagnosis-reading/v1",
+      evidenceSchema: DIAGNOSIS_READING_SCHEMA,
       opportunity: null,
       output: null,
       consumer: null,
@@ -46,7 +47,7 @@ export function currentDiagnosis(campaignDir, runId) {
     };
   }
   if (
-    evidence.schema !== "diagnosis-reading/v1" ||
+    evidence.schema !== DIAGNOSIS_READING_SCHEMA ||
     !Array.isArray(evidence.offered) ||
     !Array.isArray(evidence.diagnoses)
   ) {
@@ -56,40 +57,39 @@ export function currentDiagnosis(campaignDir, runId) {
   const issues =
     packet?.schema === REBUILD_ADVICE_SCHEMA && Array.isArray(packet.issues) ? packet.issues : null;
   const offered = new Set(evidence.offered);
-  const diagnosed = new Set(evidence.diagnoses.map((row) => row.issueId));
+  // One reading may cover several issues, so coverage is counted in issues, not in readings.
+  const covered = (row) => (isRecord(row) && Array.isArray(row.issueIds) ? row.issueIds : []);
+  const diagnosed = new Set(evidence.diagnoses.flatMap(covered).filter((id) => offered.has(id)));
   const abstained = Array.isArray(evidence.abstentions)
     ? new Set(
         evidence.abstentions
-          .filter(
-            (row) =>
-              isRecord(row) &&
-              offered.has(row.issueId) &&
-              !diagnosed.has(row.issueId) &&
-              isString(row.reason) &&
-              row.reason.trim() !== "",
-          )
-          .map((row) => row.issueId),
+          .filter((row) => isRecord(row) && isString(row.reason) && row.reason.trim() !== "")
+          .flatMap(covered)
+          .filter((id) => offered.has(id) && !diagnosed.has(id)),
       )
     : null;
   const attached =
     issues === null
       ? null
-      : evidence.diagnoses.filter(
-          ({ issueId, ...diagnosis }) =>
-            offered.has(issueId) &&
-            diagnosis.runId === runId &&
-            issues.some(
-              (issue) =>
-                issue.id === issueId &&
-                isRecord(issue.diagnosis) &&
-                hashJsonValue(issue.diagnosis) === hashJsonValue(diagnosis),
+      : evidence.diagnoses
+          .filter((row) => isRecord(row.diagnosis) && row.diagnosis.runId === runId)
+          .flatMap((row) =>
+            covered(row).filter(
+              (id) =>
+                offered.has(id) &&
+                issues.some(
+                  (issue) =>
+                    issue.id === id &&
+                    isRecord(issue.diagnosis) &&
+                    hashJsonValue(issue.diagnosis) === hashJsonValue(row.diagnosis),
+                ),
             ),
-        ).length;
+          ).length;
   return {
     runId,
     evidenceSchema: evidence.schema,
     offered: evidence.offered.length,
-    diagnosed: evidence.diagnoses.length,
+    diagnosed: diagnosed.size,
     abstained: abstained?.size ?? null,
     unresolved:
       abstained === null

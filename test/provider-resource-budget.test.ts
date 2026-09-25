@@ -2,12 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import {
-  CampaignBudgetExhausted,
-  campaignBudgetGate,
-  loadBudget,
-  setTurnBudget,
-} from "../src/run/campaign-budget.ts";
+import { campaignBudgetGate, setTurnBudget } from "../src/run/campaign-budget.ts";
+import { CampaignBudgetExhausted, loadBudget } from "../src/run/controller-ledger.ts";
 import type {
   AgentSession,
   AgentTurnResult,
@@ -20,7 +16,7 @@ import {
   ProviderResourceBudgetExhausted,
   ProviderResourceBudgetClosed,
   assertProviderResourceBudgetSnapshot,
-  joinProviderResourceBudgetEvidence,
+  joinBudgetEvidence,
   runBudgetedAgentTurn,
 } from "../src/run/provider-resource-budget.ts";
 
@@ -38,6 +34,9 @@ function session(run: (options: RunTurnOptions) => Promise<AgentTurnResult>): Ag
     async dispose() {},
   };
 }
+
+/** A campaign budget row both sides of a join can carry unchanged. */
+const idleBudget = { turnBudget: null, turnsUsed: 0, status: "active" as const };
 
 describe("the full-run provider resource budget", () => {
   it("counts one outer turn per role and keeps provider-null usage unknown", () => {
@@ -185,11 +184,11 @@ describe("the full-run provider resource budget", () => {
     const active = budget.snapshot();
     expect(() => budget.terminalSnapshot()).toThrow(/cannot close with 1 active reservation/);
     expect(() =>
-      joinProviderResourceBudgetEvidence({
+      joinBudgetEvidence({
         openingPath: "opening.json",
         terminalPath: "terminal.json",
-        opening,
-        terminal: active,
+        opening: { budget: idleBudget, providerResourceBudget: opening },
+        terminal: { budget: idleBudget, providerResourceBudget: active },
       }),
     ).toThrow(/terminal.json: provider resource budget has 1 active reservation/);
     reservation.complete();
@@ -327,12 +326,12 @@ describe("the full-run provider resource budget", () => {
       ),
     ).toThrow(/not a consistent provider-resource-budget/);
     expect(
-      joinProviderResourceBudgetEvidence({
+      joinBudgetEvidence({
         openingPath: "legacy-opening.json",
         terminalPath: "legacy-terminal.json",
-        opening: null,
-        terminal: null,
-      }),
+        opening: { budget: idleBudget, providerResourceBudget: null },
+        terminal: { budget: idleBudget, providerResourceBudget: null },
+      }).providerResourceBudget,
     ).toBeNull();
     expect(() =>
       assertProviderResourceBudgetSnapshot(

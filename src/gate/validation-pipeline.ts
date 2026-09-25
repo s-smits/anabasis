@@ -61,8 +61,6 @@ export interface PipelineInput extends AdmissionInput {
   toolsProbes(candidateDir: string): AgentToolsProbes;
 }
 
-const STAGE_ORDER: readonly AuthorCheckStage[] = ["bundle", "validation", "conformance", "gates"];
-
 interface StageReceipt {
   stage: AuthorCheckStage;
   status: "passed" | "refused" | "blocked" | "not-run";
@@ -224,7 +222,7 @@ async function loadHarness(
     verifierEnvironmentHash: candidate.verifierEnvironmentHash,
   });
   if (conformance.findings.length > 0) return { harness, findings: conformance.findings };
-  if (conformance.evidence !== null) harness.conformance = conformance.evidence;
+  harness.conformance = conformance.evidence;
   return { harness, findings: [] };
 }
 
@@ -449,15 +447,17 @@ export async function previewCandidate(
         { stage: "bundle" as const, findings: candidate.findings },
         { stage: "validation" as const, findings: proposal },
       ].filter((row) => row.findings.length > 0),
-      receipts: STAGE_ORDER.map((stage): StageReceipt => {
-        if (stage === "bundle") return { stage, status: "refused", source: "executed", ms: bundleMs };
-        return {
-          stage,
-          status: stage === "validation" && proposal.length > 0 ? "refused" : "not-run",
+      receipts: [
+        { stage: "bundle", status: "refused", source: "executed", ms: bundleMs },
+        {
+          stage: "validation",
+          status: proposal.length > 0 ? "refused" : "not-run",
           source: "executed",
           ms: 0,
-        };
-      }),
+        },
+        { stage: "conformance", status: "not-run", source: "executed", ms: 0 },
+        { stage: "gates", status: "not-run", source: "executed", ms: 0 },
+      ],
     };
   }
   const key = conditionKey(candidate);
@@ -471,7 +471,11 @@ export async function previewCandidate(
       ...report(candidate, admission.findings, admission.ms, executed, bundleMs),
       ...measured,
     };
-    if (isClear(result) && result.gated !== null) deps.memory.clear.set(key, result.gated);
+    // A clear report: no refusal, which a spent attempt and a blocking gate row each carry, no
+    // block or non-result, and a gate run to remember.
+    if (result.refusals.length === 0 && memorable(result) && result.gated !== null) {
+      deps.memory.clear.set(key, result.gated);
+    }
     return result;
   };
   const prior = deps.memory.previews.get(key);
@@ -501,14 +505,6 @@ export async function previewCandidate(
   );
   return reported(executed);
 }
-
-/** A complete clear report: every stage executed or reused, no refusal, block or non-result. */
-const isClear = (gate: GateReport) =>
-  gate.refusals.length === 0 &&
-  memorable(gate) &&
-  gate.attemptSpent !== true &&
-  gate.gated !== null &&
-  blockingOf(gate.gated.feedback).length === 0;
 
 /** The gate run an actual preview of this condition returned as a complete clear report. */
 export function clearPreview(memory: ValidationMemory, key: string): GateRun | undefined {

@@ -15,7 +15,7 @@ import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
 import { EnvironmentRefusal } from "../backends/environment-refusal.ts";
 import { RUNTIME_NON_RESULT_MESSAGE } from "../truth/runtime-blocker.ts";
 import { errorCode } from "../meta/runtime-values.ts";
-import { CampaignBudgetExhausted } from "./campaign-budget.ts";
+import { CampaignBudgetExhausted } from "./controller-ledger.ts";
 import { ProviderResourceBudgetExhausted } from "./provider-resource-budget.ts";
 import type { ControllerAbortClause } from "./controller-stop-evidence.ts";
 import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";

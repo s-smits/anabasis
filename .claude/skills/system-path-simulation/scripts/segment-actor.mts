@@ -40,8 +40,7 @@ export function segmentActor(input: {
     async agent(call: SegmentCall) {
       input.attemptGate.assertAttemptAvailable();
       session ??= await openBuildSession(input.open);
-      let text = "";
-      await runBuilderTurn({
+      const { assistantText } = await runBuilderTurn({
         session,
         state,
         recorder: input.recorder,
@@ -51,16 +50,13 @@ export function segmentActor(input: {
         maxTurns: input.maxTurns,
         onTurnEvent: turnEventRecorder(input.recorder, () => {}),
         checkpoint() {},
-        onTurnCompleted(_turn, result) {
-          text = result.assistantText ?? "";
-        },
         attemptGate: input.attemptGate,
         authoring,
         openedAtMs,
         ...keyIfDefined("turnTimeoutMs", input.turnTimeoutMs),
         ...keyIfDefined("waitMs", input.waitMs),
       });
-      return text;
+      return assistantText ?? "";
     },
     async dispose() {
       await session?.dispose();

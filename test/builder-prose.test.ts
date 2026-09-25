@@ -72,7 +72,37 @@ describe("builder prose log", () => {
     expect(rows[3].chars).toBe(MAX_PROSE_CHARS + 10);
     expect(rows[3].text.length).toBe(MAX_PROSE_CHARS);
     expect(rows[4].text).toBe("A transport with no message event still has a final message.");
-    expect(rows[0].schema).toBe("builder-prose/v1");
+    expect(rows[0].schema).toBe("builder-prose/v2");
+  });
+
+  it("pairs each CLI summary with its compaction in order, and keeps a long one whole", () => {
+    const record = new PiPromptRecord(
+      () => {},
+      () => [],
+    );
+    record.cliCompaction(200_000);
+    record.cliCompaction(210_000);
+    const long = `Summary: ${"s".repeat(MAX_PROSE_CHARS * 3)}`;
+    record.cliCompactionSummary("first");
+    record.cliCompactionSummary(long);
+    record.cliCompactionSummary("no compaction left to own this");
+    expect(record.compactions.map((compaction) => compaction.summary)).toEqual(["first", long]);
+
+    const epochDir = mkdtempSync(join(tmpdir(), "ana-prose-"));
+    dirs.push(epochDir);
+    const recorder = new BuilderExecutionRecorder();
+    recorder.turnCompleted(double<AgentTurnResult>({ status: "completed", compactions: record.compactions }));
+    writeBuilderExecutionEvidence(epochDir, recorder.finish("in-flight"));
+    const rows = readFileSync(proseSidecarPath(join(epochDir, "builder-execution.json")), "utf8")
+      .trim()
+      .split("\n")
+      .slice(1)
+      .map((line) => JSON.parse(line));
+    expect(rows.map((row) => [row.kind, row.truncated])).toEqual([
+      ["compaction", false],
+      ["compaction", false],
+    ]);
+    expect(rows[1].text).toBe(`tokensBefore=210000 compacted=true\n\n${long}`);
   });
 
   it("numbers a second session's sidecar with its execution record", () => {

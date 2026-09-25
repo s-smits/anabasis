@@ -18,6 +18,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "../sr
 import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
 import { REBUILD_ADVICE_SCHEMA } from "../src/author/rebuild-advice.ts";
+import { DIAGNOSIS_READING_SCHEMA } from "../src/review/diagnosis-reader.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { EPOCH_REVIEW_SCHEMA } from "../src/review/epoch-review-findings.ts";
 
@@ -311,13 +312,15 @@ describe("review-yield: epoch reviewer", () => {
 describe("review-yield: current advice readers", () => {
   const diagnosis = {
     runId: "run-a",
+    layer: "tool-contract",
+    intervention: "correct",
+    boundary: { tool: "write_layout", reading: "failed tool call" },
     cause: "public interface mismatch",
     falsifier: "the interface agrees",
-    firstDivergence: "failed tool call",
-    interventionClass: "instructions",
-    contrastSuccess: null,
+    support: { cases: 2, shown: 3, matching: 3, contrasts: 0 },
     confidence: "medium",
   };
+  const cited = { boundary: "c01.s2", supporting: ["c01", "c02"], contrast: [] };
 
   it("reads a null proposal's actual admission route and refuses an unrelated feedback join", () => {
     const root = campaign();
@@ -374,9 +377,9 @@ describe("review-yield: current advice readers", () => {
       "run-a",
       "diagnoses",
       {
-        schema: "diagnosis-reading/v1",
+        schema: DIAGNOSIS_READING_SCHEMA,
         offered: ["issue-a"],
-        diagnoses: [{ issueId: "issue-a", ...diagnosis }],
+        diagnoses: [{ issueIds: ["issue-a"], cited, diagnosis }],
         refused: 0,
       },
       2,
@@ -420,9 +423,9 @@ describe("review-yield: current advice readers", () => {
       "run-a",
       "diagnoses",
       {
-        schema: "diagnosis-reading/v1",
+        schema: DIAGNOSIS_READING_SCHEMA,
         offered: ["other"],
-        diagnoses: [{ issueId: "issue-a", ...diagnosis }],
+        diagnoses: [{ issueIds: ["issue-a"], cited, diagnosis }],
       },
       5,
     );
@@ -447,13 +450,13 @@ describe("review-yield: current advice readers", () => {
       root,
       "run-a",
       "diagnoses",
-      { schema: "diagnosis-reading/v1", offered: [], diagnoses: [], refused: 0 },
+      { schema: DIAGNOSIS_READING_SCHEMA, offered: [], diagnoses: [], refused: 0 },
       2,
     );
     expect(repairEngineer(root).verdict).toBe("no-opportunity");
     expect(repairEngineer(root).runs[0]?.readerText).toBeNull();
     const empty = {
-      schema: "diagnosis-reading/v1",
+      schema: DIAGNOSIS_READING_SCHEMA,
       offered: ["issue-a"],
       diagnoses: [],
       refused: 0,
@@ -481,9 +484,9 @@ describe("review-yield: current advice readers", () => {
     const root = campaign();
     record(root, "run-a", "analysis", { schema: "iteration-analysis/v4" }, 1);
     const evidence = {
-      schema: "diagnosis-reading/v1",
+      schema: DIAGNOSIS_READING_SCHEMA,
       offered: ["issue-a", "issue-b", "issue-c"],
-      diagnoses: [{ issueId: "issue-a", ...diagnosis }],
+      diagnoses: [{ issueIds: ["issue-a"], cited, diagnosis }],
       error: null,
     };
     record(root, "run-a", "diagnoses", evidence, 2);
@@ -492,7 +495,7 @@ describe("review-yield: current advice readers", () => {
       root,
       "run-a",
       "diagnoses",
-      { ...evidence, abstentions: [{ issueId: "issue-b", reason: "No observed boundary." }] },
+      { ...evidence, abstentions: [{ issueIds: ["issue-b"], reason: "No observed boundary." }] },
       3,
     );
     expect(repairEngineer(root).runs[0]).toMatchObject({ diagnosed: 1, abstained: 1, unresolved: 1 });
@@ -504,10 +507,10 @@ describe("review-yield: current advice readers", () => {
         ...evidence,
         abstentions: [
           null,
-          { issueId: "issue-b", reason: "No observed boundary." },
-          { issueId: "issue-b", reason: "Duplicate." },
-          { issueId: "issue-a", reason: "Also diagnosed." },
-          { issueId: "unoffered", reason: "Not offered." },
+          { issueIds: ["issue-b"], reason: "No observed boundary." },
+          { issueIds: ["issue-b"], reason: "Duplicate." },
+          { issueIds: ["issue-a"], reason: "Also diagnosed." },
+          { issueIds: ["unoffered"], reason: "Not offered." },
         ],
       },
       4,

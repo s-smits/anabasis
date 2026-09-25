@@ -183,7 +183,7 @@ describe("Claude credential storage", () => {
   it("serves every Claude slot from the unnumbered token alone, from .env or the process", async () => {
     const repoRoot = makeScratchDir("ana-shared-credential-");
     const claude = { kind: "claude", model: "claude-opus-5", reasoningEffort: "medium" } as const;
-    const defaults = { effort: "medium", webSearch: false } as const;
+    const defaults = { webSearch: false } as const;
     const slots = ["builder", "built", "review"] as const;
 
     writeFileSync(join(repoRoot, ".env"), "CLAUDE_CODE_OAUTH_TOKEN=only\n", "utf8");
@@ -207,7 +207,7 @@ describe("Claude credential storage", () => {
     const repoRoot = makeScratchDir("ana-slot-compaction-");
     writeFileSync(join(repoRoot, ".env"), "CLAUDE_COMPACTION=pi\n", "utf8");
     const claude = { kind: "claude", model: "claude-opus-5", reasoningEffort: "medium" } as const;
-    const defaults = { effort: "medium", webSearch: false } as const;
+    const defaults = { webSearch: false } as const;
 
     for (const slot of ["builder", "built", "review"] as const) {
       expect(resolvePiSlot(slot, claude, defaults, repoRoot, {}).profile.compaction).toBe("pi");
@@ -340,7 +340,7 @@ describe("login-state owners", () => {
     const slot = resolvePiSlot(
       "review",
       { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "medium" },
-      { effort: "medium", webSearch: false },
+      { webSearch: false },
       repoRoot,
       {},
     );
@@ -407,7 +407,12 @@ describe("campaign model preflight login gate", () => {
       profile: { provider: "openrouter", transport: "openrouter", model: "x/y", thinkingLevel: "medium" },
     } as PiBuiltRuntime;
     // An unpinned OpenRouter Builder: an absent pin is "no pin", and the key is in the repo env.
-    const builder = { kind: "openrouter" as const, model: "x/y", source: "operator" as const };
+    const builder = {
+      kind: "openrouter" as const,
+      model: "x/y",
+      reasoningEffort: "off",
+      source: "operator" as const,
+    };
     const review = {
       enabled: true as const,
       kind: "codex" as const,

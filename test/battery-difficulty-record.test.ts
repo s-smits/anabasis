@@ -8,6 +8,7 @@
  * pass, must not read as 20/25.
  */
 
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
@@ -105,6 +106,7 @@ describe("the changed subset the next difficulty decision reads", () => {
         target: { comparator: "at-least" as const, verifiedPasses: 0 },
         gap: "The old tasks are too easy.",
         change: "Change five public inputs.",
+        ...PLAN_FIELDS,
         expectedResult: "The changed subset fails more often.",
       };
       await makeVerify({

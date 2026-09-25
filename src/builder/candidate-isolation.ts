@@ -21,6 +21,7 @@ import { containsPath } from "../meta/path-containment.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { BUILDER_SESSION_EVIDENCE_FILE } from "./session-evidence.ts";
+import { CELL_RUNTIME_ROOT_NAMES } from "./verifier-workshop-input.ts";
 import { BUILDER_SCRATCH_ROOTS, WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import { WORKSPACE_DIR } from "../author/builder-memory.ts";
 import {
@@ -509,13 +510,12 @@ export function deriveCandidateIsolation(
     // unpacks it, which is how tens of megabytes of a scientific library land where the verifier
     // can read them. Gating the workshop's share of it behind a flag left the default run unable
     // to install at all.
-    scratchWriteRoots: author ? hostScratchRoots : [join(ossRoot, ".tmp"), ...hostScratchRoots],
+    scratchWriteRoots: author
+      ? hostScratchRoots
+      : [join(ossRoot, CELL_RUNTIME_ROOT_NAMES.tmp), ...hostScratchRoots],
     readDenyRoots: author ? [ossRoot] : [],
     writeDenyRoots: author ? WORKSPACE_SHADOW_ROOTS.map((root) => join(iterationDir, root)) : [],
-    // The same three names `workshopEnvironment` creates and exports as HOME, the cache root and
-    // TMPDIR. One owner would be better than two, but the failure mode of drift is the cell being
-    // unable to write its own configuration, not a silent widening of the wall.
-    cellRuntimeRoots: author ? [] : [".home", ".cache", ".tmp"].map((name) => join(ossRoot, name)),
+    cellRuntimeRoots: author ? [] : Object.values(CELL_RUNTIME_ROOT_NAMES).map((name) => join(ossRoot, name)),
   };
   return { ...identity, digest: hashJsonBytes(identity) };
 }

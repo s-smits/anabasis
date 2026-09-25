@@ -35,12 +35,12 @@ interface BundleValidationResult {
 }
 
 /** The only packages an agent bundle may import; every other package is refused. */
-const DEFAULT_ALLOW = [
+const ALLOWED_PACKAGES: ReadonlySet<string> = new Set([
   "@ana/agent-bundle",
   "@ana/correctness-model-prims",
   "@earendil-works/pi-ai",
   "typebox",
-];
+]);
 
 const CORRECTNESS_MODEL_PACKAGE = "@ana/correctness-model-bundle";
 
@@ -100,12 +100,7 @@ export function specifiersIn(sourceFile: ts.SourceFile) {
 }
 
 /** One generated file's import graph: the edges this check cannot read, then each one it can. */
-function importFindings(
-  path: string,
-  abs: string,
-  agentDir: string,
-  allow: ReadonlySet<string>,
-): BundleValidationFinding[] {
+function importFindings(path: string, abs: string, agentDir: string): BundleValidationFinding[] {
   const findings: BundleValidationFinding[] = [];
   const scan = specifiersIn(parseGeneratedSource(readFileSync(abs, "utf8"), path));
   for (const edge of scan.opaque) {
@@ -153,19 +148,18 @@ function importFindings(
         file: path,
         detail: `"${spec}" imports correctnessModel code into agent/; correctnessModel code is not available to the solver`,
       });
-    } else if (!allow.has(pkg)) {
+    } else if (!ALLOWED_PACKAGES.has(pkg)) {
       findings.push({
         code: "unvetted-import",
         file: path,
-        detail: `"${spec}" is not allowed in agent/; use one of [${[...allow].join(", ")}]`,
+        detail: `"${spec}" is not allowed in agent/; use one of [${[...ALLOWED_PACKAGES].join(", ")}]`,
       });
     }
   }
   return findings;
 }
 
-export function validateAgentBundle(agentDir: string, opts?: { allow?: string[] }): BundleValidationResult {
-  const allow = new Set([...DEFAULT_ALLOW, ...(opts?.allow ?? [])]);
+export function validateAgentBundle(agentDir: string): BundleValidationResult {
   const findings: BundleValidationFinding[] = [];
   let files: ReturnType<typeof hashBundle>["files"];
   try {
@@ -200,7 +194,7 @@ export function validateAgentBundle(agentDir: string, opts?: { allow?: string[] 
     }
     if (!CODE_EXT.test(file.path)) continue;
     scannedFiles += 1;
-    findings.push(...importFindings(file.path, join(agentDir, file.path), agentDir, allow));
+    findings.push(...importFindings(file.path, join(agentDir, file.path), agentDir));
   }
 
   return { ok: findings.length === 0, findings, scannedFiles };

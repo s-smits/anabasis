@@ -9,6 +9,7 @@
  * check ids, tool identities and the evidence path. Issue text, remedies and tool output are
  * protected verifier material and go only to the evidence file.
  */
+import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../meta/filesystem.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
@@ -32,7 +33,6 @@ import { builtStarterFactoryForSolver } from "../truth/solve.ts";
 import { gradeCase, type SolveCaseEvidence, solveCase, solverBlockerOf } from "../truth/solve-case.ts";
 import { commitPublicTask } from "../truth/task-split.ts";
 import { type BuildTask, SAFE_TASK_ID } from "../truth/tasks.ts";
-import { trustedJsonParse } from "../truth/trusted-runtime.ts";
 import { type PublicTaskVerdict, publicTaskVerdict } from "../truth/verdict-binding.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import { builtSolveIsolation } from "./built-agent-runtime.ts";
@@ -138,11 +138,11 @@ export function resolveTask(bundleDir: string, ref: string, purpose: "solve" | "
 }
 
 export function loadContract(bundleDir: string): BundleContract {
-  const briefUnknown = trustedJsonParse(readFileSync(join(bundleDir, BRIEF_FILE), "utf8"));
+  const briefUnknown = capturedJsonParse(readFileSync(join(bundleDir, BRIEF_FILE), "utf8"));
   throwIfInvalid(validateBrief(briefUnknown), "brief.json");
   const brief =
     /* SAFETY: throwIfInvalid above returns only when validateBrief reported ok, the only proof of this shape. */ briefUnknown as Brief;
-  const corpus = trustedJsonParse(readFileSync(join(bundleDir, CONTROLS_FILE), "utf8"));
+  const corpus = capturedJsonParse(readFileSync(join(bundleDir, CONTROLS_FILE), "utf8"));
   if (!isControlCorpus(corpus)) throw new Error("controls.json: expected {accept: [...], reject: [...]}");
   return { brief, corpus };
 }

@@ -22,6 +22,7 @@ import { type OutcomeMetrics, outcomeReport } from "../tools/outcome/metrics.ts"
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { caseRecordRow as baseRow } from "./helpers/case-record-row.ts";
 import { ControllerLedger } from "../src/run/controller-ledger.ts";
+import { LIMIT_MARGIN_PAIRING, LIMIT_MARGIN_SCHEMA, limitMarginFile } from "../src/run/limit-margin.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
@@ -29,7 +30,6 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 const RUN = "run-07";
 const EPOCH = "epoch-000000000000";
 const BUDGET = { turnBudget: null, turnsUsed: 0, status: "active" };
-const NOTHING = { total: 0, verified: 0, unaccepted: 0, nonResults: 0 };
 
 afterEach(cleanupScratch);
 
@@ -77,12 +77,9 @@ function campaign(prefix: string = "outcome-") {
     unreadableRows(): void {
       writeFileSync(join(dir, "case-record.jsonl"), "{not-json\n");
     },
-    /** The opening and terminal a completed controller writes. `recorded` defaults to the empty
-     *  denominator, which is what a run with no admitted battery states. */
-    controller(
-      batteryRunIds: string[] = [],
-      recorded: { total: number; verified: number; unaccepted: number; nonResults: number } = NOTHING,
-    ): void {
+    /** The opening and terminal a completed controller writes, for one round that did or did not
+     *  measure a battery. The terminal carries no counts; the reader derives them from the rows. */
+    controller(wasMeasured = false): void {
       mkdirSync(join(dir, "controller", RUN), { recursive: true });
       write(join(dir, "epochs.json"), {
         schema: "campaign-epochs/v1",
@@ -100,27 +97,17 @@ function campaign(prefix: string = "outcome-") {
       };
       write(openingPath, opening);
       write(terminalPath, {
-        schema: "campaign-terminal/v2",
+        schema: "campaign-terminal/v4",
         source: SOURCE,
         budget: BUDGET,
         epoch: EPOCH,
         openingDigest: hashJsonValue(opening),
-        iterations: [
-          {
-            runId: RUN,
-            terminal: null,
-            buildClauses: [],
-            batteryRunIds,
-            lastBatteryRunId: batteryRunIds[0] ?? null,
-          },
-        ],
-        lastIteration: RUN,
+        iterations: [{ runId: RUN, terminal: null, buildClauses: [], measured: wasMeasured }],
         outcome: "completed",
         abortClause: null,
         terminalReason: "completed",
+        runEnd: { climb: null, provenance: [] },
         lock: { token: "recorded-lock", ownedAtRecord: true },
-        // Only what a controller could write: no battery admitted is an absence, not a zero.
-        denominator: batteryRunIds.length === 0 ? { state: "absent" } : { state: "recorded", ...recorded },
       });
     },
     /** Change one field of already-written evidence. Damaged identities and retired clauses can
@@ -259,7 +246,7 @@ describe("what one battery counts", () => {
     const c = campaign("outcome-zero-row-");
     const battery = RUN;
     c.rows();
-    c.controller([battery]);
+    c.controller(true);
     c.batteryRecord("candidates", battery, { disposition: "skipped-precase", cases: [] });
     expect(Object.keys(c.report().batteries)).toEqual([battery]);
     expect(c.report().batteries[battery]).toMatchObject({
@@ -334,6 +321,28 @@ describe("the claim a battery carries", () => {
     c.claim(first.runId, "2026-09-03T20:07:44Z");
     c.claim(second.runId, "2026-09-03T20:29:06Z");
     expect(Object.keys(c.report().batteries)).toEqual([first.runId, second.runId]);
+  });
+
+  it("tables the host-only limit margin by family with the within-5% share beside its count", () => {
+    const c = measured();
+    expect(c.battery().limitMargin).toBeNull();
+    const row = { family: "alpha", tasks: 3, paired: 8, within1pct: 2, within5pct: 6, unpaired: 1 };
+    mkdirSync(join(c.dir, "analysis"), { recursive: true });
+    writeFileSync(
+      limitMarginFile(c.dir, RUN),
+      JSON.stringify({
+        schema: LIMIT_MARGIN_SCHEMA,
+        runId: RUN,
+        pairing: LIMIT_MARGIN_PAIRING,
+        families: [{ ...row, medianRelativeDistance: 0.03 }],
+      }),
+    );
+    const table = c.battery().limitMargin;
+    expect(table?.pairing).toMatch(/^heuristic pairing/);
+    expect(table?.families[0]).toMatchObject({ ...row, shareWithin5pct: 0.75 });
+    expect(table?.families[0]?.reading).toBe(
+      "alpha: 6 of 8 paired limits within 5% of the reference (75%), 2 within 1%, 1 unpaired, over 3 task(s); heuristic pairing",
+    );
   });
 });
 
@@ -558,7 +567,7 @@ describe("controller evidence", () => {
       { ...baseRow("sibling", "alpha"), runId: `${RUN}-next` },
       { ...baseRow("unadmitted", "alpha"), runId: `${RUN}-i02` },
     );
-    c.controller([battery], { total: 3, verified: 1, unaccepted: 1, nonResults: 1 });
+    c.controller(true);
     c.batteryRecord("candidates", battery, {
       disposition: "completed",
       cases: ["verified", "unaccepted", "non-result"].map((taskId) => ({ taskId })),
@@ -601,7 +610,7 @@ describe("controller evidence", () => {
 
   it("reads a typed abort and refuses a retired clause, a null clause or another reason head", () => {
     const c = measured("outcome-abort-clause-");
-    c.controller([RUN], { total: 4, verified: 2, unaccepted: 1, nonResults: 1 });
+    c.controller(true);
     c.batteryRecord("candidates", RUN, {
       disposition: "completed",
       cases: [1, 2, 3, 4].map((n) => ({ taskId: `t${String(n)}` })),
@@ -638,7 +647,6 @@ describe("controller evidence", () => {
       terminal["outcome"] = "aborted";
       terminal["abortClause"] = "signal-terminated";
       terminal["terminalReason"] = "signal-terminated: fullrun received SIGTERM";
-      terminal["denominator"] = { state: "absent" };
     });
     const report = c.report();
     expect(report.controller).toMatchObject({
@@ -650,24 +658,27 @@ describe("controller evidence", () => {
     expect(report.batteries).toEqual({});
   });
 
-  it("refuses a claimed denominator that disagrees with the run's own case rows", () => {
+  it("counts only the run's own rows and ignores a copied count left in the terminal", () => {
     const c = campaign("outcome-denominator-hostile-");
     const battery = RUN;
     c.rows(
       { ...baseRow("own", "alpha"), runId: battery },
       { ...baseRow("sibling", "alpha"), runId: `${RUN}b` },
     );
-    c.controller([battery], { total: 2, verified: 2, unaccepted: 0, nonResults: 0 });
-    expect(() => c.report()).toThrow(/terminal denominator disagrees with the case record/);
+    c.controller(true);
+    c.batteryRecord("candidates", battery, { disposition: "completed", cases: [{ taskId: "own" }] });
+    c.amend("terminal", (terminal) => {
+      terminal["denominator"] = { state: "recorded", total: 2, verified: 2, unaccepted: 0, nonResults: 0 };
+    });
+    expect(c.report().controller).toMatchObject({
+      denominator: { state: "recorded", total: 1, verified: 1, unaccepted: 0, nonResults: 0 },
+    });
   });
 
   it("carries a typed invalid denominator instead of failing on an unreadable case record", () => {
     const c = campaign("outcome-invalid-record-");
     c.unreadableRows();
-    c.controller([RUN]);
-    c.amend("terminal", (terminal) => {
-      terminal["denominator"] = { state: "invalid", error: "case-record unreadable" };
-    });
+    c.controller(true);
     expect(c.report().controller).toMatchObject({
       state: "recorded",
       denominator: { state: "invalid", error: "case-record unreadable" },
@@ -700,32 +711,21 @@ describe("controller evidence", () => {
     });
     c.rebindOpening();
     c.amend("terminal", (terminal) => {
-      terminal["iterations"] = [
-        { runId: `${RUN}-i02`, terminal: null, buildClauses: [], batteryRunIds: [], lastBatteryRunId: null },
-      ];
-      terminal["lastIteration"] = `${RUN}-i02`;
+      terminal["iterations"] = [{ runId: `${RUN}-i02`, terminal: null, buildClauses: [], measured: false }];
     });
     expect(() => c.report()).toThrow(/iterations\[0\] is malformed/);
 
+    // The retired battery-id list is not read as a measured flag.
     c.amend("terminal", (terminal) => {
-      terminal["iterations"] = [
-        {
-          runId: RUN,
-          terminal: null,
-          buildClauses: [],
-          batteryRunIds: [`${RUN}-other`],
-          lastBatteryRunId: null,
-        },
-      ];
-      terminal["lastIteration"] = RUN;
+      terminal["iterations"] = [{ runId: RUN, terminal: null, buildClauses: [], batteryRunIds: [RUN] }];
     });
-    expect(() => c.report()).toThrow(/outside its exact run/);
+    expect(() => c.report()).toThrow(/iterations\[0\] is malformed/);
   });
 
   it("states an opened run as unfinished and reports the lock without inferring a process", () => {
     const c = campaign("outcome-unfinished-");
     c.rows();
-    c.controller([RUN]);
+    c.controller(true);
     c.drop("terminal");
     c.lock("still-running");
     expect(c.report().controller).toEqual({

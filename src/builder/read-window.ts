@@ -203,3 +203,11 @@ export function windowNote(
     ? `${seen}${cut}; call again with ${offsetName} ${window.to + 1} for the rest`
     : `${seen}${cut}`;
 }
+
+/** The line a limit-cut listing or search ends with, empty when nothing was cut. The rest is one
+ *  larger limit away, so the result owes the count and nothing more; without it a cut search reads
+ *  exactly like a complete one. */
+export function moreRowsNote(total: number, shown: number, one: string, many: string): string {
+  const more = total - shown;
+  return more > 0 ? `\n\n[${more} more ${more === 1 ? one : many}. Use a larger limit.]` : "";
+}

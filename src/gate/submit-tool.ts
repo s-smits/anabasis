@@ -12,7 +12,7 @@ import type {
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
-import type { ExperimentSubmission } from "../author/experiment-proposal.ts";
+import type { ExperimentSubmission } from "../author/experiment-plan.ts";
 import {
   type BuilderAuthorFeedback,
   FEEDBACK_NAVIGATION,
@@ -43,6 +43,8 @@ export type BuilderSubmitOutcome =
       /** A controller stop that did not validate or inspect a candidate tree. */
       kind?: "controller-terminal";
       experimentProposal?: ExperimentSubmission;
+      /** Where the plan and this round's rehearsals disagree: advice, never a refusal. */
+      advice?: readonly string[];
     } & SubmittedTree);
 
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
@@ -62,8 +64,18 @@ const SUBMIT_BOUND_CODE = "submit-bound";
 /** Submit takes no arguments: it always judges the whole current workspace. */
 const SubmitParams = Type.Object({}, { additionalProperties: false });
 
+/** The settlement the controller declares after repeated tool non-results is never named here: a
+ *  Builder told it is an answer resubmits the same tree to reach it. What an unchanged resubmit
+ *  actually meets is the remembered refusal and its no-op strike (candidate-memory.ts); a retryable
+ *  non-result is neither remembered nor struck. */
+export const SUBMIT_DESCRIPTION =
+  "Run the authoritative gates over the current candidate package and freeze its bytes if accepted. A refusal returns a bounded repair overview; read exact findings through harness_inspect feedback, repair them, then retry. A refused candidate resubmitted with its files and installed tools unchanged returns the same refusal and counts toward ending the round; one refused by a runtime non-result may be retried as it is.";
+
 interface SubmitToolBinding {
   submit(input: { turn: number }): BuilderSubmitOutcome | Promise<BuilderSubmitOutcome>;
+  /** Asked before any attempt is counted. Text it returns is this call's whole result: nothing was
+   *  submitted, and no attempt is recorded. */
+  hold?: () => Promise<string | null>;
   state: SubmitSessionState;
   recorder: BuilderExecutionRecorder;
   /** The operator's turn cap, which also bounds refused submits; absent, the round has none. */
@@ -143,6 +155,7 @@ export function renderRefusal(
     ...history,
     ...echo,
     ...drift,
+    ...(outcome.advice ?? []),
   ].join("\n");
 }
 
@@ -207,8 +220,7 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
   return {
     name: "submit",
     label: "submit",
-    description:
-      "Run the authoritative gates over the current candidate package and freeze its bytes if accepted. A refusal returns a bounded repair overview; read exact findings through harness_inspect feedback, repair coherently, then retry. An unchanged-tree retry is only for an explicit verifier-required settlement and may otherwise end the round.",
+    description: SUBMIT_DESCRIPTION,
     parameters: SubmitParams,
     async execute() {
       if (state.accepted !== null) {
@@ -235,9 +247,11 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
           },
         );
       }
-      state.attempts += 1;
       inFlight = true;
       try {
+        const held = binding.hold === undefined ? null : await binding.hold();
+        if (held !== null) return text(held, { outcome: "blocked", reason: "review-unread" });
+        state.attempts += 1;
         return await settleSubmit(binding);
       } finally {
         inFlight = false;

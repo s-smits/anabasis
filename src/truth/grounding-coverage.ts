@@ -1,16 +1,19 @@
 /** Task-family applicability binds each control to its declared installed-tool evidence. */
-import { keyIfDefined } from "../meta/optional-key.ts";
 import { type Brief, applicableTruthChecks } from "./brief.ts";
 import { environmentOwnedToolNonResult } from "./verifier-nonresult.ts";
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { CELL_TOOL_PREFIX } from "../verify/host.ts";
 
-/** One required check/tool pair; the external name remains for historical readers. `adapterId` is the tool id. */
+/** One required check/tool pair. `adapterId` is the tool id. */
 interface ExternalCheckBinding {
   checkId: string;
   adapterId: string;
-  /** Which evidence the check declared. An `authored` row's tool is the candidate's own
-   *  interpreter, so its launches attest execution and never independence. */
-  kind?: "authored" | "external";
+}
+
+/** A required pair with the evidence its check declared. An `authored` row's tool may be the
+ *  candidate's own interpreter, so its launches attest execution and never independence. */
+interface DeclaredCheckTool extends ExternalCheckBinding {
+  kind: "authored" | "external";
 }
 
 /** The evidence rows the verifier host recorded, read for the join alone. */
@@ -74,13 +77,17 @@ export type ToolCheckCoverage = {
   /** Host-recorded runs of this exact (check, tool) pair. Read from the host's own evidence rows,
    *  never from anything the evaluator reported about itself. */
   attestedLaunches: number;
+  /** Host-recorded runs, for this check, of a program it built in its own cell, which no inventory
+   *  hashed at submit. Counted per check, so every tool row of the check repeats it; on an
+   *  `external` row it says the verdict also passed through a built program, not only the tool. */
+  cellProgramLaunches: number;
   /** Reject controls this check was the blocking check for. Recorded beside the launches so a
    *  reader can see both; the per-family reject census, not this row, owns discrimination. */
   rejects: number;
   /** The declared evidence kind, carried so that a row is not read as independence it never
    *  claimed. A bundle may declare every check `authored` over an installed interpreter, and
    *  without this field those rows are indistinguishable from a declared external instrument's. */
-  kind?: "authored" | "external";
+  kind: "authored" | "external";
 };
 
 /** Control receipt fields used to count reject coverage. */
@@ -222,24 +229,26 @@ export function namedExamples(controlIds: readonly string[]): string {
   return controlIds.map((id) => `"${id}"`).join(", ");
 }
 
-/** The coverage rows, one per declared external check, over whatever host rows the caller scopes:
+/** The coverage rows, one per declared check/tool pair, over whatever host rows the caller scopes:
  *  admission passes the control census, the claim passes the runs on its verified cases. The
- *  launch count is the one owner of "this check's tool ran"; `rejects` names the reject controls
- *  the check blocked in that scope. */
+ *  launch counts are the one owner of "this check's tool ran" and of "this check ran a program it
+ *  built"; `rejects` names the reject controls the check blocked in that scope. */
 export function toolCheckCoverage(input: {
-  externalChecks: readonly ExternalCheckBinding[];
+  externalChecks: readonly DeclaredCheckTool[];
   evidence: ReadonlyArray<Pick<GroundingEvidenceRow, "checkId" | "toolId">>;
   rejects: (checkId: string) => number;
 }): ToolCheckCoverage[] {
-  return input.externalChecks.map((check) => ({
-    checkId: check.checkId,
-    toolId: check.adapterId,
-    attestedLaunches: input.evidence.filter(
-      (row) => row.checkId === check.checkId && row.toolId === check.adapterId,
-    ).length,
-    rejects: input.rejects(check.checkId),
-    ...keyIfDefined("kind", check.kind),
-  }));
+  return input.externalChecks.map((check) => {
+    const ran = input.evidence.filter((row) => row.checkId === check.checkId);
+    return {
+      checkId: check.checkId,
+      toolId: check.adapterId,
+      attestedLaunches: ran.filter((row) => row.toolId === check.adapterId).length,
+      cellProgramLaunches: ran.filter((row) => row.toolId.startsWith(CELL_TOOL_PREFIX)).length,
+      rejects: input.rejects(check.checkId),
+      kind: check.kind,
+    };
+  });
 }
 
 /** The cost rows, dearest first. `spend` is the whole corpus summed per check, so no control,

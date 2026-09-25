@@ -17,6 +17,7 @@ import {
   createVerifierLifetime,
   VerifierOperationalStop,
 } from "../src/verify/verifier-lifetime.ts";
+import { launchConfinedChild } from "../src/verify/verifier-lifetime-process.ts";
 import { double } from "./helpers/doubles.ts";
 import { campaignVerifierLifetime } from "../src/run/verifier-lifetime.ts";
 import * as runLifetime from "../src/run/verifier-lifetime.ts";
@@ -304,5 +305,45 @@ describe("durable verifier ownership", () => {
     // every one settled — because the throw was this one, a begin after close. `solvability.ts`
     // carries the message into an environment-owned finding, so the wrong sentence routes as evidence.
     expect(() => f.lifetime.begin({ role: "tool" })).toThrow(/lifetime is closed/);
+  });
+});
+
+describe("the confined child launcher", () => {
+  const settledCleanly = {
+    exit: null,
+    groupReaped: true,
+    outputComplete: true,
+    timedOut: false,
+  };
+
+  it("starts the bundle under the policy's executable and hands back its output", async () => {
+    const f = fixture();
+    const cell = join(f.cells, "launch");
+    mkdirSync(cell);
+    const file = join(cell, "bundle.txt");
+    writeFileSync(file, "bundle");
+    const lease = f.lifetime.begin({ role: "evaluator", cell });
+    const policy = { executable: "/bin/sh", launchArgs: ["-c", 'cat "$0"'], runtimeEnvironment: {} };
+    const { child, output } = launchConfinedChild(lease, policy, { dir: cell, file }, (m) => new Error(m));
+    lease.spawned(child.pid);
+    await child.stdin.end();
+    expect(await new Response(output.stream).text()).toBe("bundle");
+    expect(await child.exited).toBe(0);
+    lease.settle({ receiptId: lease.id, ...settledCleanly });
+    expect(await f.lifetime.close()).toEqual([]);
+  });
+
+  it("settles the lease as unspawned and types the refusal when the executable cannot start", async () => {
+    const f = fixture();
+    const cell = join(f.cells, "refused");
+    mkdirSync(cell);
+    const lease = f.lifetime.begin({ role: "reference", cell });
+    const policy = { executable: join(f.root, "absent"), launchArgs: [], runtimeEnvironment: {} };
+    class Refused extends Error {}
+    expect(() =>
+      launchConfinedChild(lease, policy, { dir: cell, file: join(cell, "x") }, (m) => new Refused(m)),
+    ).toThrow(Refused);
+    // A receipt the launcher left unsettled would read as a child still owed cleanup.
+    expect(await f.lifetime.close()).toEqual([]);
   });
 });

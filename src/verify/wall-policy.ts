@@ -14,7 +14,7 @@
  */
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import { existsSync, readdirSync } from "../meta/filesystem.ts";
+import { existsSync, readdirSync, realpathSync } from "../meta/filesystem.ts";
 import { dirname, join, resolve } from "../meta/path.ts";
 import { keysIf } from "../meta/optional-key.ts";
 import { runtimeProcess } from "../meta/process.ts";
@@ -84,13 +84,9 @@ export const WORKSPACE_TOOL_TREE = ".toolchain";
  *  remains Builder-influenceable even when the controller has pinned one exact executable for
  *  candidate measurement, which is why a path from this list is never independent operator
  *  authority and never a permitted broad read root. */
-export const BUILDER_SCRATCH_ROOTS: readonly string[] = [
-  "/tmp",
-  "/private/tmp",
-  "/var/tmp",
-  "/var/folders",
-  "/private/var/folders",
-];
+export const BUILDER_SCRATCH_ROOTS: readonly string[] = ["/tmp", "/var/tmp", "/var/folders"].flatMap(
+  canonicalForms,
+);
 
 /**
  * The read-only platform baseline the Darwin walls grant.
@@ -101,24 +97,18 @@ export const BUILDER_SCRATCH_ROOTS: readonly string[] = [
  * recursive content digest, as `LINUX_SYSTEM_READ_ROOTS` does, because walking `/System` fails when
  * `scandir` refuses its asset store; exact executable and input files have their own snapshots
  * instead, since granting a directory path establishes no identity for what lies underneath it.
- *
- * `/var/select` appears in both spellings because a process opens `/var/select/developer_dir` while
- * the policy evaluates the resolved `/private/var/select`, and a rule naming one of the two misses
- * the access that actually happens.
  */
-export const DARWIN_SYSTEM_READ_ROOTS = [
+export const DARWIN_SYSTEM_READ_ROOTS: readonly string[] = [
   "/Applications",
   "/Library",
   "/System",
   "/bin",
   "/etc",
   "/opt",
-  "/private/etc",
-  "/private/var/select",
   "/sbin",
   "/usr",
   "/var/select",
-] as const;
+].flatMap(canonicalForms);
 
 /**
  * The one run-data name every wall denies, the Builder's own cells included.
@@ -162,6 +152,24 @@ const BROAD_SANDBOX_READ_ROOTS = new Set([
 /** The Built shell's own scratch parent, named here with its siblings. `solve-command-isolation`
  *  creates it and drops this one entry from the list the running command is denied. */
 export const BUILT_COMMAND_SCRATCH_DENY = "/ana-built-bash";
+
+/** The directory beside the verifier's cells where the host keeps each tool's cache between runs
+ *  (`engine-cell-env.ts`). Every wall below closes it by this name. */
+export const VERIFIER_CACHE_STORE = "ana-verifier-cache";
+
+/** Both path forms of a root: a rule that names only the symlink form misses the access Seatbelt
+ *  actually evaluates, which on Darwin is the difference between `/var` and `/private/var`. Every
+ *  wall list is written once per directory and derived through this, so no list carries a
+ *  hand-kept pair that one entry can be missing. */
+export function canonicalForms(path: string): string[] {
+  const abs = resolve(path);
+  try {
+    const real = realpathSync.native(abs);
+    return real === abs ? [abs] : [abs, real];
+  } catch {
+    return [abs];
+  }
+}
 
 /**
  * Where a host toolchain installs itself, for the two walls that must name a place.
@@ -345,7 +353,9 @@ export function userTempChildTreeRules(roots: string[]): string[] {
  *  rest of the path is only known once it is created, and the list is spelled out rather than
  *  derived because dropping the cell prefix lets a Built shell read a staged cell. A host Claude
  *  session keeps its CLI state in `ana-claude-cli-`, and the Builder's holds the whole authoring
- *  history, hidden expectations included, for the length of the run. */
+ *  history, hidden expectations included, for the length of the run. The verifier's tool cache
+ *  store is closed to every tool, the verifier's own included, because only the host may put bytes
+ *  in it that a later verification starts from. */
 export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
   "/ana-cell-",
   BUILT_COMMAND_SCRATCH_DENY,
@@ -353,6 +363,7 @@ export const VERIFIER_TEMP_SIBLING_DENY_PATTERNS = [
   "/ana-reference-solve-cwd-",
   "/ana-generated-tools-",
   "/ana-claude-cli-",
+  `/${VERIFIER_CACHE_STORE}`,
 ] as const;
 
 export function verifierTempSiblingDenyRules(

@@ -67,7 +67,7 @@ export function feedbackOwner(feedback: readonly CampaignFeedback[]): FeedbackOw
  *  agent/BUILT_AGENTS.md, and it showed: most packets pointing at that owner preceded a successor
  *  that had left the guide byte-identical. Naming the file is what turns the label into an
  *  address. */
-export function ownerTarget(owner: FeedbackOwner): string {
+function ownerTarget(owner: FeedbackOwner): string {
   const files = routableOwner(owner) ? ownerWritableFiles(owner) : [];
   return files.length === 0 ? owner : `${owner} (${files.join(", ")})`;
 }

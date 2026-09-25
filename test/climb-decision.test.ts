@@ -142,13 +142,7 @@ describe("placeOnBand — one count, one zone", () => {
     expect(continuation(25)).toContain("it does not by itself answer a battery that found no limit");
     // 3fd52f9e-28 moved only published magnitudes for four batteries and stayed too easy, which
     // the exclusion list allowed: it named identifiers, labels, names and wording, not numbers.
-    // Why the number appears here as a list item and not as its own sentence: SCOPE_CLAUSE owns
-    // the mechanism ("re-tunes the published numbers ... leaves it nothing new to reconcile"),
-    // and every continuation session reads it.
     expect(continuation(25)).toContain("longer wording or a re-tuned published number establishes neither");
-    expect(SCOPE_CLAUSE.join(" ")).toContain(
-      "re-tuning the published numbers of the requirements the tasks already had",
-    );
     // A smaller battery restates every count from its own size, and nothing carries 25 in its text.
     expect(bandLandmarks(10, POLICY.climb.band)).toEqual({
       tooHardUpTo: null,
@@ -159,10 +153,8 @@ describe("placeOnBand — one count, one zone", () => {
     expect(renderBatteryContract(10)).toContain("about 1 of 10 verified cases to pass");
     expect(continuation(10)).toContain("Aim for 2 to 5 of 10");
     expect(continuation(10)).toContain("passing 9 of 10 or more");
-    expect(SCOPE_CLAUSE.join(" ")).toContain(
-      "the authoring context states the exact counts for this run's battery size",
-    );
-    expect(SCOPE_CLAUSE.join(" ")).not.toContain("of 25");
+    // The system prompt states no count at all; the contract rendered for the round's size does.
+    expect(SCOPE_CLAUSE.join(" ")).not.toMatch(/of 25|verified pass|battery/);
   });
 });
 
@@ -250,15 +242,6 @@ describe("decideDifficulty — the one decision over recorded batteries", () => 
   it("is pure: the same inputs produce byte-identical decisions", () => {
     const input = [battery({ n: 100, passed: 40 })];
     expect(JSON.stringify(decideDifficulty(input))).toBe(JSON.stringify(decideDifficulty(input)));
-  });
-
-  const MISCONFIGURED: Array<[string, [number, number]]> = [
-    ["an inverted band, which would make both direction predicates true", [0.8, 0.2]],
-    ["a band that is not a number", [Number.NaN, 0.5]],
-    ["a band outside [0, 1]", [0.2, 1.5]],
-  ];
-  it.each(MISCONFIGURED)("throws at construction on %s", (_description, configured) => {
-    expect(() => decideDifficulty([battery({ n: 100, passed: 40 })], configured)).toThrow(TypeError);
   });
 });
 

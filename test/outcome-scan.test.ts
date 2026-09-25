@@ -77,6 +77,7 @@ function battery(opts: BatteryOpts): OutcomeMetrics {
       agentHash: opts.agentHash === undefined ? FROZEN_AGENT : opts.agentHash,
       correctnessModelHash: FROZEN_CORRECTNESS_MODEL,
     },
+    limitMargin: null,
     identity: {
       backendPins: opts.backendPins ?? ["claude/claude-opus-5"],
       builderIds: ["builder-1"],

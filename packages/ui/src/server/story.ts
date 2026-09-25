@@ -1,8 +1,9 @@
 import { existsSync, readdirSync } from "../../../../src/meta/filesystem.ts";
 import { join } from "../../../../src/meta/path.ts";
+import { DIFFICULTY_DECISION_SCHEMA } from "../../../../src/run/difficulty-decision.ts";
 import type { EvidenceIssue, RunRequest, RunStory, DifficultyDecision } from "../models.js";
 import { readJson } from "./files.js";
-import { bool, number, object, objectArray, stringArray, text } from "./json.js";
+import { bool, number, object, objectArray, text } from "./json.js";
 
 export const NO_STORY: RunStory = { request: null, difficulty: null };
 function fileNames(directory: string): string[] {
@@ -72,37 +73,41 @@ export function readDifficulty(
   runId: string,
   issues: EvidenceIssue[],
 ): DifficultyDecision | null {
-  const located = ["difficulty-decisions", "rung-decisions"]
-    .flatMap((directory) => {
-      const name = fileNames(join(repoRoot, `campaigns/${slug}/${directory}`)).findLast(
-        (item) => item.startsWith(`${runId}-`) && item.endsWith(".json"),
-      );
-      return name === undefined ? [] : [{ directory: `campaigns/${slug}/${directory}`, name }];
-    })
-    .at(0);
-  if (located === undefined) return null;
-  const { directory, name } = located;
+  const directory = `campaigns/${slug}/difficulty-decisions`;
+  const name = fileNames(join(repoRoot, directory)).findLast(
+    (item) => item.startsWith(`${runId}-`) && item.endsWith(".json"),
+  );
+  if (name === undefined) return null;
   const path = `${directory}/${name}`;
   const root = object(readJson(repoRoot, path, issues));
-  // `rung` is the earlier field name. Current records use `difficulty`.
-  const record = object(root?.difficulty) ?? object(root?.rung);
+  if (root === null) return null;
+  // An older record is refused on screen rather than read: its vocabulary was replaced without
+  // every word changing, so its fields would render as though they meant what they mean now.
+  const schema = text(root.schema);
+  if (schema !== DIFFICULTY_DECISION_SCHEMA) {
+    issues.push({
+      level: "warning",
+      source: path,
+      message: `difficulty decision is ${schema ?? "unversioned"}, not ${DIFFICULTY_DECISION_SCHEMA}; refused`,
+    });
+    return null;
+  }
+  const record = object(root.difficulty);
   const decision = object(record?.decision);
   if (decision === null) return null;
-  // Levels and string exclusions are the earlier shapes. A current record places the battery in a
-  // zone and names each excluded run beside its reason; reading only the old fields showed "—" and
-  // no exclusions for every record written since the levels went.
+  // A current record names each excluded run beside its reason, so the two are joined into one
+  // line apiece rather than shown as a bare count.
   const excludedRuns = objectArray(record?.excluded).flatMap((item) => {
     const excludedRun = text(item.runId);
     const reason = text(item.reason);
     return excludedRun === null || reason === null ? [] : [`${excludedRun}: ${reason}`];
   });
-  const level = number(decision.currentLevel);
   return {
     action: text(decision.action),
-    standing: text(object(decision.placement)?.zone) ?? (level === null ? null : `L${level}`),
+    standing: text(object(decision.placement)?.zone),
     rationale: text(decision.rationale),
     admitted: number(record?.admitted),
-    excluded: [...stringArray(record?.excluded), ...excludedRuns],
+    excluded: excludedRuns,
     source: path,
   };
 }

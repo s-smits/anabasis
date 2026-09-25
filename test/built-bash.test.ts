@@ -1054,3 +1054,41 @@ describe("a command its own wall cut", () => {
     expect(text).not.toContain("the move left is cheaper work");
   });
 });
+
+describe("a command whose output the shell cut", () => {
+  // Pi stores a cut command's whole output and names the file, which is the right shape; what
+  // matters is where. Left to itself it writes under the host's temporary directory, which the open
+  // read default lets every later solve on this host read and nothing ever removes. The session home
+  // is the one place the solver's next command can read and no other session's can.
+  it("keeps the whole output in the session home, where the next command reads it and another session cannot", async () => {
+    mkdirSync(BUILT_COMMAND_SCRATCH_ROOT, { recursive: true, mode: 0o700 });
+    const own = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
+    const other = mkdtempSync(join(BUILT_COMMAND_SCRATCH_ROOT, "home-"));
+    const say = async (home: string, command: string): Promise<string> => {
+      const tool = createBuiltBashTool({ policy: session, port: null, home });
+      try {
+        const result = await tool.execute("call-1", double({ command }), undefined, undefined);
+        return result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+      } catch (error) {
+        return errorMessage(error);
+      }
+    };
+    try {
+      expect(await say(own, "echo small")).not.toContain("Full output");
+      const long = await say(own, "seq 1 5000");
+      const stored =
+        /\[Showing lines 3001-5000 of 5000\. Full output: (\S+) — read it with this shell\.\]/.exec(
+          long,
+        )?.[1];
+      if (stored === undefined) throw new Error(`cut output named no stored file: ${long.slice(-300)}`);
+      expect(stored.startsWith(`${own}/.shell-output/`)).toBe(true);
+      expect((await say(own, `head -n 1 ${stored}`)).trim()).toBe("1");
+      const refused = await say(other, `head -n 1 ${stored}`);
+      expect(refused).toMatch(REFUSED);
+      expect(refused).not.toMatch(/^1$/m);
+    } finally {
+      rmSync(own, { recursive: true, force: true });
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+});

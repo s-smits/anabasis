@@ -1,5 +1,5 @@
+import { capturedJsonParse } from "../meta/json-runtime.ts";
 import { isObject, isString, type JsonValue, typeName } from "../meta/json-shape.ts";
-import { trustedJsonParse } from "./trusted-runtime.ts";
 
 /** The one word a leaf value is recorded as. An empty string is its own category because a
  *  draft that wrote one is the shape this summary exists to make visible. */
@@ -14,7 +14,7 @@ export function boundedDraftSummary(artifactJson: string | null): string {
   if (artifactJson === null) return "no-bytes";
   let parsed: JsonValue;
   try {
-    parsed = trustedJsonParse(artifactJson);
+    parsed = capturedJsonParse(artifactJson);
   } catch {
     return "unparseable";
   }

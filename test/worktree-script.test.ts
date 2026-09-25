@@ -271,7 +271,10 @@ describe("the Bun-owned worktree launcher", () => {
       // A tree some command is standing in is named, and its dependencies are left alone: that
       // running command is the one reader a marker mismatch cannot speak for.
       writeFileSync(join(target, marker), "other-dependencies\n");
-      const standing = Bun.spawn(["bash", "-c", `cd ${target} && sleep 20`], {
+      // The exec leaves a bare `sleep 20` with no command line naming the tree, which is what bash
+      // 5.1 and later, and zsh, make of `cd <tree> && <command>` by themselves; only its working
+      // directory places it.
+      const standing = Bun.spawn(["bash", "-c", `cd ${target} && exec sleep 20`], {
         stdio: ["ignore", "ignore", "ignore"],
       });
       try {
@@ -283,6 +286,18 @@ describe("the Bun-owned worktree launcher", () => {
       } finally {
         standing.kill();
         await standing.exited;
+      }
+      // A shell merely standing in the tree, as a parked terminal does, opens no modules itself.
+      const parked = Bun.spawn(["bash", "-c", "read -r -t 20 line"], {
+        cwd: target,
+        stdio: ["pipe", "ignore", "ignore"],
+      });
+      try {
+        await Bun.sleep(200);
+        expect(helper(source, "list").stdout).not.toContain(`${target}  0 changed [in use]`);
+      } finally {
+        parked.kill();
+        await parked.exited;
       }
 
       // drop keeps recorded evidence and unfinished work, and removes a clean disposable tree.

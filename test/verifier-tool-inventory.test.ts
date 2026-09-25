@@ -82,6 +82,30 @@ describe("resolving the tool inventory", () => {
     expect(resolved.inventory.cat).toMatchObject({ source: "host", kind: "binary", interpreter: null });
   });
 
+  it("lists the Python distributions beside a script's interpreter, and none for a shell script or a binary", () => {
+    const ws = workspace();
+    const venvBin = join(ws.toolTree, "venv", "bin");
+    const python = script(venvBin, "python3", ["exit 0"]);
+    const sitePackages = join(ws.toolTree, "venv", "lib", "python3.12", "site-packages");
+    for (const dir of ["openseespy-3.5.1.dist-info", "numpy-2.1.0.dist-info", "numpy", "__pycache__"]) {
+      mkdirSync(join(sitePackages, dir), { recursive: true });
+    }
+    const bin = join(ws.toolTree, "bin");
+    const wrapper = join(bin, "frame-check");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(wrapper, `#!${python}\nimport openseespy\n`);
+    chmodSync(wrapper, 0o755);
+    script(bin, "sh-tool", ["exit 0"]);
+    const resolved = resolveToolInventory({
+      toolIds: ["frame-check", "sh-tool", "cat"],
+      toolTree: ws.toolTree,
+      pathDirs: ["/bin"],
+    });
+    expect(resolved.inventory["frame-check"]?.packages).toEqual(["numpy==2.1.0", "openseespy==3.5.1"]);
+    expect(resolved.inventory["sh-tool"]).not.toHaveProperty("packages");
+    expect(resolved.inventory.cat).not.toHaveProperty("packages");
+  });
+
   // One program search for the inventory, the check cell and the Built shell (2026-09-16): a program
   // installed under .toolchain/home/.local/bin is on every one of them, after .toolchain/bin.
   it("searches the same nested program directories for checks and the solver shell", () => {

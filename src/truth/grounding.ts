@@ -1,7 +1,6 @@
 /**
- * Recorded evidence-source declarations for truth checks.
- * Current checks distinguish authored computation and required tool execution; the union also
- * retains intrinsic and exception declarations for readers of earlier evidence.
+ * Recorded evidence-source declarations for truth checks: authored computation, or a required
+ * installed tool that decides the check. These are the only two kinds a brief can declare.
  *
  * This module defines the shared evidence types without runtime imports. The claim combines
  * declarations derived from the brief with host-recorded executions. A required tool with no
@@ -21,16 +20,6 @@ export type TruthGrounding =
       adapterId: string;
       /** What the tool is asked to establish, in the tool's own vocabulary. */
       assertion: string;
-    }
-  | {
-      kind: "intrinsic";
-      /** The in-process pure primitive that decides the check, e.g. "relationalJoin". */
-      primitive: string;
-    }
-  | {
-      kind: "exception";
-      /** Why no executable grounding exists — substantive prose, surfaced on the claim. */
-      justification: string;
     };
 
 export interface GroundingDeclaration {
@@ -42,12 +31,14 @@ export interface GroundingDeclaration {
 
 /**
  * The run facts the verifier host writes as one unit: which (phase, subjectId, attempt, checkId, adapterId)
- * combinations an installed tool actually ran to completion for, and the content address of the tools
+ * combinations a tool actually ran to completion for, and the content address of the installed tools
  * that ran (toolId → executable digest and where it resolved; null when nothing ran). Bindings are
  * per subject and per check: a tool run for check A never grounds check B, and a run for one case
- * or control never grounds a neighbouring case. correctnessModelHash covers the evaluator source;
- * the environment hash covers the executables it called, so two runs on different tool versions
- * never share comparison identity. A correctnessModel that shells out on its own earns neither.
+ * or control never grounds a neighbouring case. A program the check built inside its own cell binds
+ * under its `cell:` id like any other run, and is absent from `tools`, because no inventory hashed
+ * it. correctnessModelHash covers the evaluator source; the environment hash covers the executables
+ * it called, so two runs on different tool versions never share comparison identity. A
+ * correctnessModel that shells out on its own earns neither.
  */
 export type VerifierExecutionEvidence = {
   executed: Array<{
@@ -72,6 +63,7 @@ export type VerifierExecutionEvidence = {
       kind: "binary" | "script";
       interpreter: string | null;
       interpreterDigest?: string;
+      packages?: string[];
     }
   >;
 };

@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
+import { judgeDecision } from "../src/claim/judge.ts";
 import { createBundleSnapshot } from "../src/claim/bundle-snapshot.ts";
 import { CONFORMANCE_PROBE_POLICY, type ConformanceEvidence } from "../src/claim/conformance-evidence.ts";
 import type { BackendStartupEvidence } from "../src/run/model-preflight.ts";
@@ -217,10 +218,10 @@ describe("an unclaimable control census ends the run before the paid loop", () =
     expect(existsSync(join(runDir, "judge-driver-conformance.json"))).toBe(false);
     expect(battery.judge).toMatchObject({
       judge: "unvalidated",
-      censusSize: { controls: 0, battery: 0, total: 0 },
-      disagreementRate: null,
-      decision: "non-result",
+      offered: 0,
+      verdicts: 0,
     });
+    expect(judgeDecision(battery.judge)).toBe("non-result");
   }, 30_000);
 });
 

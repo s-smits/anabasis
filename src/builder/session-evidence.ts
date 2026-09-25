@@ -11,7 +11,7 @@ import type { CandidateAccessPolicy, IsolationMode } from "./candidate-isolation
 import { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
 import type { BuilderShellWall } from "../run/builder-backend.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
-import type { BackendKind } from "../backends/backend-kinds.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
 export const BUILDER_SESSION_EVIDENCE_FILE = "builder-session.json";
@@ -34,7 +34,8 @@ export interface BuilderSessionEvidence {
   pathRecordSessionId: string;
   /** Composed path capabilities with the isolation modes each declares. */
   isolated: Record<string, readonly IsolationMode[]>;
-  /** Composed tools with no path capability: context and web_search when enabled. */
+  /** Composed tools with no path capability, such as web_search when enabled. The round's own tools,
+   *  `context` among them, are registered per round rather than composed here. */
   research: string[];
   /** Every candidate-isolation policy this fixed roster may use. */
   isolations: BuilderSessionIsolationEvidence[];

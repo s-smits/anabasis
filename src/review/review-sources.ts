@@ -64,12 +64,13 @@ const isDigest = (value: unknown): value is string => isString(value) && /^[0-9a
 
 /** The files a review may read: the core contract first, then the rest of the tree. The order is
  *  the rule -- a cap must never crowd the core contract out of a review, nor silently reduce the
- *  denominator the review reports against -- and a cap that refuses any path marks the whole
+ *  denominator the review reports against -- and the core contract is a handful of fixed paths
+ *  well under the cap, so only the walk can meet it. A cap that refuses any path marks the whole
  *  inventory truncated so the review states the limit instead of reading past it. */
 export function reviewInventory(root: string): ReviewInventory {
   const files = new Set<string>();
   const missing: string[] = [];
-  /** False once the cap refuses a path. Both walks below stop on that return value rather than
+  /** False once the cap refuses a path. The walk below stops on that return value rather than
    *  read a flag afterwards, so there is one place the cap can be observed. */
   const add = (path: string): boolean => {
     if (files.has(path)) return true;
@@ -77,11 +78,10 @@ export function reviewInventory(root: string): ReviewInventory {
     files.add(path);
     return true;
   };
-  let coreTruncated = false;
   for (const path of CORE_FILES) {
     try {
       if (lstatSync(join(root, path)).isFile()) {
-        if (!add(path)) coreTruncated = true;
+        add(path);
       } else {
         missing.push(path);
       }
@@ -113,9 +113,8 @@ export function reviewInventory(root: string): ReviewInventory {
     }
     return true;
   };
-  // `||` short-circuits, so a cap the core contract already met skips the walk entirely, which is
-  // what the old flag did by returning at the top of it.
-  const truncated = coreTruncated || !walk(root);
+  // Walked before `files` is spread, since an object literal evaluates its properties in order.
+  const truncated = !walk(root);
   return { files: [...files], truncated, missing };
 }
 
@@ -256,11 +255,14 @@ function deliver(state: SourceReadState, record: DeliveredSource, whole: string,
     : `${text}\n\n(${remaining} character${remaining === 1 ? " remains" : "s remain"}${state.readChars >= READ_CHARS_TOTAL ? ", but the review's read budget is spent" : "; call again to continue"}.)`;
 }
 
+/** `texts` holds entries whose bytes the controller already has in hand rather than on disk, such as
+ *  what a rehearsal's solver submitted; each is read under its name like any other entry. */
 export function readSourceTool(
   root: string,
   inventory: ReadonlySet<string>,
   state: SourceReadState,
-  tools: Readonly<Record<string, ToolEntry>> = {},
+  tools: Readonly<Record<string, ToolEntry>>,
+  texts: ReadonlyMap<string, string>,
 ): ReaderTool {
   const reply = (text: string) => Promise.resolve(readerToolText(text));
   const refuse = (why: string) => {
@@ -285,7 +287,7 @@ export function readSourceTool(
   ): { text: string } | { why: string; unreadable: boolean } => {
     let whole: string;
     try {
-      whole = sourceText(root, path, tools);
+      whole = texts.get(path) ?? sourceText(root, path, tools);
     } catch (error) {
       return { why: String(error), unreadable: true };
     }

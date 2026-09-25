@@ -39,9 +39,7 @@ export async function probe(argv: string[]) {
   const requestDigest = hashJsonBytes({ prompt: parsed.prompt, contextDigest });
   const commandDigest = hashJsonValue({ ...parsed, prompt: null, contextPaths: null, requestDigest });
   const { loadRepoEnv } = await target<typeof import("#src/backends/env.ts")>("src/backends/env.ts");
-  const { resolvedSlot } = await target<typeof import("#src/backends/resolve-side.ts")>(
-    "src/backends/resolve-side.ts",
-  );
+  const { resolvedSlot } = await target<typeof import("#src/backends/resolve.ts")>("src/backends/resolve.ts");
   const { builtSolveIsolation } = await target<typeof import("#src/run/built-agent-runtime.ts")>(
     "src/run/built-agent-runtime.ts",
   );
@@ -80,7 +78,7 @@ async function checkAllowance(
   const slot = resolvePiSlot(
     "builder",
     { kind, model, reasoningEffort: "low" },
-    { effort: "low", webSearch: false },
+    { webSearch: false },
     root,
     env,
   );

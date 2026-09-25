@@ -21,7 +21,8 @@ import { writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { join } from "../src/meta/path.ts";
 import { createHarnessInspectTool } from "../src/builder/harness-inspect.ts";
-import { createUserContextTool, prepareUserContext } from "../src/builder/user-context.ts";
+import { prepareUserContext } from "../src/builder/user-context.ts";
+import { createContextTool, RehearsalTraces } from "../src/builder/context-tool.ts";
 import { TOOL_TEXT_LIMITS, defineTool } from "../src/solve/define-tool.ts";
 import { DraftStore } from "../src/solve/draft-store.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
@@ -29,6 +30,8 @@ import { double } from "./helpers/doubles.ts";
 import { MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { errorMessage } from "../src/meta/runtime-values.ts";
+
+const ASK = { question: "what does the corpus say", decides: "the hostile case" };
 
 afterAll(cleanupScratch);
 
@@ -39,7 +42,12 @@ function hostileContext() {
   writeFileSync(join(dir, "huge.md"), Array.from({ length: 8_000 }, (_, i) => `row ${i} needle`).join("\n"));
   writeFileSync(join(dir, "minified.json"), `{"blob":"${"z".repeat(300_000)}"}`);
   writeFileSync(join(dir, "small.txt"), "needle\n");
-  return createUserContextTool(prepareUserContext(dir, ["huge.md", "minified.json", "small.txt"]));
+  return createContextTool({
+    round: "",
+    workspace: dir,
+    rehearsals: new RehearsalTraces(),
+    user: prepareUserContext(dir, ["huge.md", "minified.json", "small.txt"]),
+  });
 }
 
 function inspectTool() {
@@ -125,22 +133,25 @@ describe("the tool result ceiling", () => {
   });
 });
 
+const page = (args: JsonObject): JsonObject => ({ ...ASK, depth: "page", ...args });
+
 describe("context under hostile arguments", () => {
   const CASES: Array<[string, JsonObject]> = [
-    ["a read of the file far above the ceiling", { action: "read", id: "ctx-1" }],
-    ["a read of a single 300 KB line", { action: "read", id: "ctx-2" }],
-    ["an offset past the end", { action: "read", id: "ctx-1", offset: 999_999 }],
-    ["a negative offset", { action: "read", id: "ctx-1", offset: -40 }],
-    ["a fractional limit", { action: "read", id: "ctx-1", limit: 2.7 }],
-    ["a zero limit", { action: "read", id: "ctx-1", limit: 0 }],
-    ["an enormous limit", { action: "read", id: "ctx-1", limit: 10 ** 9 }],
-    ["an unknown id", { action: "read", id: "ctx-999" }],
-    ["a traversal where an id belongs", { action: "read", id: "../../etc/passwd" }],
-    ["a listing with a silly limit", { action: "list", limit: 10 ** 9 }],
-    ["a search matching every line", { action: "search", query: "needle" }],
-    ["a search matching nothing", { action: "search", query: "no-such-string-anywhere" }],
-    ["an empty search", { action: "search", query: "   " }],
-    ["a search paged past its end", { action: "search", query: "needle", offset: 10 ** 6 }],
+    ["a read of the file far above the ceiling", page({ id: "ctx-1" })],
+    ["a read of a single 300 KB line", page({ id: "ctx-2" })],
+    ["an offset past the end", page({ id: "ctx-1", offset: 999_999 })],
+    ["a negative offset", page({ id: "ctx-1", offset: -40 })],
+    ["a fractional limit", page({ id: "ctx-1", limit: 2.7 })],
+    ["a zero limit", page({ id: "ctx-1", limit: 0 })],
+    ["an enormous limit", page({ id: "ctx-1", limit: 10 ** 9 })],
+    ["an unknown id", page({ id: "ctx-999" })],
+    ["a traversal where an id belongs", page({ id: "../../etc/passwd" })],
+    ["a listing with a silly limit", { ...ASK, depth: "overview", limit: 10 ** 9 }],
+    ["a question matching every line", { ...ASK, question: "needle" }],
+    ["a question matching nothing", { ...ASK, question: "no-such-string-anywhere" }],
+    ["an empty question", { ...ASK, question: "   " }],
+    ["citations paged past their end", { ...ASK, question: "needle", offset: 10 ** 6 }],
+    ["a character page far past the end", page({ id: "ctx-2", characterOffset: 10 ** 9 })],
   ];
 
   for (const [name, params] of CASES) {
@@ -154,7 +165,7 @@ describe("context under hostile arguments", () => {
   // states the range it covers and the offset for the rest; a tool that fell through to the guard
   // carries the guard's own note instead. Asserting both makes a removed window visible here.
   it("windows a large read itself rather than falling through to the central cut", async () => {
-    const outcome = await settles(hostileContext(), { action: "read", id: "ctx-1" });
+    const outcome = await settles(hostileContext(), page({ id: "ctx-1" }));
     if (outcome.ok !== true) throw new Error("a read of an admitted file should return a page");
     expect(outcome.text).toMatch(/lines 1-\d+ of 8000/);
     expect(outcome.text).toContain("call again with offset");
@@ -162,33 +173,30 @@ describe("context under hostile arguments", () => {
   });
 
   it("never returns a file's bytes for an id it does not hold", async () => {
-    const outcome = await settles(hostileContext(), { action: "read", id: "../../etc/passwd" });
+    const outcome = await settles(hostileContext(), page({ id: "../../etc/passwd" }));
     expect(outcome.ok).toBe("refused");
     if (outcome.ok === "refused") expect(outcome.message).toMatch(/unknown context id/);
   });
 
   it("states a total larger than the page it returned", async () => {
-    const outcome = await settles(hostileContext(), { action: "search", query: "needle" });
-    if (outcome.ok !== true) throw new Error("search should have returned a page");
-    const page = JSON.parse(outcome.text);
+    const outcome = await settles(hostileContext(), { ...ASK, question: "needle" });
+    if (outcome.ok !== true) throw new Error("a question should have returned citations");
     // 8,000 rows in one file plus one in another. The page is smaller; the count is not.
-    expect(page.total).toBeGreaterThan(page.matches.length);
-    expect(page.more).toBe(true);
+    expect(outcome.text).toStartWith("Citations 1-30 of 8001 over");
+    expect(outcome.text).toContain("continue with offset 31");
   });
 });
 
 describe("harness_inspect under hostile arguments", () => {
   const CASES: Array<[string, JsonObject]> = [
-    ["a summary", { action: "summary" }],
+    ["a readiness view", { action: "readiness" }],
+    ["a readiness finding page", { action: "readiness", group: 1, field: "detail" }],
     ["a task with no id", { action: "task" }],
     ["an unknown task id", { action: "task", taskId: "no-such-task" }],
     ["a traversal where a task id belongs", { action: "task", taskId: "../../correctness-model/tasks.json" }],
     ["an empty task id", { action: "task", taskId: "" }],
-    ["a tools view", { action: "tools" }],
-    ["a typecheck view", { action: "typecheck" }],
-    ["a battery inventory", { action: "inventory" }],
     ["declared coverage", { action: "coverage" }],
-    ["an unknown inventory family", { action: "inventory", family: "no-such-family" }],
+    ["an unknown readiness family", { action: "readiness", family: "no-such-family" }],
     ["feedback before submit", { action: "feedback" }],
   ];
 
@@ -203,11 +211,9 @@ describe("harness_inspect under hostile arguments", () => {
   it("never lets a hidden expectation leave under any action", async () => {
     const tool = inspectTool();
     for (const params of [
-      { action: "summary" },
+      { action: "readiness" },
+      { action: "readiness", group: 1 },
       { action: "task", taskId: "t1" },
-      { action: "tools" },
-      { action: "typecheck" },
-      { action: "inventory" },
       { action: "coverage" },
       { action: "feedback" },
     ]) {

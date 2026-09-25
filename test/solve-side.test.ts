@@ -4,7 +4,6 @@ import { readFileSync, readdirSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { describe, expect, it } from "bun:test";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
-import { publicArtifactSchemaDegeneracies } from "../src/solve/public-artifact-schema-degeneracy.ts";
 import {
   compilePublicArtifactSchema,
   publicArtifactSchemaFindings,
@@ -182,28 +181,6 @@ describe("declared scalar values", () => {
     const schema = compilePublicArtifactSchema(fields, [{ verdict: "pass" }]);
     expect(validatePublicArtifactSchema(JSON.parse(JSON.stringify(schema)))).toEqual(schema);
   });
-});
-
-describe("degenerate compiled nodes", () => {
-  // Run 81: every L3 accept control carried empty selection/connection objects, so the compiled
-  // schema rejected all 20 complete submissions while truth-correct reference artifacts passed
-  // F2's root-name check. An empty closed object is detectable from the compiled schema alone.
-  it("an accept corpus whose object at a path is always empty compiles a node that rejects populated content", () => {
-    const schema = compilePublicArtifactSchema([{ name: "design" }], [{ design: {} }]);
-    expect(publicArtifactSchemaDegeneracies(schema.root)).toEqual(["$.design"]);
-    expect(publicArtifactSchemaFindings(schema, { design: { selections: ["cpu"] } })).not.toEqual([]);
-  });
-
-  it("a populated corpus and a mixed union are not degenerate", () => {
-    const populated = compilePublicArtifactSchema([{ name: "design" }], [{ design: { part: "cpu" } }]);
-    expect(publicArtifactSchemaDegeneracies(populated.root)).toEqual([]);
-    // One populated alternative keeps the path expressible; refusing a varied corpus would be wrong.
-    const mixed = compilePublicArtifactSchema(
-      [{ name: "design" }],
-      [{ design: {} }, { design: { part: "cpu" } }],
-    );
-    expect(publicArtifactSchemaDegeneracies(mixed.root)).toEqual([]);
-  });
 
   it("null beside two object key sets compiles one flat union the schema validator accepts", () => {
     const accepts = [{ result: null }, { result: { value: 1 } }, { result: { value: 2, warning: "note" } }];
@@ -217,16 +194,6 @@ describe("degenerate compiled nodes", () => {
         expect(publicArtifactSchemaFindings(schema, { result: place(result) })).toEqual([]);
       }
     }
-  });
-
-  it("empty objects nested in arrays and maps are found at their exact path", () => {
-    const inArray = compilePublicArtifactSchema([{ name: "parts" }], [{ parts: [{}] }]);
-    expect(publicArtifactSchemaDegeneracies(inArray.root)).toEqual(["$.parts[]"]);
-    const inMap = compilePublicArtifactSchema(
-      [{ name: "config", openMapPaths: ["slots"] }],
-      [{ config: { slots: { a: {} } } }],
-    );
-    expect(publicArtifactSchemaDegeneracies(inMap.root)).toEqual(["$.config.slots.*"]);
   });
 });
 

@@ -379,7 +379,8 @@ describe("campaign epoch selection (R0)", () => {
 
     const damaged = join(root, "damaged.json");
     writeFileSync(damaged, '{"ordinal": 7,');
-    expect(() => readJsonFile(damaged)).toThrow();
+    // The parse error names the file, which JSON.parse on its own never does.
+    expect(() => readJsonFile(damaged)).toThrow(`${damaged}: `);
     expect(readJsonFileOrNull(damaged)).toBeNull();
     expect(() => readJsonFile(join(root, "absent.json"))).toThrow();
     expect(readJsonFileOrNull(join(root, "absent.json"))).toBeNull();

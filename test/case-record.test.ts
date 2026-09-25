@@ -14,6 +14,7 @@ import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "
 import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  CASE_RECORD_FILE,
   CASE_RECORD_SCHEMA,
   CaseRecord,
   type CaseRecordRow,
@@ -55,7 +56,7 @@ function verifiedRow(taskId: string, pass: boolean, overrides: Partial<CaseRecor
 
 describe("one writer, serialized appends", () => {
   it("round-trips rows in append order with writer-owned seq", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     expect(await record.append(verifiedRow("t1", true))).toBe(1);
     expect(await record.append(verifiedRow("t2", false))).toBe(2);
@@ -68,7 +69,7 @@ describe("one writer, serialized appends", () => {
   });
 
   it("refuses a second writer and an existing lock file", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     expect(() => CaseRecord.open(path)).toThrow(/ONE writer/);
     await record.close();
@@ -81,7 +82,7 @@ describe("one writer, serialized appends", () => {
   });
 
   it("keeps every line intact under concurrent appends — the queue is the single writer", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     const big = "x".repeat(8192); // each row far beyond PIPE_BUF: interleaving would tear lines
     await Promise.all(
@@ -96,7 +97,7 @@ describe("one writer, serialized appends", () => {
   });
 
   it("reports a refused row and still accepts later appends", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     const partialRow = verifiedRow("bad", true, {
       runtimeNonResult: "solver blocked",
@@ -108,17 +109,26 @@ describe("one writer, serialized appends", () => {
   });
 
   it("opening an existing record strict-reads it first — a torn file refuses to grow", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     await record.append(verifiedRow("t1", true));
     await record.close();
     appendFileSync(path, '{"seq":2,"row":{"tor\n');
     expect(() => CaseRecord.open(path)).toThrow(/malformed record line/);
   });
+
+  it("refuses to append after an interrupted last line, which would bury it mid-file", async () => {
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
+    const record = CaseRecord.open(path);
+    await record.append(verifiedRow("t1", true));
+    await record.close();
+    appendFileSync(path, '{"seq":2,"row":{"tor');
+    expect(() => CaseRecord.open(path)).toThrow(/last line is unterminated/);
+  });
 });
 describe("strict parser — B-1 cannot hide malformed rows behind a tolerant reader", () => {
   it("throws on a malformed line instead of skipping it", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     await record.append(verifiedRow("t1", true));
     await record.append(verifiedRow("t2", true));
@@ -128,8 +138,23 @@ describe("strict parser — B-1 cannot hide malformed rows behind a tolerant rea
     expect(() => readCaseRecord(path)).toThrow(/malformed record line/);
   });
 
+  it("reads an unfinished last line as not yet written, and still refuses a damaged middle line", async () => {
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
+    const record = CaseRecord.open(path);
+    await record.append(verifiedRow("t1", true));
+    await record.append(verifiedRow("t2", true));
+    await record.close();
+    const [first, second] = readFileSync(path, "utf8").trim().split("\n");
+    // A reader polling a live battery can see the writer's append half-done.
+    writeFileSync(path, `${first}\n${second?.slice(0, 20)}`);
+    expect(readCaseRecord(path).map(({ row }) => row.taskId)).toEqual(["t1"]);
+    // The same fragment followed by a newline is a torn row the file kept, not an append in flight.
+    writeFileSync(path, `${first}\n${second?.slice(0, 20)}\n${second}\n`);
+    expect(() => readCaseRecord(path)).toThrow(/:2: malformed record line/);
+  });
+
   it("throws on a seq gap — a lost row is a defect, never an absence", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     await record.append(verifiedRow("t1", true));
     await record.append(verifiedRow("t2", true));
@@ -190,6 +215,13 @@ describe("row discipline", () => {
     expect(
       caseRowDefect(verifiedRow("t1", false, { acceptedSubmit: false, truthOk: false, pass: false })),
     ).toMatch(/no truth verdict/);
+    // a verified row whose pass contradicts its truth verdict, in either direction
+    expect(caseRowDefect(verifiedRow("t1", true, { truthOk: true, pass: false }))).toMatch(
+      /pass must equal truthOk/,
+    );
+    expect(caseRowDefect(verifiedRow("t1", false, { truthOk: false, pass: true }))).toMatch(
+      /pass must equal truthOk/,
+    );
     // half-shaped non-result evidence
     expect(
       caseRowDefect(verifiedRow("t1", false, { truthOk: null, pass: null, runtimeNonResult: "blocked" })),
@@ -233,7 +265,7 @@ describe("row discipline", () => {
 
 describe("denominator from the task set (B-1 fix 3)", () => {
   it("passes exactly when rows are a bijection with the task ids", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     await record.append(verifiedRow("t1", true));
     await record.append(verifiedRow("t2", false));
@@ -246,7 +278,7 @@ describe("denominator from the task set (B-1 fix 3)", () => {
   });
 
   it("names a duplicated case — 24 rows for 23 tasks is a defect, not extra evidence", async () => {
-    const path = join(scratchDir("ana-case-record-"), "case-record.jsonl");
+    const path = join(scratchDir("ana-case-record-"), CASE_RECORD_FILE);
     const record = CaseRecord.open(path);
     await record.append(verifiedRow("t1", true));
     await record.append(verifiedRow("t1", false));

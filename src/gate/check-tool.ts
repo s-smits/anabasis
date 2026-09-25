@@ -22,7 +22,7 @@ import {
   gateFeedbackFindings,
 } from "../builder/author-feedback.ts";
 import { visibleError } from "../builder/read-window.ts";
-import { existsSync, readFileSync } from "../meta/filesystem.ts";
+import { readFileSync } from "../meta/filesystem.ts";
 import { parseJsonAs, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { type JsonObject, asRecord, isNumber, isString } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -45,10 +45,10 @@ interface CorrectnessCheckBinding {
   /** The smallest accepted size when the round leaves the count to the Builder. */
   minTasks?: number;
   /** The same store submit records its refusal into, so `harness_inspect feedback` pages a check's
-   *  rows exactly as it pages a refusal's and the Builder has one place to read findings.
-   *  `builder-campaign.ts` always binds it; the absent branch below is a test's shape, not a
-   *  session's. */
-  feedback?: BuilderAuthorFeedback;
+   *  rows exactly as it pages a refusal's and the Builder has one place to read findings. */
+  feedback: BuilderAuthorFeedback;
+  /** Where EXPERIMENT.json and this round's rehearsals disagree, as advice that refuses nothing. */
+  planAdvice: () => string[];
 }
 
 /** What this tool did not do. It rides every result, including the clear ones, because a validation
@@ -71,16 +71,15 @@ const BLOCKED =
 const INCOMPLETE_NAVIGATION =
   "This call produced no complete result, so it replaced nothing: only this page of groups is readable here, and harness_inspect feedback still pages the previous check or submit.";
 
-/** The first sentence names what the call returns, the middle ones what submit would do with this
- *  same tree, and the last what this never does. Nothing here says how to repair anything: the
- *  repair sentence belongs to the result, which knows what was found, and rule 14 gives each duty
- *  one owner rather than repeating it in the tool description as well. */
+/** What the call runs, what it returns, what unchanged bytes cost and what it never does. How
+ *  the stages stop one another is left to each stage's receipt in the result, which knows what ran;
+ *  nothing here says how to repair anything either, since the repair sentence belongs to the result
+ *  and rule 14 gives each duty one owner. */
 const DESCRIPTION =
-  "Run the pre-adoption validation sequence on the current workspace bytes and read every blocking row a submit would refuse with, the advisory rows the gates recorded without refusing, a receipt for each stage (passed, refused, blocked or not run), and a coverage summary (controls, tasks, check groundings, what the census spent running each check, and F2 cases). " +
-  "The stages are the ones submit follows, on the same immutable snapshot submit would adopt: static bundle with installed-tool resolution, candidate validation, generated-tool conformance, then the adoption gates — control census with family isolation and task count, and beside it the F2 solvability census with its representation readers. Every stage that can run reports all of its rows; a bundle refusal stops conformance and the gates, a blocked stage or a generated-runtime non-result stops the stages after it, and a conformance refusal skips F2 but not the census. " +
-  "No arguments. Conformance and the gates run once per distinct tree and installed-tool condition: unchanged bytes return the remembered rows, or preview-attempt-spent when that run was blocked or ended without a verdict; the bundle and candidate validation, which reads EXPERIMENT.json, are checked on every call. Changed bytes run again as often as you like. " +
-  "It freezes a copy of the workspace when it starts and runs for minutes, so you may keep editing files and running commands in the same message while it runs; the result describes the frozen copy. " +
-  "It accepts nothing, charges nothing and returns no correctness verdict. A clear result covers the authored checks and controls, not omitted public obligations; submit remains the only acceptance path.";
+  "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, candidate validation (which reads EXPERIMENT.json), generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
+  "No arguments. Unchanged bytes return the remembered rows, or preview-attempt-spent when that run ended without a verdict; changed bytes run again as often as you like. " +
+  "It freezes a copy of the workspace when it starts and runs for minutes, so keep editing while it runs; the result describes the frozen copy. " +
+  "It accepts nothing and returns no correctness verdict: a clear result covers the authored checks and controls, not omitted public obligations, and submit remains the only acceptance path.";
 
 /** The rows the Builder reads. A complete result goes into the shared feedback store first, so this
  *  page is not the only way back to them; a blocked or spent call records nothing, which leaves the
@@ -95,21 +94,19 @@ function stageRows(
   result: "complete" | "incomplete",
 ) {
   const delta =
-    result === "complete"
-      ? (binding.feedback?.recordCheck(stage, rows, snapshotId ?? undefined) ?? null)
-      : null;
+    result === "complete" ? binding.feedback.recordCheck(stage, rows, snapshotId ?? undefined) : null;
   const overview = authorFindingOverview(rows);
-  const paged =
-    binding.feedback === undefined
-      ? "No feedback store is bound: only this page of groups is readable here."
-      : FEEDBACK_NAVIGATION;
   const navigation =
-    result === "incomplete" ? INCOMPLETE_NAVIGATION : rows.length === 0 ? overview.navigation : paged;
+    result === "incomplete"
+      ? INCOMPLETE_NAVIGATION
+      : rows.length === 0
+        ? overview.navigation
+        : FEEDBACK_NAVIGATION;
   // The same three counts a submit refusal carries. A list of findings says what is wrong now; the
   // counts say what the last edit did to that list, which is the question an author previewing a
   // changed tree is actually asking. They are absent when the sequence did not complete or no
-  // feedback store is bound, since there is then no previous check to count against, and a result
-  // served from memory carries the `REPEATED` note rather than counts of an edit nobody made.
+  // earlier check or submit exists to count against, and a result served from memory carries the
+  // `REPEATED` note rather than counts of an edit nobody made.
   const sinceLast =
     delta === null
       ? {}
@@ -121,7 +118,6 @@ function stageRows(
 }
 
 function readSealed(path: string): JsonObject | null {
-  if (!existsSync(path)) return null;
   try {
     return asRecord(parseJsonAs<unknown>(readFileSync(path, "utf8")));
   } catch {
@@ -281,7 +277,14 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
     parameters: Params,
     executionMode: "sequential",
     run: async () => {
-      const body = resultOf(binding, await binding.preview());
+      const report = await binding.preview();
+      const body = resultOf(binding, report);
+      const advice = binding.planAdvice();
+      // Kept off `body`, which is the model-visible text: the codes already reach the model there,
+      // grouped, and restating them would change what every check returns.
+      const codes = [
+        ...new Set(report.refusals.flatMap((refusal) => refusal.findings.map((finding) => finding.code))),
+      ].sort();
       const receipt: BuilderCustomToolSemantic = {
         outcome: body.status,
         stage: body.stage,
@@ -289,10 +292,11 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
         reason: receiptReason(body),
         ...keyIfDefined("candidateId", body.snapshotId ?? undefined),
         ...keyIfDefined("repeated", body.repeated === undefined ? undefined : true),
+        ...keyIfDefined("findingCodes", codes.length === 0 ? undefined : codes),
         ...body.findings.delta,
       };
       return {
-        text: capturedJsonStringify(body),
+        text: capturedJsonStringify(advice.length === 0 ? body : { ...body, planAdvice: advice }),
         details: { status: body.status, stage: body.stage, receipt },
       };
     },

@@ -21,7 +21,7 @@ import { writeCompleted } from "../meta/completed-json.ts";
 import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
 import { TOOL_REFUSED_CODE } from "../truth/grounding-coverage.ts";
 import type { ProbeControls, ProbeControlsResult } from "../truth/probes.ts";
-import type { PublicControlReceipt } from "../truth/battery-record.ts";
+import type { ControlReceipt } from "../truth/battery-record.ts";
 import { REFERENCE_SOLVE_ENTRY } from "../truth/evaluator-process-bundle.ts";
 import type { CheckCost, ToolCheckCoverage } from "../truth/grounding-coverage.ts";
 import {
@@ -73,7 +73,7 @@ type CensusEvidence = {
   /** Public results of the live control check; hidden values and verifier detail stay private. A
    *  missing list stays missing rather than becoming zero controls, because no controls ran and no
    *  controls exist are different candidates. */
-  controlReceipts?: PublicControlReceipt[];
+  controlReceipts?: ControlReceipt[];
   /** Per tool-backed check: how often the host ran its tool and how many rejects it blocked, both
    *  public counts. Zero runs is the refusal recorded elsewhere, not a check declining to call its
    *  tool. */

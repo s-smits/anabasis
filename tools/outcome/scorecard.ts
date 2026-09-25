@@ -15,8 +15,29 @@ import { compareCodeUnits } from "../../src/meta/stable-json.ts";
 import { type BuilderToolsReport, builderToolsReport } from "./builder-tools.ts";
 import { type OutcomeReport, outcomeReport } from "./metrics.ts";
 import { keyIfDefined, keyIfNotNull, keysIf } from "../../src/meta/optional-key.ts";
+import { type RunEnd, climbRunEnd, provenanceRunEnd } from "../../src/run/run-end.ts";
+import { type SharedPackReading, sharedPackRunEnd } from "./shared-pack.ts";
 
-const CAMPAIGN_SCORECARD_SCHEMA = "campaign-scorecard/v3";
+const CAMPAIGN_SCORECARD_SCHEMA = "campaign-scorecard/v4";
+
+/** The run-end numbers as this report shows them, beside the two readings no terminal holds. */
+type RunEndSection = RunEnd & {
+  /** `terminal` when the controller recorded the numbers at the close, `live` while it has not. */
+  readFrom: "terminal" | "live";
+  /** Why the close recorded no numbers, when it could not read them. */
+  unreadable?: string;
+  /** Per battery with a recorded margin: how close each family's verified answers sat to the
+   *  limit the verifier enforces. Written under analysis/ by the claim writer, never to a model. */
+  limitMargin: Array<{ runId: string } & NonNullable<Battery["limitMargin"]>>;
+  /** Scored off-loop after the run, so it can only ever come from the series the operator names. */
+  sharedPack: SharedPackReading;
+};
+
+interface RunEndSources {
+  /** The numbers derived now, used only while the run has no recorded terminal. */
+  live: () => RunEnd;
+  sharedPack: SharedPackReading;
+}
 
 /** One submitted candidate tree, with enough identity to find the record row that names it. */
 interface ParentIdentity {
@@ -78,6 +99,9 @@ interface CampaignScorecard {
      *  iteration of one epoch and the first of the next are not the same question. */
     iterations: { compared: number; moved: number };
   };
+  /** Where each battery landed on the band, the Builder's target, predictions and trials against
+   *  it, truth-check provenance, the limit margin per family and the shared-pack score. */
+  runEnd: RunEndSection;
   evidence: { authoring: string[]; cases?: string };
   unavailable: Array<"learningYield" | "climb" | "intervention">;
 }
@@ -87,6 +111,30 @@ type AuthoringRow = {
   iteration: BuilderToolsReport["epochs"][number]["authoring"]["iterations"][number];
 };
 type Battery = OutcomeReport["batteries"][string];
+
+/** The terminal's record wins; a run still going, or one with no controller evidence, is read live. */
+function runEndSection(
+  outcome: OutcomeReport | null,
+  batteries: readonly Battery[],
+  sources: RunEndSources,
+): RunEndSection {
+  const controller = outcome?.controller;
+  const recorded = controller?.state === "recorded" ? controller.runEnd : null;
+  const numbers: RunEnd & { unreadable?: string } =
+    recorded === null
+      ? sources.live()
+      : "unreadable" in recorded
+        ? { climb: null, provenance: [], unreadable: recorded.unreadable }
+        : recorded;
+  return {
+    readFrom: recorded === null ? "live" : "terminal",
+    ...numbers,
+    limitMargin: batteries.flatMap((battery) =>
+      battery.limitMargin === null ? [] : [{ runId: battery.runId, ...battery.limitMargin }],
+    ),
+    sharedPack: sources.sharedPack,
+  };
+}
 
 /** The one hash both repeat readings compare: the detail-free view where the report derived one
  *  (a diagnosis repeated with reworded detail strings is the same diagnosis), else the exact
@@ -329,6 +377,10 @@ export function scorecardFromReports(
   builder: BuilderToolsReport,
   outcome: OutcomeReport | null,
   selector: string,
+  sources: RunEndSources = {
+    live: () => ({ climb: null, provenance: [] }),
+    sharedPack: { state: "no-shared-pack" },
+  },
 ): CampaignScorecard {
   const authoring = builder.epochs.flatMap((epoch) =>
     epoch.authoring.iterations.map((iteration) => ({ epoch: epoch.epoch, iteration })),
@@ -338,6 +390,7 @@ export function scorecardFromReports(
   const efficiency = authoringAxis(builder, authoring);
   const runtime = runtimeAxis(batteries);
   const learning = learningYieldAxis(builder);
+  const runEnd = runEndSection(outcome, batteries, sources);
   return {
     schema: CAMPAIGN_SCORECARD_SCHEMA,
     campaign: builder.campaign,
@@ -347,13 +400,18 @@ export function scorecardFromReports(
     ...keyIfDefined("authoringEfficiency", efficiency),
     ...keyIfDefined("runtimeEfficiency", runtime),
     ...keyIfDefined("learningYield", learning),
+    runEnd,
     evidence: {
       authoring: authoring.map(({ epoch, iteration }) => join(epoch, iteration.dir, ITERATION_FILE)),
       ...keysIf(outcome?.caseRecord === "present", () => ({ cases: CASE_RECORD_FILE })),
     },
     // Named rather than rendered as a plausible zero, and named only while the evidence are
     // genuinely absent: learningYield left this list once builder-execution.json existed to fill it.
-    unavailable: [...(learning === undefined ? (["learningYield"] as const) : []), "climb", "intervention"],
+    unavailable: [
+      ...(learning === undefined ? (["learningYield"] as const) : []),
+      ...(runEnd.climb === null ? (["climb"] as const) : []),
+      "intervention",
+    ],
   };
 }
 
@@ -361,10 +419,15 @@ export function campaignScorecard(
   campaignDir: string,
   selector: string,
   bundleDir: string | null,
+  packDir: string | null,
 ): CampaignScorecard {
-  return scorecardFromReports(
-    builderToolsReport(campaignDir),
-    outcomeReport(campaignDir, selector, bundleDir),
-    selector,
-  );
+  const outcome = outcomeReport(campaignDir, selector, bundleDir);
+  const runIds = outcome === null ? [] : Object.keys(outcome.batteries);
+  return scorecardFromReports(builderToolsReport(campaignDir), outcome, selector, {
+    live: () => ({
+      climb: climbRunEnd(campaignDir),
+      provenance: runIds.flatMap((runId) => provenanceRunEnd(campaignDir, runId) ?? []),
+    }),
+    sharedPack: sharedPackRunEnd(packDir, campaignDir, selector),
+  });
 }

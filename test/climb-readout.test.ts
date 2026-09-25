@@ -11,26 +11,27 @@
  * unfilled in any sentence it sends; and nothing protected reaches the text, so changing the failed
  * task ids changes nothing the Builder can read.
  */
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { describe, expect, it } from "bun:test";
 import type {
   AdmittedClimbRow,
   ClimbBatteriesRead,
   ClimbBattery,
   ClimbEffort,
+  FamilyEffort,
 } from "../src/run/climb-history.ts";
 import {
   CLIMB_READOUT_MAX_CHARS,
   type ClimbReadout,
-  allowanceStop,
   climbReadout,
-  readReadoutHistory,
+  readoutHistoryDocuments,
   renderBatteryContract,
   renderReadout,
 } from "../src/run/climb-readout.ts";
 import { FRAME_REVISION, fill } from "../src/run/climb-readout-frame.ts";
 import type { ExperimentAuthoring } from "../src/run/experiment-freeze.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
-import { isRecord, isString } from "../src/meta/json-shape.ts";
+import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
 
@@ -52,6 +53,8 @@ type Spec = {
   failed?: string[];
   gap?: string;
   effort?: ClimbEffort;
+  familyEffort?: FamilyEffort[];
+  calibration?: AdmittedClimbRow["authoring"]["calibration"];
 };
 
 function authoring(target: NonNullable<Spec["target"]>, gap: string): ExperimentAuthoring {
@@ -59,6 +62,7 @@ function authoring(target: NonNullable<Spec["target"]>, gap: string): Experiment
     scope: "tasks",
     gap,
     change: "harder spans",
+    ...PLAN_FIELDS,
     expectedResult: "fewer passes",
     digest: "d",
     target,
@@ -99,6 +103,10 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
       wilson: [0, 1],
     })),
     effort: spec.effort ?? null,
+    familyEffort: spec.familyEffort ?? [],
+    calibration: spec.calibration ?? null,
+    passedTaskIds: [],
+    solveWallMinutes: 120,
   };
   if (spec.target !== undefined || spec.gap !== undefined) {
     recorded.experimentAuthoring = authoring(
@@ -130,8 +138,18 @@ function historyOf(...rows: AdmittedClimbRow[]): ClimbBatteriesRead {
 
 const readoutOf = (...rows: AdmittedClimbRow[]) => climbReadout(historyOf(...rows), BAND, () => null);
 const render = (readout: ClimbReadout) => renderReadout(readout, "choose the next experiment");
-const history = (readout: ClimbReadout, rows: AdmittedClimbRow[], runId?: string) =>
-  readReadoutHistory(DOMAIN, readout, rows, { runId });
+/** One history document's text: the overview, or one battery's public tasks; "absent" when the
+ *  source holds no such document. */
+const history = (readout: ClimbReadout, rows: AdmittedClimbRow[], runId = "overview") => {
+  const doc = readoutHistoryDocuments(DOMAIN, readout, rows).find((item) => item.id === `history/${runId}`);
+  return doc === undefined || !("text" in doc) ? "absent" : doc.text();
+};
+/** The overview's JSON body, below its one-line note. */
+const historyBody = (readout: ClimbReadout, rows: AdmittedClimbRow[]) => {
+  const text = history(readout, rows);
+  const body = capturedJsonParse(text.slice(text.indexOf("\n") + 1));
+  return isRecord(body) ? body : {};
+};
 
 describe("one reading per battery", () => {
   it("reads a changed subset over its own sample in the table, the reading and the history", () => {
@@ -149,9 +167,12 @@ describe("one reading per battery", () => {
     expect(text).not.toContain("passed 20 of 25");
     // The target is read over the whole battery's slots, which is what the author predicted.
     expect(text).toContain("at-most 4: missed by 16");
-    const page = history(readout, [subset]);
-    expect(page).toContain(String.raw`\"deciding\":{\"population\":\"changed-subset\",\"passes\":0,\"n\":5}`);
-    expect(page).toContain(String.raw`\"zone\":\"under-aim\"`);
+    const { rows } = historyBody(readout, [subset]);
+    const [first] = Array.isArray(rows) ? rows : [];
+    expect(first).toMatchObject({
+      deciding: { population: "changed-subset", passes: 0, n: 5 },
+      zone: "under-aim",
+    });
   });
 
   it("sets a battery refused whole aside in its own row instead of placing it too hard", () => {
@@ -212,15 +233,10 @@ describe("one reading per battery", () => {
     expect(text).toContain(
       "Families of the latest admitted battery (passes of attempts, Wilson interval): beams 11/11",
     );
-    expect(allowanceStop(readout)).toContain(
-      "3 consecutive rounds ended above the aim or with a refused claim",
-    );
     // The round states the allowance once. A session whose opening turn compaction cut reads the
     // same counts back here, because the rows cannot reconstruct them: this one spans two
     // placements and a refused claim.
-    const page = capturedJsonParse(history(readout, rows));
-    const body = capturedJsonParse(isRecord(page) && isString(page.text) ? page.text : "{}");
-    expect(isRecord(body) ? body.allowance : null).toEqual(readout.allowance);
+    expect(historyBody(readout, rows).allowance).toEqual(readout.allowance);
     // A refused claim's passes are not evidence, so changing only them changes nothing sent.
     expect(text).toContain("| r3 | P1 | T1 | — | 11 | 11 | 0 | 0 | 11/11 whole-battery | too-easy |");
     expect(text).toContain("| r2 | P1 | T1 | task-probe | — | 10 | 0 | 0 | — | claim refused:");
@@ -292,12 +308,46 @@ describe("rendering", () => {
   });
 
   it('gives every row\'s table line what the solver spent, and a measure no case recorded as "?"', () => {
-    // Run 1aa6e6's battery: 6 of 6, no case past 1 turn of the 24 its config declares or 15
-    // minutes of the 120. The pass count alone reads the same as a battery that used every wall.
     const effort: ClimbEffort = { cases: 6, turns: 1, minutes: 14.8, toolCalls: null };
     const text = render(readoutOf(row("r1", 0, { passed: 6, n: 6, effort })));
 
     expect(text).toContain("| 1t 14.8m —c over 6 |");
+  });
+
+  it("states each family's effort against the solve wall as a fact, never as difficulty", () => {
+    const familyEffort: FamilyEffort[] = [
+      { family: "span", cases: 3, medianMinutes: 9, maxMinutes: 20, medianToolCalls: 14 },
+      { family: "joint", cases: 2, medianMinutes: null, maxMinutes: null, medianToolCalls: 6 },
+    ];
+    const text = render(readoutOf(row("r1", 0, { passed: 2, n: 5, familyEffort })));
+    expect(text).toContain(
+      "Solve effort by family in the latest admitted battery, against its 120-minute solve wall: span 9 median and 20 most minutes, 14 median tool calls over 3 case(s); joint unrecorded median and unrecorded most minutes, 6 median tool calls over 2 case(s). Effort is what the solver spent and says nothing about difficulty",
+    );
+    // No sentence reads effort as nearness to a limit, in either direction.
+    expect(text).not.toMatch(/near the wall|under a quarter|too fast|too slow/);
+    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 5 })))).not.toContain("Solve effort by family");
+  });
+
+  it("scores the latest plan's predictions against its verdicts", () => {
+    const calibration = { scored: 5, brier: 0.21, expected: 1.4, observed: 3 };
+    const text = render(readoutOf(row("r1", 0, { passed: 3, n: 5, calibration })));
+    expect(text).toContain(
+      "Predictions bound to r1: 5 scored task(s), 1.4 passes expected and 3 observed, Brier score 0.21",
+    );
+    expect(render(readoutOf(row("r1", 0, { passed: 3, n: 5 })))).not.toContain("Predictions bound to");
+  });
+
+  it("says a battery passing every verified case found no limit and asks for a new move", () => {
+    const allPass = render(readoutOf(row("r1", 0, { passed: 5, n: 5 })));
+    expect(allPass).toContain(
+      "The latest battery passed every one of its 5 verified cases, so it found no limit.",
+    );
+    expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
+    expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
+    // Refused attempts are not verified, so a battery passing every verified case is still all-pass.
+    expect(render(readoutOf(row("r1", 0, { passed: 3, n: 5, unaccepted: 2 })))).toContain(
+      "every one of its 3 verified cases",
+    );
   });
 
   it("renders nothing protected: failed task ids never reach the text, and changing them changes nothing", () => {
@@ -347,9 +397,22 @@ describe("rendering", () => {
     const text = render(readout);
     expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): at the limit.");
     expect(renderBatteryContract(5, 5, declared, true)).toContain("Aim for 3 to 4 of 5");
-    const page = capturedJsonParse(history(readout, [battery]));
-    const body = isRecord(page) && isString(page.text) ? capturedJsonParse(page.text) : null;
-    expect(isRecord(body) ? body.band : null).toEqual(declared);
+    expect(historyBody(readout, [battery]).band).toEqual(declared);
+  });
+
+  it("states in every contract that the solver has walls the reference does not", () => {
+    const contracts = [
+      renderBatteryContract(25),
+      renderBatteryContract(10, 5),
+      renderBatteryContract(25, 25, BAND, true),
+      renderBatteryContract(10, 5, BAND, true),
+    ];
+    for (const contract of contracts) {
+      expect(contract).toContain("every .toolchain binary in its shell, under the walls agent/config.yaml");
+      expect(contract).toContain("the reference solve is held to none of them");
+      expect(contract).toContain("only if the solver cannot run that search inside its walls");
+      expect(contract).not.toContain("cannot reach");
+    }
   });
 });
 
@@ -357,16 +420,19 @@ describe("the history page", () => {
   const rows = [row("r1", 0, { passed: 3, n: 10 }), row("r2", 1, { passed: 5, n: 10 })];
   const readout = readoutOf(...rows);
 
-  it("lists rows newest first, and pages by character", () => {
-    const page = capturedJsonParse(history(readout, rows));
-    const text = isRecord(page) && isString(page.text) ? page.text : "";
-    expect(text.indexOf('"runId":"r2"')).toBeLessThan(text.indexOf('"runId":"r1"'));
-    const first = capturedJsonParse(readReadoutHistory(DOMAIN, readout, rows, { limit: 40 }));
-    expect(first).toMatchObject({ from: 1, to: 40, more: true });
+  it("lists rows and batteries newest first", () => {
+    const text = history(readout, rows);
+    expect(text.indexOf('"runId": "r2"')).toBeLessThan(text.indexOf('"runId": "r1"'));
+    expect(readoutHistoryDocuments(DOMAIN, readout, rows).map((doc) => doc.id)).toEqual([
+      "history/overview",
+      "history/r2",
+      "history/r1",
+    ]);
   });
 
-  it("refuses a runId it holds no history for", () => {
-    expect(history(readout, rows, "r9")).toContain("No verified history is bound to this runId.");
+  it("holds no document for a runId it has no history for, and says why a battery cannot be read", () => {
+    expect(history(readout, rows, "r9")).toBe("absent");
+    expect(history(readout, rows, "r2")).toContain("No public task of r2 can be vouched for");
   });
 });
 

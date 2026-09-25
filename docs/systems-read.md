@@ -4,8 +4,8 @@ Nine readers took 43 files each — all 387 source files carrying comments — a
 against what the code cannot say for itself. Reading a file for *why* rather than *what* leaves you
 holding an argument about it, so each reader was then asked what in its ninth makes most sense and
 what makes least, with the reasoning spelled out for the second. This document is the composition of
-those nine answers. A companion register, [systems-read-findings.md](systems-read-findings.md),
-holds every individual finding in the `owner → live consumer → decision changed → evidence → hostile
+those nine answers. A companion register, `docs/systems-read-findings.md`, kept locally
+rather than published, holds every individual finding in the `owner → live consumer → decision changed → evidence → hostile
 test` frame that rule 8 of `AGENTS.md` prescribes.
 
 Read it as research, not as evidence. Each reader measured its own numbers by grep and file read in
@@ -211,7 +211,7 @@ adjudicate it, which is rule 13's "teaching agents the mismatch in prose" shippe
 
 ### An identity minted for a comparison nothing performs
 
-`FRAME_REVISION` hashes the climb readout's frame and is written into every `difficulty-decision/v5`
+`FRAME_REVISION` hashes the climb readout's frame and is written into every `difficulty-decision/v6`
 record. Verified: nothing reads it back. Its only other mention in `src`, `tools`, `test`, `starters`
 or `packages` is a test asserting the hash is 64 hex characters. The contract's claim that rewording
 a sentence "creates a new recorded condition rather than a tidier one" is true as far as recording
@@ -257,4 +257,4 @@ decision-changing for someone with more context than a reader of 43 files. Three
 operator's attention on their own: whether the threshold digest identifies declared policy or the
 executable condition; whether any recorded run's opening evidence holds a slot that resolved through
 `BACKEND_SLOT_DEFAULTS` rather than an explicit pin; and whether anything outside the trees searched
-reads `frame` off a `difficulty-decision/v5` record.
+reads `frame` off a `difficulty-decision/v6` record.

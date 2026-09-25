@@ -11,9 +11,7 @@
  */
 import type { JsonValue } from "../meta/json-shape.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
-
-/** Which engine ran a turn. */
-export type BackendId = "codex" | "openrouter" | "claude";
+import type { BackendKind } from "./resolve.ts";
 
 /** Provider-reported per-turn spend. Null means the transport reported none, never zero. */
 export interface TurnUsage {
@@ -36,11 +34,13 @@ export const CONTEXT_COMPACT_WINDOW = 300_000;
 export const COMPACTION_MODES = ["pi", "claude-ss"] as const;
 export type CompactionMode = (typeof COMPACTION_MODES)[number];
 
-/** One context compaction a transport ran during a turn: the context size before it and whether
- *  the summary replaced the older history (false when the summary call failed or was refused). */
+/** One context compaction a transport ran during a turn: the context size before it, whether
+ *  the summary replaced the older history (false when the summary call failed or was refused), and
+ *  the summary itself when the transport exposed it. */
 export interface CompactionRecord {
   tokensBefore: number;
   compacted: boolean;
+  summary?: string;
 }
 
 /**
@@ -50,7 +50,7 @@ export interface CompactionRecord {
  */
 export type AgentTurnEvent =
   | { type: "turn_started" }
-  | { type: "assistant_text"; delta: string; final?: boolean }
+  | { type: "assistant_text"; delta: string }
   /** A reasoning summary the transport surfaced while the turn ran: Codex summary text, a Claude
    *  thinking block. It is evidence for the Builder prose log and never model-visible, because it
    *  is the model's own draft thinking rather than anything it chose to say. */
@@ -63,7 +63,6 @@ export type AgentTurnEvent =
       toolName: string;
       toolCallId?: string;
       isError: boolean;
-      args?: Record<string, JsonValue>;
       /** Short text preview of the tool result (truncated) for UI logging. */
       resultPreview?: string;
     }
@@ -80,14 +79,17 @@ export type AgentTurnEvent =
   /** Backend-native richness a caller may forward verbatim -- a Codex subagent item, file-change
    *  counts -- without this contract growing one case per provider. A caller that does not
    *  recognise the payload ignores it, which is why nothing here is required to parse it. */
-  | { type: "raw"; backend: BackendId; native: unknown };
+  | { type: "raw"; backend: BackendKind; native: unknown };
 
 export interface AgentTurnResult {
   status: "completed" | "failed" | "aborted";
   /** The provider's stop reason for the last assistant message, or null when none arrived. */
   stopReason?: string | null;
-  /** Concatenated final assistant text for this turn, when any. */
+  /** Every assistant message's text this turn, joined: the narration between tool calls included. */
   assistantText?: string;
+  /** The last assistant message's text alone, when this turn wrote any: the answer or handover a
+   *  caller wants, without the narration that led to it. */
+  finalText?: string;
   /** Provider/runtime error strings observed this turn. */
   errorMessages?: string[];
   /** Per-tool call tally for this turn. `failedByName` splits `failed` the way `byName` splits
@@ -125,7 +127,7 @@ export interface RunTurnOptions {
  * what lets a caller's stop predicate run on a finished turn rather than on half-written state.
  */
 export interface AgentSession {
-  readonly backend: BackendId;
+  readonly backend: BackendKind;
   runTurn(opts: RunTurnOptions): Promise<AgentTurnResult>;
   /** Release the session and whatever its transport holds (the Claude CLI's config directory). */
   dispose(): Promise<void>;

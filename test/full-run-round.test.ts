@@ -17,12 +17,10 @@ import {
   heldInLoop,
   loopTerminal,
   nextBlockedRounds,
-  nextStalledMeasureRounds,
   nextUnresolvedAuthoringStall,
   terminalEvidenceFor,
 } from "../src/run/full-run-round.ts";
 import { LOOP_TERMINAL_CODES, fullRunExitStatus, loopTerminalCode } from "../src/run/loop-terminal.ts";
-import { MEASURE_FOR_FEEDBACK_REASON } from "../src/run/next-move.ts";
 import { roundCapTerminal } from "../src/run/full-run.ts";
 import { double } from "./helpers/doubles.ts";
 
@@ -35,7 +33,6 @@ describe("loopTerminal", () => {
     budget: { status: () => "active" },
     blockedRounds: 0,
     authoringStall: null,
-    stalledMeasureRounds: 0,
   };
   const result = (
     build: IterationResult["build"],
@@ -213,6 +210,9 @@ describe("loopTerminal", () => {
     expect(loopTerminalCode(null)).toBeNull();
     // An ending no code names is not silently read as one that settled the question.
     expect(loopTerminalCode("something-else: prose")).toBeNull();
+    // The measurement stall was never reachable: every round it counted also counted as an
+    // environment-blocked battery, under the same threshold and checked second. Its code is gone.
+    expect(loopTerminalCode("measurement-stalled: prose")).toBeNull();
     expect(loopTerminalCode("completed")).toBe("completed");
   });
 
@@ -233,7 +233,6 @@ describe("loopTerminal", () => {
       "candidate-held": 1,
       "budget-limited": 1,
       "environment-blocked": 1,
-      "measurement-stalled": 1,
       "operator-interrupted": 3,
     });
     expect(fullRunExitStatus(roundCapTerminal(1, 1))).toBe(3);
@@ -354,56 +353,6 @@ describe("loopTerminal", () => {
       "consecutive batteries were stopped by the provider or recorded only typed non-results",
     );
     expect(loopTerminal(result("reused"), { ...quiet, blockedRounds: 2 })).toBeNull();
-  });
-
-  it("ends after consecutive measurements the selector cannot read, and counts only that shape", () => {
-    const measuring = result("reused");
-    expect(loopTerminal(measuring, { ...quiet, stalledMeasureRounds: 2 })).toBeNull();
-    expect(loopTerminal(measuring, { ...quiet, stalledMeasureRounds: 3 })).toMatch(/^measurement-stalled/);
-
-    const stalledEntry = { move: "measure", reason: MEASURE_FOR_FEEDBACK_REASON } as const;
-    const measured = double<IterationResult>({
-      steps: { measure: { claim: null } },
-      decision: stalledEntry,
-      nextDecision: null,
-    });
-    expect(nextStalledMeasureRounds(2, measured)).toBe(3);
-    const annotated = double<IterationResult>({
-      steps: { measure: { claim: null } },
-      decision: { move: "measure", reason: `${MEASURE_FOR_FEEDBACK_REASON}; excluded 1 battery` },
-      nextDecision: null,
-    });
-    expect(nextStalledMeasureRounds(2, annotated)).toBe(3);
-    // The round that finally produced what the selector reads resets the count instead of ending
-    // the run as its third stalled round: a written claim is difficulty evidence, admitted feedback
-    // is the other readable output.
-    const claimed = double<IterationResult>({
-      steps: { measure: { claim: { statement: {} } } },
-      decision: stalledEntry,
-      nextDecision: null,
-    });
-    expect(nextStalledMeasureRounds(2, claimed)).toBe(0);
-    const fedBack = double<IterationResult>({
-      steps: { measure: { claim: null }, admission: { feedback: [{ owner: "tests" }] } },
-      decision: stalledEntry,
-      nextDecision: null,
-    });
-    expect(nextStalledMeasureRounds(2, fedBack)).toBe(0);
-    expect(
-      nextStalledMeasureRounds(
-        2,
-        double<IterationResult>({ steps: { measure: null }, decision: stalledEntry }),
-      ),
-    ).toBe(0);
-    expect(
-      nextStalledMeasureRounds(
-        2,
-        double<IterationResult>({
-          steps: { measure: { claim: null } },
-          decision: { move: "climb", reason: "band cleared; author the adjacent level" },
-        }),
-      ),
-    ).toBe(0);
   });
 
   // A held candidate's terminal names the move that did not continue, so the reader need not open

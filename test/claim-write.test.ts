@@ -120,17 +120,8 @@ describe("review evidence the claim carries but never obeys", () => {
   it("throws on contradictory review evidence instead of returning a refusal", () => {
     // A producer that recorded an impossible review is a defect in the producer. A claim clause
     // would invite a repair loop to route around it; the throw stops the write.
-    const contradictory: JudgeEvidence = { ...judgeWithDisagreements(), decision: "non-result" };
+    const contradictory: JudgeEvidence = { ...judgeWithDisagreements(), verdicts: 5 };
     expect(() => createClaim(greenEvidence({ judge: contradictory }))).toThrow(InvalidReviewEvidenceError);
-  });
-
-  it("refuses a review a control census stood behind, as recorded before 2026-09-14", () => {
-    const census: JudgeEvidence = {
-      ...judgeWithDisagreements(),
-      censusSize: { controls: 4, battery: 4, total: 8 },
-      verdicts: { controls: 4, battery: 4, total: 8 },
-    };
-    expect(() => createClaim(greenEvidence({ judge: census }))).toThrow(/censusSize.controls must be 0/);
   });
 
   it("binds the review to the battery's own pin and correctness model", () => {
@@ -150,20 +141,15 @@ describe("review evidence the claim carries but never obeys", () => {
     );
   });
 
-  it("re-derives every review figure rather than trusting the stored one", () => {
+  it("checks every review count against the others rather than trusting it", () => {
     const green = judgeWithDisagreements();
     // Abstentions claimed beyond the unanswered census.
-    expect(() =>
-      createClaim(greenEvidence({ judge: { ...green, abstentions: { controls: 1, battery: 0, total: 1 } } })),
-    ).toThrow(/abstention is a designed null/);
-    // The evaluated pin rides the evidence, so independence is re-derivable and never asserted:
-    // the same pin on both sides derives same-model, and the stored different-family must throw.
-    expect(() => createClaim(greenEvidence({ judge: { ...green, evaluatedPin: "scripted/judge" } }))).toThrow(
-      /contradicts the evidence's pins/,
+    expect(() => createClaim(greenEvidence({ judge: { ...green, abstentions: 1 } }))).toThrow(
+      /abstention is a designed null/,
     );
-    // An independence class no session produces cannot be asserted into the evidence either.
-    expect(() => createClaim(greenEvidence({ judge: { ...green, independence: "deterministic" } }))).toThrow(
-      /contradicts the evidence's pins/,
+    // More verifier-pass fails than there are disagreements to hold them.
+    expect(() => createClaim(greenEvidence({ judge: { ...green, verifierPassJudgeFail: 3 } }))).toThrow(
+      /within disagreements/,
     );
   });
 });

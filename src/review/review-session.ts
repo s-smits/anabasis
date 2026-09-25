@@ -22,7 +22,7 @@
  */
 import { type PiSlotDefaults, type PiSlotRuntime, resolvePiSlot } from "../backends/pi-providers.ts";
 import { type HostSession, type PiTool, openHostSession } from "../backends/pi-session.ts";
-import { backendConditionPin } from "../backends/resolve-side.ts";
+import { backendConditionPin } from "../backends/resolve.ts";
 import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -39,9 +39,8 @@ type EnabledReview = Extract<ReviewChoice, { enabled: true }>;
  *  census uses this one; a reader has its own. */
 export const REVIEW_TURN_TIMEOUT_MS = 30 * 60_000;
 
-/** "high" is the documented judge convention when the slot pins no effort. The review slot reads
- *  what the controller hands it and searches nothing. */
-const REVIEW_DEFAULTS: PiSlotDefaults = { effort: "high", webSearch: false };
+/** The review slot reads what the controller hands it and searches nothing. */
+const REVIEW_DEFAULTS: PiSlotDefaults = { webSearch: false };
 
 /** The review slot's pin — the string every judge evidence names as the evaluator; null when the
  *  slot is disabled. The review slot does not inherit the Built Harness backend. */

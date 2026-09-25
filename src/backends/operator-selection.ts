@@ -15,11 +15,11 @@
  *
  * This module checks the file structure and combines selections, and nothing more. Every field
  * stays `unknown` and no value is validated here, because which values are legal and which slot may
- * carry which key belongs to the resolvers (`resolve.ts`, `resolve-side.ts`), where one refusal can
+ * carry which key belongs to the resolver (`resolve.ts`), where one refusal can
  * name both the file and the slot it offends in.
  */
 import { join } from "../meta/path.ts";
-import type { BackendSlot } from "./backend-kinds.ts";
+import type { BackendSlot } from "./resolve.ts";
 import { readOptionalConfigFile } from "./config-file.ts";
 import { isRecord } from "../meta/json-shape.ts";
 

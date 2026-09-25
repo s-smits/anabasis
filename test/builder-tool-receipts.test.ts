@@ -19,7 +19,6 @@ function wrap(execute: () => Promise<JsonValue>, review: () => Promise<string | 
       activeTurn: () => 1,
       checkpoint: () => {},
       closed: () => null,
-      events: undefined,
       afterTool: review,
     },
   );
@@ -152,7 +151,6 @@ it("refuses a call cancelled or outrun by its turn while it waited behind a revi
       activeTurn: () => turn,
       checkpoint: () => {},
       closed: () => null,
-      events: undefined,
       afterTool: async () => {
         await reviewDone.promise;
         return null;
@@ -187,7 +185,6 @@ it("states the session clock once per half hour and not after the build closed",
       activeTurn: () => 1,
       checkpoint: () => {},
       closed: () => closed,
-      events: undefined,
       afterTool: undefined,
       clock: sessionClock(
         () => true,
@@ -217,7 +214,6 @@ it("asks once inside a running turn for authoring when two hours pass without a 
       activeTurn: () => 1,
       checkpoint: () => {},
       closed: () => null,
-      events: undefined,
       afterTool: undefined,
       clock: sessionClock(
         () => submitted,

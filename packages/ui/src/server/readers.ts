@@ -4,8 +4,8 @@ import { type RepoEnv, loadRepoEnv } from "../../../../src/backends/env.ts";
 import {
   operatorBackendsPath,
   projectBackendChoices,
-} from "../../../../src/backends/project-backend-policy.ts";
-import { resolveSlots } from "../../../../src/backends/resolve.ts";
+  resolveSlots,
+} from "../../../../src/backends/resolve.ts";
 import type {
   ProjectBackendSlotView,
   ProjectBackendsView,

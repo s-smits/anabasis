@@ -25,6 +25,10 @@
  * At most eight rules and about fifteen tokens each (operator decision), because the list is paid on
  * every turn of both agents.
  *
+ * The Builder list states no time limit: its bash tool description owns the deadline, the timeout
+ * ceiling and what a long search should do, and both reach the same session, so a second statement
+ * here can only repeat that description or contradict it.
+ *
  * Both lists say a refused command runs nothing, and neither says the turn is lost, because it is
  * not: a session can take a refusal on its second call, make dozens more in the same turn and submit
  * an accepted candidate. That there is no allow-once is already the last clause of every refusal the
@@ -36,7 +40,6 @@ export const DCG_RULES: readonly string[] = [
   "Revert a file with git checkout -- <path> or git restore <path>; keep a cp copy of what has no commit.",
   "Write only under the workspace, $HOME, $TMPDIR and /tmp, with > to a literal path, $HOME/<name> or $TMPDIR/<name>; a redirect to any other $VAR/… is refused; make temp dirs with mktemp -d.",
   "Run from the workspace root with relative paths; do not cd or scan the filesystem.",
-  "A command has minutes by default; pass timeout for a long build, never for a search.",
   "Reuse tool data the harness installed in .toolchain; point new config, data and caches at $HOME.",
   "A refused command runs nothing: change the spelling and run it again.",
 ];
@@ -47,13 +50,16 @@ export const DCG_RULES: readonly string[] = [
  *  spelling that passes. The guard caller admits both before dcg sees them (command-guard.ts
  *  `privateScratchRedirect`), which is why the write line names `$HOME` beside `~`.
  *  It leaves out `$TMPDIR`, which the Built shell makes fresh for each command and never reads back,
- *  so a rule naming it would offer the solver a place its next command cannot revisit. */
+ *  so a rule naming it would offer the solver a place its next command cannot revisit. The time
+ *  line gives a search its timeout too: the Built system prompt calls a bounded search over
+ *  candidates a sound way to meet a tight limit, and one cut off at the default wall finds nothing;
+ *  the filesystem scan a timeout should not be spent on is the line before it. */
 export const BUILT_SHELL_RULES: readonly string[] = [
   "Refused: rm -r outside the command's own folder, find -delete, git clean, git reset --hard.",
   "Delete a tree with rm -rf <relative path> or ~/<path>, also after cd ~; /tmp is shared with other solves, so keep your trees in $HOME.",
   "Write with > to $HOME/<name>, ~/<name>, a relative name or a literal /tmp/<name>; a redirect to any other $VAR/… is refused; make temp dirs with mktemp -d.",
   "Keep scripts and results in $HOME; do not scan the filesystem.",
-  "A command has a default time limit; pass timeout for a long build, never for a search.",
+  "A command has a default time limit; pass timeout for a long build or search.",
   "A refused command runs nothing: change the spelling and run it again.",
 ];
 

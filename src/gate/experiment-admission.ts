@@ -9,6 +9,12 @@
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
 import { EXPERIMENT_FILE } from "../author/builder-memory.ts";
+import {
+  type LastBattery,
+  repeatedMoveDetail,
+  unmovedChangeDetail,
+  unreachableTargetDetail,
+} from "../author/experiment-plan.ts";
 import { BATTERY_SERVED, EVALUATION_SERVED } from "../author/feedback-routing.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import { readBoundConformance, recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
@@ -31,7 +37,6 @@ import {
   rebuildEvaluationUnmovedRefusal,
 } from "../run/experiment-freeze.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import { unmovedChangeDetail } from "./experiment-change-files.ts";
 import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 import { isControlCorpus } from "../truth/controls.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
@@ -44,6 +49,8 @@ export interface AdmissionInput {
   feedback?: readonly CampaignFeedback[];
   /** Admitted-history public battery fingerprints for the task-only A→B→A refusal. */
   priorPublicTaskFingerprints?: readonly string[];
+  /** The newest measured battery and the plan it was measured under, for the declared-move rule. */
+  lastBattery?: LastBattery;
 }
 
 /** What this refusal observed is a byte comparison: `publicBatteryFingerprint` hashes the sorted
@@ -234,16 +241,8 @@ function declaredScopeRefusals(
   const unmoved =
     baseline === null ? null : unmovedChangeDetail(proposal.change, baseline.adopted, candidate.fingerprint);
   if (unmoved !== null) findings.push(refuse("experiment-change-unmoved", unmoved));
-  const { target } = proposal;
-  const slots = publicTaskRows(candidate.snapshotDir).length;
-  if (target !== undefined && target.verifiedPasses > slots) {
-    findings.push(
-      refuse(
-        "experiment-target-unreachable",
-        `The target counts ${target.verifiedPasses} verified passes, but the submitted battery has ${slots} task slots. Bind a count within the battery before measuring.`,
-      ),
-    );
-  }
+  const unreachable = unreachableTargetDetail(proposal, publicTaskRows(candidate.snapshotDir).length);
+  if (unreachable !== null) findings.push(refuse("experiment-target-unreachable", unreachable));
   return findings;
 }
 
@@ -272,6 +271,9 @@ function conditionRefusals(
   ) {
     findings.push(refuse("climb-battery-repeats-history", REPEATED_CONDITION));
   }
+  const proposal = candidate.experimentProposal;
+  const repeatedMove = proposal === undefined ? null : repeatedMoveDetail(input.lastBattery, proposal);
+  if (repeatedMove !== null) findings.push(refuse("climb-battery-repeats-history", repeatedMove));
   const blocking = (input.feedback ?? []).filter((row) => row.severity === "blocking");
   if (baseline?.fixed === true && productRepairOwed(candidate, baseline, blocking)) {
     findings.push(

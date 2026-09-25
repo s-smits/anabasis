@@ -77,7 +77,7 @@ function campaignWith(rows: Row[], reviews: Array<{ atMs: number; claims: string
     omitted: 0,
   };
   const lines = rows.map((row, index) => ({
-    schema: "builder-prose/v1",
+    schema: "builder-prose/v2",
     sequence: index + 1,
     kind: "message",
     ...row,
@@ -91,7 +91,7 @@ function campaignWith(rows: Row[], reviews: Array<{ atMs: number; claims: string
   writeFileSync(
     join(epoch, "builder-execution.json"),
     JSON.stringify({
-      schema: "builder-execution/v5",
+      schema: "builder-execution/v6",
       outcome: "recorded",
       durationMs: SESSION_MS,
       writtenAt: new Date(STARTED + SESSION_MS).toISOString(),

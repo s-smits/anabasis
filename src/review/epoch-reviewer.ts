@@ -35,17 +35,25 @@ import {
   type AdviceIssue,
   type RebuildAdvicePacket,
   adviceTotals,
+  diagnosisLine,
 } from "../author/rebuild-advice.ts";
-import { type BandPlacement, placeOnBand } from "../claim/battery-difficulty.ts";
-import { classifyCaseOutcome } from "../claim/case-record.ts";
+import type { ExperimentSubmission, RehearsalRow } from "../author/experiment-plan.ts";
+import { familyTally } from "../claim/case-record.ts";
+import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
+import { errorMessage } from "../meta/runtime-values.ts";
+import { claimsDirFor } from "../run/claim-write.ts";
+import { type ClimbReadout, readClimbReadout } from "../run/climb-readout.ts";
+import { FRAME, fill } from "../run/climb-readout-frame.ts";
+import { selectedProductDir } from "../run/product-versions.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { runReaderTurn } from "./review-reader.ts";
-import { emptyProbeState, probeTool } from "./review-probe.ts";
+import { type ReviewProbeRow, emptyProbeState, probeTool } from "./review-probe.ts";
 import { EPOCH_REVIEW_PROMPT } from "./epoch-review-prompt.ts";
+import { roundPlanLines } from "./round-plan-lines.ts";
 import { reviewSlotPin } from "./review-session.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
 import {
@@ -57,7 +65,6 @@ import {
   reviewInventory,
   reviewVerifierEvidence,
 } from "./review-sources.ts";
-import { climbThresholds } from "../run/climb-history.ts";
 import { publicTaskRows } from "../run/experiment-freeze.ts";
 import {
   EPOCH_REVIEW_SCHEMA,
@@ -88,11 +95,21 @@ export interface EpochReviewInput {
    *  and null leaves the comparison unmade rather than guessing; `whoseBattery` words all three, so
    *  that a null cannot fall through to the confident sentence and assert what it withholds. */
   priorAdviceOnSeededTree?: boolean | null;
+  /** The round's `EXPERIMENT.json`: at a checkpoint the plan the workspace holds now, beside a
+   *  measured battery the plan recorded with it. Null states that there is none; left out, the
+   *  orientation says the same, because a caller that has no plan to hand has none to show. */
+  experiment?: ExperimentSubmission | null;
   /** Verifier passes the Main Judge failed with a citation; each must be settled. Empty at an
    *  authoring checkpoint and for batteries reviewed without a Judge. */
   vetoed?: readonly ContestedCase[];
   /** Verifier fails the Main Judge passed, with the failing checks on record; settled the other way. */
   disputed?: readonly ContestedCase[];
+  /** The round's blind rehearsals, at an authoring checkpoint alone. */
+  rehearsals?: readonly RehearsalCase[];
+  /** The probes the previous authoring review of this round rested its findings on, at an
+   *  authoring checkpoint alone. They hold counterexample values and name checks, so the next
+   *  reviewer is their one reader. */
+  demonstrations?: readonly ReviewProbeRow[];
   review: ReviewChoice;
   publicRequest: string | null;
   observer?: RunObserver;
@@ -101,6 +118,18 @@ export interface EpochReviewInput {
    *  the real admission rules without a provider call: those rules all live on this side of the
    *  model. */
   readerTurn?: typeof runReaderTurn;
+}
+
+/** One blind rehearsal under the measured projection: the bytes the Built solver submitted, or null
+ *  when it accepted none, and the one verdict the declared checks gave them. `current` says whether
+ *  it solved the bytes under review rather than an earlier draft. */
+export interface RehearsalCase {
+  ordinal: number;
+  taskId: string;
+  family: string | null;
+  verdict: RehearsalRow["verdict"];
+  artifact: string | null;
+  current: boolean;
 }
 
 type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
@@ -180,7 +209,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v5",
+      policy: "review-probing-findings/v7",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -220,19 +249,10 @@ function openSession(input: EpochReviewInput): OpenSession {
  *  inspecting, because tasks that cannot distinguish solvers are how an evaluation goes quiet; but
  *  a pass rate establishes nothing about the checks, so the finding still comes from the source. */
 function familyLine(analysis: IterationAnalysis): string {
-  const rows = new Map<string, { verified: number; passed: number }>();
-  for (const row of analysis.cases) {
-    const outcome = classifyCaseOutcome(row);
-    if (outcome !== "pass" && outcome !== "fail") continue;
-    const cell = rows.get(row.family) ?? { verified: 0, passed: 0 };
-    cell.verified += 1;
-    if (row.truthOk === true) cell.passed += 1;
-    rows.set(row.family, cell);
-  }
   return (
-    [...rows.entries()]
+    [...familyTally(analysis.cases)]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([family, cell]) => `${family} ${cell.passed}/${cell.verified}`)
+      .map(([family, { passed, verified }]) => `${family} ${passed}/${verified}`)
       .join(", ") || "none"
   );
 }
@@ -265,6 +285,57 @@ function contestedLines(input: EpochReviewInput): string[] {
   ];
 }
 
+/** The name read_source returns a rehearsal's submitted bytes under. */
+const rehearsalName = (row: RehearsalCase) => `rehearsal:${row.ordinal}:${row.taskId}`;
+
+/**
+ * The round's blind rehearsals, each with the one verdict it earned and the name its bytes are read
+ * by. A rehearsal is where a solver holding only the public contract met the declared checks before
+ * measurement, so a failed one can be the first sign that a rule admits two readings. The reviewer
+ * is shown the solver's reading, and which rule it bears on is settled from the source.
+ */
+function rehearsalLines(rehearsals: readonly RehearsalCase[]): string[] {
+  if (rehearsals.length === 0) return [];
+  return [
+    "Blind rehearsals this round. The Builder ran each on one task with the measured Built solver, which saw only the public contract, and was shown the verdict alone. read_source returns what the solver submitted under the name each line gives. A rehearsal carries no check result, verifier output or failure location: a failed one is a lead on how a solver reads the public contract, to weigh against the brief and the checks, and the finding still comes from the source.",
+    ...rehearsals.map((row) => {
+      const earlier = row.current ? "" : ", solved against earlier bytes than the tree under review";
+      const note = row.artifact === null ? ", nothing submitted" : earlier;
+      return `- ${rehearsalName(row)} (${row.family ?? "no family"}): ${row.verdict}${note}.`;
+    }),
+  ];
+}
+
+/**
+ * What an authoring review hands the next one of its round: the probes its recorded findings rested
+ * on, or null when it recorded none, because a review that failed or never ran has weighed nothing
+ * and the set the one before it carried still stands. A finished review that rested nothing on a
+ * probe carries an empty set, which ends the chain.
+ */
+export function carriedDemonstrations(
+  review: Pick<EpochReviewEvidence, "status" | "probes">,
+): ReviewProbeRow[] | null {
+  if (review.status !== "completed" && review.status !== "incomplete") return null;
+  return (review.probes ?? []).filter((row) => row.cited === true);
+}
+
+/**
+ * Each carried probe as the probe_check call that re-runs it and the checks it moved. Its number
+ * stays behind, since it numbered a probe of another review and this review's own numbering starts
+ * again at one: a finding here rests on the probe this review runs, and on nothing it was shown.
+ */
+function demonstrationLines(rows: readonly ReviewProbeRow[]): string[] {
+  if (rows.length === 0) return [];
+  return [
+    "Probes the previous review of this round rested its findings on, as it ran them against the bytes it read. Re-run any you rely on with probe_check, since the tree may have changed, and cite the new numbers: a line here is a lead, not a probe of this review, and backs no finding.",
+    ...rows.map(({ controlId, path, change, movedCheckIds }) => {
+      const moved =
+        movedCheckIds.length === 0 ? "no declared check moved" : `moved ${movedCheckIds.join(", ")}`;
+      return `- probe_check ${capturedJsonStringify({ controlId, path, ...change })}: ${moved}.`;
+    }),
+  ];
+}
+
 /**
  * Whose battery the prior counts describe, which is the other half of showing them at all. The
  * issue register advances on every measured battery, held candidates included, because an issue
@@ -292,7 +363,8 @@ function whoseBattery(runId: string, counts: string, onSeededTree: boolean | nul
  * battery's counts are the correction, and they come from the packet the caller already reads for
  * its standing issues rather than from a second reader.
  */
-function checkpointLines(advice: RebuildAdvicePacket | null, onSeededTree: boolean | null): string[] {
+function checkpointLines(input: EpochReviewInput): string[] {
+  const advice = input.priorAdvice;
   const head =
     "Authoring checkpoint before measurement. No new battery result or verifier execution is supplied. Review the current source; previous scores and a clear gate do not prove the next result.";
   if (advice === null) return [head];
@@ -302,8 +374,11 @@ function checkpointLines(advice: RebuildAdvicePacket | null, onSeededTree: boole
   const counts = `measured ${total.passed} of ${total.verified} verified cases passed, ${total.unaccepted} unaccepted at submission, ${total.nonResults} runtime non-results; per family (passed/verified): ${families}`;
   return [
     head,
-    whoseBattery(advice.runId, counts, onSeededTree),
-    bandLine(total.passed, total.verified),
+    whoseBattery(advice.runId, counts, input.priorAdviceOnSeededTree ?? null),
+    aimLine(input, () => selectedProductDir(input.repoRoot, input.slug), {
+      runId: advice.runId,
+      pin: advice.backendPin,
+    }),
     "Read it wherever you would otherwise infer what a solver reaches: how wide the feasible set is, whether a published limit is attainable, whether a battery is about to fail. An accept control sits where its author put it and is no sample of solver behaviour.",
   ];
 }
@@ -314,19 +389,62 @@ function checkpointLines(advice: RebuildAdvicePacket | null, onSeededTree: boole
  * The reviewer is the only component that reads the measured tree against the original request, so
  * it has to be told what a battery aims for. A raw "20 of 25 verified cases passed" does not say
  * that this is eight passing cases above the top of the aim, which is the shape design prior 10
- * exists to catch. `placeOnBand` already owns that reading for the author's note and the climb
- * readout, and the review reads the same one rather than inventing a second standard that could
- * disagree with the one the Builder was steered by.
+ * exists to catch. The climb readout already owns that reading for the author, and `placeOnBand`
+ * already placed each of its rows, so the review takes the readout's own row for the battery and
+ * renders it through the same `FRAME` line the author reads. Placing or wording it here would be a
+ * second standard: one battery could then reach the author as on the aim and the reviewer as
+ * significantly too easy.
  *
- * The band is declared policy, stated to the Builder in every measurement note and in the starter
- * pack, so nothing protected crosses here. It is a lead and not a verdict: a placement buys the
- * review a question, and that question is still answered from the source.
+ * The readout is read once, under the pin the battery was measured with, which the caller already
+ * holds. It is public: every sentence it sends is stated to the Builder, so nothing protected
+ * crosses here. It is a lead and not a verdict, and a readout that cannot be read leaves the
+ * counts alone, because this reader is advisory and must not stop the analysis that runs it.
  */
-function bandLine(passed: number, verified: number): string {
-  const placement = placeOnBand(passed, verified, climbThresholds().band);
-  return placement === null
-    ? `Aim: too few scored cases (${verified}) to place this battery against the band; read the counts alone.`
-    : `Aim: ${bandReading(placement)}${lead(placement.toAim)}`;
+function aimLine(
+  input: EpochReviewInput,
+  domainDir: () => string,
+  battery: { runId: string; pin: string },
+): string {
+  let readout: ClimbReadout | null;
+  try {
+    readout = readClimbReadout(
+      domainDir(),
+      battery.pin,
+      claimsDirFor(input.repoRoot, input.slug),
+      join(input.repoRoot, FROZEN_MANIFEST_PATH),
+    );
+  } catch (cause) {
+    return `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`;
+  }
+  const { runId } = battery;
+  const row = readout?.rows.find((entry) => entry.runId === runId);
+  if (readout === null || row === undefined) {
+    const excluded = readout?.excluded.find((entry) => entry.runId === runId)?.reason;
+    return `Aim: the climb readout holds no row for this battery (${excluded ?? "not recorded"}), so it has no placement; read the counts alone.`;
+  }
+  if (row.claimRefusal !== null) {
+    return `Aim: this battery's claim was refused (${row.claimRefusal}), so the climb readout places it nowhere; read the counts alone.`;
+  }
+  const { zone, aim, toAim, deciding, wilson } = row;
+  if (zone === null || aim === null || toAim === null || deciding === null || wilson === null) {
+    const decided = readout.decision.evidence.at(-1)?.runId === runId;
+    return decided
+      ? fill(FRAME.readout.setAside, { rationale: readout.decision.rationale })
+      : `Aim: the climb readout set this battery's rate aside as ${row.setAside ?? "unplaced"}; read the counts alone.`;
+  }
+  const reading = fill(FRAME.readout.reading, {
+    population: deciding.population,
+    passes: deciding.passes,
+    n: deciding.n,
+    wlo: wilson[0].toFixed(3),
+    whi: wilson[1].toFixed(3),
+    blo: readout.band[0],
+    bhi: readout.band[1],
+    lo: aim[0],
+    hi: aim[1],
+    zone: FRAME.zoneWords[zone],
+  });
+  return `${reading}${lead(toAim)}`;
 }
 
 /**
@@ -342,7 +460,8 @@ function bandLine(passed: number, verified: number): string {
  * This review is where they become separable, because `probe_check` runs the declared checks here
  * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
  * the two sides: above the aim it looks for a check that does not move on a field the request
- * constrains, below it for one that moves on a field the brief leaves free.
+ * constrains, below it for one that moves on a field the brief leaves free. That instruction is
+ * the reviewer's own, which is why it is not the author's ladder pointer from `FRAME`.
  */
 function lead(toAim: number): string {
   if (toAim === 0) return "";
@@ -351,21 +470,22 @@ function lead(toAim: number): string {
     : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `brief`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `tools-spec`; the accept controls are the shapes the writer is known to produce. Record hardness once you have read the brief and the writer schema against the artifact and neither holds.";
 }
 
-function bandReading({ zone, toAim, aim, n, passes }: BandPlacement): string {
-  const aimed = `the aim is ${String(aim[0])} to ${String(aim[1])} of ${String(n)}`;
-  const above = `${String(passes)} of ${String(n)} passed, ${String(-toAim)} above the aim (${aimed}), so this battery measured no limit of the product.`;
-  switch (zone) {
-    case "too-easy":
-      return `${above} The interval rules the aim out, so the tasks are significantly too easy.`;
-    case "over-aim":
-      return above;
-    case "on-aim":
-      return `${String(passes)} of ${String(n)} passed, on the aim (${aimed}): this battery measured the product's limit on its current requirements.`;
-    case "under-aim":
-      return `${String(passes)} of ${String(n)} passed, ${String(toAim)} short of the aim (${aimed}), but not significantly too hard.`;
-    case "too-hard":
-      return `${String(passes)} of ${String(n)} passed, ${String(toAim)} short of the aim (${aimed}), and the interval rules the aim out: the battery overshot the solver, and a product whose batteries keep landing here has not eased to the aim.`;
+/** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The
+ *  reviewer is shown the cause as well, which the author is not: the author would adopt a causal
+ *  paragraph without checking it, and checking it against the tree is exactly this reader's work. */
+function standingIssueLines(issues: readonly AdviceIssue[]): string[] {
+  if (issues.length === 0) {
+    return ["No issue is standing in the issue register, so nothing here can be disputed."];
   }
+  return [
+    "Standing issues you may dispute, each with the diagnosis reader's reading where one was recorded:",
+    ...issues.map((issue) => {
+      const head = `- ${issue.id.slice(0, 12)} (${issue.family}, ${issue.kind}, ${issue.count}/${issue.denominator})`;
+      return issue.diagnosis === null
+        ? `${head}: no diagnosis recorded.`
+        : `${head}: ${diagnosisLine(issue.diagnosis)} Cause: ${issue.diagnosis.cause}`;
+    }),
+  ];
 }
 
 function orientation(
@@ -379,16 +499,20 @@ function orientation(
     `Campaign ${input.slug}, review ${input.runId}, source tree ${input.treeRoot}.`,
     `Original request (verbatim): ${input.publicRequest ?? "(not available to this review)"}`,
     ...(analysis === null
-      ? checkpointLines(input.priorAdvice, input.priorAdviceOnSeededTree ?? null)
+      ? checkpointLines(input)
       : [
           `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-results.`,
           `Per family (passed/verified): ${familyLine(analysis)}.`,
-          bandLine(analysis.battery.summary.passed, analysis.battery.summary.verified),
+          aimLine(input, () => join(input.repoRoot, input.treeRoot), {
+            runId: input.runId,
+            pin: analysis.identities.backendPin,
+          }),
         ]),
+    ...roundPlanLines(input.experiment ?? null, analysis),
     ...contestedLines(input),
-    issues.length === 0
-      ? "No issue is standing in the issue register, so nothing here can be disputed."
-      : `Standing issues you may dispute: ${issues.map((issue) => `${issue.id.slice(0, 12)} (${issue.family}, ${issue.kind}, ${issue.count}/${issue.denominator})`).join("; ")}.`,
+    ...rehearsalLines(input.rehearsals ?? []),
+    ...demonstrationLines(input.demonstrations ?? []),
+    ...standingIssueLines(issues),
     `Read with read_source, then record findings. Files in the review (${inventory.files.length}, truncated: ${inventory.truncated}):`,
     inventory.files.join("\n"),
     `Missing core files or unreadable entries: ${inventory.missing.join(", ") || "none"}.`,
@@ -447,7 +571,7 @@ function recordedReview(
         `Source coverage incomplete: truncated=${coverage.truncated}, ${coverage.missing.length} missing or incompletely read entries`),
     findings: state.findings,
     disputes: state.disputes,
-    report: turn.text.slice(0, 4_000),
+    report: turn.text,
   };
 }
 
@@ -477,7 +601,19 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       return path === null || row.artifact === null ? [] : [[path, row.artifact] as const];
     }),
   );
-  const sourcePaths = new Set([...inventory.files, ...Object.keys(verifier.tools), ...contested.keys()]);
+  // A rehearsal's bytes are read under its name and, like a contested artifact, lie outside the
+  // coverage the review is held to, which counts the tree and the verifier alone.
+  const rehearsed = new Map(
+    (input.rehearsals ?? []).flatMap((row) =>
+      row.artifact === null ? [] : [[rehearsalName(row), row.artifact] as const],
+    ),
+  );
+  const sourcePaths = new Set([
+    ...inventory.files,
+    ...Object.keys(verifier.tools),
+    ...contested.keys(),
+    ...rehearsed.keys(),
+  ]);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -504,7 +640,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, sourcePaths, state, verifier.tools),
+        readSourceTool(root, sourcePaths, state, verifier.tools, rehearsed),
         probe.tool,
         recordFindingTool(
           issues,

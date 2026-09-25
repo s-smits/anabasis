@@ -1,5 +1,5 @@
 /** Controller-owned equality check for the complete production Builder tool contract. */
-import type { BackendKind } from "../backends/backend-kinds.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import { compareCodeUnits, hashJsonValue, sameJsonValue } from "../meta/stable-json.ts";
 
 /** Every Builder tool, on every backend: filesystem authority stays with the host. Sorted,

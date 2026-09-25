@@ -11,7 +11,8 @@ import {
   latestRebuildAdvicePath,
   readLatestRebuildAdvice,
 } from "../author/rebuild-advice.ts";
-import { type EpochReviewInput, runEpochReview } from "../review/epoch-reviewer.ts";
+import { type EpochReviewInput, carriedDemonstrations, runEpochReview } from "../review/epoch-reviewer.ts";
+import type { ReviewProbeRow } from "../review/review-probe.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import type {
   AdmissionLineage,
@@ -23,7 +24,6 @@ import type {
 import { makeAgentToolsProbes } from "../author/agent-tools-session.ts";
 import type { ProbeControlsOptions } from "../truth/probes.ts";
 import { loadRepoEnv } from "../backends/env.ts";
-import { requireSlotSupport } from "../backends/project-backends.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { PreparedUserContext } from "../builder/user-context.ts";
 import type { HarnessAuthoring } from "../critic/types.ts";
@@ -32,12 +32,9 @@ import { readValidatedBrief } from "../truth/public-resources.ts";
 import { makeProbeControls } from "../truth/probes.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
+import type { AuthoringAdvice, ReviewAuthoring } from "./authoring-review.ts";
 import { builderSessionCapMs } from "./builder-backend.ts";
-import {
-  runBuilderCampaign,
-  type BuilderCampaignDeps,
-  type BuilderCampaignInput,
-} from "./builder-campaign.ts";
+import { runBuilderCampaign, type BuilderCampaignInput } from "./builder-campaign.ts";
 import { type BuilderRuntimeFactory, productionBuilderRuntime } from "./builder-runtime.ts";
 import { campaignBudgetGate, setTurnBudget } from "./campaign-budget.ts";
 import { makeCensusGate } from "./census-gate.ts";
@@ -70,7 +67,7 @@ export interface HarnessBuildOptions {
   /** Controller-derived advisory prose delivered beside the kickoff, never inside it — the
    *  kickoff's content hash keys the epoch, and an advisory note must not re-key a campaign. */
   advisoryNote?: string;
-  readHistory?: BuilderCampaignInput["readHistory"];
+  measured?: BuilderCampaignInput["measured"];
   /** The run's pass-rate band, read from `thresholds.frozen.yaml` by the controller. The Builder's
    *  difficulty sentences quote the counts it implies, so it must be the band the placement is read
    *  against. Absent, the prompt falls back to the code-owned policy row. */
@@ -105,14 +102,13 @@ export interface HarnessBuildOptions {
   diagnosisInput?: DiagnosisInput;
   /** Admitted-history public fingerprints for the A→B→A refusal of a task-only experiment. */
   priorPublicTaskFingerprints?: readonly string[];
+  lastBattery?: BuilderCampaignInput["lastBattery"];
   /** The selector's reading of the adopted product's batteries; a held limit refuses a product change. */
   /** Controller iteration identity for this immutable product version. */
   productVersionId?: string;
-  /** Present when the controller's reopen decision returns the campaign workspace to the starter
-   *  seed before the session; the value keys idempotence across resumed rounds. */
-  rebuildReset?: string;
-  /** The same reopen evidence, keying the epoch this pass opens. A reopening pass creates its own
-   *  epoch rather than writing a second harness lineage into the one an earlier pass recorded. */
+  /** The reopen evidence, keying the epoch this pass opens and the harness_reset it mounts. A
+   *  reopening pass creates its own epoch rather than writing a second harness lineage into the one
+   *  an earlier pass recorded. */
   epochPass?: string;
   /** Authoring scope; accepted bytes determine the measured experiment. */
   experiment?: HarnessAuthoring;
@@ -145,21 +141,13 @@ type EpochBuildContext = {
   };
 };
 
-/** Resolve builder slot; refuse a kind whose transport cannot host the author tool contract. */
+/** Resolve the slots a build records. */
 export function resolveBuilderSlots(
   repoRoot: string,
   slug: string,
   processEnv: OptionalEnvValues = Bun.env,
 ): ResolvedSlots {
-  const slots = resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
-  requireSlotSupport(
-    "builder",
-    slots.builder.kind,
-    slots.builder.source,
-    slug,
-    "that transport has no complete Builder contract",
-  );
-  return slots;
+  return resolveSlots(repoRoot, slug, loadRepoEnv(repoRoot, processEnv));
 }
 
 /** Add the Builder's effort and optional operator model override to the slots recorded in
@@ -182,7 +170,7 @@ export function resolveBuilderCondition(
   repoRoot: string,
 ) {
   const slots = options.resolvedSlots ?? resolveBuilderSlots(repoRoot, manifest.slug);
-  const effort = options.effort ?? slots.builder.reasoningEffort ?? "medium";
+  const effort = options.effort ?? slots.builder.reasoningEffort;
   const denominated = withBuilderPin(slots, {
     effort,
     ...keyIfDefined("model", options.model),
@@ -265,10 +253,11 @@ export async function buildHarness(
 
 /** A repair review follows a clear check, and the header has to say so. Left unsaid, a Builder
  *  reads the review's findings as a condition on the check it just cleared and returns to authoring
- *  instead of submitting. */
+ *  instead of submitting. Both readings ran while the Builder kept working, so each also says that
+ *  edits made since are not in the bytes it read. */
 const REVIEW_HEADER = {
-  repair: "Epoch review of the candidate your clear correctness_check just previewed.",
-  backstop: "Epoch review of the live workspace.",
+  repair: "Epoch review of the candidate your clear correctness_check previewed.",
+  backstop: "Epoch review of your workspace, frozen when the review began.",
 } as const;
 
 /** One reading of the whole review: the request once, then what blocks submit. An advisory row
@@ -280,21 +269,22 @@ export function authoringReviewText(
   status: string,
   request: string,
   findings: readonly Pick<AnalysisFinding, "severity" | "claim" | "probes">[],
-): string {
+): AuthoringAdvice {
   const shown = findings.filter(
     (finding) => finding.severity !== "advisory" || (finding.probes ?? []).length > 0,
   );
   const blocking = shown.filter((finding) => finding.severity !== "advisory").length;
   const route =
     blocking === 0
-      ? "No finding blocks submit: once your checks are sufficient evidence, submit."
+      ? "No finding blocks submit."
       : `${String(blocking)} blocking finding(s) name a demonstrated defect: repair those before submit.`;
   const rows = shown.map((finding) => `- [${finding.severity ?? "blocking"}] ${finding.claim}`);
-  return [
-    `${REVIEW_HEADER[trigger]} Review ${status}. ${shown.length === 0 ? "No finding blocks submit." : route}`,
+  const text = [
+    `${REVIEW_HEADER[trigger]} It ran while you kept working, so edits made since are not in it. Review ${status}. ${route}`,
     ...(shown.length === 0 ? [] : [`Original request: ${capturedJsonStringify(request)}`]),
     ...rows,
   ].join("\n");
+  return { text, findings: shown.length };
 }
 
 /** Carry an authoring review's disputes onto the issue register the next build reads. The measured
@@ -315,14 +305,19 @@ export function recordAuthoringDisputes(
   if (carried !== prior) writeCompleted(latestRebuildAdvicePath(repoRoot, slug), carried);
 }
 
-/** The existing Epoch Reviewer over an authoring tree, which the campaign invokes at a completed
- *  host tool call. Its evidence is recorded beside the measured reviews with a null condition;
- *  only the public projection of its findings returns to the Builder. */
-function authoringReviewer(
-  binding: AuthoringReviewBinding,
-): NonNullable<BuilderCampaignDeps["reviewAuthoring"]> {
+/** The existing Epoch Reviewer over a frozen authoring snapshot, which the campaign starts at a
+ *  completed host tool call and runs beside the session. Its evidence is recorded beside the
+ *  measured reviews with a null condition; only the public projection of its findings returns to
+ *  the Builder.
+ *
+ *  One reviewer serves one round, and the probes each review rested its findings on are handed to
+ *  the next review of that round. They are carried here rather than by `AuthoringReviews`, which
+ *  is the Builder's side of the join: a probe row holds a counterexample value and the checks it
+ *  moved, so it stays on the reviewer's side. */
+function authoringReviewer(binding: AuthoringReviewBinding): ReviewAuthoring {
   const { repoRoot, slug, review, publicRequest, observer, providerBudget } = binding;
-  return async (root, trigger) => {
+  let demonstrations: readonly ReviewProbeRow[] = [];
+  return async (root, trigger, experiment, rehearsals) => {
     const runId = `authoring-${Bun.randomUUIDv7()}`;
     const advice = readLatestRebuildAdvice(repoRoot, slug);
     const result = await runEpochReview({
@@ -333,11 +328,15 @@ function authoringReviewer(
       analysis: null,
       priorAdvice: advice,
       priorAdviceOnSeededTree: advice === null ? null : measuredSelectedProduct(repoRoot, slug, advice.runId),
+      experiment,
+      rehearsals,
+      demonstrations,
       review,
       publicRequest,
       observer,
       ...keyIfDefined("providerBudget", providerBudget),
     });
+    demonstrations = carriedDemonstrations(result) ?? demonstrations;
     const dir = join(campaignDir(repoRoot, slug), "analysis");
     mkdirSync(dir, { recursive: true });
     writeCompleted(join(dir, `${runId}-epoch-review.json`), result);
@@ -363,10 +362,7 @@ async function runEpochBuild(
   const observer = options.observer ?? createRunObserver(repoRoot, manifest.slug, epoch.key);
   const runtime = await (options.builderRuntime ?? productionBuilderRuntime)(
     manifest,
-    {
-      ...keyIfDefined("userContext", options.userContext),
-      ...keyIfDefined("safeguardContext", options.safeguardContext),
-    },
+    { ...keyIfDefined("safeguardContext", options.safeguardContext) },
     repoRoot,
     epoch.dir,
     builderCondition,
@@ -395,10 +391,14 @@ async function runEpochBuild(
       ...keyIfDefined("admissionLineage", options.admissionLineage),
       ...keyIfDefined("diagnosisInput", options.diagnosisInput),
       ...keyIfDefined("advisoryNote", options.advisoryNote),
-      ...keyIfDefined("readHistory", options.readHistory),
+      ...keyIfDefined("measured", options.measured),
+      ...keyIfDefined("userContext", options.userContext),
       ...keyIfDefined("band", options.band),
       ...keyIfDefined("priorPublicTaskFingerprints", options.priorPublicTaskFingerprints),
-      ...keyIfDefined("rebuildReset", options.rebuildReset),
+      ...keyIfDefined("lastBattery", options.lastBattery),
+      // A reopen is the one round harness_reset works in; its pass keys the once-per-scope rule,
+      // so a resumed round finds its own reset in history rather than wiping its later work.
+      ...keyIfDefined("resetKey", options.epochPass),
     },
     {
       open: runtime.open,
@@ -421,7 +421,6 @@ async function runEpochBuild(
       toolsProbes: makeAgentToolsProbes,
       gates,
       budget,
-      attemptGate: budget,
       ...keyIfDefined("providerBudget", options.providerBudget),
       observer,
       ...keyIfDefined("safeguardContext", options.safeguardContext),

@@ -1,4 +1,5 @@
 /** Authoring receives typed findings and the reviewed public obligations, never review prose. */
+import { jsonPathTokens } from "../meta/json-evidence.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AnalysisFinding, AnalysisFindingKind } from "../analyse/iteration-analysis.ts";
 import type { ContestedCase } from "../analyse/judge-contested.ts";
@@ -81,7 +82,8 @@ function publicFindingClaim(finding: AnalysisFinding, deferred: boolean, brief: 
     const path = finding.artifactSchemaPath;
     const readers = (brief?.truthChecks ?? []).filter((check) =>
       check.execution.artifactPaths.some((declared) => {
-        const read = declared.replace(/^\$\.?/, "");
+        // Through the validator's own tokeniser, so `$['pins']` reads as `pins` does.
+        const read = (jsonPathTokens(declared) ?? []).join("").replace(/^\./, "");
         return (
           path !== undefined && (read === path || path.startsWith(`${read}.`) || read.startsWith(`${path}.`))
         );

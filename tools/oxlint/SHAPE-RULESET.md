@@ -2006,7 +2006,7 @@ eventual and 3 of 139 per visit and are left out: what they hold — bubblewrap 
 keys, package.json fields — is another program's vocabulary, listed here and produced elsewhere.
 Shipped as a census row on the eventual rate and on the six rows standing at 25fb05f74: three
 `SessionBuildStage` members no file produces; `plan-exhausted`, a lineage reason AGENTS.md rule 7
-still names and `src/run/admission.ts` never writes; `human` of `EvaluatorIndependence` and
+still names and `src/run/admission.ts` never writes; `deterministic` of `EvaluatorIndependence` and
 `syntax` of `Altitude`, each named in its module's header and produced nowhere. The last two
 appeared only once comment lines stopped counting, which is the reading the scan keeps: a comment
 names a value, it does not produce one.

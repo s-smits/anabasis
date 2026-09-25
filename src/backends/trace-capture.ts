@@ -11,7 +11,10 @@
  *    random and never saved, so a reader holding the trace cannot confirm a guessed value against
  *    it;
  *  - assistant text and tool results survive only as short previews, through the shared diagnostic
- *    redaction owner `redactProviderDiagnostic`;
+ *    redaction owner `redactProviderDiagnostic`. So do the identifiers the provider chooses — the
+ *    tool name, the call id and the stop reason — because they are provider-supplied strings
+ *    reaching persisted evidence and a model-visible diagnosis prompt, which is the one class that
+ *    owner exists for, and because nothing else bounds their length;
  *  - a failed tool call also keeps redacted, bounded argument and result excerpts, because a
  *    failure is the row a diagnosis reader has to read in detail;
  *  - duration is measured here on a monotonic clock, since the recorder is what sees both ends of
@@ -28,13 +31,13 @@
  * included, rather than trusting a provider-reported duration.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { AgentTurnEvent, BackendId, CompactionRecord } from "./backend-types.ts";
+import type { AgentTurnEvent, CompactionRecord } from "./backend-types.ts";
+import type { BackendKind } from "./resolve.ts";
 import { redactProviderDiagnostic } from "./diagnostic-redaction.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 
 /** Readers take this version only and read an earlier trace as unreadable (operator decision), so
- *  `trace-read.ts` and `case-trace-pointer.ts` both compare against this constant rather than
- *  carrying a reader per version. Adding or removing a field is therefore a version bump. */
+ *  `trace-read.ts` compares against this constant rather than carrying a reader per version. Adding or removing a field is therefore a version bump. */
 export const CASE_TRACE_SCHEMA = "case-trace/v4";
 
 /** Evidence bounds: a runaway solve must not turn one case's trace into an unbounded file. */
@@ -61,7 +64,8 @@ interface TraceToolCall {
   toolCallId: string | null;
   /** A run-keyed HMAC-SHA-256 over the args' JSON — an equality classifier inside this one solve,
    *  and not a public hash to check guesses against, because the key is random per recorder and
-   *  never persisted. Null when the backend sent no arguments or they do not serialise. */
+   *  never persisted. Null when the backend sent no arguments, when they do not serialise, and on
+   *  a row the recorder first saw at the completion, which is after the arguments went past. */
   argsDigest: string | null;
   /** JSON length of the args — a size signal that carries no content. */
   argsChars: number | null;
@@ -108,13 +112,19 @@ interface TraceTurn {
   tokensUsed: number | null;
   costUsd: number | null;
   /** Context compactions during the turn, copied from `turn_ended`. Every turn this recorder opens
-   *  carries the field, empty when none ran. */
-  compactions?: CompactionRecord[];
+   *  carries the field, empty when none ran, which is why it is required rather than optional. */
+  compactions: CompactionRecord[];
 }
+
+/** What the recorder holds while a turn runs, and the three fields it strips on the way out:
+ *  the accumulating preview buffer, the clock the turn opened on, and whether any of its words
+ *  arrived as streamed deltas. None of them is evidence; each decides how the next event is
+ *  read. Named here because the shape was spelled out at all three of its uses. */
+type RecordingTurn = TraceTurn & { rawAssistant: string; startedAt: number; streamed: boolean };
 
 export interface CaseTrace {
   schema: typeof CASE_TRACE_SCHEMA;
-  backend: BackendId | null;
+  backend: BackendKind | null;
   turns: TraceTurn[];
   toolCalls: TraceToolCall[];
   /** Backend-native `raw` events observed and dropped. The count is what proves the sink saw them
@@ -143,7 +153,7 @@ interface OpenToolCall extends TraceToolCall {
 }
 
 export function createTraceRecorder(opts?: {
-  backend?: BackendId;
+  backend?: BackendKind;
   /** Monotonic milliseconds. Injected only by tests; production reads the process clock, which a
    *  calendar-clock adjustment cannot move backwards. */
   now?: () => number;
@@ -151,7 +161,7 @@ export function createTraceRecorder(opts?: {
   const now = opts?.now ?? (() => performance.now());
   const elapsed = (from: number | undefined): number | null =>
     from === undefined ? null : Math.max(0, Math.round(now() - from));
-  const turns: Array<TraceTurn & { rawAssistant: string; startedAt: number }> = [];
+  const turns: RecordingTurn[] = [];
   const calls: OpenToolCall[] = [];
   let currentTurn = 0;
   let droppedRawEvents = 0;
@@ -179,14 +189,14 @@ export function createTraceRecorder(opts?: {
     };
   };
 
-  const turnRecord = (): (TraceTurn & { rawAssistant: string; startedAt: number }) | null => {
+  const turnRecord = (): RecordingTurn | null => {
     const existing = turns.find((t) => t.turn === currentTurn);
     if (existing) return existing;
     if (turns.length >= MAX_TRACE_TURNS) {
       truncated = true;
       return null;
     }
-    const fresh: TraceTurn & { rawAssistant: string; startedAt: number } = {
+    const fresh: RecordingTurn = {
       turn: currentTurn,
       assistantChars: 0,
       assistantPreview: "",
@@ -202,6 +212,9 @@ export function createTraceRecorder(opts?: {
       compactions: [],
       rawAssistant: "",
       startedAt: now(),
+      /** Did this turn see a streamed delta? Internal to the recorder: it decides whether the
+       *  completed message is a duplicate of what is already here, and is stripped at projection. */
+      streamed: false,
     };
     turns.push(fresh);
     return fresh;
@@ -219,33 +232,27 @@ export function createTraceRecorder(opts?: {
   };
 
   const endToolCall = (event: Extract<AgentTurnEvent, { type: "tool_ended" }>): void => {
-    // Match the started record by id, else the oldest same-name call still open in this turn, so
-    // that a dangling call from an earlier turn cannot consume a later turn's id-less completion.
-    // A backend that emits only tool_ended writes its record here.
+    // A completion closes the call carrying its id and no other. The transports all send one, so
+    // there is nothing to match a completion by its name for, and matching by name would close a
+    // second call of that name with the first one's result the moment an id arrived twice.
+    // A completion the recorder saw no start for writes its own record here, and that record holds
+    // no arguments at all: the arguments arrive on `tool_started` and a completion never carries
+    // them, so a null digest is the whole of what a completion-only row can honestly say.
     const open =
-      (event.toolCallId === undefined
+      event.toolCallId === undefined
         ? undefined
-        : calls.find((c) => c.toolCallId === event.toolCallId && c.isError === null)) ??
-      calls.find((c) => c.toolName === event.toolName && c.isError === null && c.turn === currentTurn);
-    const args = digestArgs(event.args);
+        : calls.find((c) => c.toolCallId === event.toolCallId && c.isError === null);
     if (open) {
       open.isError = event.isError;
       open.rawPreview = event.resultPreview ?? null;
       open.timingMs = elapsed(open.startedAt);
-      if (open.argsDigest === null) {
-        Object.assign(open, {
-          argsDigest: args.digest,
-          argsChars: args.chars,
-          rawArgs: args.raw,
-        } satisfies Partial<OpenToolCall>);
-      }
     } else {
       pushCall({
         turn: currentTurn,
         toolName: event.toolName,
         toolCallId: event.toolCallId ?? null,
-        argsDigest: args.digest,
-        argsChars: args.chars,
+        argsDigest: null,
+        argsChars: null,
         isError: event.isError,
         resultPreview: null,
         resultExcerpt: null,
@@ -254,7 +261,7 @@ export function createTraceRecorder(opts?: {
         timingMs: null,
         observedMs: null,
         rawPreview: event.resultPreview ?? null,
-        rawArgs: args.raw,
+        rawArgs: null,
         startedAt: undefined,
       });
     }
@@ -266,12 +273,27 @@ export function createTraceRecorder(opts?: {
       return;
     }
     if (event.type === "turn_started") return; // turn identity is beginTurn's, not the stream's
-    if (event.type === "reasoning_text" || event.type === "message_text") return; // Builder prose log evidence
+    if (event.type === "reasoning_text") return; // the model's own draft thinking, never a case trace
     if (event.type === "assistant_text") {
       const turn = turnRecord();
       if (!turn) return;
+      turn.streamed = true;
       turn.assistantChars += event.delta.length;
       if (turn.rawAssistant.length < PREVIEW_CHARS * 2) turn.rawAssistant += event.delta;
+      return;
+    }
+    // The same words the deltas above carry, arriving once at the end of the message. A backend
+    // that streams sends both, so taking this unconditionally would count every turn's prose twice;
+    // a backend that does not stream sends only this, and dropping it recorded nothing at all. Both
+    // shapes are live: pi emits `assistant_text` from a `text_delta` alone, and codex does not send
+    // one, so across 3,100 recorded traces claude turns carry prose 1,101 times in 1,110 while codex
+    // manages 76 in 2,108 -- and codex is what an unpinned slot runs. So prefer the deltas and fall
+    // back to the completed message, which leaves a streaming backend's bytes exactly as they were.
+    if (event.type === "message_text") {
+      const turn = turnRecord();
+      if (!turn || turn.streamed) return;
+      turn.assistantChars += event.text.length;
+      if (turn.rawAssistant.length < PREVIEW_CHARS * 2) turn.rawAssistant += event.text;
       return;
     }
     if (event.type === "tool_started") {
@@ -331,19 +353,29 @@ export function createTraceRecorder(opts?: {
       // The one place the reader's clock may be read. A span that is still open has no duration,
       // and saying how long it has run is a different statement from claiming it ended now.
       const taken = now();
+      // Rounded the way `elapsed` rounds a closed span's duration: the two report the same kind of
+      // fact, and a reading straight off `performance.now()` publishes nanoseconds it does not know.
       const observed = (startedAt: number | undefined, closed: boolean): number | null =>
-        startedAt === undefined || closed ? null : taken - startedAt;
+        startedAt === undefined || closed ? null : Math.max(0, Math.round(taken - startedAt));
+      // Identifiers redact at projection, never at capture, because `endToolCall` matches a
+      // completion against the stored id and would otherwise compare a redacted string against the
+      // raw one the next event carries.
+      const identifier = (text: string | null): string | null =>
+        text === null ? null : redactProviderDiagnostic(text, PREVIEW_CHARS);
       return {
         schema: CASE_TRACE_SCHEMA,
         backend: opts?.backend ?? null,
-        turns: turns.map(({ rawAssistant, startedAt, ...turn }) => ({
+        turns: turns.map(({ rawAssistant, startedAt, streamed, ...turn }) => ({
           ...turn,
           observedMs: observed(startedAt, turn.status !== "open"),
+          stopReason: identifier(turn.stopReason),
           assistantPreview: rawAssistant ? redactProviderDiagnostic(rawAssistant, PREVIEW_CHARS) : "",
         })),
         toolCalls: calls.map(({ rawPreview, rawArgs, startedAt, ...call }) => ({
           ...call,
           observedMs: observed(startedAt, call.isError !== null),
+          toolName: redactProviderDiagnostic(call.toolName, PREVIEW_CHARS),
+          toolCallId: identifier(call.toolCallId),
           resultPreview: rawPreview === null ? null : redactProviderDiagnostic(rawPreview, PREVIEW_CHARS),
           // Error rows keep the actual bytes (redacted, bounded); success rows drop both buffers.
           resultExcerpt:

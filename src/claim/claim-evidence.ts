@@ -65,9 +65,8 @@ interface DiscriminationEvidence {
 export type TruthCheckFiringEvidence = {
   /**
    * checkId → number of verified cases on which the authored check executed. Includes every
-   * declared intrinsic or authored check, with 0 for checks that never ran. External-verifier
-   * checks have separate execution counts and grounding clauses. Exception groundings have
-   * no executable predicate, so neither category appears in this map.
+   * declared authored check, with 0 for checks that never ran. External-verifier checks have
+   * separate execution counts and grounding clauses, so they do not appear in this map.
    */
   firedByCheck: Record<string, number>;
   /**
@@ -207,9 +206,10 @@ type ModelIdentityAssurance = "provider-native" | "unverified";
 export interface ClaimStatement {
   slug: string;
   runId: string;
-  /** One row per declared external-verifier check: host-recorded runs of its tool on verified
-   *  cases of this battery, and the reject controls it blocked. Readiness names a zero-launch row
-   *  through the grounding-coverage finding. Empty when no case was verified. */
+  /** One row per required tool of each check a verified case applied: host-recorded runs of that
+   *  tool and of programs the check built in its cell on verified cases of this battery, and the
+   *  reject controls the check blocked. Readiness names a zero-launch row through the
+   *  grounding-coverage finding. Empty when no case was verified. */
   externalCheckCoverage: ToolCheckCoverage[];
   n: number;
   passed: number;
@@ -257,9 +257,9 @@ export interface ClaimStatement {
     source: "workspace-toolchain" | "host";
     kind: "binary" | "script";
     interpreter: string | null;
+    /** Python distributions beside the interpreter, when there are any: what was installed where
+     *  the check ran, which is provenance and never independence. */
+    packages?: string[];
     digest: string;
   }>;
-  /** Exception groundings with their original justifications, so that every exception is visible
-   *  on the claim rather than assumed by default. */
-  groundingExceptions: Array<{ checkId: string; justification: string }>;
 }

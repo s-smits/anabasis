@@ -101,9 +101,10 @@ interface Spread {
  *
  * `CaseTraceFacts` above is one case. This is what a caller gets after folding several, and it was
  * written out twice: once in `metrics.ts` for the outcome reader and once in the
- * `whole-run-investigation` telemetry script, which then restated the shape a third time in its
- * `.d.mts` sidecar. All three folded the same six fields with `addReported` and took the same two
- * spreads, and the two type declarations had already drifted into different field orders.
+ * `whole-run-investigation` telemetry script, which then restated the shape a third time in a
+ * hand-written declaration file beside it. All three folded the same six fields with `addReported`
+ * and took the same two spreads, and the two type declarations had already drifted into different
+ * field orders.
  *
  * The six are `Reported` rather than numbers because each carries its own denominator: a cost
  * summed over 12 cases that recorded one is not a cost over 25.

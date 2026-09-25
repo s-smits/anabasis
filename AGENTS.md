@@ -76,9 +76,11 @@ NEXT MOVE  boundary (code)  ── build | measure | rebuild | stop
    changes a pass, an acceptance or a claim.
 6. **Next move.** Code admits construction, measurement, an adopted-product continuation or a typed
    stop. The Builder that already exists chooses the next experiment from the recorded evidence;
-   there is no separate planner to hand the decision to. Its bounded `EXPERIMENT.json` records the
-   gap, the change, the expected result, the scope and a `target` of
-   `{comparator: "at-least" | "at-most", verifiedPasses}`.
+   there is no separate planner to hand the decision to. Its bounded `EXPERIMENT.json`
+   (`experiment-plan/v2`, owned by `src/author/experiment-plan.ts`) records the gap, the change,
+   the expected result, the scope, a `target` of `{comparator: "at-least" | "at-most",
+   verifiedPasses}`, each family's ladder `level` and `move`, and a predicted pass probability
+   per task.
 
 ### Design priors
 
@@ -127,8 +129,12 @@ and each is here because moving it cost something.
     limit and the aim, per size; a continuation states the aim and never the first battery's count.
     Every sentence it and the climb readout send is a line of `FRAME`
     (`src/run/climb-readout-frame.ts`), and `FRAME_REVISION` is recorded in
-    `difficulty-decision/v5`, so rewording a sentence creates a new recorded condition rather than
-    a tidier one. Useful adopted work is retained.
+    `difficulty-decision/v6`, so rewording a sentence creates a new recorded condition rather than
+    a tidier one. The readout states each family's solve effort, as median and most minutes against
+    `solve_minutes` and median tool calls, and scores the plan's per-task predictions against the
+    verdicts. Effort is stated as a fact and never read as difficulty, because within a battery
+    minutes and tool calls do not separate the cases that passed from those that failed. Useful
+    adopted work is retained.
 
 ## Evidence and implementation status
 
@@ -199,9 +205,9 @@ preserve the recorded results and classify the affected work from its receipts. 
 where the provider explicitly reports exhaustion. A generic 429, a timeout, a crash, an authoring
 stall or an unexplained refusal is not proof of no credits — investigate what actually failed.
 
-The controller's terminal codes are a closed set of nine: `completed`, `stopped`,
+The controller's terminal codes are a closed set of eight: `completed`, `stopped`,
 `fixed-product-boundary`, `build-failed`, `candidate-held`, `budget-limited`,
-`environment-blocked`, `measurement-stalled`, `operator-interrupted`. Only `completed` says the run
+`environment-blocked`, `operator-interrupted`. Only `completed` says the run
 settled the question it was launched to answer. `fullrun` exits 0 for `completed`, 3 for
 `operator-interrupted` and 1 for everything else.
 
@@ -317,9 +323,10 @@ live evidence.
    sensor.
 
 7. **Give every decision one owner.** Every actionable piece of evidence names its producer, the
-   exact evidence it cites and the active owner. `FeedbackOwner` is a closed set of eleven:
+   exact evidence it cites and the active owner. `FeedbackOwner` is a closed set of nine:
    `brief`, `tests`, `instructions`, `tools-spec`, `accept-controls`, `controls`,
-   `correctness-model`, `fingerprint`, `environment`, `judge`, `unknown`. Repair ownership names
+   `correctness-model`, `fingerprint`, `environment` (`FEEDBACK_OWNERS`,
+   `src/author/campaign-types.ts`). Repair ownership names
    the defective contract; it is not a write mask and not an automatic reset. Preserve in-flight
    work, and let the accepted bytes decide attribution.
 
@@ -448,12 +455,30 @@ live evidence.
    Through all of that the Judge sets no score, changes no acceptance and decides no adoption:
    disagreement with the verifier remains a reason to go and inspect the verifier.
 
-   The diagnosis reader offers at most six standing non-environment issues. It states how many
-   matching cases it sampled, says so when no passing contrast was supplied, and keeps the failed
-   tool arguments beside the failed results. It attaches a cause, a first observed failure
-   boundary, a falsifier and an intervention class to the controller-owned issue, and it selects no
-   owner. Treat a timeout as diagnosable unless the battery evidence proves the environment owns
-   it.
+   The diagnosis reader (`src/review/diagnosis-reader.ts`) holds the lane neither other reviewer
+   covers, which is the solver's own traces read across the battery. It is offered at most six
+   standing issues about the solve — verified fails, unaccepted submissions and non-results the
+   environment does not own, worst share first (`diagnosableIssues`) — and never a Judge
+   disagreement, because that is about the evaluation and the Epoch Reviewer settles it. For each
+   issue it sees up to four failing solves, sampled so that distinct failure sequences come first,
+   and up to two passing solves of the same family, every one compiled by `compileSolve`
+   (`src/review/solve-steps.ts`) into numbered steps such as `c04.s7` and `c04.end`. Beside them
+   sit the measured harness's walls, its declared tool descriptions, its operating guide and a
+   census of every solve's tool use. Its one tool, `record_diagnosis`, takes a harness layer from
+   `DIAGNOSIS_LAYERS`, an intervention from `DIAGNOSIS_INTERVENTIONS`, a first observed failure
+   boundary, a cause and a falsifier. It refuses a boundary that is not a shown step of a solve the
+   reading names, a contrast that is not a step of a shown passing solve, a solver-layer reading
+   that proposes a change, and any text naming a task. One reading may cover several issues that
+   share a flaw. Confidence is computed from how many sampled solves the reading holds for and
+   whether it cites a contrast, never stated by the model.
+
+   The reader opens no `verifier.json`, Judge record or accepted artifact, and records
+   `promptDigest`, so a change to protected detail alone leaves that digest unchanged — which is
+   also why its boundary and falsifier may reach the author. The rebuild advice renders the layer,
+   the intervention, the boundary and the falsifier with the support counts, and keeps the cause in
+   the record, where the Epoch Reviewer reads it beside each standing issue. The reader selects no
+   owner. Treat a timeout as diagnosable unless the battery
+   evidence proves the environment owns it.
 
    The Epoch Reviewer runs once per measured-condition digest, and may record routable findings or
    dispute a standing issue. It labels each finding advisory or blocking, and blocking requires a
@@ -466,24 +491,48 @@ live evidence.
    a question; the finding is still owed to whatever the request demands and the tasks leave
    undemanded.
 
+   The orientation also carries the round's own `EXPERIMENT.json` — the gap, the change, the
+   expected result, the target and the per-task predictions — because a reviewer asked whether a
+   result was earned was never told what the round set out to earn. A measured battery reads the
+   plan recorded with it, stated as met or missed against its target and with its predictions
+   scored by `predictionScore`; a checkpoint reads the plan the workspace holds now, which the
+   controller passes because a repair review's snapshot does not contain it. The plan is intent and
+   never evidence of success, and it enters no condition digest, so a different plan over identical
+   bytes does not buy a second review. The reviewer's closing message is recorded as its `report`,
+   and it is told so and asked for plain prose; its tools refuse only what a decision or rule 4
+   reads, so a long claim or a fifth citation is recorded rather than bounced for its form.
+
    The reviewer may also **execute**. `probe_check` takes one accept control, one rooted path into
    its artifact in the spelling the declared checks use (`$.layout.members[0].area`, read through
-   `jsonPathTokens`) and one replacement value; it runs the candidate's declared checks over the
-   original and the changed artifact and reports which checks moved. At most eight per review,
-   accept controls only, on a path that already exists. A probe whose original did not pass, or
-   whose changed artifact reached no verdict, is not evidence. Every harness-defect finding cites
-   its `probeIds`, or sends `[]` for a source-only reading, and a probe-backed harness defect may
-   be admitted blocking on first occurrence. Otherwise a first agent-side defect stays advisory,
-   and recurrence is keyed by the declared check the finding names, or by the artifact path when it
-   names no check — but only a path below a declared schema root. A bare root is not an identity:
-   `schemaPath` requires the first segment alone, so a one-root domain offers exactly one word for
-   the whole artifact, and across the recorded corpus every campaign that fell back to a path
-   collapsed to a single constant. Run 17f9de demoted a new finding on two recurrences that
-   belonged to other defects; the same collapse raises one at a single recurrence, which is how a
-   25-of-25 harness came to be reset. Only curriculum or evaluation-side defects may dispute an
-   issue, and a dispute keeps the issue counted while withholding the agent advice. Public
-   candidate analysis and checks of published limits are legitimate solving support — call a tool
-   an answer shortcut only when it supplies the remaining decision the solver was meant to make.
+   `jsonPathTokens`) and one change: either a replacement value, or, for a text leaf, a `find` that
+   occurs exactly once in it and the `replace` that takes its place, and refuses a call sending both
+   or neither. The edit exists because a field that is a whole source file can run past the
+   4,000-character ceiling a value is held to (`VALUE_MAX_CHARS`, `src/review/review-probe.ts`)
+   while the line two readings of a rule disagree about occurs in it once. It runs the candidate's
+   declared checks over the original and the changed artifact and reports which checks moved. At
+   most eight per review (`PROBE_BUDGET`), accept controls only, on a path that already exists. A
+   probe whose original did not pass, or whose changed artifact reached no verdict, is not evidence.
+   Every harness-defect finding cites its `probeIds`, or sends `[]` for a source-only reading, and a
+   probe-backed harness defect may be admitted blocking on first occurrence. Otherwise a first
+   agent-side defect stays advisory, and recurrence is keyed by the declared check the finding
+   names, or by the artifact path when it names no check — but only a path below a declared schema
+   root. A bare root is not an identity: `schemaPath` requires the first segment alone, so a
+   one-root domain offers exactly one word for the whole artifact, and across the recorded corpus
+   every campaign that fell back to a path collapsed to a single constant. Run 17f9de demoted a new
+   finding on two recurrences that belonged to other defects; the same collapse raises one at a
+   single recurrence, which is how a 25-of-25 harness came to be reset. Only curriculum or
+   evaluation-side defects may dispute an issue, and a dispute keeps the issue counted while
+   withholding the agent advice. Public candidate analysis and checks of published limits are
+   legitimate solving support — call a tool an answer shortcut only when it supplies the remaining
+   decision the solver was meant to make.
+
+   An authoring review reads two things the Builder never sees. One is the bytes the Built solver
+   submitted in each of the round's blind rehearsals, beside the one verdict they earned; the
+   Builder that ran them saw the verdict and not the bytes. The other is the probes the previous
+   review of the same round rested its findings on, as the exact `probe_check` calls that re-run them
+   (`carriedDemonstrations`, `src/review/epoch-reviewer.ts`). A carried probe is a lead and backs
+   no finding until this review runs it again, because its number belonged to another review over
+   bytes that may since have changed.
 
    Reviewer spend is not an axis for savings. The reviewer is the only component that reads the
    measured tree against the original request, so make it smarter and let the build iterate more.
@@ -527,9 +576,17 @@ live evidence.
     by digest to the iteration that consumes it. Render it once at every rebuild kickoff. Derive
     the advice from recorded rows, recorded Judge reviews and admitted aggregate findings; per-case
     findings never reach authoring. Each issue keeps a stable id and one of the states `active`,
-    `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired` and `disputed`. A family leaving
-    the task set makes its issue `retired`, which proves no fix at all — absence counts towards a
-    fix only when the family actually ran.
+    `tentatively-fixed`, `confirmed-fixed`, `regressed`, `retired`, `disputed` and `unmeasured`. A
+    family leaving the task set makes its issue `retired`, which proves no fix at all — absence
+    counts towards a fix only when the family actually ran, and only when it ran under the condition
+    that observed the issue: the same public inputs, the same `scoringHash` and the same Built model
+    and solver walls (`src/author/issue-condition.ts`). A family that reran on other tasks, under
+    another scoring program or another Built condition leaves its issue `unmeasured`, named as such
+    in the advice and aged neither way, because a task probe that swaps out the failing tasks or an
+    evaluator that stops seeing the failure makes an issue vanish without repairing anything. An
+    evaluation correction therefore leaves an issue unmeasured too; settling it as corrected would
+    need a regrade of the retained accepted artifacts under the corrected evaluator, which nothing
+    performs yet.
 
     `--product-policy fixed` permits measure or stop and refuses build and rebuild. A campaign runs
     uncapped unless the operator sets `--iteration-budget N`; there is no launch default (operator
@@ -540,7 +597,7 @@ live evidence.
     rather than resetting the spend.
 
     The controller loop ceilings live in `src/critic/policy.ts`: `environmentBlockedRounds 3`,
-    `buildFailedRounds 3`, `stalledMeasureRounds 3`, `stalledFindingsRepeats 8`,
+    `buildFailedRounds 3`, `stalledFindingsRepeats 8`,
     `noopSubmitStrikes 3`, `unchangedCandidateStrikes 3`, `toolNonResultRefusals 3`, and
     `climb.offAimStreakRounds 3` — consecutive rounds reading one side of the aim, counted in
     batteries, where a round whose claim was refused counts behind a placement but never on its
@@ -592,8 +649,22 @@ live evidence.
 
     An open continuation records `EXPERIMENT.json` before preview or submit. Intent cannot change a
     score, override a gate or make identical bytes new. Refuse a repeated public condition on a
-    fixed product even after the ids, families or levels have been renamed. Changed bytes establish
-    membership rather than semantic difficulty, and with no observations the result stays unknown.
+    fixed product even after the ids, families or levels have been renamed. After a battery that
+    found no limit — above the aim, or every verified case passed — a plan declaring a climb below
+    that count must declare, for at least one family, a `move` the last battery's plan did not;
+    `repeatedMoveDetail` refuses it under `climb-battery-repeats-history` otherwise, and says it
+    compared declarations rather than semantic difficulty. Changed bytes establish membership
+    rather than semantic difficulty, and with no observations the result stays unknown.
+
+    `src/author/experiment-plan.ts` owns the plan's two files. The Builder alone writes
+    `EXPERIMENT.json`, as `experiment-plan/v2` with a level and a move per family and a pass
+    probability per task, and `readPlan` refuses any other schema. The controller alone writes
+    `PlanEvidence` to `<campaignDir>/rehearsals/experiment-evidence*.json`, claiming the next free
+    name so no round overwrites another; it sits outside the workspace and the fingerprint, and holds
+    the round's rehearsal verdicts, their effort and the prediction score. Where rehearsals contradict
+    the target or a prediction, `harness_trial`, `correctness_check` and a refused `submit` say so as
+    advice that refuses nothing, and `renderPlanView` gives the one compact view that every
+    continuation and the context tool's `round/plan` document carry.
 
 12. **Evaluate the requested artifact, not decorative output.** Every artifact-schema root must be
     reached by a material truth check, and every advertised capability must map to checks that can
@@ -611,7 +682,22 @@ live evidence.
     constant within an affected family when no other applicable check derives it from artifact
     content.
 
-    Controls are what calibrate the checks. At least 5 accepts and 5 rejects. Every applicable
+    Controls are what calibrate the checks. At least 5 accepts and 5 rejects — an authoring
+    requirement the Builder is told, rather than a size the gate measures, and it is worth knowing
+    which before you go looking for the code that enforces it. The floor is declared as
+    `evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in
+    `thresholds.frozen.yaml`, bound through `src/claim/calibration.ts`, and asserted into the
+    starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number. What
+    the gate then runs is `validateControls` and `publicRuleFindings` (`src/truth/controls.ts`),
+    and both check coverage alone: every applicable check-by-family cell, every declared check's
+    reject, every family's reject. Of the nine places in `src` and `tools` that read
+    `corpus.accept.length` or `corpus.reject.length`, seven report the number and two test it for
+    zero; none compares it against five. The floor's one non-test consumer is
+    `acceptIndependenceFeedback` (`src/run/accept-control-independence.ts`), where it bounds a row
+    that is explicitly advisory and refuses no candidate. That is by design rather than a gap:
+    `thresholds.frozen.yaml`'s own comment records the minimum falling from 20 to 5 on 2026-09-14
+    "since the per-check and per-family witnesses already say what a corpus must cover", and those
+    witnesses are what the next three sentences describe. Every applicable
     check-by-family cell needs one passing task-bound accept. Every applicable check needs one
     reject that fails on its declared check, and every family needs at least one such reject, where
     one reject may serve both — that is the operator decision of 2026-09-15, replacing one reject
@@ -646,13 +732,23 @@ live evidence.
     delivery and still requires a fresh behavioural run.
 
     Keep the authoring areas separate by authority. `harness_inspect` is static and read-only, with
-    nine modes: `readiness`, `summary`, `task`, `tools`, `typecheck`, `inventory`, `coverage`,
-    `feedback`, `history`. `harness_trial` takes one `taskId` and solves it blind with the measured
+    four modes: `readiness`, `task`, `coverage`, `feedback`. Readiness is the whole static view in
+    one call, and a named `group` or `family` pages the findings or a family it cannot fit.
+    `context` (`src/builder/context-tool.ts`) is where everything else a round may consult is read.
+    It takes a question and the decision the answer settles, and returns the lines that bear on it,
+    each cited by document and line, over five sources: the round's opening, the
+    workspace notes and plan, every measured battery of the product, the solver traces of passing
+    cases, and the `--context` files. Until 2026-09-23 it read the `--context` files alone, and 160
+    recorded sessions called it six times, always over an empty corpus. It offers passing traces
+    only, because a measured battery already publishes which cases passed, while a failing trace is
+    where the failure sits. `harness_trial` takes one `taskId` and solves it blind with the measured
     Built solver — its own runtime, turn cap, solve wall and confinement — then grades what it
     submitted, returning the rule-4 aggregate verdict, whether it submitted at all, how many turns
-    it used and any typed non-result, under six rehearsals per round and a 30-second total
-    verifier deadline. Each rehearsal costs one measured case and writes its solve evidence under
-    `<campaignDir>/rehearsals/`. Parameterless `submit` alone freezes and accepts candidate bytes.
+    it used, what the solve spent as a plain fact (minutes against the solve wall, tool calls, cost)
+    and any typed non-result, under six rehearsals per round and a 30-second total verifier
+    deadline. Each rehearsal costs one measured case and writes its solve evidence under
+    `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
+    and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
     ones rule 1 depends on without naming, and an agent that has not met them will try to install a
@@ -705,16 +801,34 @@ live evidence.
     says where the rest is: a truncated command writes its whole output under `.bash-output/` in
     the workspace and the result gives that path, because a draft can be read again and a command's
     output cannot. That directory is dot-prefixed so the listing tools pass over it, and it is
-    never fingerprinted, so it cannot reach a candidate.
+    never fingerprinted, so it cannot reach a candidate. The same holds on every wall that shows a
+    tail of unstructured output: the result ends with one line naming the lines shown and, when the
+    store succeeded, the stored file and the tool that pages it — `cutOutputNotice` on the Builder
+    shell and the verifier workshop, pi's own notice on the Built shell. Each store sits where that
+    model's own reader reaches it, which is `.oss/.run-output/` for a workshop run and the session
+    home's `.shell-output/` for the Built shell, never the host's temporary directory where a later
+    solve could read it. A store that fails costs the pointer and not the result. A limit-cut grep
+    or find ends with its `moreRowsNote` count instead, so that a cut search no longer reads as a
+    complete one. Protected verifier output is never stored or pointed at.
 
     A Builder authoring session has no default wall; `HARNESS_BUILDER_SESSION_CAP_MS` may set a
-    positive-integer one, and a Builder bash install may run for up to two hours. The Epoch
-    Reviewer reads the authoring tree always at the completion of a host tool call and never inside
-    one: after a clear `correctness_check` whose agent or correctness-model bytes have changed
-    since the last review, it reads that immutable snapshot, and after **40 minutes** without a
-    review (`REVIEW_INTERVAL_MS`, `src/gate/review-clock.ts`) it reads the live workspace at the
-    next completed tool call. The clock restarts when a review finishes, and the public projection
-    of its findings rides that tool's result. No probe budget and no no-submit strike bounds a
+    positive-integer one, and a Builder bash install may run for up to two hours. An authoring
+    review starts at the completion of a host tool call, never inside one, and then runs beside the
+    session rather than holding it (`AuthoringReviews`, `src/run/authoring-review.ts`). It always
+    reads frozen bytes: after a clear `correctness_check` whose agent, correctness-model or battery
+    bytes have changed since the last review, that check's immutable snapshot, and after **40
+    minutes** without a review (`REVIEW_INTERVAL_MS`, `src/gate/review-clock.ts`) a snapshot of the
+    workspace taken at the call that started it. So an edit the Builder makes while it runs is not
+    in what it reads, and a draft that cannot be frozen is not read live in its place: the clock
+    stays due and the next completed call tries again. One review runs at a time, and a trigger
+    that fires meanwhile waits in the clock, which keeps only the latest validated product, so
+    triggers coalesce rather than queue. The clock restarts when a review finishes, and the public
+    projection of its findings rides the first tool result after that. Submit is the one call that
+    waits for it. A submit made while a review runs is held until the review finishes, which the
+    reader session's one-hour deadline bounds (`READER_DEADLINE_MS`, `src/review/review-reader.ts`),
+    and when the review shows findings the Builder has not read, they come back in place of the
+    verdict and the call counts as no submit (`reason: "review-unread"`), so the same bytes sent
+    next are a first submission of them. No probe budget and no no-submit strike bounds a
     session's reconnaissance before its first authoring change. A round runs as a Codex goal
     (`src/author/builder-continuation.ts`): every continuation restates the request and the round's
     facts, a round has no turn cap unless `--max-builder-turns` sets one, and three turns in a row
@@ -727,11 +841,17 @@ live evidence.
     next round resumes it provided the system prompt, every tool schema and the transport are
     unchanged. The session was opened on stubs that route each call by name to the open round's
     tools, so a call between rounds is refused. A resumed round's first message says how the last
-    round ended and where it is working now; it reads no memory block, which only a fresh session
-    receives. A round that threw, a changed contract or a closed transport opens a fresh session,
-    and the run's settle closes the last one. Per-round bounds stay per round: the turn limit, the
-    rehearsals, the submit strikes, the review clock and the execution record. A process restart
-    loses the conversation, because nothing about it is durable.
+    round ended and where it is working now. It reads the notes block whenever that workspace is one
+    the conversation has not worked in, because every measured round reopens under a new pass holding
+    the carried copy, and compaction cuts the opening turn that first carried them; a round that stays
+    in the same workspace gets none. It reads no list of earlier attempts and standing refusals,
+    since it already received each refusal as a submit result; only a fresh session gets that. Each
+    compaction's summary is recorded beside its token count in the Builder's prose capture, from pi's
+    `compaction_end` and, on the Claude route, from the CLI transcript before the bridge deletes it;
+    it is evidence and is served to no model. A round that threw, a changed contract or a closed transport opens a
+    fresh session, and the run's settle closes the last one. Per-round bounds stay per round: the
+    turn limit, the rehearsals, the submit strikes, the review clock and the execution record. A
+    process restart loses the conversation, because nothing about it is durable.
 
     `correctness_check` runs the same validation sequence submit runs, control census included, on
     the exact immutable snapshot, as often as the bytes change. A blocked or runtime-non-result
@@ -812,7 +932,9 @@ same version, fingerprint and experiment. Preserve damaged state for review.
 Verifier process results and process cleanup are separate facts. A deadline bounds execution and
 output collection even when a child or a pipe will not settle, cleanup keeps a durable receipt,
 recovery never signals a saved PID, and a successful kill syscall on its own proves nothing. Each
-tool run gets fresh private `TMPDIR` and `HOME` children. Darwin Seatbelt and Linux Bubblewrap each
+tool run gets fresh private `TMPDIR` and `HOME` children, and the one thing restored into them is
+the tool's user cache directory, from what an earlier gate run of the same tool bytes stored
+(`withToolCache`, `src/verify/engine-cell-env.ts`); a battery run restores it and never stores. Darwin Seatbelt and Linux Bubblewrap each
 need their own live proof, and an unavailable required wall yields a typed non-result — never an
 unconfined run.
 
@@ -858,7 +980,7 @@ at. `inherit` is the third value, and it copies the Built slot's kind, model and
 review runs the condition the battery ran. Models and efforts come from
 `CODEX_{BUILDER,BUILT,REVIEW}_MODEL` and `CODEX_*_REASONING_EFFORT`, or their `CLAUDE_*`
 equivalents. **An unpinned codex slot defaults to `gpt-5.6-luna` at `xhigh` on all three slots**
-(`src/backends/slot-defaults.ts`), so a launch without env pins silently measures a condition no
+(`src/backends/resolve.ts`), so a launch without env pins silently measures a condition no
 table names — pin it explicitly. Every slot's effort is checked against the thinking levels the pi
 catalogue lists for its model, with no provider call. The OpenAI-completions route pairs
 `OPENROUTER_API_KEY` with the OpenRouter address, or `CUSTOM_ADDRESS` with `CUSTOM_API_KEY` and a
@@ -990,12 +1112,7 @@ made multi-line. Also available: `bun run outcome` for read-only reports over re
 
 Run one gate at a time: two overlapping gates each took twice as long as one alone. When typecheck,
 lint, source-policy or complexity fails, the pre-push hook lists each finding as
-`<rule> <location> <message>`, and `prepare-commit-msg` appends them to the next commit on top of
-the failing one as `Gate-Fix` and `Gate-Finding` trailers. To see which rules agents keep breaking:
-
-```text
-git log origin/main --format='%(trailers:key=Gate-Finding,valueonly)' | awk 'NF {print $1}' | sort | uniq -c | sort -rn
-```
+`<rule> <location> <message>` and names the commit it failed on.
 
 | Changed files | While editing | Delivery proof |
 | --- | --- | --- |
@@ -1016,13 +1133,34 @@ the case that is missing. Batch small fixes under one owner. The normal pre-push
 lint, so run either separately only when it is the boundary that changed. Neither substitutes for
 behavioural proof.
 
-**A static gate failure is fixed forward** (operator decision 2026-09-21). Commit the work as it
-was written, and do not run lint or the policy steps first to clean it up. When the push gate fails
-on typecheck, lint, source-policy or complexity, nothing was pushed: leave the failing commit
-exactly as it is, make the fix the next commit directly on top, and push both together. Never
-amend, squash or rebase the failing commit away — the pair is the record of what the author got
-wrong, and merge commits carry both to main. A rule agents keep breaking is fixed at its owner,
-whether that is a prompt, a skill or the lint rule's own message, rather than in more fix commits.
+**One commit policy covers every push, fix and stack: each commit a push publishes passes the gate
+on its own, and a defect is fixed inside the commit that introduced it** (operator decisions
+2026-09-24, replacing the fix-forward rule of 2026-09-21 and the compose merges of 2026-09-05). The history is read as well as run: an agent looking through it
+for how work is done here copies what it finds, and a red commit followed by its repair teaches it
+that pushing red is the way. So the pre-push hook checks out every earlier source-changing commit
+the push publishes and runs `bun run gate --static` over it — runtime, format, typecheck, lint,
+source-policy, complexity, and the test files near what that commit changed — then runs the whole
+gate on the tip, and on the head of every other branch the push moves, since that is where a
+stacked pull request ends. GitHub Actions is off for this repository, so that local run is the only
+full gate a pull request head gets. "Near" is `tools/runtime/affected-tests.ts`: a test that
+imports a changed file directly (operator decision 2026-09-24). It was three imports on the day the
+rule landed, and the first push to pay for that showed why not: the slow end-to-end files sit two
+or three imports from anything near the root of the graph, so three commits of 11 to 17 files each
+selected 62% to 70% of the suite's recorded test time at depth 3, and 14% to 19% at depth 1. The
+tip then ran all of it again. Depth 1 bounds the cost; it has not been measured against the bugs
+it catches, and the tip's full suite is what backs it.
+
+A failure names the commit, and its fix goes into that commit rather than on top of it:
+`git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`, or
+`git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no one anything.
+The same holds for a defect found after publication, as long as the commit sits on an open pull
+request rather than on main: fold the fix into the commit it corrects, replay the commits above it,
+and publish every moved head with an explicit lease, as the stack paragraph under "Where changes
+go" describes. That costs a force-push, and it buys a history in which every commit reads as the
+finished version of its own change. A working commit that could never pass alone, such as
+commit-R's `R:` removals, is squashed into the commit that completes it before anything is pushed.
+Main is the one history nothing rewrites. A rule agents keep breaking is fixed at its owner,
+whether that is a prompt, a skill or the lint rule's own message.
 
 **Shell commands and the guard.** Before sending a Bash command, scan every `$` in it: a `$VAR`,
 `$(…)` or `${…}` alongside `git`, after a `>`, or inside a heredoc triggers the `dcg` guard,
@@ -1132,23 +1270,30 @@ rather than editing that worktree: `scripts/worktree.sh pr <number> <absolute-di
 head and puts it on a unique branch, leaving the other session's tree alone. Once the upstream PR
 settles, refresh, rebase onto it, prove containment and push to the PR's actual source branch.
 
-For a stack, write down `parent head → child head` for every edge, compose from the first stale
+For a stack, write down `parent head → child head` for every edge, restack from the first stale
 edge, and propagate through the later children in order. If the bottom PR lacks current main, every
 descendant is behind main through inherited ancestry even when the internal edges pass — though
 surrounding-only main changes do not require a source restack. Name the first stale edge and the
-full affected suffix. Once its required checks pass, push a small isolated fix directly to the open
-PR whose source it corrects; do not open another PR to repair an unmerged one. When a review finds
-defects across several stacked PRs, append each fix to the PR it corrects, then recompose the
-children bottom-up with one `Compose PR #<child> on repaired PR #<parent>` merge per edge (operator
-decision 2026-09-05). Compose on a detached HEAD so branches checked out elsewhere are undisturbed,
-then push the composed heads in one atomic push. `stack-hop`'s
-[publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns delivery:
-run the affected focused checks, then publish the related heads through one push and one full gate
-from the clean top. Land a stack on main through GitHub, merging each PR into its own base
-bottom-up, so that every PR ends Merged rather than closed — a local `--no-ff` merge pushed to
-`main` leaves the PR open (2026-09-21, 98 PRs). A passing top proves that checkpoint; an
-intermediate head needs its own gate before independent merge, adoption or a paid launch. Keep the
-hooks and the required CI enabled.
+full affected suffix.
+
+A stack is linear. Each pull request's branch is its parent's head followed by its own commits,
+with no merge commit in it, so its range reads as exactly the work it proposes, in the order it
+was done, and every commit in that range has passed the gate alone. A fix goes into the commit it
+corrects on the pull request that carries it, never into a new pull request that repairs an
+unmerged one, and each child above it is replayed onto the repaired parent with
+`git rebase --onto <new-parent-head> <old-parent-head> <child-head>`, bottom-up. That replaces the
+`Compose PR #<child> on repaired PR #<parent>` merge per edge of 2026-09-05. Those merges kept
+every publication a fast-forward, which is what they were for, and they cost a pull request whose
+range interleaved its parent's repairs with its own work: PR #8 carried five of them between eight
+commits of its own. Replay on a detached HEAD so branches checked out elsewhere are undisturbed,
+compare each replayed range with its saved one through `git range-diff`, then push every moved head
+in one atomic push with an explicit lease per ref, from a checkout of the top. `stack-hop`'s
+[publication procedure](.claude/skills/stack-hop/references/stack-publication.md) owns delivery.
+That push gates every commit it publishes and runs the whole gate on every branch head it moves,
+so each pull request head is proved as it lands. Land a stack on main through GitHub, merging each
+PR into its own base bottom-up, so that every PR ends Merged rather than closed — a local `--no-ff`
+merge pushed to `main` leaves the PR open (2026-09-21, 98 PRs). Those merges into main are the only
+merge commits the policy makes. Keep the hooks enabled.
 
 "At PR48 state" or "at stacked PR45" means the newest improvement level including later fixes,
 while "the diff of PR #48" selects that PR alone. When two branches carry the named work, ask which

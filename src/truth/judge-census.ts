@@ -4,7 +4,7 @@
  * stop further paid calls. Completed observations still reach `summarizeJudge`, which reports
  * incomplete coverage itself.
  */
-import { JUDGE_MAX_CONCURRENCY, runJudgeBatches } from "../run/session-pool.ts";
+import { runJudgeBatches } from "../run/session-pool.ts";
 import {
   type JudgeSession,
   type JudgeObservation,
@@ -18,8 +18,6 @@ const JUDGE_CENSUS_ABORT_AFTER = 5;
 
 type JudgeCensusAbort = {
   schema: "judge-census-abort/v1";
-  /** One member: no control census reaches the Judge. */
-  phase: "battery-census";
   attempted: number;
   threshold: number;
   lastError: string | null;
@@ -72,7 +70,6 @@ export class JudgeCensus {
         if (abort !== null) this.write("judge/census-abort.json", abort);
         return abort === null;
       },
-      this.session.maxConcurrency ?? JUDGE_MAX_CONCURRENCY,
     );
     return { observations, abort };
   }
@@ -89,7 +86,6 @@ export class JudgeCensus {
       ? null
       : {
           schema: "judge-census-abort/v1",
-          phase: "battery-census",
           attempted: this.attempted,
           threshold: JUDGE_CENSUS_ABORT_AFTER,
           lastError: this.lastError,

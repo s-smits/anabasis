@@ -16,8 +16,8 @@ import { describe, expect, it } from "bun:test";
 import type { ScoredCase } from "../src/claim/claim-evidence.ts";
 import { NO_EXTERNAL_EXECUTION } from "../src/truth/grounding.ts";
 import {
-  INTRINSIC_C1,
-  INTRINSIC_C2,
+  AUTHORED_C1,
+  AUTHORED_C2,
   RESONANCE,
   clauseDetail,
   clauseNames,
@@ -29,9 +29,9 @@ import {
 
 const NEVER_FIRED = "TRUTH_CHECK_NEVER_FIRED";
 
-/** Both intrinsic checks declared and attributed, so only the firing read can block. */
-const twoIntrinsicChecks = {
-  grounding: { declared: [INTRINSIC_C1, INTRINSIC_C2], execution: NO_EXTERNAL_EXECUTION },
+/** Both authored checks declared and attributed, so only the firing read can block. */
+const twoAuthoredChecks = {
+  grounding: { declared: [AUTHORED_C1, AUTHORED_C2], execution: NO_EXTERNAL_EXECUTION },
   discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 3, c2: 1 } },
 };
 
@@ -75,7 +75,7 @@ describe("a declared check that fired on no verified case", () => {
   it("names only the checks that never fired", () => {
     const result = createClaim(
       greenEvidence({
-        ...twoIntrinsicChecks,
+        ...twoAuthoredChecks,
         truthCheckFiring: {
           firedByCheck: { c1: 4, c2: 0 },
           executedByCheck: {},
@@ -98,7 +98,7 @@ describe("readings that would blame the harness for the environment", () => {
     // that had no case to fire on.
     const firing = (applicableByCheck: Record<string, number>) =>
       greenEvidence({
-        ...twoIntrinsicChecks,
+        ...twoAuthoredChecks,
         truthCheckFiring: {
           firedByCheck: { c1: 4, c2: 0 },
           executedByCheck: {},
@@ -115,7 +115,7 @@ describe("readings that would blame the harness for the environment", () => {
   });
 
   it("does not flag an external check absent from the firing record", () => {
-    // Firing telemetry tracks the intrinsic AST, and the external grounding clauses own whether
+    // Firing telemetry counts authored check receipts, and the external grounding clauses own whether
     // that adapter ran. An external check missing from firedByCheck must not read as never-fired.
     const score: ScoredCase[] = ["t1", "t2", "t3", "t4"].map((caseId) => ({
       caseId,
@@ -126,7 +126,7 @@ describe("readings that would blame the harness for the environment", () => {
     const result = createClaim(
       greenEvidence({
         grounding: {
-          declared: [INTRINSIC_C1, RESONANCE],
+          declared: [AUTHORED_C1, RESONANCE],
           execution: qiskitExecution(["t1", "t2", "t3", "t4"]),
         },
         truthCheckFiring: {
@@ -192,7 +192,10 @@ describe("a checkId named __proto__ cannot read a count off the prototype chain"
   // open. The fixtures use JSON.parse because an object literal { "__proto__": n } sets the
   // prototype instead of creating the key.
   const declared = [
-    { checkId: "__proto__", grounding: { kind: "intrinsic" as const, primitive: "relationalJoin" } },
+    {
+      checkId: "__proto__",
+      grounding: { kind: "authored" as const, assertion: "assignments obey the public slot rules" },
+    },
   ];
   const grounding = { declared, execution: NO_EXTERNAL_EXECUTION };
   const score: ScoredCase[] = ["t1", "t2", "t3", "t4"].map((caseId) => ({

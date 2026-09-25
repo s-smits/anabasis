@@ -25,11 +25,8 @@ import type { EvidenceIssue, ProjectView, RunView } from "../src/models.js";
 import type { JsonValue } from "../../../src/meta/json-shape.ts";
 import { latestRun, orderedProjects, resolveProject } from "../src/project-selection.js";
 import { NO_STORY, readDifficulty, readRequest } from "../src/server/story.js";
-import {
-  backendSupportsSlot,
-  projectBackendChoices,
-  setProjectBackendSelection,
-} from "../../../src/backends/project-backends.ts";
+import { setProjectBackendSelection } from "../../../src/backends/project-backends.ts";
+import { projectBackendChoices } from "../../../src/backends/resolve.ts";
 const HARNESS = ".harness";
 
 const SLUG = "widget";
@@ -368,37 +365,36 @@ describe("controller metadata", () => {
   it("quotes the selector's own reason from the run's last round", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-aaaa1111.json`, {
-      schema: "difficulty-decision/v2",
+      schema: "difficulty-decision/v6",
       difficulty: {
-        decision: { action: "hold", currentLevel: 1, nextLevel: 1, rationale: "first round" },
+        decision: { action: "no-difficulty-evidence", rationale: "first round" },
         admitted: 1,
         excluded: [],
       },
     });
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-i02-bbbb2222.json`, {
-      schema: "difficulty-decision/v2",
+      schema: "difficulty-decision/v6",
       difficulty: {
         decision: {
-          action: "climb",
-          currentLevel: 1,
-          nextLevel: 2,
+          action: "placed",
+          placement: { zone: "too-easy" },
           rationale: "pass-rate interval floor 0.805 sits above the target ceiling 0.75",
         },
         admitted: 2,
-        excluded: ["recorded under variant repair-off"],
+        excluded: [{ runId: "r1", reason: "recorded under variant repair-off" }],
       },
     });
     const difficulty = readDifficulty(root, SLUG, RUN, []);
-    expect(difficulty?.action).toBe("climb");
-    expect(difficulty?.standing).toBe("L1");
+    expect(difficulty?.action).toBe("placed");
+    expect(difficulty?.standing).toBe("too-easy");
     expect(difficulty?.rationale).toContain("0.805");
-    expect(difficulty?.excluded).toEqual(["recorded under variant repair-off"]);
+    expect(difficulty?.excluded).toEqual(["r1: recorded under variant repair-off"]);
     expect(difficulty?.source).toContain(`${RUN}-i02-`);
   });
   it("reads the zone and the named exclusions of a placed record", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-cccc3333.json`, {
-      schema: "difficulty-decision/v5",
+      schema: "difficulty-decision/v6",
       difficulty: {
         decision: { action: "placed", rationale: "6/25 …: at the limit", placement: { zone: "on-aim" } },
         admitted: 3,
@@ -410,7 +406,7 @@ describe("controller metadata", () => {
     expect(difficulty?.standing).toBe("on-aim");
     expect(difficulty?.excluded).toEqual(["r2: claim refused"]);
   });
-  it("reads an earlier difficulty record when no current record exists", () => {
+  it("reads no decision out of the retired rung directory", () => {
     const root = storyFixture();
     write(root, `campaigns/${SLUG}/rung-decisions/${RUN}-aaaa1111.json`, {
       schema: "rung-decision/v1",
@@ -420,10 +416,23 @@ describe("controller metadata", () => {
         excluded: [],
       },
     });
-    const difficulty = readDifficulty(root, SLUG, RUN, []);
-    expect(difficulty?.action).toBe("hold");
-    expect(difficulty?.rationale).toBe("earlier record");
-    expect(difficulty?.source).toContain("/rung-decisions/");
+    expect(readDifficulty(root, SLUG, RUN, [])).toBeNull();
+  });
+  it("refuses an older difficulty decision on screen rather than reading its words as current", () => {
+    const root = storyFixture();
+    write(root, `campaigns/${SLUG}/difficulty-decisions/${RUN}-dddd4444.json`, {
+      schema: "difficulty-decision/v3",
+      difficulty: {
+        decision: { action: "climb", rationale: "older vocabulary" },
+        admitted: 1,
+        excluded: ["r3"],
+      },
+    });
+    const issues: EvidenceIssue[] = [];
+    expect(readDifficulty(root, SLUG, RUN, issues)).toBeNull();
+    expect(issues.map((issue) => issue.message)).toEqual([
+      "difficulty decision is difficulty-decision/v3, not difficulty-decision/v6; refused",
+    ]);
   });
   it("separates a difficulty decision that was never recorded from one that held", () => {
     expect(readDifficulty(storyFixture(), SLUG, RUN, [])).toBeNull();
@@ -545,18 +554,13 @@ function campaignRoot(id = "widget"): string {
   return root;
 }
 
-describe("project backend support", () => {
-  it("names only complete runtime interfaces as selectable", () => {
-    expect(backendSupportsSlot("builder", "claude")).toBe(true);
-    // Every kind serves the builder row through the one pi host session and its host-enforced tools.
-    expect(backendSupportsSlot("builder", "codex")).toBe(true);
-    expect(backendSupportsSlot("builder", "openrouter")).toBe(true);
-    expect(backendSupportsSlot("built", "codex")).toBe(true);
-    // All Built providers use the same Pi tool proxy inside the same host-confined child.
-    expect(backendSupportsSlot("built", "claude")).toBe(true);
-    expect(backendSupportsSlot("built", "openrouter")).toBe(true);
-    expect(backendSupportsSlot("review", "claude")).toBe(true);
-    expect(backendSupportsSlot("review", "openrouter")).toBe(true);
+describe("project backend choices", () => {
+  it("offers every kind on every slot, and the review switches only on review", () => {
+    expect(projectBackendChoices("builder").map((choice) => choice.value)).toEqual([
+      "codex",
+      "openrouter",
+      "claude",
+    ]);
     expect(projectBackendChoices("review").map((choice) => choice.value)).toEqual([
       "disabled",
       "inherit",

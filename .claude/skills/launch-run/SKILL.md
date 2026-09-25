@@ -44,7 +44,7 @@ not add wrapper scripts, repeat installations or run a gate separately before th
 Always resolve the latest intended published PR stack at launch time, including scheduled
 launches, unless the user explicitly selects another revision. Fetch current heads and use
 [stack-hop](../stack-hop/SKILL.md) to verify every child contains its latest published parent;
-compose stale edges before launching. Use current `origin/main` only when no intended stack is
+restack stale edges before launching. Use current `origin/main` only when no intended stack is
 open. Pass the resolved full SHA explicitly through `--source`; the CLI's omitted-source
 default remains `origin/main` and does not resolve the stack. Let the launcher fork that commit
 into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.

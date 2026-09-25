@@ -71,10 +71,10 @@ function controllerStop(ordinal: number): BuilderSubmitAttempt {
   };
 }
 
-/** A current record; its counts are its submit rows' projection, as the writer states them. */
+/** A current record, with one candidate submission unless overridden. */
 function record(over: Partial<BuilderExecutionEvidence> = {}): BuilderExecutionEvidence {
-  const base: BuilderExecutionEvidence = {
-    schema: "builder-execution/v5",
+  return {
+    schema: "builder-execution/v6",
     backend: "claude",
     runtimeIdentity: null,
     turns: 2,
@@ -83,7 +83,6 @@ function record(over: Partial<BuilderExecutionEvidence> = {}): BuilderExecutionE
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 2, estimatedTurns: 0 },
     firstToolMs: 100,
     submits: [candidate(1)],
-    ...submitProjection([candidate(1)]),
     partialTurn: null,
     turnRetries: [],
     authoringReviews: [],
@@ -96,7 +95,6 @@ function record(over: Partial<BuilderExecutionEvidence> = {}): BuilderExecutionE
     writtenAt: "2026-09-01T10:00:00.000Z",
     ...over,
   };
-  return { ...base, ...submitProjection(base.submits) };
 }
 
 function write(dir: string, name: string, body: string): void {
@@ -134,23 +132,23 @@ describe("execution evidence for one epoch", () => {
     expect(readExecutionEvidence(dir)).toEqual([]);
   });
 
-  test("refuses a record whose counts are not its submit rows' projection", () => {
+  test("derives the submit counts from the rows, whatever a count written beside them says", () => {
     const { dir } = epoch();
-    // Run 35 resubmitted one tree against a refusal it had already been handed. The rows say so;
-    // a counter stating the opposite beside them was not written by the recorder.
+    // Run 35 resubmitted one tree against a refusal it had already been handed. The rows say so, and
+    // a counter stating the opposite beside them is not something any reader consults.
     const submits = [
       candidate(1),
       candidate(2, { commit: "commit-1", repeatedFindings: true, treeFirstSubmittedAsAttempt: 1 }),
       candidate(3, { workspaceChanged: false }),
     ];
-    writeRecord(dir, BUILDER_EXECUTION_JSON, { ...record({ submits }), repeatedFindingSubmits: 0 });
-    writeRecord(dir, "builder-execution-02.json", record({ submits }));
+    write(dir, BUILDER_EXECUTION_JSON, JSON.stringify({ ...record({ submits }), repeatedFindingSubmits: 0 }));
     const read = readExecutionEvidenceDetails(dir);
-    expect(read.sessions).toEqual([2]);
-    expect(read.records[0]).toMatchObject({ repeatedFindingSubmits: 1, uniqueCandidateTrees: 2 });
-    expect(read.unavailable).toEqual([
-      `${join(dir, BUILDER_EXECUTION_JSON)}: builder-execution/v5 record has an incomplete or invalid shape`,
-    ]);
+    expect(read.unavailable).toEqual([]);
+    expect(submitProjection(read.records[0]?.submits ?? [])).toMatchObject({
+      repeatedFindingSubmits: 1,
+      unchangedTreeSubmits: 1,
+      uniqueCandidateTrees: 2,
+    });
   });
 
   test("keeps the controller's own stop out of every candidate-derived count", () => {
@@ -160,11 +158,11 @@ describe("execution evidence for one epoch", () => {
       BUILDER_EXECUTION_JSON,
       record({ submits: [controllerStop(1), candidate(2), candidate(3)] }),
     );
-    const read = readExecutionEvidence(dir)[0];
-    expect(read?.submitCounts).toEqual({ raw: 3, candidates: 2, controllerTerminals: 1 });
+    const read = submitProjection(readExecutionEvidence(dir)[0]?.submits ?? []);
+    expect(read.submitCounts).toEqual({ raw: 3, candidates: 2, controllerTerminals: 1 });
     // The stop has the earliest instant and a commit of its own; neither becomes a candidate fact.
-    expect(read?.firstSubmitMs).toBe(2000);
-    expect(read?.uniqueCandidateTrees).toBe(2);
+    expect(read.firstSubmitMs).toBe(2000);
+    expect(read.uniqueCandidateTrees).toBe(2);
   });
 
   test("reads a closing record's two invocations", () => {
@@ -222,7 +220,7 @@ describe("evidence a reader cannot safely project", () => {
     const read = readExecutionEvidenceDetails(dir);
     expect(read.records).toEqual([]);
     expect(read.unavailable).toEqual([
-      `${join(dir, BUILDER_EXECUTION_JSON)}: builder-execution/v5 record has an incomplete or invalid shape`,
+      `${join(dir, BUILDER_EXECUTION_JSON)}: builder-execution/v6 record has an incomplete or invalid shape`,
     ]);
   });
 

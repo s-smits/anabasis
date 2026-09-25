@@ -32,14 +32,13 @@ import {
 import { type OsIsolationRuntime, osIsolationSupport } from "./os-isolation.ts";
 import {
   type MoveGuardCheck,
-  canonicalForms,
   covers,
   moveBlockingRules,
   probeMoveGuardCheck,
   runIsolationProbe,
   sbRule,
 } from "./seatbelt-path-guard.ts";
-import { traversalMetadataRules } from "./wall-policy.ts";
+import { canonicalForms, traversalMetadataRules } from "./wall-policy.ts";
 import { runtimeProcess } from "../meta/process.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";

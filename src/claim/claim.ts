@@ -25,7 +25,7 @@ import type {
   RunStatusEvidence,
   ScoredCase,
 } from "./claim-evidence.ts";
-import { InvalidReviewEvidenceError, validateJudgeEvidence } from "./judge.ts";
+import { InvalidReviewEvidenceError, judgeDecision, validateJudgeEvidence } from "./judge.ts";
 import { PROVIDER_STOPPED_REASON_PREFIX } from "./record-events.ts";
 import { runtimeIdentityFindings } from "./runtime-model-identity.ts";
 import { hasText } from "../meta/text.ts";
@@ -157,7 +157,7 @@ export class Claim {
       backendPin: evidence.backendPin,
       thresholdManifestDigest: evidence.thresholdManifestDigest,
       judge: evidence.judge.judge,
-      judgeDecision: evidence.judge.judge === "off" ? null : evidence.judge.decision,
+      judgeDecision: judgeDecision(evidence.judge),
       // Copied, so a caller editing the array it passed cannot edit a written claim's condition.
       capabilities: [...evidence.capabilities],
       buildInputsHash,
@@ -170,11 +170,6 @@ export class Claim {
       verifierTools: Object.entries(grounding.execution.tools)
         .sort(([a], [b]) => compareCodeUnits(a, b))
         .map(([toolId, tool]) => ({ toolId, ...tool })),
-      groundingExceptions: grounding.declared.flatMap((d) =>
-        d.grounding.kind === "exception"
-          ? [{ checkId: d.checkId, justification: d.grounding.justification }]
-          : [],
-      ),
       modelIdentity:
         identityFindings.blocking.length === 0 &&
         identityFindings.contradicted.length === 0 &&
@@ -423,15 +418,16 @@ function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimCl
   ];
 }
 
-/** Every non-exception check must have a reject control that failed on exactly this check, because
- *  a check that ran has demonstrated execution and not discrimination: an adapter can execute
- *  completely on every case of a battery while no control has ever made it reject an artifact. A
- *  reject that fails only here establishes that the check told an invalid artifact apart; what it
- *  does not establish is which primitive inside the check produced the verdict, since source and
- *  import validation are authoring checks rather than execution evidence.
+/** Every check must have a reject control that failed on exactly this check, because a check that
+ *  ran has demonstrated execution and not discrimination: an adapter can execute completely on
+ *  every case of a battery while no control has ever made it reject an artifact. A reject that
+ *  fails only here establishes that the check told an invalid artifact apart; what it does not
+ *  establish is which primitive inside the check produced the verdict, since source and import
+ *  validation are authoring checks rather than execution evidence.
  *
- *  External checks are held to the same evidence under the same clause id, so older claims keep
- *  their vocabulary. Whether an external check's tool actually ran belongs elsewhere: the
+ *  An external check owes the same evidence under its own clause id, and an authored one keeps the
+ *  `intrinsic-` spelling because clause names reach refusal text, where renaming one is a new
+ *  condition. Whether an external check's tool actually ran belongs elsewhere: the
  *  grounding-coverage rows own it, where admission refuses a never-launched tool before the
  *  battery, `caseGroundingClauses` refuses a verified case without its own subject-bound run, and
  *  readiness names a check that ran on no verified case. */
@@ -441,7 +437,6 @@ function declaredGroundingClauses(
 ): ClaimClause[] {
   const clauses: ClaimClause[] = [];
   for (const { checkId, grounding: g } of grounding.declared) {
-    if (g.kind === "exception") continue;
     if (recordedCount(attributedCheckIds, checkId) === 0) {
       clauses.push(
         clause(
@@ -513,21 +508,19 @@ function executionResolutionClauses(execution: GroundingEvidence["execution"]): 
  *  count separates the two, because a declaration states that a task means to exercise a check and
  *  says nothing about whether the verifier ever reached it.
  *
- *  This function covers intrinsic and authored checks. External checks have their own grounding
- *  clauses, exception groundings have no executable predicate to run, and a case with no accepted
- *  artifact cannot establish whether an applicable check would have run at all. */
+ *  This function covers authored checks. External checks have their own grounding clauses, and a
+ *  case with no accepted artifact cannot establish whether an applicable check would have run at
+ *  all. */
 function truthCheckFiringClauses(evidence: ClaimEvidence): ClaimClause[] {
-  const intrinsicCheckIds =
+  const authoredCheckIds =
     evidence.grounding === null
       ? []
-      : evidence.grounding.declared
-          .filter((d) => d.grounding.kind === "intrinsic" || d.grounding.kind === "authored")
-          .map((d) => d.checkId);
+      : evidence.grounding.declared.filter((d) => d.grounding.kind === "authored").map((d) => d.checkId);
   const firing = evidence.truthCheckFiring;
   // No artifact reached the correctness model, so no check could fire and its silence says nothing
   // about it. The empty-denominator, non-result and paid-agent clauses own that run.
-  if (intrinsicCheckIds.length === 0 || firing.verifierVerifiedCount === 0) return [];
-  const neverFired = intrinsicCheckIds.filter(
+  if (authoredCheckIds.length === 0 || firing.verifierVerifiedCount === 0) return [];
+  const neverFired = authoredCheckIds.filter(
     (checkId) =>
       recordedCount(firing.firedByCheck, checkId) === 0 &&
       recordedCount(firing.applicableByCheck, checkId) > 0,

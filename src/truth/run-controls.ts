@@ -1,4 +1,5 @@
 /** Runs saved controls through the same correctness path as measured cases. */
+import { capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { isAuthoredEvaluatorFailure } from "./evaluator-process.ts";
 import {
   VERIFIER_CONTRACT_HINTS,
@@ -17,7 +18,6 @@ import type { ControlCorpus } from "./controls.ts";
 import { identityComposedFinding, withheldDiscrimination } from "./discrimination-author-detail.ts";
 import { commitPublicTask, evaluationPublicTask } from "./task-split.ts";
 import type { BuildTask } from "./tasks.ts";
-import { trustedJsonStringify, trustedStructuredClone } from "./trusted-runtime.ts";
 import {
   type ControlEvaluation,
   type ReceiptSession,
@@ -190,7 +190,7 @@ async function evaluateControl(
     // actual task facts. The model receives a clone, because the canonical artifact was
     // byte-captured at `openSubject` above and generated code never holds the original.
     result = await run.evaluate(
-      trustedStructuredClone({ publicTask: evaluateTask, artifact, hidden }),
+      capturedStructuredClone({ publicTask: evaluateTask, artifact, hidden }),
       scope === undefined ? undefined : { tools: scope.port },
       only,
     );
@@ -359,7 +359,7 @@ function admitObservation(
       run,
       "unknown-task",
       control.id,
-      `"${control.id}" names ${trustedJsonStringify(control.taskId)}`,
+      `"${control.id}" names ${capturedJsonStringify(control.taskId)}`,
       (ids, notes) =>
         identityComposedFinding(
           {

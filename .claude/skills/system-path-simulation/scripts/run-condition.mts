@@ -478,7 +478,7 @@ else {
   if (outcome !== null) {
     for (const round of outcome.rounds) {
       note(
-        `round       ${round.runId} ${round.move} build=${round.build} battery=[${round.batteryRunIds.join(", ")}] terminal=${round.terminal ?? "none"}`,
+        `round       ${round.runId} ${round.move} build=${round.build} measured=${round.measured} terminal=${round.terminal ?? "none"}`,
       );
     }
   }

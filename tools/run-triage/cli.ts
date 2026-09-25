@@ -48,7 +48,8 @@ function parseArgs(argv: string[]): Args {
 
 const fence = (rows: string[]): string[] => ["```text", ...rows, "```"];
 
-function quoteZsh(value: string): string {
+/** Double-quoted with its four escapes, which bash and zsh read identically. */
+function quoteShell(value: string): string {
   const escaped = value
     .replaceAll("\\", String.raw`\\`)
     .replaceAll('"', String.raw`\"`)
@@ -71,7 +72,7 @@ function solLaunchEnvironment(coverageDir: string): string {
     ["CODEX_REVIEW_REASONING_EFFORT", "medium"],
     ["NODE_V8_COVERAGE", coverageDir],
   ];
-  return entries.map(([key, value]) => `--env ${quoteZsh(`${key}=${value}`)}`).join(" ");
+  return entries.map(([key, value]) => `--env ${quoteShell(`${key}=${value}`)}`).join(" ");
 }
 
 function timelineSection(runDir: string): string[] {

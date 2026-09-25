@@ -29,10 +29,10 @@ export function createHarnessResetTool(binding: {
       const applied = resetWorkspaceToStarter(binding.workspace, binding.resetKey, scope);
       const text = applied
         ? "Returned to the starter seed; the replaced bytes stay in git history."
-        : "Already reset this reopen; the workspace is as that reset left it plus your later edits.";
+        : "Refused: already reset this reopen; the workspace is as that reset left it plus your later edits.";
       return {
         text: `scope ${scope}: ${text}`,
-        details: { scope, applied, receipt: { outcome: "completed" } },
+        details: { scope, applied, receipt: { outcome: applied ? "completed" : "refused" } },
       };
     },
   });

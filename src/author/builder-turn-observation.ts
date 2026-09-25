@@ -123,14 +123,13 @@ export class BuilderTurnObservation {
       this.omitted += 1;
       return;
     }
-    const args = event.args ?? held;
     this.failedRows.push({
       ordinal: this.failures,
       turn,
       tool: event.toolName,
       at: new Date().toISOString(),
       atMs: this.since(),
-      request: excerpt(args === undefined ? undefined : capturedJsonStringify(args)),
+      request: excerpt(held === undefined ? undefined : capturedJsonStringify(held)),
       error: excerpt(event.resultPreview),
     });
   }

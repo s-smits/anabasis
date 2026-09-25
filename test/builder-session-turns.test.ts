@@ -183,7 +183,7 @@ describe("the builder-session turn loop", () => {
     expect([opened.disposed, opened.prompts.length]).toEqual([1, 3]);
     expect(opened.prompts[0]).toContain(INPUT.kickoff);
     expect(opened.prompts[0]).toContain("Read STARTER.md and the file tree");
-    expect(opened.prompts[0]).not.toContain("MEMORY.md");
+    expect(opened.prompts[0]).not.toContain("Historical notes");
     expect(opened.prompts[1]).toContain("Continue towards this round's goal");
     expect(opened.prompts[2]).toContain("Fix what the last refusal named, and batch the fixes");
   });

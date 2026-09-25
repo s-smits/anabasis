@@ -39,11 +39,13 @@ function streams(campaign, runId) {
   if (existsSync(terminal)) {
     const value = readJsonFile(terminal);
     const iterations = Array.isArray(value.iterations) ? value.iterations : [];
+    // A measured iteration's battery runs under the iteration's own id.
     for (const iteration of iterations) {
-      for (const id of Array.isArray(iteration.batteryRunIds) ? iteration.batteryRunIds : []) {
-        if (!isString(id) || !isSafePathSegment(id) || ids.includes(id)) continue;
-        ids.push(id);
+      const id = iteration?.runId;
+      if (iteration?.measured !== true || !isString(id) || !isSafePathSegment(id) || ids.includes(id)) {
+        continue;
       }
+      ids.push(id);
     }
     scope = "terminal-exact";
   }

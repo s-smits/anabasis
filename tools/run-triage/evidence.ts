@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "../../src/meta/
 import { basename, join } from "../../src/meta/path.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../../src/analyse/judge-reviews.ts";
+import { judgeDecision } from "../../src/claim/judge.ts";
 import { BATTERY_FILE } from "../../src/truth/battery-record.ts";
 
 interface LogLine {
@@ -279,8 +280,8 @@ function readJudgeReview(path: string): AnalysisEvidence["judges"][number] {
   const evidence = d.census?.evidence ?? null;
   return {
     name,
-    decision: evidence?.decision ?? "no census",
-    abstained: evidence?.abstentions.total ?? null,
+    decision: (evidence === null ? null : judgeDecision(evidence)) ?? "no census",
+    abstained: evidence?.abstentions ?? null,
     reviewed: `${d.coverage?.reviewed ?? 0}/${d.coverage?.reviewable ?? 0}`,
     contested: d.contested?.length ?? 0,
     provisional: d.provisional ?? null,

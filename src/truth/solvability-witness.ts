@@ -1,7 +1,7 @@
 /** The host-owned evaluation of one constructive witness. */
 import { VerifierContractError } from "../../vendor/correctness-model-bundle/contract-error.ts";
 import { applicableTruthChecks } from "../../vendor/correctness-model-bundle/evaluation-public-task.ts";
-import { parseJsonAs } from "../meta/json-runtime.ts";
+import { parseJsonAs, capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
@@ -17,7 +17,6 @@ import {
 import { commitPublicTask, evaluationPublicTask } from "./task-split.ts";
 import type { BuildTask } from "./tasks.ts";
 import { hostNonResult, uncoveredExternalCheckIds } from "./tool-runs.ts";
-import { trustedJsonParse, trustedStructuredClone } from "./trusted-runtime.ts";
 import { VerifierExecutionNonResult } from "./verifier-nonresult.ts";
 
 /** One artifact's evaluation result, with host-observed execution failures and protected
@@ -50,7 +49,7 @@ export async function evaluateWitness(
   const { brief } = census;
   const fullTask = parseJsonAs<BuildTask>(targetTaskJson);
   const committed = commitPublicTask(fullTask);
-  const artifact = trustedJsonParse(artifactJson);
+  const artifact = capturedJsonParse(artifactJson);
   // F2 evaluates through the same declared-operand wall the measured battery uses: a witness
   // that only passes because the correctnessModel read an undeclared operand is not a witness that the
   // public path works.
@@ -75,11 +74,11 @@ export async function evaluateWitness(
   let pending: number;
   const predicateRequest = {
     publicTask: evaluateView,
-    artifact: trustedJsonParse(artifactJson),
-    hidden: trustedStructuredClone(fullTask.hidden),
+    artifact: capturedJsonParse(artifactJson),
+    hidden: capturedStructuredClone(fullTask.hidden),
   };
   try {
-    result = await census.evaluate(trustedStructuredClone(predicateRequest), { tools: scope.port });
+    result = await census.evaluate(capturedStructuredClone(predicateRequest), { tools: scope.port });
   } catch (caught) {
     if (caught instanceof VerifierOperationalStop) throw caught;
     failure = caught;

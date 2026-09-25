@@ -21,7 +21,6 @@
  * no claim, no analysis. That last one is the safety property the rest depends on, since a reader
  * that can write is a reader that can decide.
  */
-import { keyIfDefined } from "../src/meta/optional-key.ts";
 import {
   existsSync,
   mkdirSync,
@@ -44,7 +43,7 @@ import { runJudgeReviews } from "../src/analyse/judge-reviews.ts";
 import { contestedCases, isDisputedFail, isVetoed } from "../src/analyse/judge-contested.ts";
 import { required } from "./helpers/doubles.ts";
 import { tracePointer } from "../src/claim/case-record.ts";
-import type { JudgeEvidence } from "../src/claim/judge.ts";
+import { type JudgeEvidence, judgeDecision } from "../src/claim/judge.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import {
   type JudgeSession,
@@ -77,9 +76,8 @@ interface CaseSpec {
 
 interface BatterySpec {
   cases: CaseSpec[];
-  /** How battery.json presents its review. Default: the current producer's record. `control-census`
-   *  is a historical record, from when a control census stood behind the review. */
-  census?: "none" | "off" | "tampered" | "control-census";
+  /** How battery.json presents its review. Default: the current producer's record. */
+  census?: "none" | "off" | "tampered";
 }
 
 /** What one recorded fixture repo offers a projection test: its root and the packet derived over it. */
@@ -143,13 +141,12 @@ function judgeEvidenceFor(spec: BatterySpec): JudgeEvidence {
   // Evidence whose stored aggregate contradicts its own fields: the projection must refuse it
   // rather than read it, so this tampering is the thing under test, not the count.
   if (spec.census === "tampered") return { ...evidence, disagreements: evidence.disagreements + 5 };
-  if (spec.census !== "control-census") return evidence;
-  // A historical record with three answered controls behind it.
-  return {
-    ...evidence,
-    censusSize: { ...evidence.censusSize, controls: 3, total: evidence.censusSize.total + 3 },
-    verdicts: { ...evidence.verdicts, controls: 3, total: evidence.verdicts.total + 3 },
-  };
+  return evidence;
+}
+
+/** The decision a projected review's recorded counts imply, or null when there was no census. */
+function judgeOf(result: ReturnType<typeof runJudgeReviews>) {
+  return result.census === null ? null : judgeDecision(result.census.evidence);
 }
 
 /** A repo holding exactly the recorded evidence the projection is allowed to read. */
@@ -248,16 +245,14 @@ function repoWith(
 }
 
 /** `count` verified cases, the first `contested` of which the verifier failed and the Judge passed. */
-function exitBattery(count: number, contested: number, census?: BatterySpec["census"]): BatterySpec {
-  const spec: BatterySpec = {
+function exitBattery(count: number, contested: number): BatterySpec {
+  return {
     cases: Array.from({ length: count }, (_, index) =>
       index < contested
         ? { taskId: `t${index}`, family: index === 0 ? "deck" : "truss", truthOk: false, judge: true }
         : { taskId: `t${index}`, truthOk: true },
     ),
-    ...keyIfDefined("census", census),
   };
-  return spec;
 }
 
 function walk(root: string): string[] {
@@ -307,7 +302,7 @@ describe("the main-Judge census projection reads recorded evidence, never a mode
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(walk(root).map((path) => `${path}:${String(statSync(path).size)}`)).toEqual(before);
     expect(result.analysisDigest).toHaveLength(64);
-    expect(result.schema).toBe("judge-reviews/v10");
+    expect(result.schema).toBe("judge-reviews/v11");
     expect(result.judgePin).toBe(JUDGE_PIN);
   });
 });
@@ -397,9 +392,8 @@ describe("real-case disagreements stay threshold-free", () => {
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(result.census?.evidence.judge).toBe("unvalidated");
-    expect(result.census?.evidence.decision).toBe("advisory-comparison");
-    expect(result.census?.evidence.verifierFailJudgePass).toBe(1);
-    expect(result.census?.evidence.verifierPassJudgeFail).toBe(1);
+    expect(judgeOf(result)).toBe("advisory-comparison");
+    expect(result.census?.evidence).toMatchObject({ disagreements: 2, verifierPassJudgeFail: 1 });
     expect(result.provisional).toBeNull();
     expect(result.contested.map(({ taskId, judge, verifier }) => ({ taskId, judge, verifier }))).toEqual([
       { taskId: "t1", judge: true, verifier: false },
@@ -430,7 +424,7 @@ describe("real-case disagreements stay threshold-free", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.census?.evidence.disagreementRate).toBe(0.25);
+    expect(result.census?.evidence).toMatchObject({ disagreements: 1, disagreementDenominator: 4 });
     expect(result.coverage).toEqual({ reviewable: 4, reviewed: 4 });
     // The raw contradiction is named without filtering at 0.25.
     expect(result.contested).toEqual([
@@ -464,7 +458,7 @@ describe("real-case disagreements stay threshold-free", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.census?.evidence.decision).toBe("advisory-comparison");
+    expect(judgeOf(result)).toBe("advisory-comparison");
     expect(result.exit.kind).toBe("none");
     expect(result.findings).toEqual([]);
   });
@@ -479,7 +473,7 @@ describe("coverage and historical records", () => {
       ],
     });
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
-    expect(result.census?.evidence.decision).toBe("incomplete-census");
+    expect(judgeOf(result)).toBe("incomplete-census");
     expect(result.provisional).toBe(
       "the judge review is incomplete (incomplete-census): 1/2 battery verdicts returned",
     );
@@ -503,14 +497,6 @@ describe("coverage and historical records", () => {
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
     expect(result.census?.evidence.verifierPassJudgeFail).toBe(1);
     expect(result.contested).toEqual([]);
-  });
-
-  it("refuses a review a control census stood behind, as recorded before 2026-09-14", () => {
-    const { root, analysis } = repoWith(exitBattery(10, 3, "control-census"));
-    const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
-    expect(result.provisional).toMatch(/censusSize.controls must be 0/);
-    expect(result.census).toBeNull();
-    expect(result.findings).toEqual([]);
   });
 });
 
@@ -541,7 +527,8 @@ describe("the Judge exit is advice only", () => {
   it("does not block when the Judge disputes every verified case", () => {
     const { root, analysis } = repoWith(exitBattery(10, 10));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
-    expect(result.census?.evidence).toMatchObject({ judge: "unvalidated", decision: "advisory-comparison" });
+    expect(result.census?.evidence.judge).toBe("unvalidated");
+    expect(judgeOf(result)).toBe("advisory-comparison");
     expect(result.exit).toMatchObject({ kind: "advisory", verifierFailJudgePass: 10 });
     expect(result.findings.map((row) => [row.kind, row.severity])).toEqual([
       ["judge-disagreement", "advisory"],

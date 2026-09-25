@@ -4,7 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { BuildAgentTurnNonResult } from "../src/author/build-agent.ts";
 import { EnvironmentRefusal } from "../src/backends/environment-refusal.ts";
-import { CampaignBudgetExhausted } from "../src/run/campaign-budget.ts";
+import { CampaignBudgetExhausted } from "../src/run/controller-ledger.ts";
 import { ProviderResourceBudgetExhausted } from "../src/run/provider-resource-budget.ts";
 import { ControllerSignalAbort, controllerAbortClause } from "../src/run/controller-abort-clause.ts";
 import {
@@ -16,6 +16,7 @@ import {
 import { type LoopTerminalCode, loopTerminalCode } from "../src/run/loop-terminal.ts";
 import type { ControllerAbortClause } from "../src/run/controller-stop-evidence.ts";
 import { SOURCE_IDENTITY } from "../src/run/source-identity.ts";
+import { readJsonFile } from "../src/meta/completed-json.ts";
 
 const roots: string[] = [];
 
@@ -39,13 +40,13 @@ function prepared(overrides: Partial<PreparedControllerTerminal>): PreparedContr
     openingDigest: "b".repeat(64),
     iterations: [],
     absentSteps: [],
-    lastIteration: null,
     outcome: "aborted",
     abortClause: null,
     terminalReason: "aborted: fixture",
     denominator: { state: "absent" },
     budget: { turnBudget: null, turnsUsed: 0, status: "active" },
     providerResourceBudget: null,
+    runEnd: { climb: null, provenance: [] },
     ...overrides,
   };
 }
@@ -93,13 +94,14 @@ describe("controller abort clause", () => {
     );
   });
 
-  it("records a completed terminal with no clause", () => {
+  it("records a completed terminal with no clause, and the run-end numbers it was handed", () => {
     const path = join(root(), "terminal.json");
-    writeControllerTerminal(prepared({ path, outcome: "completed", terminalReason: "completed" }), {
+    const runEnd = { unreadable: "no adopted product" };
+    writeControllerTerminal(prepared({ path, outcome: "completed", terminalReason: "completed", runEnd }), {
       token: "t",
       ownedAtRecord: true,
     });
-    expect(Bun.file(path).size).toBeGreaterThan(0);
+    expect(readJsonFile(path)).toMatchObject({ schema: "campaign-terminal/v4", runEnd });
   });
 });
 

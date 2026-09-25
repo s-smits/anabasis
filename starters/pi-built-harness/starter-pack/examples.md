@@ -304,7 +304,7 @@ export const checks = {
     return new Set(rows.map(row => row.shiftId)).size === rows.length &&
       new Set(rows.map(row => row.staffId)).size === rows.length &&
       rows.every(({staffId, shiftId}) => {
-        // ponytail: scan this small worked roster; index by id for large rosters.
+        // A scan suits this small roster; index the rows by id for a large one.
         const staff = input.staff.find(row => row.id === staffId);
         const shift = input.shifts.find(row => row.id === shiftId);
         return staff !== undefined && shift !== undefined && staff.qualification === shift.qualification;

@@ -22,7 +22,7 @@
  * varies across the source types and a null value contains no nested or textual data to disclose.
  *
  * The projection is order-preserving and, for well-formed input, byte-identical: the Judge prompt
- * embeds `trustedJsonStringify(publicContext, null, 2)`, so a reordered key would move the
+ * embeds `capturedJsonStringify(publicContext, null, 2)`, so a reordered key would move the
  * model-visible bytes and the recorded prompt digest.
  */
 import { isBoolean, isNumber, isObject, isString } from "../meta/json-shape.ts";

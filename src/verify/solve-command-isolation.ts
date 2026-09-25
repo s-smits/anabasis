@@ -26,12 +26,13 @@ import {
   nodeRuntimeReadRoots,
 } from "./linux-bwrap.ts";
 import type { EnvValues } from "../backends/scrub-env.ts";
-import { canonicalForms, covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
+import { covers, moveBlockingRules, sbRule } from "./seatbelt-path-guard.ts";
 import type { SolveIsolationPolicy } from "./solve-sandbox.ts";
 import {
   BUILT_COMMAND_SCRATCH_DENY,
   RUN_DATA_DENY_PATTERNS,
   VERIFIER_TEMP_SIBLING_DENY_PATTERNS,
+  canonicalForms,
   darwinToolchainInstallRoots,
   darwinUserTempRoot,
   hostToolchainEnv,

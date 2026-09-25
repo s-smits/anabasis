@@ -96,7 +96,7 @@ function execution(
   workshopSequence = 1,
 ): BuilderExecutionEvidence {
   const base: BuilderExecutionEvidence = {
-    schema: "builder-execution/v5",
+    schema: "builder-execution/v6",
     backend: "codex",
     runtimeIdentity: null,
     turns: 6,
@@ -105,12 +105,6 @@ function execution(
     usage: { inputTokens: null, outputTokens: null, costUsd: null, reportedTurns: 0, estimatedTurns: 0 },
     firstToolMs: 100,
     submits: [attempt(1, false, ["missing-check", "missing-check"]), attempt(2, true, [])],
-    firstSubmitMs: 1_000,
-    submitCounts: { raw: 2, candidates: 2, controllerTerminals: 0 },
-    repeatedFindingSubmits: 0,
-    unchangedTreeSubmits: 0,
-    uniqueCandidateTrees: 2,
-    repeatedTreeSubmits: 0,
     partialTurn: null,
     failedCalls: [],
     failedCallsOmitted: 0,
@@ -199,6 +193,27 @@ describe("a tool call's label", () => {
 });
 
 describe("Builder tool journeys", () => {
+  it("counts the finding codes each refused preview recorded", () => {
+    const camp = campaign();
+    camp.session({
+      customCalls: [
+        call(1, "correctness_check.check", {
+          semantic: { outcome: "blocked", findingCodes: ["missing-check", "root-unread"] },
+        }),
+        call(2, "correctness_check.check", {
+          semantic: { outcome: "blocked", findingCodes: ["root-unread"] },
+        }),
+        call(3, "correctness_check.check", { semantic: { outcome: "clear" } }),
+      ],
+    });
+
+    const preview = camp.report().tools.find((row) => row.tool === "correctness_check");
+    expect(preview?.semantic).toMatchObject({
+      observations: 3,
+      byFindingCode: { "missing-check": 1, "root-unread": 2 },
+    });
+  });
+
   it("joins nearby tool calls to submit and workshop outcomes", () => {
     const camp = campaign();
     camp.session();
@@ -322,7 +337,6 @@ describe("Builder tool journeys", () => {
         execution({
           toolCalls: counts({ submit: 1 }),
           submits: [],
-          submitCounts: { raw: 0, candidates: 0, controllerTerminals: 0 },
           customCalls: [],
         }),
       ),
@@ -363,7 +377,7 @@ describe("Builder tool journeys", () => {
   it("keeps the original numbered session and surfaces an unreadable gap", () => {
     const camp = campaign();
     camp.session();
-    camp.put("builder-execution-02.json", '{"schema":"builder-execution/v5"');
+    camp.put("builder-execution-02.json", '{"schema":"builder-execution/v6"');
     camp.put("builder-execution-03.json", JSON.stringify(execution({ writtenAt: LATER })));
 
     const first = camp.report().campaigns[0];
@@ -416,7 +430,6 @@ describe("Builder tool journeys", () => {
       // v4 requires the aggregate to equal its own per-name map, so three named submits are three.
       toolCalls: { total: 3, failed: 1, byName: { submit: 3 }, custom: 3, native: 0 },
       failedByName: { submit: 1 },
-      submitCounts: { raw: 3, candidates: 2, controllerTerminals: 1 },
       // v4 numbers receipts 1..n in dispatch order, so the turn a receipt names is its own field.
       customCalls: [
         { ...call(1, "submit.submit", { dispatch: "threw" }), turn: 3 },

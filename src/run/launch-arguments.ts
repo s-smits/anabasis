@@ -7,11 +7,8 @@
  * nothing downstream re-reads a raw string.
  */
 
-import {
-  type ProjectBackendSelection,
-  type ProjectBackendSlot,
-  admitBackendSelection,
-} from "../backends/project-backends.ts";
+import { admitBackendSelection } from "../backends/project-backends.ts";
+import type { BackendSlot, ProjectBackendSelection } from "../backends/resolve.ts";
 import { builtSolveConcurrency } from "./session-pool.ts";
 
 /** The one policy an invocation may fix: measure and stop only. */
@@ -51,7 +48,7 @@ export interface FullRunArgs {
    *  CLI admission defaults this to true; false is the explicit opt-out. */
   dcg?: boolean;
   /** Absolute controller-owned engine profile captured before the Builder opens. */
-  backendSelections?: Partial<Record<ProjectBackendSlot, ProjectBackendSelection>>;
+  backendSelections?: Partial<Record<BackendSlot, ProjectBackendSelection>>;
 }
 
 const FULL_RUN_USAGE =
@@ -115,7 +112,7 @@ function text(field: "prompt" | "project" | "runId"): Apply {
   };
 }
 
-function backend(slot: ProjectBackendSlot): Apply {
+function backend(slot: BackendSlot): Apply {
   return (args, value) => {
     args.backendSelections = { ...args.backendSelections, [slot]: admitBackendSelection(slot, value) };
   };

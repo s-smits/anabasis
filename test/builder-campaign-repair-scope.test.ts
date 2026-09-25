@@ -27,9 +27,7 @@ import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.
 afterAll(cleanupScratch);
 
 describe("the scope a repair round is given", () => {
-  it("lets a rebuild through the durable unchanged-candidate ceiling it would otherwise refuse", () => {
-    // The reset replaces the counted commit before any session opens; refusing on it made every
-    // rebuild of a stalled epoch a permanent stop, since the epoch key derives from the kickoff.
+  it("refuses at the durable unchanged-candidate ceiling before opening a session", () => {
     const commit = "d".repeat(40);
     const memory = {
       clause: null,
@@ -43,7 +41,6 @@ describe("the scope a repair round is given", () => {
       carried: [],
     };
     expect(preSessionRefusal({}, memory)).toMatchObject({ clauses: ["authoring-stalled"] });
-    expect(preSessionRefusal({ rebuildReset: "starter" }, memory)).toBeNull();
   });
 
   it("opens product repair whose findings require public task edits", () => {

@@ -129,7 +129,7 @@ describe("the admission a repair earns", () => {
     );
     expect(outcome).toMatchObject({
       buildAdmissible: true,
-      experimentScope: { requested: "build", actual: "build" },
+      experimentScope: { actual: "build", freeze: null },
     });
     expect(censusRuns).toBe(1);
     expect(answers).toHaveLength(1);
@@ -261,7 +261,7 @@ describe("the admission a repair earns", () => {
     );
     expect(outcome).toMatchObject({
       buildAdmissible: true,
-      experimentScope: { requested: "build", actual: "build" },
+      experimentScope: { actual: "build" },
     });
     expect(outcome.iterations).toHaveLength(1);
     expect(outcome.iterations[0]?.workspaceChange?.changedPaths).toContain("correctness-model/brief.json");
@@ -540,7 +540,7 @@ describe("the admission a repair earns", () => {
  *  capability rebuild, and the campaign prepares the workspace the session opens on. The witness
  *  is the session's own first read of that workspace — the same surface a real model sees. */
 describe("e2e: a reopen rebuild opens the session on the previous harness and mounts harness_reset", () => {
-  const witness = async (campaignDir: string, rebuildReset: string | undefined, marker: string) => {
+  const witness = async (campaignDir: string, resetKey: string | undefined, marker: string) => {
     const workspace = join(campaignDir, "workspace");
     const observations: { oldDesign: boolean; uncommitted: boolean; memory: string; tools: string[] }[] = [];
     await expect(
@@ -551,7 +551,7 @@ describe("e2e: a reopen rebuild opens the session on the previous harness and mo
           kickoff: BUILD_A_HARNESS,
           expectedTasks: 4,
           experiment: "build",
-          ...keyIfDefined("rebuildReset", rebuildReset),
+          ...keyIfDefined("resetKey", resetKey),
         },
         {
           tools: [],

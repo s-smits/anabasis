@@ -7,9 +7,10 @@
  * inputs is the same. Reference artifacts remain protected evidence throughout.
  */
 
+import { capturedJsonParse, capturedJsonStringify, capturedStructuredClone } from "../meta/json-runtime.ts";
+import { capturedExecPath } from "../meta/process.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
 import { harnessSettings } from "./harness-config.ts";
-import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { isObject, type JsonValue } from "../meta/json-shape.ts";
@@ -23,9 +24,9 @@ import {
   type VerifierLifetime,
   type VerifierProcessLease,
   VerifierOperationalStop,
-  settleUnspawned,
   superviseVerifierProcess,
 } from "../verify/verifier-lifetime.ts";
+import { launchConfinedChild } from "../verify/verifier-lifetime-process.ts";
 import {
   bundleReferenceSolve,
   retainEvaluatorBundle,
@@ -38,13 +39,6 @@ import {
 } from "./solvability-stages.ts";
 import type { GeneratedSolveFailureKind } from "./brief.ts";
 import type { PublicTask } from "./task-split.ts";
-import {
-  trustedExecPath,
-  trustedJsonParse,
-  trustedJsonStringify,
-  trustedSpawn as spawn,
-  trustedStructuredClone,
-} from "./trusted-runtime.ts";
 import { REFERENCE_SOLVE_PROTOCOL, REFERENCE_SOLVE_READY } from "./reference-solve-wire.ts";
 
 const REFERENCE_SOLVE_STDOUT_MAX = 1_048_576;
@@ -175,7 +169,7 @@ function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   }
   let response: unknown;
   try {
-    response = trustedJsonParse(responseText);
+    response = capturedJsonParse(responseText);
   } catch {
     throw new ReferenceSolveProcessFailure(
       "generated-solve-protocol",
@@ -275,23 +269,12 @@ async function runReferenceChild({ bundle, policy, request, timeoutMs, lifetime 
     cell: bundle.dir,
     requestDigest: sha256(request),
   });
-  let child: ReferenceChild;
-  try {
-    child = spawn({
-      cmd: [policy.executable, ...policy.launchArgs, bundle.file],
-      cwd: bundle.dir,
-      env: policy.runtimeEnvironment,
-      detached: true,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-  } catch (error) {
-    settleUnspawned(lease);
-    throw new ReferenceSolveProcessFailure("reference-solve-host", "environment", errorMessage(error));
-  }
-  const output = cancellableByteStream(child.stdout),
-    errors = cancellableByteStream(child.stderr);
+  const { child, output, errors } = launchConfinedChild(
+    lease,
+    policy,
+    bundle,
+    (message) => new ReferenceSolveProcessFailure("reference-solve-host", "environment", message),
+  );
   const handshake = referenceHandshake(child, policy, request, () => {
     void supervision.stop().catch(() => {});
   });
@@ -384,9 +367,9 @@ async function prepareReferenceSolve(
   } catch (cause) {
     throw new ReferenceSolveProcessFailure("reference-solve-host", "environment", errorMessage(cause));
   }
-  const request = trustedJsonStringify({
+  const request = capturedJsonStringify({
     protocol: REFERENCE_SOLVE_PROTOCOL,
-    task: trustedStructuredClone(task),
+    task: capturedStructuredClone(task),
   });
   return { bundle, policy, request, timeoutMs, lifetime: verifierLifetime };
 }
@@ -397,7 +380,7 @@ export async function executeIsolatedReferenceSolve(
   slugDir: string,
   task: PublicTask<JsonValue>,
   timeoutMs = harnessSettings(slugDir).referenceSolveMs,
-  executable = trustedExecPath,
+  executable = capturedExecPath,
   verifierLifetime?: VerifierLifetime,
 ): Promise<{ artifact: unknown }> {
   return runReferenceChild(
@@ -453,7 +436,7 @@ export async function referenceSolveStage(
     input.slugDir,
     input.task,
     input.timeoutMs ?? harnessSettings(input.slugDir).referenceSolveMs,
-    input.executable ?? trustedExecPath,
+    input.executable ?? capturedExecPath,
     input.verifierLifetime,
   );
   const { value, receipt } = await throughStage(

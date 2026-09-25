@@ -68,26 +68,28 @@ async function run(command: string, tree: string | null = null): Promise<{ text:
 }
 
 describe("the shared temporary directories", () => {
-  it("takes the confstr directory and compiles C under a launchd-shaped private TMPDIR", async () => {
-    if (runtimeProcess.platform !== "darwin") return;
-    const confstr = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"])
-      .stdout.toString()
-      .trim()
-      .replace(/\/$/, "");
-    const previous = Bun.env.TMPDIR;
-    Bun.env.TMPDIR = "/private/var/tmp/ana-test-private-tmp";
-    try {
-      expect(darwinUserTempRoot()).toBe(confstr);
-      const result = await run(
-        String.raw`printf '#include <stdio.h>\nint main(void){puts("built");return 0;}\n' > a.c && cc a.c -o a && ./a`,
-      );
-      expect(result.threw).toBe(false);
-      expect(result.text).toContain("built");
-    } finally {
-      if (previous === undefined) delete Bun.env.TMPDIR;
-      else Bun.env.TMPDIR = previous;
-    }
-  });
+  it.if(runtimeProcess.platform === "darwin")(
+    "takes the confstr directory and compiles C under a launchd-shaped private TMPDIR",
+    async () => {
+      const confstr = Bun.spawnSync(["/usr/bin/getconf", "DARWIN_USER_TEMP_DIR"])
+        .stdout.toString()
+        .trim()
+        .replace(/\/$/, "");
+      const previous = Bun.env.TMPDIR;
+      Bun.env.TMPDIR = "/private/var/tmp/ana-test-private-tmp";
+      try {
+        expect(darwinUserTempRoot()).toBe(confstr);
+        const result = await run(
+          String.raw`printf '#include <stdio.h>\nint main(void){puts("built");return 0;}\n' > a.c && cc a.c -o a && ./a`,
+        );
+        expect(result.threw).toBe(false);
+        expect(result.text).toContain("built");
+      } finally {
+        if (previous === undefined) delete Bun.env.TMPDIR;
+        else Bun.env.TMPDIR = previous;
+      }
+    },
+  );
 
   it("lets mktemp -d and /tmp writes through and keeps the product's own trees closed", async () => {
     const made = await run(

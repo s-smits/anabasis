@@ -18,10 +18,6 @@ export type { JsonObject };
 /** This walk had been written here a sixth time; `asRecord` in src/meta/json-shape.ts owns it. */
 export const object = asRecord;
 
-function array(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 export function text(value: unknown): string | null {
   return isString(value) && value.trim() !== "" ? value : null;
 }
@@ -34,12 +30,6 @@ export function number(value: unknown): number | null {
   return isNumber(value) && Number.isFinite(value) ? value : null;
 }
 
-export function stringArray(value: unknown): string[] {
-  return array(value).filter((item): item is string => isString(item));
-}
-
 export function objectArray(value: unknown): JsonObject[] {
-  return array(value)
-    .map(object)
-    .filter((item): item is JsonObject => item !== null);
+  return (Array.isArray(value) ? value : []).map(object).filter((item): item is JsonObject => item !== null);
 }

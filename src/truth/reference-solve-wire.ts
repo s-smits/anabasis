@@ -13,7 +13,7 @@
  * Neither end could hold it. The parent's import graph is spawn, bundling and confinement
  * witnessing, which is the whole of what the confined child is meant not to contain; the child
  * binds `Bun.stdin`'s reader at import, which is not something the controller process should
- * evaluate to learn a string. `trusted-runtime.ts` is imported by both but owns captured runtime
+ * evaluate to learn a string. `meta/json-runtime.ts` is imported by both but owns captured runtime
  * primitives, and a wire tag is not one.
  */
 

@@ -48,12 +48,6 @@ export const POLICY = {
      *  src/run/full-run-round.ts as `AUTHORING_STALL_LIMIT`, which explains there why a held
      *  candidate is counted against the same allowance. */
     buildFailedRounds: 3,
-    /** Consecutive completed measurements after which the selector still asks to measure for
-     *  feedback: the battery ran, yet no admitted feedback and no difficulty evidence reached the
-     *  selector, so a further identical measurement creates nothing new. This is
-     *  `environmentBlockedRounds` seen from the analysis side rather than the provider side, and
-     *  matches it. Read by src/run/full-run-round.ts. */
-    stalledMeasureRounds: 3,
     /** Consecutive gate refusals carrying one findings hash before the authoring loop terminates,
      *  counting the current attempt. Eight sits strictly between the deepest observed convergent
      *  streak — one hash repeated six times before the gates cleared — and the observed

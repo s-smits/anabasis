@@ -1,12 +1,17 @@
 import { RUN_MANIFEST_NAME } from "../../src/claim/evidence-log.ts";
 import { hashBundle } from "../../src/claim/bundle-hash.ts";
 import { batteryHash, BATTERY_FILES } from "../../src/claim/fingerprint.ts";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "../../src/meta/filesystem.ts";
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { sha256 } from "../../src/meta/digest.ts";
 import { join } from "../../src/meta/path.ts";
 
-/** Record the fixture's actual product bytes; a trace alone does not bind its corpus. */
-export function recordDigestBattery(root: string, runIds: string[]): void {
+/** Record the fixture's actual product bytes; a trace alone does not bind its corpus. `cases` gives
+ *  a run's battery case rows, which the digest reads only through the manifest-verified record. */
+export function recordDigestBattery(
+  root: string,
+  runIds: string[],
+  cases: Record<string, unknown[]> = {},
+): void {
   const bundleSnapshot = {
     agentHash: hashBundle(join(root, "agent")).hash,
     correctnessModelHash: hashBundle(join(root, "correctness-model"), { excludeTop: [...BATTERY_FILES] })
@@ -15,7 +20,11 @@ export function recordDigestBattery(root: string, runIds: string[]): void {
   };
   for (const runId of runIds) {
     const runDir = join(root, "runs", runId);
-    writeFileSync(join(runDir, "battery.json"), JSON.stringify({ runId, bundleSnapshot, cases: [] }));
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(
+      join(runDir, "battery.json"),
+      JSON.stringify({ runId, bundleSnapshot, cases: cases[runId] ?? [] }),
+    );
     // Preserve trace bytes: the fixture has already captured their pointer hashes.
     const files = Object.fromEntries(
       readdirSync(runDir, { recursive: true, encoding: "utf8" })

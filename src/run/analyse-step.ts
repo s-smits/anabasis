@@ -7,10 +7,10 @@
  * The census, which already ran inside the battery, checks the Judge against the verifier. The
  * epoch reviewer reads the measured tree and asks whether the result reflects the requested
  * capability; a weak evaluation can produce passes without exposing its omissions in failures.
- * The diagnosis reader proposes causes for the unresolved issues that are
- * left. None of them changes a pass, an acceptance, a claim or a promotion: the reviewer's findings
- * enter the same admission gate as every host finding, and the diagnosis reader only annotates
- * issues the controller derived.
+ * The diagnosis reader reads the solver's traces and locates where the harness failed it on the
+ * standing issues that are left. None of them changes a pass, an acceptance, a claim or a
+ * promotion: the reviewer's findings enter the same admission gate as every host finding, and the
+ * diagnosis reader only annotates issues the controller derived.
  *
  * Publication order preserves completed evidence. Admission and the issue register are written
  * from host and Judge evidence before either advisory model turn, then updated with reader results. The
@@ -43,6 +43,7 @@ import {
   readLatestRebuildAdvice,
   rebuildAdvicePath,
 } from "../author/rebuild-advice.ts";
+import { batteryCondition } from "../author/issue-condition.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
@@ -54,6 +55,8 @@ import { readValidatedBrief } from "../truth/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
+import { type ExperimentSubmission, parseExperimentSubmission } from "../author/experiment-plan.ts";
+import { readRecordedBatteryRecord } from "../truth/battery-record.ts";
 
 export interface AnalyseStepResult {
   judges: JudgeReviewsResult;
@@ -72,7 +75,7 @@ export interface AnalyseStepResult {
 }
 
 /** Reader results decided locally, before or without a model turn. */
-const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off", "no-offered-issue"]);
+const LOCAL_READER_REASONS = new Set(["no-standing-issue", "review-slot-off"]);
 
 interface AnalyseStepOptions {
   safeguardContext?: SafeguardContext;
@@ -84,6 +87,19 @@ interface AnalyseStepOptions {
   publicRequest?: string;
   /** Test interface for the reviewer turn: a reader that dies mid-turn. */
   epochReview?: typeof runEpochReview;
+}
+
+/** The plan recorded with the battery under review, or null when the battery recorded none. The
+ *  analysis above has already read this battery through the same attested reader, so a record it
+ *  cannot read again here has changed underneath the round; the reviewer is advisory, and is then
+ *  told there is no plan rather than stopping the analysis. */
+export function recordedPlan(measuredDir: string, runId: string): ExperimentSubmission | null {
+  try {
+    const record = readRecordedBatteryRecord(join(measuredDir, "runs", runId), runId);
+    return parseExperimentSubmission(record.experimentAuthoring?.proposal ?? null);
+  } catch {
+    return null;
+  }
 }
 
 export async function analyseStep(
@@ -111,6 +127,7 @@ export async function analyseStep(
   // The register as it stands before this battery: the epoch reviewer is offered the issues that
   // are still standing so it can dispute one, and the derived packet below re-reads the same file.
   const standing = readLatestRebuildAdvice(repoRoot, slug);
+  const condition = batteryCondition(analysis, measuredDir);
   // Per-run admission records the analysis. The latest admission for the next build is
   // published by the run driver after product selection: a held candidate's
   // packet stays recorded here and never seeds the next build against the tree it failed to
@@ -130,9 +147,12 @@ export async function analyseStep(
       ...reviewFindings,
     ]);
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });
-    const derived = attachIssueReadings(deriveRebuildAdvice(analysis, judges, admission, standing), {
-      disputes,
-    });
+    const derived = attachIssueReadings(
+      deriveRebuildAdvice(analysis, judges, admission, standing, condition),
+      {
+        disputes,
+      },
+    );
     writeCompleted(rebuildAdvicePath(repoRoot, slug, runId), derived);
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), derived);
     return { admission, derived };
@@ -149,6 +169,7 @@ export async function analyseStep(
     treeRoot: analysis.treeRoot,
     analysis,
     priorAdvice: standing ?? null,
+    experiment: recordedPlan(measuredDir, runId),
     ...contested,
     review,
     publicRequest: options.publicRequest ?? null,
@@ -164,9 +185,9 @@ export async function analyseStep(
   const reading = await readDiagnoses({
     repoRoot,
     analysis,
+    measuredDir,
     advice: derived,
     review,
-    ...keyIfDefined("safeguardContext", options.safeguardContext),
     ...keyIfDefined("observer", observer),
     ...keyIfDefined("providerBudget", providerBudget),
   });

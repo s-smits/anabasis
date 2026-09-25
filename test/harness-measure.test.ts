@@ -11,10 +11,13 @@ import { readCaseRecord } from "../src/claim/case-record.ts";
 import { EPOCH_REVIEW_SCHEMA, measuredConditionOf } from "../src/review/epoch-review-findings.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { measurementDriverId } from "../src/run/harness-measure.ts";
+import { LIMIT_MARGIN_SCHEMA, limitMarginFile, readLimitMargin } from "../src/run/limit-margin.ts";
 import { MATCHING_TASKS, scriptedMatchingSolver } from "./helpers/matching-fixture.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { DRIVER_ID, measure, measureScratch, scaffoldRepo } from "./helpers/measure-repo.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
+import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
+import { hashJsonValue } from "../src/meta/stable-json.ts";
 
 /**
  * The shared measurement entrypoint. The driver reads an adopted product, resolves the Built slot,
@@ -102,10 +105,16 @@ describe("measureHarness", () => {
     ).rejects.toThrow("provider interrupted the epoch review");
     const interrupted = JSON.parse(readFileSync(ledger, "utf8"));
     expect(interrupted.runId).toBe("m4-ledger");
+    // Each family's public inputs are digested from the battery's own recorded task projections,
+    // and the two families ran different tasks, so their digests differ.
+    const digest = expect.stringMatching(/^[0-9a-f]{64}$/);
     expect(interrupted.families).toEqual([
-      { family: "single-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0 },
-      { family: "two-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0 },
+      { family: "single-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs: digest },
+      { family: "two-part", verified: 2, passed: 2, unaccepted: 0, nonResults: 0, publicInputs: digest },
     ]);
+    expect(interrupted.families[0].publicInputs).not.toBe(interrupted.families[1].publicInputs);
+    expect(interrupted.scoringHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(interrupted.measuredCondition).toMatch(/^[0-9a-f]{64}$/);
     // The complete step republishes the same battery's ledger with what the readers attached.
     const complete = await analyseStep(repo, "bridge-truss", "m4-ledger", measured, { resolvedSlots });
     expect(JSON.parse(readFileSync(ledger, "utf8"))).toEqual(complete.advice);
@@ -147,10 +156,81 @@ describe("measureHarness", () => {
     }
   });
 
+  // The review of a measured battery is shown the plan that battery was measured under, read from
+  // the battery's own record rather than from a workspace that may have moved on since. A battery
+  // measured with no plan hands the reviewer null, which it states rather than omits.
+  it.concurrent("hands the epoch reviewer the plan recorded with the battery it reads", async () => {
+    const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-plan"), { toolsSpec: true, conformance: true });
+    const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
+    const body = {
+      ...PLAN_FIELDS,
+      scope: "product" as const,
+      gap: "Every family passes.",
+      change: "Couple two published limits.",
+      expectedResult: "At most one pass.",
+      target: { comparator: "at-most" as const, verifiedPasses: 1 },
+    };
+    const proposal = { ...body, digest: hashJsonValue(body) };
+    const base = {
+      repoRoot: repo,
+      processEnv,
+      solver: scriptedMatchingSolver(new Set(), () => {}),
+      createVerifier: () => fullFakeHost(),
+      isolationProbe: () => probeEvidence(true),
+      sessionProbe: async () => builtSession(),
+    };
+    await measure({
+      ...base,
+      runId: "m4-plan",
+      experimentAuthoring: {
+        proposal,
+        operation: { operation: "harness-intervention", moved: ["harness"] },
+        actual: "build",
+        baseline: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
+        changedTaskIds: null,
+      },
+    });
+    await measure({ ...base, runId: "m4-noplan" });
+    const measured = join(repo, "domains", "bridge-truss");
+    const resolvedSlots = {
+      ...resolveSlots(repo, "bridge-truss", loadRepoEnv(repo, processEnv)),
+      review: { enabled: false, source: "operator" } as const,
+    };
+    const shown = new Map<string, unknown>();
+    for (const runId of ["m4-plan", "m4-noplan"]) {
+      await analyseStep(repo, "bridge-truss", runId, measured, {
+        resolvedSlots,
+        epochReview: async (input) => {
+          shown.set(runId, input.experiment);
+          return {
+            schema: EPOCH_REVIEW_SCHEMA,
+            slug: "bridge-truss",
+            runId,
+            status: "skipped",
+            reason: "review-slot-off",
+            condition: null,
+            reviewerPin: null,
+            reviewerEffort: null,
+            requestDigest: "request",
+            obligationsDigest: "obligations",
+            reads: [],
+            contestedReads: [],
+            coverage: { files: 0, opened: 0, chars: 0 },
+            findings: [],
+            disputes: [],
+            report: null,
+          };
+        },
+      });
+    }
+    expect(shown.get("m4-plan")).toEqual(proposal);
+    expect(shown.get("m4-noplan")).toBeNull();
+  });
+
   it.concurrent("drives one battery through measurement and records its claim and case rows", async () => {
     const repo = scaffoldRepo(join(SCRATCH_ROOT, "e2e-spec"), { toolsSpec: true, conformance: true });
     const seen = new Set<string>();
-    const started: string[] = [];
+    let started = 0;
     const result = await measure({
       runId: "m4-e2e",
       repoRoot: repo,
@@ -163,11 +243,13 @@ describe("measureHarness", () => {
       createVerifier: () => fullFakeHost(),
       isolationProbe: () => probeEvidence(true),
       sessionProbe: async () => builtSession(),
-      onBatteryStart: (runId) => started.push(runId),
+      onBatteryStart: () => {
+        started += 1;
+      },
     });
     // One battery, one run id: the measured id is the base id, with no variant suffix.
     expect(result.runId).toBe("m4-e2e");
-    expect(started).toEqual(["m4-e2e"]);
+    expect(started).toBe(1);
     expect(result.isolation.strength).toBe("physical");
     expect(existsSync(join(repo, "domains", "bridge-truss", "runs", "m4-e2e-repair-off"))).toBe(false);
     expect(existsSync(join(repo, "domains", "bridge-truss", "runs", "m4-e2e-repair-on"))).toBe(false);
@@ -265,6 +347,19 @@ describe("measureHarness", () => {
     const rederived = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
     expect(hashJsonBytes(rederived)).toBe(admitted.digest);
     expect(admitFindings(repo, rederived, hostFindings(repo, rederived)).feedback).toEqual(admitted.feedback);
+    // The limit margin is computed from hidden operands and reference artifacts, so it is protected
+    // too: the measure step records it host-side, and changing only its numbers moves neither the
+    // analysis digest nor the admitted feedback.
+    const marginPath = limitMarginFile(join(repo, "campaigns", "bridge-truss"), "m4-e2e");
+    expect(readLimitMargin(marginPath)?.schema).toBe(LIMIT_MARGIN_SCHEMA);
+    const margin = JSON.parse(readFileSync(marginPath, "utf8"));
+    margin.families = [{ family: "secret-margin", tasks: 1, paired: 9, within1pct: 9, within5pct: 9 }];
+    writeFileSync(marginPath, JSON.stringify(margin));
+    const afterMargin = deriveIterationAnalysis(repo, "bridge-truss", "m4-e2e");
+    expect(hashJsonBytes(afterMargin)).toBe(admitted.digest);
+    const marginFeedback = admitFindings(repo, afterMargin, hostFindings(repo, afterMargin)).feedback;
+    expect(marginFeedback).toEqual(admitted.feedback);
+    expect(JSON.stringify(marginFeedback)).not.toContain("secret-margin");
     // An unrecorded verifier file inside the recorded run directory invalidates the evidence. The
     // analysis refuses it instead of silently omitting the file.
     const protectedTrace = join(repo, "domains", "bridge-truss", "runs", "m4-e2e", "cases");

@@ -8,7 +8,7 @@ import { processGroupExists } from "../meta/subprocess.ts";
 import { errorCode, type RuntimeSignal } from "../meta/runtime-values.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-export { superviseVerifierProcess } from "./verifier-lifetime-process.ts";
+export { settleUnspawned, superviseVerifierProcess } from "./verifier-lifetime-process.ts";
 
 export interface VerifierProcessSettlement {
   receiptId: string;
@@ -66,22 +66,6 @@ const STOP_SAID: Record<VerifierStopReason, string> = {
 type Intent = Static<typeof intentSchema>;
 type Stored = { dir: string; intent: Intent; pid: number | null; groupReaped: boolean };
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/**
- * Settle a lease whose child never started. Nothing was reaped because no group exists, no output
- * was opened so collection is complete, and no deadline ran. Three spawn sites settle this way — the
- * tool host, the reference solve and the evaluator process — and a receipt that disagrees with the
- * others about a child that never existed is a cleanup fact the terminal reader cannot resolve.
- */
-export function settleUnspawned(lease: VerifierProcessLease): void {
-  lease.settle({
-    receiptId: lease.id,
-    exit: null,
-    groupReaped: true,
-    outputComplete: true,
-    timedOut: false,
-  });
-}
 
 export class VerifierOperationalStop extends Error {
   readonly code = "verifier-cleanup-pending";

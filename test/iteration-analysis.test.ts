@@ -213,9 +213,9 @@ describe("the routing decision", () => {
         owner,
       });
     }
-    // environment/judge/unknown are NOT Builder-owned sessions; a defect proposal naming them
-    // (or naming nothing) is non-actionable here, whatever produced it.
-    for (const owner of ["environment", "judge", "unknown", null] as const) {
+    // `environment` is not a Builder-owned surface; a defect proposal naming it -- or naming
+    // nothing -- is non-actionable here, whatever produced it.
+    for (const owner of ["environment", null] as const) {
       expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toEqual({
         owner: null,
         reason: "not-builder-owned-surface",

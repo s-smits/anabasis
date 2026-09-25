@@ -77,6 +77,7 @@ export function closeControllerRun(
               : undefined,
         ),
         ...keyIfDefined("providerBudget", state.providerBudget ?? undefined),
+        ...keyIfDefined("readClimb", state.readClimb),
       });
     }
   } finally {
@@ -92,7 +93,7 @@ export function closeControllerRun(
         const close =
           finalRecord.outcome === "completed" ? "closed normally" : "closed after an interruption";
         fullrunLine(
-          `${launch.project.id}: run ${state.opening?.runId ?? "?"} ${close}. Result: ${finalRecord.terminalReason}. Last iteration: ${finalRecord.lastIteration ?? "none"}. Cases: ${
+          `${launch.project.id}: run ${state.opening?.runId ?? "?"} ${close}. Result: ${finalRecord.terminalReason}. Last iteration: ${finalRecord.iterations.at(-1)?.runId ?? "none"}. Cases: ${
             d.state === "recorded"
               ? `${d.verified} verified / ${d.unaccepted} had no accepted answer / ${d.nonResults} could not run / ${d.total} total`
               : d.state.replaceAll("-", " ")

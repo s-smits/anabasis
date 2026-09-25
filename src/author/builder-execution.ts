@@ -14,10 +14,15 @@
  * instead of appearing to have run for free.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { AgentTurnEvent, AgentTurnResult, BackendId, TurnUsage } from "../backends/backend-types.ts";
+import { sha256OfFile } from "../meta/digest.ts";
+import { existsSync } from "../meta/filesystem.ts";
+import { join } from "../meta/path.ts";
+import { EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE } from "./builder-memory.ts";
+import type { AgentTurnEvent, AgentTurnResult, TurnUsage } from "../backends/backend-types.ts";
+import type { BackendKind } from "../backends/resolve.ts";
 import type { RuntimeModelIdentity } from "../claim/runtime-model-identity.ts";
 import type { BuilderExecutionInvocation } from "../run/builder-execution-closure.ts";
-import type { ExperimentSubmission } from "./experiment-proposal.ts";
+import type { ExperimentSubmission } from "./experiment-plan.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
@@ -41,7 +46,12 @@ export type { BuilderFailedCall } from "./builder-turn-observation.ts";
 import { BuilderProseLog, type BuilderProseCapture, type BuilderProseRow } from "./builder-prose.ts";
 
 export const BUILDER_EXECUTION_EVIDENCE_FILE = "builder-execution.json";
-export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v5";
+export const BUILDER_EXECUTION_SCHEMA = "builder-execution/v6";
+
+/** The workspace files one round leaves for the next. An accepted submit ends the turn, so the
+ *  Builder writes no closing message; these files are its handover. */
+export const HANDOVER_FILES = [EXPERIMENT_FILE, MEMORY_FILE, SCRATCHPAD_FILE] as const;
+
 const MAX_CUSTOM_CALL_RECEIPTS = 512;
 
 export interface BuilderSubmitAttempt {
@@ -118,7 +128,7 @@ export interface BuilderSubmitCounts {
 
 export interface BuilderExecutionEvidence {
   schema: typeof BUILDER_EXECUTION_SCHEMA;
-  backend: BackendId | null;
+  backend: BackendKind | null;
   /** What the provider reported about itself; null when the transport reported nothing. */
   runtimeIdentity: RuntimeModelIdentity | null;
   turns: number;
@@ -146,22 +156,9 @@ export interface BuilderExecutionEvidence {
   };
   /** Milliseconds from session start to the first tool call; null when the Builder called none. */
   firstToolMs: number | null;
-  /** Milliseconds from session start to the first submission; null when it never submitted. */
-  firstSubmitMs: number | null;
+  /** Every submission in order. The counts a reader wants over them are `submitProjection`'s, derived
+   *  from these rows when read rather than stored beside them. */
   submits: BuilderSubmitAttempt[];
-  /** Submissions whose findings digest repeated the submission before it. */
-  repeatedFindingSubmits: number;
-  /** Submissions completed at the previous submission's commit. */
-  unchangedTreeSubmits: number;
-  /** Distinct candidate trees submitted. The controller validates each one once, so this is also
-   *  the number of times the conformance probes and the adoption gates actually executed. */
-  uniqueCandidateTrees: number;
-  /** Submissions at a tree an earlier submission had already completed at, whether the session came
-   *  straight back to it or wandered. Read with the field above, it says how many submissions cost
-   *  no second execution. */
-  repeatedTreeSubmits: number;
-  /** The raw and candidate-only row counts. */
-  submitCounts: BuilderSubmitCounts;
   /** The turn that was still running when this record was written, and what it had already done.
    *  Its calls are already inside `toolCalls`, while `turns` still counts settled turns only, so a
    *  record killed mid-turn says both how much work was recorded and that one turn never returned.
@@ -171,9 +168,11 @@ export interface BuilderExecutionEvidence {
    *  attempts are inside `turns` and the provider budget, because each one reserved and spent its
    *  own turn. */
   turnRetries: TurnRetryRow[];
-  /** Authoring reviews that ran after a completed tool call: the advice characters attached to that
+  /** Authoring reviews handed over at a completed tool call: the advice characters attached to that
    *  tool's result (0 when the review found nothing, null when it failed and the result went back
-   *  unchanged), and how long the review held the session, which the call's `durationMs` omits. */
+   *  unchanged), and how long handing it over and freezing the bytes for the next review held the
+   *  session, which the call's `durationMs` omits. The review ran beside the session, so its own
+   *  minutes are in neither. */
   authoringReviews: Array<{ turn: number; tool: string; adviceChars: number | null; reviewMs: number }>;
   /** Failed tool calls by name. The aggregate above says how many failed; a name says which
    *  contract the session was fighting. */
@@ -215,6 +214,11 @@ export interface BuilderExecutionEvidence {
     | "evidence-unavailable"
     | "in-flight"
     | "recorded-at-terminal";
+  /** sha256 of each file the Builder hands to its next round, read from the workspace when this
+   *  record was written, and null where the file was absent. Absent on a record whose recorder was
+   *  given no workspace. The files are the Builder's own and nothing is served from here: the
+   *  digests say whether a round changed its plan and notes, and which bytes the next one opened on. */
+  handovers?: Record<(typeof HANDOVER_FILES)[number], string | null>;
   /** Present only when cleanup prevented a trustworthy final record. */
   lifecycle?: { kind: "evidence-unavailable"; phase: "session-dispose" };
   /** The controller terminal that closed this record; present exactly on `recorded-at-terminal`. */
@@ -226,15 +230,24 @@ export interface BuilderExecutionEvidence {
   writtenAt: string;
 }
 
-type SubmitProjection = Pick<
-  BuilderExecutionEvidence,
-  | "firstSubmitMs"
-  | "repeatedFindingSubmits"
-  | "unchangedTreeSubmits"
-  | "uniqueCandidateTrees"
-  | "repeatedTreeSubmits"
-  | "submitCounts"
->;
+/** The counts a reader derives from a record's submit rows. */
+interface SubmitProjection {
+  /** Milliseconds from session start to the first submission; null when it never submitted. */
+  firstSubmitMs: number | null;
+  /** Submissions whose findings digest repeated the submission before it. */
+  repeatedFindingSubmits: number;
+  /** Submissions completed at the previous submission's commit. */
+  unchangedTreeSubmits: number;
+  /** Distinct candidate trees submitted. The controller validates each one once, so this is also
+   *  the number of times the conformance probes and the adoption gates actually executed. */
+  uniqueCandidateTrees: number;
+  /** Submissions at a tree an earlier submission had already completed at, whether the session came
+   *  straight back to it or wandered. Read with the field above, it says how many submissions cost
+   *  no second execution. */
+  repeatedTreeSubmits: number;
+  /** The raw and candidate-only row counts. */
+  submitCounts: BuilderSubmitCounts;
+}
 
 /** One gate's contribution to a refusal identity: who refused, what it said, and which finding
  *  codes and paths it carried. */
@@ -256,9 +269,8 @@ export function isCandidateSubmit(row: Pick<BuilderSubmitAttempt, "kind">): bool
   return row.kind === "candidate";
 }
 
-/** The counts a record states beside its submit rows. The writer records them here and the outcome
- *  reader derives them again from the rows, refusing any record whose stated counts are not this
- *  projection, so a hand-edited or half-written record cannot pass as one this writer produced. */
+/** The counts over a record's submit rows, derived where they are read so no stored copy can
+ *  disagree with the rows it summarises. */
 export function submitProjection(submits: readonly BuilderSubmitAttempt[]): SubmitProjection {
   const candidateRows = submits.filter(isCandidateSubmit);
   return {
@@ -322,6 +334,18 @@ function add(total: number | null, value: number | null): number | null {
   return value === null ? total : (total ?? 0) + value;
 }
 
+function handoverDigests(workspace: string): NonNullable<BuilderExecutionEvidence["handovers"]> {
+  const digest = (name: string): string | null => {
+    const path = join(workspace, name);
+    return existsSync(path) ? sha256OfFile(path) : null;
+  };
+  return {
+    [EXPERIMENT_FILE]: digest(EXPERIMENT_FILE),
+    [MEMORY_FILE]: digest(MEMORY_FILE),
+    [SCRATCHPAD_FILE]: digest(SCRATCHPAD_FILE),
+  };
+}
+
 /** The per-session collector. The driver calls the verbs and nothing here reads back into the loop,
  *  which is what keeps a recording mistake from ever changing what the Builder is allowed to do. */
 export class BuilderExecutionRecorder {
@@ -339,11 +363,12 @@ export class BuilderExecutionRecorder {
   private outputTokens: number | null = null;
   private costUsd: number | null = null;
   private firstToolMs: number | null = null;
-  private backend: BackendId | null = null;
+  private backend: BackendKind | null = null;
   private runtimeIdentity: RuntimeModelIdentity | null = null;
   private previous: { bytes: string; findingsDigest: string | null } | null = null;
   private readonly customCalls: BuilderCustomToolCall[] = [];
   private customCallsOmitted = 0;
+  private workspace: string | null = null;
   private readonly proseLog = new BuilderProseLog(() => this.since());
   private readonly running = new BuilderTurnObservation(() => this.since());
   private messagesThisTurn = 0;
@@ -361,13 +386,23 @@ export class BuilderExecutionRecorder {
     this.proseLog.push("message", text, this.turns + 1);
   }
 
+  /** The prompt the controller sends to open the next turn. */
+  prompt(text: string): void {
+    this.proseLog.push("prompt", text, this.turns + 1);
+  }
+
   private since(): number {
     return Date.now() - this.startedAt;
   }
 
   /** The transport that actually opened, read once the session exists. */
-  openedOn(backend: BackendId): void {
+  openedOn(backend: BackendKind): void {
     this.backend = backend;
+  }
+
+  /** The workspace whose handover files every later record digests. */
+  handoversIn(workspace: string): void {
+    this.workspace = workspace;
   }
 
   /** The first tool call's arrival time. */
@@ -456,6 +491,10 @@ export class BuilderExecutionRecorder {
       this.proseLog.push("message", result.assistantText, this.turns);
     }
     this.messagesThisTurn = 0;
+    for (const { tokensBefore, compacted, summary } of result.compactions ?? []) {
+      const head = `tokensBefore=${tokensBefore} compacted=${compacted}`;
+      this.proseLog.push("compaction", summary === undefined ? head : `${head}\n\n${summary}`, this.turns);
+    }
     if (result.runtimeIdentity !== undefined) this.runtimeIdentity = result.runtimeIdentity;
     // A transport that reported no tally leaves the events this turn emitted as the only account
     // of it, so the turn's calls are taken from them rather than dropped.
@@ -578,7 +617,6 @@ export class BuilderExecutionRecorder {
       // Copied, not aliased: finish() also runs per checkpoint, and an earlier snapshot must not
       // grow when a later submission lands.
       submits: [...this.submits],
-      ...submitProjection(this.submits),
       partialTurn: open.total === 0 ? null : { turn: this.turns + 1, toolCalls: open },
       failedByName: mergeCounts(this.failedByName, open.failedByName),
       turnRetries: [...this.turnRetries],
@@ -597,6 +635,7 @@ export class BuilderExecutionRecorder {
       proseOmitted: prose.omitted,
       outcome,
       writtenAt: new Date().toISOString(),
+      ...keyIfDefined("handovers", this.workspace === null ? undefined : handoverDigests(this.workspace)),
       ...keyIfDefined("lifecycle", lifecycle),
     };
   }

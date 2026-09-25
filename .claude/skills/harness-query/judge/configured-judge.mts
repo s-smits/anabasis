@@ -15,8 +15,7 @@
  * and `<KIND>_REVIEW_REASONING_EFFORT`), never as a second model source.
  */
 import { loadRepoEnv } from "#src/backends/env.ts";
-import { reasoningEffortEnv } from "#src/backends/effort-envs.ts";
-import { resolveSlots } from "#src/backends/resolve.ts";
+import { reasoningEffortEnv, resolveSlots } from "#src/backends/resolve.ts";
 import type { JudgeContext, JudgeFlags, JudgeProfile, JudgeSlot } from "./judge-option.mts";
 
 /** The review slot this repository resolves for that battery, with the file or env that chose it. */

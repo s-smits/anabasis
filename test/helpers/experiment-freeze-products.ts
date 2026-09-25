@@ -7,6 +7,7 @@
  * Linux VM, 154 s gate). The cases now live in three files, one per product variant, so they spread
  * across workers and each file builds only the variant it needs.
  */
+import { PLAN_FIELDS } from "./experiment-plan.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { expect } from "bun:test";
 import { double, required, scriptedSession } from "./doubles.ts";
@@ -26,7 +27,7 @@ import {
   createVerifierLifetime,
   closeVerifierLifetime,
 } from "../../src/verify/verifier-lifetime.ts";
-import type { BuiltHarness } from "../../src/author/campaign-types.ts";
+import type { BuiltHarness, FeedbackOwner } from "../../src/author/campaign-types.ts";
 import type { HarnessExperiment } from "../../src/critic/types.ts";
 import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
 
@@ -66,7 +67,7 @@ const CHANGED_TOOL = "#!/bin/sh\n# changed implementation\nexit 0\n";
 type IntentRow = readonly [
   string,
   "tasks" | "product",
-  "correctness-model" | "unknown" | null,
+  FeedbackOwner | null,
   HarnessExperiment | null,
   string | null,
   number,
@@ -171,6 +172,7 @@ export async function checkIntent(
       target: { comparator: "at-least" as const, verifiedPasses: 0 },
       gap: "The prior battery did not test the proposed condition.",
       change: `Change ${kind}.`,
+      ...PLAN_FIELDS,
       expectedResult: "All four tasks remain publicly solvable.",
     };
     const session = scriptedBuilderTurn(

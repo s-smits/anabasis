@@ -1,4 +1,3 @@
-import { evaluatorIndependence } from "../claim/calibration.ts";
 import type { JudgeEvidence } from "../claim/judge.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import type {
@@ -10,7 +9,7 @@ import type {
   JudgeSession,
   JudgeSubjectEvidence,
 } from "./judge-contract.ts";
-import { type NonResultKind, isNonResultKind } from "../claim/record-events.ts";
+import { isNonResultKind } from "../claim/record-events.ts";
 export type {
   Judge,
   JudgeAttempt,
@@ -153,18 +152,9 @@ function observationIntegrity(condition: boolean, detail: string): asserts condi
 }
 
 /** Controller-owned aggregation. Only this projection sees both judge and verifier verdicts.
- *  `evaluatedPin` is the built agent's backend pin — independence is derived from the two pins
- *  here, never asserted by a caller. The Judge has no control census, so the evidence is always
- *  `unvalidated`: every disagreement it records is advice. */
-/** What the census as a whole says, in the order the counts rule each other out: nothing came
- *  back, then verdicts missing from the offered battery, then no comparable pair to read. */
-function censusDecision(verdicts: number, offered: number, disagreementRate: number | null) {
-  if (verdicts === 0) return "non-result" as const;
-  if (offered - verdicts > 0) return "incomplete-census" as const;
-  if (disagreementRate === null) return "no-battery-verdicts" as const;
-  return "advisory-comparison" as const;
-}
-
+ *  `evaluatedPin` is the built agent's backend pin, recorded so independence can be derived from
+ *  the two pins, never asserted by a caller. The Judge has no control census, so the evidence is
+ *  always `unvalidated`: every disagreement it records is advice. */
 export function summarizeJudge(
   session: JudgeSession | undefined,
   correctnessModelId: string,
@@ -178,7 +168,7 @@ export function summarizeJudge(
   const offeredBattery = offered?.battery ?? battery.length;
   observationIntegrity(
     offeredBattery >= battery.length,
-    `censusSize.battery (${offeredBattery} offered) cannot be below the ${battery.length} completed battery observations`,
+    `offered (${offeredBattery}) cannot be below the ${battery.length} completed battery observations`,
   );
   for (const row of battery) {
     observationIntegrity(
@@ -203,37 +193,19 @@ export function summarizeJudge(
   const passFailed = disagreements.filter(
     (row) => row.verifierVerdict === true && row.evidence.verdict === false,
   );
-  const verifierPassJudgeFail = passFailed.length;
   const vetoed = passFailed.filter((row) => confirmedDisagreement(row.evidence)).length;
-  const verifierFailJudgePass = disagreements.length - verifierPassJudgeFail;
-  const disagreementRate = comparable.length === 0 ? null : disagreements.length / comparable.length;
-  // Typed causes of evaluator errors. Undefined when nothing failed, so ordinary evidence does
-  // not grow a permanent empty object; on a zero-verdict census this is the recorded answer to
-  // "what failed", per NonResultKind, instead of one flattened prose string per subject.
-  const errorKindCounts: Partial<Record<NonResultKind, number>> = {};
-  for (const row of battery) {
-    const kind = row.evidence.errorKind;
-    if (kind !== null) errorKindCounts[kind] = (errorKindCounts[kind] ?? 0) + 1;
-  }
-  const errorKinds = Object.keys(errorKindCounts).length > 0 ? errorKindCounts : undefined;
-  const decision = censusDecision(batteryVerdicts, offeredBattery, disagreementRate);
   return {
     judge: "unvalidated",
     judgePin: session.pin,
     ...keyIfDefined("promptPolicyDigest", session.promptPolicyDigest),
     evaluatedPin,
     correctnessModelId,
-    censusSize: { controls: 0, battery: offeredBattery, total: offeredBattery },
-    verdicts: { controls: 0, battery: batteryVerdicts, total: batteryVerdicts },
+    offered: offeredBattery,
+    verdicts: batteryVerdicts,
+    abstentions: batteryAbstentions,
     disagreements: disagreements.length,
     disagreementDenominator: comparable.length,
-    disagreementRate,
-    verifierPassJudgeFail,
-    verifierFailJudgePass,
+    verifierPassJudgeFail: passFailed.length,
     vetoed,
-    decision,
-    abstentions: { controls: 0, battery: batteryAbstentions, total: batteryAbstentions },
-    independence: evaluatorIndependence(session.pin, evaluatedPin),
-    ...keyIfDefined("errorKinds", errorKinds),
   };
 }

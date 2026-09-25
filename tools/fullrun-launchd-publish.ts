@@ -1,10 +1,10 @@
+import { sha256, sha256OfFile } from "../src/meta/digest.ts";
 import {
   closeSync,
   constants,
   fstatSync,
   lstatSync,
   openSync,
-  readFileSync,
   unlinkSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
@@ -40,10 +40,6 @@ try {
 }
 if (!parentIsDirectory) fail(`destination parent is not a real directory: ${dirname(destination)}`);
 
-function digest(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-}
-
 if (verify) {
   if (expectedDigest === undefined) fail("expected digest is required");
   let destinationIsFile = false;
@@ -53,14 +49,14 @@ if (verify) {
     // The caller receives one typed refusal for a missing, replaced or inaccessible plist.
   }
   if (!destinationIsFile) fail(`published plist is no longer a regular file: ${destination}`);
-  const actualDigest = digest(readFileSync(destination));
+  const actualDigest = sha256OfFile(destination);
   if (actualDigest !== expectedDigest) fail(`published plist digest changed: ${destination}`);
   console.log(actualDigest);
 } else {
   if (receiptPath === undefined) fail("receipt path is required");
   let destinationIdentity: { dev: number; ino: number } | undefined;
   const bytes = new Uint8Array(await Bun.stdin.arrayBuffer());
-  const plistDigest = digest(bytes);
+  const plistDigest = sha256(bytes);
   const descriptor = openSync(destination, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
   try {
     writeFileSync(descriptor, bytes);

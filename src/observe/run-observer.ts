@@ -69,7 +69,7 @@ interface SteeringEvent {
    *  A reader cannot infer that authority from the descriptive fields, which is why it is its own
    *  field; the category field it replaced only repeated what type, phase, contract, hook and owner
    *  already said. */
-  authority: "deterministic" | "evidence-observation" | "model-hypothesis" | "operator" | "unknown";
+  authority: "deterministic" | "evidence-observation" | "model-hypothesis" | "operator";
   claim: string;
   owner?: string;
   evidence?: string[];
@@ -78,7 +78,12 @@ interface SteeringEvent {
 interface HookEvent {
   /** One hook kind: a controller follows an unsettled turn with fixed text. */
   hookType: "follow-up";
-  state: "activated" | "suppressed" | "rejected" | "registered" | "unknown";
+  /** The one state an emitter writes. `suppressed`, `rejected`, `registered` and `unknown` stood
+   *  here beside it with no producer at all: both hook sites fire on a turn that ended unsettled,
+   *  and fixed controller text has nothing to suppress it and nobody to refuse it. The state
+   *  composes the row type, so each member nothing emits advertised a `hook-*` row kind a reader
+   *  can filter for and never find. */
+  state: "activated";
   label: string;
   reason?: string;
   triggerDigest?: string;
@@ -208,15 +213,16 @@ function priorSequence(file: string): number {
   return maximum;
 }
 
-/** A state that stopped something is an error; a state that refused one is a warning. `deferred`
- *  sat in the warning list with no producer, left behind by a steering hardcode that has since
- *  gone. The phase state of that name now has one, and it stays at the default level: a case held
- *  behind an earlier one is how the ordered pool is built to work, so two thirds of a healthy
- *  battery would read as warnings and the real ones would be lost among them. */
+/** A state that stopped something is an error; every other state a row can carry is ordinary.
+ *  `rejected` and `suppressed` used to raise a warning here, and no emitter writes either one, so
+ *  that arm answered for nothing. `deferred` sat in the same list with no producer either, left
+ *  behind by a steering hardcode that has since gone; the phase state of that name now has one and
+ *  it stays at the default level, because a case held behind an earlier one is how the ordered pool
+ *  is built to work, and two thirds of a healthy battery reading as warnings would bury the real
+ *  ones. Warnings are left to the two emitters that derive them from something other than a state:
+ *  a blocked iteration and a turn with failed tool calls. */
 function levelOf(state: string): ObservationLevel {
-  if (state === "failed") return "error";
-  if (state === "rejected" || state === "suppressed") return "warning";
-  return "default";
+  return state === "failed" ? "error" : "default";
 }
 
 /** The one append path: envelope every event, refuse a body that would shadow the envelope, and

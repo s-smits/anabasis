@@ -63,7 +63,7 @@ import {
   VerifierContractError,
   type VerifierContractCode,
 } from "../../vendor/correctness-model-bundle/contract-error.ts";
-import { engineCellEnv } from "./engine-cell-env.ts";
+import { type CellToolCache, engineCellEnv, withToolCache } from "./engine-cell-env.ts";
 import {
   createVerifierLifetime,
   settleUnspawned,
@@ -91,7 +91,8 @@ const STDERR_TAIL_CHARS = 2000;
  *  character, so the tail can hold `STDERR_TAIL_CHARS` characters whatever they encode to. */
 const STDERR_TAIL_BYTES = STDERR_TAIL_CHARS * 4;
 
-const CELL_TOOL_PREFIX = "cell:";
+/** The tool id prefix a program a check built inside its own cell runs under. */
+export const CELL_TOOL_PREFIX = "cell:";
 
 export interface VerifierHostOptions {
   /** The protected owner of the controller and outDir. Production requires it before a subprocess
@@ -126,6 +127,8 @@ export interface VerifierHostOptions {
 interface ToolCell extends ToolInputGrant {
   path: string;
   ran?: ToolRunRequest | null;
+  /** The tool cache the cell's first run restored, which every later run in the cell also finds. */
+  cache?: CellToolCache;
 }
 
 interface Scope {
@@ -193,16 +196,18 @@ type ToolRunWall = {
 
 /** What moved in an inventory tool since its snapshot, or null when nothing did. A script's
  *  interpreter is part of the measured condition as much as the script is, because the same script
- *  under another python3 is a different tool and may well give a different answer. */
+ *  under another python3 is a different tool and may well give a different answer. That covers an
+ *  interpreter unresolvable when the snapshot was taken and resolvable now: it decides the grade and
+ *  no run ever hashed it, which is drift in the one direction the snapshot cannot see. Both sides
+ *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. */
 function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: string | null): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
-  if (
-    entry.interpreterDigest === undefined ||
-    interpreterDigest(entry.path, toolTree) === entry.interpreterDigest
-  ) {
-    return null;
-  }
-  return `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  if (entry.kind === "binary") return null;
+  const live = interpreterDigest(entry.path, toolTree);
+  if (live === entry.interpreterDigest) return null;
+  return entry.interpreterDigest === undefined
+    ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
+    : `resolves a different ${entry.interpreter ?? "interpreter"}`;
 }
 
 /** The tool timeout: what the evaluator asked for, at least one millisecond and at most the
@@ -746,10 +751,12 @@ class VerifierHost implements VerifierHostHandle {
     if (earlier?.executed === true) {
       cell.ran = request;
       const { phase, subjectId, attempt, requestId, sandbox, sandboxPolicyHash } = earlier.evidence;
+      // A reused answer restored nothing, so it carries no cache row of its own.
+      const { cache, ...answered } = earlier.evidence;
       result = {
         ...earlier,
         evidence: {
-          ...earlier.evidence,
+          ...answered,
           ...base,
           sandbox,
           sandboxPolicyHash,
@@ -758,7 +765,8 @@ class VerifierHost implements VerifierHostHandle {
         },
       };
     } else {
-      const launched = this.spawn({
+      const tool = { tree: this.toolTree, digest: liveDigest, interpreterDigest: entry.interpreterDigest };
+      const launch = {
         scope,
         cell,
         toolId: request.toolId,
@@ -767,7 +775,8 @@ class VerifierHost implements VerifierHostHandle {
         args,
         stdin,
         timeoutMs,
-      });
+      };
+      const launched = withToolCache(cell, this.baseDir, subject.phase, tool, () => this.spawn(launch));
       if (replay === undefined) this.answers.set(question, launched);
       result = await launched;
     }

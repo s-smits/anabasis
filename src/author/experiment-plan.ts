@@ -342,8 +342,12 @@ function planAdvice(
   const slots = now?.size ?? 0;
   const [lo, hi] = aimCounts(slots, POLICY.climb.band);
   if (slots > 0 && hi >= lo && verifiedPasses > hi) {
+    const reading =
+      comparator === "at-least"
+        ? "a battery meeting it would find no limit"
+        : "a battery above the aim, which finds no limit, would still meet it";
     advice.push(
-      `Advice: the target, ${comparator} ${verifiedPasses} verified passes, lies above the aim of ${lo} to ${hi} of ${slots}, so a battery meeting it would find no limit.`,
+      `Advice: the target, ${comparator} ${verifiedPasses} verified passes, lies above the aim of ${lo} to ${hi} of ${slots}, so ${reading}.`,
     );
   }
   if (comparator === "at-most" && passed.length > verifiedPasses) {

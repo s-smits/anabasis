@@ -260,8 +260,8 @@ describe("the plan evidence", () => {
   // Run 371f8f round 2 declared at most 5 of 7 against an aim of 2 to 3, and only the readout after
   // its battery said so. The advice says it while the plan can still change.
   it("advises when the target lies above the aim of the battery as it stands", () => {
-    const seven = (verifiedPasses: number) => {
-      const dir = workspace({ ...PLAN, target: { comparator: "at-most", verifiedPasses } });
+    const seven = (verifiedPasses: number, comparator: "at-least" | "at-most" = "at-most") => {
+      const dir = workspace({ ...PLAN, target: { comparator, verifiedPasses } });
       bundle(dir, 10);
       const ids = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
       writeFileSync(
@@ -270,8 +270,13 @@ describe("the plan evidence", () => {
       );
       return new PlanEvidence(dir, null).advice();
     };
+    // An at-most target above the aim is met by a battery on the aim as well as by one past it, so
+    // only an at-least target can say that meeting it finds no limit.
     expect(seven(5)).toEqual([
-      "Advice: the target, at-most 5 verified passes, lies above the aim of 2 to 3 of 7, so a battery meeting it would find no limit.",
+      "Advice: the target, at-most 5 verified passes, lies above the aim of 2 to 3 of 7, so a battery above the aim, which finds no limit, would still meet it.",
+    ]);
+    expect(seven(4, "at-least")).toEqual([
+      "Advice: the target, at-least 4 verified passes, lies above the aim of 2 to 3 of 7, so a battery meeting it would find no limit.",
     ]);
     expect(seven(3)).toEqual([]);
   });

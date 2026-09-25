@@ -1187,7 +1187,10 @@ it catches, and the tip's full suite is what backs it.
 
 A failure names the commit, and its fix goes into that commit rather than on top of it:
 `git commit --fixup=<sha>` and `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <sha>~1`, or
-`git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no one anything.
+`git commit --amend` when it is the tip. Nothing was pushed, so rewriting it costs no one anything,
+and it costs the next push little: the rebase leaves every commit beneath the fix with its id, the
+hook records each id that passed in `ana-gate-passed` under the common Git directory, and a commit
+already recorded there at the same pass or the whole gate is not run again. The tip always runs.
 The same holds for a defect found after publication, as long as the commit sits on an open pull
 request rather than on main: fold the fix into the commit it corrects, replay the commits above it,
 and publish every moved head with an explicit lease, as the stack paragraph under "Where changes

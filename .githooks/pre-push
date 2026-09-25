@@ -153,19 +153,29 @@ stop_pulse() {
 # The head of any other branch the push moves is where a pull request ends, so it gets the whole
 # gate too, even when it changes documentation alone. A commit already on a remote was held to
 # whatever applied when it went up, and an earlier one that changes documentation alone has nothing
-# for the static steps to read.
+# for the static steps to read. Nor is a commit run again that already passed the same pass, or the
+# whole gate, in an earlier push from any worktree: a fix rewrites only its own commit and those
+# after it, so after a failed push the commits beneath the fix keep their ids and their passes.
+pass_record=$(git rev-parse --path-format=absolute --git-common-dir)/ana-gate-passed
 earlier=$(git rev-list --reverse --topo-order $published --not $already_remote --remotes)
 checked=""
+skipped=0
 for commit in $earlier; do
   [ "$commit" != "$tested_commit" ] || continue
-  case " $heads " in *" $commit "*) ;; *)
+  case " $heads " in *" $commit "*) mode=--at ;; *)
+    mode=--static
     if parent=$(git rev-parse -q --verify "$commit^1"); then
       changes_source "$parent" "$commit" || continue
     fi
     ;;
   esac
+  if grep -qxF -e "$commit --at" -e "$commit $mode" "$pass_record" 2>/dev/null; then
+    skipped=$((skipped + 1))
+    continue
+  fi
   checked="$checked $commit"
 done
+[ "$skipped" -eq 0 ] || echo "pre-push: $skipped earlier commits already passed on these exact bytes; not run again." >&2
 if [ -n "$checked" ]; then
   tree=$(mktemp -d "${TMPDIR:-/tmp}/ana-commit-gate.XXXXXX")
   git worktree add -q --detach "$tree" HEAD
@@ -186,6 +196,7 @@ if [ -n "$checked" ]; then
     pulse_pid=$!
     if ANA_TESTED_COMMIT="$commit" bun run gate "$mode" "$tree" >"$commit_log" 2>&1; then
       stop_pulse "$pulse_pid"
+      echo "$commit $mode" >>"$pass_record"
       continue
     fi
     stop_pulse "$pulse_pid"

@@ -31,8 +31,8 @@ export type NonResultKind = (typeof NON_RESULT_KINDS)[number];
  * Excluded kinds need different handling. `verifier-throw` indicates an evaluator defect and
  * is handled by suspect-correctness-model; `verifier` has no attributed cause. A `crash` or
  * `protocol` error alone cannot establish environment ownership and may expose a checker
- * defect. Consumers use this set with the required evidence to classify a fully blocked
- * battery without treating unmeasured cases as a capability result.
+ * defect. `timeout` is not a member, because a verifier tool that overran its wall may need author
+ * repair; only `environmentBlockedBattery`, which requires solver-origin evidence, admits it.
  */
 export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new Set([
   "solver",
@@ -41,7 +41,6 @@ export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new
   "transport",
   "verifierUnavailable",
   "sandbox",
-  "timeout",
 ]);
 
 /**

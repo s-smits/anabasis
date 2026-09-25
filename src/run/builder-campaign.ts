@@ -299,7 +299,6 @@ class BuilderCampaignController {
       dir,
       error,
       authorCalls: { builder: attempts },
-      sessions: [],
       source: SOURCE_IDENTITY,
     });
     this.lastRecordedTurn = error.turns;
@@ -368,7 +367,7 @@ class BuilderCampaignController {
             : {
                 ...cached,
                 commit: candidate.commit,
-                stage: "gates",
+                stage: "validation",
                 findings: [...admission, ...cached.findings],
               },
         );
@@ -539,7 +538,6 @@ class BuilderCampaignController {
     const evidence = decorateIterationEvidence(step.evidence, {
       first: this.iterations.length === 0,
       hasResumedCarry: this.memory.carried.length > 0,
-      repairOwner: null,
       workspaceChange: attributableChange,
       ...keyIfDefined("declaredDiagnosis", this.input.diagnosisInput),
       ...keyIfDefined("priorEvidence", this.input.priorEvidence),
@@ -552,7 +550,6 @@ class BuilderCampaignController {
     this.deps.observer?.iteration({
       ordinal: evidence.ordinal,
       outcome: evidence.outcome,
-      stage: evidence.stage,
       focusOwner: evidence.focusOwner,
       findingsHash: evidence.findingsHash,
     });
@@ -604,7 +601,7 @@ class BuilderCampaignController {
   // }
 
   /** A candidate refused before settlement writes no iteration, but a gate run it executed still
-   *  ends the session on an unroutable blocking row. */
+   *  ends the session on a blocking environment row. */
   private unsettled(candidate: CandidateSnapshot, report: GateReport) {
     const refused = unsettledRefusal(candidate, report);
     if (report.gated === null) return refused;
@@ -686,29 +683,18 @@ class BuilderCampaignController {
   }
 }
 
-/** Where a refusal is recorded: an admission refusal is a gate rule and a conformance refusal a
- *  bundle one, as submit's candidate evidence has always named them. */
-function evidenceStage(admission: readonly unknown[], conformance: readonly unknown[]): Refused["stage"] {
-  return admission.length === 0 && conformance.length > 0 ? "bundle" : "gates";
-}
-
-/** A candidate refused before settlement: every executed stage's findings, no iteration. The
- *  executed part is what a later call on the same condition may reuse. */
+/** A candidate refused before settlement: every executed stage's findings, no iteration, recorded
+ *  at the first stage that refused. The executed part leaves out admission, which reads
+ *  EXPERIMENT.json, and is what a later call on the same condition may reuse. */
 function unsettledRefusal(candidate: CandidateSnapshot, report: GateReport) {
-  const rows = (stage: string) => report.refusals.find((refusal) => refusal.stage === stage)?.findings ?? [];
-  const [admission, conformance, gated] = [rows("validation"), rows("conformance"), rows("gates")];
-  const executed: Refused = {
+  const refused = (rows: GateReport["refusals"]): Refused => ({
     ok: false,
-    stage: evidenceStage([], conformance),
+    stage: rows[0]?.stage ?? "gates",
     commit: candidate.commit,
-    findings: [...conformance, ...gated],
-  };
-  const outcome: Refused = {
-    ...executed,
-    stage: evidenceStage(admission, conformance),
-    findings: [...admission, ...executed.findings],
-  };
-  return { outcome, executed };
+    findings: rows.flatMap((row) => row.findings),
+  });
+  const executed = refused(report.refusals.filter((row) => row.stage !== "validation"));
+  return { outcome: refused(report.refusals), executed };
 }
 
 /**

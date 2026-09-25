@@ -34,7 +34,6 @@ import {
   ensureBundleSnapshot,
 } from "../claim/bundle-snapshot.ts";
 import { sha256 } from "../meta/digest.ts";
-import type { OwnerLayer } from "../meta/owner.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
@@ -130,12 +129,6 @@ type ReferenceSubmissionAttempt = SolvabilitySubmissionOutcome & {
   solveIsolationViolation: boolean;
   referenceSolve: SolvabilityStageReceipt | null;
 };
-
-/** The finding code and owner a failed case routes to. */
-interface Attribution {
-  code: string;
-  owner: OwnerLayer;
-}
 
 /** One task's census record, with a finding when it fails. */
 interface SolvabilityCaseOutcome {
@@ -272,7 +265,6 @@ function bundleSnapshotDriftFinding(
         code: "solvability-bundleSnapshot-drift",
         path: `${BUNDLE_SNAPSHOT_DIRECTORY}/${bundleSnapshot.id}`,
         detail: errorMessage(error),
-        owner: "bh-correctness-model",
       },
       "generated-bundleSnapshot-drift",
     );
@@ -371,35 +363,25 @@ async function attemptReferenceSubmission(
       ...UNATTRIBUTED,
       error: errorMessage(caught),
       authorClassification: typed?.kind ?? "generated-solve-throw",
-      nonResultKind: typed?.owner === "environment" ? "reference-solve-host" : null,
-      failureOwner: typed?.owner ?? "product",
+      nonResultKind: typed?.kind === "reference-solve-host" ? "reference-solve-host" : null,
       solveIsolationViolation: isReferenceSolveIsolationFailure(caught),
       referenceSolve,
     };
   }
 }
 
-function failureAttribution(attempt: ReferenceSubmissionAttempt): Attribution {
-  if (attempt.nonResultKind === "submission-path-host") {
-    return { code: "solvability-submission-path-host-non-result", owner: "environment" };
-  }
-  if (attempt.nonResultKind !== null) {
-    return { code: "solvability-reference-solve-host-non-result", owner: "environment" };
-  }
-  if (attempt.failureKind === "representation-defect") {
-    return { code: "solvability-representation-defect", owner: "bh-representation" };
-  }
-  return {
-    code: attempt.solveIsolationViolation
-      ? "solvability-reference-solve-isolation"
-      : "solvability-witness-failed",
-    owner: "bh-correctness-model",
-  };
+/** The finding code a failed case routes to. */
+function failureCode(attempt: ReferenceSubmissionAttempt): string {
+  if (attempt.nonResultKind === "submission-path-host") return "solvability-submission-path-host-non-result";
+  if (attempt.nonResultKind !== null) return "solvability-reference-solve-host-non-result";
+  if (attempt.failureKind === "representation-defect") return "solvability-representation-defect";
+  return attempt.solveIsolationViolation
+    ? "solvability-reference-solve-isolation"
+    : "solvability-witness-failed";
 }
 
 /** Stage 3, one case: solve, submit, verify and record. A passed row carries no failure
- *  attribution, and an unpassed row always names an owner — including when the attempt itself never
- *  said who, since a row with no owner routes to nobody and is read by no one. */
+ *  attribution, and an unpassed one always yields a finding whose code names what failed. */
 async function runSolvabilityCase(
   session: SolvabilityCaseSession,
   task: BuildTask,
@@ -430,7 +412,6 @@ async function runSolvabilityCase(
     artifact: accepted === null ? null : capturedJsonParse(accepted),
     status: passed ? "passed" : attempt.nonResultKind === null ? "failed" : "non-result",
     nonResultKind: attempt.nonResultKind,
-    failureOwner: passed ? null : (attempt.failureOwner ?? "product"),
     failureKind: passed ? null : attempt.failureKind,
     submissionPath: attempt.submissionPath,
     referenceSolve: attempt.referenceSolve,
@@ -439,12 +420,10 @@ async function runSolvabilityCase(
     error,
   };
   if (passed) return { row, finding: null };
-  const attribution = failureAttribution(attempt);
   const finding = {
-    code: attribution.code,
+    code: failureCode(attempt),
     path: `correctness-model/tasks.json#${task.taskId}`,
     detail: error ?? "reference artifact did not earn a truth verdict",
-    owner: attribution.owner,
   };
   return {
     row,
@@ -459,7 +438,6 @@ function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
     code: "verifier-cleanup-pending",
     path: TASKS_FILE,
     detail: stop.message,
-    owner: "environment",
   };
 }
 
@@ -517,7 +495,6 @@ async function solveInLanes(
       artifact: null,
       status: "non-result",
       nonResultKind: "sandbox",
-      failureOwner: "environment",
       failureKind: null,
       submissionPath: null,
       referenceSolve: null,

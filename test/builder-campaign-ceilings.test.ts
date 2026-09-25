@@ -83,8 +83,8 @@ describe("a relaunch reads the durable counters before it opens a session", () =
     outcome: "fingerprinted",
     workspaceChange: { baseCommit: commit, commit, changedPaths: [], deletedPaths: [] },
   };
-  const failedBuild = (owner: FeedbackOwner): Partial<IterationEvidence> => ({
-    outcome: "build-failed",
+  const blockedBy = (owner: FeedbackOwner): Partial<IterationEvidence> => ({
+    outcome: "gates-blocked",
     feedback: [blockingRow(owner, "carried from the last build", "iteration.json")],
   });
   it.concurrent.each([
@@ -93,8 +93,8 @@ describe("a relaunch reads the durable counters before it opens a session", () =
       Array(POLICY.loop.unchangedCandidateStrikes).fill(unchanged),
       "authoring-stalled",
     ],
-    ["a carried blocking environment row", [failedBuild("environment")], "environment-blocked"],
-    ["carried author-owned feedback with no admitted packet", [failedBuild("instructions")], null],
+    ["a carried blocking environment row", [blockedBy("environment")], "environment-blocked"],
+    ["carried author-owned feedback with no admitted packet", [blockedBy("instructions")], null],
   ] as const)("%s", async (_name, rows, clause) => {
     const campaignDir = scratchDir("ana-pre-session-");
     recordIterations(campaignDir, rows);

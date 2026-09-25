@@ -32,7 +32,7 @@
  */
 import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
-import { authorSessionOwner } from "../analyse/finding-owner.ts";
+import { authorSessionOwner, findingSeverity } from "../analyse/finding-owner.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
@@ -41,7 +41,6 @@ import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { familyTally } from "../claim/case-record.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
 import {
-  findingSeverity,
   namedSubject,
   type AdmittedEvidence,
   type AnalysisFinding,
@@ -555,7 +554,7 @@ export function deriveRebuildAdvice(
           finding.subject === undefined &&
           finding.kind !== "judge-disagreement" &&
           finding.kind !== "controller-defect" &&
-          authorSessionOwner(finding).owner === null,
+          authorSessionOwner(finding) === null,
       )
       .map((finding) => {
         const identity = unownedDiagnosisIdentity(finding);
@@ -609,12 +608,8 @@ const ISSUE_WORDS = {
  *  ran and died may well be a harness defect. The diagnosis reader offers none of these issues, and
  *  the issue line below names the split so the author is not told to rerun a failure it owns. */
 export function environmentOwned(issue: AdviceIssue): boolean {
-  // The shared set admits timeout only with solver-origin evidence at the battery boundary. This
-  // aggregate issue carries no such provenance, and a verifier tool timeout can need author repair,
-  // so timeout is excluded here rather than read as the environment's.
   return (
     issue.kind === "non-result" &&
-    issue.detail !== "timeout" &&
     isNonResultKind(issue.detail) &&
     ENVIRONMENT_OWNED_NONRESULT_KINDS.has(issue.detail)
   );

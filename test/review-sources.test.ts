@@ -10,7 +10,7 @@ import {
   reviewVerifierEvidence,
   reviewCoverage,
 } from "../src/review/review-sources.ts";
-import { BUILDER_OWNED, ownerWritableFiles, routableOwner } from "../src/author/feedback-routing.ts";
+import { BUILDER_OWNED, ownerWritableFiles } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
@@ -40,7 +40,7 @@ const quoted = (state: SourceReadState, path: string, quote: string) =>
 
 function coreTree() {
   const root = scratchDir("ana-review-core-");
-  for (const path of [...BUILDER_OWNED].filter(routableOwner).flatMap(ownerWritableFiles)) {
+  for (const path of [...BUILDER_OWNED].flatMap(ownerWritableFiles)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), "{}");
   }

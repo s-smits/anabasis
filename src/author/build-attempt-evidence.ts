@@ -10,7 +10,6 @@ import { join } from "../meta/path.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import type { SourceIdentity } from "../run/source-identity.ts";
 import type { BuildAgentTurnNonResult } from "./build-agent.ts";
-import type { SessionBuildStage } from "./campaign-types.ts";
 import { writeCompleted } from "./campaign-epoch.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -18,12 +17,6 @@ import { runtimeProcess } from "../meta/process.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 
 const AUTHORING_ATTEMPT_EVIDENCE_DIR = "evidence-builder-authoring";
-
-export type AuthoringSessionQuality = {
-  stage: SessionBuildStage;
-  state: "accepted" | "rejected" | "non-result";
-  attempts: number;
-};
 
 export type AuthoringAttemptEvidence = {
   schema: "builder-authoring-attempts/v1";
@@ -37,7 +30,6 @@ export type AuthoringAttemptEvidence = {
     attribution: null;
   };
   authorCalls: Record<string, number>;
-  sessions: AuthoringSessionQuality[];
   source: SourceIdentity | null;
   writtenAt: string;
 };
@@ -48,7 +40,6 @@ export function writeAuthoringAttemptEvidence(input: {
   dir: string;
   error: BuildAgentTurnNonResult;
   authorCalls: Record<string, number>;
-  sessions: AuthoringSessionQuality[];
   source: SourceIdentity | null;
 }): AuthoringAttemptEvidence {
   const evidence: AuthoringAttemptEvidence = {
@@ -63,7 +54,6 @@ export function writeAuthoringAttemptEvidence(input: {
       attribution: null,
     },
     authorCalls: { ...input.authorCalls },
-    sessions: input.sessions,
     source: input.source,
     writtenAt: new Date().toISOString(),
   };
@@ -86,7 +76,6 @@ function isAuthoringAttemptEvidence(value: JsonValue): value is AuthoringAttempt
     row.outcome === "non-result" &&
     Number.isInteger(row.ordinal) &&
     isString(row.dir) &&
-    Array.isArray(row.sessions) &&
     terminal !== null &&
     isString(terminal.role) &&
     isString(terminal.status) &&

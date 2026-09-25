@@ -85,11 +85,6 @@ describe("loopTerminal", () => {
       failedRetry("build"),
       { ...quiet, authoringStall: { key: "k", rounds: 2 } },
     ],
-    [
-      "an unroutable packet answered by the rebuild it ordered",
-      result("build-failed", { move: "rebuild", nextMove: "rebuild", clauses: ["repair-unroutable"] }),
-      quiet,
-    ],
     ["a held build into a lawful measure", held("build", "measure"), quiet],
     ["a held rebuild into a lawful measure", held("rebuild", "measure"), quiet],
     ["a held rebuild into a fresh rebuild", held("rebuild", "rebuild"), quiet],

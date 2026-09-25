@@ -155,10 +155,11 @@ describe("a checker outage recorded in the measured battery", () => {
   it("routes an unbound external result to the correctness-model owner", () => {
     const root = batteryTree([unboundRow]);
     const found = hostFindings(root, packet({ summary: { nonResults: 3 }, cases: stopped(3, "timeout") }));
-    expect(found.map((f) => f.kind)).toEqual(["environment-non-result", "harness-defect"]);
+    // A timeout is not environment-owned on its own, so the check's outage is the only finding.
+    expect(found.map((f) => f.kind)).toEqual(["harness-defect"]);
     const outage = found.find((f) => f.kind === "harness-defect");
     expect(outage?.proposedOwner).toBe("correctness-model");
-    expect(outage === undefined ? null : authorSessionOwner(outage).owner).toBe("correctness-model");
+    expect(outage === undefined ? null : authorSessionOwner(outage)).toBe("correctness-model");
     // Public identities only: the routed claim quotes neither the recorded message nor task ids.
     expect(outage?.claim).not.toContain("recorded detail");
     expect(outage?.evidence).toBe(`domains/${SLUG}/runs/${RUN}/battery.json`);
@@ -166,7 +167,7 @@ describe("a checker outage recorded in the measured battery", () => {
 
   it("leaves a battery with no unbound row as the plain environment finding", () => {
     const root = batteryTree([{ code: "EVALUATE_THREW", message: "unrelated" }]);
-    const found = hostFindings(root, packet({ summary: { nonResults: 3 }, cases: stopped(3, "timeout") }));
+    const found = hostFindings(root, packet({ summary: { nonResults: 3 }, cases: stopped(3, "provider") }));
     expect(found.map((f) => f.kind)).toEqual(["environment-non-result"]);
     expect(found[0]?.proposedOwner).toBeNull();
   });
@@ -180,7 +181,7 @@ describe("the routing decision", () => {
       "diagnosis-uncertain",
       "judge-disagreement",
     ] as const) {
-      expect(authorSessionOwner(finding({ kind }))).toMatchObject({ owner: null });
+      expect(authorSessionOwner(finding({ kind }))).toBeNull();
     }
   });
 
@@ -189,7 +190,7 @@ describe("the routing decision", () => {
     // the same statement and one of the two reaches nobody — a sole diagnosis recorded as a
     // `hardness` row with a null owner routes no feedback at all.
     for (const kind of ["hardness", "curriculum-defect"] as const) {
-      expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toEqual({ owner: "tests" });
+      expect(authorSessionOwner(finding({ kind, proposedOwner: null }))).toBe("tests");
     }
   });
 
@@ -198,26 +199,18 @@ describe("the routing decision", () => {
     // producer proposed the evaluator.
     expect(
       authorSessionOwner(finding({ kind: "judge-disagreement", proposedOwner: "correctness-model" })),
-    ).toEqual({
-      owner: null,
-      reason: "judge-advisory-only",
-    });
+    ).toBeNull();
   });
 
   it("routes harness-defect findings only to Builder-owned parts", () => {
     const owners = [...BUILDER_OWNED];
     for (const owner of owners) {
-      expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toEqual({
-        owner,
-      });
+      expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toBe(owner);
     }
     // `environment` is not a Builder-owned surface; a defect proposal naming it -- or naming
     // nothing -- is non-actionable here, whatever produced it.
     for (const owner of ["environment", null] as const) {
-      expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toEqual({
-        owner: null,
-        reason: "not-builder-owned-surface",
-      });
+      expect(authorSessionOwner(finding({ kind: "harness-defect", proposedOwner: owner }))).toBeNull();
     }
   });
 });
@@ -284,10 +277,7 @@ describe("host findings — evidence restatements only", () => {
     expect(census?.hostRule).toBe("unaccepted-without-verdict");
     // A disclosure, never a routed repair: which owner broke stays the model's question.
     expect(census?.proposedOwner).toBeNull();
-    expect(authorSessionOwner(required(census, "the census finding"))).toEqual({
-      owner: null,
-      reason: "diagnosis-uncertain",
-    });
+    expect(authorSessionOwner(required(census, "the census finding"))).toBeNull();
     // Safe totals only — no task identity leaves the recorded evidence through this claim.
     expect(census?.claim).not.toMatch(/t[0-9]/);
   });
@@ -466,15 +456,10 @@ describe("controller admission", () => {
       ["tests", "advisory"],
       ["controls", "blocking"],
     ]);
-    expect(evidence.findingRoutes.map((row) => row.owner ?? row.reason)).toEqual([
-      "environment-non-result",
-      "not-builder-owned-surface",
-      "tests",
-      "controls",
-    ]);
+    expect(evidence.findingRoutes.map((row) => row.owner)).toEqual([null, null, "tests", "controls"]);
   });
 
-  it("records a typed no-route reason for an admitted Judge disclosure", () => {
+  it("records a null route for an admitted Judge disclosure", () => {
     const root = repo();
     const disclosure = finding({ kind: "judge-disagreement", proposedOwner: null });
     const evidence = admitFindings(root, packet(), [disclosure]);
@@ -484,7 +469,6 @@ describe("controller admission", () => {
         findingDigest: expect.any(String),
         kind: "judge-disagreement",
         owner: null,
-        reason: "judge-advisory-only",
       },
     ]);
   });
@@ -536,7 +520,7 @@ describe("the per-case feedback restriction", () => {
     // speaks for it.
     expect(evidence.feedback).toEqual([]);
     expect(evidence.findingRoutes).toEqual([
-      { findingDigest: expect.any(String), kind: "harness-defect", owner: null, reason: "per-case-detail" },
+      { findingDigest: expect.any(String), kind: "harness-defect", owner: null },
     ]);
     expect(JSON.stringify(evidence.feedback)).not.toContain("task-901");
   });

@@ -14,6 +14,7 @@ import type {
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
 import type { ExperimentSubmission } from "../author/experiment-plan.ts";
 import {
+  type AuthorCheckStage,
   type BuilderAuthorFeedback,
   FEEDBACK_NAVIGATION,
   authorFindingOverview,
@@ -36,7 +37,7 @@ export type BuilderSubmitOutcome =
   | (CandidateSnapshot & SubmittedTree)
   | ({
       ok: false;
-      stage: "bundle" | "validation" | "gates";
+      stage: AuthorCheckStage;
       findings: ContractFinding[];
       commit: string;
       terminal?: boolean;

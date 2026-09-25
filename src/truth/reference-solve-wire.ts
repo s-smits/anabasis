@@ -6,9 +6,9 @@
  * writes before it will accept a task. Each end used to declare its own `as const` copy, with
  * nothing but a test holding them together, and a test is the wrong owner for this: bumping the
  * child's `/v3` and leaving the parent alone fails across `solvability-reference-solve.test.ts` and
- * `trusted-runtime.test.ts` with every failure reporting `owner: "bh-correctness-model"`, which
- * routes a controller-side typo to the candidate's correctness model as a
- * `generated-solve-protocol` product defect. With one declaration there is no drift to attribute.
+ * `trusted-runtime.test.ts` with every failure reported as a `generated-solve-protocol` product
+ * defect, which routes a controller-side typo to the candidate's correctness model. With one
+ * declaration there is no drift to attribute.
  *
  * Neither end could hold it. The parent's import graph is spawn, bundling and confinement
  * witnessing, which is the whole of what the confined child is meant not to contain; the child

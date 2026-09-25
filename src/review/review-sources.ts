@@ -13,7 +13,7 @@ import { sha256 } from "../meta/digest.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";
-import { BUILDER_OWNED, ownerWritableFiles, routableOwner } from "../author/feedback-routing.ts";
+import { BUILDER_OWNED, ownerWritableFiles } from "../author/feedback-routing.ts";
 import { readRecordedBatteryRecord } from "../truth/battery-record.ts";
 import { verifierEnvironmentHashOfTools } from "../truth/verifier-environment.ts";
 import { TOOL_ID_RE } from "../verify/tool-inventory.ts";
@@ -29,7 +29,7 @@ const READ_CHARS_TOTAL = 4_000_000;
 const READ_CHARS_PER_CALL = 16_000;
 const INVENTORY_MAX_FILES = 400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
-const CORE_FILES = [...BUILDER_OWNED].filter(routableOwner).flatMap(ownerWritableFiles);
+const CORE_FILES = [...BUILDER_OWNED].flatMap(ownerWritableFiles);
 export interface ReviewInventory {
   files: string[];
   truncated: boolean;

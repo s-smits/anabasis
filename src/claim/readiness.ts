@@ -40,8 +40,6 @@ export interface SolvabilityCaseEvidence {
   /** A host failure before the child is ready is a non-result. After solving starts, crashes,
    * timeouts and protocol errors are product failures and this stays `null`. */
   nonResultKind: "reference-solve-host" | "submission-path-host" | "sandbox" | null;
-  /** Who owns an unsuccessful solve. Passed rows use `null`. */
-  failureOwner: "environment" | "product" | null;
   /** Set when a valid reference answer cannot pass through the writer. */
   failureKind: "representation-defect" | null;
   /** Present only when writer → DraftStore → materialise → submit → accept completed. */

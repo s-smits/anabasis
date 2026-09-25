@@ -654,7 +654,7 @@ describe("the receipts a gate run records", () => {
     );
     expect(gateDirs.map((dir) => dir.split("/").pop())).toEqual(["full-1", "census-1"]);
     expect(new Set(gateDirs.map((dir) => dir.split("/").slice(0, -1).join("/"))).size).toBe(1);
-    expect(texts[1]).toContain("refused at bundle");
+    expect(texts[1]).toContain("refused at conformance");
     expect(JSON.parse(required(texts[2], "second check"))).toMatchObject({
       status: "clear",
       repeated: expect.any(String),

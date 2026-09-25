@@ -1,41 +1,34 @@
 import { routableOwner } from "../author/feedback-routing.ts";
-import type { FeedbackOwner } from "../author/campaign-types.ts";
-import type { AnalysisFinding } from "./iteration-analysis.ts";
+import type { CampaignFeedback, FeedbackOwner } from "../author/campaign-types.ts";
+import type { AnalysisFinding, AnalysisFindingKind } from "./iteration-analysis.ts";
 
-export type NoRouteReason =
-  | "per-case-detail"
-  | "environment-non-result"
-  | "judge-advisory-only"
-  | "not-builder-owned-surface"
-  | "diagnosis-uncertain";
+/** Each finding kind's author-session route and whether it may block. Task-set findings route to
+ *  the task author; a harness defect routes to the owner its producer proposed; an environment
+ *  non-result, an uncertain diagnosis, a Judge disagreement and a controller defect route nowhere,
+ *  because none of them is the Builder's to repair. Only a diagnosed defect may block, and hardness
+ *  and every disclosure stay advisory because their next move belongs to someone better calibrated
+ *  than the finding. */
+const FINDING_ROUTES = {
+  hardness: { route: "tests", canBlock: false },
+  "curriculum-defect": { route: "tests", canBlock: true },
+  "harness-defect": { route: "producer", canBlock: true },
+  "environment-non-result": { route: null, canBlock: false },
+  "diagnosis-uncertain": { route: null, canBlock: false },
+  "judge-disagreement": { route: null, canBlock: false },
+  "controller-defect": { route: null, canBlock: false },
+} as const satisfies Record<AnalysisFindingKind, { route: "tests" | "producer" | null; canBlock: boolean }>;
 
-type FindingOwnerResult = { owner: FeedbackOwner } | { owner: null; reason: NoRouteReason };
+/** The only author-session owner admitted for a finding, or null. Per-case detail never crosses to
+ *  authoring at all. A proposed owner is checked against `routableOwner` rather than trusted: the
+ *  finding's producer proposes an owner and the closed set decides. */
+export function authorSessionOwner(finding: AnalysisFinding): FeedbackOwner | null {
+  const { route } = FINDING_ROUTES[finding.kind];
+  if (finding.subject !== undefined || route === null) return null;
+  if (route === "tests") return "tests";
+  return routableOwner(finding.proposedOwner) ? finding.proposedOwner : null;
+}
 
-/** Derive the only author-session owner admitted for a finding, and say why when there is none:
- *  every branch that returns no owner returns a reason, so a finding that reaches no author session
- *  is lineage with a cause rather than a row that quietly disappeared. Task-set findings route to
- *  the task author. A harness defect routes only to a declared Builder-owned surface, which is why
- *  it is checked against `routableOwner` rather than trusted: the finding's producer proposes an
- *  owner and the closed set decides. Per-case detail never crosses to authoring at all, a Judge
- *  disagreement is advice that selects no owner, and a controller defect is not the Builder's to
- *  repair. */
-export function authorSessionOwner(finding: AnalysisFinding): FindingOwnerResult {
-  if (finding.subject !== undefined) return { owner: null, reason: "per-case-detail" };
-  switch (finding.kind) {
-    case "hardness":
-    case "curriculum-defect":
-      return { owner: "tests" };
-    case "environment-non-result":
-      return { owner: null, reason: "environment-non-result" };
-    case "diagnosis-uncertain":
-      return { owner: null, reason: "diagnosis-uncertain" };
-    case "judge-disagreement":
-      return { owner: null, reason: "judge-advisory-only" };
-    case "controller-defect":
-      return { owner: null, reason: "not-builder-owned-surface" };
-    case "harness-defect":
-      return finding.proposedOwner !== null && routableOwner(finding.proposedOwner)
-        ? { owner: finding.proposedOwner }
-        : { owner: null, reason: "not-builder-owned-surface" };
-  }
+/** A defect that may block does unless its producer explicitly said advisory. */
+export function findingSeverity(finding: AnalysisFinding): CampaignFeedback["severity"] {
+  return FINDING_ROUTES[finding.kind].canBlock ? (finding.severity ?? "blocking") : "advisory";
 }

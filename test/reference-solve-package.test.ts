@@ -299,11 +299,10 @@ describe("public reference package", () => {
     const { dir, lifetime } = fixture("export function solve() { while (true) {} }");
     await expect(solve(dir, lifetime, 1_000, join(dir, "missing-runtime"))).rejects.toMatchObject({
       kind: "reference-solve-host",
-      owner: "environment",
     });
     expect(await solve(dir, lifetime, 1_000)).toMatchObject({
       kind: "failure",
-      failure: { kind: "generated-solve-timeout", owner: "product" },
+      failure: { kind: "generated-solve-timeout" },
     });
     expect(lifetime.pendingReceipts()).toEqual([]);
   });

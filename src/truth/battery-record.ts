@@ -175,7 +175,7 @@ type BatteryJoinSlice = { disposition: BatteryDisposition; caseCount: number };
 export const SUBMIT_MAX_ATTEMPTS = 3;
 /**
  * Thrown when every battery case is an environment-owned non-result: zero cases were verified and
- * every kind belongs to ENVIRONMENT_OWNED_NONRESULT_KINDS. The battery produced operational
+ * every kind is environment-owned (`environmentBlockedBattery`). The battery produced operational
  * evidence but no capability measurement. This class represents the whole battery, unlike
  * VerifierExecutionNonResult, which represents one execution. It contains all the case kinds and
  * is raised after their evidence has been recorded, beyond the census gate's responsibility. It

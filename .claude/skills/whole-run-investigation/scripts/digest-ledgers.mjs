@@ -640,7 +640,7 @@ function reviewLines(dir, reviews) {
     }
     const findings = record.findings.filter((finding) => isRecord(finding));
     // The router decides, not the field: a curriculum finding names no owner and routes to `tests`.
-    const unroutable = findings.filter((finding) => authorSessionOwner(finding).owner === null).length;
+    const unroutable = findings.filter((finding) => authorSessionOwner(finding) === null).length;
     lines.push(
       `${label}: epoch review ${record.status ?? "?"} · findings ${findings.length} · unrouted ${unroutable} · reads ${Array.isArray(record.reads) ? record.reads.length : "?"}`,
     );

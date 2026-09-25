@@ -144,7 +144,7 @@ function epochToolFindings(epoch: EpochToolCensus): string[] {
   }
   for (const evidence of epoch.authoring.nonResults) {
     out.push(
-      `${epoch.epoch}: authoring non-result at ${evidence.terminal.role} (${evidence.terminal.status}); ${evidence.sessions.length} session states and ${Object.values(evidence.authorCalls).reduce((sum, count) => sum + count, 0)} started author calls receipted`,
+      `${epoch.epoch}: authoring non-result at ${evidence.terminal.role} (${evidence.terminal.status}); ${Object.values(evidence.authorCalls).reduce((sum, count) => sum + count, 0)} started author calls receipted`,
     );
   }
   out.push(...failures);

@@ -4,7 +4,6 @@ import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { projectFindingForAuthor } from "../truth/brief.ts";
 import type { CampaignFeedback, FeedbackOwner } from "./campaign-types.ts";
 import {
-  AGENT_DIR,
   BRIEF_FILE,
   CONTROLS_FILE,
   EVALUATOR_FILE,
@@ -13,21 +12,24 @@ import {
   TOOLS_SPEC_FILE,
 } from "../meta/bundle-layout.ts";
 
-const OWNER_FILES = {
-  brief: [BRIEF_FILE],
-  tests: [TASKS_FILE],
-  instructions: [BUILT_AGENTS_FILE],
-  "tools-spec": [TOOLS_SPEC_FILE],
-  "accept-controls": [],
-  controls: [CONTROLS_FILE],
-  "correctness-model": [EVALUATOR_FILE],
-  fingerprint: [GENERATED_TOOLS_FILE],
-} satisfies Partial<Record<FeedbackOwner, readonly string[]>>;
+type RoutableOwner = Exclude<FeedbackOwner, "environment">;
 
-type RoutableOwner = keyof typeof OWNER_FILES;
-export const BUILDER_OWNED: ReadonlySet<FeedbackOwner> = new Set(
+/** Each routable owner's files and repair tier: "agent" when the repair stays inside the agent
+ *  bundle, "rebuild" when it reopens the correctness model or the battery. */
+const OWNERS = {
+  brief: { files: [BRIEF_FILE], tier: "rebuild" },
+  tests: { files: [TASKS_FILE], tier: "rebuild" },
+  instructions: { files: [BUILT_AGENTS_FILE], tier: "agent" },
+  "tools-spec": { files: [TOOLS_SPEC_FILE], tier: "agent" },
+  "accept-controls": { files: [], tier: "rebuild" },
+  controls: { files: [CONTROLS_FILE], tier: "rebuild" },
+  "correctness-model": { files: [EVALUATOR_FILE], tier: "rebuild" },
+  fingerprint: { files: [GENERATED_TOOLS_FILE], tier: "agent" },
+} as const satisfies Record<RoutableOwner, { files: readonly string[]; tier: "agent" | "rebuild" }>;
+
+export const BUILDER_OWNED: ReadonlySet<RoutableOwner> = new Set(
   // SAFETY: the literal table above contains exactly the RoutableOwner keys.
-  Object.keys(OWNER_FILES) as RoutableOwner[],
+  Object.keys(OWNERS) as RoutableOwner[],
 );
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): its one reader is the commented-out product-repair refusal
@@ -40,22 +42,20 @@ export const EVALUATION_SERVED: ReadonlySet<FeedbackOwner> = new Set([
 ]);
 
 export function routableOwner(owner: FeedbackOwner | null): owner is RoutableOwner {
-  return owner !== null && BUILDER_OWNED.has(owner);
+  return owner !== null && owner !== "environment";
 }
 
-export function routableOwnerOf(value: string | null): FeedbackOwner | null {
+export function routableOwnerOf(value: string | null): RoutableOwner | null {
   for (const owner of BUILDER_OWNED) if (owner === value) return owner;
   return null;
 }
 
 export function ownerWritableFiles(owner: RoutableOwner): readonly string[] {
-  return OWNER_FILES[owner];
+  return OWNERS[owner].files;
 }
 
-export function ownerTier(owner: FeedbackOwner): "agent" | "rebuild" | "stop" {
-  if (owner === "environment") return "stop";
-  const files = routableOwner(owner) ? OWNER_FILES[owner] : [];
-  return files.length > 0 && files.every((file) => file.startsWith(AGENT_DIR)) ? "agent" : "rebuild";
+export function ownerTier(owner: RoutableOwner): "agent" | "rebuild" {
+  return OWNERS[owner].tier;
 }
 
 /** Optional evidence label only. Null means an empty or mixed-owner agenda, never no work. */

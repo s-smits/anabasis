@@ -191,7 +191,6 @@ function versionsOf(campaignDir, batteries) {
           ordinal: iteration.ordinal ?? null,
           outcome: iteration.outcome ?? "no outcome",
           focusOwner: iteration.focusOwner ?? null,
-          repairOwner: iteration.repairOwner ?? null,
           findingsHash: iteration.findingsHash ?? null,
           source: iteration.source ?? null,
           sessionAttempts: iteration.attempts ?? null,
@@ -234,7 +233,6 @@ function versionsOf(campaignDir, batteries) {
         ordinal: iteration?.ordinal ?? null,
         outcome: iteration?.outcome ?? (subject.startsWith("starter:") ? "starter" : "no iteration evidence"),
         focusOwner: iteration?.focusOwner ?? null,
-        repairOwner: iteration?.repairOwner ?? null,
         findingsHash: iteration?.findingsHash ?? null,
         source: iteration?.source ?? null,
         sessionAttempts: iteration?.attempts ?? null,
@@ -324,9 +322,7 @@ function printTable(rows, current) {
         .join(" ");
       console.log(`    sessions   ${sessions}`);
     }
-    if (row.focusOwner !== null || row.repairOwner !== null) {
-      console.log(`    owner   focus=${row.focusOwner ?? "none"} repair=${row.repairOwner ?? "none"}`);
-    }
+    if (row.focusOwner !== null) console.log(`    owner   focus=${row.focusOwner}`);
     if (row.measuredBy.length === 0) {
       console.log("    measured  never — this version has no recorded battery");
     } else {
@@ -368,7 +364,6 @@ function latestCheckpointFacts(row) {
     commit: row.commit,
     outcome: row.outcome,
     focusOwner: row.focusOwner,
-    repairOwner: row.repairOwner,
     findingsHash: row.findingsHash,
     source: row.source,
     measuredBatteries: row.measuredBy.length,

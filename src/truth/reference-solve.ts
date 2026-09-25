@@ -88,7 +88,7 @@ export type ReferenceSolveOutcome =
   | { kind: "artifact"; artifact: unknown }
   | {
       kind: "failure";
-      failure: { kind: ReferenceSolveFailureKind; owner: "environment" | "product"; detail: string };
+      failure: { kind: ReferenceSolveFailureKind; detail: string };
     };
 
 const REMEMBERED_FAILURES: ReadonlySet<ReferenceSolveFailureKind> = new Set([
@@ -118,7 +118,6 @@ export function referenceSolveTimedOut(row: { error: string | null }): boolean {
 export class ReferenceSolveProcessFailure extends Error {
   constructor(
     readonly kind: ReferenceSolveFailureKind,
-    readonly owner: "environment" | "product",
     readonly operatorDetail: string,
   ) {
     super(operatorDetail);
@@ -126,29 +125,26 @@ export class ReferenceSolveProcessFailure extends Error {
   }
 }
 
-/** Decide what the child produced. The controller's ready marker is the whole owner rule: a child
- *  that never reached it failed before any generated solve code ran, so the host owns that failure,
- *  and after it every remaining refusal is the generated correctness model's. */
+/** Decide what the child produced. The controller's ready marker is the whole attribution rule: a
+ *  child that never reached it failed before any generated solve code ran, so the failure is
+ *  `reference-solve-host`, and after it every remaining refusal is the generated correctness model's. */
 function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   const stdoutText = new TextDecoder().decode(output.stdout.bytes);
   const { ready } = output;
   const responseText = ready ? stdoutText.slice(stdoutText.indexOf("\n") + 1) : stdoutText;
   const stderrText = `${new TextDecoder().decode(output.stderr.bytes)}${output.stderr.overflow ? "\n[stderr truncated]" : ""}`;
-  const owner = ready ? "product" : "environment";
   const hostOr = (
     productKind: "generated-solve-crash" | "generated-solve-protocol" | "generated-solve-timeout",
   ): ReferenceSolveFailureKind => (ready ? productKind : "reference-solve-host");
   if (output.timedOut) {
     throw new ReferenceSolveProcessFailure(
       hostOr("generated-solve-timeout"),
-      owner,
       `reference solve child exceeded ${output.timeoutMs}ms`,
     );
   }
   if (output.stdout.overflow) {
     throw new ReferenceSolveProcessFailure(
       hostOr("generated-solve-protocol"),
-      owner,
       `reference solve child exceeded the stdout cap; stderr=${stderrText}`,
     );
   }
@@ -156,14 +152,12 @@ function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   if (normalizedCode !== 0) {
     throw new ReferenceSolveProcessFailure(
       hostOr("generated-solve-crash"),
-      owner,
       `reference solve child exited code=${String(normalizedCode)} signal=${String(output.signal)}; stderr=${stderrText}`,
     );
   }
   if (!ready) {
     throw new ReferenceSolveProcessFailure(
       "reference-solve-host",
-      "environment",
       `reference solve child exited before the controller ready marker; stdout=${stdoutText}; stderr=${stderrText}`,
     );
   }
@@ -173,7 +167,6 @@ function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   } catch {
     throw new ReferenceSolveProcessFailure(
       "generated-solve-protocol",
-      "product",
       `reference solve child emitted invalid JSON after ready; stdout=${responseText}; stderr=${stderrText}`,
     );
   }
@@ -185,7 +178,6 @@ function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
   ) {
     throw new ReferenceSolveProcessFailure(
       "generated-solve-protocol",
-      "product",
       `reference solve child response did not match ${REFERENCE_SOLVE_PROTOCOL}; stdout=${responseText}`,
     );
   }
@@ -200,11 +192,10 @@ function classifyReferenceSolveOutcome(output: ReferenceSolveChildOutput) {
     wire.outcome === "non-result" &&
     (wire.classification === "generated-solve-throw" || wire.classification === "generated-solve-result")
   ) {
-    throw new ReferenceSolveProcessFailure(wire.classification, "product", stderrText || wire.classification);
+    throw new ReferenceSolveProcessFailure(wire.classification, stderrText || wire.classification);
   }
   throw new ReferenceSolveProcessFailure(
     "generated-solve-protocol",
-    "product",
     `reference solve child response had an unknown outcome; stdout=${responseText}`,
   );
 }
@@ -273,7 +264,7 @@ async function runReferenceChild({ bundle, policy, request, timeoutMs, lifetime 
     lease,
     policy,
     bundle,
-    (message) => new ReferenceSolveProcessFailure("reference-solve-host", "environment", message),
+    (message) => new ReferenceSolveProcessFailure("reference-solve-host", message),
   );
   const handshake = referenceHandshake(child, policy, request, () => {
     void supervision.stop().catch(() => {});
@@ -301,26 +292,17 @@ async function runReferenceChild({ bundle, policy, request, timeoutMs, lifetime 
       throw new VerifierOperationalStop("unsettled-children", [settled.receiptId]);
     }
     if (handshake.error() !== null) {
-      throw new ReferenceSolveProcessFailure(
-        "reference-solve-host",
-        "environment",
-        errorMessage(handshake.error()),
-      );
+      throw new ReferenceSolveProcessFailure("reference-solve-host", errorMessage(handshake.error()));
     }
     if (!settled.outputComplete) {
       throw new ReferenceSolveProcessFailure(
         handshake.ready() ? "generated-solve-protocol" : "reference-solve-host",
-        handshake.ready() ? "product" : "environment",
         "reference solve output did not drain before bounded settlement",
       );
     }
     assertGeneratedWorkerPolicyUnchanged(policy);
     if (sha256OfFile(bundle.file) !== bundle.digest) {
-      throw new ReferenceSolveProcessFailure(
-        "reference-solve-host",
-        "environment",
-        "reference bundle bytes changed",
-      );
+      throw new ReferenceSolveProcessFailure("reference-solve-host", "reference bundle bytes changed");
     }
     const [stdoutResult, stderrResult] = await drained;
     return classifyReferenceSolveOutcome({
@@ -354,7 +336,6 @@ async function prepareReferenceSolve(
   if (verifierLifetime === undefined) {
     throw new ReferenceSolveProcessFailure(
       "reference-solve-host",
-      "environment",
       "reference solve requires a protected verifier lifetime owner",
     );
   }
@@ -364,7 +345,7 @@ async function prepareReferenceSolve(
   try {
     policy = generatedWorkerPolicy(bundle, undefined, executable);
   } catch (cause) {
-    throw new ReferenceSolveProcessFailure("reference-solve-host", "environment", errorMessage(cause));
+    throw new ReferenceSolveProcessFailure("reference-solve-host", errorMessage(cause));
   }
   const request = capturedJsonStringify({
     protocol: REFERENCE_SOLVE_PROTOCOL,
@@ -381,7 +362,7 @@ export function isReferenceSolveIsolationFailure(cause: unknown): boolean {
     code === "EACCES" ||
     code === "EPERM" ||
     (cause instanceof ReferenceSolveProcessFailure &&
-      cause.owner === "product" &&
+      cause.kind !== "reference-solve-host" &&
       PATH_ERROR.test(cause.operatorDetail))
   );
 }
@@ -391,8 +372,8 @@ export function isReferenceSolveIsolationFailure(cause: unknown): boolean {
  *  those is a verdict on these bytes, so none of them may be remembered as one. */
 function rememberable(outcome: ReferenceSolveOutcome): boolean {
   if (outcome.kind === "artifact") return true;
-  const { kind, owner, detail } = outcome.failure;
-  return owner === "product" && REMEMBERED_FAILURES.has(kind) && !PATH_ERROR.test(detail);
+  const { kind, detail } = outcome.failure;
+  return REMEMBERED_FAILURES.has(kind) && !PATH_ERROR.test(detail);
 }
 
 /** The reference-solve stage key: the bundle bytes modulo location, the confined runtime, the exact
@@ -436,7 +417,7 @@ export async function referenceSolveStage(
         if (!(caught instanceof ReferenceSolveProcessFailure)) throw caught;
         outcome = {
           kind: "failure",
-          failure: { kind: caught.kind, owner: caught.owner, detail: caught.operatorDetail },
+          failure: { kind: caught.kind, detail: caught.operatorDetail },
         };
       }
       return { value: outcome, settled: rememberable(outcome) };
@@ -449,5 +430,5 @@ export async function referenceSolveStage(
 export function referenceSolveFailure(
   failure: Extract<ReferenceSolveOutcome, { kind: "failure" }>["failure"],
 ): ReferenceSolveProcessFailure {
-  return new ReferenceSolveProcessFailure(failure.kind, failure.owner, failure.detail);
+  return new ReferenceSolveProcessFailure(failure.kind, failure.detail);
 }

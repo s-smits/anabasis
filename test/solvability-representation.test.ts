@@ -110,7 +110,6 @@ describe("the representation the submission path must express", () => {
     expect(result.findings).toContainEqual(
       expect.objectContaining({
         code: "solvability-representation-defect",
-        owner: "bh-representation",
         disclosure: expect.objectContaining({ classification: "generated-toolset-contract" }),
       }),
     );
@@ -118,10 +117,9 @@ describe("the representation the submission path must express", () => {
 
   const HOST_NON_RESULT = {
     status: "non-result" as const,
-    row: { nonResultKind: "submission-path-host", failureOwner: "environment", failureKind: null },
+    row: { nonResultKind: "submission-path-host", failureKind: null },
     finding: {
       code: "solvability-submission-path-host-non-result",
-      owner: "environment",
       classification: "submission-path-host",
     },
   };
@@ -159,10 +157,9 @@ describe("the representation the submission path must express", () => {
         }),
       expected: {
         status: "failed" as const,
-        row: { nonResultKind: null, failureOwner: "product", failureKind: "representation-defect" },
+        row: { nonResultKind: null, failureKind: "representation-defect" },
         finding: {
           code: "solvability-representation-defect",
-          owner: "bh-representation",
           classification: "generated-toolset-contract",
         },
       },

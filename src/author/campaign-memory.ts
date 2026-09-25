@@ -30,9 +30,6 @@ export interface CampaignMemory {
   //  *  findings is stopped: every fingerprint differs while the findingsHash does not, so the
   //  *  fingerprint cannot detect it. Any other outcome resets the run. */
   // trailingBlockedFindingsHashes: string[];
-  /** A separate pre-fingerprint refusal streak, since that bound is the authoring one rather than
-   *  the gate's. A gate settlement resets it. */
-  trailingBuildFailureHashes: string[];
   // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
   // /** Refused control censuses this campaign has already charged to each Builder-declared engine
   //  *  id, read from the census gate's own records. Restoring the per-engine count is what makes a
@@ -57,15 +54,16 @@ export function nextOrdinal(campaignDir: string): number {
 }
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-// /** A trailing findings run over one outcome, extended by a matching iteration and reset by any
-//  *  other. One rule serves the disk replay and the in-session extension, so the two cannot
-//  *  disagree. */
-// const trailOf =
-//   (outcome: IterationEvidence["outcome"]) =>
-//   (trail: readonly string[], evidence: IterationEvidence): string[] =>
-//     evidence.outcome === outcome && evidence.findingsHash !== null ? [...trail, evidence.findingsHash] : [];
-//
-// export const extendTrailingBlockedFindings = trailOf("gates-blocked");
+// /** The trailing gates-blocked findings run, extended by a blocked iteration and reset by a
+//  *  fingerprinted one. One rule serves the disk replay and the in-session extension, so the two
+//  *  cannot disagree. */
+// export const extendTrailingBlockedFindings = (
+//   trail: readonly string[],
+//   evidence: IterationEvidence,
+// ): string[] =>
+//   evidence.outcome === "gates-blocked" && evidence.findingsHash !== null
+//     ? [...trail, evidence.findingsHash]
+//     : [];
 
 /** The one reading of "this settled iteration changed nothing": a completed gate settlement whose
  *  fingerprinted child tree is its own round entry, with no path added and none deleted. The
@@ -133,17 +131,11 @@ function readIteration(file: string): IterationEvidence {
   return evidence;
 }
 
-/** The blocking findings still unresolved after one iteration. Applied in-process after each
- *  iteration and replayed from disk on restart, so the two paths cannot drift. A complete gate
- *  settlement — fingerprinted or gates-blocked — replaces the older findings, while a failed build
- *  cannot establish that any earlier finding was fixed. */
-export function settleUnresolved(
-  pending: CampaignFeedback[],
-  evidence: IterationEvidence,
-): CampaignFeedback[] {
-  const settled = evidence.outcome === "fingerprinted" || evidence.outcome === "gates-blocked";
+/** The blocking findings still unresolved after one iteration. Every recorded iteration is a
+ *  complete gate settlement, so its own blocking rows replace the older findings. */
+export function settleUnresolved(evidence: IterationEvidence): CampaignFeedback[] {
   const byKey = new Map<string, CampaignFeedback>();
-  for (const row of [...(settled ? [] : pending), ...evidence.feedback]) {
+  for (const row of evidence.feedback) {
     if (row.severity === "blocking") byKey.set(`${row.owner}\0${row.claim}\0${row.evidence}`, row);
   }
   return [...byKey.values()];
@@ -157,7 +149,6 @@ function emptyMemory(clause: CampaignClause | null): CampaignMemory {
     lastBlockedCandidateStrikes: 0,
     // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
     // trailingBlockedFindingsHashes: [],
-    trailingBuildFailureHashes: [],
     // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
     // toolNonResultRefusals: {},
     unchangedCandidateCommits: {},
@@ -169,30 +160,17 @@ function emptyMemory(clause: CampaignClause | null): CampaignMemory {
 // function replay(dirs: string[], chargedTrialRuns: readonly string[] = []): CampaignMemory {
 function replay(dirs: string[]): CampaignMemory {
   const memory = emptyMemory(null);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // const extendTrailingBuildFailures = trailOf("build-failed");
   for (const dir of dirs) {
     const evidence = readIteration(join(dir, ITERATION_FILE));
-    memory.carried = settleUnresolved(memory.carried, evidence);
+    memory.carried = settleUnresolved(evidence);
     memory.workspaceCommit = evidence.workspaceChange?.commit ?? null;
     // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
     // memory.trailingBlockedFindingsHashes = extendTrailingBlockedFindings(
     //   memory.trailingBlockedFindingsHashes,
     //   evidence,
     // );
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // memory.trailingBuildFailureHashes = extendTrailingBuildFailures(
-    //   memory.trailingBuildFailureHashes,
-    //   evidence,
-    // );
-    memory.trailingBuildFailureHashes =
-      evidence.outcome === "build-failed" && evidence.findingsHash !== null
-        ? [...memory.trailingBuildFailureHashes, evidence.findingsHash]
-        : [];
     memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
-    // No reset on other outcomes: the in-session counter is touched only by gate settlements, so a
-    // build-failed pass between two identical blocked sets does not break the streak there and must
-    // not break it here.
+    // Only a blocked pass moves the blocked-candidate streak; a fingerprinted one leaves it be.
     if (evidence.outcome !== "gates-blocked") continue;
     const candidateId = evidence.candidateConditionId ?? evidence.submissionConditionId ?? null;
     memory.lastBlockedCandidateStrikes =

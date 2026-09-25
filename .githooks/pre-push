@@ -28,6 +28,7 @@ changes_source() {
 publishes=0
 published=""
 heads=""
+new_branches=""
 already_remote=""
 documentation_only=1
 documentation_diff_ok=1
@@ -36,10 +37,13 @@ documentation_diff_ok=1
 # parent and a composed tip together named whichever came last. Every published source ref must be
 # contained in this tree, so the named commit describes the bytes the gate actually ran.
 tested_commit=$(git rev-parse HEAD)
+# Git names a ref that does not exist by the all-zeroes object name (githooks(5), pre-push); this is
+# its own pre-push.sample's spelling, which takes the length from the repository's hash.
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ -n "${local_ref:-}" ] || continue
   case "$local_sha" in
-  0000000000000000000000000000000000000000) ;;
+  "$zero") ;;
   *)
     publishes=1
     published="$published $local_sha"
@@ -48,8 +52,26 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       echo "pre-push: so the gate would prove other bytes. Check that commit out and push from there." >&2
       exit 1
     fi
+    # Main takes documentation and hotfixes directly, and anything else reaches it as a pull request
+    # on the top of the open stack. A push to main that changes source is a hotfix only when every
+    # commit it adds says so in a `Hotfix:` trailer giving the reason it cannot wait for the stack.
+    if [ "$remote_ref" = refs/heads/main ] && [ "$remote_sha" != "$zero" ] &&
+      changes_source "$remote_sha" "$local_sha"; then
+      for commit in $(git rev-list "$local_sha" --not "$remote_sha"); do
+        [ -z "$(git log -1 --format='%(trailers:key=Hotfix,valueonly)' "$commit")" ] || continue
+        echo "pre-push: main takes documentation and hotfixes alone; this push changes source, and" >&2
+        echo "pre-push: $(git rev-parse --short=9 "$commit") has no Hotfix: trailer. Send it as a pull request on the top of" >&2
+        echo "pre-push: the open stack, or, if it cannot wait for the stack, end each of its commits with" >&2
+        echo "pre-push: a line \`Hotfix: <why>\`. Nothing was pushed." >&2
+        exit 1
+      done
+    fi
     case "$remote_sha" in
-    0000000000000000000000000000000000000000) documentation_only=0 ;;
+    "$zero")
+      documentation_only=0
+      heads="$heads $local_sha"
+      new_branches="$new_branches $local_sha"
+      ;;
     *)
       already_remote="$already_remote $remote_sha"
       git --no-pager diff --check "$remote_sha" "$local_sha" || documentation_diff_ok=0
@@ -59,13 +81,45 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       fi
       ;;
     esac
-    [ "$remote_sha" != 0000000000000000000000000000000000000000 ] || heads="$heads $local_sha"
     ;;
   esac
 done
 if [ "$publishes" -eq 0 ]; then
   echo "pre-push: every update is a deletion; nothing from this tree is published, so the gate is skipped." >&2
   exit 0
+fi
+
+# A new branch is a new pull request, and a new pull request goes on the top of the one open stack:
+# it contains the head of the open pull request that no other open one is based on. The stack is
+# read from GitHub; when it cannot be read, the check says so and steps aside rather than block.
+if [ -n "$new_branches" ]; then
+  if tops=$(gh pr list --state open --limit 200 --json number,headRefName,baseRefName,headRefOid --jq \
+    '[.[].baseRefName] as $bases | .[] | select(.headRefName as $h | $bases | any(. == $h) | not)
+      | "#\(.number) \(.headRefName) \(.headRefOid)"' 2>/dev/null); then
+    case $(printf '%s' "$tops" | grep -c . || true) in
+    0) ;;
+    1)
+      read -r top_pr top_branch top_sha <<EOF
+$tops
+EOF
+      for sha in $new_branches; do
+        ! git merge-base --is-ancestor "$top_sha" "$sha" 2>/dev/null || continue
+        echo "pre-push: a new pull request goes on the top of the open stack, $top_pr ($top_branch), and" >&2
+        echo "pre-push: $(git rev-parse --short=9 "$sha") does not contain its head. Nothing was pushed. Rebase it on" >&2
+        echo "pre-push: origin/$top_branch after git fetch origin $top_branch, and open it with --base $top_branch." >&2
+        exit 1
+      done
+      ;;
+    *)
+      echo "pre-push: the open pull requests have more than one top, so there is no single stack to" >&2
+      echo "pre-push: put a new one on. Nothing was pushed. Base all but one of these on another:" >&2
+      printf 'pre-push:   %s\n' "$tops" >&2
+      exit 1
+      ;;
+    esac
+  else
+    echo "pre-push: the open pull requests could not be read from GitHub, so the stack check was skipped." >&2
+  fi
 fi
 
 if [ "$documentation_only" -eq 1 ]; then

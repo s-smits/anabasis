@@ -20,6 +20,7 @@ import { TOOL_ID_RE } from "../verify/tool-inventory.ts";
 import type { ToolEntry, VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 // Coverage counts host-returned text, not proof of model consumption.
 const READ_CHARS_TOTAL = 4_000_000;
@@ -207,7 +208,7 @@ export function reviewVerifierEvidence(root: string, runId: string): ReviewVerif
     return {
       identity: null,
       tools: {},
-      unavailable: `Verifier evidence unavailable: ${errorMessage(error)}`.slice(0, 400),
+      unavailable: boundText(`Verifier evidence unavailable: ${errorMessage(error)}`, 400).shown,
     };
   }
 }

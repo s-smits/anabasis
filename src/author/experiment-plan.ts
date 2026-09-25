@@ -37,6 +37,7 @@ import {
   readFileSync,
   realpathSync,
 } from "../meta/filesystem.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { isRecord } from "../meta/json-shape.ts";
 import { join } from "../meta/path.ts";
@@ -52,7 +53,8 @@ export const EVIDENCE_STEM = "experiment-evidence";
 const TEXT_MAX_BYTES = 2_000;
 const MOVE_MAX_BYTES = 300;
 const PLAN_MAX_BYTES = 16_384;
-const VIEW_CLIP = 320;
+/** Bytes kept of each free-text line the compact view quotes. */
+const VIEW_MAX_BYTES = 320;
 /** A prediction this far from a verdict is stated as contradicted by it. */
 const CONTRADICTED_BY = 0.8;
 const LADDER_FILE = "starter-pack/difficulty-ladder.md";
@@ -456,10 +458,8 @@ export class PlanEvidence {
 // ---------------------------------------------------------------------------------------------
 // The compact view.
 
-const clip = (text: string) => {
-  const flat = text.replaceAll(/\s+/g, " ").trim();
-  return flat.length > VIEW_CLIP ? `${flat.slice(0, VIEW_CLIP)}…` : flat;
-};
+/** One line of the view: the text on a single line, bounded to `VIEW_MAX_BYTES`. */
+const clip = (text: string) => boundText(text.replaceAll(/\s+/g, " "), VIEW_MAX_BYTES).shown;
 
 function readOr(path: string): string | null {
   try {

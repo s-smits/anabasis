@@ -43,17 +43,18 @@ export const CASE_TRACE_SCHEMA = "case-trace/v4";
 /** Evidence bounds: a runaway solve must not turn one case's trace into an unbounded file. */
 const MAX_TRACE_TURNS = 100;
 const MAX_TRACE_TOOL_CALLS = 400;
-/** The limit applied when assembling assistant and result previews. Transports truncate before
- *  their events arrive here — a successful pi tool call brings at most `RESULT_PREVIEW_CHARS`, 200,
- *  while a failed one brings up to 2,000 for the separate error excerpt — and this limit stays
+/** The limit, in UTF-8 bytes, applied when assembling assistant and result previews. Transports
+ *  truncate before their events arrive here — a successful pi tool call brings `RESULT_PREVIEW_BYTES`,
+ *  200, plus an omission marker, while a failed one brings up to 2,000 for the separate error
+ *  excerpt — and this limit stays
  *  separate from those. They apply to different fields at different stages, so merging them would
  *  change recorded evidence rather than tidy up code. */
-const PREVIEW_CHARS = 240;
+const PREVIEW_BYTES = 240;
 /** Error rows only: how much of the failing call's result and arguments survives into evidence.
- *  Deliberately larger than PREVIEW_CHARS, because a failed call is the one place a reader needs
+ *  Deliberately larger than PREVIEW_BYTES, because a failed call is the one place a reader needs
  *  more than a preview; success rows keep the digest and the preview alone. */
-const ERROR_RESULT_CHARS = 2000;
-const ERROR_ARGS_CHARS = 1000;
+const ERROR_RESULT_BYTES = 2000;
+const ERROR_ARGS_BYTES = 1000;
 
 interface TraceToolCall {
   /** Solve-wide capture order (1-based) — total ordering across turns. */
@@ -73,9 +74,9 @@ interface TraceToolCall {
   isError: boolean | null;
   /** Redacted, capped result preview; null until the call ended or when the backend sent none. */
   resultPreview: string | null;
-  /** Error rows only: redacted result up to ERROR_RESULT_CHARS. Null on success rows. */
+  /** Error rows only: redacted result up to ERROR_RESULT_BYTES. Null on success rows. */
   resultExcerpt: string | null;
-  /** Error rows only: the redacted JSON of the arguments the agent sent, up to ERROR_ARGS_CHARS.
+  /** Error rows only: the redacted JSON of the arguments the agent sent, up to ERROR_ARGS_BYTES.
    *  Success rows keep the digest and length alone. */
   argsExcerpt: string | null;
   /** Elapsed time from tool_started to tool_ended. Null while the call is still open, and null for
@@ -185,7 +186,7 @@ export function createTraceRecorder(opts?: {
     return {
       digest: new Bun.CryptoHasher("sha256", digestKey).update(json).digest("hex"),
       chars: json.length,
-      raw: json.slice(0, ERROR_ARGS_CHARS * 2),
+      raw: json.slice(0, ERROR_ARGS_BYTES * 2),
     };
   };
 
@@ -279,7 +280,7 @@ export function createTraceRecorder(opts?: {
       if (!turn) return;
       turn.streamed = true;
       turn.assistantChars += event.delta.length;
-      if (turn.rawAssistant.length < PREVIEW_CHARS * 2) turn.rawAssistant += event.delta;
+      if (turn.rawAssistant.length < PREVIEW_BYTES * 2) turn.rawAssistant += event.delta;
       return;
     }
     // The same words the deltas above carry, arriving once at the end of the message. A backend
@@ -293,7 +294,7 @@ export function createTraceRecorder(opts?: {
       const turn = turnRecord();
       if (!turn || turn.streamed) return;
       turn.assistantChars += event.text.length;
-      if (turn.rawAssistant.length < PREVIEW_CHARS * 2) turn.rawAssistant += event.text;
+      if (turn.rawAssistant.length < PREVIEW_BYTES * 2) turn.rawAssistant += event.text;
       return;
     }
     if (event.type === "tool_started") {
@@ -325,7 +326,7 @@ export function createTraceRecorder(opts?: {
     if (event.type === "turn_failed") {
       turn.status = "failed";
       turn.timingMs = elapsed(turn.startedAt);
-      turn.errorMessage = redactProviderDiagnostic(event.errorMessage, PREVIEW_CHARS);
+      turn.errorMessage = redactProviderDiagnostic(event.errorMessage, PREVIEW_BYTES);
       return;
     }
     turn.status = "ended";
@@ -339,7 +340,7 @@ export function createTraceRecorder(opts?: {
     }
     if (event.compactions !== undefined) turn.compactions = event.compactions;
     if (event.errorMessage !== undefined) {
-      turn.errorMessage = redactProviderDiagnostic(event.errorMessage, PREVIEW_CHARS);
+      turn.errorMessage = redactProviderDiagnostic(event.errorMessage, PREVIEW_BYTES);
     }
   };
 
@@ -361,7 +362,7 @@ export function createTraceRecorder(opts?: {
       // completion against the stored id and would otherwise compare a redacted string against the
       // raw one the next event carries.
       const identifier = (text: string | null): string | null =>
-        text === null ? null : redactProviderDiagnostic(text, PREVIEW_CHARS);
+        text === null ? null : redactProviderDiagnostic(text, PREVIEW_BYTES);
       return {
         schema: CASE_TRACE_SCHEMA,
         backend: opts?.backend ?? null,
@@ -369,22 +370,22 @@ export function createTraceRecorder(opts?: {
           ...turn,
           observedMs: observed(startedAt, turn.status !== "open"),
           stopReason: identifier(turn.stopReason),
-          assistantPreview: rawAssistant ? redactProviderDiagnostic(rawAssistant, PREVIEW_CHARS) : "",
+          assistantPreview: rawAssistant ? redactProviderDiagnostic(rawAssistant, PREVIEW_BYTES) : "",
         })),
         toolCalls: calls.map(({ rawPreview, rawArgs, startedAt, ...call }) => ({
           ...call,
           observedMs: observed(startedAt, call.isError !== null),
-          toolName: redactProviderDiagnostic(call.toolName, PREVIEW_CHARS),
+          toolName: redactProviderDiagnostic(call.toolName, PREVIEW_BYTES),
           toolCallId: identifier(call.toolCallId),
-          resultPreview: rawPreview === null ? null : redactProviderDiagnostic(rawPreview, PREVIEW_CHARS),
+          resultPreview: rawPreview === null ? null : redactProviderDiagnostic(rawPreview, PREVIEW_BYTES),
           // Error rows keep the actual bytes (redacted, bounded); success rows drop both buffers.
           resultExcerpt:
             call.isError === true && rawPreview !== null
-              ? redactProviderDiagnostic(rawPreview, ERROR_RESULT_CHARS)
+              ? redactProviderDiagnostic(rawPreview, ERROR_RESULT_BYTES)
               : null,
           argsExcerpt:
             call.isError === true && rawArgs !== null
-              ? redactProviderDiagnostic(rawArgs, ERROR_ARGS_CHARS)
+              ? redactProviderDiagnostic(rawArgs, ERROR_ARGS_BYTES)
               : null,
         })),
         droppedRawEvents,

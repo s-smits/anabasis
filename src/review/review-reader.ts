@@ -22,6 +22,7 @@ import {
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { openReviewSession, reviewSlotPin } from "./review-session.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 /** Every reader records the same three facts: the slot it ran on, what the model said, and the
  *  one typed reason it produced nothing. `pin: null` with `error: "review-slot-off"` is the
@@ -88,12 +89,12 @@ export async function runReaderTurn(input: ReaderTurnInput): Promise<ReaderTurn>
     ({ text, error } = await readInSession(session, input));
   } catch (cause: unknown) {
     if (isProviderResourceBudgetInterruption(cause)) throw cause;
-    error = `${role}: ${errorMessage(cause)}`.slice(0, 300);
+    error = boundText(`${role}: ${errorMessage(cause)}`, 300).shown;
   } finally {
     try {
       await session?.dispose();
     } catch (cause: unknown) {
-      error ??= `${role} dispose failed: ${errorMessage(cause)}`.slice(0, 300);
+      error ??= boundText(`${role} dispose failed: ${errorMessage(cause)}`, 300).shown;
     }
   }
   if (phase !== undefined) {

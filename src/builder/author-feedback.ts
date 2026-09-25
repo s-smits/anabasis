@@ -12,13 +12,16 @@ import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type ContractFinding, controllerValidatedFinding, projectFindingForAuthor } from "../truth/brief.ts";
 import { characterWindow, windowRange } from "./read-window.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 const GROUP_PAGE_ROWS = 20;
-const FIELD_PREVIEW_CHARS = 240;
+/** UTF-8 bytes of each field's preview; the exact field pages by character offset. */
+const FIELD_PREVIEW_BYTES = 240;
 /** Enough rows to list every variant of a typical large group, which holds a handful at the median
- *  and a couple of dozen at the tail — more than the 240-character preview shows. */
+ *  and a couple of dozen at the tail — more than the 240-byte preview shows. */
 const VARIANT_INDEX_ROWS = 32;
-const VARIANT_INDEX_CHARS = 160;
+/** UTF-8 bytes of each variant's line in the index. */
+const VARIANT_INDEX_BYTES = 160;
 
 /** Both submit and correctness_check end with this sentence: they record into the same store. */
 export const FEEDBACK_NAVIGATION =
@@ -134,10 +137,9 @@ export function groupAuthorFindings(findings: readonly ContractFinding[]): Group
 
 /** One line per variant, count first, so a group's repairs read without paging. */
 function variantIndex({ variants }: Group): string[] {
-  const lines = variants.slice(0, VARIANT_INDEX_ROWS).map((row) => {
-    const text = Array.from(variantText(row));
-    return `×${row.count} ${text.slice(0, VARIANT_INDEX_CHARS).join("")}${text.length > VARIANT_INDEX_CHARS ? "…" : ""}`;
-  });
+  const lines = variants
+    .slice(0, VARIANT_INDEX_ROWS)
+    .map((row) => `×${row.count} ${boundText(variantText(row), VARIANT_INDEX_BYTES).shown}`);
   const more = variants.length - lines.length;
   return more > 0 ? [...lines, `(${more} more variants; page this group's detail)`] : lines;
 }
@@ -159,12 +161,8 @@ export function codeDelta(previous: readonly string[], current: readonly string[
 }
 
 function preview(value: string) {
-  const characters = Array.from(value);
-  return {
-    text: characters.slice(0, FIELD_PREVIEW_CHARS).join(""),
-    characters: characters.length,
-    complete: characters.length <= FIELD_PREVIEW_CHARS,
-  };
+  const bounded = boundText(value, FIELD_PREVIEW_BYTES);
+  return { text: bounded.text, characters: Array.from(value).length, complete: !bounded.truncated };
 }
 
 const previews = (group: Group) => ({

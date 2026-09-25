@@ -124,6 +124,14 @@ describe("generated evaluation in a confined child", () => {
     );
   });
 
+  it("cuts a long thrown message once, leaving room for its own omission marker", async () => {
+    const dir = fixture(`function evaluate() { throw new Error("x".repeat(10000)); }`);
+    // The child keeps 4096 - 64 bytes, so its marked detail fits the parent's 4096 and is not cut again.
+    await expect((await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST)).rejects.toThrow(
+      `check "text" ${"x".repeat(4032)} […5968 bytes omitted]`,
+    );
+  });
+
   it("allows a check more time than its longest permitted tool run", () => {
     // Sol run 23a1bc: a check that ran one tool at the published
     // 600 s maximum exceeded its own 600 s timeout and was charged as an authoring defect.

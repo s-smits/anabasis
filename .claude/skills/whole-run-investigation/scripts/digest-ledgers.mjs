@@ -10,6 +10,7 @@
 // memory text, and print leads with a fixed trigger name the catalogue references. The lead is
 // arithmetic; the semantic verdict stays with the primary reviewer.
 
+import { boundText } from "#src/meta/bounded-text.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "#src/meta/filesystem.ts";
 import { basename, join } from "#src/meta/path.ts";
 import { wilsonInterval } from "#src/claim/estimation.ts";
@@ -428,7 +429,7 @@ export function roleSpendLines({ campaign, tallies, batteryOf, decisions }) {
     if (controller.state !== "recorded") continue;
     for (const step of controller.absentSteps) {
       const cls = exhaustionClass(step);
-      const head = String(step).split(/[—:]/)[0].trim().slice(0, 40);
+      const head = boundText(String(step).split(/[—:]/)[0], 40).shown;
       if (cls === "explicit-exhaustion") {
         explicitExhaustion += 1;
         lines.push(

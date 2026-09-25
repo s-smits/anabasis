@@ -78,6 +78,21 @@ describe("cross-iteration Builder memory", () => {
     settle(dir, { ordinal: 2, experimentProposal: { ...proposal, gap: "tampered intent", digest: "wrong" } });
     expect(detailOf(dir)).not.toContain("tampered intent");
   });
+  it("bounds a long recorded gap and marks what it left out", () => {
+    const dir = tmp();
+    const proposal = {
+      scope: "tasks" as const,
+      target: { comparator: "at-least" as const, verifiedPasses: 0 },
+      gap: "x".repeat(300),
+      change: "Change task coupling.",
+      ...PLAN_FIELDS,
+      expectedResult: "More failures would support the hypothesis.",
+    };
+    settle(dir, { ordinal: 1, experimentProposal: { ...proposal, digest: hashJsonValue(proposal) } });
+    expect(detailOf(dir)).toContain(
+      `gap "${"x".repeat(240)} […60 bytes omitted]", change "Change task coupling."`,
+    );
+  });
   it("skips a recorded pass it cannot summarise and keeps the rest of the memory", () => {
     // `parseJsonAs` casts, so every field but the ordinal reached its consumer unread: the
     // attempts `summarise` enumerates and the feedback rows `refusalsOf` walks. A record left

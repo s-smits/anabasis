@@ -14,6 +14,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { existsSync } from "../meta/filesystem.ts";
 import { basename, join } from "../meta/path.ts";
 import { writeAtomic } from "../meta/completed-json.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 const BUILDER_PROSE_FILE = "builder-prose.jsonl";
 const BUILDER_PROSE_SCHEMA = "builder-prose/v2";
@@ -21,11 +22,11 @@ const BUILDER_PROSE_CAPTURE_SCHEMA = "builder-prose-capture/v1";
 
 /** Rows beyond this are counted in `proseOmitted` and dropped; the count stays exact. */
 const MAX_PROSE_ROWS = 4000;
-/** Characters kept per row, about 1024 tokens. A longer row is cut and marked, not dropped. */
-export const MAX_PROSE_CHARS = 4000;
+/** Bytes kept per row, about 1024 tokens. A longer row is cut and marked, not dropped. */
+const MAX_PROSE_BYTES = 4000;
 /** A compaction row carries the summary the model wrote of everything before it, and the summary is
  *  the reason the row exists, so it keeps far more than a message row before it is cut. */
-const MAX_COMPACTION_CHARS = 64_000;
+const MAX_COMPACTION_BYTES = 64_000;
 
 export interface BuilderProseRow {
   schema: typeof BUILDER_PROSE_SCHEMA;
@@ -59,6 +60,11 @@ interface BuilderProseHeader extends BuilderProseCapture {
   executionFile: string;
 }
 
+/** The bound one row kind is cut to, shared with every reader that holds a row to it. */
+export function proseRowCap(kind: BuilderProseRow["kind"]): number {
+  return kind === "compaction" ? MAX_COMPACTION_BYTES : MAX_PROSE_BYTES;
+}
+
 export class BuilderProseLog {
   private readonly rows: BuilderProseRow[] = [];
   private omitted = 0;
@@ -72,7 +78,7 @@ export class BuilderProseLog {
       this.omitted += 1;
       return;
     }
-    const cap = kind === "compaction" ? MAX_COMPACTION_CHARS : MAX_PROSE_CHARS;
+    const bounded = boundText(trimmed, proseRowCap(kind));
     this.rows.push({
       schema: BUILDER_PROSE_SCHEMA,
       sequence: this.rows.length + 1,
@@ -80,8 +86,8 @@ export class BuilderProseLog {
       atMs: this.since(),
       kind,
       chars: trimmed.length,
-      truncated: trimmed.length > cap,
-      text: trimmed.slice(0, cap),
+      truncated: bounded.truncated,
+      text: bounded.text,
     });
   }
 

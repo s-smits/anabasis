@@ -158,6 +158,17 @@ describe("a Builder turn the provider ended with no build output", () => {
     expect(turn.attempts()).toBe(2);
     expect(turn.waits).toEqual([TURN_RETRY_BACKOFF_MS[0]]);
   });
+
+  it("records a long transport error bounded and marked, on one line", async () => {
+    const turn = turnUnderTest((attempt) =>
+      attempt === 1 ? failed(`socket hang up\n${"stack frame ".repeat(60)}`) : completed(),
+    );
+    await turn.run();
+    const reason = turn.recorder.finish("recorded").turnRetries?.[0]?.reason ?? "";
+    expect(reason).toStartWith("socket hang up stack frame");
+    expect(reason).toMatch(/\S \[…\d+ bytes omitted\]$/);
+    expect(reason).not.toContain("\n");
+  });
 });
 
 describe("a refusal the run cannot wait out", () => {

@@ -26,6 +26,7 @@ import { runtimeProcess } from "../meta/process.ts";
 import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { hasText } from "../meta/text.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 /** The child receives exactly what `builtAgentInterface` produced, under the same type rather than
  *  a re-spelling of it, so the recorded evidence, the worker protocol and the repair packet all
@@ -132,7 +133,7 @@ function send(message: PiBuiltChildMessage): void {
 
 function safeError(cause: unknown): string {
   const text = errorMessage(cause);
-  return (secret ? text.replaceAll(secret, "[redacted]") : text).slice(0, 800);
+  return boundText(secret ? text.replaceAll(secret, "[redacted]") : text, 800).shown;
 }
 
 function credentialSecret(credential: PiCredential): string {

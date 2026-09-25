@@ -12,6 +12,7 @@
 // the working tree against HEAD, as the linter before it reads the files, so a partially staged
 // file is judged on what is on disk.
 
+import { boundText } from "../../src/meta/bounded-text.ts";
 import { resolve } from "../../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../../src/meta/subprocess.ts";
 import { TREE_FINDING_ARGUMENTS, type TreeSite, treeFindings } from "./tree-findings.ts";
@@ -88,8 +89,7 @@ function report(touched: readonly TreeSite[], elsewhere: readonly TreeSite[]): s
 /** What the agent or person committing reads: the sites, where the rest is, and the two answers. */
 function message(first: TreeSite, touched: readonly TreeSite[], log: string): string {
   const shown = touched.slice(0, PRINTED).map((site, index) => {
-    const detail = site.detail.length > 110 ? `${site.detail.slice(0, 109)}…` : site.detail;
-    return `  ${index + 1}. ${site.kind} ${where(site)} [${site.id}]\n     ${detail}`;
+    return `  ${index + 1}. ${site.kind} ${where(site)} [${site.id}]\n     ${boundText(site.detail, 110).shown}`;
   });
   const more = touched.length > PRINTED ? [`  … and ${touched.length - PRINTED} more in the report.`] : [];
   return [

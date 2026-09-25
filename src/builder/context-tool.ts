@@ -22,7 +22,7 @@ import { join } from "../meta/path.ts";
 import { sha256 } from "../meta/digest.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { eachFileLine, readFileCharacterWindow, readFileWindow } from "./file-window.ts";
-import { truncateLine } from "./pi-coding/truncate.ts";
+import { truncateLine } from "../meta/truncate.ts";
 import { characterLimit, characterWindow, LIST_WINDOW_ROWS, readWindow, windowNote } from "./read-window.ts";
 import type { PreparedUserContext, UserContextFile } from "./user-context.ts";
 

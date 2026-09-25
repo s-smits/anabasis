@@ -8,6 +8,7 @@ import {
   realpathSync,
   statSync,
 } from "../../../../src/meta/filesystem.ts";
+import { boundText } from "../../../../src/meta/bounded-text.ts";
 import { dirname, extname, join, relative, resolve, sep } from "../../../../src/meta/path.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
@@ -209,7 +210,8 @@ export function readFilePayload(
     closeSync(handle);
   }
   const truncated = length > MAX_DISPLAY_BYTES;
-  const text = bytes.subarray(0, Math.min(length, MAX_DISPLAY_BYTES)).toString("utf8");
+  const read = bytes.subarray(0, length).toString("utf8");
+  const text = truncated ? boundText(read, MAX_DISPLAY_BYTES).text : read;
   let value: unknown = text;
   if (ref.content === "json" && !truncated) {
     try {

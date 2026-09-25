@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { exitWith, parseCommandOrDie } from "#skills/main/cli.ts";
+import { boundText } from "#src/meta/bounded-text.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { isString } from "#src/meta/json-shape.ts";
@@ -115,7 +116,7 @@ function projectItem(item, turn) {
     type: item.type ?? null,
     phase: item.phase ?? null,
     status: stateType(item.status),
-    text: itemText(item).slice(0, 1_200),
+    text: boundText(itemText(item), 1_200).shown,
     changedPaths: changedPaths(item),
   };
 }

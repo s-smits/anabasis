@@ -8,7 +8,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { AgentSession } from "../backends/backend-types.ts";
-import { DEFAULT_DIAGNOSTIC_MAX_CHARS } from "../backends/diagnostic-redaction.ts";
+import { DEFAULT_DIAGNOSTIC_MAX_BYTES } from "../backends/diagnostic-redaction.ts";
 import { observeJudgeTurn } from "../observe/model-turn-observer.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import type { Judge, JudgeAttempt, JudgeInput } from "./judge-contract.ts";
@@ -22,6 +22,7 @@ import {
   runBudgetedAgentTurn,
 } from "../run/provider-resource-budget.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 export const RATIONALE_MAX = 400;
 const RULE_MAX = 600;
@@ -88,7 +89,7 @@ function citableRules(input: JudgeInput): ReadonlySet<string> {
 }
 
 export function errorText(cause: unknown): string {
-  return errorMessage(cause).slice(0, DEFAULT_DIAGNOSTIC_MAX_CHARS);
+  return boundText(errorMessage(cause), DEFAULT_DIAGNOSTIC_MAX_BYTES).shown;
 }
 
 function parseVerdict(raw: JsonValue, citable: ReadonlySet<string>): Captured | null {

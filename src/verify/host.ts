@@ -73,6 +73,7 @@ import {
   type VerifierProcessSettlement,
 } from "./verifier-lifetime.ts";
 import { errorCode, errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 /** Five minutes. A cold compile that passed the census can take a minute or more on a loaded host,
  *  and a battery that times it out loses every case, so the limit leaves room for a tool several
@@ -86,10 +87,12 @@ export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
 const STDOUT_MAX_BYTES = 1024 * 1024;
 const STDERR_MAX_BYTES = 256 * 1024;
-const STDERR_TAIL_CHARS = 2000;
-/** Bytes kept for the tail independently of the capture cap, at up to four bytes per UTF-8
- *  character, so the tail can hold `STDERR_TAIL_CHARS` characters whatever they encode to. */
-const STDERR_TAIL_BYTES = STDERR_TAIL_CHARS * 4;
+/** UTF-8 bytes of stderr's end kept in the evidence row as `stderrTail`. */
+const STDERR_TAIL_BYTES = 2000;
+/** Bytes rolled for the tail independently of the capture cap. The window is wider than the tail
+ *  because its front can start inside a multi-byte character and its end can be whitespace that
+ *  the tail trims, and either would otherwise shorten the tail below its bound. */
+const STDERR_WINDOW_BYTES = STDERR_TAIL_BYTES * 4;
 
 /** The tool id prefix a program a check built inside its own cell runs under. */
 export const CELL_TOOL_PREFIX = "cell:";
@@ -224,12 +227,12 @@ export function resolveToolTimeoutMs(
  *  capture — otherwise the one part of a long error worth reading is the part that is dropped. */
 function rollTail(tail: Uint8Array[], chunk: Uint8Array): void {
   tail.push(
-    chunk.byteLength <= STDERR_TAIL_BYTES ? chunk : chunk.subarray(chunk.byteLength - STDERR_TAIL_BYTES),
+    chunk.byteLength <= STDERR_WINDOW_BYTES ? chunk : chunk.subarray(chunk.byteLength - STDERR_WINDOW_BYTES),
   );
   let total = tail.reduce((sum, kept) => sum + kept.byteLength, 0);
   for (
     let first = tail[0];
-    first !== undefined && tail.length > 1 && total - first.byteLength >= STDERR_TAIL_BYTES;
+    first !== undefined && tail.length > 1 && total - first.byteLength >= STDERR_WINDOW_BYTES;
     first = tail[0]
   ) {
     total -= first.byteLength;
@@ -362,7 +365,9 @@ function settledToolResult(
     timedOut: observed.timedOut,
     stdoutBytes: output.bytes.stdout,
     stderrBytes: output.bytes.stderr,
-    stderrTail: decode(output.tail).slice(-STDERR_TAIL_CHARS),
+    // Unmarked: an omission count over the rolled window would understate what the stream lost,
+    // and `stderrBytes` beside it already records the whole stream's size.
+    stderrTail: boundText(decode(output.tail), STDERR_TAIL_BYTES, "tail").text,
     settlement: {
       receiptId: observed.receiptId,
       groupReaped: observed.groupReaped,

@@ -87,7 +87,9 @@ describe("the served tool surface", () => {
     const findings = await conform("conform-long-description", [TASK], { tools: source });
     const drift = findings.filter((f) => f.code === "tools-description-drift");
     expect(drift).toHaveLength(1);
-    expect(drift[0]?.detail).toContain(`${long.slice(0, 117)}...`);
+    // ASCII, so the 120-byte excerpt is 120 characters, trimmed at the cut and marked.
+    const kept = long.slice(0, 120).trimEnd();
+    expect(drift[0]?.detail).toContain(`"${kept} […${long.trim().length - kept.length} bytes omitted]"`);
     expect(drift[0]?.detail).not.toContain(long);
   });
 

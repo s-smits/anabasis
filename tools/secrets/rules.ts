@@ -9,6 +9,8 @@
 // the prose and the tests that discuss credentials. Repeated false alarms make it harder to
 // distinguish a real credential from a harmless reference to one.
 
+import { boundText } from "../../src/meta/bounded-text.ts";
+
 interface SecretRule {
   id: string;
   /** What the operator is told the match is, in one noun phrase. */
@@ -100,7 +102,9 @@ function scanLine(path: string, line: number, text: string): SecretHit[] {
     for (const match of text.matchAll(rule.pattern)) {
       const value = match[rule.valueGroup ?? 0] ?? "";
       if (PLACEHOLDER.test(value) || REPEATED.test(value) || isWordy(value)) continue;
-      hits.push({ path, line, rule: rule.id, what: rule.what, masked: mask(text, value) });
+      // Redacted before it is bounded, so the cut cannot split a value the redaction would then miss.
+      const redacted = value ? text.split(value).join(`[redacted ${value.length} chars]`) : text;
+      hits.push({ path, line, rule: rule.id, what: rule.what, masked: boundText(redacted, 200).shown });
     }
   }
   return hits;
@@ -110,10 +114,4 @@ export function scanText(path: string, text: string): SecretHit[] {
   return text
     .split("\n")
     .flatMap((line, index) => scanLine(path, index + 1, line.length > 4000 ? line.slice(0, 4000) : line));
-}
-
-function mask(text: string, value: string): string {
-  const trimmed = text.trim().slice(0, 200);
-  if (!value) return trimmed;
-  return trimmed.split(value).join(`[redacted ${value.length} chars]`);
 }

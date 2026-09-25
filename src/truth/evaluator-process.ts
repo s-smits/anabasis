@@ -17,6 +17,7 @@ import { VerifierContractError } from "../../vendor/correctness-model-bundle/con
 import type { EvaluationRequest } from "./correctness-model-contract.ts";
 import { bundleEvaluator, retainEvaluatorBundle, type EvaluatorBundle } from "./evaluator-process-bundle.ts";
 import {
+  EVALUATOR_DETAIL_MAX_BYTES,
   EVALUATOR_FRAME_MAX_BYTES as FRAME_MAX_BYTES,
   type EvaluatorParentMessage,
 } from "./evaluator-process-wire.ts";
@@ -26,6 +27,7 @@ import {
   type VerifierLifetime,
 } from "../verify/verifier-lifetime.ts";
 import { launchConfinedChild } from "../verify/verifier-lifetime-process.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 type Request =
   | { mode: "probe"; checkIds: readonly string[] }
@@ -181,7 +183,7 @@ function childErrorFailure(detail: unknown, pendingTools: number, request: Reque
   const check = request.mode === "evaluate" ? `check "${request.checkId}" ` : "";
   return new EvaluatorProcessFailure(
     "generated",
-    check + (isString(detail) ? detail.slice(0, 4096) : "child refused"),
+    check + (isString(detail) ? boundText(detail, EVALUATOR_DETAIL_MAX_BYTES).shown : "child refused"),
   );
 }
 

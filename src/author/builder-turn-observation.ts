@@ -19,15 +19,16 @@
  */
 import type { AgentTurnEvent } from "../backends/backend-types.ts";
 import { redactTokens } from "../backends/diagnostic-redaction.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 
 /** Failure rows kept per session. Repeated failures can fill a session, so the first rows are
  *  retained for diagnosis and later failures are counted without storing more excerpts. */
 const MAX_FAILED_CALL_ROWS = 50;
-/** Characters kept per excerpt, after redaction. Long enough for a command line and a first error
+/** Bytes kept per excerpt, after redaction. Long enough for a command line and a first error
  *  line, short enough that 50 rows cannot bloat the record. */
-const MAX_FAILED_CALL_CHARS = 200;
+const MAX_FAILED_CALL_BYTES = 200;
 /** In-flight calls whose arguments are held for their end event. A transport that never ends a
  *  call would otherwise grow this map for the whole session. */
 const MAX_OPEN_CALL_ARGS = 256;
@@ -83,11 +84,8 @@ export function mergeCounts(left: Record<string, number>, right: Record<string, 
  *  failing command names is the part an investigation reads. */
 function excerpt(text: string | undefined): string | null {
   if (text === undefined) return null;
-  const redacted = redactTokens(text).replace(/\s+/g, " ").trim();
-  if (redacted.length === 0) return null;
-  return redacted.length <= MAX_FAILED_CALL_CHARS
-    ? redacted
-    : `${redacted.slice(0, MAX_FAILED_CALL_CHARS - 1)}…`;
+  const bounded = boundText(redactTokens(text).replace(/\s+/g, " "), MAX_FAILED_CALL_BYTES).shown;
+  return bounded === "" ? null : bounded;
 }
 
 export class BuilderTurnObservation {

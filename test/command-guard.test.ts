@@ -353,10 +353,10 @@ EOF`,
     expect(shown[1]).toBe("see the policy file");
     expect(shown).toHaveLength(9);
     expect(shown[8]).toBe(BUILDER_REFUSAL_CLOSE);
-    // The character cap holds in both layouts: one actionable line of 3,000 characters is cut too.
+    // The byte cap holds in both layouts: one actionable line of 3,008 bytes is cut and marked too.
     const longReason = builderRefusal(`Reason: ${"x".repeat(3000)}`).split("\n");
     expect(longReason).toHaveLength(2);
-    expect(longReason[0]).toHaveLength(1000);
+    expect(longReason[0]).toBe(`Reason: ${"x".repeat(992)} […2008 bytes omitted]`);
     expect(longReason[1]).toBe(BUILDER_REFUSAL_CLOSE);
   });
 

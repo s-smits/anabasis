@@ -229,6 +229,15 @@ describe("groupAuthorFindings", () => {
     expect(advised).toBe(`${text}\nAdvice: a stand-in line.`);
   });
 
+  it("cuts a long variant line and a long field preview on whole code points, and says so", () => {
+    // Each é is two UTF-8 bytes, so a byte bound that fell inside one would split it.
+    const long = `receipt ${"é".repeat(200)}`;
+    const [group] = authorFindingOverview([row("L", long), row("L", "short")]).groups;
+    expect(group?.variantIndex?.[0]).toBe(`×1 receipt ${"é".repeat(76)} […248 bytes omitted]`);
+    // The preview keeps whole lines while any fit, so the long variant's line is left out entirely.
+    expect(group?.detail).toMatchObject({ text: "[variant 1/2 ×1, 208 chars]", complete: false });
+  });
+
   it("returns the code delta against the previous stored result on every recorded check", () => {
     const store = new BuilderAuthorFeedback();
     expect(store.recordCheck("gates", [row("A", "a"), row("A", "a2"), row("B", "b")])).toBeNull();

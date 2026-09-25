@@ -100,7 +100,9 @@ describe("prose posture classifier", () => {
     expect(segmentsOf("The **schema** is fine; I will submit now and explain the result at length.")).toEqual(
       ["The **schema** is fine; I will submit now and explain the result at length."],
     );
-    expect(excerptOf("**Running tests**\n  after   regeneration", 20)).toBe("Running tests after ");
+    expect(excerptOf("**Running tests**\n  after   regeneration", 20)).toBe(
+      "Running tests after […13 bytes omitted]",
+    );
   });
 
   it("labels rows by their last segment, keeps text out of rows and joins labels, reactions and excerpts to each submit", async () => {
@@ -181,7 +183,8 @@ describe("prose posture classifier", () => {
       [
         { turn: 1, atMs: 500, kind: "prompt", text: "Build the harness for this request." },
         ...ROWS,
-        { turn: 1, atMs: 9500, kind: "compaction", text: "tokensBefore=90000 compacted=true" },
+        // Longer than a message row may be: a compaction keeps its summary, and the reader must too.
+        { turn: 1, atMs: 9500, kind: "compaction", text: `tokensBefore=90000 ${"s".repeat(6000)}` },
       ],
       SUBMITS,
     );

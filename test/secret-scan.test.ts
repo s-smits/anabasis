@@ -69,6 +69,13 @@ describe("secret scan rules", () => {
     expect(hit?.masked).toContain("[redacted");
   });
 
+  it("redacts before it bounds, so a credential across the display bound leaves no part behind", () => {
+    // The credential starts five bytes before the 200-byte bound, so a cut first keeps its prefix.
+    const [hit] = scanText("fixture.ts", `const token = "${"a ".repeat(90)}${GITHUB_PAT}"`);
+    expect(hit?.masked).not.toContain(GITHUB_PAT.slice(0, 4));
+    expect(hit?.masked).toContain("bytes omitted]");
+  });
+
   it("honours a line that waives the scan for itself", () => {
     expect(scanText("fixture.ts", `DB: "${URL_CREDS}" // ${WAIVER}: documented`)).toEqual([]);
   });
@@ -170,7 +177,6 @@ describe("redactProviderDiagnostic", () => {
 
   it("caps diagnostics before persistence", () => {
     const result = redactProviderDiagnostic(`prefix ${"x".repeat(50)}`, 24);
-    expect(result).toHaveLength(24);
-    expect(result.endsWith("…")).toBe(true);
+    expect(result).toBe(`prefix ${"x".repeat(17)} […33 bytes omitted]`);
   });
 });

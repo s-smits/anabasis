@@ -1,8 +1,10 @@
-/** Shared limit for retained diagnostic text. The Judge's own error capture
- *  (`src/truth/judge-drivers.ts`) uses this value rather than defining a second 500-character limit
+import { boundText } from "../meta/bounded-text.ts";
+
+/** Shared limit, in UTF-8 bytes, for retained diagnostic text. The Judge's own error capture
+ *  (`src/truth/judge-drivers.ts`) uses this value rather than defining a second 500-byte limit
  *  beside it, so the two records agree on how much of a failure they keep. A caller with a
- *  different record to govern passes its own bound instead: the trace's `PREVIEW_CHARS` does. */
-export const DEFAULT_DIAGNOSTIC_MAX_CHARS = 500;
+ *  different record to govern passes its own bound instead: the trace's `PREVIEW_BYTES` does. */
+export const DEFAULT_DIAGNOSTIC_MAX_BYTES = 500;
 
 /**
  * Scrub provider tokens and secret-shaped key/value pairs out of text before it reaches a log line,
@@ -25,16 +27,15 @@ export function redactTokens(text: string): string {
  * Provider SDK diagnostics carry useful outage signatures and, beside them, account, header and
  * local-path details. Both matter: the diagnostic has to stay usable for runtime-blocker matching,
  * which reads those signatures, while the private and account-shaped details are removed and the
- * string is capped before it is persisted in turn-summary evidence.
+ * string is capped before it is persisted in turn-summary evidence. A bound of zero or less keeps
+ * the whole redacted text.
  */
-export function redactProviderDiagnostic(text: string, maxChars = DEFAULT_DIAGNOSTIC_MAX_CHARS): string {
+export function redactProviderDiagnostic(text: string, maxBytes = DEFAULT_DIAGNOSTIC_MAX_BYTES): string {
   const redacted = redactTokens(text)
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
     .replace(/(?<![\w.-])~\/[^\s;,)]+/g, "~/[redacted-path]")
     .replace(/(\/Users|\/home)\/[^/\s;,)]+(?:\/[^\s;,)]+)*/g, "$1/[redacted-user]/[redacted-path]")
     .replace(/\s+/g, " ")
     .trim();
-  return maxChars <= 0 || redacted.length <= maxChars
-    ? redacted
-    : `${redacted.slice(0, Math.max(0, maxChars - 1))}…`;
+  return maxBytes <= 0 ? redacted : boundText(redacted, maxBytes).shown;
 }

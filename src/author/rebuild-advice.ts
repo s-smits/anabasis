@@ -26,10 +26,11 @@
  *
  * `renderRebuildAdvice` is the model-visible boundary, bounded by construction rather than by a
  * ceiling that cuts mid-sentence: `RENDERED_ISSUES` standing issues, `RENDERED_FINDINGS` findings
- * and `FINDING_CLAIM_CHARS` per claim. A diagnosis crosses as its layer, intervention, boundary
+ * and `FINDING_CLAIM_BYTES` per claim. A diagnosis crosses as its layer, intervention, boundary
  * and falsifier, which the diagnosis reader drew from solver traces and public context alone; its
  * causal argument stays recorded here.
  */
+import { boundText } from "../meta/bounded-text.ts";
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { authorSessionOwner } from "../analyse/finding-owner.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
@@ -226,7 +227,7 @@ type MeasuredBattery = { families: readonly AdviceFamilyRow[] } & Pick<
  *  whatever the battery did, while the register goes on recording every issue it derived. */
 const RENDERED_ISSUES = 6;
 const RENDERED_FINDINGS = 4;
-const FINDING_CLAIM_CHARS = 600;
+const FINDING_CLAIM_BYTES = 600;
 
 /** How the unmeasured line names each part of the condition that moved. */
 const GAP_WORDS: Record<ConditionGap, string> = {
@@ -700,11 +701,7 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
       finding.repeated === undefined
         ? ""
         : ` (recurring: ${String(finding.repeated.count)} consecutive packets since ${finding.repeated.since})`;
-    const cut = finding.claim.length - FINDING_CLAIM_CHARS;
-    const claim =
-      cut <= 0
-        ? finding.claim
-        : `${finding.claim.slice(0, FINDING_CLAIM_CHARS)} […${cut} further character${cut === 1 ? "" : "s"} omitted]`;
+    const claim = boundText(finding.claim, FINDING_CLAIM_BYTES).shown;
     return `- [${finding.severity}] ${finding.kind}: ${claim}${repeated}`;
   });
   const omitted = findings.length - lines.length;

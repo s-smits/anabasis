@@ -30,7 +30,7 @@ import { refuseDestructiveCommand } from "./command-guard.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 export { BUILDER_CAPABILITY_MODES } from "./capability-modes.ts";
 import { withFileMutationQueue } from "./pi-coding/file-mutation-queue.ts";
-import { GREP_MAX_LINE_LENGTH, truncateHead, truncateTail } from "./pi-coding/truncate.ts";
+import { truncateHead, truncateLine, truncateTail } from "../meta/truncate.ts";
 import { cutOutputNotice, spillWholeOutput, stageAndCopy } from "./tool-write.ts";
 import { keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 
@@ -251,7 +251,7 @@ export function createBuilderTools(isolation: BuilderIsolation): AgentTool[] {
         const guarded = guardReturnedPaths("grep", rows, pathOf, "throw");
         const kept = guarded.slice(0, limit).map((row) => {
           const line = `${rel(pathOf(row))}${row.slice(row.indexOf("\0")).replace("\0", ":")}`;
-          return line.length > GREP_MAX_LINE_LENGTH ? `${line.slice(0, GREP_MAX_LINE_LENGTH)}...` : line;
+          return truncateLine(line).text;
         });
         const more = moreRowsNote(guarded.length, kept.length, "row", "rows");
         const found = kept.length > 0 ? `${kept.join("\n")}${more}` : "No matches";

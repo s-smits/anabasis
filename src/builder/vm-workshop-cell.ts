@@ -41,6 +41,7 @@ import {
 import type { CandidateAccessPolicy } from "./candidate-isolation.ts";
 import type { OptionalEnvValues } from "../backends/scrub-env.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 const VM_NAME_ENV = "ANA_WORKSHOP_VM";
 const VM_DIR_ENV = "ANA_VM_DIR";
@@ -144,7 +145,7 @@ function assertIsolatedNetwork(cell: VmWorkshopCell, virshPath: string): void {
   if (definition.status !== 0) {
     throw unavailable(
       cell,
-      `network ${ISOLATED_NETWORK} is not defined (${definition.stderr.trim().slice(-200)})`,
+      `network ${ISOLATED_NETWORK} is not defined (${boundText(definition.stderr, 200, "tail").shown})`,
     );
   }
   if (
@@ -171,7 +172,9 @@ function unavailable(cell: VmWorkshopCell, detail: string): CandidateIsolationUn
 function assertIsolatedInterfaces(cell: VmWorkshopCell, virshPath: string): void {
   assertIsolatedNetwork(cell, virshPath);
   const list = virsh(virshPath, ["domiflist", cell.name]);
-  if (list.status !== 0) throw unavailable(cell, `domain not defined (${list.stderr.trim().slice(-200)})`);
+  if (list.status !== 0) {
+    throw unavailable(cell, `domain not defined (${boundText(list.stderr, 200, "tail").shown})`);
+  }
   const lines = list.stdout.split("\n").map((line) => line.trim());
   const divider = lines.findIndex((line) => /^-+$/.test(line));
   if (divider < 0) throw unavailable(cell, "malformed interface table (missing divider)");
@@ -180,7 +183,9 @@ function assertIsolatedInterfaces(cell: VmWorkshopCell, virshPath: string): void
     .filter(Boolean)
     .map((line) => {
       const columns = line.split(/\s+/);
-      if (columns.length !== 5) throw unavailable(cell, `malformed interface row (${line.slice(0, 120)})`);
+      if (columns.length !== 5) {
+        throw unavailable(cell, `malformed interface row (${boundText(line, 120).shown})`);
+      }
       return columns;
     })
     .filter((cols) => cols[0] !== "lo" && cols[1] !== "loopback");
@@ -212,7 +217,7 @@ async function openCell(
   if (!state.stdout.includes("running")) {
     const started = virsh(virshPath, ["start", cell.name]);
     if (started.status !== 0) {
-      throw unavailable(cell, `could not start the guest (${started.stderr.trim().slice(-200)})`);
+      throw unavailable(cell, `could not start the guest (${boundText(started.stderr, 200, "tail").shown})`);
     }
   }
   for (let attempt = 0; attempt < OPEN_ATTEMPTS; attempt += 1) {
@@ -246,7 +251,10 @@ async function openCell(
           throw unavailable(cell, "ssh transport failed during the guest sandbox canary");
         }
         if (canary.status !== 0) {
-          throw unavailable(cell, `guest bubblewrap canary failed (${canary.stderr.trim().slice(-200)})`);
+          throw unavailable(
+            cell,
+            `guest bubblewrap canary failed (${boundText(canary.stderr, 200, "tail").shown})`,
+          );
         }
         return { ip, sshPath };
       }
@@ -401,7 +409,7 @@ export function createVmWorkshopRunner(
     // becomes a non-result the next call can retry against a repaired guest.
     if (outcome.status === 255) {
       opened = null;
-      throw unavailable(cell, `ssh transport failed (${outcome.stderr.trim().slice(-300)})`);
+      throw unavailable(cell, `ssh transport failed (${boundText(outcome.stderr, 300, "tail").shown})`);
     }
     const identity = {
       schema: `${policy.schema}/microvm-libvirt`,

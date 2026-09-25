@@ -21,6 +21,7 @@
  * before the wait for one that already holds, and after it for one that arrives while it runs,
  * which for a reset wait is most of the hours it covers.
  */
+import { boundText } from "../meta/bounded-text.ts";
 import { fullrunLine } from "../observe/run-observer.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
@@ -37,8 +38,8 @@ export const TURN_RETRY_BACKOFF_MS = [120_000, 300_000, 600_000] as const;
  *  a few seconds behind ours does not spend an attempt on the same refusal. */
 export const PROVIDER_RESET_MARGIN_MS = 60_000;
 
-/** Enough of the transport's own words to recognise the cause in the recorded row. */
-const REASON_MAX_CHARS = 300;
+/** Bytes of the transport's own words kept, enough to recognise the cause in the recorded row. */
+const REASON_MAX_BYTES = 300;
 
 /** A refusal no wait clears: the provider says the organisation, account or workspace itself is
  *  disabled, which only its administrator changes. Without this pattern a run spends all three
@@ -75,7 +76,7 @@ export async function awaitTurnRetry(
   if (ladderMs === undefined) return false;
   // The transport's error text, flattened onto one bounded line.
   const joined = errorMessages.join("; ").replace(/\s+/g, " ").trim();
-  const reason = (joined === "" ? "no error recorded" : joined).slice(0, REASON_MAX_CHARS);
+  const reason = boundText(joined === "" ? "no error recorded" : joined, REASON_MAX_BYTES).shown;
   // An allowance that names when it clears is a wait; one that names no clock ends the run. Each
   // clock is read from the allowance that named it, so a session limit naming noon cannot speak for
   // a monthly spend limit beside it, which no wait clears (src/truth/provider-reset.ts).

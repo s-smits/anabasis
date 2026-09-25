@@ -67,6 +67,7 @@ import { type ReaderTool, runReaderTurn } from "./review-reader.ts";
 import { redactProviderDiagnostic } from "../backends/diagnostic-redaction.ts";
 import { type CompiledSolve, type SolveWalls, batteryCensus, compileSolve } from "./solve-steps.ts";
 import { DIAGNOSIS_SYSTEM_PROMPT, recordDiagnosisTool } from "./diagnosis-tool.ts";
+import { boundText } from "../meta/bounded-text.ts";
 
 export const DIAGNOSIS_READING_SCHEMA = "diagnosis-reading/v2";
 
@@ -79,9 +80,10 @@ const CONTRASTS_SHOWN = 2;
  *  withheld whole and counted, never cut, because a reader shown half a solve cannot tell where it
  *  stopped. */
 const BODY_MAX_CHARS = 150_000;
-const GUIDE_CHARS = 8_000;
-const TOOL_TEXT_CHARS = 300;
-const TASK_CHARS = 6_000;
+/** UTF-8 bytes shown of the operating guide, of each tool description and of the public task. */
+const GUIDE_BYTES = 8_000;
+const TOOL_TEXT_BYTES = 300;
+const TASK_BYTES = 6_000;
 
 type CaseRow = IterationAnalysis["cases"][number];
 
@@ -162,9 +164,6 @@ function carriesIssue(row: CaseRow, issue: AdviceIssue): boolean {
   return outcome === "non-result" && row.runtimeNonResultKind === issue.detail;
 }
 
-const clipped = (text: string, chars: number) =>
-  text.length <= chars ? text : `${text.slice(0, chars)} […${text.length - chars} characters omitted]`;
-
 /** Manifest-bound reads out of the run directory a verified trace resolved into. Only the public
  *  files this reader names are ever asked for. */
 function runReader(runId: string, checkedRuns: Map<string, EvidenceLogViolation[]>): RecordedRead {
@@ -195,7 +194,7 @@ function publicTask(read: RecordedRead, trace: VerifiedTraceRead, taskId: string
   ).publicTask;
   return projected === null
     ? "public task unavailable"
-    : `public task: ${clipped(capturedJsonStringify(projected), TASK_CHARS)}`;
+    : `public task: ${boundText(capturedJsonStringify(projected), TASK_BYTES).shown}`;
 }
 
 function publicDomain(read: RecordedRead, trace: VerifiedTraceRead, taskId: string): string | null {
@@ -239,7 +238,7 @@ function harnessSurface(measuredDir: string) {
   const tools = isRecord(spec) && Array.isArray(spec.tools) ? spec.tools.filter(isRecord) : [];
   const described = tools.map(
     (tool) =>
-      `- ${named(tool.name, "?")} [${named(tool.kind, "?")}]: ${clipped(named(tool.description, ""), TOOL_TEXT_CHARS)}`,
+      `- ${named(tool.name, "?")} [${named(tool.kind, "?")}]: ${boundText(named(tool.description, ""), TOOL_TEXT_BYTES).shown}`,
   );
   const settings = settingsOf(measuredDir);
   const walls: SolveWalls = { maxTurns: settings.maxTurns, solveMinutes: settings.solveMs / 60_000 };
@@ -254,7 +253,7 @@ function harnessSurface(measuredDir: string) {
       `Declared domain tools (presets: ${presets}):`,
       ...(described.length === 0 ? ["(none declared)"] : described),
       `Operating guide the solver read (${BUILT_AGENTS_FILE}):`,
-      guide === null ? "(no operating guide in the measured tree)" : clipped(guide, GUIDE_CHARS),
+      guide === null ? "(no operating guide in the measured tree)" : boundText(guide, GUIDE_BYTES).shown,
     ].join("\n"),
   };
 }

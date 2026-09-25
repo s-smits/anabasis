@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { boundText } from "#src/meta/bounded-text.ts";
 import {
   chmodSync,
   closeSync,
@@ -119,7 +120,9 @@ export const spawnCommand: Command = async (
       stream instanceof ReadableStream ? new Response(stream).text() : Promise.resolve("");
     const [code, out, err] = await Promise.all([child.exited, read(child.stdout), read(child.stderr)]);
     if (check && code !== 0) {
-      throw new Error(`${argv[0]} exited ${code}${hasText(log) ? `; log: ${log}` : `: ${err.slice(-3000)}`}`);
+      throw new Error(
+        `${argv[0]} exited ${code}${hasText(log) ? `; log: ${log}` : `: ${boundText(err, 3000, "tail").shown}`}`,
+      );
     }
     return { code, out: out.trim(), err: err.trim() };
   } finally {

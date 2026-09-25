@@ -946,11 +946,11 @@ describe("the issue register and its projection", () => {
     const text = renderRebuildAdvice(result);
     expect(text.split("\n- [active]")).toHaveLength(7);
     expect(text).toContain("(6 of 10 shown)");
-    expect(text).toContain("further characters omitted]");
+    expect(text).toContain(" bytes omitted]");
     expect(text).toContain("2 further admitted findings omitted from this packet.");
     expect(text.length).toBeLessThan(6_000);
 
-    // One character past the per-claim cap, which read "1 further characters omitted]".
+    // One byte past the per-claim cap is still cut and marked.
     const tight = renderRebuildAdvice(
       derive(
         analysis(rows),
@@ -967,7 +967,7 @@ describe("the issue register and its projection", () => {
         null,
       ),
     );
-    expect(tight).toContain("1 further character omitted]");
+    expect(tight).toContain(`: ${"c".repeat(600)} […1 byte omitted]`);
   });
 });
 

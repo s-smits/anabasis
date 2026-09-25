@@ -62,6 +62,7 @@ import { jsonPathTokens, plainRecord } from "../meta/json-evidence.ts";
 import { type JsonValue, isNumber, isString } from "../meta/json-shape.ts";
 import { type ReaderTool, type ReaderToolResult, readerParameters, readerToolText } from "./review-reader.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
+import { boundText } from "../meta/bounded-text.ts";
 import { BRIEF_FILE, CONTROLS_FILE } from "../meta/bundle-layout.ts";
 
 /** Probes per review. Each one loads the generated check program in a confined child and may launch
@@ -511,7 +512,10 @@ export function probeTool(root: string, lifetimeRoot: string, state: ProbeState)
     try {
       receipts = await runPair(candidate, id, control.taskId, control.artifact, mutated);
     } catch (cause: unknown) {
-      return failed(control.taskId, `the checks did not settle: ${errorMessage(cause)}`.slice(0, 300));
+      return failed(
+        control.taskId,
+        boundText(`the checks did not settle: ${errorMessage(cause)}`, 300).shown,
+      );
     }
     const baseline = sideOf(receipts.find((row) => row.controlId === baselineId(id)));
     const changed = sideOf(receipts.find((row) => row.controlId === mutatedId(id)));

@@ -1204,7 +1204,9 @@ which is how this paragraph came to recommend a redirect that does not work. You
 go through the `dcg` binary directly. The Builder's go through `src/builder/command-guard.ts`,
 which runs that same binary and then adds an exception of its own: `privateScratchRedirect` admits
 a target matching `SCRATCH_TARGET`, which is `~/…`, `$HOME/…` or `$TMPDIR/…` in either the bare or
-the braced spelling. dcg alone admits neither of the last two. Probed against 0.14.4 on
+the braced spelling, and a relative target expanding a plain variable, such as a loop's
+`> "scratch/opt-$i.log"`, when every `cd` in the command stays in its own tree. dcg alone admits
+neither `$HOME/…` nor `$TMPDIR/…`. Probed against 0.14.4 on
 2026-09-23, `> $HOME/f`, `> $TMPDIR/f` and `> "$TMPDIR/f"` are all refused by
 `core.filesystem:redirect-truncate-dynamic-path`, and quoting makes no difference. The rule's own
 reason is the honest one: the shell expands the target at runtime, so dcg cannot prove where the

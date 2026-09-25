@@ -27,7 +27,12 @@ import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import { harnessSettings } from "./harness-config.ts";
-import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
+import type {
+  SolvabilityCaseEvidence,
+  SolvabilityEvidence,
+  SolvabilityFailure,
+  SolvabilityNonResult,
+} from "../claim/readiness.ts";
 import {
   BUNDLE_SNAPSHOT_DIRECTORY,
   type BundleSnapshot,
@@ -61,6 +66,7 @@ import { loadSolvabilityPublicSchema } from "./solvability-artifact-schema.ts";
 import { evaluateWitness, type WitnessCensus } from "./solvability-witness.ts";
 import type { CheckFailureDetail } from "./predicate.ts";
 import {
+  type SolvabilityAttribution,
   type SolvabilitySubmissionOutcome,
   UNATTRIBUTED,
   submitSolvabilityReferenceArtifact,
@@ -123,12 +129,21 @@ interface SolvabilityCaseSession {
   stages: SolvabilityStageCache | undefined;
 }
 
-/** The submission outcome plus the facts only the solve side knows. */
+/** The submission outcome plus the stage receipt only the solve side knows. */
 type ReferenceSubmissionAttempt = SolvabilitySubmissionOutcome & {
-  /** The solve reported a path or permission error matching the isolation-failure classifier. */
-  solveIsolationViolation: boolean;
   referenceSolve: SolvabilityStageReceipt | null;
 };
+
+/** The finding code each unpassed case routes to. A host stop that interrupts the census is
+ *  admitted once as `verifier-cleanup-pending`, however many cases it left without a verdict. */
+const CASE_CODE = {
+  "representation-defect": "solvability-representation-defect",
+  isolation: "solvability-reference-solve-isolation",
+  witness: "solvability-witness-failed",
+  "reference-solve-host": "solvability-reference-solve-host-non-result",
+  "submission-path-host": "solvability-submission-path-host-non-result",
+  sandbox: "verifier-cleanup-pending",
+} as const satisfies Record<SolvabilityFailure | SolvabilityNonResult, string>;
 
 /** One task's census record, with a finding when it fails. */
 interface SolvabilityCaseOutcome {
@@ -355,7 +370,7 @@ async function attemptReferenceSubmission(
       artifact: solved.outcome.artifact,
       ...keyIfDefined("createStarter", session.options.createSolvabilityStarter),
     });
-    return { ...submitted, solveIsolationViolation: false, referenceSolve };
+    return { ...submitted, referenceSolve };
   } catch (caught) {
     if (caught instanceof VerifierOperationalStop) throw caught;
     const typed = caught instanceof ReferenceSolveProcessFailure ? caught : null;
@@ -363,21 +378,39 @@ async function attemptReferenceSubmission(
       ...UNATTRIBUTED,
       error: errorMessage(caught),
       authorClassification: typed?.kind ?? "generated-solve-throw",
-      nonResultKind: typed?.kind === "reference-solve-host" ? "reference-solve-host" : null,
-      solveIsolationViolation: isReferenceSolveIsolationFailure(caught),
+      attribution: solveAttribution(typed, caught),
       referenceSolve,
     };
   }
 }
 
-/** The finding code a failed case routes to. */
-function failureCode(attempt: ReferenceSubmissionAttempt): string {
-  if (attempt.nonResultKind === "submission-path-host") return "solvability-submission-path-host-non-result";
-  if (attempt.nonResultKind !== null) return "solvability-reference-solve-host-non-result";
-  if (attempt.failureKind === "representation-defect") return "solvability-representation-defect";
-  return attempt.solveIsolationViolation
-    ? "solvability-reference-solve-isolation"
-    : "solvability-witness-failed";
+/** A host that failed before the solve child was ready owns the case; otherwise a solve that broke
+ *  the isolation wall is the candidate's, and any other throw is left for the checks to name. */
+function solveAttribution(
+  typed: ReferenceSolveProcessFailure | null,
+  caught: unknown,
+): SolvabilityAttribution | null {
+  if (typed?.kind === "reference-solve-host") return { nonResultKind: "reference-solve-host" };
+  return isReferenceSolveIsolationFailure(caught) ? { failure: "isolation" } : null;
+}
+
+/** The status half of a case row. A host attribution makes it a non-result whatever the checks
+ *  said; a pass needs the submission path it traversed; anything else failed, as a witness unless
+ *  the attempt already named the failure. */
+function caseVerdict(attempt: ReferenceSubmissionAttempt, passed: boolean, error: string | null) {
+  const { attribution, submissionPath } = attempt;
+  const detail = error ?? "reference artifact did not earn a truth verdict";
+  if (attribution !== null && "nonResultKind" in attribution) {
+    return {
+      status: "non-result",
+      nonResultKind: attribution.nonResultKind,
+      submissionPath: null,
+      error: detail,
+    } as const;
+  }
+  if (passed && submissionPath !== null) return { status: "passed", submissionPath, error: null } as const;
+  const failure = attribution?.failure ?? "witness";
+  return { status: "failed", failure, submissionPath, error: detail } as const;
 }
 
 /** Stage 3, one case: solve, submit, verify and record. A passed row carries no failure
@@ -410,20 +443,16 @@ async function runSolvabilityCase(
     publicTaskDigest: committed.publicTaskDigest,
     artifactDigest: accepted === null ? null : sha256(accepted),
     artifact: accepted === null ? null : capturedJsonParse(accepted),
-    status: passed ? "passed" : attempt.nonResultKind === null ? "failed" : "non-result",
-    nonResultKind: attempt.nonResultKind,
-    failureKind: passed ? null : attempt.failureKind,
-    submissionPath: attempt.submissionPath,
     referenceSolve: attempt.referenceSolve,
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
-    error,
+    ...caseVerdict(attempt, passed, error),
   };
-  if (passed) return { row, finding: null };
+  if (row.status === "passed") return { row, finding: null };
   const finding = {
-    code: failureCode(attempt),
+    code: CASE_CODE[row.status === "failed" ? row.failure : row.nonResultKind],
     path: `correctness-model/tasks.json#${task.taskId}`,
-    detail: error ?? "reference artifact did not earn a truth verdict",
+    detail: row.error,
   };
   return {
     row,
@@ -435,7 +464,7 @@ async function runSolvabilityCase(
 /** The host stopped a verifier child it could not reap; the environment owns the rest of the census. */
 function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
   return {
-    code: "verifier-cleanup-pending",
+    code: CASE_CODE.sandbox,
     path: TASKS_FILE,
     detail: stop.message,
   };
@@ -495,14 +524,13 @@ async function solveInLanes(
       artifact: null,
       status: "non-result",
       nonResultKind: "sandbox",
-      failureKind: null,
       submissionPath: null,
       referenceSolve: null,
       failedCheckIds: [],
       predicateFailures: [],
       error: errorMessage(slot.stop),
     });
-    if (!findings.some((finding) => finding.code === "verifier-cleanup-pending")) {
+    if (!findings.some((finding) => finding.code === CASE_CODE.sandbox)) {
       findings.push(cleanupPending(slot.stop));
     }
   }
@@ -581,7 +609,7 @@ export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): Bui
     }
     if (drift !== null) findings.push(drift);
     const evidence: SolvabilityEvidence = {
-      schema: "solvability/v9",
+      schema: "solvability/v10",
       policy: SOLVABILITY_POLICY,
       correctnessModelHash: fingerprint.correctnessModelHash,
       taskSetHash: contract.taskSetHash,

@@ -143,7 +143,7 @@ describe("solvability tied to the checked bundle snapshot", () => {
   it.concurrent("persists named program failures and operand commitments in the evaluate-side evidence", async () => {
     const result = await witness(subsetFailureFixture());
 
-    expect(result.evidence?.schema).toBe("solvability/v9");
+    expect(result.evidence?.schema).toBe("solvability/v10");
     expect(result.evidence?.operandCommitmentKeyId).toBe(OPERAND.keyId);
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(result.evidence?.cases[0]?.predicateFailures).toMatchObject([
@@ -195,7 +195,7 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
     expect(finding?.disclosure).toEqual({ class: "withheld", classification: "generated-evaluate-throw" });
     expect(result.evidence?.cases[0]).toMatchObject({
       status: "failed",
-      nonResultKind: null,
+      failure: "witness",
       error: expect.stringContaining('"expectation":"A"'),
     });
   });
@@ -296,6 +296,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "reads the adjacent correctness-model task data",
       body: READS_ADJACENT_TASKS,
       code: "solvability-reference-solve-isolation",
+      failure: "isolation",
       error: /ENOENT|no such file/i,
       classification: null,
     },
@@ -303,6 +304,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "replaces a JSON intrinsic",
       body: 'JSON.stringify = () => "falsified"; return { answer: task.publicInput.expected };',
       code: "solvability-witness-failed",
+      failure: "witness",
       error: null,
       classification: "generated-solve-throw",
     },
@@ -310,6 +312,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "writes to the hidden fields of the task it was handed",
       body: 'task.hidden[0].expectation = "FALSIFIED"; return { answer: "FALSIFIED" };',
       code: "solvability-witness-failed",
+      failure: "witness",
       error: null,
       classification: null,
     },
@@ -317,6 +320,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       forbids: "marks its own artifact as solver-provenanced",
       body: "return { answer: { value: task.publicInput.expected, __referenceSolver: true } };",
       code: "solvability-witness-failed",
+      failure: "witness",
       error: /__referenceSolver/,
       classification: null,
       schema: OBJECT_ANSWER,
@@ -328,7 +332,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
 
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(codes(result)).toContain(row.code);
-    expect(result.evidence?.cases.every((c) => c.nonResultKind === null)).toBe(true);
+    expect(result.evidence?.cases).toMatchObject([{ failure: row.failure }, { failure: row.failure }]);
     if (row.error !== null) expect(failure(result)).toMatch(row.error);
     if (row.classification !== null) {
       expect(result.findings).toContainEqual(
@@ -397,7 +401,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "crashes after ready",
       verifier: asyncSolve("process.exit(17);"),
       options: { referenceSolveTimeoutMs: 2_000 },
-      expected: { status: "failed", nonResultKind: null },
+      expected: { status: "failed", failure: "witness" },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-crash" },
     },
     {
@@ -407,7 +411,7 @@ export const checks = { answer: (request) => request.artifact?.answer === reques
       child: "hangs after ready",
       verifier: asyncSolve("return await new Promise(() => { setInterval(() => {}, 60_000); });"),
       options: { referenceSolveTimeoutMs: 750 },
-      expected: { status: "failed", nonResultKind: null },
+      expected: { status: "failed", failure: "witness" },
       finding: { code: "solvability-witness-failed", classification: "generated-solve-timeout" },
     },
     {

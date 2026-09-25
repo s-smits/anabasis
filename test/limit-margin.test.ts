@@ -51,22 +51,8 @@ function task(taskId: string, family: string, hidden: Record<string, JsonValue>)
   };
 }
 
-function caseOf(taskId: string, artifact: JsonValue): SolvabilityCaseEvidence {
-  return {
-    taskId,
-    fullTaskDigest: "full",
-    publicTaskDigest: "public",
-    artifactDigest: artifact === null ? null : "artifact",
-    artifact,
-    status: "passed",
-    nonResultKind: null,
-    failureKind: null,
-    submissionPath: null,
-    referenceSolve: null,
-    failedCheckIds: [],
-    predicateFailures: [],
-    error: null,
-  };
+function caseOf(taskId: string, artifact: JsonValue): Pick<SolvabilityCaseEvidence, "taskId" | "artifact"> {
+  return { taskId, artifact };
 }
 
 describe("limit margin against the reference solve", () => {

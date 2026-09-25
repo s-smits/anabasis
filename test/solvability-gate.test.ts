@@ -174,7 +174,7 @@ describe("a refused declaration reaches the owner who can change it", () => {
         {
           taskId: "t2",
           status: "failed",
-          failureKind: "representation-defect",
+          failure: "representation-defect",
           error: "nullable root value was omitted by the writer schema",
         },
       ]),
@@ -188,7 +188,7 @@ describe("a refused declaration reaches the owner who can change it", () => {
   });
 
   it("collapses repeated representation details and names the ones past the projection cap", async () => {
-    const repeated = { failureKind: "representation-defect" as const, status: "failed" as const };
+    const repeated = { failure: "representation-defect" as const, status: "failed" as const };
     const { authorVisible } = await census(
       "representation-dedup",
       probeReturning([

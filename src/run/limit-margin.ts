@@ -141,7 +141,7 @@ function publishedLeaves(margins: readonly PublishedMargin[], task: BuildTask, a
 export function limitMargin(
   brief: Brief,
   tasks: readonly BuildTask[],
-  cases: readonly SolvabilityCaseEvidence[],
+  cases: readonly Pick<SolvabilityCaseEvidence, "taskId" | "artifact">[],
 ): LimitMarginFamily[] {
   const byId = new Map(tasks.map((task) => [task.taskId, task]));
   const margins = publishedMargins(brief);

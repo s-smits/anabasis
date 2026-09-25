@@ -265,10 +265,8 @@ function representationDefectFeedback(
 ): CampaignFeedback {
   const detailCounts = new Map<string, number>();
   for (const row of cases) {
-    if (row.status !== "failed" || row.failureKind !== "representation-defect") continue;
-    const detail =
-      row.error ?? "the submission path refused the reference artifact without a recorded public detail";
-    detailCounts.set(detail, (detailCounts.get(detail) ?? 0) + 1);
+    if (row.status !== "failed" || row.failure !== "representation-defect") continue;
+    detailCounts.set(row.error, (detailCounts.get(row.error) ?? 0) + 1);
   }
   const ranked = [...detailCounts.entries()].sort(
     ([aDetail, aN], [bDetail, bN]) => bN - aN || compareCodeUnits(aDetail, bDetail),
@@ -320,10 +318,10 @@ function censusFeedback(
   }
   const { cases } = evidence;
   const representationDefects = cases.filter(
-    (row) => row.status === "failed" && row.failureKind === "representation-defect",
+    (row) => row.status === "failed" && row.failure === "representation-defect",
   ).length;
   const failed = cases.filter(
-    (row) => row.status === "failed" && row.failureKind !== "representation-defect",
+    (row) => row.status === "failed" && row.failure !== "representation-defect",
   ).length;
   const nonResults = cases.filter((row) => row.status === "non-result").length;
   const feedback: CampaignFeedback[] = [];

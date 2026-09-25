@@ -10,7 +10,7 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { SOLVABILITY_PROBE_POLICY, makeProbeSolvability } from "../src/truth/solvability.ts";
+import { SOLVABILITY_POLICY, makeProbeSolvability } from "../src/truth/solvability.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import {
@@ -68,7 +68,7 @@ describe("solvability tied to the checked bundle snapshot", () => {
 
     expect(result.findings).toEqual([]);
     expect(result.evidence).toMatchObject({
-      policy: SOLVABILITY_PROBE_POLICY,
+      policy: SOLVABILITY_POLICY,
       correctnessModelHash: fixture.fingerprint.correctnessModelHash,
       taskSetHash: fixture.fingerprint.taskSetHash,
       cases: [
@@ -144,7 +144,7 @@ describe("solvability tied to the checked bundle snapshot", () => {
   it.concurrent("persists named program failures and operand commitments in the evaluate-side evidence", async () => {
     const result = await witness(subsetFailureFixture());
 
-    expect(result.evidence?.schema).toBe("solvability/v8");
+    expect(result.evidence?.schema).toBe("solvability/v9");
     expect(result.evidence?.operandCommitmentKeyId).toBe(OPERAND.keyId);
     expect(statuses(result)).toEqual(["failed", "failed"]);
     expect(result.evidence?.cases[0]?.predicateFailures).toMatchObject([

@@ -19,7 +19,7 @@ import type { SolvabilityEvidence } from "../src/claim/readiness.ts";
 import { type WrittenRunClaim, writeRunClaim } from "../src/run/claim-write.ts";
 import { driveBattery, loadRecordedTasks } from "../src/run/run-driver.ts";
 import * as sourceIdentity from "../src/run/source-identity.ts";
-import { SOLVABILITY_READINESS_POLICY } from "../src/truth/solvability.ts";
+import { SOLVABILITY_POLICY } from "../src/truth/solvability.ts";
 import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { double } from "./helpers/doubles.ts";
@@ -176,7 +176,7 @@ describe("a claim written from a recorded battery", () => {
       expect.objectContaining({ checkId: "parts-assigned", toolId: "cat", attestedLaunches: 4 }),
     );
     expect(JSON.parse(readFileSync(created.evidencePath, "utf8")).solvability.policy).toBe(
-      SOLVABILITY_READINESS_POLICY,
+      SOLVABILITY_POLICY,
     );
   }, 60_000);
 

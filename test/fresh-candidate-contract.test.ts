@@ -621,19 +621,6 @@ describe("the operating guide", () => {
 });
 
 describe("what a candidate owes beyond a readable bundle", () => {
-  // The census that catches one module answering a whole family needs to be told which artifact
-  // roots hold the deliverable, so it has a declared root to replay across sibling tasks.
-  it("refuses a fresh brief that marks no task-conditioned artifact root", () => {
-    const silent = structuredClone(MATCHING_BRIEF);
-    for (const field of silent.artifactSchema) delete field.taskConditioned;
-    expect(freshCandidateFindings({ brief: silent, corpus: corpus() })).toContainEqual(
-      expect.objectContaining({ code: "brief-material-root-missing", path: "artifactSchema" }),
-    );
-    expect(
-      codes(freshCandidateFindings({ brief: structuredClone(MATCHING_BRIEF), corpus: corpus() })),
-    ).not.toContain("brief-material-root-missing");
-  });
-
   it("refuses an accept the public schema cannot hold", () => {
     const rows = corpus();
     Object.assign(required(rows.accept[0], "first accept"), { artifact: { assignments: () => undefined } });

@@ -1,23 +1,9 @@
 /**
- * The fixture the family census runs against: two sibling tasks in one family, and a third alone.
- *
- * The census works by exchanging the marked deliverable between siblings and asking whether a
- * declared check notices, so the fixture has to make that exchange detectable at all. `ta` and `tb`
- * share family "one" and carry different answers, while `tc` is family "two" and has no sibling to
- * swap with. Each task carries a report beside its answer, which means the artifact has no root the
- * truth relation ignores, and a transplant that only the report distinguishes still has a check
- * that fails on it.
- *
- * The three `FamilySpec` switches are the hostile cases, and each one names a different way the
- * census can look like it worked when it did not. Leaving the answer root unmarked stops the census
- * running at all, because `familyBinding` returns an empty list the moment there are no
- * task-conditioned roots (`src/truth/family-binding.ts`) — so an unmarked fixture would report
- * no separation failures and read as a pass. Throwing on a mismatch instead of returning false is
- * the difference between a check that rejected the transplant and one that never settled. And
- * dropping tb's required hidden operand must refuse, rather than quietly making the check
- * inapplicable and leaving the sibling pair uncovered.
+ * A three-task fixture across two families: `ta` and `tb` share family "one" with different
+ * answers, and `tc` is family "two". Each task carries a report beside its answer, so the artifact
+ * has no root the truth relation ignores. Dropping tb's required hidden operand must refuse rather
+ * than quietly make the check inapplicable.
  */
-import { keyIfDefined } from "../../src/meta/optional-key.ts";
 import type { ToolInventory } from "../../src/verify/verifier-port.ts";
 import {
   ACCEPTING_TOOL,
@@ -30,22 +16,17 @@ import {
 } from "./solvability-specimen.ts";
 
 interface FamilySpec {
-  /** The two family-one answers. Repeating one gives distinct tasks a single deliverable, which is
-   *  the shape the census exists to catch. */
+  /** The two family-one answers. */
   answers: [string, string];
-  /** Mark the answer root task-conditioned. Unmarked, the census does not run at all. */
-  material?: boolean;
-  nonResultOnMismatch?: boolean;
   /** Drop tb's required hidden operand, which must refuse rather than change applicability. */
   dropSiblingHidden?: boolean;
-  /** The answer check's declared artifact path, when it is not spelled `$.answer`. */
-  answerPath?: string;
 }
 
+const ANSWER_ROOT = { name: "answer", "shape": "string" };
 const REPORT_ROOT = { name: "report", "shape": "string" };
 
 /** The evaluator owns domain meaning; the controller-side scope counts its invocations. */
-function countingVerifier(nonResultOnMismatch: boolean): string {
+function countingVerifier(): string {
   return `
 export function solve(task) {
   return { answer: task.publicInput.expected, report: task.publicInput.report };
@@ -54,9 +35,7 @@ export function solve(task) {
 export const checks = {
   answer: (request) => {
     const expected = request.hidden[0]?.expectation;
-    const wrong = request.artifact?.answer !== expected;
-    if (wrong && ${String(nonResultOnMismatch)}) throw new Error("check did not settle");
-    return !wrong;
+    return request.artifact?.answer === expected;
   },
   "report-present": (request) => request.artifact?.report === request.hidden[0]?.expectation,
 };
@@ -64,7 +43,6 @@ export const checks = {
 }
 
 const REPORT_CHECK = check({ id: "report-present", roots: ["$.report"] });
-const MARKED_ANSWER = { name: "answer", "shape": "string", taskConditioned: true as const };
 function familyTasks(
   answers: readonly string[],
   hidden: (taskId: string, expected: string) => FixtureTask["hidden"],
@@ -89,9 +67,8 @@ export function familyFixture(spec: FamilySpec): Fixture {
     { checkId: "report-present", expectation: `report for ${taskId}` },
   ]);
   return specimen({
-    verifier: countingVerifier(spec.nonResultOnMismatch === true),
-    schema: [spec.material === false ? { name: "answer", "shape": "string" } : MARKED_ANSWER, REPORT_ROOT],
-    ...keyIfDefined("answerPath", spec.answerPath),
+    verifier: countingVerifier(),
+    schema: [ANSWER_ROOT, REPORT_ROOT],
     extraChecks: [REPORT_CHECK],
     tasks,
     accepts: familyAccepts(tasks),
@@ -100,7 +77,7 @@ export function familyFixture(spec: FamilySpec): Fixture {
 }
 
 /** The report program attempts to read an undeclared answer. The process must withhold it before
- *  that program can credit or reject a family transplant using another check's inputs. */
+ *  that program can credit or reject an artifact using another check's inputs. */
 export function externalFamilyFixture(): Fixture {
   const tasks = familyTasks(["A", "B", "C"], () => []);
   return specimen({
@@ -121,7 +98,7 @@ export const checks = {
   },
 };
 `,
-    schema: [MARKED_ANSWER, REPORT_ROOT],
+    schema: [ANSWER_ROOT, REPORT_ROOT],
     tool: "answer-tool",
     extraChecks: [
       check({ id: "report-present", roots: ["$.report"], inputs: ["$.expected"], tool: "report-tool" }),
@@ -132,9 +109,8 @@ export const checks = {
   });
 }
 
-/** answer-tool accepts every artifact; report-tool rejects the transplant, but the evaluator
- *  attributes that rejection to its own unrelated check id — the shape a census that trusts any
- *  settled rejection would credit. */
+/** answer-tool accepts every artifact; report-tool compares, but the evaluator would attribute its
+ *  rejection to an unrelated check id if the answer operand reached it. */
 export const misattributingToolInventory = (): ToolInventory => ({
   "answer-tool": installedTool("answer-tool", ACCEPTING_TOOL),
   "report-tool": installedTool("report-tool", COMPARING_TOOL),

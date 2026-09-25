@@ -58,6 +58,6 @@ export function probeReturning(
             },
           ],
         }
-      : { evidence: { schema: "solvability/v8", cases: specs.map(solvabilityCase) }, findings };
+      : { evidence: { schema: "solvability/v9", cases: specs.map(solvabilityCase) }, findings };
   return () => Promise.resolve(double<Awaited<ReturnType<BuildDeps["probeSolvability"]>>>(result));
 }

@@ -1,8 +1,8 @@
 /**
  * F2: run the generated reference solve for every task and verify what it produced. The controller
  * owns everything that makes the result usable as evidence — the task bytes, the committed public
- * solve input, schema validation, ordinary verification, tool scopes, family comparisons and the
- * snapshot identity checks — so the candidate cannot supply its own witness. Reference artifacts
+ * solve input, schema validation, ordinary verification, tool scopes and the snapshot identity
+ * checks — so the candidate cannot supply its own witness. Reference artifacts
  * stay protected: they never become controls or Built Harness inputs, since an answer key that
  * reached the solver would make the battery measure recall rather than solving.
  *
@@ -17,8 +17,7 @@
  * 3. cases, in lanes: the reference solve (reference-solve.ts, remembered by its key), then the
  *    public submission path and the ordinary evaluation, which always run on this snapshot;
  * 4. program arguments: the tool rows the case evaluations recorded;
- * 5. family transplants (adoption only): family-binding.ts, remembered by its key;
- * 6. snapshot drift, then evidence.
+ * 5. snapshot drift, then evidence.
  */
 
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
@@ -36,7 +35,6 @@ import { sha256 } from "../meta/digest.ts";
 import type { OwnerLayer } from "../meta/owner.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
-import { bundleEvaluator } from "./evaluator-process-bundle.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import type { BuiltStarter } from "../solve/built-starter.ts";
 import type { GeneratedToolStarterOptions } from "../solve/generated-tool-worker.ts";
@@ -53,7 +51,6 @@ import {
 } from "../verify/self-grounding.ts";
 import { validateBrief } from "./brief-validator.ts";
 import { type Brief, type ContractFinding, externalChecksOf, generatedExecutionFinding } from "./brief.ts";
-import { type FamilyWitness, familyBindingStage } from "./family-binding.ts";
 import { loadFailureFinding } from "./load-fault.ts";
 import type { BuildDeps } from "./build-deps.ts";
 import { loadCorrectnessModel } from "./contracts.ts";
@@ -83,9 +80,8 @@ import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.
 import type { JsonValue } from "../meta/json-shape.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 
-export const SOLVABILITY_READINESS_POLICY =
+export const SOLVABILITY_POLICY =
   "falsifier-solvability/v15:authored-executable-bytes+check-program+captured-controller-primitives+typed-pre-ready-environment-outcome+ready-owned-process-failures+bounded-lifetime+public-reference-package+confined-pid+full-census+canonical-full-task+writer-draft-materialise-submit-accept+compiled-public-submit-schema+ordinary-evaluate+bundleSnapshot-drift-refusal+optional-writer-call-trace";
-export const SOLVABILITY_PROBE_POLICY = `${SOLVABILITY_READINESS_POLICY}+task-conditioned-family-binding`;
 
 export interface SolvabilityProbeOptions {
   /** Protected controller-owned process receipts; no generated child runs without this owner. */
@@ -107,8 +103,6 @@ export interface SolvabilityProbeOptions {
 interface SolvabilityContract {
   bundleSnapshot: BundleSnapshot;
   evaluator: CheckRunner;
-  /** Portable digest of the evaluator bundle `evaluator` runs. */
-  evaluatorDigest: string;
   brief: Brief;
   tasks: BuildTask[];
   publicArtifactSchema: PublicArtifactSchema | null;
@@ -143,10 +137,9 @@ interface Attribution {
   owner: OwnerLayer;
 }
 
-/** One task's census record, with a witness when it passes and a finding when it fails. */
+/** One task's census record, with a finding when it fails. */
 interface SolvabilityCaseOutcome {
   row: SolvabilityCaseEvidence;
-  witness: FamilyWitness | null;
   finding: ContractFinding | null;
 }
 
@@ -225,12 +218,8 @@ async function loadSolvabilityContract(
     };
   }
   let evaluator: CheckRunner;
-  let evaluatorDigest: string;
   try {
-    // Both calls share one bundle per package identity, so the digest names the same bytes the
-    // runner executes rather than a second build of the same source.
     evaluator = await loadCorrectnessModel(bundleSnapshot.dir, verifierLifetime);
-    evaluatorDigest = (await bundleEvaluator(bundleSnapshot.dir)).portableDigest;
   } catch (error) {
     return {
       ok: false,
@@ -260,7 +249,6 @@ async function loadSolvabilityContract(
     value: {
       bundleSnapshot,
       evaluator,
-      evaluatorDigest,
       brief,
       tasks,
       publicArtifactSchema: publicSchema.schema,
@@ -442,16 +430,7 @@ async function runSolvabilityCase(
     predicateFailures,
     error,
   };
-  if (passed) {
-    return {
-      row,
-      witness:
-        accepted === null
-          ? null
-          : { taskId: task.taskId, family: task.family, artifact: capturedJsonParse(accepted) },
-      finding: null,
-    };
-  }
+  if (passed) return { row, finding: null };
   const attribution = failureAttribution(attempt);
   const finding = {
     code: attribution.code,
@@ -461,7 +440,6 @@ async function runSolvabilityCase(
   };
   return {
     row,
-    witness: null,
     finding:
       authorClassification === null ? finding : generatedExecutionFinding(finding, authorClassification),
   };
@@ -488,17 +466,13 @@ async function solveInLanes(
   cut: () => boolean,
 ) {
   const cases: SolvabilityCaseEvidence[] = [];
-  const witnesses: FamilyWitness[] = [];
   const findings: ContractFinding[] = [];
-  /** Canonical full-task bytes for the family comparisons. */
-  const taskJson = new Map<string, string>();
   let stopped = false;
   const settled = await inLanes(
     [...tasks].sort((a, b) => compareCodeUnits(a.taskId, b.taskId)),
     CENSUS_LANES,
     async (task) => {
       const fullTaskJson = capturedJsonStringify(task);
-      taskJson.set(task.taskId, fullTaskJson);
       // One commit for the whole case: `view()` re-parses its own bytes on each call, so every
       // reader gets an independent object and no stage can hand the next one a mutated task.
       const roundTripped: unknown = capturedJsonParse(fullTaskJson);
@@ -524,7 +498,6 @@ async function solveInLanes(
     if (slot === undefined) break;
     if ("outcome" in slot) {
       cases.push(slot.outcome.row);
-      if (slot.outcome.witness !== null) witnesses.push(slot.outcome.witness);
       if (slot.outcome.finding !== null) findings.push(slot.outcome.finding);
       continue;
     }
@@ -548,7 +521,7 @@ async function solveInLanes(
       findings.push(cleanupPending(slot.stop));
     }
   }
-  return { cases, witnesses, findings, taskJson };
+  return { cases, findings };
 }
 
 /** Stage 4: external checks whose arguments match the program-text rule. Program text passed as an
@@ -573,10 +546,7 @@ function programArgumentFindings(
 
 /** One policy-owned implementation for the mandatory BuildDeps solvability probe, so adoption and
  *  readiness cannot diverge on what F2 means. */
-export function makeProbeSolvability(
-  options: SolvabilityProbeOptions = {},
-  purpose: "adoption" | "readiness" = "adoption",
-): BuildDeps["probeSolvability"] {
+export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): BuildDeps["probeSolvability"] {
   return async ({ slugDir, fingerprint, operandCommitment, stopped: cut = () => false, stages }) => {
     const loaded = await loadSolvabilityContract(slugDir, fingerprint, options.verifierLifetime);
     if (!loaded.ok) return { evidence: null, findings: [loaded.finding] };
@@ -613,37 +583,7 @@ export function makeProbeSolvability(
     const solved = await solveInLanes(session, contract.tasks, cut);
     if (cut()) return { evidence: null, findings: [] };
     const findings = [...solved.findings, ...programArgumentFindings(verifier, tools.externalIds)];
-    // Only adoption decides family discrimination; a readiness call has already re-verified
-    // every public solve above and has nothing to add here. The witness count is required to equal
-    // the case count because a missing witness already refuses the candidate, so a comparison run
-    // over the remainder would describe a set no adoption will ever use.
-    let familyBinding: SolvabilityStageReceipt | null = null;
-    try {
-      if (
-        purpose === "adoption" &&
-        solved.cases.length > 0 &&
-        solved.witnesses.length === solved.cases.length
-      ) {
-        const stage = await familyBindingStage({
-          brief,
-          witnesses: solved.witnesses,
-          taskJson: solved.taskJson,
-          census,
-          evaluator,
-          evaluatorDigest: contract.evaluatorDigest,
-          inventory: tools.inventory,
-          producedUnder: bundleSnapshot.id,
-          memory: stages?.familyBindings,
-          stopped: cut,
-        });
-        findings.push(...stage.findings);
-        familyBinding = stage.receipt;
-      }
-    } catch (error) {
-      if (!(error instanceof VerifierOperationalStop)) throw error;
-      findings.push(cleanupPending(error));
-    }
-    // The wall stopped admitting transplants; a partial family census reports no evidence.
+    // A cut census reports no evidence.
     if (cut()) return { evidence: null, findings };
     const drift = bundleSnapshotDriftFinding(slugDir, fingerprint, bundleSnapshot);
     if (drift !== null && !findings.some((finding) => finding.code === "verifier-cleanup-pending")) {
@@ -651,15 +591,14 @@ export function makeProbeSolvability(
     }
     if (drift !== null) findings.push(drift);
     const evidence: SolvabilityEvidence = {
-      schema: "solvability/v8",
-      policy: purpose === "adoption" ? SOLVABILITY_PROBE_POLICY : SOLVABILITY_READINESS_POLICY,
+      schema: "solvability/v9",
+      policy: SOLVABILITY_POLICY,
       correctnessModelHash: fingerprint.correctnessModelHash,
       taskSetHash: contract.taskSetHash,
       bundleSnapshotId: bundleSnapshot.id,
       verifierEnvironmentHash: executionEvidence(verifier).verifierEnvironmentHash,
       operandCommitmentKeyId: operandCommitment.keyId,
       toolRuns: verifier.evidence().length,
-      familyBinding,
       cases: solved.cases,
     };
     return { evidence, findings };

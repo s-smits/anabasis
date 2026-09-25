@@ -301,22 +301,16 @@ describe("brief and task contract", () => {
       { artifactSchema: [field({ allowedValues: double<Array<string | number | boolean>>(values) })] },
       { code: "brief-artifact-field-allowed-values-invalid" },
     ]),
-    ...["yes", 1, false].map((marked): [string, Partial<Brief>, { path: string }] => [
-      `taskConditioned ${JSON.stringify(marked)}`,
-      { artifactSchema: [field({ taskConditioned: double<true>(marked) })] },
-      { path: "artifactSchema[0].taskConditioned" },
-    ]),
   ])("refuses %s", (_name, overrides, finding) => {
     expect(validateBrief(greenBrief(overrides)).findings).toContainEqual(expect.objectContaining(finding));
   });
-  it("admits a closed value set and a literal taskConditioned marker", () => {
+  it("admits a closed value set", () => {
     const findings = validateBrief(
-      greenBrief({ artifactSchema: [field({ allowedValues: ["pass", "fail"], taskConditioned: true })] }),
+      greenBrief({ artifactSchema: [field({ allowedValues: ["pass", "fail"] })] }),
     ).findings;
     expect(findings.map((finding) => finding.code)).not.toContain(
       "brief-artifact-field-allowed-values-invalid",
     );
-    expect(findings.map((finding) => finding.path)).not.toContain("artifactSchema[0].taskConditioned");
   });
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));

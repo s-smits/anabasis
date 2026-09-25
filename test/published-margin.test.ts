@@ -35,7 +35,7 @@ const BRIEF: Brief = {
   decisions: ["covers single-span trusses"],
   gates: ["mass is within the published budget"],
   joins: [],
-  artifactSchema: [{ name: "report", "shape": "object", taskConditioned: true }],
+  artifactSchema: [{ name: "report", "shape": "object" }],
   designRuleConstants: [{ name: "massBudgetKg", value: 2171.4, authority: "a", citation: "c" }],
   ruleDecisions: [{ id: "r1", visibility: "public", statement: "mass is at most the budget" }],
   truthChecks: [

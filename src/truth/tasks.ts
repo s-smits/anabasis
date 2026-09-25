@@ -294,23 +294,27 @@ function coverageFindings(
 
 /** A family must vary a shared declared verifier input. The comparison is per declared path, so a
  *  check that declares a coarse path is satisfied by any change inside it; this proves declared
- *  coverage, not semantic dependence or harder decisions, and measurement owns those claims. */
+ *  coverage, not semantic dependence or harder decisions, and measurement owns those claims.
+ *
+ *  Two siblings holding the same value at every declared input and the same hidden rows are refused
+ *  as one task written twice: a check reads only those, so no artifact can pass one and fail the
+ *  other. That is the only duplicate this proves. Siblings whose feasible sets merely overlap — a
+ *  ladder of tightening limits, where the tightest task's answer meets every looser one — differ
+ *  in a declared input and clear, whichever reference answers them. */
 function variationFindings(rows: readonly TaskRow[]): ContractFinding[] {
   const findings: ContractFinding[] = [];
   for (const family of new Set(rows.map(({ task }) => task.family))) {
-    const values = rows.flatMap(({ task, applicable }) =>
-      task.family === family
-        ? [
-            new Map(
-              applicable
-                .flatMap((check) => check.execution.publicInputPaths)
-                .flatMap((path) => {
-                  const resolved = resolvePredicatePath(task.publicInput, path);
-                  return resolved.found ? [[path, canonicalJson(resolved.value)] as const] : [];
-                }),
-            ),
-          ]
-        : [],
+    const members = rows.filter(({ task }) => task.family === family);
+    const values = members.map(
+      ({ task, applicable }) =>
+        new Map(
+          applicable
+            .flatMap((check) => check.execution.publicInputPaths)
+            .flatMap((path) => {
+              const resolved = resolvePredicatePath(task.publicInput, path);
+              return resolved.found ? [[path, canonicalJson(resolved.value)] as const] : [];
+            }),
+        ),
     );
     // A path the whole family provides, holding two values somewhere in it. The first member's
     // paths are the only candidates: one it lacks is not shared.
@@ -325,6 +329,22 @@ function variationFindings(rows: readonly TaskRow[]): ContractFinding[] {
         path: "tasks",
         owner: "task-curriculum",
         detail: `family "${family}" needs at least two distinct values at one shared publicInput path declared by its applicable truth checks. Vary a condition the verifier uses; labels and undeclared metadata do not qualify. Declared coverage does not prove semantic difficulty`,
+      });
+    }
+    const firstWith = new Map<string, string>();
+    const twins = members.flatMap(({ task }, index) => {
+      const condition = canonicalJson([[...(values[index] ?? [])], task.hidden]);
+      const first = firstWith.get(condition);
+      if (first === undefined) firstWith.set(condition, task.taskId);
+      return first === undefined ? [] : [`"${first}" and "${task.taskId}"`];
+    });
+    // A family that varies nothing is already refused above, which names the fix.
+    if (varied && twins.length > 0) {
+      findings.push({
+        code: "tasks-duplicate-condition",
+        path: "tasks",
+        owner: "task-curriculum",
+        detail: `family "${family}": ${twins.join(", ")} give every applicable check the same declared public input and hidden rows, so no artifact can pass one and fail the other. Change a declared condition in one of them, or remove it`,
       });
     }
   }

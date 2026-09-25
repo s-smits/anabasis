@@ -203,32 +203,6 @@ describe("a refused declaration reaches the owner who can change it", () => {
     expect(authorVisible).toContain("2 of 11 reference artifacts: writer omits the notes root");
     expect(authorVisible).toContain("2 further distinct defect(s)");
   });
-
-  it("routes a family the census refused to tests, crossing the family but not the tasks inside it", async () => {
-    const { feedback, authorVisible, recorded } = await census(
-      "family",
-      probeReturning(
-        [
-          { taskId: "charge-1", status: "passed" },
-          { taskId: "charge-2", status: "passed" },
-        ],
-        [
-          {
-            code: "TASK_FAMILY_UNIVERSAL_WITNESS",
-            path: "correctness-model/tasks.json",
-            owner: "task-curriculum",
-            detail:
-              'family "charge-firmware" has 2 tasks, and one accepted deliverable satisfies every one of them: moving only the task-conditioned root(s) "module" between siblings leaves every sibling passing',
-          },
-        ],
-      ),
-    );
-    expect(feedback).toMatchObject([{ owner: "tests", severity: "blocking" }]);
-    expect(authorVisible).toContain("TASK_FAMILY_UNIVERSAL_WITNESS");
-    expect(authorVisible).toContain(String.raw`family \"charge-firmware\" has 2 tasks`);
-    expect(authorVisible).not.toContain("charge-1");
-    expect(await recorded()).toContain("charge-1");
-  });
 });
 
 /** A slug with the one recorded task the witness pairs with and the accept corpus it is compared to. */

@@ -60,7 +60,7 @@ export interface SolvabilityCaseEvidence {
 /** Full-task solve evidence created from the fixed accepted bundle. It identifies the exact
  * correctness model, task set, bundle and checking code. */
 export interface SolvabilityEvidence {
-  schema: "solvability/v8";
+  schema: "solvability/v9";
   policy: string;
   correctnessModelHash: string;
   taskSetHash: string;
@@ -70,11 +70,8 @@ export interface SolvabilityEvidence {
   verifierEnvironmentHash: string | null;
   /** Public id of the temporary HMAC key used to hash compared values; never the key itself. */
   operandCommitmentKeyId: string;
-  /** How many tool runs this census made. A reused family-binding stage contributes none; its
-   *  runs belong to the census that produced it. Per-run facts stay with the host. */
+  /** How many tool runs this census made. Per-run facts stay with the host. */
   toolRuns: number;
-  /** The family transplant census stage; null when it did not run (readiness, or a missing witness). */
-  familyBinding: SolvabilityStageReceipt | null;
   cases: SolvabilityCaseEvidence[];
 }
 

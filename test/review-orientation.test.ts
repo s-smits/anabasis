@@ -186,12 +186,12 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).not.toContain("hardness is the last of its readings");
   });
 
-  it("says a battery on the aim measured the limit, and does not call it too easy", async () => {
+  it("says a battery on the aim reached the calibration target, and does not call it too easy", async () => {
     const prompt = await shown(battery(8, 25));
     expect(prompt).toContain("passed 8 of 25 (Wilson interval");
-    expect(prompt).toContain("aim 5 to 12 of 25): at the limit.");
+    expect(prompt).toContain("aim 5 to 12 of 25): on the calibration target.");
     expect(prompt).not.toContain("too easy");
-    // On the aim the battery measured what it was climbing towards, so no question opens.
+    // On the aim the battery reached what it was climbing towards, so no question opens.
     expect(prompt).not.toContain("is a lead, not a finding on its own");
   });
 
@@ -240,7 +240,7 @@ describe("the epoch reviewer's orientation", () => {
     const prompt = await shown(battery(6, 6, { unaccepted: 19 }));
     expect(prompt).toContain("Battery: 6 of 6 verified cases passed; 19 unaccepted at submission");
     expect(prompt).toContain("passed 6 of 25 (Wilson interval");
-    expect(prompt).toContain("aim 5 to 12 of 25): at the limit.");
+    expect(prompt).toContain("aim 5 to 12 of 25): on the calibration target.");
     expect(prompt).not.toContain("above the aim");
     expect(prompt).not.toContain("too easy");
   });
@@ -248,7 +248,7 @@ describe("the epoch reviewer's orientation", () => {
   it("reads a recorded changed subset where the readout does, not the whole battery", async () => {
     const prompt = await shown(battery(20, 25, { changed: { passes: 1, attempts: 5 } }));
     expect(prompt).toContain("the deciding sample (changed-subset) passed 1 of 5 (Wilson interval");
-    expect(prompt).toContain("): at the limit.");
+    expect(prompt).toContain("): on the calibration target.");
     expect(prompt).not.toContain("significantly too easy");
   });
 

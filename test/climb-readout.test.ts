@@ -34,6 +34,7 @@ import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 import { isRecord } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { required } from "./helpers/doubles.ts";
+import { STARTER_LADDER } from "./helpers/starter-contracts.ts";
 
 const BAND: [number, number] = [0.2, 0.5];
 const DOMAIN = "/nonexistent-domain";
@@ -343,9 +344,9 @@ describe("rendering", () => {
       "The latest battery passed every one of its 5 verified cases, so it found no limit.",
     );
     expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
-    // A re-tuned number or a longer list of named states is coverage, not a new move.
+    // Named states are coverage; a re-tuned number is a move only when a stronger witness reaches it.
     expect(allPass).toContain(
-      "A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+      "A longer list of named states is not one; a re-tuned number is one only once a stronger witness of yours reaches it.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
     // Refused attempts are not verified, so a battery passing every verified case is still all-pass.
@@ -353,6 +354,30 @@ describe("rendering", () => {
       "every one of its 3 verified cases",
     );
   });
+
+  it.each([
+    ["above", 4, "ladder"],
+    ["below", 0, "ladder"],
+    ["on", 2, "none"],
+  ] as const)(
+    "steers a battery %s the aim without calling a tuned number or an eased one no move",
+    (_side, passed, ladder) => {
+      // The readout, the continuation contract and the ladder section the readout points to, as one text.
+      const readout = readoutOf(row("r1", 0, { passed, n: 5 }));
+      const text = [
+        render(readout),
+        renderBatteryContract(5, 5, BAND, true),
+        ladder === "ladder" ? STARTER_LADDER : "",
+      ]
+        .join("\n")
+        .replace(/\s+/g, " ");
+      expect(text).not.toMatch(/re-tuned (published )?number establishes neither/);
+      expect(text).not.toContain("does not mean loosening");
+      // Reaching the calibration target proves no capability limit.
+      expect(text).not.toMatch(/at the limit|measured a limit|where the limit is measured/);
+      if (ladder === "none") expect(text).toContain("on the calibration target.");
+    },
+  );
 
   it("renders nothing protected: failed task ids never reach the text, and changing them changes nothing", () => {
     const a = row("r1", 0, { passed: 3, n: 10, failed: ["secret-alpha", "secret-beta"] });
@@ -403,7 +428,7 @@ describe("rendering", () => {
     const readout = climbReadout(historyOf(battery), declared, () => null);
     expect(readout.decision).toMatchObject({ action: "placed", placement: { zone: "on-aim", aim: [3, 4] } });
     const text = render(readout);
-    expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): at the limit.");
+    expect(text).toContain("target range [0.6, 0.9], aim 3 to 4 of 5): on the calibration target.");
     expect(renderBatteryContract(5, 5, declared, true)).toContain("Aim for 3 to 4 of 5");
     expect(historyBody(readout, [battery]).band).toEqual(declared);
   });

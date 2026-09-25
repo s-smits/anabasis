@@ -49,7 +49,7 @@ const CONFORMANCE: ConformanceEvidence = {
 };
 
 const SOLVABILITY: SolvabilityEvidence = {
-  schema: "solvability/v8",
+  schema: "solvability/v9",
   policy: "probe/v1",
   correctnessModelHash: "g".repeat(64),
   taskSetHash: "t".repeat(64),
@@ -57,7 +57,6 @@ const SOLVABILITY: SolvabilityEvidence = {
   verifierEnvironmentHash: null,
   operandCommitmentKeyId: "readiness-test-key",
   toolRuns: 0,
-  familyBinding: null,
   cases: ["task-1", "task-2"].map((taskId) => ({
     taskId,
     fullTaskDigest: `${taskId}-full`,

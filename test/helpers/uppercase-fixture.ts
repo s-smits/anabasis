@@ -52,7 +52,7 @@ export function uppercaseFixture(dir: string, redesign = false, tool = false, ta
       },
     ],
     joins: [],
-    artifactSchema: [{ name: "answer", "shape": "string or singleton array", taskConditioned: true }],
+    artifactSchema: [{ name: "answer", "shape": "string or singleton array" }],
     designRuleConstants: [],
   };
   if (tool) brief.truthChecks[0]!.execution.requiredToolIds = ["uppercase-fixture"];

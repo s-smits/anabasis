@@ -11,27 +11,6 @@ export function freshTaskValidationContext(exactTasks?: number): TaskValidationC
   return { exactTasks: exactTasks ?? null, authoring: true };
 }
 
-function briefContractFindings(brief: Brief): ContractFinding[] {
-  return [
-    // Without a marked root the family census has nothing to move between siblings, so saying
-    // nothing would be the way past it. Which roots carry the deliverable stays the Builder's
-    // decision; that one of them is marked does not.
-    ...(brief.artifactSchema.some((field) => field.taskConditioned === true)
-      ? []
-      : [
-          {
-            code: "brief-material-root-missing",
-            path: "artifactSchema",
-            detail:
-              'no artifact schema field declares "taskConditioned": true — the root(s) holding what a solver must produce anew for each task, as against the report and other supporting fields. Mark them, so the family census can tell a family that needs one deliverable per task from one answered by a single deliverable',
-          },
-        ]),
-    // Withholding is a property of everything the agent can read, so a check may not enforce a
-    // rule the public projection does not carry (published-rules.ts).
-    ...publishedRuleFindings(brief),
-  ];
-}
-
 function representationFindings(brief: Brief, corpus: ControlCorpus): ContractFinding[] {
   const findings: ContractFinding[] = [];
   try {
@@ -67,7 +46,9 @@ export function freshCandidateFindings(loaded: {
 }): ContractFinding[] {
   const findings: ContractFinding[] = [];
   if (loaded.brief !== null) {
-    findings.push(...briefContractFindings(loaded.brief));
+    // Withholding is a property of everything the agent can read, so a check may not enforce a
+    // rule the public projection does not carry (published-rules.ts).
+    findings.push(...publishedRuleFindings(loaded.brief));
   }
   if (loaded.brief !== null && loaded.corpus !== null) {
     findings.push(...representationFindings(loaded.brief, loaded.corpus));

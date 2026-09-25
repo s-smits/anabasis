@@ -372,7 +372,7 @@ describe("the admission a repair earns", () => {
     expect(outcome.buildAdmissible).toBe(true);
     for (const sentence of [
       "no axis, step size, family mix or parent bijection is prescribed",
-      "extra cases on the same rule establish coverage, and a new identifier",
+      "extra cases on the same rule establish coverage, a new identifier",
       "Move one part per experiment",
       "recorded as a build, and their result credits neither",
       "fix a known evaluator defect before claiming a task-only challenge",

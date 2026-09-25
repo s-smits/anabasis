@@ -103,3 +103,28 @@ test("an empty battery and a malformed one are refused before any rule reads a t
   expect(malformed.findings).toHaveLength(1);
   expect(validateTasks(brief, { tasks: "not-an-array" }, {}).findings).toHaveLength(1);
 });
+
+test("two siblings every check reads alike are one task twice, while a ladder of limits clears", () => {
+  // A ladder: each rung publishes its own capacity, so the tightest rung's answer may meet every
+  // looser one without making any two rungs the same task.
+  const rungs = [1, 2, 3].map((capacity) => ({
+    taskId: `routing-${String(capacity)}`,
+    family: "routing",
+    publicInput: { condition: { mode: "shared", capacity } },
+    hidden: [],
+  }));
+  const allocation = battery().filter((task) => task.family === "allocation");
+  expect(codes([...rungs, ...allocation])).toEqual([]);
+  // A fourth rung repeating the second, under a label no check reads, is refused by name.
+  const twin = {
+    ...rungs[1],
+    taskId: "routing-2b",
+    publicInput: { condition: { mode: "shared", capacity: 2 }, label: "b" },
+    hidden: [],
+  };
+  const repeated = [...rungs, twin, ...allocation];
+  const found = validateTasks(brief, { tasks: repeated }, { authoring: true }).findings;
+  expect(
+    found.map((finding) => [finding.code, finding.detail.includes('"routing-2" and "routing-2b"')]),
+  ).toEqual([["tasks-duplicate-condition", true]]);
+});

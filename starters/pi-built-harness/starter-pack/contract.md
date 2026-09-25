@@ -50,8 +50,7 @@ Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
   present task publishes the same number: it grades today's battery correctly and silently forbids
   the next one from varying that input, so the demand can then only move by magnitude. Declaring
   the path in `publicInputPaths` does not do it; the code that decides has to read it.
-- Mark every root holding the material deliverable `"taskConditioned": true`; a brief marking
-  none is refused. A multi-file answer is one root with `fileMap: true` and the `files` preset.
+- A multi-file answer is one root with `fileMap: true` and the `files` preset.
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
   holding the limit, the `designRuleConstants` row naming it, the artifact path reporting the
@@ -76,8 +75,7 @@ it. The host runs every reference answer through the same checks as controls and
 
 ### Artifact schema and what the solver reads
 
-- `artifactSchema` has one `{name, shape, allowedValues?, fileMap?, taskConditioned?,
-  openMapPaths?}` row per artifact root. The writer and submit schema compile from your accept
+- `artifactSchema` has one `{name, shape, allowedValues?, fileMap?, openMapPaths?}` row per artifact root. The writer and submit schema compile from your accept
   controls: an object admits only the key sets those accepts show. A record keyed by task data,
   such as `{partId: address}`, lists its dotted path in `openMapPaths` (`"$"` for the root) so
   any key is admitted while each value keeps its shape; a declared path no accept reaches is

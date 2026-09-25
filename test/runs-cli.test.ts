@@ -311,6 +311,9 @@ describe("runs list", () => {
     expect(collectDetail(root, "truss-opus-20260920T", options).detail?.row.runId).toBe(
       "truss-opus-20260920T081500000Z-4ac221",
     );
+    expect(collectDetail(root, "4ac221", options).detail?.row.runId).toBe(
+      "truss-opus-20260920T081500000Z-4ac221",
+    );
   });
 
   it("joins each campaign's row to its own receipt, and refuses to choose between the two runs", () => {

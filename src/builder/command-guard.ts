@@ -111,7 +111,9 @@ const QUOTED_HEREDOC_BODY = /(<<-?[\t ]*(['"])(\w+)\2[^\n]*\n)(?:[\s\S]*?\n)?[\t
  * same reason; between them they cost a session many turns. The admission is kept narrow: every
  * dynamic target must start with `~/` or one of the two variables, carry no `..` and no second
  * expansion, and the command must not reassign either variable, since a command that sets HOME
- * first is no longer talking about the tree the wall bounded.
+ * first is no longer talking about the tree the wall bounded. A relative target whose expansion is
+ * a plain variable, such as a loop writing `scratch/opt-$i.log`, is admitted on the terms a
+ * relative remove is: no `..`, no command substitution, and every `cd` in its own tree.
  */
 const DYNAMIC_REDIRECT = /^core\.filesystem:redirect-truncate-(?:dynamic-path|root-home)$/;
 const REDIRECT_TARGET = /(?:^|[^<>&])(?:\d?>>?|&>>?)\|?[\t ]*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g;
@@ -238,17 +240,23 @@ function workspaceRelativeOperand(operand: string): boolean {
 }
 
 /** Whether every `cd` stays in a tree the session owns — the private `$HOME` both shells set,
- *  reached as a bare `cd`, `~` or `$HOME`, or a relative child, with no `..` and no other
- *  expansion — because that is what makes a relative remove after it stay inside the tree too.
- *  Without it, `cd ~ && rm -rf build` is refused even though it destroys nothing outside. */
+ *  reached as a bare `cd`, `~` or `$HOME`, the directory it is already in, as `.` or `$PWD`, or a
+ *  relative child, with no `..` and no other expansion — because that is what makes a relative
+ *  remove after it stay inside the tree too. Without it, `cd ~ && rm -rf build` is refused even
+ *  though it destroys nothing outside. A command naming `PWD` other than to expand it may have
+ *  moved it, so it keeps the refusal. */
 function ownDirectories(shell: string): boolean {
   // The target ends where the word does, so `cd "$HOME"/..` is read whole rather than as `"$HOME"`.
   const targets = [
     ...shell.matchAll(/(?:^|[\s;&|(])(?:cd|pushd)(?=[\s;&|)]|$)[\t ]*("[^"]*"|[^\s;&|()]*)(?=[\s;&|)]|$)/g),
   ];
   const home = (target: string) =>
-    target.replace(/^"(.*)"$/, "$1").replace(/^(?:~|\$HOME|\$\{HOME\})(?=\/|$)|^$/, "home");
-  if (targets.length > 0 && (SCRATCH_REASSIGNED.test(shell) || /\bCDPATH=/.test(shell))) return false;
+    target
+      .replace(/^"(.*)"$/, "$1")
+      .replace(/^(?:~|\$HOME|\$\{HOME\}|\$PWD|\$\{PWD\}|\.)(?=\/|$)|^$/, "home");
+  if (targets.length > 0 && (SCRATCH_REASSIGNED.test(shell) || /\bCDPATH=|(?<![$\w{])PWD\b/.test(shell))) {
+    return false;
+  }
   return targets.every(
     ([, target = ""]) => !/[$`"'\\]|^-/.test(home(target)) && workspaceRelativeOperand(home(target)),
   );
@@ -272,7 +280,11 @@ function scratchRedirectResidual(command: string): string | null {
     return `${match.slice(0, match.length - target.length)}${SCRATCH_PROBE}`;
   });
   const foreign = (target: string): boolean =>
-    !SCRATCH_TARGET.test(target) || target.split("/").includes("..");
+    target.split("/").includes("..") ||
+    !(
+      SCRATCH_TARGET.test(target) ||
+      (workspaceRelativeOperand(target) && !EXPANSION.test(target) && ownDirectories(shell))
+    );
   return dynamic.length === 0 || dynamic.some(foreign) ? null : residual;
 }
 
@@ -290,7 +302,9 @@ export function workspaceResidual(command: string, ruleId: string | null): strin
   let admitted = 0;
   const parts = command.split(SEGMENTS).map((part, index) => {
     if (index % 2 === 1 || EXPANSION.test(part)) return part;
-    const words = part.trim().split(/\s+/);
+    // A loop or branch body starts with its keyword, which stays so the residual still parses.
+    const lead = /^\s*(?:(?:do|then|else|\{)\s+)?/.exec(part)?.[0] ?? "";
+    const words = part.slice(lead.length).trim().split(/\s+/);
     const own = git
       ? words[0] === "git" && (words[1] === "checkout" || words[1] === "restore")
       : words[0] === "rm";
@@ -302,7 +316,7 @@ export function workspaceResidual(command: string, ruleId: string | null): strin
       if (operands.length === 0 || !bare.every(workspaceRelativeOperand)) return null;
     }
     admitted += 1;
-    return "true";
+    return `${lead}true`;
   });
   return admitted === 0 || parts.includes(null) ? null : parts.join("");
 }

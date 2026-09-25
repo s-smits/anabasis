@@ -625,7 +625,7 @@ class BuilderCampaignController {
     // is how a continued conversation reaches refusals compaction has since cut.
     const context = createContextTool({
       round: [this.openingContext(), this.freshContext()].filter(Boolean).join("\n\n"),
-      ...keysIf(proposesExperiment(input), () => ({ plan: () => this.plan.view() })),
+      plan: () => this.plan.view(),
       workspace: this.workspace,
       ...keyIfDefined("history", input.measured?.history),
       ...keyIfDefined("traces", input.measured?.traces),
@@ -732,7 +732,7 @@ export async function runBuilderCampaign(
         seed,
         advisory: controller.openingContext(),
         freshContext: controller.freshContext(),
-        ...keysIf(proposesExperiment(input), () => ({ planView: () => controller.plan.view() })),
+        planView: () => controller.plan.view(),
         ...keyIfDefined("maxTurns", input.maxTurns),
         ...keyIfDefined("webSearch", input.webSearch),
       },

@@ -46,7 +46,7 @@ interface GoalState {
   readonly maxTurns: number | undefined;
   /** Zero for a caller that keeps no start time; under a minute is not stated. */
   readonly elapsedMs: number;
-  /** The round plan's compact view, on a continuation that asks for a plan. */
+  /** The round plan's compact view, restated at every turn boundary. */
   readonly planView?: string;
 }
 

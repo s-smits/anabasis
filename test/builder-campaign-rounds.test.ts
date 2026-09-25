@@ -95,7 +95,7 @@ describe("the opening a round composes", () => {
     expect(turns).toBe(3);
   });
 
-  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster", async () => {
+  it("serves one round contract to the opening and harness_inspect, ahead of the advice, on the closed roster with the plan view", async () => {
     // The contract has one owner and two readers; comparing both against what the round actually
     // served, rather than against the renderer, is what catches the readers drifting apart.
     const campaignDir = scratchDir("ana-contract-readers-");
@@ -103,6 +103,7 @@ describe("the opening a round composes", () => {
     let delivered = "";
     let served = "";
     let roster: string[] = [];
+    let plan = "";
     await expect(
       runBuilderCampaign(
         { campaignDir, ...FRESH_BUILD, advisoryNote: note },
@@ -118,6 +119,13 @@ describe("the opening a round composes", () => {
                 action: "readiness",
               });
               served = inspected.content[0]?.text ?? "{}";
+              const page = await namedTool(tools, "context").execute("context-1", {
+                question: "what does the round plan need",
+                decides: "whether to write EXPERIMENT.json",
+                depth: "page",
+                id: "round/plan",
+              });
+              plan = page.content[0]?.text ?? "";
               return { status: "failed", errorMessages: ["stop after prompt proof"] };
             }),
         },
@@ -132,6 +140,8 @@ describe("the opening a round composes", () => {
     expect(roster).toEqual(expect.arrayContaining(["harness_inspect", "harness_trial", "submit"]));
     // No adoption gate is supplied, so correctness_check is not registered.
     expect(roster).not.toContain("correctness_check");
+    // A first round scores its rehearsals only against a plan it was shown how to write.
+    expect(plan).toContain("Round plan: EXPERIMENT.json is not written yet. Write EXPERIMENT.json as");
   });
 
   it.concurrent("opens a probe round on the range it may choose in, not one size", async () => {

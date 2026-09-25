@@ -15,11 +15,17 @@ import simplify from "../tools/oxlint/simplify.json" with { type: "json" };
 import { corpus } from "../tools/loc/source-policy.ts";
 import { siteId } from "../tools/oxlint/not-slop-ledger.ts";
 import {
+  type ReplayedSite,
+  scoreTable,
+  uniqueSites,
+} from "../.claude/skills/simplify-precision/scripts/precision.mts";
+import {
   sitePlaces,
   TREE_FINDING_ARGUMENTS,
   treeFindings,
   treeFindingsOver,
 } from "../tools/oxlint/tree-findings.ts";
+import { unreadModules } from "../tools/oxlint/tree-module.ts";
 import { existsSync, readFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -663,6 +669,43 @@ describe("the whole-tree simplify scans", () => {
     expect(quiet).not.toContain("campaign-level");
   });
 
+  it("reports a single-reader helper only when its reader keeps headroom under the ceiling", () => {
+    // Judged blind on 2026-09-24, every move refused was into a reader landing at 559 nonblank
+    // lines or more, and every move accepted landed at 542 or fewer.
+    const home = [...DECLARING].filter(([path]) => path === "src/single-export.ts");
+    const reader = READERS.get("src/reader.ts") ?? "";
+    const padded = (lines: number): string =>
+      `${reader}${Array.from({ length: lines }, (_, index) => `export const pad${index} = ${index};`).join("\n")}\n`;
+    const found = (lines: number): string[] =>
+      treeFindingsOver(new Map(home), new Map([...home, ["src/reader.ts", padded(lines)]]))
+        .filter((finding) => finding.kind === "single-reader-export")
+        .map((finding) => finding.path);
+    expect(found(480)).toStrictEqual(["src/single-export.ts"]);
+    expect(found(545)).toStrictEqual([]);
+  });
+
+  it("counts a skill script run through a shell variable or an absolute path as read", () => {
+    const script = ".claude/skills/simplify-precision/scripts/sweep.mjs";
+    const test = [
+      ".claude/skills/simplify-precision/scripts/sweep.test.mjs",
+      'import "./sweep.mjs";\n',
+    ] as const;
+    const rows = (runner: string): string[] =>
+      unreadModules(
+        new Map([
+          [script, "export const x = 1;\n"],
+          test,
+          [".claude/skills/simplify-precision/SKILL.md", runner],
+        ]),
+      ).map((row) => row.kind);
+    expect(rows('bun "$ROOT/scripts/sweep.mjs"\n')).toStrictEqual([]);
+    expect(
+      rows("bun /Users/someone/repo/.claude/skills/simplify-precision/scripts/sweep.mjs\n"),
+    ).toStrictEqual([]);
+    // Without the `$`, `OTHER/scripts/sweep.mjs` is a different path, and the script stays test-only.
+    expect(rows('bun "OTHER/scripts/sweep.mjs"\n')).toStrictEqual(["test-only-module"]);
+  });
+
   it("reports a same-prefix peer its reader imports for a use of its own", () => {
     // The family fixture's three peers again, with a reader importing all three and using each in
     // its own statement. Nothing lists them together, so each is a helper with one reader, and
@@ -819,9 +862,10 @@ export const pairs = [splitPairs(".").size, 2];
 
   /**
    * Where a copy sits decides whether anyone can own it. A copy in a test, an example, a fixture or
-   * vendored code is written to stand alone, and two separately published packages do not import
-   * each other, so a block in each has no owner both could call. Inside one package the same pair is
-   * reported. The package is the nearest `package.json` above the file; without one, the tree is one.
+   * vendored code is written to stand alone, a legacy reader goes with its file, and two separately
+   * published packages do not import each other, so a block in each has no owner both could call.
+   * Inside one package the same pair is reported. The package is the nearest `package.json` above
+   * the file; without one, the tree is one.
    */
   it("reports a copy one package can own, and not one in a test, an example or two packages", () => {
     const alpha = TWICE.slice(0, TWICE.indexOf("\n\n") + 1);
@@ -839,6 +883,9 @@ export const pairs = [splitPairs(".").size, 2];
     expect(read(["src/a.ts", "src/examples/a.ts"])).toStrictEqual([]);
     expect(read(["src/a.ts", "src/fixtures/a.ts"])).toStrictEqual([]);
     expect(read(["src/a.ts", "src/vendor/a.ts"])).toStrictEqual([]);
+    // A file its name marks as a legacy reader goes whole; a name merely containing the word does not.
+    expect(read(["src/a.ts", "src/a-legacy.ts"])).toStrictEqual([]);
+    expect(read(["src/a.ts", "src/legacyish.ts"])).toStrictEqual(["src/a.ts:2"]);
     expect(
       read(["src/one/a.ts", "src/two/a.ts"], ["src/one/package.json", "src/two/package.json"]),
     ).toStrictEqual([]);
@@ -893,5 +940,50 @@ export const pairs = [splitPairs(".").size, 2];
       (path) => !existsSync(resolve(repoRoot, path)),
     );
     expect(absent).toStrictEqual([]);
+  });
+});
+
+describe("the census precision score", () => {
+  const site = (id: string, kind: string, date: string, rev = date): ReplayedSite => ({
+    repo: "r",
+    rev,
+    date,
+    rule: "347c5bcc49a1",
+    kind,
+    path: "src/a.ts",
+    line: 1,
+    id,
+    detail: "",
+    places: [],
+  });
+  const judged = (id: string, verdict: "yes" | "no", source = "judge:opus") => ({
+    id,
+    kind: "copied-block",
+    verdict,
+    source,
+    reason: "",
+  });
+
+  it("keeps each site once, at its oldest revision", () => {
+    const kept = uniqueSites([
+      site("a", "copied-block", "2026-09-02"),
+      site("a", "copied-block", "2026-09-01"),
+    ]);
+    expect(kept.map((each) => each.date)).toStrictEqual(["2026-09-01"]);
+  });
+
+  it("scores judged sites per shape and counts what a candidate drops", () => {
+    const sites = [
+      site("a", "copied-block", "2026-09-01"),
+      site("b", "copied-block", "2026-09-01"),
+      site("c", "copied-block", "2026-09-01"),
+    ];
+    const labels = [judged("a", "yes"), judged("b", "no"), judged("b", "no", "ledger")];
+    const table = scoreTable(sites, labels, [sites[0] ?? site("x", "x", "x")]);
+    expect(table).toContain("copied-block                 3  1/2");
+    // The ledger is a label for calibration, never a judged verdict.
+    expect(table).toContain("ledger-no judged-no 1/1");
+    expect(table).toContain("dropped 2 (yes 0, no 1)");
+    expect(table).toContain("candidate adds 0 sites");
   });
 });

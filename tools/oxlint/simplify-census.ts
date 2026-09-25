@@ -106,6 +106,12 @@ async function oxlintFindings(): Promise<Finding[]> {
 }
 
 /** Findings by rule, each rule's sites in path order, rules ordered by count. */
+/** Whether the census prints a site of this rule at this path. The precision replay reads it too,
+ *  so a measured site is one a person was shown. */
+export function censusReads(rule: string, path: string): boolean {
+  return rule === ALWAYS_READ || !UNREAD.some((tree) => path.startsWith(tree));
+}
+
 function grouped(findings: readonly Finding[]): [string, Finding[]][] {
   const groups = new Map<string, Finding[]>();
   for (const finding of findings) groups.set(finding.rule, [...(groups.get(finding.rule) ?? []), finding]);
@@ -223,9 +229,7 @@ async function main(): Promise<void> {
   const limit = all ? Number.MAX_SAFE_INTEGER : DEFAULT_SITES;
 
   const read = [...(await oxlintFindings()), ...wholeTreeFindings()];
-  const findings = read.filter(
-    (finding) => finding.rule === ALWAYS_READ || !UNREAD.some((tree) => finding.path.startsWith(tree)),
-  );
+  const findings = read.filter((finding) => censusReads(finding.rule, finding.path));
   const selected = only === undefined ? findings : findings.filter((finding) => finding.rule.includes(only));
   const groups = grouped(selected.filter((finding) => !REGISTERS.has(finding.rule)));
   const registers = grouped(selected.filter((finding) => REGISTERS.has(finding.rule)));

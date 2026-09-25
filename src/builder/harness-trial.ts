@@ -36,7 +36,6 @@ import { authorFindingOverview } from "./author-feedback.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import {
-  REHEARSAL_VERIFIER_DEADLINE_MS,
   type SolveCaseEvidence,
   type SolvedCase,
   rehearseCase,
@@ -44,7 +43,7 @@ import {
   solverBlockerOf,
 } from "../truth/solve-case.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
-import type { RehearsalRow } from "../author/experiment-plan.ts";
+import type { RehearsalRow, RehearsedBytes } from "../author/experiment-plan.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
 import type { RehearsalTraces } from "./context-tool.ts";
 import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
@@ -100,6 +99,9 @@ type BlindGrade = {
   readonly loaded: LoadedTrial;
   readonly solved: SolvedCase;
   readonly openedCandidateId: string | null;
+  /** The scoring program and agent bundle the solve ran under, as the snapshot's fingerprint hashed
+   *  them; the task's public digest completes what the round plan records it rehearsed. */
+  readonly bundle: Omit<RehearsedBytes, "publicTaskDigest">;
   readonly ordinal: number;
   /** The harness's solve wall, read from the snapshot the solve ran under. */
   readonly wallMinutes: number;
@@ -307,9 +309,11 @@ async function runTrial(
   let loaded: ReturnType<typeof loadTrialCandidate>;
   let binding = sourceBinding;
   let wallMinutes: number;
+  let bundle: BlindGrade["bundle"];
   try {
     const fingerprint = fingerprintSlug(binding.workspace, { slug: binding.context.slug });
     if (!fingerprint.ok) return { status: "blocked", stage: "candidate" };
+    bundle = { scoringHash: fingerprint.scoringHash, agentHash: fingerprint.agentHash };
     binding = { ...binding, workspace: ensureBundleSnapshot(binding.workspace, fingerprint).dir };
     loaded = loadTrialCandidate(binding, taskId);
     wallMinutes = harnessSettings(binding.workspace).solveMs / 60_000;
@@ -338,13 +342,13 @@ async function runTrial(
     };
   }
   return gradeBlind(
-    { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes },
+    { binding, sourceBinding, loaded, solved, openedCandidateId, bundle, ordinal, wallMinutes },
     signal,
   );
 }
 
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
-  const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes } = grade;
+  const { binding, sourceBinding, loaded, solved, openedCandidateId, bundle, ordinal, wallMinutes } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
   // The battery's branch order decides this rather than convenience: `gradeOutcome` in
   // `src/truth/solve-case.ts` returns the solver's non-result before it ever looks at the accepted
@@ -368,6 +372,7 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const graded = candidate.stable && execution.status === "completed" ? truthOk : null;
   const verdict = graded === null ? "not-run" : graded ? "pass" : "fail";
   const { taskId, family } = loaded.task;
+  const { publicTaskDigest } = loaded.committed;
   // The solver's own count wins over the trace's, which a capture bound can cut short.
   const effort = {
     ...traceEffort(solved.solved.trace),
@@ -386,12 +391,19 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const artifact = solved.final?.accepted === true ? solved.final.artifactJson : null;
   const advice =
     binding.onRehearsal?.(
-      { taskId, family: family ?? null, verdict, wallMinutes, ...effort },
+      {
+        taskId,
+        family: family ?? null,
+        verdict,
+        wallMinutes,
+        bytes: { publicTaskDigest, ...bundle },
+        ...effort,
+      },
       { ordinal, artifact, candidateId: openedCandidateId },
     ) ?? [];
   return {
     status,
-    task: { taskId, family, publicTaskDigest: loaded.committed.publicTaskDigest },
+    task: { taskId, family, publicTaskDigest },
     candidate,
     solve: solveView(solved, effort, wallMinutes),
     verifier: candidate.stable ? execution : { status: "not-run", reason: "candidate-changed" },
@@ -515,7 +527,7 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
   return defineTool({
     name: "harness_trial",
     label: "Harness trial",
-    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and a ${REHEARSAL_VERIFIER_DEADLINE_MS / 1000}-second total verifier deadline over the accepted bytes. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
+    description: `Measure one of your own tasks against your own solver. The Built Harness you wrote solves the named task blind — public input and your registered tools only, no hidden expectations, no reference solve, under the same turn cap, solve wall and confinement a measured battery uses — and the real check program then grades the bytes it submitted. You get one aggregate truth.verdict of pass, fail or not-run, whether it submitted at all, how many turns it took and what the solve spent (minutes against the solve wall, tool calls, cost), and any advice where your EXPERIMENT.json target or predictions disagree with the round's rehearsals: never which check decided, a counterexample, a failure location, the artifact or any verifier output. This is the only evidence in the round about how hard your battery actually is; your own reference solve cannot supply it, because it is the best answer you have rather than the one your agent finds. A task your solver passes on its first attempt will most likely pass in the battery too. At most ${MAX_REHEARSALS} rehearsals per round, each costing one measured case, and the accepted bytes are graded under the same per-check wall your agent/config.yaml sets for the battery. Use harness_inspect readiness to choose taskId; full battery and control coverage, candidate gates and adoption stay with submit.`,
     parameters: Params,
     executionMode: "sequential",
     run: async (params, signal) => {

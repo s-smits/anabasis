@@ -312,11 +312,11 @@ Starts from block 6's `REHEARSAL NOT-RUN (lane 9)`.
 
 The question is which families the rehearsal instrument could grade at all. `harness_trial`
 (`src/builder/harness-trial.ts`) solves one task blind with the measured Built solver and grades
-it under `REHEARSAL_VERIFIER_DEADLINE_MS` in `src/truth/solve-case.ts`, a fixed total for the
-whole verifier run, while the harness's own `check_seconds` and `tool_run_seconds` in
-`agent/config.yaml` may be ten times their default. A family whose check compiles for longer than
-the rehearsal deadline returns `not-run` however the solver did, and the one instrument meant to
-catch a too-easy battery before payment can then grade only the fast families. Read each
+it through `rehearseCase` in `src/truth/solve-case.ts` under the harness's own `check_seconds`
+and `tool_run_seconds` from `agent/config.yaml`, the walls the battery grades under. A run recorded
+before that change graded under a fixed 30-second total instead, so there a family whose check
+compiles for longer returns `not-run` however the solver did, and the one instrument meant to
+catch a too-easy battery before payment could grade only the fast families. Read each
 `customCalls[]` row with `tool: "harness_trial"` in `builder-execution*.json` for its
 `target.taskId` and `semantic.truthVerdict`, the family of each target, the compile and tool-run
 durations in the graded battery's `verifier.json`, and the harness's declared walls. A `not-run`

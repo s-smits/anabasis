@@ -9,10 +9,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/
 import { join } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
+import { fingerprintSlug } from "../src/claim/fingerprint.ts";
+import { commitPublicTask } from "../src/truth/task-split.ts";
 import {
   type ExperimentPlan,
   type LastBattery,
   PlanEvidence,
+  type RehearsedBytes,
   captureExperimentSubmission,
   currentPlan,
   lastBatteryOf,
@@ -41,6 +44,10 @@ const PLAN: ExperimentPlan = {
 
 const CONTRADICTED_T1 = "Advice: rehearsal verdicts contradict 1 prediction(s): t1 predicted 0.1 and passed.";
 
+/** Bytes no workspace here holds. A workspace without a bundle cannot say what its tasks read now,
+ *  so a rehearsal of these still counts there. */
+const ELSEWHERE: RehearsedBytes = { publicTaskDigest: "p0", scoringHash: "s0", agentHash: "a0" };
+
 /** The plan with one field removed, as `jq 'del(.field)'` would leave it. */
 const without = (field: keyof ExperimentPlan): JsonValue =>
   Object.fromEntries(Object.entries(PLAN).filter(([key]) => key !== field));
@@ -52,7 +59,7 @@ function workspace(plan?: JsonValue): string {
   return dir;
 }
 
-const pass = (taskId: string) => ({
+const pass = (taskId: string, bytes = ELSEWHERE) => ({
   taskId,
   family: "span",
   verdict: "pass" as const,
@@ -60,7 +67,34 @@ const pass = (taskId: string) => ({
   minutes: 12,
   toolCalls: 9,
   costUsd: 0.4,
+  bytes,
 });
+
+const task = (taskId: string, limit: number) => ({
+  taskId,
+  family: "span",
+  publicInput: { limit },
+  hidden: [],
+});
+
+/** Gives `dir` the two-bundle layout holding t1 and t2 at `limit`, and an agent guide saying `guide`. */
+function bundle(dir: string, limit: number, guide = "Solve it."): void {
+  mkdirSync(join(dir, "agent"), { recursive: true });
+  mkdirSync(join(dir, "correctness-model"), { recursive: true });
+  writeFileSync(join(dir, "agent", "BUILT_AGENTS.md"), guide);
+  writeFileSync(
+    join(dir, "correctness-model", "tasks.json"),
+    JSON.stringify([task("t1", limit), task("t2", limit)]),
+  );
+}
+
+/** What harness_trial records it rehearsed: the committed public task and the fingerprint's hashes. */
+function bytesOf(dir: string, taskId: string, limit: number): RehearsedBytes {
+  const fingerprint = fingerprintSlug(dir);
+  if (!fingerprint.ok) throw new Error("the fixture bundle does not fingerprint");
+  const { publicTaskDigest } = commitPublicTask(task(taskId, limit));
+  return { publicTaskDigest, scoringHash: fingerprint.scoringHash, agentHash: fingerprint.agentHash };
+}
 
 afterAll(cleanupScratch);
 
@@ -176,7 +210,7 @@ describe("the plan evidence", () => {
       CONTRADICTED_T1,
     ]);
     expect(JSON.parse(readFileSync(join(rehearsals, "experiment-evidence-2.json"), "utf8"))).toMatchObject({
-      schema: "experiment-evidence/v1",
+      schema: "experiment-evidence/v2",
       planDigest: hashJsonValue(PLAN),
       predictionScore: { scored: 1, brier: 0.81, expected: 0.1, observed: 1 },
     });
@@ -190,6 +224,25 @@ describe("the plan evidence", () => {
       "Ladder frontier row: - **frontier** — hard, with the set no longer handed over.",
       "MEMORY.md risk: The span family may still be one call.",
       "Full files: EXPERIMENT.json, MEMORY.md and starter-pack/difficulty-ladder.md; the context tool searches them with the round's history and traces.",
+    ]);
+  });
+
+  // A tightened task is a different question from the one its earlier rehearsal answered, so that
+  // verdict stops counting and is named instead of silently calibrating what would be submitted.
+  it("counts a rehearsal at the task's current bytes and names one at earlier bytes as stale", () => {
+    const dir = workspace(PLAN);
+    bundle(dir, 10);
+    const evidence = new PlanEvidence(dir, null);
+    expect(evidence.record(pass("t1", bytesOf(dir, "t1", 10)))).toEqual([CONTRADICTED_T1]);
+
+    bundle(dir, 4, "Solve it within the tighter limit.");
+    const stale =
+      "Advice: 0 of the 2 task(s) you would submit now have a graded rehearsal at their current bytes. Rehearsed only at earlier bytes: t1 (public input and agent moved); those verdicts say nothing about the tasks as they now stand, and count towards neither the target nor the predictions.";
+    expect(evidence.advice()).toEqual([stale]);
+    expect(evidence.view().split("\n")).toContain(stale);
+
+    expect(evidence.record(pass("t2", bytesOf(dir, "t2", 4)))).toEqual([
+      "Advice: 1 of the 2 task(s) you would submit now have a graded rehearsal at their current bytes (t2). Rehearsed only at earlier bytes: t1 (public input and agent moved); those verdicts say nothing about the tasks as they now stand, and count towards neither the target nor the predictions.",
     ]);
   });
 

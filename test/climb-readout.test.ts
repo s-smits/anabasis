@@ -343,9 +343,9 @@ describe("rendering", () => {
       "The latest battery passed every one of its 5 verified cases, so it found no limit.",
     );
     expect(allPass).toContain("declare it per family as a new move in EXPERIMENT.json");
-    // A re-tuned number or a longer list of named states is coverage, not a new move.
+    // Named states are coverage; a re-tuned number is a move only when a stronger witness reaches it.
     expect(allPass).toContain(
-      "A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+      "A longer list of named states is not one; a re-tuned number is one only once a stronger witness of yours reaches it.",
     );
     expect(render(readoutOf(row("r1", 0, { passed: 4, n: 5 })))).not.toContain("found no limit.");
     // Refused attempts are not verified, so a battery passing every verified case is still all-pass.

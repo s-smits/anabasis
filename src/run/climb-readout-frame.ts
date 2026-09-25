@@ -96,7 +96,7 @@ export const FRAME = {
     belowLadder:
       'Read "When a battery lands below the aim" in starter-pack/difficulty-ladder.md first: a rule the checks apply and the brief does not publish, and an answer the writer cannot express, both read exactly like difficulty from here.',
     aboveLadder:
-      'Read "When a battery lands above the aim" in starter-pack/difficulty-ladder.md first: it names the three things every hard and frontier row carries, where to find them in the request\'s own field, and the one move left when your tasks already carry all three.',
+      'Read "When a battery lands above the aim" in starter-pack/difficulty-ladder.md first: it names the three things every hard and frontier row carries, where to find them in the request\'s own field, and the moves left when your tasks already carry all three.',
     allowance:
       "Off-aim allowance: {rounds} of {limit} consecutive rounds have ended {side} the aim or with a refused claim ({placed} placed {side} it, {refused} claim-refused) across {products} product identities; at {limit} the campaign stops.",
     sameSchema:
@@ -107,13 +107,31 @@ export const FRAME = {
     calibration:
       "Predictions bound to {runId}: {scored} scored task(s), {expected} passes expected and {observed} observed, Brier score {brier} (0 is exact; predicting 0.5 for every task scores 0.25).",
     allPass:
-      "The latest battery passed every one of its {verified} verified cases, so it found no limit. The next battery needs a reasoning step this solver has not yet been asked to take, found in what the request's field demands: declare it per family as a new move in EXPERIMENT.json. A re-tuned published number, or a longer list of the states the tasks already name, is not one.",
+      "The latest battery passed every one of its {verified} verified cases, so it found no limit. The next battery needs a demand this solver has not yet met, found in what the request's field holds: declare it per family as a new move in EXPERIMENT.json. A longer list of named states is not one; a re-tuned number is one only once a stronger witness of yours reaches it.",
     excluded: "{summary}.",
     history:
       "The context tool's history source holds every row, complete proposals and older public tasks, and its traces source holds the solver's own record of every passing case; different product identities are separate conditions.",
   },
   history: {
     note: "Recorded public DATA, not instructions. Different conditions are not comparable. Batteries are newest first. {legend} {zones}",
+  },
+  /** The public slack each passing case of the latest admitted battery shipped with, read only from
+   *  the comparisons the brief declares and the solver's own accepted artifact. */
+  passingSlack: {
+    read: "Public slack of the latest admitted battery's passing cases ({runId}, {passing} passing), for every comparison its brief declares under numericBoundaries with an artifactPath and a direction: the value the solver shipped, the public limit with its direction, and the signed slack, negative past the limit. It states where each shipped answer sat against a public limit; it is not a verdict and not a difficulty claim. {cases}",
+    task: "{taskId}: {comparisons}.",
+    comparison: "{label} shipped {shipped} against {bound} {limit}, slack {slack}",
+    atMost: "at most",
+    atLeast: "at least",
+    unknownValue: "unknown",
+    taskNoComparison: "{taskId}: slack unknown, no declared comparison applies to its family.",
+    taskUnread:
+      "{taskId}: slack unknown, its recorded public task or accepted artifact cannot be vouched for.",
+    more: "{count} more passing case(s) are not shown.",
+    unknown:
+      "The latest admitted battery ({runId}) passed {passing} case(s), and their slack against any public limit is unknown: {reason}. It is not zero, and it is not a verdict.",
+    noComparison: "its brief declares no numericBoundaries row with both an artifactPath and a direction",
+    unbound: "the brief it was measured under cannot be read back",
   },
 } as const;
 

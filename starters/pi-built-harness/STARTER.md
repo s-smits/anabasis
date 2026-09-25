@@ -13,13 +13,7 @@ You may change the harness's runtime settings in `agent/config.yaml`.
 A task is as hard as what one answer has to hold at once: one limit, then several sharing something
 finite, then adversarial states the same answer must clear, then — **frontier**, where the first
 battery starts — a set the solver must find rather than read off the brief, the guide or your
-tools. Find that demand in the request's field: a limit, state or duty you invent measures your
-wording. A tool reporting every margin on every listed state did the part you meant to measure.
-
-A battery after the first moves the demand or repairs the last measurement. Adding tasks is
-neither, nor is growing a probe to full size at the level it measured.
-
-Six domains at all four tiers, and what each side of a missed aim asks for:
+tools. Six domains at all four tiers, and what each side of a missed aim asks for:
 [`starter-pack/difficulty-ladder.md`](starter-pack/difficulty-ladder.md).
 
 ## Loop
@@ -28,11 +22,10 @@ Six domains at all four tiers, and what each side of a missed aim asks for:
 2. Write the files and extend the seed tests, then run
    `.toolchain/bun --preserve-symlinks --no-env-file test correctness-model/harness.test.ts correctness-model/evaluator.test.ts`.
 3. Begin with `harness_inspect readiness` and page every family. Once one task, an accept and the
-   tools exist, `harness_trial` solves that task blind with your own agent, six per round: the
-   reference solve proves a task reachable, a rehearsal says how hard it is. `correctness_check`
-   runs every gate below without adopting, and reviews changed product bytes for some minutes.
-4. `submit` freezes and gates the candidate once a clear preview and your rehearsals agree with
-   the aim; a refusal names the code and file to fix.
+   tools exist, `harness_trial` solves that task blind with your own agent, six per round.
+   `correctness_check` runs every gate below without adopting, and reviews changed product bytes
+   for some minutes.
+4. `submit` freezes and gates the candidate; a refusal names the code and file to fix.
 5. Keep findings in `MEMORY.md` and open questions in `SCRATCHPAD.md`; the `context` tool searches
    them, the round plan, measured batteries and passing solve traces.
 
@@ -88,13 +81,13 @@ at a time, each within a per-task wall.
 - `SOLVABILITY_CENSUS_BLOCKED`: every task's reference solve passes within its wall. Bound a
   search by a fixed iteration count, since a clock budget changes the answer between runs. A
   longer search, still minutes per task, records its best artifact per task in a module under
-  `reference/` for `solve` to return, so the wall bounds the replay, not the limit, and the limit
-  is real only if the solver cannot run that search in its walls.
+  `reference/` for `solve` to return, so the wall bounds only the replay.
 The first two arrive upper-case with underscores.
 
 **7. Family transplant.** Moves each accepted `taskConditioned` root into its sibling tasks and
 runs the checks that read it.
-- `TASK_FAMILY_UNIVERSAL_WITNESS`: some sibling's material check refuses the moved deliverable.
+- `TASK_FAMILY_UNIVERSAL_WITNESS`: no two siblings accept each other's moved deliverable. A family
+  that tightens a published limit clears while each looser task's deliverable fails a tighter one.
 - `TASK_FAMILY_BINDING_UNPROVEN`: a material check runs each required tool to completion, then
   returns `false` for a deliverable that does not fit; it neither throws nor returns before the
   run.

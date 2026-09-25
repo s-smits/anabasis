@@ -59,6 +59,7 @@ function streak(
     rows: [],
     allowance:
       placed === 0 ? null : { rounds: placed + refused, placed, refused, side, products: 1, sameSchema: 0 },
+    slack: null,
   };
 }
 

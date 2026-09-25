@@ -105,7 +105,8 @@ export function readMargins(
   });
 }
 
-function decimal(value: number): string {
+/** A reported number as the margin table prints it: an integer whole, anything else to ten significant figures. */
+export function decimal(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(10)));
 }
 

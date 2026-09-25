@@ -42,6 +42,7 @@ import {
 } from "./climb-history.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { FRAME, fill } from "./climb-readout-frame.ts";
+import { type PassingSlack, passingSlackLine, readPassingSlack } from "./passing-slack.ts";
 
 /** Which decision was taken: `placed` carries the band placement, and the other three name a
  *  recorded shape whose pooled rate is not difficulty evidence. The zone is the placement's. */
@@ -139,6 +140,9 @@ export type ClimbReadout = {
   /** Every history row, newest first. */
   rows: ReadoutRow[];
   allowance: OffAimAllowance | null;
+  /** The latest admitted battery's passing cases against their declared public limits; null when
+   *  it passed nothing or no reader supplied it. */
+  slack: PassingSlack | null;
 };
 
 /** Ceiling for the kickoff rendering; whole older rows go first, then the family line. */
@@ -375,11 +379,12 @@ function offAimAllowance(
 /** One reading of batteries a caller already read. Every admitted row is decided once, over the
  *  admitted batteries up to it, and the table, the reading and the allowance all read that one
  *  decision. `schemaOf` prints a battery's public task schemas, and is asked only for the rounds
- *  the allowance placed. */
+ *  the allowance placed; `slackOf` reads the latest admitted battery's passing cases. */
 export function climbReadout(
   read: ClimbBatteriesRead,
   band: [number, number],
   schemaOf: (row: AdmittedClimbRow) => string | null,
+  slackOf: (row: AdmittedClimbRow | undefined) => PassingSlack | null = () => null,
 ): ClimbReadout {
   const names = {
     product: aliases(
@@ -402,6 +407,7 @@ export function climbReadout(
     excluded: read.excluded,
     rows: read.history.map((row) => readoutRow(row, decisions.get(row.battery.runId), names)).toReversed(),
     allowance: offAimAllowance(read.history, decisions, schemaOf),
+    slack: slackOf(read.admitted.at(-1)),
   };
 }
 
@@ -414,7 +420,12 @@ export function readClimbReadout(
 ): ClimbReadout | null {
   const read = readClimbBatteries(domainDir, runPin, claimsDir, manifestPath);
   if (read.admitted.length === 0 && read.excluded.length === 0) return null;
-  return climbReadout(read, climbThresholds(manifestPath).band, (row) => publicSchemaPrint(domainDir, row));
+  return climbReadout(
+    read,
+    climbThresholds(manifestPath).band,
+    (row) => publicSchemaPrint(domainDir, row),
+    (row) => readPassingSlack(domainDir, row),
+  );
 }
 
 const cell = (value: string) => value.replaceAll("|", String.raw`\|`).replaceAll("\n", " ");
@@ -570,9 +581,9 @@ function familyEffortLine(readout: ClimbReadout): string | null {
 
 /**
  * The kickoff rendering: the boundary, the table of the newest rows, the latest proposal and its
- * result, the reading with its ladder pointer, the allowance, the families and the exclusions.
- * Bounded by whole parts — older rows first, then the family line — and the table says how many
- * rows it left out.
+ * result, the reading with its ladder pointer, the passing cases' public slack, the allowance, the
+ * families and the exclusions. Bounded by whole parts — older rows first, then the slack and family
+ * lines — and the table says how many rows it left out.
  */
 export function renderReadout(readout: ClimbReadout | null, reason: string): string {
   const boundary = fill(FRAME.readout.boundary, { reason });
@@ -590,6 +601,7 @@ export function renderReadout(readout: ClimbReadout | null, reason: string): str
       ...proposalLines(readout),
       calibrationLine(readout),
       ...readingLines(readout),
+      withFamilies ? passingSlackLine(readout.slack) : null,
       ...allowanceLines(readout),
       withFamilies ? familyLine(readout) : null,
       withFamilies ? familyEffortLine(readout) : null,

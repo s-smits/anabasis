@@ -50,6 +50,12 @@ type DonorOutcome =
   | { kind: "separated" | "unseparated" | "skipped" }
   | { kind: "stop"; finding: ContractFinding };
 
+/** One donor's deliverable moved into one target: it passed, a check reading a moved root refused
+ *  it, or the finding that says why neither can be established. */
+type Exchange = "passed" | "separated" | ContractFinding;
+
+type Exchanger = (family: string, donor: FamilyWitness, target: FamilyWitness) => Promise<Exchange>;
+
 type HybridEvaluator = (
   target: FamilyWitness,
   artifact: JsonValue,
@@ -57,7 +63,7 @@ type HybridEvaluator = (
 ) => Promise<HybridEvaluation>;
 
 /** Bump when the census's reading of a hybrid changes, so no earlier result answers the new rule. */
-const FAMILY_BINDING_STAGE = "family-binding-stage/v1";
+const FAMILY_BINDING_STAGE = "family-binding-stage/v2";
 
 interface FamilyBindingStageInput {
   /** The candidate brief; the stage reads only its material checks and task-conditioned roots. */
@@ -101,52 +107,73 @@ function familyMaterialCheckIds(brief: Brief): Set<string> {
   );
 }
 
-async function searchDonor(
-  { family, donor, members }: DonorSearch,
-  roots: readonly string[],
+function readExchange(
+  verified: HybridEvaluation,
+  family: string,
+  named: string,
   materialChecks: ReadonlySet<string>,
-  evaluateHybrid: HybridEvaluator,
-): Promise<DonorOutcome> {
-  const named = roots.map((root) => `"${root}"`).join(", ");
-  for (const target of members) {
-    if (target.taskId === donor.taskId) continue;
-    const verified = await evaluateHybrid(
-      target,
-      hybridArtifact(target.artifact, donor.artifact, roots),
-      donor,
-    );
-    // Host outages throw before this point, so an unsettled evaluate is the correctness model's own
-    // failure, and is reported as the author's rather than routed to the environment. Routed to the
-    // environment it reads as "did not settle … unknown", with no hint that the evaluator threw on
-    // a sibling's well-formed design.
-    if (!verified.settled) {
-      return {
-        kind: "stop",
-        finding: {
-          code: "TASK_FAMILY_BINDING_UNPROVEN",
-          path: EVALUATOR_FILE,
-          detail: `family "${family}": the correctness model returned no verdict (${verified.unsettledBy ?? "generated-evaluate-result"}) for a sibling's accepted deliverable with its task-conditioned root(s) ${named} moved into another task of this family. Every check must return false rather than throw or leave a tool run pending when a well-formed artifact does not fit its task`,
-          owner: "bh-correctness-model",
-        },
-      };
-    }
-    if (verified.passed) continue;
-    if (verified.failedCheckIds.some((id) => materialChecks.has(id))) return { kind: "separated" };
-    const blockers =
-      verified.failedCheckIds.length === 0
-        ? "the evaluate named no failing check"
-        : `only ${verified.failedCheckIds.map((id) => `"${id}"`).join(", ")} failed, and none of those checks reads the marked root(s)`;
+): Exchange {
+  // Host outages throw before this point, so an unsettled evaluate is the correctness model's own
+  // failure, and is reported as the author's rather than routed to the environment. Routed to the
+  // environment it reads as "did not settle … unknown", with no hint that the evaluator threw on
+  // a sibling's well-formed design.
+  if (!verified.settled) {
     return {
-      kind: "stop",
-      finding: {
-        code: "TASK_FAMILY_BINDING_UNPROVEN",
-        path: EVALUATOR_FILE,
-        detail: `family "${family}": a sibling's deliverable was rejected, but ${blockers} — the task-conditioned root(s) ${named} were never refused by a check that reads them, so the rejection is no evidence that the deliverable itself separates the family`,
-        owner: "bh-correctness-model",
-      },
+      code: "TASK_FAMILY_BINDING_UNPROVEN",
+      path: EVALUATOR_FILE,
+      detail: `family "${family}": the correctness model returned no verdict (${verified.unsettledBy ?? "generated-evaluate-result"}) for a sibling's accepted deliverable with its task-conditioned root(s) ${named} moved into another task of this family. Every check must return false rather than throw or leave a tool run pending when a well-formed artifact does not fit its task`,
+      owner: "bh-correctness-model",
     };
   }
+  if (verified.passed) return "passed";
+  if (verified.failedCheckIds.some((id) => materialChecks.has(id))) return "separated";
+  const blockers =
+    verified.failedCheckIds.length === 0
+      ? "the evaluate named no failing check"
+      : `only ${verified.failedCheckIds.map((id) => `"${id}"`).join(", ")} failed, and none of those checks reads the marked root(s)`;
+  return {
+    code: "TASK_FAMILY_BINDING_UNPROVEN",
+    path: EVALUATOR_FILE,
+    detail: `family "${family}": a sibling's deliverable was rejected, but ${blockers} — the task-conditioned root(s) ${named} were never refused by a check that reads them, so the rejection is no evidence that the deliverable itself separates the family`,
+    owner: "bh-correctness-model",
+  };
+}
+
+async function searchDonor(
+  { family, donor, members }: DonorSearch,
+  exchange: Exchanger,
+): Promise<DonorOutcome> {
+  for (const target of members) {
+    if (target.taskId === donor.taskId) continue;
+    const reading = await exchange(family, donor, target);
+    if (reading === "passed") continue;
+    if (reading === "separated") return { kind: "separated" };
+    return { kind: "stop", finding: reading };
+  }
   return { kind: "unseparated" };
+}
+
+/** Do two siblings accept each other's deliverable? Asked only of a family some deliverable already
+ *  answers whole. A family that tightens a published limit has that shape by construction — the
+ *  tightest task's deliverable meets every looser limit — and is a ladder so long as each looser
+ *  deliverable fails some tighter sibling. Two tasks that each accept the other's deliverable are
+ *  one task written twice, which is the family the census exists to refuse. */
+async function interchangeablePair(
+  family: string,
+  members: readonly FamilyWitness[],
+  exchange: Exchanger,
+): Promise<DonorOutcome> {
+  for (const [index, first] of members.entries()) {
+    for (const second of members.slice(index + 1)) {
+      const forward = await exchange(family, first, second);
+      if (forward === "separated") continue;
+      if (forward !== "passed") return { kind: "stop", finding: forward };
+      const back = await exchange(family, second, first);
+      if (back === "passed") return { kind: "unseparated" };
+      if (back !== "separated") return { kind: "stop", finding: back };
+    }
+  }
+  return { kind: "separated" };
 }
 
 function universalWitness(family: string, members: number, roots: readonly string[]): ContractFinding {
@@ -154,7 +181,7 @@ function universalWitness(family: string, members: number, roots: readonly strin
   return {
     code: "TASK_FAMILY_UNIVERSAL_WITNESS",
     path: TASKS_FILE,
-    detail: `family "${family}" has ${members} tasks, and one accepted deliverable satisfies every one of them: moving only the task-conditioned root(s) ${named} between siblings, with each target keeping its own report and supporting fields, leaves every sibling passing. Author tasks whose material deliverable must genuinely differ, or represent this family as one task with several scenarios`,
+    detail: `family "${family}" has ${members} tasks, one accepted deliverable satisfies every one of them, and two of them accept each other's: moving only the task-conditioned root(s) ${named} between those siblings, with each target keeping its own report and supporting fields, leaves both passing. A family that tightens a published limit clears when each looser task's deliverable fails a tighter sibling. Author tasks whose material deliverable must genuinely differ, or represent this family as one task with several scenarios`,
     owner: "task-curriculum",
   };
 }
@@ -201,6 +228,14 @@ function familyDonors(witnesses: readonly FamilyWitness[], roots: readonly strin
  * artifact unchanged — and the family stops at its first donor that no sibling rejects. A family of
  * nine identical deliverables therefore costs no evaluation at all rather than seventy-two.
  *
+ * A universal deliverable alone does not refuse the family. Siblings that tighten a published
+ * limit — a mass cap, a deadline, a tolerance — nest their feasible sets, so the tightest task's
+ * deliverable answers every looser one, and a calibrated staircase could never clear. The family is
+ * refused only when, besides, two of its tasks accept each other's deliverable. Nine tasks written
+ * in nine wordings still fail, since every pair accepts both ways; so does a ladder whose rungs
+ * repeat. The pair search runs only in a family already answered whole, and reuses every exchange
+ * the donor searches ran.
+ *
  * Donor searches are independent, so they run in the census lanes and settle in family and donor
  * order, which is what makes four lanes and one lane return the same findings.
  *
@@ -222,6 +257,24 @@ export async function familyBindingFindings(
   // The host records the check id. Declared path coverage narrows the applicable claim; it does
   // not prove that arbitrary code semantically used every declared field.
   const materialChecks = familyMaterialCheckIds(brief);
+  const named = roots.map((root) => `"${root}"`).join(", ");
+  // An exchange depends on its donor and target alone, so the pair search below reuses every
+  // exchange a donor search already ran.
+  const exchanges = new Map<string, Promise<Exchange>>();
+  const exchange: Exchanger = (family, donor, target) => {
+    const key = `${donor.taskId}>${target.taskId}`;
+    const known = exchanges.get(key);
+    if (known !== undefined) return known;
+    const reading = (async () =>
+      readExchange(
+        await evaluateHybrid(target, hybridArtifact(target.artifact, donor.artifact, roots), donor),
+        family,
+        named,
+        materialChecks,
+      ))();
+    exchanges.set(key, reading);
+    return reading;
+  };
   const families = familyDonors(witnesses, roots);
   const searches = families.flatMap(({ family, members, donors }) =>
     donors.length < 2 ? [] : donors.map((donor) => ({ family, donor, members })),
@@ -234,7 +287,7 @@ export async function familyBindingFindings(
     lanes,
     async (search): Promise<DonorOutcome> => {
       if (universal.has(search.family)) return { kind: "skipped" };
-      const outcome = await searchDonor(search, roots, materialChecks, evaluateHybrid);
+      const outcome = await searchDonor(search, exchange);
       if (outcome.kind === "stop") halted = true;
       if (outcome.kind === "unseparated") universal.add(search.family);
       return outcome;
@@ -244,18 +297,23 @@ export async function familyBindingFindings(
   const findings: ContractFinding[] = [];
   let next = 0;
   for (const { family, members, donors } of families) {
-    if (donors.length < 2) {
-      findings.push(universalWitness(family, members.length, roots));
-      continue;
-    }
-    const settled = outcomes.slice(next, (next += donors.length));
-    for (const outcome of settled) {
+    let whole = donors.length < 2;
+    for (const outcome of whole ? [] : outcomes.slice(next, (next += donors.length))) {
       if (outcome === undefined) return findings;
       if (outcome.kind === "stop") return [...findings, outcome.finding];
       if (outcome.kind !== "unseparated") continue;
-      findings.push(universalWitness(family, members.length, roots));
+      whole = true;
       break;
     }
+    if (!whole) continue;
+    if (stopped()) return findings;
+    // Two siblings with byte-equal slices accept each other without an evaluation.
+    const pair: DonorOutcome =
+      donors.length < members.length
+        ? { kind: "unseparated" }
+        : await interchangeablePair(family, members, exchange);
+    if (pair.kind === "stop") return [...findings, pair.finding];
+    if (pair.kind === "unseparated") findings.push(universalWitness(family, members.length, roots));
   }
   return findings;
 }

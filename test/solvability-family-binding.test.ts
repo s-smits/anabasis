@@ -181,6 +181,57 @@ describe("the within-family binding census", () => {
     expect(pairs.filter((pair) => pair.startsWith("tb>"))).toEqual(["tb>ta", "tb>tc"]);
   });
 
+  // Each task publishes a mass cap and its reference design weighs `mass`; a design passes a task
+  // whose cap it meets. The tightest design then meets every looser cap, so each row holds a
+  // deliverable that answers the whole family, and only a pair accepting both ways refuses it.
+  it.each<[string, Array<[string, number, number]>, string[]]>([
+    [
+      "a ladder of tightening caps, whose tightest design meets every looser one",
+      [
+        ["t100", 100, 100],
+        ["t150", 150, 150],
+        ["t200", 200, 200],
+      ],
+      [],
+    ],
+    [
+      "a ladder with a repeated rung, whose two designs meet each other's cap",
+      [
+        ["t100", 100, 100],
+        ["t150a", 150, 140],
+        ["t150b", 150, 150],
+      ],
+      ["TASK_FAMILY_UNIVERSAL_WITNESS"],
+    ],
+    [
+      "one cap written three ways, where every design meets every task",
+      [
+        ["ta", 150, 100],
+        ["tb", 150, 110],
+        ["tc", 150, 120],
+      ],
+      ["TASK_FAMILY_UNIVERSAL_WITNESS"],
+    ],
+  ])("%s", async (_, rungs, codes) => {
+    const cap = new Map(rungs.map(([taskId, limit]) => [taskId, limit]));
+    const massOf = new Map(rungs.map(([taskId, , mass]) => [taskId, mass]));
+    const witnesses = rungs.map(([taskId, , mass]) => ({
+      taskId,
+      family: "roof",
+      artifact: { answer: String(mass), report: taskId },
+    }));
+    const pairs: string[] = [];
+    const findings = await familyBindingFindings(answerBrief, witnesses, async (target, _artifact, donor) => {
+      pairs.push(`${donor.taskId}>${target.taskId}`);
+      const passed = (massOf.get(donor.taskId) ?? Infinity) <= (cap.get(target.taskId) ?? 0);
+      return { settled: true, passed, failedCheckIds: passed ? [] : ["answer"] };
+    });
+
+    expect(findings.map((finding) => finding.code)).toEqual(codes);
+    // The pair search reruns no exchange a donor search already ran.
+    expect(new Set(pairs).size).toBe(pairs.length);
+  });
+
   it("runs donor searches in bounded lanes and settles their findings in family and donor order", async () => {
     // Four lanes must write what one lane writes, and never run more than four hybrids at once: a
     // slow early donor that separates, a fast later donor that does not settle, a universal family.

@@ -617,7 +617,7 @@ describe("the run-end numbers", () => {
       predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
     });
 
-  it("joins each battery's trials by the measured plan's digest, and says so when none or several match", () => {
+  it("joins each battery's trials by the measured plan's digest, and says so when several match or a schema is refused", () => {
     const dir = scratchDir("run-end-");
     mkdirSync(join(dir, "difficulty-decisions"), { recursive: true });
     for (const epoch of ["epoch-a", "epoch-b"]) {
@@ -626,6 +626,7 @@ describe("the run-end numbers", () => {
     writeFileSync(
       join(dir, "difficulty-decisions", "a.json"),
       decision(DIFFICULTY_DECISION_SCHEMA, [
+        row("b5", "2026-09-05", "on-aim", null, "p5"),
         row("b4", "2026-09-04", "on-aim"),
         row("b3", "2026-09-03", "on-aim", null, "p3"),
         row("b2", "2026-09-02", "on-aim", null, "p2"),
@@ -644,7 +645,7 @@ describe("the run-end numbers", () => {
     );
     put("epoch-a/rehearsals/experiment-evidence-2.json", evidence("p3", [["t1", "pass"]]));
     put("epoch-b/rehearsals/experiment-evidence.json", evidence("p3", [["t2", "pass"]]));
-    // The hostile neighbour: the right digest under a schema the writer never produced is not read.
+    // The right digest under a schema this reader does not take is refused by name, never read as none.
     put(
       "epoch-b/rehearsals/experiment-evidence-2.json",
       evidence("p2", [["t1", "pass"]], "experiment-evidence/v1"),
@@ -658,7 +659,7 @@ describe("the run-end numbers", () => {
         passedTasks: 1,
         predictionScore: { scored: 2, brier: 0.125, expected: 1.5, observed: 1 },
       },
-      { state: "none" },
+      { state: "refused", evidence: [join("epoch-b", "rehearsals", "experiment-evidence-2.json")] },
       {
         state: "ambiguous",
         evidence: [
@@ -667,6 +668,7 @@ describe("the run-end numbers", () => {
         ],
       },
       undefined,
+      { state: "none" },
     ]);
   });
 

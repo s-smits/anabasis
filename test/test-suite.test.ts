@@ -24,6 +24,7 @@ import {
 } from "../tools/runtime/test-suite.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 const A_TEST_TS = "a.test.ts";
+const B_TEST_TS = "b.test.ts";
 
 afterAll(cleanupScratch);
 
@@ -196,7 +197,7 @@ describe("whose verdict the suite reports", () => {
 
   it("keeps it after a wall as well: rerunning the unfinished files cannot unsay a printed error", () => {
     const first = ran({ exitCode: null, errors: 1, reported: new Set([file("a.test.ts")]) });
-    expect(attribute(first, [file("a.test.ts"), file("b.test.ts")], 8)).toMatchObject({
+    expect(attribute(first, [file("a.test.ts"), file(B_TEST_TS)], 8)).toMatchObject({
       rerun: null,
       exitCode: 1,
       because: "unhandled-error",
@@ -226,11 +227,11 @@ describe("whose verdict the suite reports", () => {
   it("runs the files a wall left unfinished again, including the one whose block it cut short", () => {
     const first = ran({
       exitCode: null,
-      reported: new Set([file(A_TEST_TS), file("b.test.ts")]),
-      inFlight: file("b.test.ts"),
+      reported: new Set([file(A_TEST_TS), file(B_TEST_TS)]),
+      inFlight: file(B_TEST_TS),
     });
-    expect(attribute(first, [file(A_TEST_TS), file("b.test.ts"), file("c.test.ts")], 8)).toMatchObject({
-      rerun: [file("b.test.ts"), file("c.test.ts")],
+    expect(attribute(first, [file(A_TEST_TS), file(B_TEST_TS), file("c.test.ts")], 8)).toMatchObject({
+      rerun: [file(B_TEST_TS), file("c.test.ts")],
       because: "never-finished",
     });
   });
@@ -238,14 +239,41 @@ describe("whose verdict the suite reports", () => {
   it("keeps a failure printed before the wall: a passing rerun of the wedged file cannot clear it", () => {
     const first = ran({
       exitCode: null,
+      failures: 2,
+      clockEnded: 1,
       failed: new Set([file(A_TEST_TS)]),
       reported: new Set([file(A_TEST_TS)]),
     });
-    expect(attribute(first, [file(A_TEST_TS), file("b.test.ts")], 8)).toMatchObject({
+    expect(attribute(first, [file(A_TEST_TS), file(B_TEST_TS)], 8)).toMatchObject({
       rerun: null,
       exitCode: 1,
       because: "already-failed",
     });
+  });
+
+  it("runs a failure a clock ended before the wall again, beside the files the wall left", () => {
+    // A timeout is the machine's verdict whether or not a wall follows it.
+    const first = ran({
+      exitCode: null,
+      failures: 1,
+      clockEnded: 1,
+      failed: new Set([file(A_TEST_TS)]),
+      reported: new Set([file(A_TEST_TS)]),
+    });
+    expect(attribute(first, [file(A_TEST_TS), file(B_TEST_TS)], 8)).toMatchObject({
+      rerun: [file(A_TEST_TS), file(B_TEST_TS)],
+      because: "never-finished",
+    });
+    // More timed-out files than a busy host explains stand, as they do without a wall.
+    const many = Array.from({ length: 9 }, (_, index) => file(`t${String(index)}.test.ts`));
+    const timedOut = ran({
+      exitCode: null,
+      failures: 9,
+      clockEnded: 9,
+      failed: new Set(many),
+      reported: new Set(many),
+    });
+    expect(attribute(timedOut, many, 8)).toMatchObject({ rerun: null, because: "already-failed" });
   });
 
   it("runs every file a wall left unfinished again, however many, as Bun's own runner does", () => {
@@ -276,7 +304,7 @@ describe("whose verdict the suite reports", () => {
   });
 
   it("fails a wall that left nothing it can name unfinished", () => {
-    const every = [file(A_TEST_TS), file("b.test.ts")];
+    const every = [file(A_TEST_TS), file(B_TEST_TS)];
     expect(attribute(ran({ exitCode: null, reported: new Set(every) }), every, 8)).toMatchObject({
       rerun: null,
       exitCode: 1,
@@ -286,7 +314,7 @@ describe("whose verdict the suite reports", () => {
 });
 
 describe("whose verdict a rerun gives", () => {
-  const given = [file("a.test.ts"), file("b.test.ts")];
+  const given = [file("a.test.ts"), file(B_TEST_TS)];
 
   it("takes a rerun that reported every file it was given", () => {
     expect(rerunVerdict(ran({ reported: new Set(given) }), given)).toMatchObject({ exitCode: 0, silent: [] });
@@ -300,7 +328,7 @@ describe("whose verdict a rerun gives", () => {
     // again here, so no process tested it and its pass would be the wrapper's own invention.
     expect(rerunVerdict(ran({ reported: new Set([file("a.test.ts")]) }), given)).toMatchObject({
       exitCode: 1,
-      silent: [file("b.test.ts")],
+      silent: [file(B_TEST_TS)],
     });
   });
 
@@ -477,10 +505,18 @@ it("passes once its worker has wedged", async () => {
     const quick = ["b", "d"].flatMap((group) =>
       Array.from({ length: 5 }, (_, index) => `${group}${String(index)}`),
     );
+    // Each quick file fails when it sees a global an earlier file left, as a process-lifetime cache
+    // would: the parallel workers isolate every file, and the rerun has to as well.
     for (const name of quick) {
       writeFileSync(
         join(fixture, `${name}.test.ts`),
-        `import { it } from "bun:test";\nit("passes", () => {});\n`,
+        `import { it } from "bun:test";
+it("passes", () => {
+  const shared = globalThis as { anaEarlierFile?: string };
+  if (shared.anaEarlierFile !== undefined) throw new Error(\`shares a global with \${shared.anaEarlierFile}\`);
+  shared.anaEarlierFile = import.meta.path;
+});
+`,
       );
     }
     // Named one by one, as the gate's own request resolves to files: a directory is a filter, and a

@@ -549,9 +549,15 @@ export function attribute(
     return { rerun: null, exitCode: first.exitCode ?? 1, because: "unhandled-error", subject: [] };
   }
   if (first.exitCode === null) {
-    // The wall ended the group. A failure it had already printed is the verdict: the rerun covers
-    // the files the first process never finished, never the verdict of one it did.
-    if (failed.length > 0) return { rerun: null, exitCode: 1, because: "already-failed", subject: failed };
+    // The wall ended the group. A failure it had already printed on an assertion is the verdict:
+    // the rerun covers the files the first process never finished, never the verdict of one it
+    // did. A clock that ended every printed failure is the machine's verdict, as it is without a
+    // wall, so those files join the rerun on the terms a clock-only run's would.
+    const clockOnly =
+      first.failures > 0 && first.clockEnded === first.failures && failed.length <= RERUN_FILE_LIMIT;
+    if (failed.length > 0 && !clockOnly) {
+      return { rerun: null, exitCode: 1, because: "already-failed", subject: failed };
+    }
     // Every file left unfinished runs again, however many: Bun's own CI runner reruns each one an
     // interrupted batch left, uncapped, because a queue two wedges stranded says nothing about the
     // files behind them. The files Bun named join those asked for that printed nothing, so the
@@ -559,6 +565,7 @@ export function attribute(
     // printed last may be a streamed block the wall cut short, so it runs again too.
     const remaining = [
       ...new Set([
+        ...failed,
         ...first.interrupted,
         ...first.incomplete,
         ...asked.filter((file) => !first.reported.has(file) || file === first.inFlight),
@@ -641,7 +648,9 @@ async function main(): Promise<number> {
         first.clockEnded === first.failures
           ? `${String(first.failures)} test(s) failed on time alone, none on an assertion`
           : `the host reached a load average of ${first.peakLoad.toFixed(1)} on ${String(availableParallelism())} cores while these ran`;
-      const interrupted = step.subject.filter((file) => first.interrupted.has(file)).length;
+      const interrupted = step.subject.filter(
+        (file) => first.interrupted.has(file) || first.failed.has(file),
+      ).length;
       const rerunning = `running their ${String(step.subject.length)} file(s) again in one fresh process: ${relative(step.subject)}`;
       // A Record, so a new reason cannot be added without a sentence that names its subject.
       const said: Record<Exclude<Reason, "stands">, string> = {
@@ -649,7 +658,8 @@ async function main(): Promise<number> {
         // Every file it can name printed its result, so there is nothing to run again, and the
         // process that went silent afterwards left no exit code to take as the verdict.
         "none-left": `idle-wall: error: ${silence} with no file left unfinished that it can name, so nothing can run again and there is no exit code to take as the verdict.`,
-        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`.
+        // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`: the
+        // files the wall interrupted and any a clock failed before it.
         "never-finished": `idle-wall: retrying ${String(interrupted)} interrupted and ${String(step.subject.length - interrupted)} unfinished file(s) one at a time in one fresh process: ${relative(step.subject)}`,
         unreported: `host-wall: error: ${machine}, but ${String(step.subject.length)} file(s) printed no result at all: ${relative(step.subject)}`,
         "too-many-failed": `host-wall: error: ${machine}, but ${String(step.subject.length)} files failed, which is more than a busy host explains: ${relative(step.subject)}`,
@@ -660,9 +670,19 @@ async function main(): Promise<number> {
       console.error(said[step.because]);
     }
     if (step.rerun === null) return step.exitCode;
-    // One fresh process without workers over those files, keeping the request's filters.
+    // One fresh process without workers over those files, keeping the request's filters. `--parallel`
+    // implies `--isolate` and this process has no workers, so it asks for it: without it every file
+    // shares one global and module registry, and a process-lifetime cache one file fills answers
+    // another file's test.
     const again = await runWalled(
-      [runtimeProcess.execPath, "test", ...COMMON_FLAGS, ...requestWithoutFiles(requested), ...step.rerun],
+      [
+        runtimeProcess.execPath,
+        "test",
+        "--isolate",
+        ...COMMON_FLAGS,
+        ...requestWithoutFiles(requested),
+        ...step.rerun,
+      ],
       temporaryRoot,
       idleSeconds,
       cwd,

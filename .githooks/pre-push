@@ -185,7 +185,9 @@ static_findings() {
 pulse_seconds=${ANA_PUSH_PULSE_SECONDS:-60}
 pulse() {
   started=$(date +%s)
-  while sleep "$pulse_seconds"; do
+  # The sleep holds none of the hook's output: one that outlives a pulse killed before it could
+  # reap it would otherwise keep the push's stderr open until it woke.
+  while sleep "$pulse_seconds" </dev/null >/dev/null 2>&1; do
     passed=$(grep -c '(pass)' "$2" 2>/dev/null) || true
     failed=$(grep -c '(fail)' "$2" 2>/dev/null) || true
     rerun=$(sed -n \

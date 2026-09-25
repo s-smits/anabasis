@@ -1,16 +1,8 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   OVERVIEW_SCHEMA,
   buildOverview,
@@ -23,24 +15,16 @@ import {
 } from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.mjs";
 import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
 import { LANES, renderLanes, selectLanes } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
+import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+import { required } from "./helpers/doubles.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const RUN = "custom-test-20260912T000000000Z-abcdef";
 const COMMIT = "22d2814c5a4c9e4cd9ef35517831895c61d9b137";
-const dirs: string[] = [];
 
-function temp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 const json = (value: JsonValue) => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -57,11 +41,11 @@ function amendTerminalFacts(
 
 /** A snapshot whose default view failed, carrying the terminal trace-review read strictly. */
 function snapshotFixture() {
-  const campaign = temp("ana-wri-campaign-");
+  const campaign = scratchDir("ana-wri-campaign-");
   const controller = join(campaign, "controller", RUN);
   mkdirSync(controller, { recursive: true });
   writeFileSync(join(controller, "opening.json"), json({ source: { commit: COMMIT } }));
-  const snapshot = temp("ana-wri-snapshot-");
+  const snapshot = scratchDir("ana-wri-snapshot-");
   writeFileSync(
     join(snapshot, "snapshot-status.json"),
     json({
@@ -204,7 +188,7 @@ describe("run overview", () => {
   });
 
   it("refuses an overview file of another schema", () => {
-    const path = join(temp("ana-wri-overview-"), "overview.json");
+    const path = join(scratchDir("ana-wri-overview-"), "overview.json");
     writeFileSync(path, json({ schema: "something-else/v1" }));
     expect(() => readOverview(path)).toThrow("wri-run-overview/v1");
   });
@@ -213,7 +197,7 @@ describe("run overview", () => {
 /** One finished lane plus a measured repo carrying one safeguard caller. */
 function reviewFixture(): string {
   const { snapshot, campaign } = snapshotFixture();
-  const repo = temp("ana-wri-repo-");
+  const repo = scratchDir("ana-wri-repo-");
   mkdirSync(join(repo, "src", "meta"), { recursive: true });
   writeFileSync(
     join(repo, "src", "meta", "safeguard.ts"),
@@ -226,7 +210,7 @@ function reviewFixture(): string {
     join(safeguards, "SAFEGUARDS_LOG.txt"),
     "2026-09-12T10:00:00.000Z | 99-test-sensor | detail\n2026-09-12T10:01:00.000Z | 99-test-sensor | detail\n",
   );
-  const review = temp("ana-wri-review-");
+  const review = scratchDir("ana-wri-review-");
   writeFileSync(
     join(review, "wri-review.json"),
     json({
@@ -330,6 +314,7 @@ describe("archive scaffold", () => {
     const second = scaffoldArchive(review);
     expect(second.fresh).toBe(false);
     type Review = {
+      schema: string;
       identity: { runId: string; sourceRevision: string; bundle: string };
       lifecycle: { stage: string };
       terminalAccounting: {
@@ -355,6 +340,8 @@ describe("archive scaffold", () => {
       safeguardCensus: { ids: string[] };
     };
     const built = parseJsonAs<Review>(readFileSync(join(first.archiveDir, "review.json"), "utf8"));
+    // The schema and identity are what the validator and the weekly selector read back.
+    expect(built.schema).toBe(ARCHIVE_SCHEMA);
     expect(built.identity).toMatchObject({ runId: RUN, sourceRevision: COMMIT, bundle: "bundle-1" });
     expect(built.terminalAccounting.denominator).toMatchObject({ total: 75, nonResult: 3 });
     // The states are the ones validate-archive.mjs accepts: not-triggered/unknown, and never the status names.
@@ -370,7 +357,7 @@ describe("archive scaffold", () => {
       ["p-open", "inconclusive", "triggered", "unknown"],
       ["p-refuted", "refuted", "triggered", "not-observed"],
     ]);
-    // The primary's walk survives the scaffold; without it a refutation can never validate (eaf98f P17).
+    // The primary's walk survives the scaffold; without it a refutation can never validate.
     expect(built.predictions[2]?.dependencyWalk).toMatchObject({
       walked: true,
       closed: true,
@@ -378,7 +365,7 @@ describe("archive scaffold", () => {
     });
     expect(built.predictions[2]?.dependencyWalk.evidencePointers).toHaveLength(1);
     expect(built.predictions[0]?.dependencyWalk).toMatchObject({ walked: false, closed: false });
-    expect(built.angleStates).toHaveLength(40);
+    expect(built.angleStates).toHaveLength(ANGLE_COUNT);
     expect(built.angleStates[4]).toMatchObject({ angle: 5, state: "inconclusive", session: "angle_05" });
     expect(built.angleStates[5]).toMatchObject({ angle: 6, state: "unobservable", session: "not-launched" });
     expect(built.sessionStates.map((row) => row.id)).toEqual(["session_30", "angle_05"]);
@@ -486,42 +473,37 @@ describe("deterministic lane catalogue", () => {
   it("gives every lane a unique name and a label of at most three words", () => {
     const names = lanes.map((lane) => lane.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(12);
     for (const lane of lanes) expect(lane.label.split(" ").length).toBeLessThanOrEqual(3);
-    expect(lanes.flatMap((lane) => (lane.collect === true ? [lane.name] : []))).toEqual([
-      "snapshot",
-      "challenge",
-      "delta",
-      "overview",
-    ]);
   });
 
   it("selects by rank, by name and by --all, and refuses a token the catalogue does not carry", () => {
-    expect(select({ lanes: "5,yield" })?.map((lane) => lane.name)).toEqual(["climb", "yield"]);
-    expect(select({}, ["all"])).toHaveLength(12);
+    expect(select({ lanes: "5,yield" })?.map((lane) => lane.name)).toEqual([
+      required(lanes[4], "lane 5").name,
+      "yield",
+    ]);
+    expect(select({}, ["all"])).toEqual(lanes);
     expect(select({})).toBeNull();
-    expect(() => select({ lanes: "13" })).toThrow("no lane 13");
+    const past = String(lanes.length + 1);
+    expect(() => select({ lanes: past })).toThrow(`no lane ${past}`);
     expect(() => select({ lanes: "velocity" })).toThrow("no lane velocity");
     expect(() => select({ lanes: "" })).toThrow("no lane");
   });
 
   // A run still in its first build has no versions directory, and the lane died on ENOENT.
   it("skips the climb lane until the campaign has adopted a version", () => {
-    const campaign = temp("wri-climb-");
+    const campaign = scratchDir("wri-climb-");
     const climb = lanes.find((lane) => lane.name === "climb");
     expect(climb?.needs?.({ campaign })).toBe("no adopted version, so no battery yet");
     mkdirSync(join(campaign, "versions"));
     expect(climb?.needs?.({ campaign })).toBeNull();
   });
 
-  it("prints one numbered row per lane and marks the four collect runs", () => {
-    const rows: string[] = renderLanes().split("\n");
-    expect(rows).toHaveLength(13);
-    expect(rows[1]).toContain(" 1  snapshot");
-    expect(rows[8]).toContain(" 8  timeline");
-    expect(rows[9]).toContain(" 9  walls");
-    expect(rows[10]).toContain("10  handoff");
-    expect(rows[12]).toContain("12  archive");
-    expect(rows.filter((row) => row.includes("also run by collect"))).toHaveLength(4);
+  it("prints one row per lane under its rank and marks exactly the lanes collect also runs", () => {
+    const rows: string[] = renderLanes().split("\n").slice(1);
+    expect(rows).toHaveLength(lanes.length);
+    lanes.forEach((lane, at) => {
+      expect(rows[at]).toContain(`${String(at + 1).padStart(2)}  ${lane.name}`);
+      expect(rows[at]?.includes("also run by collect")).toBe(lane.collect === true);
+    });
   });
 });

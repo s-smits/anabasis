@@ -38,83 +38,41 @@ const missHolders = (result) => result.misses.map((miss) => miss.holder);
 
 describe("prompt-surface holder names", () => {
   it("normalises a quoted property name before matching strong holders", () => {
-    const root = mkdtempSync(join(tmpdir(), "prompt-surface-holder-"));
-    roots.push(root);
-    mkdirSync(join(root, "src"));
-    writeFileSync(
-      join(root, "src/feedback.ts"),
+    const result = census(
+      "prompt-surface-holder-",
       [
         'export const feedback = { "absence-sentinel": "The answer omitted a required spelling." };',
         `export const canonicalJson = "${"structural serializer ".repeat(9)}";`,
         "",
       ].join("\n"),
+      { strong: ["absence-sentinel"], deny: ["canonicalJson"] },
     );
-    writeFileSync(
-      join(root, ".prompt-surface.json"),
-      JSON.stringify({ dirs: ["src"], strong: ["absence-sentinel"], deny: ["canonicalJson"] }),
-    );
-    const jsonPath = join(root, "census.json");
-    const result = Bun.spawnSync([
-      Bun.argv[0],
-      join(import.meta.dir, "../.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.mjs"),
-      "--root",
-      root,
-      "--out",
-      join(root, "census.md"),
-      "--json",
-      jsonPath,
-      "--ts",
-      Bun.resolveSync("typescript5", import.meta.dir),
-    ]);
-    expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
     // The declaration that owns the object qualifies the quoted property name, so the row reads
     // `feedback.absence-sentinel` rather than a bare word with no owner.
-    expect(parsed.surfaces).toContainEqual(
+    expect(result.surfaces).toContainEqual(
       expect.objectContaining({
         name: "feedback.absence-sentinel",
         text: expect.stringContaining("The answer omitted"),
       }),
     );
-    expect(parsed.misses).toEqual([]);
+    expect(result.misses).toEqual([]);
   });
 
   it("lets a strong holder override an explicit deny", () => {
     // A strong holder is known model-visible text. Deny only classifies non-strong holders, so it
     // cannot hide this surface and the same row must not reappear as an unclaimed miss.
-    const root = mkdtempSync(join(tmpdir(), "prompt-surface-deny-"));
-    roots.push(root);
-    mkdirSync(join(root, "src"));
-    writeFileSync(
-      join(root, "src/feedback.ts"),
+    const result = census(
+      "prompt-surface-deny-",
       'export const ABSENCE_PROMPT = "The answer omitted a required spelling. ".repeat(3);',
+      { strong: ["ABSENCE_PROMPT"], deny: ["ABSENCE_PROMPT"] },
     );
-    writeFileSync(
-      join(root, ".prompt-surface.json"),
-      JSON.stringify({ dirs: ["src"], strong: ["ABSENCE_PROMPT"], deny: ["ABSENCE_PROMPT"] }),
-    );
-    const jsonPath = join(root, "census.json");
-    const result = Bun.spawnSync([
-      Bun.argv[0],
-      join(import.meta.dir, "../.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.mjs"),
-      "--root",
-      root,
-      "--out",
-      join(root, "census.md"),
-      "--json",
-      jsonPath,
-      "--ts",
-      Bun.resolveSync("typescript5", import.meta.dir),
-    ]);
-    expect(result.exitCode).toBe(0);
-    const parsed = JSON.parse(readFileSync(jsonPath, "utf8"));
-    expect(parsed.surfaces).toEqual([
+    expect(result.surfaces).toEqual([
       expect.objectContaining({
         name: "ABSENCE_PROMPT",
         text: expect.stringContaining("The answer omitted"),
       }),
     ]);
-    expect(parsed.misses).toEqual([]);
+    expect(result.misses).toEqual([]);
   });
 });
 
@@ -122,7 +80,7 @@ describe("prompt-surface classification tiers", () => {
   it("claims a declared holder by its owner, and leaves a call argument to its callee", () => {
     // `responseContract` inside `buildPacketPrompt` is part of that prompt however it is named;
     // the text handed to `nonResult(...)` belongs to the callee, which is why the qualifier tier
-    // stops at declarations. Both spellings sat in the unclaimed table before 2026-08-31.
+    // stops at declarations.
     const result = census(
       "prompt-surface-qualifier-",
       [
@@ -148,8 +106,8 @@ describe("prompt-surface classification tiers", () => {
 
   it("denies on the head noun, so a location word in front of a text word does not hide it", () => {
     // `promptDigest` is still a digest. `fileLine`, which renders the Built agent's draft-file
-    // sentence, is a line: denying it because the word `file` appears in front cost two live
-    // Built-agent clauses in every census before 2026-08-31.
+    // sentence, is a line, and denying it because the word `file` appears in front would hide a
+    // live Built-agent clause.
     const result = census(
       "prompt-surface-head-noun-",
       [

@@ -1,25 +1,40 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
-  ARCHIVE_FILES,
-  ArchiveValidationError,
+  ARCHIVE_SCHEMA,
   predictionFrozenHash,
+} from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+import {
+  ANGLE_COUNT,
+  DETERMINISTIC_ROWS,
+  DIGEST_VERDICTS,
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+import {
+  ArchiveValidationError,
   validateArchiveDirectory,
 } from "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs";
+
+type Mutate = (value: any) => void;
 
 const PREDICTIONS = "#predictions";
 const MAIN_SYNTHESIS_MD = "main_synthesis.md";
 const DIGEST_MD = "digest.md";
 
-const dirs: string[] = [];
 const sourceRevision = "a".repeat(40);
 const runGitHash = "b".repeat(40);
 const sourceDigest = "c".repeat(64);
-const worktree = "/worktree/run-1";
-let activeWorktree = worktree;
+let activeWorktree = "/worktree/run-1";
+/** The run identity every evidence row binds to. */
+const binding = {
+  runId: "run-1",
+  sourceRevision,
+  epoch: "epoch-1",
+  bundle: "bundle-1",
+  taskSet: "task-set-1",
+};
 const mainSynthesis =
   "# Main synthesis\n\n## Predictions\n\n## Safeguards\n\n## Terminal accounting\n\n## Learning\n\n## Safeguards T1\n";
 const lunaSyntheses = "# Luna syntheses\n\n## sessions\n\n## reports\n";
@@ -58,32 +73,27 @@ function sourceSetup(root: string) {
   );
 }
 
-function sourceFile(relativeFile: string) {
-  const path = join(activeWorktree, relativeFile);
-  return {
-    relativeFile,
-    sha256: new Bun.CryptoHasher("sha256").update(readFileSync(path)).digest("hex"),
-    ids: readFileSync(path, "utf8")
-      .matchAll(/safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g)
-      .flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
-      .toArray(),
-  };
-}
-
 function sourceFileDigest(relativeFile: string) {
   return new Bun.CryptoHasher("sha256")
     .update(readFileSync(join(activeWorktree, relativeFile)))
     .digest("hex");
 }
 
+function sourceFile(relativeFile: string) {
+  return {
+    relativeFile,
+    sha256: sourceFileDigest(relativeFile),
+    ids: readFileSync(join(activeWorktree, relativeFile), "utf8")
+      .matchAll(/safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g)
+      .flatMap((match) => (match[1] === undefined ? [] : [match[1]]))
+      .toArray(),
+  };
+}
+
 function prediction() {
   const row = {
     id: "prediction-1",
-    sourceRevision,
-    runId: "run-1",
-    epoch: "epoch-1",
-    bundle: "bundle-1",
-    taskSet: "task-set-1",
+    ...binding,
     claim: "The next run from a clean source tree will write a terminal record.",
     expectedEffect: "A terminal record exists before the controller closes.",
     trigger: "The six-round controller cap is reached.",
@@ -126,9 +136,15 @@ function prediction() {
 }
 
 function safeguards() {
-  const runtime = ["runtime-1", "runtime-2", "runtime-3"].map((id) => {
+  return ["runtime-1", "runtime-2", "runtime-3"].map((id) => {
     const definitionFile = id === "runtime-3" ? "src/run/other.ts" : "src/meta/safeguard.ts";
     const evidence = pointer(DIGEST_MD, "#safeguards-log");
+    const receipt = () => ({
+      state: "not-applicable",
+      complete: false,
+      decidingEvidence: [evidence],
+      evidencePointers: [evidence],
+    });
     return {
       id,
       kind: "runtime-log-only",
@@ -137,34 +153,13 @@ function safeguards() {
       version: "runtime-safeguard@source-callers-v1",
       definitionSha256: sourceFileDigest(definitionFile),
       sensor: "src/meta/safeguard.ts:safeguardTriggered",
-      evidencePointers: [pointer(DIGEST_MD, "#safeguards-log")],
-      evidenceBinding: {
-        runId: "run-1",
-        sourceRevision,
-        epoch: "epoch-1",
-        bundle: "bundle-1",
-        taskSet: "task-set-1",
-      },
-      opportunity: { state: "absent", evidencePointers: [pointer(DIGEST_MD, "#safeguards-log")] },
+      evidencePointers: [evidence],
+      evidenceBinding: { ...binding },
+      opportunity: { state: "absent", evidencePointers: [evidence] },
       firing: { state: "not-applicable", decidingEvidence: [evidence], evidencePointers: [evidence] },
-      logReceipt: {
-        state: "not-applicable",
-        complete: false,
-        decidingEvidence: [evidence],
-        evidencePointers: [evidence],
-      },
-      stderrReceipt: {
-        state: "not-applicable",
-        complete: false,
-        decidingEvidence: [evidence],
-        evidencePointers: [evidence],
-      },
-      processReceipt: {
-        state: "not-applicable",
-        complete: false,
-        decidingEvidence: [evidence],
-        evidencePointers: [evidence],
-      },
+      logReceipt: receipt(),
+      stderrReceipt: receipt(),
+      processReceipt: receipt(),
       action: { state: "not-applicable", owner: "runtime", evidencePointers: [evidence] },
       backtrack: { state: "not-needed", evidencePointers: [] },
       coverage: { complete: true, t0: true, t1: true },
@@ -174,42 +169,20 @@ function safeguards() {
         eligibleIterations: 0,
         backtrackPreserved: true,
         backtrackPointers: [],
-        independentReview: { reviewed: true, evidencePointers: [pointer(DIGEST_MD, "#safeguards-log")] },
+        independentReview: { reviewed: true, evidencePointers: [evidence] },
       },
     };
   });
-  return runtime;
 }
 
 function review() {
-  const deterministicRows = ["A", "B", "C", "D", "E", "F", "G", "H", "I"].map((id) => ({
-    id,
-    state: "pass",
-    evidencePointers: [pointer(DIGEST_MD, "#review")],
-  }));
-  const digestVerdicts = [
-    "discrimination-inertness",
-    "submit-stall-shape",
-    "evidence-integrity",
-    "solver-process",
-    "saturation-ledger",
-    "check-informativeness",
-    "family-wise-coverage",
-    "role-spend-and-censoring",
-  ].map((id) => ({ id, state: "pass", evidencePointers: [pointer(DIGEST_MD, "#review")] }));
-  const stateIdentity = {
-    sourceRevision,
-    runId: "run-1",
-    epoch: "epoch-1",
-    bundle: "bundle-1",
-    taskSet: "task-set-1",
-  };
-  const angleStates = Array.from({ length: 40 }, (_, index) => ({
+  const passing = (id: string) => ({ id, state: "pass", evidencePointers: [pointer(DIGEST_MD, "#review")] });
+  const angleStates = Array.from({ length: ANGLE_COUNT }, (_, index) => ({
     angle: index + 1,
     state: "N/A",
     session: `angle_${String(index + 1).padStart(2, "0")}`,
     mode: "targeted",
-    identity: stateIdentity,
+    identity: binding,
     denominator: {
       state: "absent",
       reason: "No angle-specific denominator was recorded.",
@@ -243,19 +216,10 @@ function review() {
     },
   ];
   return {
-    schema: "wri-archive/v1",
+    schema: ARCHIVE_SCHEMA,
     authority: "advisory",
     lifecycle: { stage: "terminal" },
-    identity: {
-      runId: "run-1",
-      sourceRevision,
-      runGitHash,
-      sourceDigest,
-      worktree: activeWorktree,
-      epoch: "epoch-1",
-      bundle: "bundle-1",
-      taskSet: "task-set-1",
-    },
+    identity: { ...binding, runGitHash, sourceDigest, worktree: activeWorktree },
     procedureIdentity: {
       name: "SuperLoop",
       version: "v1",
@@ -304,8 +268,8 @@ function review() {
       terminalReceiptSha256: "d".repeat(64),
       automaticFollowOn: false,
     },
-    deterministicRows,
-    digestVerdicts,
+    deterministicRows: DETERMINISTIC_ROWS.map(passing),
+    digestVerdicts: DIGEST_VERDICTS.map(passing),
     angleStates,
     sessionStates,
     predictions: [prediction()],
@@ -322,24 +286,8 @@ function review() {
     },
     safeguardReconciliation: {
       bytesVerified: true,
-      t0Identity: {
-        complete: true,
-        runId: "run-1",
-        sourceRevision,
-        sourceDigest,
-        epoch: "epoch-1",
-        bundle: "bundle-1",
-        taskSet: "task-set-1",
-      },
-      t1Identity: {
-        complete: true,
-        runId: "run-1",
-        sourceRevision,
-        sourceDigest,
-        epoch: "epoch-1",
-        bundle: "bundle-1",
-        taskSet: "task-set-1",
-      },
+      t0Identity: { complete: true, ...binding, sourceDigest },
+      t1Identity: { complete: true, ...binding, sourceDigest },
       t0: pointer(DIGEST_MD, "#safeguards-t0"),
       t1: pointer(MAIN_SYNTHESIS_MD, "#safeguards-t1"),
     },
@@ -377,8 +325,7 @@ function review() {
 }
 
 function fixture() {
-  const dir = mkdtempSync(join(tmpdir(), "ana-wri-archive-"));
-  dirs.push(dir);
+  const dir = scratchDir("ana-wri-archive-");
   const archive = join(dir, "run-1");
   activeWorktree = join(dir, "source");
   sourceSetup(activeWorktree);
@@ -391,71 +338,25 @@ function fixture() {
   return { dir, archive };
 }
 
-it("preserves uncapped authoring and separates rounds from submission terminals", () => {
-  const { archive } = fixture();
-  rewriteReview(archive, (value) => {
-    value.terminalAccounting.authorCalls.budget = "uncapped";
-    value.terminalAccounting.controllerTerminalRows = 0;
-    value.terminalAccounting.candidateSubmits = 11;
-    value.terminalAccounting.recordedSubmitRows = 11;
-  });
-  expect(validateArchiveDirectory(archive).valid).toBe(true);
-  rewriteReview(archive, (value) => {
-    value.terminalAccounting.recordedSubmitRows = 12;
-  });
-  expect(() => validateArchiveDirectory(archive)).toThrow("recordedSubmitRows must equal");
-  rewriteReview(archive, (value) => {
-    value.terminalAccounting.recordedSubmitRows = 11;
-    value.terminalAccounting.authorCalls.budget = "unknown";
-  });
-  expect(() => validateArchiveDirectory(archive)).toThrow("authorCalls.budget must be");
-});
-
-// controller-denominator.ts writes absent, recorded or invalid, and never "sealed", so the archive
-// admits exactly those: an invalid denominator with its reason, and no alias spelling of recorded.
-it("admits an invalid terminal denominator with its reason and refuses the sealed alias", () => {
-  const { archive } = fixture();
-  rewriteReview(archive, (value) => {
-    value.terminal.capabilityResult = "inconclusive";
-    value.terminalAccounting.state = "incomplete";
-    value.terminalAccounting.denominator = { state: "invalid", reason: "case-record unreadable" };
-    value.terminalAccounting.reason = "controller denominator invalid — case-record unreadable";
-  });
-  expect(validateArchiveDirectory(archive).valid).toBe(true);
-  rewriteReview(archive, (value) => {
-    value.terminalAccounting.denominator = { state: "invalid" };
-  });
-  expect(() => validateArchiveDirectory(archive)).toThrow("terminalAccounting.denominator.reason");
-  rewriteReview(archive, (value) => {
-    value.terminal.capabilityResult = "recorded";
-    value.terminalAccounting.state = "sealed";
-    value.terminalAccounting.denominator = {
-      state: "sealed",
-      total: 2,
-      verified: 1,
-      unaccepted: 1,
-      nonResult: 0,
-    };
-    delete value.terminalAccounting.reason;
-  });
-  expect(() => validateArchiveDirectory(archive)).toThrow("terminalAccounting.state is unsupported: sealed");
-});
-
-function rewriteReview(archive: string, mutate: (value: any) => void) {
+function rewriteReview(archive: string, mutate: Mutate) {
   const path = join(archive, "review.json");
   const value = JSON.parse(readFileSync(path, "utf8"));
   mutate(value);
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function issuesOf(error: unknown): string[] {
-  if (!(error instanceof ArchiveValidationError)) throw error;
-  return error.issues;
+/** Every issue the validator names for this archive, or none when it admits it. */
+function issuesOf(archive: string): string[] {
+  try {
+    validateArchiveDirectory(archive);
+  } catch (error) {
+    if (!(error instanceof ArchiveValidationError)) throw error;
+    return error.issues;
+  }
+  return [];
 }
 
-afterEach(() => {
-  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
 describe("WRI four-file archive contract", () => {
   it("uses the campaign frozen projection and excludes mutable links", () => {
@@ -467,187 +368,52 @@ describe("WRI four-file archive contract", () => {
     expect(predictionFrozenHash(row)).toBe(frozenHash);
     expect(predictionFrozenHash({ ...row, id: "prediction-other" })).not.toBe(frozenHash);
     expect(predictionFrozenHash({ ...row, claim: "changed claim" })).not.toBe(frozenHash);
-    // The archive's own `canonical` joined an array's undefined slot to nothing, so [undefined]
-    // and [] hashed alike; the shared canonicalJson keeps the missing value distinct.
+    // A missing array slot must hash apart from an empty array.
     expect(predictionFrozenHash({ ...row, claim: [undefined] })).not.toBe(
       predictionFrozenHash({ ...row, claim: [] }),
     );
   });
 
-  it("writes and validates the identity-bound advisory archive", () => {
+  it("validates the identity-bound advisory archive and counts its rows", () => {
     const f = fixture();
-    expect(ARCHIVE_FILES).toEqual([MAIN_SYNTHESIS_MD, "luna_syntheses.md", DIGEST_MD, "review.json"]);
-    expect(validateArchiveDirectory(f.archive).predictionCount).toBe(1);
-    expect(validateArchiveDirectory(f.archive).safeguardCount).toBe(3);
+    expect(validateArchiveDirectory(f.archive)).toMatchObject({ predictionCount: 1, safeguardCount: 3 });
   });
 
-  it("rejects a fifth file instead of silently treating it as a handoff channel", () => {
+  const admitted: [string, Mutate][] = [
+    [
+      "uncapped authoring with rounds apart from submission terminals",
+      (value) => {
+        value.terminalAccounting.authorCalls.budget = "uncapped";
+        value.terminalAccounting.controllerTerminalRows = 0;
+        value.terminalAccounting.candidateSubmits = 11;
+        value.terminalAccounting.recordedSubmitRows = 11;
+      },
+    ],
+    [
+      "an invalid terminal denominator carrying its reason",
+      (value) => {
+        value.terminal.capabilityResult = "inconclusive";
+        value.terminalAccounting.state = "incomplete";
+        value.terminalAccounting.denominator = { state: "invalid", reason: "case-record unreadable" };
+        value.terminalAccounting.reason = "controller denominator invalid — case-record unreadable";
+      },
+    ],
+    [
+      "a procedure identity declared apart from the product with sameTree false",
+      (value) => {
+        value.procedureIdentity.sameTree = false;
+        value.procedureIdentity.sourceRevision = "d".repeat(40);
+        value.procedureIdentity.sourceDigest = "e".repeat(64);
+        value.procedureIdentity.sha256 = "e".repeat(64);
+        value.procedureIdentity.worktree = "/procedure/superloop";
+      },
+    ],
+  ];
+
+  it.each(admitted)("admits %s", (_title, mutate) => {
     const f = fixture();
-    writeFileSync(join(f.archive, "predictions.json"), "{}\n");
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("forbidden extra file: predictions.json");
-  });
-
-  it("rejects pending predictions and stale frozen identity", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.predictions[0].status = "pending";
-      value.predictions[0].sourceRevision = "d".repeat(40);
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("cannot remain pending");
-  });
-
-  it("keeps prediction eligibility, consumption and refutation closure explicit", () => {
-    const consumed = fixture();
-    rewriteReview(consumed.archive, (value) => {
-      value.predictions[0].consumedBy = ["run-2", "run-3"];
-    });
-    expect(() => validateArchiveDirectory(consumed.archive)).toThrow("at most one consuming run");
-
-    const refuted = fixture();
-    rewriteReview(refuted.archive, (value) => {
-      value.predictions[0].status = "refuted";
-      value.predictions[0].eligible = true;
-      value.predictions[0].eligibility.state = "eligible";
-      value.predictions[0].effectEvidence.state = "not-observed";
-      value.predictions[0].dependencyWalk.closed = false;
-    });
-    expect(() => validateArchiveDirectory(refuted.archive)).toThrow("closed dependency walk");
-
-    const beforeOpening = fixture();
-    rewriteReview(beforeOpening.archive, (value) => {
-      value.predictions[0].opportunity.state = "absent-before-opening";
-    });
-    expect(() => validateArchiveDirectory(beforeOpening.archive)).toThrow("only in a preopening archive");
-  });
-
-  it("verifies archive pointer bytes, anchors and run-bound safeguard evidence", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.sectionPointers.safeguards.sha256 = "c".repeat(64);
-      value.safeguards[0].evidenceBinding.runId = "another-run";
-    });
-    let error: unknown;
-    try {
-      validateArchiveDirectory(f.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(issuesOf(error)).toContain(
-      "review.json.sectionPointers.safeguards.sha256 does not match main_synthesis.md",
-    );
-    expect(issuesOf(error)).toContain("safeguards[0].evidenceBinding.runId differs from archive identity");
-  });
-
-  it("rejects unsafe pointers and promotion authority", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.sectionPointers.safeguards.path = "../digest.md";
-      value.learningHandoff.authority = "promotion";
-    });
-    let error: unknown;
-    try {
-      validateArchiveDirectory(f.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(ArchiveValidationError);
-    expect(issuesOf(error)).toContain(
-      "sectionPointers.safeguards.path must name one of the four archive files",
-    );
-    expect(issuesOf(error)).toContain("learningHandoff authority must be exactly advisory");
-  });
-
-  it("refuses a safeguard retired before two eligible iterations", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.safeguards[0].retirement.retired = true;
-      value.safeguards[0].retirement.eligibleIterations = 1;
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("cannot retire before two eligible iterations");
-  });
-
-  it("keeps product and procedure identities distinct unless sameTree is explicit", () => {
-    const separate = fixture();
-    rewriteReview(separate.archive, (value) => {
-      value.procedureIdentity.sameTree = false;
-      value.procedureIdentity.sourceRevision = "d".repeat(40);
-      value.procedureIdentity.sourceDigest = "e".repeat(64);
-      value.procedureIdentity.sha256 = "e".repeat(64);
-      value.procedureIdentity.worktree = "/procedure/superloop";
-    });
-    expect(validateArchiveDirectory(separate.archive).valid).toBe(true);
-
-    const joined = fixture();
-    rewriteReview(joined.archive, (value) => {
-      value.procedureIdentity.sourceDigest = "e".repeat(64);
-    });
-    expect(() => validateArchiveDirectory(joined.archive)).toThrow("while sameTree is true");
-
-    const falselySeparate = fixture();
-    rewriteReview(falselySeparate.archive, (value) => {
-      value.procedureIdentity.sameTree = false;
-    });
-    expect(() => validateArchiveDirectory(falselySeparate.archive)).toThrow("when sameTree is false");
-  });
-
-  /** Until 2026-09-18 the scaffold pushed five constant "S1".."S5" campaign rows and the validator
-   *  refused an archive without them, for sentinels no file ever defined. Both went. `runtime-log-only`
-   *  is now the only kind, so a review that reinvents a campaign row is refused rather than carrying
-   *  placeholder evidence into the archive. */
-  it("refuses a safeguard row that is not a runtime sensor", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.safeguards[0].kind = "campaign";
-    });
-    let error: unknown;
-    try {
-      validateArchiveDirectory(f.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(issuesOf(error)).toContain("safeguards[0].kind is unsupported");
-  });
-
-  it("rejects a log filename sensor and incomplete deterministic coverage", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.safeguards[0].sensor = "SAFEGUARDS_LOG.txt";
-      value.deterministicRows.splice(0, 1);
-    });
-    let error: unknown;
-    try {
-      validateArchiveDirectory(f.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(issuesOf(error)).toContain(
-      "safeguards[0].sensor must not use the SAFEGUARDS_LOG filename as a sensor identity",
-    );
-    expect(issuesOf(error)).toContain("deterministicRows must contain A-I exactly once and in order");
-  });
-
-  it("refuses an archive written under an older catalogue shape", () => {
-    const older = fixture();
-    rewriteReview(older.archive, (value) => {
-      value.deterministicRows = value.deterministicRows.slice(0, 8);
-      value.digestVerdicts = value.digestVerdicts.slice(0, 5);
-      const dropped = new Set(value.angleStates.slice(31).map((row: any) => row.session));
-      value.angleStates = value.angleStates.slice(0, 31);
-      value.sessionStates = value.sessionStates.filter((row: any) => !dropped.has(row.id));
-    });
-    let error: unknown;
-    try {
-      validateArchiveDirectory(older.archive);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(issuesOf(error)).toEqual(
-      expect.arrayContaining([
-        "deterministicRows must contain A-I exactly once and in order",
-        "digestVerdicts must contain the 8 canonical verdicts in order",
-        "angleStates must contain angles 1-40 exactly once and in order",
-      ]),
-    );
+    rewriteReview(f.archive, mutate);
+    expect(issuesOf(f.archive)).toEqual([]);
   });
 
   it("records an absent safeguard helper as unobservable instead of inventing callers", () => {
@@ -659,60 +425,208 @@ describe("WRI four-file archive contract", () => {
       value.safeguardCensus.callerFiles = [];
       value.safeguardCensus.ids = [];
     });
-    expect(validateArchiveDirectory(f.archive).valid).toBe(true);
+    expect(issuesOf(f.archive)).toEqual([]);
   });
 
-  it("requires the CL-F producer and consumer symbols in the named source file", () => {
+  const eligible = (value: any, status: string) => {
+    const row = value.predictions[0];
+    row.status = status;
+    row.eligible = true;
+    row.eligibility.state = "eligible";
+    return row;
+  };
+
+  const refused: [string, Mutate, string[]][] = [
+    [
+      "recorded submit rows that differ from the candidate submits",
+      (value) => {
+        value.terminalAccounting.recordedSubmitRows = 12;
+      },
+      ["recordedSubmitRows must equal"],
+    ],
+    [
+      "an author-call budget that is neither a count nor uncapped",
+      (value) => {
+        value.terminalAccounting.authorCalls.budget = "unknown";
+      },
+      ["authorCalls.budget must be"],
+    ],
+    [
+      "an invalid denominator without its reason",
+      (value) => {
+        value.terminal.capabilityResult = "inconclusive";
+        value.terminalAccounting.state = "incomplete";
+        value.terminalAccounting.denominator = { state: "invalid" };
+        value.terminalAccounting.reason = "controller denominator invalid";
+      },
+      ["terminalAccounting.denominator.reason"],
+    ],
+    [
+      "a sealed denominator state no controller writes",
+      (value) => {
+        value.terminalAccounting.state = "sealed";
+        value.terminalAccounting.denominator.state = "sealed";
+      },
+      ["terminalAccounting.state is unsupported: sealed"],
+    ],
+    [
+      "a pending prediction with stale frozen identity",
+      (value) => {
+        value.predictions[0].status = "pending";
+        value.predictions[0].sourceRevision = "d".repeat(40);
+      },
+      ["cannot remain pending"],
+    ],
+    [
+      "a prediction consumed by two runs",
+      (value) => {
+        value.predictions[0].consumedBy = ["run-2", "run-3"];
+      },
+      ["at most one consuming run"],
+    ],
+    [
+      "an eligible refutation without a closed dependency walk",
+      (value) => {
+        eligible(value, "refuted").effectEvidence.state = "not-observed";
+      },
+      ["closed dependency walk"],
+    ],
+    [
+      "an opportunity absent before opening in a terminal archive",
+      (value) => {
+        value.predictions[0].opportunity.state = "absent-before-opening";
+      },
+      ["only in a preopening archive"],
+    ],
+    [
+      "an eligible but undecidable prediction without a campaign receipt",
+      (value) => {
+        eligible(value, "inconclusive").effectEvidence.state = "unknown";
+      },
+      ["eligible prediction requires"],
+    ],
+    [
+      "an eligible untriggered prediction without a campaign receipt",
+      (value) => {
+        eligible(value, "untriggered").triggerEvidence.state = "not-triggered";
+      },
+      ["eligible prediction requires"],
+    ],
+    [
+      "stale pointer bytes and safeguard evidence bound to another run",
+      (value) => {
+        value.sectionPointers.safeguards.sha256 = "c".repeat(64);
+        value.safeguards[0].evidenceBinding.runId = "another-run";
+      },
+      [
+        "review.json.sectionPointers.safeguards.sha256 does not match main_synthesis.md",
+        "safeguards[0].evidenceBinding.runId differs from archive identity",
+      ],
+    ],
+    [
+      "an unsafe pointer path and promotion authority",
+      (value) => {
+        value.sectionPointers.safeguards.path = "../digest.md";
+        value.learningHandoff.authority = "promotion";
+      },
+      [
+        "sectionPointers.safeguards.path must name one of the four archive files",
+        "learningHandoff authority must be exactly advisory",
+      ],
+    ],
+    [
+      "a safeguard retired before two eligible iterations",
+      (value) => {
+        value.safeguards[0].retirement.retired = true;
+        value.safeguards[0].retirement.eligibleIterations = 1;
+      },
+      ["cannot retire before two eligible iterations"],
+    ],
+    [
+      "a procedure digest that differs while sameTree is true",
+      (value) => {
+        value.procedureIdentity.sourceDigest = "e".repeat(64);
+      },
+      ["while sameTree is true"],
+    ],
+    [
+      "sameTree false over an identical procedure identity",
+      (value) => {
+        value.procedureIdentity.sameTree = false;
+      },
+      ["when sameTree is false"],
+    ],
+    [
+      "a safeguard row that is not a runtime sensor",
+      (value) => {
+        value.safeguards[0].kind = "campaign";
+      },
+      ["safeguards[0].kind is unsupported"],
+    ],
+    [
+      "a log filename used as a sensor and incomplete deterministic coverage",
+      (value) => {
+        value.safeguards[0].sensor = "SAFEGUARDS_LOG.txt";
+        value.deterministicRows.splice(0, 1);
+      },
+      [
+        "safeguards[0].sensor must not use the SAFEGUARDS_LOG filename as a sensor identity",
+        "deterministicRows must contain A-I exactly once and in order",
+      ],
+    ],
+    [
+      "an archive written under an older catalogue shape",
+      (value) => {
+        value.deterministicRows = value.deterministicRows.slice(0, 8);
+        value.digestVerdicts = value.digestVerdicts.slice(0, 5);
+        const dropped = new Set(value.angleStates.slice(31).map((row: any) => row.session));
+        value.angleStates = value.angleStates.slice(0, 31);
+        value.sessionStates = value.sessionStates.filter((row: any) => !dropped.has(row.id));
+      },
+      [
+        "deterministicRows must contain A-I exactly once and in order",
+        "digestVerdicts must contain the 8 canonical verdicts in order",
+        "angleStates must contain angles 1-40 exactly once and in order",
+      ],
+    ],
+    [
+      "a CL-F witness whose producer symbol is not in the named source file",
+      (value) => {
+        value.sessionStates.at(-1).readinessWitness.producerSymbol = "missingProducer";
+      },
+      ["producerSymbol is absent"],
+    ],
+    [
+      "an opportunity with missing runtime receipts read as not fired",
+      (value) => {
+        value.safeguards[0].opportunity.state = "present";
+        value.safeguards[0].logReceipt = null;
+        value.safeguards[0].status = "not-fired";
+      },
+      ["status must be inconclusive"],
+    ],
+    [
+      "a bound launch without its receipt identity set",
+      (value) => {
+        value.launchIdentity.state = "bound";
+        value.launchIdentity.sha256 = "e".repeat(64);
+        value.launchIdentity.pointer = pointer(MAIN_SYNTHESIS_MD, PREDICTIONS);
+      },
+      ["launchIdentity.ticket must be an object"],
+    ],
+  ];
+
+  it.each(refused)("refuses %s", (_title, mutate, messages) => {
     const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.sessionStates.at(-1).readinessWitness.producerSymbol = "missingProducer";
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("producerSymbol is absent");
+    rewriteReview(f.archive, mutate);
+    const issues = issuesOf(f.archive).join("\n");
+    for (const message of messages) expect(issues).toContain(message);
   });
 
-  it("requires a campaign receipt for an eligible but undecidable prediction", () => {
+  it("rejects a fifth file instead of silently treating it as a handoff channel", () => {
     const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      const row = value.predictions[0];
-      row.status = "inconclusive";
-      row.eligible = true;
-      row.eligibility.state = "eligible";
-      row.effectEvidence.state = "unknown";
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("eligible prediction requires");
-  });
-
-  it("requires a campaign receipt for an eligible untriggered prediction", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      const row = value.predictions[0];
-      row.status = "untriggered";
-      row.eligible = true;
-      row.eligibility.state = "eligible";
-      row.triggerEvidence.state = "not-triggered";
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("eligible prediction requires");
-  });
-
-  it("keeps an opportunity with missing runtime receipts inconclusive", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      const row = value.safeguards.find((item: any) => item.kind === "runtime-log-only");
-      row.opportunity.state = "present";
-      row.logReceipt = null;
-      row.status = "not-fired";
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("status must be inconclusive");
-  });
-
-  it("requires the full receipt identity set for a bound launch", () => {
-    const f = fixture();
-    rewriteReview(f.archive, (value) => {
-      value.launchIdentity.state = "bound";
-      value.launchIdentity.sha256 = "e".repeat(64);
-      value.launchIdentity.pointer = pointer(MAIN_SYNTHESIS_MD, PREDICTIONS);
-    });
-    expect(() => validateArchiveDirectory(f.archive)).toThrow("launchIdentity.ticket must be an object");
+    writeFileSync(join(f.archive, "predictions.json"), "{}\n");
+    expect(issuesOf(f.archive)).toContain("archive contains forbidden extra file: predictions.json");
   });
 
   it("records a valid archive outside it, exits 1 on a refused one and 2 on a misspelled flag", () => {
@@ -721,13 +635,17 @@ describe("WRI four-file archive contract", () => {
     const valid = runValidator("--archive", f.archive, "--out", out);
     expect(valid.status).toBe(0);
     expect(JSON.parse(readFileSync(out, "utf8")).valid).toBe(true);
-    expect(runValidator("--archive", f.archive, "--out", join(f.archive, "v.json")).status).toBe(2);
-    expect(runValidator("--archve", f.archive).stderr).toContain(`unknown option "--archve"`);
+    const inside = runValidator("--archive", f.archive, "--out", join(f.archive, "v.json"));
+    expect(inside.status).toBe(2);
+    expect(inside.stderr).toContain("--out must be outside the four-file archive");
+    const misspelled = runValidator("--archve", f.archive);
+    expect(misspelled.status).toBe(2);
+    expect(misspelled.stderr).toContain(`unknown option "--archve"`);
     rewriteReview(f.archive, (value) => {
       value.authority = "binding";
     });
-    const refused = runValidator("--archive", f.archive);
-    expect(refused.status).toBe(1);
-    expect(refused.stderr).toContain("WRI authority must be exactly advisory");
+    const refusedRun = runValidator("--archive", f.archive);
+    expect(refusedRun.status).toBe(1);
+    expect(refusedRun.stderr).toContain("WRI authority must be exactly advisory");
   });
 });

@@ -6,21 +6,19 @@
  * Surfaces come from the run tree's own exports, never from retyped text:
  *   - `system`: the Builder session contract via `builderSystemPrompt` (optionally with
  *     the web-search line);
- *   - `kickoff`: the from-scratch direct kickoff via `directKickoff` + `prepareUserContext`;
  *   - `built`: the Built solver's universal prompt at the seeded solve wall, the guide preamble,
  *     first-turn template, nudge, and the `shell` preset's bash description and schema. The tool
  *     roster line and the operating guide come from an adopted bundle and are not assembled here.
  *
- * Steering is controller-derived per round and has no argument-free assembly. Read its owning
- * functions in `builder-campaign.ts` directly.
+ * The from-scratch kickoff is `seed-kickoff.mts` without a position block. Steering is
+ * controller-derived per round and has no argument-free assembly. Read its owning functions in
+ * `builder-campaign.ts` directly.
  *
  * Usage, from the tree whose run you are simulating:
  *
  *   bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts \
  *     --surface system [--web-search] \
  *     [--grep <term>]
- *
- *   ... --surface kickoff --prompt "one-liner" [--context /abs/public-context-dir]
  *
  *   ... --surface built
  *
@@ -29,11 +27,7 @@
  * stdout; nothing is written.
  */
 
-import { dirname, isAbsolute, resolve } from "#src/meta/path.ts";
-
 import { builderSystemPrompt } from "#src/author/builder-start-prompt.ts";
-import { prepareUserContext } from "#src/builder/user-context.ts";
-import { directKickoff } from "#src/run/direct-input.ts";
 import {
   BUILT_FIRST_TURN_TEMPLATE,
   BUILT_GUIDE_PREAMBLE,
@@ -46,13 +40,7 @@ import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
 
 const die: ExitWith = exitWith("show-prompt-surfaces");
 
-const REPO_ROOT = resolve(dirname(Bun.fileURLToPath(import.meta.url)), "../../../..");
-
-const parsed = parseOrDie(die, {
-  values: ["surface", "grep", "prompt"],
-  repeatable: ["context"],
-  flags: ["web-search"],
-});
+const parsed = parseOrDie(die, { values: ["surface", "grep"], flags: ["web-search"] });
 
 function grepped(text: string, term: string | null): string {
   if (term === null) return text;
@@ -75,33 +63,9 @@ const term = parsed.single.get("grep") ?? null;
 if (term?.trim() === "") die("--grep must not be empty");
 
 if (surface === "system") {
-  if (parsed.single.has("prompt")) die("--prompt is only valid with --surface kickoff");
-  if ((parsed.repeated.get("context")?.length ?? 0) > 0) {
-    die("--context is only valid with --surface kickoff");
-  }
   console.log(grepped(builderSystemPrompt(parsed.flags.has("web-search")), term));
-} else if (surface === "kickoff") {
-  if (parsed.flags.has("web-search")) die("--web-search is only valid with --surface system");
-  const prompt = parsed.single.get("prompt") ?? null;
-  if (prompt === null || prompt.trim() === "") {
-    die("kickoff surface needs --prompt with the exact one-liner");
-  }
-  const context = prepareUserContext(
-    REPO_ROOT,
-    [...(parsed.repeated.get("context") ?? [])].map((path) => {
-      if (!isAbsolute(path)) die(`--context must be an absolute path, got ${JSON.stringify(path)}`);
-      return resolve(path);
-    }),
-  );
-  console.log(grepped(directKickoff(prompt, context), term));
 } else if (surface === "built") {
-  if (
-    parsed.single.has("prompt") ||
-    parsed.flags.has("web-search") ||
-    (parsed.repeated.get("context")?.length ?? 0) > 0
-  ) {
-    die("--surface built takes only --grep");
-  }
+  if (parsed.flags.has("web-search")) die("--surface built takes only --grep");
   const bash = createBuiltBashTool({ policy: null, port: null, home: "/nonexistent-home" });
   const text = [
     "=== system prompt (universal part) ===",
@@ -121,6 +85,6 @@ if (surface === "system") {
   console.log(grepped(text, term));
 } else {
   die(
-    "pass --surface system, kickoff or built (steering texts: read src/run/builder-campaign.ts directly — they are controller-derived per round and have no argument-free assembly)",
+    "pass --surface system or built (the kickoff: seed-kickoff.mts; steering texts: read src/run/builder-campaign.ts directly — they are controller-derived per round and have no argument-free assembly)",
   );
 }

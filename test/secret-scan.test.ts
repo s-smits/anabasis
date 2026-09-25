@@ -108,47 +108,34 @@ describe("the tracked tree", () => {
 });
 
 describe("redactTokens", () => {
-  it("redacts GitHub OAuth and personal-access tokens", () => {
-    expect(redactTokens("token gho-abcdefgh1234 leaked")).toBe("token [redacted-token] leaked");
-    expect(redactTokens("token ghp-abcdefgh1234 leaked")).toBe("token [redacted-token] leaked");
-    expect(redactTokens("token github_pat-abcdefgh1234 leaked")).toBe("token [redacted-token] leaked");
-  });
-
-  it("redacts sk- and xox[baprs]- style tokens", () => {
-    expect(redactTokens("sk-abcdefgh1234 in the log")).toBe("[redacted-token] in the log");
-    expect(redactTokens("xoxb-abcdefgh1234")).toBe("[redacted-token]");
-    expect(redactTokens("xoxp-abcdefgh1234")).toBe("[redacted-token]");
-  });
-
-  it("requires the 8+ char charset after `or-` so ordinary hyphenated words pass through", () => {
-    expect(redactTokens("or-else this stays as-is")).toBe("or-else this stays as-is");
-    expect(redactTokens("or-1234567")).toBe("or-1234567");
-    expect(redactTokens("or-12345678")).toBe("[redacted-token]");
-  });
-
-  it("leaves short strings and non-token text unchanged", () => {
-    expect(redactTokens("")).toBe("");
-    expect(redactTokens("a plain log line with no secrets")).toBe("a plain log line with no secrets");
-    expect(redactTokens("build finished in 1.2s")).toBe("build finished in 1.2s");
-  });
-
-  it("redacts token/key query params and key=value secret fields", () => {
-    // The third (key=value) pass re-matches the query string's own "token=" after the second pass
-    // redacts it, greedily consuming the rest of the string — pinning the chain's actual behavior.
-    expect(redactTokens("https://x.test/cb?token=abc123&next=/")).toBe("https://x.test/cb?token=[redacted]");
-    // Assembled: a continuous api_key=/ghp- literal is what remote secret scanners report.
-    expect(redactTokens(`api_key=${["abcdef", "123456"].join("")}`)).toBe("api_key=[redacted]");
-    expect(redactTokens(`GITHUB_TOKEN=${["ghp-abcdefgh", "1234"].join("")}`)).toBe("GITHUB_TOKEN=[redacted]");
-    expect(redactTokens("Authorization: ***")).toBe("Authorization=[redacted]");
-  });
-
-  it("redacts URL credentials and broader credential-shaped fields", () => {
-    // Assembled: a continuous postgres://user:…@ literal is what remote secret scanners report.
-    const urlCreds = ["post", "gres", "://", "user", ":", "pass", "@", "example.test/db"].join("");
-    expect(redactTokens(`DATABASE_URL=${urlCreds}`)).toBe("DATABASE_URL=[redacted]");
-    expect(redactTokens("SESSION_COOKIE='sid=abc123'")).toBe("SESSION_COOKIE=[redacted]");
-    expect(redactTokens('{"Authorization":"Bearer abc123"}')).toBe('{"Authorization"=[redacted]}');
-    expect(redactTokens(`url ${urlCreds}`)).toBe("url postgres://[redacted]@example.test/db");
+  // Assembled: a continuous postgres://user:…@, api_key= or ghp- literal is what remote secret
+  // scanners report.
+  const urlCreds = join("post", "gres", "://", "user", ":", "pass", "@", "example.test/db");
+  it.each([
+    ["token gho-abcdefgh1234 leaked", "token [redacted-token] leaked"],
+    ["token ghp-abcdefgh1234 leaked", "token [redacted-token] leaked"],
+    ["token github_pat-abcdefgh1234 leaked", "token [redacted-token] leaked"],
+    ["sk-abcdefgh1234 in the log", "[redacted-token] in the log"],
+    ["xoxb-abcdefgh1234", "[redacted-token]"],
+    ["xoxp-abcdefgh1234", "[redacted-token]"],
+    // `or-` needs eight or more charset characters, so ordinary hyphenated words pass through.
+    ["or-else this stays as-is", "or-else this stays as-is"],
+    ["or-1234567", "or-1234567"],
+    ["or-12345678", "[redacted-token]"],
+    ["", ""],
+    ["build finished in 1.2s", "build finished in 1.2s"],
+    // The key=value pass re-matches the query string's own "token=" after the query pass redacts it,
+    // greedily consuming the rest of the string.
+    ["https://x.test/cb?token=abc123&next=/", "https://x.test/cb?token=[redacted]"],
+    [`api_key=${join("abcdef", "123456")}`, "api_key=[redacted]"],
+    [`GITHUB_TOKEN=${join("ghp-abcdefgh", "1234")}`, "GITHUB_TOKEN=[redacted]"],
+    ["Authorization: ***", "Authorization=[redacted]"],
+    [`DATABASE_URL=${urlCreds}`, "DATABASE_URL=[redacted]"],
+    ["SESSION_COOKIE='sid=abc123'", "SESSION_COOKIE=[redacted]"],
+    ['{"Authorization":"Bearer abc123"}', '{"Authorization"=[redacted]}'],
+    [`url ${urlCreds}`, "url postgres://[redacted]@example.test/db"],
+  ])("redacts %p to %p", (input, output) => {
+    expect(redactTokens(input)).toBe(output);
   });
 
   it("redacts credential fields whose keys carry diagnostic suffixes", () => {

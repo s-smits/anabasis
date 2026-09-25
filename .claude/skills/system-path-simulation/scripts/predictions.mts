@@ -24,9 +24,8 @@
 
 import { existsSync, readFileSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { sha256 } from "#src/meta/digest.ts";
-import { isAbsolute, resolve } from "#src/meta/path.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
-import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
+import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 
 const die: ExitWith = exitWith("predictions");
 
@@ -41,16 +40,12 @@ const parsed = parseOrDie(die, {
   flags: ["hash", "verify", "unresolved"],
 });
 
-const fileOption = parsed.single.get("file");
-export interface SplitNote {
+interface SplitNote {
   preRegistered: string;
   resolutions: string | null;
 }
 
-if (fileOption === undefined || !isAbsolute(fileOption)) {
-  die("--file must be an absolute path to the prediction note");
-}
-const file = resolve(fileOption);
+const file = absoluteOption(die)("file", requiredOption(die, parsed.single)("file"));
 if (!existsSync(file)) die(`${file} does not exist`);
 /** `<file>.sha256` is written by --hash; a hand-written `<stem>.sha256` beside it is also read. */
 const checkCandidates = [`${file}.sha256`, file.replace(/\.md$/, ".sha256")];
@@ -68,13 +63,13 @@ const mode = modes[0];
 
 /** Everything above the `## Resolutions` heading is the frozen part (digested without trailing
  *  whitespace, so the blank line before an appended heading changes nothing); below is appendable. */
-export function splitNote(text: string): SplitNote {
+function splitNote(text: string): SplitNote {
   const match = RESOLUTIONS_HEADING.exec(text);
   if (match === null) return { preRegistered: text, resolutions: null };
   return { preRegistered: text.slice(0, match.index), resolutions: text.slice(match.index) };
 }
 
-export function declaredRows(preRegistered: string): string[] {
+function declaredRows(preRegistered: string): string[] {
   return preRegistered
     .matchAll(ROW_ID)
     .map((row) => row[1] ?? "")
@@ -82,7 +77,7 @@ export function declaredRows(preRegistered: string): string[] {
     .toArray();
 }
 
-export function resolvedRows(resolutions: string | null): Set<string> {
+function resolvedRows(resolutions: string | null): Set<string> {
   const ids = new Set<string>();
   if (resolutions === null) return ids;
   for (const row of resolutions.matchAll(RESOLVED_ID)) {

@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, realpathSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonObject, JsonValue } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { adviceIssueId } from "../src/author/rebuild-advice.ts";
 import { required } from "./helpers/doubles.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   buildHandoffs,
   classifyFamily,
@@ -13,11 +13,8 @@ import {
 
 const RUN = "run-20260919T000000000Z-aaaaaa";
 const SECOND = `${RUN}-i02`;
-const roots: string[] = [];
 
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
 function writeText(path: string, text: string): void {
   mkdirSync(join(path, ".."), { recursive: true });
@@ -50,8 +47,7 @@ function issue(family: string, dispute: string | null) {
  *  the family name `beta`, so the packet retires `alpha` on a comparison of names alone. */
 function campaign(options: { toolCalls?: boolean } = {}): string {
   // Trace roots must match their realpath, and the host temp directory may sit behind a link.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "wri-handoffs-")));
-  roots.push(root);
+  const root = realpathSync(scratchDir("wri-handoffs-"));
   const dir = join(root, "campaigns", "handoffs");
   const epochs = [
     { key: "epoch-aaaaaaaaaaaa", createdAt: "2026-09-19T00:00:00.000Z" },
@@ -180,20 +176,21 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
   return dir;
 }
 
-describe("family joins", () => {
-  it("separates identical, partial and name-only task sets", () => {
-    expect(classifyFamily(["a", "b"], ["b", "a"])).toBe("identical-tasks");
-    expect(classifyFamily(["a", "b"], ["a", "c"])).toBe("partially-shared");
-    expect(classifyFamily(["a"], ["a", "c"])).toBe("partially-shared");
-    expect(classifyFamily(["a"], ["c"])).toBe("name-only");
-    expect(classifyFamily([], ["c"])).toBe("absent-before");
-    expect(classifyFamily(["a"], [])).toBe("absent-after");
-  });
+it.each([
+  [["a", "b"], ["b", "a"], "identical-tasks"],
+  [["a", "b"], ["a", "c"], "partially-shared"],
+  [["a"], ["a", "c"], "partially-shared"],
+  [["a"], ["c"], "name-only"],
+  [[], ["c"], "absent-before"],
+  [["a"], [], "absent-after"],
+])("joins a family's tasks %p before and %p after as %s", (before, after, kind) => {
+  expect(classifyFamily(before, after)).toBe(kind);
 });
 
 describe("round hand-offs", () => {
+  const report = buildHandoffs({ campaign: campaign(), runId: RUN });
+
   it("counts a channel served but never read, and one read back through the path record", () => {
-    const report = buildHandoffs({ campaign: campaign(), runId: RUN });
     expect(report.state).toBe("read");
     const second = report.census[1];
     const cell = (name: string) => second.channels.find((c: { name: string }) => c.name === name);
@@ -211,10 +208,7 @@ describe("round hand-offs", () => {
   });
 
   it("reports the calibration error per round and what was opened before the battery was authored", () => {
-    const calibration = required(
-      buildHandoffs({ campaign: campaign(), runId: RUN }).calibration,
-      "calibration",
-    );
+    const calibration = required(report.calibration, "calibration");
     expect(calibration.rounds[0]).toMatchObject({ battery: RUN, rehearsals: 1, target: null, error: null });
     expect(calibration.rounds[1]).toMatchObject({
       battery: SECOND,
@@ -230,7 +224,6 @@ describe("round hand-offs", () => {
   });
 
   it("follows a disputed family to an evaluation correction and flags its retirement on names alone", () => {
-    const report = buildHandoffs({ campaign: campaign(), runId: RUN });
     const triage = required(report.triage, "triage");
     const sameTask = required(report.sameTask, "sameTask");
     expect(triage.families).toEqual([
@@ -266,14 +259,14 @@ describe("round hand-offs", () => {
   });
 
   it("reads an absent field as unobservable, never as zero", () => {
-    const report = buildHandoffs({ campaign: campaign({ toolCalls: false }), runId: RUN });
-    expect(report.census[0].bashCalls).toBeNull();
-    expect(renderHandoffs(report)).toContain("bash unobservable");
+    const older = buildHandoffs({ campaign: campaign({ toolCalls: false }), runId: RUN });
+    expect(older.census[0].bashCalls).toBeNull();
+    expect(renderHandoffs(older)).toContain("bash unobservable");
   });
 
   it("refuses to invent a round for a campaign with neither epochs nor claims", () => {
-    const root = mkdtempSync(join(tmpdir(), "wri-handoffs-empty-"));
-    roots.push(root);
-    expect(buildHandoffs({ campaign: root, runId: null })).toMatchObject({ state: "empty" });
+    expect(buildHandoffs({ campaign: scratchDir("wri-handoffs-empty-"), runId: null })).toMatchObject({
+      state: "empty",
+    });
   });
 });

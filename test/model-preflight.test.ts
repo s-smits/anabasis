@@ -35,8 +35,19 @@ const CLAUDE_REVIEW: ReviewChoice = {
   source: "operator",
 };
 const NO_REVIEW: ReviewChoice = { enabled: false, source: "operator" };
+const CODEX_BUILDER: PiSlotChoice = { kind: "codex", model: "gpt-5.6-sol", reasoningEffort: "high" };
+const CODEX_REVIEW: ReviewChoice = {
+  enabled: true,
+  kind: "codex",
+  model: "gpt-5.6-sol",
+  reasoningEffort: "medium",
+  source: "operator",
+};
+const CODEX_LOGIN_REFUSAL = /Codex authentication is unavailable.*run `codex login`/s;
 
 afterAll(cleanupScratch);
+/** A CODEX_HOME holding no auth.json, so a Codex slot cannot fall through to the host login. */
+const EMPTY_CODEX_HOME = scratchDir("ana-model-preflight-codex-home-");
 
 /** A repository whose `.env` is the only credential source; the test preload strips the process's. */
 function repoWith(env: Record<string, string>): string {
@@ -110,31 +121,41 @@ describe("preflightCampaignModels", () => {
     expect(result.hostRuntime.name).toBe("bun");
   });
 
-  it("refuses a missing Builder credential before the Built worker starts", async () => {
-    const touched: string[] = [];
-    const work = preflightCampaignModels({
-      builder: BUILDER,
-      review: NO_REVIEW,
-      repoRoot: repoWith({}),
-      builtRuntime: untouchedBuilt(touched),
-    });
-    await expect(work).rejects.toThrow("OPENROUTER_API_KEY is required for the openrouter transport");
-    await expect(work).rejects.toBeInstanceOf(EnvironmentRefusal);
-    expect(touched).toEqual([]);
-    expect(fetches).toBe(0);
-  });
-
-  it("refuses a missing review credential before the Built worker starts", async () => {
-    const touched: string[] = [];
-    const work = preflightCampaignModels({
-      builder: BUILDER,
-      review: CLAUDE_REVIEW,
-      repoRoot: repoWith({ OPENROUTER_API_KEY: "fake-host-key" }),
-      builtRuntime: untouchedBuilt(touched),
-    });
-    await expect(work).rejects.toThrow("CLAUDE_CODE_OAUTH_TOKEN is required for the claude transport");
-    expect(touched).toEqual([]);
-  });
+  // The review slot opens no session until measurement, so without this gate a missing review
+  // login would surface only after the whole authoring phase was paid for.
+  it.each([
+    ["Builder", BUILDER, NO_REVIEW, {}, "OPENROUTER_API_KEY is required for the openrouter transport"],
+    ["Codex Builder", CODEX_BUILDER, NO_REVIEW, { CODEX_HOME: EMPTY_CODEX_HOME }, CODEX_LOGIN_REFUSAL],
+    [
+      "Codex review",
+      BUILDER,
+      CODEX_REVIEW,
+      { CODEX_HOME: EMPTY_CODEX_HOME, OPENROUTER_API_KEY: "fake-host-key" },
+      CODEX_LOGIN_REFUSAL,
+    ],
+    [
+      "review",
+      BUILDER,
+      CLAUDE_REVIEW,
+      { OPENROUTER_API_KEY: "fake-host-key" },
+      "CLAUDE_CODE_OAUTH_TOKEN is required for the claude transport",
+    ],
+  ] as const)(
+    "refuses a missing %s credential before the Built worker starts",
+    async (_slot, builder, review, env, refusal) => {
+      const touched: string[] = [];
+      const work = preflightCampaignModels({
+        builder,
+        review,
+        repoRoot: repoWith(env),
+        builtRuntime: untouchedBuilt(touched),
+      });
+      await expect(work).rejects.toThrow(refusal);
+      await expect(work).rejects.toBeInstanceOf(EnvironmentRefusal);
+      expect(touched).toEqual([]);
+      expect(fetches).toBe(0);
+    },
+  );
 
   it("skips the Builder slot in the measurement phase, so its missing credential does not refuse", async () => {
     const repoRoot = repoWith({});

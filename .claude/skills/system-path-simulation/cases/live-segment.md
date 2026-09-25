@@ -147,9 +147,9 @@ stage saw; `--continue-file` replaces it.
 A stubbed model turn needs no prompt. As soon as a real model plays a role, you must hand it a
 kickoff, and a freely written kickoff makes the behaviour belong to your prose. Hand it the
 production surfaces instead: `scripts/show-prompt-surfaces.mts` prints them from the run tree's
-own exports (`--surface system` for the Builder session contract, `--surface kickoff --prompt
-"..."` for the from-scratch kickoff, `--grep term` to ask which surface carries a sentence), and
-`scripts/seed-kickoff.mts` assembles a seeded position. When the position continues a recorded
+own exports (`--surface system` for the Builder session contract, `--grep term` to ask which
+surface carries a sentence), and `scripts/seed-kickoff.mts` assembles the kickoff, from scratch or
+at a seeded position. When the position continues a recorded
 session, `scripts/position-packet.mts` supplies its history: the last three to five exchanges
 copied from the actor's transcript under a labelled summary. A packet from a Builder transcript
 may seed only a Builder, because its tool results carry verifier workshop output. Between them,

@@ -129,11 +129,6 @@ export function defaultModelOf(kind: BackendKind): string {
   return KIND_DEFAULTS[kind].defaultModel;
 }
 
-/** The reasoning effort an unpinned slot of this kind serves. */
-export function defaultEffortOf(kind: BackendKind, slot: BackendSlot): string {
-  return KIND_DEFAULTS[kind].effort[slot];
-}
-
 /** The environment variable that pins one slot's reasoning effort for one kind. */
 export function reasoningEffortEnv(kind: BackendKind, slot: BackendSlot): string {
   return `${kind.toUpperCase()}_${slot.toUpperCase()}_REASONING_EFFORT`;
@@ -195,7 +190,7 @@ export function resolvedSlot(
   return {
     kind,
     model: resolveModel(kind, env, side),
-    reasoningEffort: nonEmptyEnv(env, reasoningEffortEnv(kind, side)) ?? defaultEffortOf(kind, side),
+    reasoningEffort: nonEmptyEnv(env, reasoningEffortEnv(kind, side)) ?? KIND_DEFAULTS[kind].effort[side],
     source,
     ...keyIfTruthy("providerPin", kind === "openrouter" ? openRouterProviderPin(env) : undefined),
   };

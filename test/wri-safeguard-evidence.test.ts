@@ -12,18 +12,17 @@
  * source drifts underneath it.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
 import {
   ArchiveValidationError,
   validateArchiveDirectory,
 } from "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
-const ROOT = mkdtempSync(join(tmpdir(), "ana-wri-evidence-"));
 const RUN = "review-evidence-fixture";
 const SENSOR = "99-test-sensor";
 const LINE = `2026-09-13T12:00:00.000Z | ${SENSOR} | fixture\n`;
@@ -47,11 +46,11 @@ type Archive = {
   safeguardReconciliation: { bytesVerified: boolean };
 };
 
-afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+afterAll(cleanupScratch);
 const writeJson = (path: string, value: JsonValue) => writeFileSync(path, `${JSON.stringify(value)}\n`);
 
 function fixture(log: string | null = null) {
-  const review = mkdtempSync(join(ROOT, "review-"));
+  const review = scratchDir("ana-wri-evidence-");
   const repo = join(review, "source");
   const campaign = join(review, "campaign");
   const controller = join(campaign, "controller", RUN);

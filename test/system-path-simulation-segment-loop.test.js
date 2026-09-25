@@ -7,7 +7,6 @@ import { join } from "../src/meta/path.ts";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
 import {
   completedSegment,
-  idleContinuation,
   runSegmentLoop,
 } from "../.claude/skills/system-path-simulation/scripts/segment-loop.mts";
 const FIRST_ANSWER = "first answer";
@@ -29,14 +28,14 @@ function actor(responses, trail) {
       const response = responses.shift();
       if (response === undefined) throw new Error("test actor ran out of responses");
       if (response.error !== undefined) throw response.error;
-      trail.push(response.row ?? trailRow());
+      // `row: null` is a turn that wrote no trace row.
+      if (response.row !== null) trail.push(response.row ?? trailRow());
       return response.text;
     },
   };
 }
 
-function input(steps, responses, overrides = {}) {
-  const trail = [];
+function input(steps, responses, overrides = {}, trail = []) {
   const primary = actor([...responses], trail);
   return {
     primary,
@@ -86,68 +85,46 @@ describe("segment turn and budget loop", () => {
     });
   });
 
-  it("settles after the first idle continuation", async () => {
+  // A continuation settles its step only when that turn itself wrote a completed, tool-free row.
+  it.each([
+    {
+      name: "settles after a tool-free completed continuation",
+      rows: [undefined, trailRow({})],
+      settles: true,
+    },
+    { name: "keeps going after a continuation that called a tool", rows: [undefined, trailRow({ read: 1 })] },
+    {
+      name: "keeps going after a continuation with a failed tool call",
+      rows: [undefined, { ...trailRow({}), failedToolCalls: { write: 1 } }],
+    },
+    { name: "keeps going after a continuation whose turn failed", rows: [undefined, trailRow({}, "failed")] },
+    {
+      name: "keeps going when the continuation wrote no row beside a stale idle one",
+      rows: [null, null, null],
+      stale: [trailRow({})],
+    },
+  ])("$name", async ({ rows, settles = false, stale = [] }) => {
     const notes = [];
+    const [first, second, third = trailRow({ write: 1 })] = rows;
     const fixture = input(
-      [step("builder", "start", 5)],
-      [{ text: "working" }, { text: "already complete", row: trailRow({}) }, { text: "must not run" }],
+      [step("builder", "start", 3)],
+      [
+        { text: "one", row: first },
+        { text: "two", row: second },
+        { text: "three", row: third },
+      ],
       { note: (line) => notes.push(line) },
+      [...stale],
     );
     const output = await runSegmentLoop(fixture.value);
-    expect(output.results[0]).toMatchObject({ turnsSpent: 2, outcome: "step-settled" });
-    expect(output.spent).toBe(2);
-    expect(fixture.primary.calls).toHaveLength(2);
-    expect(notes.some((line) => line.includes("settled on turn 2"))).toBe(true);
-  });
-
-  it("does not settle while a continuation still calls a tool", async () => {
-    const fixture = input(
-      [step("builder", "start", 3)],
-      [
-        { text: "one" },
-        { text: "two", row: trailRow({ read: 1 }) },
-        { text: "three", row: trailRow({ write: 1 }) },
-      ],
-    );
-    const output = await runSegmentLoop(fixture.value);
-    expect(output.results[0]).toMatchObject({ turnsSpent: 3, outcome: "completed", text: "three" });
-  });
-
-  it("does not settle when the continuation attempted a failed tool call", async () => {
-    const fixture = input(
-      [step("builder", "start", 3)],
-      [
-        { text: "one" },
-        { text: "two", row: { ...trailRow({}), failedToolCalls: { write: 1 } } },
-        { text: "three", row: trailRow({ write: 1 }) },
-      ],
-    );
-    const output = await runSegmentLoop(fixture.value);
-    expect(output.results[0]).toMatchObject({ turnsSpent: 3, outcome: "completed", text: "three" });
-  });
-
-  it("does not reuse a stale trace row to settle a later continuation", async () => {
-    const trail = [trailRow({})];
-    const calls = [];
-    const primary = {
-      async agent(call) {
-        calls.push(call);
-        return calls.length === 1 ? "one" : calls.length === 2 ? "two" : "three";
-      },
-    };
-    const output = await runSegmentLoop({
-      steps: [step("builder", "start", 3)],
-      maxTurns: 15,
-      continuation: "continue exactly",
-      primary: (gate) => ({ agent: (call) => runModelAttempt(gate, "builder", () => primary.agent(call)) }),
-      trail,
-      workspace: "/scratch/workspace",
-      campaignDir: "/scratch/campaign",
-      handover: null,
-      classifyError: () => "script-or-setup-fault",
-      now: () => 100,
-    });
-    expect(output.results[0]).toMatchObject({ turnsSpent: 3, outcome: "completed", text: "three" });
+    if (settles) {
+      expect(output.results[0]).toMatchObject({ turnsSpent: 2, outcome: "step-settled" });
+      expect(output.spent).toBe(2);
+      expect(fixture.primary.calls).toHaveLength(2);
+      expect(notes.some((line) => line.includes("settled on turn 2"))).toBe(true);
+    } else {
+      expect(output.results[0]).toMatchObject({ turnsSpent: 3, outcome: "completed", text: "three" });
+    }
   });
 
   it("stops inside one step when the global budget is reached", async () => {
@@ -259,25 +236,26 @@ describe("segment handover", () => {
     expect(fixture.primary.calls).toHaveLength(1);
   });
 
-  it("replaces the next prompt with the controller-produced transition", async () => {
+  it.each([
+    [
+      "replaces it with the controller-produced transition",
+      { ok: true, reason: "selected B", nextPrompt: "You were in A. Now B." },
+      "You were in A. Now B.",
+    ],
+    [
+      "keeps the operator prompt when the verdict carries none",
+      { ok: true, reason: "through" },
+      "operator second",
+    ],
+  ])("given a passing handover, the next prompt %s", async (_name, verdict, expected) => {
     const fixture = input(
       [step("brief", "operator first"), step("builder", "operator second")],
       [{ text: FIRST_ANSWER }, { text: "second answer" }],
-      { handover: () => ({ ok: true, reason: "selected B", nextPrompt: "You were in A. Now B." }) },
+      { handover: () => verdict },
     );
     const output = await runSegmentLoop(fixture.value);
-    expect(output.handovers[0]).toMatchObject({ ok: true, wroteNextPrompt: true });
-    expect(fixture.primary.calls[1].prompt).toBe("You were in A. Now B.");
-  });
-
-  it("keeps the operator prompt when the handover returns no replacement", async () => {
-    const fixture = input(
-      [step("brief", "first"), step("builder", "operator second")],
-      [{ text: FIRST_ANSWER }, { text: "second answer" }],
-      { handover: () => ({ ok: true, reason: "through" }) },
-    );
-    await runSegmentLoop(fixture.value);
-    expect(fixture.primary.calls[1].prompt).toBe("operator second");
+    expect(output.handovers[0]).toMatchObject({ ok: true, wroteNextPrompt: "nextPrompt" in verdict });
+    expect(fixture.primary.calls[1].prompt).toBe(expected);
   });
 
   it("passes the exact completed stage and trail to the handover", async () => {
@@ -350,25 +328,21 @@ describe("segment handover", () => {
 });
 
 describe("segment error classification and completion", () => {
-  it("records a script/setup fault separately", async () => {
-    const fixture = input([step("builder", "start")], [{ error: new Error("bad fixture") }]);
+  it.each([
+    [
+      "an unclassified error as a script or setup fault",
+      () => "script-or-setup-fault",
+      "script-or-setup-fault",
+    ],
+    ["a typed provider failure as a non-result", () => "non-result", "non-result"],
+  ])("records %s, and the segment as incomplete", async (_name, classifyError, outcome) => {
+    const fixture = input([step("builder", "start")], [{ error: new Error("provider unavailable") }], {
+      classifyError,
+    });
     const output = await runSegmentLoop(fixture.value);
     expect(output).toMatchObject({ spent: 1, stopped: null });
-    expect(output.results[0]).toMatchObject({
-      turnsSpent: 1,
-      outcome: "script-or-setup-fault",
-      detail: "bad fixture",
-    });
+    expect(output.results[0]).toMatchObject({ turnsSpent: 1, outcome, detail: "provider unavailable" });
     expect(completedSegment(fixture.value.steps, output)).toBe(false);
-  });
-
-  it("records an injected typed provider failure as a non-result", async () => {
-    const typed = new Error("provider unavailable");
-    const fixture = input([step("builder", "start")], [{ error: typed }], {
-      classifyError: (error) => (error === typed ? "non-result" : "script-or-setup-fault"),
-    });
-    const output = await runSegmentLoop(fixture.value);
-    expect(output.results[0]).toMatchObject({ outcome: "non-result", detail: "provider unavailable" });
   });
 
   it("includes a failed backend attempt in the stage's turn count", async () => {
@@ -392,50 +366,17 @@ describe("segment error classification and completion", () => {
     expect(turns).toEqual(["brief"]);
   });
 
-  it("requires every declared step for completed evidence", () => {
+  const done = (role) => ({ role, ms: 1, turnsSpent: 1, outcome: "completed", text: "done" });
+  it.each([
+    ["a declared step has no row", [done("brief")], null],
+    [
+      "the segment stopped although every step completed",
+      [done("brief"), done("builder")],
+      "turn-budget-reached",
+    ],
+    ["completed rows run out of the declared order", [done("builder"), done("brief")], null],
+  ])("withholds completed evidence when %s", (_name, results, stopped) => {
     const steps = [step("brief", "first"), step("builder", "second")];
-    expect(
-      completedSegment(steps, {
-        results: [{ role: "brief", ms: 1, turnsSpent: 1, outcome: "completed", text: "done" }],
-        handovers: [],
-        spent: 1,
-        stopped: null,
-      }),
-    ).toBe(false);
-  });
-
-  it("rejects a stopped segment even when every step has a completed row", () => {
-    const steps = [step("builder", "only")];
-    expect(
-      completedSegment(steps, {
-        results: [{ role: "builder", ms: 1, turnsSpent: 1, outcome: "completed", text: "done" }],
-        handovers: [],
-        spent: 1,
-        stopped: "turn-budget-reached",
-      }),
-    ).toBe(false);
-  });
-
-  it("requires completed rows to match the declared step order", () => {
-    const steps = [step("brief", "first"), step("builder", "second")];
-    expect(
-      completedSegment(steps, {
-        results: [
-          { role: "builder", ms: 1, turnsSpent: 1, outcome: "completed", text: "wrong first role" },
-          { role: "brief", ms: 1, turnsSpent: 1, outcome: "completed", text: "wrong second role" },
-        ],
-        handovers: [],
-        spent: 2,
-        stopped: null,
-      }),
-    ).toBe(false);
-  });
-
-  it("recognises only a completed tool-free row as idle", () => {
-    expect(idleContinuation(trailRow({}))).toBe(true);
-    expect(idleContinuation(trailRow({ read: 1 }))).toBe(false);
-    expect(idleContinuation({ ...trailRow({}), failedToolCalls: { write: 1 } })).toBe(false);
-    expect(idleContinuation(trailRow({}, "failed"))).toBe(false);
-    expect(idleContinuation(undefined)).toBe(false);
+    expect(completedSegment(steps, { results, handovers: [], spent: results.length, stopped })).toBe(false);
   });
 });

@@ -169,8 +169,5 @@ describe("host-panel", () => {
     const used = run(["--candidate", candidate, "--task", "t1", "--panel", wrongTask, "--out", out]);
     expect(used.exitCode).toBe(2);
     expect(used.stderr).toContain("already holds a report.json");
-    const relative = run(["--candidate", "candidate", "--task", "t1", "--panel", wrongTask, "--out", out]);
-    expect(relative.exitCode).toBe(2);
-    expect(relative.stderr).toContain("--candidate must be an absolute path");
   });
 });

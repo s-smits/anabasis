@@ -82,7 +82,7 @@ export interface SegmentLoopInput {
   now?: () => number;
 }
 
-export function idleContinuation(row: TrailRow | undefined): boolean {
+function idleContinuation(row: TrailRow | undefined): boolean {
   return (
     row?.status === "completed" &&
     Object.keys(row.toolCalls).length === 0 &&

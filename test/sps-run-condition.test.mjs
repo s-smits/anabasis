@@ -95,13 +95,6 @@ afterEach(() => {
 });
 
 describe("run-condition preflight", () => {
-  it("refuses an unknown option before any write", () => {
-    const result = run([...base(), "--effort", "high"]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('unknown option "--effort"');
-    expect(existsSync(out)).toBe(false);
-  });
-
   it("refuses a campaign nobody seeded", () => {
     const result = run(base({ "--project": "sim-nobody-seeded" }));
     expect(result.exitCode).toBe(2);
@@ -126,12 +119,6 @@ describe("run-condition preflight", () => {
     const live = run(base({ "--builder": "live" }));
     expect(live.exitCode).toBe(2);
     expect(live.stderr).toContain("--builder live needs --wall-ms");
-  });
-
-  it("refuses a relative report path", () => {
-    const result = run(base({ "--out": "relative/report" }));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--out must be an absolute path");
   });
 });
 

@@ -19,40 +19,6 @@ beforeEach(() => {
 afterEach(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe("review-settle", () => {
-  it("refuses a relative scratch root and a missing vetoed file", () => {
-    const vetoed = join(scratch, "vetoed.json");
-    writeFileSync(vetoed, "[]");
-    const base = ["--repo", scratch, "--slug", "s", "--run", "r", "--vetoed", vetoed];
-    expect(runTypeScript("review-settle.mts", [...base, "--scratch", "relative"]).stderr).toContain(
-      "--scratch must be an absolute path",
-    );
-    const result = runTypeScript("review-settle.mts", [
-      "--repo",
-      scratch,
-      "--slug",
-      "s",
-      "--run",
-      "r",
-      "--vetoed",
-      join(scratch, "none.json"),
-      "--scratch",
-      join(scratch, "sim"),
-    ]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("none.json: missing");
-  });
-
-  it("runs without a vetoed file, and still refuses a relative one", () => {
-    const sim = join(scratch, "sim");
-    const base = ["--repo", scratch, "--slug", "s", "--run", "r", "--scratch", sim];
-    // A battery with nothing contested is the ordinary replay, so the absent argument must reach
-    // staging rather than being refused as missing.
-    expect(runTypeScript("review-settle.mts", base).stderr).toContain("versions/r: missing");
-    expect(runTypeScript("review-settle.mts", [...base, "--vetoed", "vetoed.json"]).stderr).toContain(
-      "--vetoed must be an absolute path",
-    );
-  });
-
   it("stages the version tree with its symlinks, then names the first missing campaign file", () => {
     const campaign = join(scratch, "campaigns", "s");
     mkdirSync(join(campaign, "versions", "r", "runs", "r", "judge"), { recursive: true });

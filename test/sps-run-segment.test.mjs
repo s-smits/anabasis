@@ -18,6 +18,7 @@ let scratch;
 let prompt;
 const PREFLIGHT_PASSED = "preflight passed; --check stops before the session opens";
 const outsideRoots = [];
+const count = ["0", "-1", "1.5", "many"];
 
 function run(args) {
   return runTypeScript("run-segment.mts", args);
@@ -50,168 +51,158 @@ afterEach(() => {
   for (const root of outsideRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+/** `--step builder:<prompt>` with the options after it, for rows that stop before `--check` matters. */
+function step(...extra) {
+  return ["--step", `builder:${prompt}`, ...extra];
+}
+
+function outsideDir(prefix) {
+  const outside = mkdtempSync(join(tmpdir(), prefix));
+  outsideRoots.push(outside);
+  return outside;
+}
+
+const campaignDir = () => join(scratch, "campaign");
+
+/** Each refusal is one stderr line and exit 2, before a credential or a provider is reached. */
+const REFUSALS = [
+  { name: "no step", args: () => [], message: "pass at least one --step" },
+  {
+    name: "a role that is not a checkpoint",
+    args: () => ["--step", `oracle:${prompt}`],
+    message: 'step role "oracle" is not a checkpoint',
+  },
+  ...count.map((turns) => ({
+    name: `step allowance ${turns}`,
+    args: () => ["--step", `builder:${prompt}@${turns}`],
+    message: "step turn allowance must be a positive integer",
+  })),
+  {
+    // The @ inside an ordinary filename is not an allowance, so the next refusal is the backend's.
+    name: "an @ inside a prompt filename, read as part of the name",
+    setup: () => writeFileSync(join(scratch, "prompt@draft.txt"), "draft prompt\n"),
+    args: () => ["--step", `builder:${join(scratch, "prompt@draft.txt")}`, "--backend", "invalid"],
+    message: "--backend must be one of",
+  },
+  {
+    name: "an absent prompt file",
+    args: () => ["--step", `builder:${join(scratch, "absent.txt")}`],
+    message: "step prompt file does not exist",
+  },
+  {
+    name: "an empty prompt file",
+    setup: () => writeFileSync(prompt, " \n"),
+    args: () => step(),
+    message: "step prompt file is empty",
+  },
+  { name: "no effort", args: () => step(), message: "--effort is required" },
+  {
+    name: "no campaign directory",
+    args: () => step("--effort", "high"),
+    message: "--campaign-dir is required",
+  },
+  {
+    name: "an invalid backend",
+    args: () => base("--backend", "invalid"),
+    message: "--backend must be one of claude, codex, openrouter",
+  },
+  {
+    name: "a campaign outside the run tree",
+    args: () => step("--effort", "high", "--campaign-dir", "/tmp/outside-simulation-campaign"),
+    message: "must sit inside the run tree",
+  },
+  {
+    name: "a live campaign path",
+    args: () => step("--effort", "high", "--campaign-dir", join(REPO_ROOT, "campaigns", "live", "epoch")),
+    message: "must sit under the run tree's .scratch directory",
+  },
+  {
+    name: "a scratch path that escapes through a symlink",
+    setup: () => symlinkSync(outsideDir("simulation-segment-escape-"), join(scratch, "escape")),
+    args: () => step("--effort", "high", "--campaign-dir", join(scratch, "escape", "campaign")),
+    message: "resolves outside the run tree's .scratch directory",
+  },
+  ...["0", "16", "1.5", "many"].map((turns) => ({
+    name: `total budget ${turns}`,
+    args: () => base("--max-builder-turns", turns),
+    message: "--max-builder-turns must be an integer from 1 through 15",
+  })),
+  ...count.map((timeout) => ({
+    name: `timeout ${timeout}`,
+    args: () => base("--timeout-ms", timeout, "--backend", "openrouter"),
+    message: "--timeout-ms must be a positive integer",
+  })),
+  {
+    name: "a missing seed directory",
+    args: () => base("--seed-dir", join(scratch, "absent-seed")),
+    message: "--seed-dir does not exist",
+  },
+  {
+    name: "an existing workspace, so one condition cannot inherit another",
+    setup: () => {
+      mkdirSync(join(campaignDir(), "workspace"), { recursive: true });
+      writeFileSync(join(campaignDir(), "workspace", "stale.txt"), "stale condition\n");
+    },
+    args: () => base("--backend", "openrouter"),
+    message: "workspace already exists and is not empty",
+  },
+  {
+    name: "inherited campaign state beside an empty workspace",
+    setup: () => {
+      mkdirSync(join(campaignDir(), "workspace"), { recursive: true });
+      mkdirSync(join(campaignDir(), ".oss"));
+      writeFileSync(join(campaignDir(), ".oss", "prior.txt"), "prior condition\n");
+    },
+    args: () => base("--backend", "openrouter"),
+    message: "--campaign-dir already contains prior condition state (.oss)",
+  },
+  {
+    name: "a campaign path that is a file",
+    setup: () => writeFileSync(campaignDir(), "not a directory\n"),
+    args: () => base("--backend", "openrouter"),
+    message: "--campaign-dir exists and is not a directory",
+  },
+  {
+    name: "a campaign symlink whose target stays inside scratch",
+    setup: () => {
+      mkdirSync(join(scratch, "target"));
+      symlinkSync(join(scratch, "target"), campaignDir());
+    },
+    args: () => base("--backend", "openrouter"),
+    message: "--campaign-dir must be a real scratch directory, not a symlink",
+  },
+  {
+    name: "an empty workspace symlink",
+    setup: () => {
+      mkdirSync(campaignDir(), { recursive: true });
+      symlinkSync(outsideDir("simulation-workspace-link-"), join(campaignDir(), "workspace"));
+    },
+    args: () => base("--backend", "openrouter"),
+    message: "workspace must be a real directory inside the scratch condition, not a symlink",
+  },
+];
+
 describe("run-segment preflight", () => {
-  it("requires at least one step", () => {
-    const result = run([]);
+  it.each(REFUSALS)("refuses $name", ({ setup, args, message }) => {
+    setup?.();
+    const result = run(args());
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("pass at least one --step");
+    expect(result.stderr.trimEnd().split("\n")).toEqual([expect.stringContaining(message)]);
   });
 
-  it("refuses an unknown checkpoint role", () => {
-    const result = run(["--step", `oracle:${prompt}`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('step role "oracle" is not a checkpoint');
-  });
-
-  it.each(["0", "-1", "1.5", "many"])("refuses step allowance %s", (turns) => {
-    const result = run(["--step", `builder:${prompt}@${turns}`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("step turn allowance must be a positive integer");
-  });
-
-  it("keeps an @ character inside an ordinary prompt filename", () => {
-    const atPath = join(scratch, "prompt@draft.txt");
-    writeFileSync(atPath, "draft prompt\n");
-    const result = run(["--step", `builder:${atPath}`, "--backend", "invalid"]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--backend must be one of");
-    expect(result.stderr).not.toContain("step turn allowance");
-  });
-
-  it("accepts --step=<value> syntax before the next required-field refusal", () => {
-    const result = run([`--step=builder:${prompt}@1`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--effort is required");
-  });
-
-  it("refuses a missing step value by name", () => {
-    const result = run(["--step"]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('option "--step" needs a value');
-  });
-
-  it("refuses an absent prompt file without a raw stack", () => {
-    const result = run(["--step", `builder:${join(scratch, "absent.txt")}`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("step prompt file does not exist");
-    expect(result.stderr).not.toContain("node:fs");
-  });
-
-  it("refuses an empty prompt file", () => {
-    writeFileSync(prompt, " \n");
-    const result = run(["--step", `builder:${prompt}`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("step prompt file is empty");
-  });
-
-  it("requires effort before any backend opens", () => {
-    const result = run(["--step", `builder:${prompt}`]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--effort is required");
-  });
-
-  it("requires a campaign directory", () => {
-    const result = run(["--step", `builder:${prompt}`, "--effort", "high"]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--campaign-dir is required");
-  });
-
-  it("refuses an invalid backend", () => {
-    const result = run(base("--backend", "invalid"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--backend must be one of claude, codex, openrouter");
-  });
-
-  it("refuses a relative campaign directory", () => {
-    const result = run([
-      "--step",
-      `builder:${prompt}`,
-      "--effort",
-      "high",
-      "--campaign-dir",
-      ".scratch/relative-campaign",
-      "--backend",
-      "openrouter",
-    ]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--campaign-dir must be an absolute path");
-  });
-
-  it("refuses a campaign outside the run tree", () => {
-    const result = run([
-      "--step",
-      `builder:${prompt}`,
-      "--effort",
-      "high",
-      "--campaign-dir",
-      "/tmp/outside-simulation-campaign",
-    ]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("must sit inside the run tree");
-  });
-
-  it("refuses a live campaign path instead of relying on prose", () => {
-    const result = run([
-      "--step",
-      `builder:${prompt}`,
-      "--effort",
-      "high",
-      "--campaign-dir",
-      join(REPO_ROOT, "campaigns", "live", "epoch"),
-      "--backend",
-      "openrouter",
-    ]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("must sit under the run tree's .scratch directory");
-  });
-
-  it("refuses a lexical scratch path that escapes through a symlink", () => {
-    const outside = mkdtempSync(join(tmpdir(), "simulation-segment-escape-"));
-    outsideRoots.push(outside);
-    symlinkSync(outside, join(scratch, "escape"));
-    const result = run([
-      "--step",
-      `builder:${prompt}`,
-      "--effort",
-      "high",
-      "--campaign-dir",
-      join(scratch, "escape", "campaign"),
-      "--backend",
-      "openrouter",
-    ]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("resolves outside the run tree's .scratch directory");
-  });
-
-  it.each(["0", "16", "1.5", "many"])("refuses total budget %s", (turns) => {
-    const result = run(base("--max-builder-turns", turns));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--max-builder-turns must be an integer from 1 through 15");
-  });
-
-  it("accepts the 15-turn boundary", () => {
-    const result = run(base("--max-builder-turns", "15", "--backend", "openrouter"));
+  it.each([
+    ["a tool-bearing OpenRouter segment", []],
+    ["the 15-turn boundary", ["--max-builder-turns", "15"]],
+    ["a one-millisecond timeout", ["--timeout-ms", "1"]],
+  ])("stops %s at --check before provider work", (_name, extra) => {
+    const result = run(base(...extra, "--backend", "openrouter"));
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain(PREFLIGHT_PASSED);
-    expect(result.stderr).not.toContain("--max-builder-turns must be");
-  });
-
-  it.each(["0", "-1", "1.5", "many"])("refuses timeout %s", (timeout) => {
-    const result = run(base("--timeout-ms", timeout, "--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--timeout-ms must be a positive integer");
-  });
-
-  it("accepts a one-millisecond timeout as a positive integer", () => {
-    const result = run(base("--timeout-ms", "1", "--backend", "openrouter"));
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(PREFLIGHT_PASSED);
-    expect(result.stderr).not.toContain("--timeout-ms must be");
   });
 
   it("refuses predictions a segment can never reach before any backend opens", () => {
-    // The 15 September census condition: three predictions about correctness_check and the census,
-    // run through a segment that mounts no gate, spent 78 minutes before resolving all three untriggered.
+    // A segment mounts no gate, so a prediction about correctness_check or the census could only
+    // ever resolve untriggered after the whole segment had been paid for.
     const note = join(scratch, "predictions.md");
     writeFileSync(
       note,
@@ -243,94 +234,6 @@ describe("run-segment preflight", () => {
     const authoring = run(base("--predictions", note, "--backend", "openrouter"));
     expect(authoring.exitCode).toBe(0);
     expect(authoring.stderr).toContain(PREFLIGHT_PASSED);
-  });
-
-  it("refuses a missing seed directory", () => {
-    const result = run(base("--seed-dir", join(scratch, "absent-seed")));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--seed-dir does not exist");
-  });
-
-  it("refuses an existing workspace so one condition cannot inherit another", () => {
-    const campaign = join(scratch, "campaign");
-    mkdirSync(join(campaign, "workspace"), { recursive: true });
-    writeFileSync(join(campaign, "workspace", "stale.txt"), "stale condition\n");
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("workspace already exists and is not empty");
-  });
-
-  it("refuses inherited campaign state outside an empty workspace", () => {
-    const campaign = join(scratch, "campaign");
-    mkdirSync(join(campaign, "workspace"), { recursive: true });
-    mkdirSync(join(campaign, ".oss"));
-    writeFileSync(join(campaign, ".oss", "prior.txt"), "prior condition\n");
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--campaign-dir already contains prior condition state (.oss)");
-  });
-
-  it("refuses a campaign path that is a file with a typed message", () => {
-    const campaign = join(scratch, "campaign");
-    writeFileSync(campaign, "not a directory\n");
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--campaign-dir exists and is not a directory");
-    expect(result.stderr).not.toContain("node:fs");
-  });
-
-  it("refuses a campaign symlink even when its target remains inside scratch", () => {
-    const target = join(scratch, "target");
-    mkdirSync(target);
-    symlinkSync(target, join(scratch, "campaign"));
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("--campaign-dir must be a real scratch directory, not a symlink");
-  });
-
-  it("refuses an empty workspace symlink", () => {
-    const campaign = join(scratch, "campaign");
-    const outside = mkdtempSync(join(tmpdir(), "simulation-workspace-link-"));
-    outsideRoots.push(outside);
-    mkdirSync(campaign, { recursive: true });
-    symlinkSync(outside, join(campaign, "workspace"));
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain(
-      "workspace must be a real directory inside the scratch condition, not a symlink",
-    );
-  });
-
-  it("stops a tool-bearing OpenRouter segment at --check before provider work", () => {
-    const result = run(base("--backend", "openrouter"));
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(PREFLIGHT_PASSED);
-  });
-});
-
-describe("run-segment argument refusals", () => {
-  it("refuses an unknown option", () => {
-    const result = run(base("--modle", "typo", "--backend", "invalid"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('unknown option "--modle"');
-  });
-
-  it("refuses duplicate singleton options", () => {
-    const result = run(base("--effort", "low", "--backend", "invalid"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('option "--effort" may be passed only once');
-  });
-
-  it("refuses a value after a boolean flag", () => {
-    const result = run(base("--no-tools", "false", "--backend", "invalid"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain('unexpected positional argument "false"');
-  });
-
-  it.each(["predictions", "continue-file", "handover"])("refuses --%s without a value", (option) => {
-    const result = run(base(`--${option}`, "--backend", "openrouter"));
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain(`option "--${option}" needs a value`);
   });
 });
 

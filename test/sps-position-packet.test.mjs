@@ -107,11 +107,7 @@ describe("position-packet", () => {
     expect(ten.stderr).toContain("1 to 5");
   });
 
-  it("refuses a relative path, an empty summary and a Codex rollout", () => {
-    expect(
-      runTypeScript("position-packet.mts", ["--transcript", "session.jsonl", "--summary-file", summary])
-        .stderr,
-    ).toContain("absolute");
+  it("refuses an empty summary and a Codex rollout", () => {
     writeFileSync(summary, "\n");
     expect(
       runTypeScript("position-packet.mts", ["--transcript", transcript, "--summary-file", summary]).stderr,

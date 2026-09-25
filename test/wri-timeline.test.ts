@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   buildTimeline,
   renderTimeline,
@@ -13,6 +13,8 @@ const RUN = "run-20260919T000000000Z-aaaaaa";
 /** The second round's own run id, which is the only battery that round may bind. */
 const BATTERY = RUN + "-i02";
 
+afterAll(cleanupScratch);
+
 function row(seq: number, at: string, fields: Record<string, string | number>, runId = RUN) {
   return JSON.stringify({ schema: "ana-observation/v2", id: runId + ":" + seq, runId, seq, at, ...fields });
 }
@@ -20,7 +22,7 @@ function row(seq: number, at: string, fields: Record<string, string | number>, r
 /** A campaign holding one run stream plus, when a battery is given, the battery stream its
  *  recorded terminal binds to it. */
 function campaign(rows: string[], battery: string[] | null = null): string {
-  const repo = mkdtempSync(join(tmpdir(), "ana-timeline-"));
+  const repo = scratchDir("ana-timeline-");
   const dir =
     battery === null
       ? campaignDir(repo, "project")
@@ -170,7 +172,7 @@ describe("run timeline", () => {
 
   it("states that no row is recorded rather than reporting an empty run, and refuses an unsafe selector", () => {
     const timeline = buildTimeline({
-      campaign: mkdtempSync(join(tmpdir(), "ana-timeline-")),
+      campaign: scratchDir("ana-timeline-"),
       runId: RUN,
     });
     expect(timeline.state).toBe("unavailable");

@@ -136,7 +136,7 @@ Use an existing production prompt printer when available. Anabasis provides:
 
 ```text
 bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface system
-bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface kickoff
+bun .claude/skills/system-path-simulation/scripts/seed-kickoff.mts --prompt "<one-liner>"
 ```
 
 These import the run tree's `builderSystemPrompt` and `directKickoff`. Steering depends on the

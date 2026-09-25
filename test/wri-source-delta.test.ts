@@ -1,22 +1,15 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   buildSourceDelta,
   renderSourceDelta,
 } from "../.claude/skills/whole-run-investigation/scripts/source-delta.mjs";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";
 import { runTextSyncOrThrow } from "../src/meta/subprocess.ts";
 import { hostTool } from "../src/meta/host-tool.ts";
 
-const dirs: string[] = [];
-
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 const GIT_ENV = {
   ...process.env,
@@ -35,8 +28,7 @@ function git(repo: string, args: string[]): string {
 /** Two commits: the older declares safeguard `old-one`; the newer adds `new-one` to that run
  *  file and changes a starter file. Neither commit deletes a file. */
 function repoWithTwoCommits() {
-  const repo = mkdtempSync(join(tmpdir(), "ana-source-delta-repo-"));
-  dirs.push(repo);
+  const repo = scratchDir("ana-source-delta-repo-");
   git(repo, ["init", "-q", "-b", "main"]);
   mkdirSync(join(repo, "src", "run"), { recursive: true });
   mkdirSync(join(repo, "starters"), { recursive: true });
@@ -69,8 +61,7 @@ function campaign(root: string, name: string, runId: string, commit: string, wri
 describe("source-delta reach", () => {
   it("joins safeguards declared in changed files to the run's fired log and flags a model-visible change", () => {
     const { repo, older, newer } = repoWithTwoCommits();
-    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
-    dirs.push(root);
+    const root = scratchDir("ana-source-delta-campaigns-");
     campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
     mkdirSync(join(current, "safeguards", "run-b-i02"), { recursive: true });
@@ -104,8 +95,7 @@ describe("source-delta reach", () => {
 
   it("reads a sibling campaign's latest run by its opening instant, not its directory name", () => {
     const { repo, older, newer } = repoWithTwoCommits();
-    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
-    dirs.push(root);
+    const root = scratchDir("ana-source-delta-campaigns-");
     const previous = campaign(root, "lane-1", "run-10", older, "2026-09-02T00:00:00.000Z");
     campaign(root, "lane-1", "run-9", newer, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", newer, "2026-09-03T00:00:00.000Z");
@@ -118,8 +108,7 @@ describe("source-delta reach", () => {
 
   it("counts a safeguard log only for this run's canonical iterations", () => {
     const { repo, older, newer } = repoWithTwoCommits();
-    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
-    dirs.push(root);
+    const root = scratchDir("ana-source-delta-campaigns-");
     campaign(root, "lane-1", "run-a", older, "2026-09-01T00:00:00.000Z");
     const current = campaign(root, "lane-2", "run-b", newer, "2026-09-02T00:00:00.000Z");
     for (const name of ["run-b-i02", "run-b-ix"]) {
@@ -135,8 +124,7 @@ describe("source-delta reach", () => {
 
   it("reports unresolved sources instead of guessing and identical sources as no delta", () => {
     const { repo, newer } = repoWithTwoCommits();
-    const root = mkdtempSync(join(tmpdir(), "ana-source-delta-campaigns-"));
-    dirs.push(root);
+    const root = scratchDir("ana-source-delta-campaigns-");
     const unknown = "f".repeat(40);
     const missing = campaign(root, "lane-1", "run-a", unknown, "2026-09-01T00:00:00.000Z");
     expect(buildSourceDelta({ campaign: missing, runId: "run-a", repo }).state).toBe("source-unresolved");

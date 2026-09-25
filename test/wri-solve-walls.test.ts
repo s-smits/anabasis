@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { bindProductMeasurement, publishProductVersion } from "../src/run/product-versions.ts";
@@ -43,7 +43,6 @@ interface Report {
 }
 
 const SLUG = "walls";
-const roots: string[] = [];
 const RUN = "run-20260919T000000000Z-aaaaaa";
 const OTHER = "run-20260919T060000000Z-bbbbbb";
 const CONFIG = ["solver:", "  solve_minutes: 60", "  max_turns: 4", "gate:", "  check_seconds: 600", ""].join(
@@ -90,9 +89,7 @@ function verdictOf(spec: Spec): Partial<CaseRecordRow> {
   return { acceptedSubmit: true, truthOk: spec.pass ?? false, pass: spec.pass ?? false };
 }
 
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
 /** A retained product version published the way the controller publishes one, carrying `config`
  *  as its agent/config.yaml, and returned as the directory a battery measuring it runs under. */
@@ -113,8 +110,7 @@ function publish(root: string, id: string, config: string): string {
 function campaign(
   batteries: { runId: string; config: string | null; product?: string; cases: Spec[] }[],
 ): string {
-  const root = mkdtempSync(join(tmpdir(), "ana-walls-"));
-  roots.push(root);
+  const root = scratchDir("ana-walls-");
   const dir = campaignDir(root, SLUG);
   mkdirSync(dir, { recursive: true });
   const products = new Map<string, string>();

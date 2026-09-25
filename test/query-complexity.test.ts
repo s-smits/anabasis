@@ -215,9 +215,8 @@ describe("query complexity", () => {
     expect(loadBundle(join(dir, "version")).tasks).toEqual([heavy]);
   });
 
-  it.concurrent("keeps the anchor set digested and ordered weakest to strongest", () => {
-    expect(TIER_ORDER).toEqual(["easy", "medium", "hard", "frontier"]);
-    expect(ANCHOR_SHA256).toHaveLength(64);
+  it.concurrent("keeps the anchor set digested, with both registers in every tier", () => {
+    expect(ANCHOR_SHA256).toMatch(/^[0-9a-f]{64}$/);
     // Every tier carries both registers, so a check assertion never scores against a task statement.
     for (const anchors of Object.values(TIERS)) expect(anchors.length).toBeGreaterThanOrEqual(8);
   });
@@ -232,14 +231,13 @@ function writeCaseRecord(dir: string, rows: CaseRecordRow[]): void {
 describe("climb velocity", () => {
   const reading = (mass: number) => ({ rows: [{ taskId: "heavy-01", numerics: { "limits.mass": mass } }] });
 
-  it.concurrent("reports no movement when the numbers are unchanged", () => {
-    expect(numericDriftOf(reading(100), reading(100))).toEqual({ median: 0, moved: 0 });
-  });
-
-  it.concurrent("measures how far a published number was pulled in", () => {
-    expect(numericDriftOf(reading(100), reading(90))).toEqual({ median: 0.1, moved: 1 });
-    // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
-    expect(numericDriftOf(reading(100), reading(110))).toEqual({ median: 0.1, moved: 1 });
+  // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
+  it.concurrent.each([
+    [100, { median: 0, moved: 0 }],
+    [90, { median: 0.1, moved: 1 }],
+    [110, { median: 0.1, moved: 1 }],
+  ])("measures how far a published number of 100 moved to %d", (after, drift) => {
+    expect(numericDriftOf(reading(100), reading(after))).toEqual(drift);
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -388,7 +386,7 @@ describe("climb velocity", () => {
     const dir = temp("ana-climb-legacy-");
     const { acceptedSubmit: _dropped, ...row } = caseRecordRow("t1", "f", { runId: "run-a" });
     writeFileSync(join(dir, "case-record.jsonl"), `${JSON.stringify({ seq: 1, row })}\n`, "utf8");
-    expect(() => outcomesOf(dir)).toThrow();
+    expect(() => outcomesOf(dir)).toThrow(/case-record\.jsonl:1: acceptedSubmit must be a boolean/);
   });
 
   // A battery that fell down the tier order, and one that dropped a check, both read as `adjusted`

@@ -1,40 +1,20 @@
-import { afterEach, describe, expect, it } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
+import { afterAll, describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { digestExecutableRoots } from "../src/run/source-identity.ts";
-import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
+import { required } from "./helpers/doubles.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const reviewScript = join(repoRoot, ".claude/skills/whole-run-investigation/scripts/trace-review.mjs");
-const bunExecutable = Bun.argv[0];
-const dirs: string[] = [];
-
-if (bunExecutable === undefined) throw new Error("Bun executable is unavailable");
-function temp(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  dirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+const bunExecutable = required(Bun.argv[0], "Bun executable");
+afterAll(cleanupScratch);
 
 function fakeOutcomeRepo(source: string) {
-  const root = temp("ana-review-");
+  const root = scratchDir("ana-review-");
   const repo = join(root, "repo");
   const campaign = join(root, "campaign");
   mkdirSync(join(repo, "tools/outcome"), { recursive: true });
@@ -46,11 +26,6 @@ function fakeOutcomeRepo(source: string) {
     ["init", "-q"],
     ["config", "user.email", "test@example.com"],
     ["config", "user.name", "Test"],
-  ]) {
-    const result = spawnSync("git", ["-C", repo, ...args], {});
-    if (result.status !== 0) throw new Error(result.stderr);
-  }
-  for (const args of [
     ["add", "."],
     ["commit", "-qm", "fixture"],
   ]) {
@@ -66,6 +41,17 @@ function fakeOutcomeRepo(source: string) {
   return { repo, campaign, head };
 }
 
+/** Run the snapshot lane over the fixture into a fresh directory. */
+function review(repo: string, campaign: string) {
+  const out = join(scratchDir("ana-snapshot-"), "snapshot");
+  const result = spawnSync(
+    bunExecutable,
+    [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
+    {},
+  );
+  return { out, result };
+}
+
 describe("trace-review snapshot integrity", () => {
   it.concurrent("returns non-zero, records failed and empty views, and still samples task dossiers", () => {
     const { repo, campaign } = fakeOutcomeRepo(`
@@ -76,12 +62,7 @@ else if (args.includes("--scorecard")) process.exit(0);
 else if (args.includes("--cases")) console.log(JSON.stringify({ cases: [{ taskId: "task-1" }] }));
 else console.log(JSON.stringify({ taskId: "task-1" }));
 `);
-    const out = join(temp("ana-snapshot-"), "snapshot");
-    const result = spawnSync(
-      bunExecutable,
-      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
-      {},
-    );
+    const { out, result } = review(repo, campaign);
     const manifest = parseJsonAs<{
       complete: boolean;
       views: { label: string; status: string; required?: boolean }[];
@@ -114,12 +95,7 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
     // A damaged supersession record makes the classifier's epoch reader refuse, so its process exits
     // non-zero; the console line has to say the command failed, not only that a failure was captured.
     writeFileSync(join(campaign, "epochs.json"), "{");
-    const out = join(temp("ana-snapshot-"), "snapshot");
-    const result = spawnSync(
-      bunExecutable,
-      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
-      {},
-    );
+    const { result } = review(repo, campaign);
     expect(result.stdout).toContain("prose-posture ... FAILED (command failed, captured)");
   }, 30_000);
 
@@ -146,9 +122,9 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
         chars: 12,
       }),
     );
-    const out = join(temp("ana-snapshot-"), "snapshot");
+    const out = join(scratchDir("ana-snapshot-"), "snapshot");
     const result = spawnSync(
-      Bun.argv[0]!,
+      bunExecutable,
       [
         "run",
         "review:collect",
@@ -209,8 +185,7 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
   }
 
   it("reads the parent identities from the run's own scorecard", () => {
-    // Four recorded runs published nulls here while their execution records held five to forty-nine
-    // real submits. The scorecard resolves both parents; this manifest reads them.
+    // The scorecard resolves both parents from the run's submit rows; this manifest reads them.
     const { repo, campaign } = fakeOutcomeRepo(`
 const args = process.argv.slice(2);
 if (args.includes("--scorecard")) console.log(JSON.stringify({ reach: { parents: {
@@ -219,12 +194,7 @@ if (args.includes("--scorecard")) console.log(JSON.stringify({ reach: { parents:
 } } }));
 else console.log(JSON.stringify({ taskId: "task-1" }));
 `);
-    const out = join(temp("ana-snapshot-"), "snapshot");
-    const result = spawnSync(
-      bunExecutable,
-      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
-      {},
-    );
+    const { out, result } = review(repo, campaign);
     expect(result.status).toBe(0);
     const parents = parentsOf(out);
     expect(parents.lastCandidate).toBe(
@@ -245,30 +215,21 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
     const { repo, campaign } = fakeOutcomeRepo(
       'console.log(JSON.stringify({ taskId: "task-1", reach: {} }));\n',
     );
-    const out = join(temp("ana-snapshot-"), "snapshot");
-    const result = spawnSync(
-      bunExecutable,
-      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
-      {},
-    );
+    const { out, result } = review(repo, campaign);
     expect(result.status).toBe(0);
     const parents = parentsOf(out);
     expect(parents.lastCandidate).toBeNull();
     expect(parents.accepted).toBeNull();
     expect(parents.source).toContain("unavailable");
   }, 30_000);
+
   it("admits a checkout whose runtime pin was edited locally, hashing the pin as committed", () => {
     // A review may retarget a historical checkout's pin at the Bun on PATH. The opening hashed the
     // pin the run launched on, so the recaptured digest reads that file from HEAD, and the dirty
     // test leaves it out. Hashing the edited disk bytes refuses the snapshot as source drift.
     const { repo, campaign } = fakeOutcomeRepo('console.log(JSON.stringify({ taskId: "task-1" }));\n');
     writeFileSync(join(repo, ".bun-version"), "0.0.0-local\n");
-    const out = join(temp("ana-snapshot-"), "snapshot");
-    const result = spawnSync(
-      bunExecutable,
-      [reviewScript, "--campaign", campaign, "--run", "44", "--repo", repo, "--out", out],
-      {},
-    );
+    const { result } = review(repo, campaign);
     expect(result.stderr).not.toContain("does not match");
     expect(result.status).toBe(0);
   }, 30_000);

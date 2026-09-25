@@ -65,22 +65,22 @@ describe("predictions", () => {
     expect(open.stdout).toBe("UNRESOLVED: R3\n");
   });
 
-  it("refuses a resolution when the pre-registered part was edited after its checksum was recorded", () => {
-    run("--hash");
-    writeFileSync(note, NOTE.replace("deadbeef. Falsifier", "cafebabe. Falsifier"));
-    const refused = run("--resolve", "P1: sufficed — now it says cafebabe");
-    expect(refused.exitCode).toBe(2);
-    expect(refused.stderr).toContain("changed after its checksum was recorded");
-    expect(readFileSync(note, "utf8")).not.toContain("## Resolutions");
-  });
-
-  it("refuses even a close-like unresolved read after the pre-registered part drifts", () => {
-    run("--hash");
-    writeFileSync(note, NOTE.replace("deadbeef. Falsifier", "cafebabe. Falsifier"));
-    const refused = run("--unresolved");
-    expect(refused.exitCode).toBe(2);
-    expect(refused.stderr).toContain("changed after its checksum was recorded");
-  });
+  // Every mode reads the pre-registered part against its recorded checksum first, so an edit to it
+  // is refused before a resolution is appended, a ledger is read or the checksum is replaced.
+  it.each([["--resolve", "P1: sufficed — now it says cafebabe"], ["--unresolved"], ["--hash"]])(
+    "refuses %s after the pre-registered part drifts",
+    (...args) => {
+      run("--hash");
+      const checksum = readFileSync(`${note}.sha256`, "utf8");
+      const drifted = NOTE.replace("deadbeef. Falsifier", "cafebabe. Falsifier");
+      writeFileSync(note, drifted);
+      const refused = run(...args);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.stderr).toContain("changed after its checksum was recorded");
+      expect(readFileSync(note, "utf8")).toBe(drifted);
+      expect(readFileSync(`${note}.sha256`, "utf8")).toBe(checksum);
+    },
+  );
 
   it("refuses to hash a note whose rows the parser cannot read", () => {
     writeFileSync(note, NOTE.replace(/^([A-Z]\d) — /gm, "- $1: "));
@@ -88,16 +88,6 @@ describe("predictions", () => {
     expect(refused.exitCode).toBe(2);
     expect(refused.stderr).toContain('"P1 — <prediction>"');
     expect(existsSync(`${note}.sha256`)).toBe(false);
-  });
-
-  it("does not replace a frozen projection checksum after the outcome", () => {
-    run("--hash");
-    const changed = NOTE.replace("P1 — The opening", "P1 — A changed opening");
-    writeFileSync(note, changed);
-    const refused = run("--hash");
-    expect(refused.exitCode).toBe(2);
-    expect(refused.stderr).toContain("changed after its checksum was recorded");
-    expect(run("--unresolved").exitCode).toBe(2);
   });
 
   it("allows honest inconclusive and untriggered closures but not pending", () => {
@@ -152,7 +142,6 @@ describe("predictions", () => {
     expect(run("--resolve", "P1 passed").stderr).toContain(
       "sufficed|partial|refuted|untriggered|inconclusive",
     );
-    expect(run("--accept-broken-checksum").stderr).toContain("unknown option");
     expect(run("--hash", "--verify").stderr).toContain("exactly one of");
   });
 

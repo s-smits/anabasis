@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   compareArchives,
   laneArchives,
@@ -6,18 +6,12 @@ import {
   orderKey,
   renderRecurrence,
 } from "../.claude/skills/whole-run-investigation/scripts/finding-recurrence.mjs";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+import { existsSync, mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
-const dirs: string[] = [];
-
-afterEach(() => {
-  while (dirs.length > 0) {
-    const dir = dirs.pop();
-    if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterAll(cleanupScratch);
 
 function archive(
   root: string,
@@ -35,14 +29,31 @@ function archive(
   }));
   writeFileSync(
     join(root, name, "review.json"),
-    JSON.stringify({ schema: "wri-archive/v1", identity: { runId, sourceRevision }, angleStates }),
+    JSON.stringify({ schema: ARCHIVE_SCHEMA, identity: { runId, sourceRevision }, angleStates }),
   );
 }
 
 describe("finding recurrence across archives", () => {
-  it("orders a lane from run ids and classifies recurring, cleared, dropped and re-emerged findings", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-recurrence-"));
-    dirs.push(root);
+  it.each([
+    ["truss-opus-20260907T210000000Z-6bf0e9", "truss-opus"],
+    ["run52-opus-0903", "opus"],
+  ])("reads the lane of %s as %s", (runId, lane) => {
+    expect(laneKey(runId)).toBe(lane);
+  });
+
+  it.each([
+    ["truss-run6-opus-0902", "20260902T000000000-0006"],
+    ["truss-opus-run7", null],
+    ["truss-opus-20260912-0400", "20260912T040000000"],
+    ["truss-opus-20260911T141600Z-5b1c93", "20260911T141600000"],
+    ["truss-opus-20260911T205808589Z-2c6a15", "20260911T205808589"],
+    ["truss-opus-20260911T1416000Z-5b1c93", null],
+  ])("orders %s as %s", (runId, key) => {
+    expect(orderKey(runId)).toBe(key);
+  });
+
+  it("classifies recurring, cleared, dropped and re-emerged findings", () => {
+    const root = scratchDir("ana-recurrence-");
     archive(root, "one", "truss-opus-20260906T100000Z-aaaaaa", "rev1", {
       5: "fail",
       8: "risk",
@@ -66,15 +77,6 @@ describe("finding recurrence across archives", () => {
     });
     archive(root, "other-lane", "truss-sol-20260908T100000000Z-dddddd", "rev2", { 5: "fail" });
     archive(root, "unordered", "truss-opus-run7", "rev0", { 5: "fail" });
-
-    expect(laneKey("truss-opus-20260907T210000000Z-6bf0e9")).toBe("truss-opus");
-    expect(laneKey("run52-opus-0903")).toBe("opus");
-    expect(orderKey("truss-run6-opus-0902")).toBe("20260902T000000000-0006");
-    expect(orderKey("truss-opus-run7")).toBeNull();
-    expect(orderKey("truss-opus-20260912-0400")).toBe("20260912T040000000");
-    expect(orderKey("truss-opus-20260911T141600Z-5b1c93")).toBe("20260911T141600000");
-    expect(orderKey("truss-opus-20260911T205808589Z-2c6a15")).toBe("20260911T205808589");
-    expect(orderKey("truss-opus-20260911T1416000Z-5b1c93")).toBeNull();
 
     const lane = laneArchives(root, "truss-opus");
     expect(lane.map((entry: { runId: string }) => entry.runId).sort()).toEqual([
@@ -118,8 +120,7 @@ describe("finding recurrence across archives", () => {
   });
 
   it("reads no-opportunity when the lane has no earlier ordered archive and no trigger on a quiet lane", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-recurrence-"));
-    dirs.push(root);
+    const root = scratchDir("ana-recurrence-");
     archive(root, "first", "truss-sol-20260908T100000000Z-eeeeee", "rev1", { 5: "risk" });
     const only = laneArchives(root, "truss-sol")[0];
     const alone = compareArchives(only, []);
@@ -135,14 +136,9 @@ describe("finding recurrence across archives", () => {
     expect(report.angles[0]).toMatchObject({ classification: "recurring", streak: 2, sourceChanged: true });
     expect(renderRecurrence(report)).toContain("angle 25: no trigger");
   });
-  /**
-   * The command line used to be read by `indexOf`, so `--out --json` wrote the report to a file
-   * called `--json` and a misspelled `--lnae` was ignored while the default lane ran. Both now
-   * refuse before anything is read or written.
-   */
+
   it("refuses a misspelled option and an option taken as the previous one's value", () => {
-    const root = mkdtempSync(join(tmpdir(), "ana-recurrence-"));
-    dirs.push(root);
+    const root = scratchDir("ana-recurrence-");
     archive(root, "now", "truss-sol-20260908T100000000Z-eeeeee", "rev1", { 5: "risk" });
     const script = join(
       import.meta.dir,

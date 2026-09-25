@@ -1,24 +1,16 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "../src/meta/filesystem.ts";
-import { tmpdir } from "../src/meta/os.ts";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { spawnTextSync } from "./helpers/bun-spawn-sync.ts";
-import { afterEach, describe, expect, it } from "bun:test";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+import { afterAll, describe, expect, it } from "bun:test";
 
 const root = resolve(import.meta.dirname, "..");
 const script = join(root, ".claude/skills/whole-run-investigation/scripts/validate-reports.mjs");
 const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs");
-const dirs: string[] = [];
 
 function fixture({ launch = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "ana-wri-reports-"));
-  dirs.push(dir);
+  const dir = scratchDir("ana-wri-reports-");
   const output = join(dir, "output");
   mkdirSync(output);
   const tasks = join(dir, "tasks.json");
@@ -78,9 +70,7 @@ function run(tasks: string, summary: string) {
   return spawnTextSync(Bun.argv[0]!, [script, "--tasks", tasks, "--summary", summary]);
 }
 
-afterEach(() => {
-  while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
-});
+afterAll(cleanupScratch);
 
 describe("WRI report validation", () => {
   it("binds one completed report to its task and assigned heading", () => {
@@ -209,12 +199,15 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
 
     const launch = JSON.parse(readFileSync(launchPath, "utf8"));
     const summary = JSON.parse(readFileSync(f.summary, "utf8"));
-    // No launcher writes the luna_lanes names any more, so neither record type is read.
+    // A record type no launcher writes is read as neither a launch nor a summary.
     launch.type = "luna_lanes.launch";
     writeFileSync(launchPath, JSON.stringify(launch));
     const retiredLaunch = run(f.tasks, f.summary);
     expect(retiredLaunch.status).toBe(1);
-    expect(JSON.parse(readFileSync(f.result, "utf8")).launchBinding.state).toBe("invalid");
+    expect(JSON.parse(readFileSync(f.result, "utf8")).launchBinding).toMatchObject({
+      state: "invalid",
+      issues: expect.arrayContaining(["launch.json is not a Luna launch record"]),
+    });
 
     summary.type = "luna_lanes.completed";
     writeFileSync(f.summary, JSON.stringify(summary));
@@ -237,7 +230,10 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     const receipt = JSON.parse(readFileSync(f.result, "utf8"));
     expect(result.status).toBe(1);
     expect(receipt.complete).toBe(false);
-    expect(receipt.launchBinding.state).toBe("invalid");
+    expect(receipt.launchBinding).toMatchObject({
+      state: "invalid",
+      issues: expect.arrayContaining(["launch session order/identity differs from tasks"]),
+    });
   });
 
   it("rejects a completed report that expands or omits its assigned angles", () => {
@@ -308,9 +304,9 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     expect(incompleteResult.stderr).toContain("cover every active angle exactly once");
   });
 
-  it("requires all 40 angles and refuses omission of the valid-alternative lane", () => {
+  it("requires every catalogued angle in an exhaustive admission", () => {
     const f = fixture();
-    const tasks = Array.from({ length: 40 }, (_, index) => {
+    const tasks = Array.from({ length: ANGLE_COUNT }, (_, index) => {
       const number = String(index + 1).padStart(2, "0");
       const name = `angle_${number}`;
       writeFileSync(join(f.output, `${name}.md`), `## ${name}\n\nBounded finding.\n`);
@@ -344,7 +340,7 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     );
     writeLaunch(f);
     expect(run(f.tasks, f.summary).status).toBe(0);
-    writeFileSync(f.tasks, JSON.stringify(tasks.slice(0, 35)));
+    writeFileSync(f.tasks, JSON.stringify(tasks.slice(0, -1)));
     const missing = run(f.tasks, f.summary);
     expect(missing.status).toBe(2);
     expect(missing.stderr).toContain("cover every active angle exactly once");
@@ -405,10 +401,18 @@ await Bun.write(args[args.indexOf("--output-last-message") + 1], "## angle_05\\n
     writeFileSync(f.report, `## devil\n\n${scan}${usage}${yieldRow}`);
     writeLaunch(f);
     expect(run(f.tasks, f.summary).status).toBe(0);
-    writeFileSync(f.report, `## devil\n\n${scan}${scan}${usage}${yieldRow}`);
-    expect(run(f.tasks, f.summary).status).toBe(1);
-    writeFileSync(f.report, `## devil\n\n| scan | passed | |\n${usage}${yieldRow}`);
-    expect(run(f.tasks, f.summary).status).toBe(1);
+    const refusedRows = [
+      [`${scan}${scan}${usage}${yieldRow}`, "diagnostic input disposition missing or repeated: scan"],
+      [
+        `| scan | passed | |\n${usage}${yieldRow}`,
+        "diagnostic input needs a valid disposition and reason/evidence: scan",
+      ],
+    ];
+    for (const [rows, issue] of refusedRows) {
+      writeFileSync(f.report, `## devil\n\n${rows}`);
+      expect(run(f.tasks, f.summary).status).toBe(1);
+      expect(JSON.parse(readFileSync(f.result, "utf8")).rows[0].issues).toContain(issue);
+    }
   });
 
   it("rejects duplicate targeted angles unless both rows declare one independent challenge", () => {

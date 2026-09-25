@@ -12,7 +12,8 @@ Read every attached census file first, including the unclaimed-string sections.
 5. A `document` surface is a whole file the AST never parsed; its guard is the copy or prepend in
    source, so verify that before reasoning about when a model reads it.
 6. Prefer `bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts` for the
-   Builder system and kickoff surfaces: it assembles them the way production does. Steering
+   Builder system surface and `seed-kickoff.mts` beside it for the kickoff: they assemble them the
+   way production does. Steering
    requires round-specific inputs; inspect its production composition. This helper has no printer
    for the Built Harness or Judge surfaces.
 

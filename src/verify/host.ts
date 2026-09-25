@@ -14,8 +14,8 @@
  *
  * A run that exits and completes cleanup is `executed`, whatever the exit code, because a compiler
  * that rejects the artifact has answered and the evaluator reads that answer. Missing tool, wall
- * refusal, changed tool bytes, timeout and spawn failure are typed non-results: no answer exists,
- * and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
+ * refusal, changed tool bytes, timeout, spawn failure and stdout past the host's cap are typed
+ * non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
  * answer, because the runner reads these rows directly (`src/truth/tool-runs.ts`).
  */
 import {
@@ -402,6 +402,16 @@ function settledToolResult(
       run,
       "crash",
       `tool "${toolId}" ended by signal ${String(signal ?? wrappedSignal)} before exiting`,
+    );
+  }
+  // A check handed the first megabyte of a longer document reads a different answer rather than a
+  // shorter one: a parse that fails on the cut reads as a rejected artifact. Past the cap there is
+  // no answer to hand over.
+  if (run.stdoutBytes > STDOUT_MAX_BYTES) {
+    return nonResult(
+      run,
+      "protocol",
+      `tool "${toolId}" wrote ${String(run.stdoutBytes)} stdout bytes, over the ${String(STDOUT_MAX_BYTES)} the host reads; print only what the check reads`,
     );
   }
   return {

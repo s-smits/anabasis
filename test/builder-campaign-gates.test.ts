@@ -268,7 +268,9 @@ describe("a gate run two callers may share", () => {
     expect(resumeCampaignMemory(campaignDir, "matching", KICKOFF_HASH).clause).toBeNull();
   });
 
-  it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+  // it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
+  it("publishes submit's run before its first await, so a preview started meanwhile joins it", async () => {
     const campaignDir = scratchDir("ana-submit-publishes-");
     const workspace = join(campaignDir, "workspace");
     let probeLoads = 0;
@@ -305,15 +307,23 @@ describe("a gate run two callers may share", () => {
             release.resolve();
             await Promise.all([submitting, joining]);
             expect(probeLoads).toBe(1);
+            // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+            // joined = await replyText(check(tools), "check-2");
+            // expect(probeLoads).toBe(1);
+            // await submitTool(tools).execute("submit-2", {});
+            // expect(probeLoads).toBe(2);
+            // A runtime non-result is no verdict on the bytes, so a later call on them runs again.
             joined = await replyText(check(tools), "check-2");
-            expect(probeLoads).toBe(1);
-            await submitTool(tools).execute("submit-2", {});
             expect(probeLoads).toBe(2);
+            await submitTool(tools).execute("submit-2", {});
+            expect(probeLoads).toBe(3);
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
-    expect(joined).toContain("preview-attempt-spent");
+    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
+    // expect(joined).toContain("preview-attempt-spent");
+    expect(joined).not.toContain("preview-attempt-spent");
   });
 
   it.concurrent("keeps one session across a post-record gate refusal and admits only the clean resubmission", async () => {
@@ -459,7 +469,7 @@ describe("the receipts a gate run records", () => {
           },
           open: async (tools) =>
             scriptedSession(async () => {
-              proposeExperiment(workspace);
+              writeFileSync(join(workspace, "EXPERIMENT.json"), "{}");
               texts.push(
                 await replyText(check(tools), "check"),
                 await replyText(submitTool(tools), "submit"),
@@ -469,7 +479,7 @@ describe("the receipts a gate run records", () => {
         },
       ),
     );
-    for (const text of texts) expect(text).toContain("rebuild-evaluation-unmoved");
+    for (const text of texts) expect(text).toContain("experiment-plan-schema");
     expect(outcome.buildAdmissible).toBe(false);
     expect(outcome.iterations).toEqual([]);
     expect(gateDirs).toHaveLength(1);

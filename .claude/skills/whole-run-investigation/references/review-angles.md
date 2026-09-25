@@ -200,8 +200,7 @@ The question is whether a check written against the public authoring interface c
 through the real host contract. Follow one consequential request across the public types and
 examples, the generated check, the projection, the tool input binding, the worker transport, the
 wall and the host result, selecting one legitimate use and its nearest forbidden counterpart. Read
-`conformance.json` (`tool-conformance/v4`), the `solvability-tool-program-argument` clause in the
-gate findings, `agent/config.yaml` (`tool_run_seconds`, `check_seconds`) and the worker's
+`conformance.json` (`tool-conformance/v4`), the gate findings, `agent/config.yaml` (`tool_run_seconds`, `check_seconds`) and the worker's
 handshake evidence. Separate a valid boundary refusing unsupported work from incompatible
 producer and consumer contracts and from an interface refusal whose public explanation was lost. A
 passing runtime double proves only that double's contract; prefer an existing real-host probe, and
@@ -218,9 +217,8 @@ guide naming one, and from a tool payload whose return names the value a check w
 
 The question is whether the guide, the tool descriptions and the tool payloads tell the solver the
 truth about the roster and the walls. `agent/BUILT_AGENTS.md` naming a tool `tools-spec.json` does
-not declare sends the solver after a call it cannot make; a `presets` field with neither `files`
-nor `shell` is refused by `solverShellFindings` (`src/author/candidate-check.ts`), so read the
-roster the Built prompt derived before charging a missing call to the solver. A payload that hands
+not declare sends the solver after a call it cannot make, and a `presets` field may carry neither
+`files` nor `shell`, so read the roster the Built prompt derived before charging a missing call to the solver. A payload that hands
 over a decision — admissible values per role, the argmax of a published function — is a publication
 question for lane 8, but the payload's `text` against its `details` is this lane's: every promised
 value belongs in `text`, and a tool whose result drops bytes must say where the rest is. Read
@@ -341,7 +339,7 @@ compare per round, in claim `createdAt` order, the counts the Builder was told (
 no-limit, aim), the comparator and count it declared, and the count it measured, and say whether
 the error closes. A target above the aim is a choice the placement reads as over-aim; a met target
 on an unchanged public task set predicts a repeat, not a harder battery; and a streak counts
-`POLICY.climb.offAimStreakRounds` on one side of the aim, so say which side and whether the
+consecutive rounds on one side of the aim, so say which side and whether the
 comparator named it. Do not prescribe the route, which is the Builder's. The decision it changes
 is the next round's comparator; it routes to the Builder prompt when the counts were not stated
 and to `tests` when the task set did not move.
@@ -539,9 +537,7 @@ decision rows' `operation` from `src/gate/experiment-admission.ts` — `task-pro
 `harness-intervention`, `evaluation-correction`, `repeat`, `new-baseline`, decided by which of
 `agentHash`, `correctnessModelHash`, `scoringHash` and `taskSetHash` moved — and the plan's
 declared `scope`. Attribution follows accepted bytes and never the plan's name: a plan declaring
-`tasks` whose bytes moved the evaluator receives build attribution, and a repeated public
-condition on a fixed product is refused (`climb-battery-repeats-history`) however the ids,
-families or levels were renamed. `adjusted` deliberately states no direction, because a moved limit
+`tasks` whose bytes moved the evaluator receives build attribution. `adjusted` deliberately states no direction, because a moved limit
 is a climb only when it moves inward, and the difficulty decision's `allowance.sameSchema` counts
 rounds that re-posed the same public schemas under new values. Do not read a new hash, id, family
 name or longer description as a harder problem; the Builder names the public requirement that

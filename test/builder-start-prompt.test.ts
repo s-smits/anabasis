@@ -216,8 +216,7 @@ describe("Builder start prompt", () => {
 
   /** A Builder told that "verifier-required" is an available answer reaches for it: it settles
    *  minutes in, resubmits the same tree when refused, and the run ends with no battery at all. So
-   *  the clause is controller-owned and arrives only in the refusal that needs it. The literal has
-   *  two segments, so the code sweep above — which reads kebab literals of three or more — does not
+   *  no Builder surface names it. The literal has two segments, so the code sweep above — which reads kebab literals of three or more — does not
    *  see it. The submit description is held too, because a tool description is in front of the
    *  Builder on every turn and is where a retry rule is most naturally read. */
   it("names no settlement the controller alone may declare", () => {
@@ -242,8 +241,7 @@ const STAGES = [
   "2. Validation.",
   "3. Conformance.",
   "4. Control census.",
-  "5. Grounding.",
-  "6. F2 reference solve.",
+  "5. F2 reference solve.",
 ] as const;
 
 describe("STARTER.md gate map", () => {

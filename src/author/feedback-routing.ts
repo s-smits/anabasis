@@ -30,8 +30,9 @@ export const BUILDER_OWNED: ReadonlySet<FeedbackOwner> = new Set(
   Object.keys(OWNER_FILES) as RoutableOwner[],
 );
 
-/** A narrow operation must serve every blocking owner. */
-export const BATTERY_SERVED: ReadonlySet<FeedbackOwner> = new Set(["tests", "controls"]);
+// Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): its one reader is the commented-out product-repair refusal
+// /** A narrow operation must serve every blocking owner. */
+// export const BATTERY_SERVED: ReadonlySet<FeedbackOwner> = new Set(["tests", "controls"]);
 export const EVALUATION_SERVED: ReadonlySet<FeedbackOwner> = new Set([
   "correctness-model",
   "accept-controls",

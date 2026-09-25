@@ -55,10 +55,10 @@ Checks     catalogue-conformance authored; every line names one published conduc
                                    artifactPath: "$.network.totalCost", direction: "atMost"}]
 Join       lines-to-buses, owned by catalogue-conformance,
            decoyClasses ["ghost-bus", "alias-swap-conductor-id"]
-Constant   ampacity-reference-ambient = 30 degC, authority IEC 60364-5-52 Table B.52.14; one
-           task sits exactly at 30 so > and >= separate, with a reject there carrying
-           targetsBoundary {publicInputPath: "$.ambientTempC", constantName: "ampacity-reference-ambient"}
-Constant   feeder-cost-budget, with one task exactly at it, as every declared boundary requires
+Constant   ampacity-reference-ambient = 30 degC, authority IEC 60364-5-52 Table B.52.14; a reject
+           at it carries targetsBoundary {publicInputPath: "$.ambientTempC",
+           constantName: "ampacity-reference-ambient"}
+Constant   feeder-cost-budget, the limit each task publishes at $.costBudget
 Accepts    the minimal compliant sizing, and one conductor size up still inside the budget
 Reject     one line endpoint renamed to a bus no bus row declares, everything else identical;
            mutationClass "ghost-bus", targetsJoin lines-to-buses, decoyClass "ghost-bus",

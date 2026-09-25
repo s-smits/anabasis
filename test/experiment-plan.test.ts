@@ -1,8 +1,6 @@
 /**
- * The round plan's one owner: the strict reader a shell edit meets, the evidence the controller
- * keeps about it with the advice and compact view that evidence earns, and the declared-move
- * question admission asks after a battery that found no limit (whose refusal is owned by the
- * admission cases in experiment-freeze.test.ts).
+ * The round plan's one owner: the strict reader a shell edit meets, and the evidence the controller
+ * keeps about it with the advice and compact view that evidence earns.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
@@ -11,14 +9,11 @@ import type { JsonValue } from "../src/meta/json-shape.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import {
   type ExperimentPlan,
-  type LastBattery,
   PlanEvidence,
   captureExperimentSubmission,
   currentPlan,
-  lastBatteryOf,
   parseExperimentSubmission,
   predictionScore,
-  repeatedMoveDetail,
 } from "../src/author/experiment-plan.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { brief } from "./helpers/starter-contracts.ts";
@@ -397,54 +392,5 @@ describe("the plan evidence", () => {
     expect(new PlanEvidence(workspace(without("schema")), null).view()).toStartWith(
       "Round plan: EXPERIMENT.json is refused — EXPERIMENT.json names no schema",
     );
-  });
-});
-
-describe("the declared-move question", () => {
-  const lastPlan = { ...PLAN, target: { comparator: "at-most" as const, verifiedPasses: 3 }, digest: "d" };
-  const noLimit: LastBattery = { noLimit: true, passed: 5, verified: 5, plan: lastPlan };
-  // Only the published magnitudes changed: the families declare the moves they declared before.
-  const retuned: ExperimentPlan = {
-    ...PLAN,
-    change: "Longer spans and heavier loads.",
-    target: { comparator: "at-most", verifiedPasses: 2 },
-  };
-
-  it("fires on a climb after a battery that found no limit when every family repeats its move", () => {
-    expect(repeatedMoveDetail(noLimit, retuned)).toStartWith(
-      "The last battery passed 5 of 5 verified cases and found no limit",
-    );
-  });
-
-  it.each<[string, LastBattery | undefined, ExperimentPlan]>([
-    [
-      "a changed move",
-      noLimit,
-      {
-        ...retuned,
-        families: retuned.families.map((row, index) =>
-          index === 0 ? { ...row, move: "An earlier step forecloses a later one." } : row,
-        ),
-      },
-    ],
-    [
-      "a new family",
-      noLimit,
-      { ...retuned, families: [...PLAN.families, { family: "sequence", level: "frontier", move: "x" }] },
-    ],
-    ["no climb", noLimit, { ...retuned, target: { comparator: "at-least", verifiedPasses: 5 } }],
-    ["a battery with a limit", { ...noLimit, noLimit: false }, retuned],
-    ["no last plan", { ...noLimit, plan: null }, retuned],
-    ["no last battery", undefined, retuned],
-  ])("stays silent on %s", (_title, last, plan) => {
-    expect(repeatedMoveDetail(last, plan)).toBeNull();
-  });
-
-  it("reads the newest standing battery off the readout rows", () => {
-    const row = { claimRefusal: null, zone: "on-aim", passed: 4, verified: 4, experiment: null };
-    expect(lastBatteryOf([row])).toEqual({ noLimit: true, passed: 4, verified: 4, plan: null });
-    expect(lastBatteryOf([{ ...row, passed: 2 }])).toMatchObject({ noLimit: false });
-    expect(lastBatteryOf([{ ...row, passed: 2, zone: "over-aim" }])).toMatchObject({ noLimit: true });
-    expect(lastBatteryOf([{ ...row, claimRefusal: "refused", passed: null }])).toBeUndefined();
   });
 });

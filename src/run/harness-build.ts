@@ -99,9 +99,10 @@ export interface HarnessBuildOptions {
   priorEvidence?: PriorEvidence;
   admissionLineage?: AdmissionLineage;
   diagnosisInput?: DiagnosisInput;
-  /** Admitted-history public fingerprints for the A→B→A refusal of a task-only experiment. */
-  priorPublicTaskFingerprints?: readonly string[];
-  lastBattery?: BuilderCampaignInput["lastBattery"];
+  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+  // admitted-history public battery prints only the repeated-condition refusal read.
+  // /** Admitted-history public fingerprints for the A→B→A refusal of a task-only experiment. */
+  // priorPublicTaskFingerprints?: readonly string[];
   /** The selector's reading of the adopted product's batteries; a held limit refuses a product change. */
   /** Controller iteration identity for this immutable product version. */
   productVersionId?: string;
@@ -373,8 +374,9 @@ async function runEpochBuild(
       ...keyIfDefined("measured", options.measured),
       ...keyIfDefined("userContext", options.userContext),
       ...keyIfDefined("band", options.band),
-      ...keyIfDefined("priorPublicTaskFingerprints", options.priorPublicTaskFingerprints),
-      ...keyIfDefined("lastBattery", options.lastBattery),
+      // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+      // admitted-history public battery prints only the repeated-condition refusal read.
+      // ...keyIfDefined("priorPublicTaskFingerprints", options.priorPublicTaskFingerprints),
       // A reopen is the one round harness_reset works in; its pass keys the once-per-scope rule,
       // so a resumed round finds its own reset in history rather than wiping its later work.
       ...keyIfDefined("resetKey", options.epochPass),

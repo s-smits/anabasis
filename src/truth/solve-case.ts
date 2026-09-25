@@ -481,6 +481,7 @@ function acceptedOutcome(
   // that was skipped could only ever have withheld a pass, never created one. A case that failed
   // to compile is filed here rather than as a non-result.
   const failed = [...blockingFailedCheckIds(scoped.verdict)];
+  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a verified case whose externally grounded check ran no tool has no tool evidence behind its verdict
   if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
     // The unattributed verifier kind belongs to generated behaviour, not the environment.
     return nonResult(

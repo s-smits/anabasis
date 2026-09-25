@@ -12,7 +12,7 @@ import { double } from "./doubles.ts";
 export interface CaseSpec {
   taskId: string;
   status: "passed" | "failed" | "non-result";
-  /** The reference artifact the representation census reads; omitted means the row carries none. */
+  /** The reference artifact the witness readers take; omitted means the row carries none. */
   artifact?: unknown;
   /** Declared truth-checks this case's evaluate rejected; the concentration projection reads them. */
   failedCheckIds?: string[];

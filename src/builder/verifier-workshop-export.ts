@@ -19,6 +19,7 @@ import type { IsolatedRequest } from "./candidate-isolation-runtime.ts";
 import { existingWorkshopPath, VerifierWorkshopRequestRefusal } from "./verifier-workshop-input.ts";
 import { VERIFIER_WORKSHOP } from "./capability-modes.ts";
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, workshop-export-limits): kept: the tool description states both, and no-overwrite keeps an export from following an existing path or symlink
 const MAX_EXPORT_BYTES = 64 * 1024 * 1024;
 
 export type WorkshopExportBinding = ReturnType<typeof workshopExportBinding>;

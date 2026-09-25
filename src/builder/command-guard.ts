@@ -431,6 +431,7 @@ function builderCommandVersion(guard: string, env: OptionalEnvValues = Bun.env):
  * that cannot run a command at all, which is a worse outcome than the accident the guard exists to
  * catch, and the run would then report it as the Builder's failure rather than the host's.
  */
+// Gate audit 2026-09-25 (docs/gate-audit.md, command-guard): kept: a safety net against destructive commands that refuses no candidate
 export function refuseDestructiveCommand(
   command: string,
   env: OptionalEnvValues = Bun.env,

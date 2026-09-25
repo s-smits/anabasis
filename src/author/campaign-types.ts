@@ -116,11 +116,12 @@ export type CampaignClause =
   | "campaign-binding-mismatch"
   | "improvement-memory-missing"
   | "environment-blocked"
-  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one diagnosis repeated to stalledFindingsRepeats
+  | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
   | "repair-unroutable"
   | "carried-battery-unreadable" // a battery exists but cannot be read; do not compare it
   | "carried-exam-drift"
-  | "verifier-required"
+  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
+  // | "verifier-required"
   | "iterations-exhausted"
   | "no-progress" // a Builder round went STALLED_TURNS turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";

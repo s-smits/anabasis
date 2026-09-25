@@ -14,8 +14,10 @@ const OWNER_LAYERS = [
   "bh-tool-submit",
   /** Generated verifier, controls, discrimination. */
   "bh-correctness-model",
-  /** Task battery, difficulty, curriculum. */
-  "task-curriculum",
+  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): only the variation
+  // rule assigned this owner.
+  // /** Task battery, difficulty, curriculum. */
+  // "task-curriculum",
   /** A shared package primitive (correctness-model-prims, agent-bundle, correctness-model-bundle). */
   "shared-ana-primitive",
   /** The build driver, phase contracts, prompts, validators. */

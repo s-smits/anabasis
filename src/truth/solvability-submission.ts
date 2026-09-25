@@ -131,11 +131,9 @@ function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonVa
  * `Type.Union([Type.String(), Type.Null()])`, the agent wrote `""` on the rows the answer leaves
  * absent, and eight of twenty-five cases failed on that alone with every other field correct.
  *
- * Only the empty string counts here, not the wider absence vocabulary of
- * `src/run/representation-census.ts`. That census reads what the reference answer wrote and may
- * assess an "n/a" in the domain; this reads what a writer permits the agent to write, where "n/a" or
- * "none" can be legitimate free text. The narrow rule is the empty string standing beside a
- * reference null.
+ * Only the empty string counts here, not a wider absence vocabulary: this reads what a writer
+ * permits the agent to write, where "n/a" or "none" can be legitimate free text. The narrow rule is
+ * the empty string standing beside a reference null.
  *
  * The comparison uses the writer schema and the reference artifact without running the verifier, and
  * its findings still travel the protected submission-result feedback path.

@@ -117,18 +117,25 @@ function externalChecksForControl(
   return externalChecks.filter((check) => marked.has(check.checkId));
 }
 
-/** One finding per external check with no completed tool run, naming the examples that owe one.
+/** One finding per external check/tool pair the host could not run for an example that called it,
+ *  naming those examples. Only a control the runner settled as that refusal counts, so the row
+ *  belongs to the verifier environment, not to the correctness model.
  *
- *  An accept always owes a completed run: passing without the tool is a hollow pass. A reject
- *  aimed at the check may be refused before the analysis runs — a design declaring no loss path
- *  cannot be analysed for member loss — once another reject aimed at that check has completed a
- *  run, because the tool then still takes part in rejecting something. A run the check started and
- *  did not complete is still owed on every example.
- *
- *  One row per check/tool pair, not per (control, check) pair, which states the same defect once
- *  per example and can turn a handful of distinct missing pairs into a hundred and fifty rows. A
- *  row per pair states the total count and names up to eight examples, with the remaining count
- *  when necessary, so the Builder addresses the requirements rather than the repetitions. */
+ *  One row per check/tool pair, not per (control, check) pair, which would state the same defect
+ *  once per example; the row states the total count and names every example. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+// /** One finding per external check with no completed tool run, naming the examples that owe one.
+//  *
+//  *  An accept always owes a completed run: passing without the tool is a hollow pass. A reject
+//  *  aimed at the check may be refused before the analysis runs — a design declaring no loss path
+//  *  cannot be analysed for member loss — once another reject aimed at that check has completed a
+//  *  run, because the tool then still takes part in rejecting something. A run the check started and
+//  *  did not complete is still owed on every example.
+//  *
+//  *  One row per check/tool pair, not per (control, check) pair, which states the same defect once
+//  *  per example and can turn a handful of distinct missing pairs into a hundred and fifty rows. A
+//  *  row per pair states the total count and names up to eight examples, with the remaining count
+//  *  when necessary, so the Builder addresses the requirements rather than the repetitions. */
 export function unexecutedGroundingFindings(input: {
   brief: Brief;
   tasks: readonly GroundedTask[];
@@ -151,54 +158,61 @@ export function unexecutedGroundingFindings(input: {
         row.toolId === check.adapterId &&
         row.attempt === input.settled.get(control.id)?.attempt,
     );
-  const aimedAt = (control: GroundedControl, check: ExternalCheckBinding) =>
-    control.expectedCheckId === check.checkId;
-  const toolDecidedReject = new Set(
-    controls.flatMap((control) =>
-      externalChecks
-        .filter(
-          (check) =>
-            aimedAt(control, check) && rowsOf(control, check).some((row) => row.outcome === "executed"),
-        )
-        .map((check) => `${check.checkId}\u0000${check.adapterId}`),
-    ),
-  );
-  const owed = new Map<string, { check: ExternalCheckBinding; kind: string; controlIds: string[] }>();
+  // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+  // const aimedAt = (control: GroundedControl, check: ExternalCheckBinding) =>
+  //   control.expectedCheckId === check.checkId;
+  // const toolDecidedReject = new Set(
+  //   controls.flatMap((control) =>
+  //     externalChecks
+  //       .filter(
+  //         (check) =>
+  //           aimedAt(control, check) && rowsOf(control, check).some((row) => row.outcome === "executed"),
+  //       )
+  //       .map((check) => `${check.checkId}\u0000${check.adapterId}`),
+  //   ),
+  // );
+  // const owed = new Map<string, { check: ExternalCheckBinding; kind: string; controlIds: string[] }>();
   const refused = new Map<string, { check: ExternalCheckBinding; kind: string; controlIds: string[] }>();
   for (const control of controls) {
     const applicable = externalChecksForControl(brief, externalChecks, taskById.get(control.taskId));
     const settled = input.settled.get(control.id);
-    // A pair the host never ran for any example is inertToolFindings' one row, which the census
-    // also returns, so it is skipped here rather than stated twice — once per pair and again once
-    // per example.
-    for (const check of applicable.filter((pair) =>
-      evidence.some((row) => row.checkId === pair.checkId && row.toolId === pair.adapterId),
-    )) {
+    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+    // // A pair the host never ran for any example is inertToolFindings' one row, which the census
+    // // also returns, so it is skipped here rather than stated twice — once per pair and again once
+    // // per example.
+    // for (const check of applicable.filter((pair) =>
+    //   evidence.some((row) => row.checkId === pair.checkId && row.toolId === pair.adapterId),
+    // )) {
+    for (const check of applicable) {
       if ((control.expectedCheckId ?? check.checkId) !== check.checkId) continue;
       const rows = rowsOf(control, check);
       if (rows.some((row) => row.outcome === "executed")) continue;
-      if (
-        rows.length === 0 &&
-        aimedAt(control, check) &&
-        toolDecidedReject.has(`${check.checkId}\u0000${check.adapterId}`)
-      ) {
-        continue;
-      }
+      // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+      // if (
+      //   rows.length === 0 &&
+      //   aimedAt(control, check) &&
+      //   toolDecidedReject.has(`${check.checkId}\u0000${check.adapterId}`)
+      // ) {
+      //   continue;
+      // }
       // The check did call the tool and the host could not run it: that is the environment's row,
       // not a missing call. Without the distinction a sandbox refusal reads to the author as its
       // own defect. Only a control the runner settled as that refusal counts; a timeout, crash or
-      // throw on the retry is the author's. Either way it is still a call, not a missing one, and
-      // an author told to call a tool whose calls have timed out adds more calls instead of fixing
-      // the run.
+      // throw on the retry is the check's own run and yields no row here.
       const refusal =
         settled?.hostNonResult != null && environmentOwnedToolNonResult(settled.hostNonResult)
           ? rows.find((row) => environmentOwnedToolNonResult(row.outcome))
           : undefined;
-      const bucket = refusal === undefined ? owed : refused;
-      const kind = (refusal ?? rows[0])?.outcome ?? "";
-      const key = `${check.checkId}\u0000${check.adapterId}\u0000${bucket === owed ? kind : ""}`;
-      const prior = bucket.get(key);
-      if (prior === undefined) bucket.set(key, { check, kind, controlIds: [control.id] });
+      if (refusal === undefined) continue;
+      // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+      // const bucket = refusal === undefined ? owed : refused;
+      // const kind = (refusal ?? rows[0])?.outcome ?? "";
+      // const key = `${check.checkId}\u0000${check.adapterId}\u0000${bucket === owed ? kind : ""}`;
+      // const prior = bucket.get(key);
+      // if (prior === undefined) bucket.set(key, { check, kind, controlIds: [control.id] });
+      const key = `${check.checkId}\u0000${check.adapterId}`;
+      const prior = refused.get(key);
+      if (prior === undefined) refused.set(key, { check, kind: refusal.outcome, controlIds: [control.id] });
       else prior.controlIds.push(control.id);
     }
   }
@@ -208,18 +222,20 @@ export function unexecutedGroundingFindings(input: {
     controlIds,
     detail: `${controlIds.length} example(s) called tool "${check.adapterId}" for check "${check.checkId}" and the host could not run it (${kind}) after its retry: ${namedExamples(controlIds)}; the verifier environment owns this, not the correctness model`,
   }));
-  return [
-    ...refusals,
-    ...[...owed.values()].map(({ check, kind, controlIds }) => ({
-      code: "generated-external-grounding-unexecuted",
-      path,
-      controlIds,
-      detail:
-        kind === ""
-          ? `${controlIds.length} example(s) of required check "${check.checkId}" returned with no run of tool "${check.adapterId}" launched (0 runs), although the check called it for other examples: ${namedExamples(controlIds)}; decide these through the tool too, or let a check that does not require the tool refuse them`
-          : `${controlIds.length} example(s) called tool "${check.adapterId}" for required check "${check.checkId}" and the run did not complete (${kind}): ${namedExamples(controlIds)}; the call was made, so the run itself must complete`,
-    })),
-  ];
+  // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
+  // return [
+  //   ...refusals,
+  //   ...[...owed.values()].map(({ check, kind, controlIds }) => ({
+  //     code: "generated-external-grounding-unexecuted",
+  //     path,
+  //     controlIds,
+  //     detail:
+  //       kind === ""
+  //         ? `${controlIds.length} example(s) of required check "${check.checkId}" returned with no run of tool "${check.adapterId}" launched (0 runs), although the check called it for other examples: ${namedExamples(controlIds)}; decide these through the tool too, or let a check that does not require the tool refuse them`
+  //         : `${controlIds.length} example(s) called tool "${check.adapterId}" for required check "${check.checkId}" and the run did not complete (${kind}): ${namedExamples(controlIds)}; the call was made, so the run itself must complete`,
+  //   })),
+  // ];
+  return refusals;
 }
 
 /** Every quoted id an author finding names. Capping the list and counting the rest leaves the

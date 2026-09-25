@@ -250,7 +250,14 @@ function receiptForControlFindings(
       ),
     );
   }
+  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+  // if (
+  //   receipt.observedOutcome !== "non-result" &&
+  //   !sideMatchesExpected(primarySide(receipt), receipt.expectedOutcome, expectedCheckId)
+  // ) {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, accept-control-rejected): kept: a recorded accept the checks rejected means the claim would rest on checks that refuse a known-valid answer
   if (
+    declared.kind === "accept" &&
     receipt.observedOutcome !== "non-result" &&
     !sideMatchesExpected(primarySide(receipt), receipt.expectedOutcome, expectedCheckId)
   ) {
@@ -303,8 +310,8 @@ function receiptsById(
   return byId;
 }
 
-/** Check receipts against the declared controls, including a mismatch between the expected and
- *  observed result. */
+/** Check receipts against the declared controls, including an accept whose observed result is not
+ *  a clean pass. */
 function validateControlReceipts(
   corpus: ControlCorpus,
   receipts: readonly unknown[],

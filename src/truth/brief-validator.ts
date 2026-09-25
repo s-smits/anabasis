@@ -306,15 +306,20 @@ function designRuleFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-/** The truth-check pass, and the artifact roots those checks declared they read, where "$" includes
- *  the whole artifact. A declaration makes a value available to a check; it does not prove the check
- *  uses it. Only paths that input validation accepted are added here, so the unread-root check below
- *  reads exactly the same selections this pass approved. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the pass
+// also returned the artifact roots its checks declare they read, which only the unread-root rule consumed.
+// /** The truth-check pass, and the artifact roots those checks declared they read, where "$" includes
+//  *  the whole artifact. A declaration makes a value available to a check; it does not prove the check
+//  *  uses it. Only paths that input validation accepted are added here, so the unread-root check below
+//  *  reads exactly the same selections this pass approved. */
+/** The truth-check pass. */
 function truthCheckFindings(brief: Brief) {
   const findings: ContractFinding[] = [];
   const checkIds = new Set<string>();
   const artifactRoots = new Set(brief.artifactSchema.map((field) => field.name));
-  const readRoots = new Set<string>();
+  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): only the
+  // unread-root rule read these roots.
+  // const readRoots = new Set<string>();
   brief.truthChecks.forEach((check, i) => {
     if (checkIds.has(check.id)) {
       findings.push(
@@ -349,7 +354,10 @@ function truthCheckFindings(brief: Brief) {
             "artifact paths must read a declared artifactSchema root",
           ),
         );
-      } else readRoots.add(root ?? "$");
+        // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure):
+        // restoring the unread-root rule restores this else branch.
+        // } else readRoots.add(root ?? "$");
+      }
     }
     for (const joinId of check.joinIds ?? []) {
       if (!brief.joins.some((join) => join.id === joinId)) {
@@ -359,11 +367,14 @@ function truthCheckFindings(brief: Brief) {
       }
     }
   });
-  return { findings, readRoots };
+  return { findings };
+  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the roots
+  // go back with the unread-root rule.
+  // return { findings, readRoots };
 }
 
-/** Each join is owned by exactly one check and carries distinct decoy classes, which is what makes
- *  its discrimination evidence about the join rather than about label completeness. */
+/** Each join is owned by exactly one check and repeats no decoy class, so one control cannot satisfy
+ *  two obligations. */
 function joinFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const joinOwners = new Map<string, string[]>();
@@ -392,15 +403,18 @@ function joinFindings(brief: Brief): ContractFinding[] {
         ),
       );
     }
-    if (join.decoyClasses.length === 0) {
-      findings.push(
-        finding(
-          "brief-join-no-decoys",
-          `joins[${i}].decoyClasses`,
-          `join "${join.id}" declares no decoy classes — discrimination would prove label completeness, not join soundness`,
-        ),
-      );
-    }
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
+    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
+    // declared class.
+    // if (join.decoyClasses.length === 0) {
+    //   findings.push(
+    //     finding(
+    //       "brief-join-no-decoys",
+    //       `joins[${i}].decoyClasses`,
+    //       `join "${join.id}" declares no decoy classes — discrimination would prove label completeness, not join soundness`,
+    //     ),
+    //   );
+    // }
     if (new Set(join.decoyClasses).size !== join.decoyClasses.length) {
       findings.push(
         finding(
@@ -414,9 +428,12 @@ function joinFindings(brief: Brief): ContractFinding[] {
   return findings;
 }
 
-/** Each declared artifact root must be addressable, declared once, read by some check, and — where
- *  it closes a value set — carry distinct scalar allowed values. */
-function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): ContractFinding[] {
+/** Each declared artifact root must be addressable, declared once and — where it closes a value
+ *  set — carry distinct scalar allowed values. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): restoring
+// the unread-root rule takes back the `readRoots` parameter.
+// function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): ContractFinding[] {
+function artifactSchemaFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const fieldNames = new Set<string>();
   brief.artifactSchema.forEach((field, i) => {
@@ -439,20 +456,23 @@ function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): C
       );
     }
     fieldNames.add(field.name);
-    // A root no check reads measures nothing: a schema can declare firmware source roots that the
-    // reference solve fills while every check reads the derived summary alone, and then replacing or
-    // omitting every source file is accepted. Refuse such a root before F2 executes. A check
-    // selecting the whole artifact ("$") covers every root, and where no checks
-    // exist at all, brief-no-truth-checks already reports that failure without a duplicate here.
-    if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
-      findings.push(
-        finding(
-          "brief-artifact-root-unread",
-          `artifactSchema[${i}].name`,
-          `no truth check reads any path under artifactSchema field "${field.name}" — an agent may write anything there, or omit it entirely, and still pass every check, so the field measures nothing; declare a truth check over it or drop it from the artifact schema`,
-        ),
-      );
-    }
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
+    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
+    // root is measured, or its absence that it is not.
+    // // A root no check reads measures nothing: a schema can declare firmware source roots that the
+    // // reference solve fills while every check reads the derived summary alone, and then replacing or
+    // // omitting every source file is accepted. Refuse such a root before F2 executes. A check
+    // // selecting the whole artifact ("$") covers every root, and where no checks
+    // // exist at all, brief-no-truth-checks already reports that failure without a duplicate here.
+    // if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
+    //   findings.push(
+    //     finding(
+    //       "brief-artifact-root-unread",
+    //       `artifactSchema[${i}].name`,
+    //       `no truth check reads any path under artifactSchema field "${field.name}" — an agent may write anything there, or omit it entirely, and still pass every check, so the field measures nothing; declare a truth check over it or drop it from the artifact schema`,
+    //     ),
+    //   );
+    // }
     if (field.allowedValues === undefined) return;
     const scalar = (value: JsonValue) =>
       isString(value) || isBoolean(value) || (isNumber(value) && Number.isFinite(value));
@@ -474,7 +494,7 @@ function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): C
   return findings;
 }
 
-/** Design-rule constants are named once and cited to an external authority. */
+/** Design-rule constants are named, and named once. */
 function designRuleConstantFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const constantNames = new Set<string>();
@@ -497,15 +517,18 @@ function designRuleConstantFindings(brief: Brief): ContractFinding[] {
       );
     }
     constantNames.add(constant.name);
-    if (!constant.authority.trim() || !constant.citation.trim()) {
-      findings.push(
-        finding(
-          "brief-constant-uncited",
-          `designRuleConstants[${i}]`,
-          `"${constant.name}" has no external authority/citation — the hw22 wrong-rule-content class`,
-        ),
-      );
-    }
+    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
+    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
+    // right.
+    // if (!constant.authority.trim() || !constant.citation.trim()) {
+    //   findings.push(
+    //     finding(
+    //       "brief-constant-uncited",
+    //       `designRuleConstants[${i}]`,
+    //       `"${constant.name}" has no external authority/citation — the hw22 wrong-rule-content class`,
+    //     ),
+    //   );
+    // }
   });
   return findings;
 }
@@ -538,6 +561,9 @@ export function validateBrief(value: unknown): ValidationResult {
       ),
     );
   }
-  findings.push(...artifactSchemaFindings(brief, checks.readRoots), ...designRuleConstantFindings(brief));
+  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
+  // unread-root rule read the roots the checks declare.
+  // findings.push(...artifactSchemaFindings(brief, checks.readRoots), ...designRuleConstantFindings(brief));
+  findings.push(...artifactSchemaFindings(brief), ...designRuleConstantFindings(brief));
   return { ok: findings.length === 0, findings };
 }

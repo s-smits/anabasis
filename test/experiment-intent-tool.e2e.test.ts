@@ -20,8 +20,8 @@ const ROWS: Array<[string, IntentRow]> = [
     { tool: true, scope: "tasks", redesign: true, admitted: "climb" },
   ],
   [
-    "a tasks proposal over an edited tool is refused, then admitted as a build once revised",
-    { tool: true, scope: "tasks", redesign: true, edit: EDITS.tool, revise: true, admitted: "build" },
+    "a tasks proposal over an edited tool is admitted as a build",
+    { tool: true, scope: "tasks", redesign: true, edit: EDITS.tool, admitted: "build" },
   ],
   [
     "an edited installed tool alone is an evaluation",

@@ -560,15 +560,13 @@ live evidence.
       fixed — that is `brief.json` and `evaluator.ts` with every module it imports, which is what
       `scoringHash` covers — and changes the battery and its task-bound controls, and with them the
       reference solve and the tests. Conformance, controls and F2 all run again before measurement.
-      A known product blocker cannot be evaded by changing tasks or relabelling scope.
     - **Environment recovery** keeps the product bytes fixed, and a provider coming back cannot be
       reported as a product improvement.
 
     There is **one authoring path**. The separate fixed-harness session that prescribed a selected
     level, a family composition and a parent lineage through `DIFFICULTY.json` is gone: across 33
     recorded rounds it never once left the too-easy zone. What it taught is kept in the open path
-    as the task freeze, the changed public-input subset and the refusal of a repeated public
-    condition.
+    as the task freeze and the changed public-input subset.
 
     A measured candidate with at least one verified case and a written claim is selected through
     the retained-product transaction. A zero-verified or environment-blocked candidate is held with
@@ -605,12 +603,11 @@ live evidence.
     rather than resetting the spend.
 
     The controller loop ceilings live in `src/critic/policy.ts`: `environmentBlockedRounds 3`,
-    `buildFailedRounds 3`, `stalledFindingsRepeats 8`,
-    `noopSubmitStrikes 3`, `unchangedCandidateStrikes 3`, `toolNonResultRefusals 3`, and
-    `climb.offAimStreakRounds 3` — consecutive rounds reading one side of the aim, counted in
-    batteries, where a round whose claim was refused counts behind a placement but never on its
-    own. Runs 17f9de and c1d2a7 each reached three, and the operator stopped each by hand there.
-    Nothing is held fixed while the streak runs; the Builder keeps choosing what to change.
+    `buildFailedRounds 3`, `noopSubmitStrikes 3` and `unchangedCandidateStrikes 3`. The off-aim
+    streak — consecutive rounds reading one side of the aim, counted in batteries, where a round
+    whose claim was refused counts behind a placement but never on its own — is a readout fact and
+    stops nothing, because the route after it belongs to the Builder. Nothing is held fixed while
+    the streak runs; the Builder keeps choosing what to change.
 
 11. **Distinguish task demands from coverage and repair.** A level is an ordinal label, not an
     explanation of difficulty. New hashes, new ids, new family names, longer descriptions or more
@@ -666,21 +663,14 @@ live evidence.
     along with the duplicate Wilson implementation, and the `minLevelN` floor, which discarded a
     placement whenever the Builder had changed fewer than four tasks.
 
-    At authoring validation, at least one shared `publicInput` path declared by each family's
-    applicable truth checks must hold two distinct values. The comparison is per declared path, so
-    a check declaring a coarse one is satisfied by any change anywhere inside it: 18 firmware tasks
-    passed that validation while every one of them published the same display, the single
-    peripheral the request had named. Declared variation proves coverage, and not semantic
-    difficulty or actual verifier dependence.
+    Declared variation proves coverage, and not semantic difficulty or actual verifier dependence:
+    18 firmware tasks varied a declared public path while every one of them published the same
+    display, the single peripheral the request had named. That is why no validation rule asks a
+    family's tasks to vary any longer.
 
     An open continuation records `EXPERIMENT.json` before preview or submit. Intent cannot change a
-    score, override a gate or make identical bytes new. Refuse a repeated public condition on a
-    fixed product even after the ids, families or levels have been renamed. After a battery that
-    found no limit — above the aim, or every verified case passed — a plan declaring a climb below
-    that count must declare, for at least one family, a `move` the last battery's plan did not;
-    `repeatedMoveDetail` refuses it under `climb-battery-repeats-history` otherwise, and says it
-    compared declarations rather than semantic difficulty. Changed bytes establish membership
-    rather than semantic difficulty, and with no observations the result stays unknown.
+    score, override a gate or make identical bytes new. Changed bytes establish membership rather
+    than semantic difficulty, and with no observations the result stays unknown.
 
     `src/author/experiment-plan.ts` owns the plan's two files. The Builder alone writes
     `EXPERIMENT.json`, as `experiment-plan/v2` with a level and a move per family and a pass
@@ -698,7 +688,7 @@ live evidence.
 12. **Evaluate the requested artifact, not decorative output.** Every artifact-schema root must be
     reached by a material truth check, and every advertised capability must map to checks that can
     fail on real tasks. A root that could be removed or replaced without changing the verdict is
-    unverified decoration: refuse it before paid measurement. F2 runs **every** authored task's
+    unverified decoration. F2 runs **every** authored task's
     reference solve before adoption — an earlier version solved only `tasks[0]` — and what it
     proves is the submission path, not end-user correctness. A checker-required artifact path,
     suffix or entrypoint is part of public validity, so publish it in the brief and the operating
@@ -711,35 +701,22 @@ live evidence.
     constant within an affected family when no other applicable check derives it from artifact
     content.
 
-    Controls are what calibrate the checks. At least 5 accepts and 5 rejects — an authoring
-    requirement the Builder is told, rather than a size the gate measures, and it is worth knowing
-    which before you go looking for the code that enforces it. The floor is declared as
+    Controls are what calibrate the checks. At least 5 accepts and 5 rejects is an authoring
+    requirement the Builder is told, rather than a size the gate measures. The floor is declared as
     `evaluatorCalibration.minimumKnownPasses` and `minimumKnownFailures` in
     `thresholds.frozen.yaml`, bound through `src/claim/calibration.ts`, and asserted into the
-    starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number. What
-    the gate then runs is `validateControls` and `publicRuleFindings` (`src/truth/controls.ts`),
-    and both check coverage alone: every applicable check-by-family cell, every declared check's
-    reject, every family's reject. Of the nine places in `src` and `tools` that read
-    `corpus.accept.length` or `corpus.reject.length`, seven report the number and two test it for
-    zero; none compares it against five. The floor's one non-test consumer is
-    `acceptIndependenceFeedback` (`src/run/accept-control-independence.ts`), where it bounds a row
-    that is explicitly advisory and refuses no candidate. That is by design rather than a gap:
-    `thresholds.frozen.yaml`'s own comment records the minimum falling from 20 to 5 on 2026-09-14
-    "since the per-check and per-family witnesses already say what a corpus must cover", and those
-    witnesses are what the next three sentences describe. Every applicable
-    check-by-family cell needs one passing task-bound accept. Every applicable check needs one
-    reject that fails on its declared check, and every family needs at least one such reject, where
-    one reject may serve both — that is the operator decision of 2026-09-15, replacing one reject
-    per cell, which had asked a 6-check, 5-family truss for 30 rejects. Build each reject from the
-    known-correct accept for the same task and then change one fact; further checks may well fail
-    on it (operator decision 2026-09-14). A reject that fails elsewhere but not on its named check
-    provides no discrimination evidence. Two siblings are refused only when every applicable check
-    reads the same public input and hidden rows in both (`tasks-duplicate-condition`,
-    `variationFindings` in `src/truth/tasks.ts`), because then no artifact can pass one and fail
-    the other. One deliverable passing every sibling is not refused: that is what a ladder of
-    tightening limits looks like, and a transplant census that refused it until 2026-09-25 made
-    Builders invent constraints to get past it. Numeric boundaries get a task sitting on the value,
-    and a root no check reads is refused before measurement.
+    starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number; its
+    one non-test consumer is `acceptIndependenceFeedback`
+    (`src/run/accept-control-independence.ts`), which is advisory and refuses no candidate. What the
+    gate runs over the corpus is `validateControls` (`src/truth/controls.ts`): every control binds a
+    real task and names checks, joins and boundaries the brief declares, and each reject's named
+    check applies to its task. The census then runs every control, and an accept that fails a check
+    refuses the candidate. Build each reject from the known-correct accept for the same task and
+    then change one fact; further checks may well fail on it (operator decision 2026-09-14). A
+    reject that fails elsewhere but not on its named check provides no discrimination evidence. One
+    deliverable passing every sibling task is not refused: that is what a ladder of tightening
+    limits looks like, and a transplant census that refused it until 2026-09-25 made Builders invent
+    constraints to get past it.
 
 13. **Set one representation contract before tools and truth depend on it.** The public artifact
     schema, the writer tool schema, the DraftStore representation, submit compilation, the F2
@@ -825,15 +802,8 @@ live evidence.
     Every fresh `tools-spec.json` is to give the solver a shell through the `presets` field:
     `"files"` for a file-shaped answer, or `"shell"` beside an artifact-writer, and never both,
     since `files` already carries the shell. That is the operator decision of 2026-09-14, taken
-    after truss epochs kept declining `files`, whose draft files become the answer. The gate
-    enforces it — and this paragraph said the opposite until 2026-09-18. `solverShellFindings` in
-    `src/author/candidate-check.ts` refuses a spec with neither preset: on a fresh build, on a
-    continuation that may author the agent, and on a task-only round, which cannot select the
-    preset itself, so that refusal names the product round that can. `validateToolsSpec` is indeed
-    satisfied by `presets: []` beside an artifact-writer, so the refusal lives one layer up — but
-    no recorded bundle ever took that opening: all nine exported across campaigns 3fd52f9e-28 and
-    -10, the two of 2026-09-17 included, declare `presets: ["shell"]`. Read a measured battery's
-    roster anyway before attributing its failures to it. A Built turn is bounded by silence, one
+    after truss epochs kept declining `files`, whose draft files become the answer. Read a measured
+    battery's roster before attributing its failures to it. A Built turn is bounded by silence, one
     model call plus one command at its ceiling; a solve the whole-solve wall stops after it had
     called a tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
 
@@ -895,11 +865,12 @@ live evidence.
     process restart loses the conversation, because nothing about it is durable.
 
     `correctness_check` runs the same validation sequence submit runs, control census included, on
-    the exact immutable snapshot, as often as the bytes change. A blocked or runtime-non-result
-    preview is remembered as spent for those bytes, and unchanged bytes spend nothing. Preview and
+    the exact immutable snapshot, as often as the bytes change. A preview that reached a verdict is
+    remembered for those bytes, so unchanged bytes return its rows at no cost, and one that ended
+    without a verdict, a runtime non-result among them, is forgotten and runs again. Preview and
     submit share an in-flight gate in either call order when the candidate and installed-tool
     identities match, and submit reuses only a clear result. A thrown or host-refused gate is
-    forgotten, while the preview attempt stays spent. A refused candidate repeats by
+    forgotten too. A refused candidate repeats by
     controller-owned candidate identity, not by workspace commit. Never cache a typed runtime
     non-result as a verdict on candidate bytes.
 
@@ -935,11 +906,9 @@ child and constructs the aggregate verdict; there is no second predicate anywher
 A check declares its evidence kind. `authored` computation may name `execution.requiredToolIds`,
 including an interpreter for the Builder's own algorithm, and it keeps authored semantics.
 `external` evidence declares an installed tool as the deciding instrument: flags and names are
-passed as args, and leaf-bound files or stdin as operands. `solvability-tool-program-argument`
-refuses an external check with a multi-line argument or one over 256 bytes. The self-authored check
-refuses when every required executable's digest matches known candidate-authored source. Those are
-bounded detections rather than a general proof of provenance — an installed interpreter running the
-Builder's algorithm is still authored computation. Coverage rows carry the declared evidence kind.
+passed as args, and leaf-bound files or stdin as operands. Nothing proves provenance: an installed
+interpreter running the Builder's algorithm is still authored computation, and the claim's recorded
+tool source and digest are what disclose it. Coverage rows carry the declared evidence kind.
 Preserve the selected command path through inventory, attestation and execution, because identical
 hardlink bytes can dispatch differently under different names. Keep compilation, host simulation,
 target execution and hardware operation as separate scopes.
@@ -962,6 +931,13 @@ timeout after all conformance probes have settled remains cleanup evidence and d
 candidate. Provider and credential failures end the session with a typed terminal clause. The gate
 never compares two candidates and never judges quality: it admits a candidate that satisfies its
 own declared contract, and refuses everything else with the exact finding.
+
+The gate audit of 2026-09-25 put every refusal to one question: are we at least 98% sure it
+refuses something actually wrong? A component that passed carries a `Gate audit 2026-09-25 … kept`
+line above its producer. One the audit was unsure of is commented out in place, with its call sites
+and tests, each block under a `Gate audit 2026-09-25 … commented out (unsure)` line, and
+`docs/gate-audit.md` lists both kinds with what each refused and how to restore it. A commented-out
+refusal is not enforced, so do not describe it to a model as a rule.
 
 ### Identities, walls and process facts
 

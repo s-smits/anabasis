@@ -10,13 +10,9 @@
  * workspace, so it is in no candidate diff, no fingerprint and no `scoringHash`.
  *
  * The plan used to be read in four places with three shapes of its own — a capture, a submission
- * parse, a recorded-authoring check and a readout — and its change prose was read against the
- * fingerprint in a module of its own. Here the schema, the one strict reader, the capture, the
- * evidence file, the scoring, the advice and the compact view live together, so the context tool,
- * every continuation, `correctness_check` and `submit` all show the same reading. Admission keeps its
- * refusal policy and asks this module the three questions that read a plan: did the named files
- * move, is the target reachable, and does a climb after a battery that found no limit declare a new
- * move.
+ * parse, a recorded-authoring check and a readout. Here the schema, the one strict reader, the
+ * capture, the evidence file, the scoring, the advice and the compact view live together, so the
+ * context tool, every continuation, `correctness_check` and `submit` all show the same reading.
  *
  * Intent never changes a score or a gate outcome by itself. The reader is strict for a different
  * reason: a plan edited with a shell tool can lose a field without noticing, and a plan read
@@ -24,9 +20,8 @@
  */
 import { Type, type Static } from "typebox";
 import { Check as validateSchema } from "typebox/value";
-import { BATTERY_FILES, type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
+import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import { AGENT_DIR, CORRECTNESS_MODEL_DIR } from "../meta/bundle-layout.ts";
 import {
   closeSync,
   constants,
@@ -114,21 +109,6 @@ export const ExperimentSubmissionSchema = Type.Object(
 );
 export type ExperimentSubmission = Static<typeof ExperimentSubmissionSchema>;
 
-/** A bundle-relative path with a source or data suffix, as the prose spells it. Deliberately
- *  narrow: a sentence about "the evaluator" names no file and is read as naming nothing. */
-const PATH_TOKEN = /[A-Za-z0-9._\-/]*[A-Za-z0-9._-]\.(?:ts|tsx|json|md|ya?ml)\b/g;
-
-type NamedFile = { path: string; state: "moved" | "unmoved" | "unresolved" };
-
-/** The newest measured battery as the plan admission reads it. */
-export type LastBattery = {
-  /** Above the aim, or every verified case passed: the battery found no limit. */
-  noLimit: boolean;
-  passed: number;
-  verified: number;
-  plan: ExperimentSubmission | null;
-};
-
 /** One rehearsal as the evidence file records it: the aggregate verdict rule 4 lets a rehearsal
  *  return, and what the solve spent. No check, no verifier output and no failure location. */
 export type RehearsalRow = SolveEffort & {
@@ -173,6 +153,8 @@ function planTextRefusal(plan: ExperimentPlan): string | null {
   return null;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is read only in its one
+// schema, so its target and predictions are scored against what the Builder actually declared.
 /** The one reading of a plan. A plan without this schema is refused by name rather than read as
  *  whatever fields it still has: the shape before it carried no families and no predictions, and
  *  reading it would score a battery against a plan that declared neither. */
@@ -238,6 +220,8 @@ function capturedPlanBytes(workspace: string): string {
   }
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is captured once from a
+// bounded regular file, so it is fixed before the round that tests it.
 /** Capture the plan once, independently of candidate identity, so it is fixed before the round
  *  that tests it and cannot be tuned to the result. Rewording it produces a new digest and nothing
  *  else: it establishes membership in a new experiment, not a harder one. */
@@ -255,96 +239,6 @@ export function captureExperimentSubmission(
   }
   if (!parsed.ok) return parsed;
   return { ok: true, experiment: { ...parsed.plan, digest: hashJsonValue(parsed.plan) } };
-}
-
-// ---------------------------------------------------------------------------------------------
-// Admission questions. Each returns the refusal detail or null; the refusal policy is the caller's.
-
-/** Resolve one named path against both trees. A path neither bundle carries under either spelling
- *  is `unresolved`: the prose may be naming a workspace note, and an absent file proves nothing. */
-function resolveNamed(path: string, adopted: FingerprintEvidence, candidate: FingerprintEvidence): NamedFile {
-  const leaf = path.split("/").pop() ?? path;
-  // tasks.json and controls.json sit outside correctnessModelFiles; one hash covers the pair.
-  if (BATTERY_FILES.some((name) => name === leaf)) {
-    return { path, state: adopted.taskSetHash === candidate.taskSetHash ? "unmoved" : "moved" };
-  }
-  for (const [prefix, before, after] of [
-    [AGENT_DIR, adopted.agentFiles, candidate.agentFiles],
-    [CORRECTNESS_MODEL_DIR, adopted.correctnessModelFiles, candidate.correctnessModelFiles],
-  ] as const) {
-    const inner = path.startsWith(prefix) ? path.slice(prefix.length) : path;
-    const was = before.find((file) => file.path === inner)?.sha256 ?? null;
-    const is = after.find((file) => file.path === inner)?.sha256 ?? null;
-    if (was === null && is === null) continue;
-    return { path, state: was === is ? "unmoved" : "moved" };
-  }
-  return { path, state: "unresolved" };
-}
-
-/** When the plan's change names bundle files and none of them moved. A single moved file settles
- *  it: prose that names an unchanged file for context is not a false declaration. The change can
- *  declare a repair across three rounds while the file keeps one hash throughout, and nothing else
- *  reads the prose against the snapshot. */
-export function unmovedChangeDetail(
-  change: string,
-  adopted: FingerprintEvidence,
-  candidate: FingerprintEvidence,
-): string | null {
-  const paths = new Set(
-    [...change.matchAll(PATH_TOKEN)].flatMap((match) => {
-      const path = match[0].replace(/^\.\//, "").replace(/^\/+/, "");
-      return path.length > 0 ? [path] : [];
-    }),
-  );
-  const named = [...paths].map((path) => resolveNamed(path, adopted, candidate));
-  const unmoved = named.flatMap((file) => (file.state === "unmoved" ? [file.path] : []));
-  if (unmoved.length === 0 || named.some((file) => file.state === "moved")) return null;
-  return `The change names ${unmoved.join(", ")}, and every one of them is byte-identical to the adopted product. Make the change in the bytes, or rewrite the change to name what this candidate actually moved; submit again in this session.`;
-}
-
-/** When the target counts more verified passes than the battery has slots. */
-export function unreachableTargetDetail(plan: ExperimentPlan, slots: number): string | null {
-  const count = plan.target.verifiedPasses;
-  return count > slots
-    ? `The target counts ${count} verified passes, but the submitted battery has ${slots} task slots. Bind a count within the battery before measuring.`
-    : null;
-}
-
-/** The newest battery whose claim stands, read off the recorded readout rows; undefined when none
- *  stands. A battery above the aim or passing every verified case found no limit. */
-export function lastBatteryOf(
-  rows: ReadonlyArray<{
-    claimRefusal: string | null;
-    zone: string | null;
-    passed: number | null;
-    verified: number;
-    experiment: { proposal: unknown } | null;
-  }>,
-): LastBattery | undefined {
-  const row = rows.find(
-    (item): item is typeof item & { passed: number } => item.claimRefusal === null && item.passed !== null,
-  );
-  if (row === undefined) return undefined;
-  const above = row.zone === "over-aim" || row.zone === "too-easy";
-  return {
-    noLimit: above || (row.verified > 0 && row.passed === row.verified),
-    passed: row.passed,
-    verified: row.verified,
-    plan: row.experiment === null ? null : parseExperimentSubmission(row.experiment.proposal),
-  };
-}
-
-const sameWords = (text: string) => text.trim().replaceAll(/\s+/g, " ").toLocaleLowerCase();
-
-/** When a plan declares a climb — a target below the last battery's passes — after a battery that
- *  found no limit, and every family it names declares the move the last plan declared. A family
- *  the last plan did not name is a new move. This compares declarations, never semantic difficulty,
- *  and without a last plan there is nothing to compare, so it never fires. */
-export function repeatedMoveDetail(last: LastBattery | undefined, plan: ExperimentPlan): string | null {
-  if (last?.noLimit !== true || last.plan === null || plan.target.verifiedPasses >= last.passed) return null;
-  const before = new Map(last.plan.families.map((row) => [row.family, sameWords(row.move)]));
-  if (plan.families.some((row) => before.get(row.family) !== sameWords(row.move))) return null;
-  return `The last battery passed ${last.passed} of ${last.verified} verified cases and found no limit, and this plan declares a climb to ${plan.target.comparator} ${plan.target.verifiedPasses}, but every family declares the move the last battery's plan declared. This compares the declared moves, not semantic difficulty: name for at least one family the new reasoning step its tasks now demand of the solver, and make the tasks demand it.`;
 }
 
 // ---------------------------------------------------------------------------------------------

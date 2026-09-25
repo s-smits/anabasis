@@ -288,6 +288,7 @@ export function nextBlockedRounds(prev: number, result: IterationResult): number
   return delivered ? 0 : prev + 1;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, environment-blocked-ceiling): kept: batteries of typed non-results create no evidence, so remeasuring the same environment buys nothing (rule 15)
 function loopGuardTerminal(loop: LoopState): string | null {
   if (loop.budget.status() === "budget_limited") {
     return "budget-limited: the campaign model-call budget is spent (--iteration-budget raises it)";
@@ -322,6 +323,7 @@ export function terminalEvidenceFor(
  *  unresolved-authoring allowance rather than being free, and a clause that already carries its own
  *  bounded escalation or its own owner — `authoring-stalled`, `environment-blocked` — stays
  *  terminal, since retrying it would only spend the allowance on the same wall. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, build-failed-ceiling): kept: a round that admits no candidate measures nothing, so its retries share one bounded allowance
 function buildFailedTerminal(result: IterationResult, loop: LoopState): string | null {
   if (result.nextDecision?.move === "stop") return `stopped: ${result.nextDecision.reason}`;
   const retryMove = result.nextDecision?.move;
@@ -338,8 +340,8 @@ function buildFailedTerminal(result: IterationResult, loop: LoopState): string |
   return `build-failed: the final iteration produced no build-admissible candidate${clauses}; earlier recorded iterations keep their own evidence`;
 }
 
-/** A held candidate keeps its packet and shares the unresolved-authoring allowance with a failed
- *  build, so an authoring round may continue into a further measure or rebuild. What decides
+/** A held candidate keeps its packet and, once its battery verified a case, shares the
+ *  unresolved-authoring allowance with a failed build, so an authoring round may continue into a further measure or rebuild. What decides
  *  whether the next round is a new experiment is the active admission and decision key, not the
  *  wording of the clauses: clause prose alone cannot reset an allowance. */
 function heldCandidateTerminal(result: IterationResult, loop: LoopState): string | null {
@@ -379,8 +381,8 @@ export function loopTerminal(result: IterationResult, loop: LoopState): string |
 /**
  * Counts unresolved authoring rounds under one active admission and decision basis.
  *
- * A failed build and a held candidate are the same unresolved authoring problem as far as this
- * guard is concerned, so they share one state. That is what makes `held -> failed -> held` reach
+ * A failed build and a held candidate whose battery verified a case are the same unresolved
+ * authoring problem as far as this guard is concerned, so they share one state. That is what makes `held -> failed -> held` reach
  * the same finite allowance as three failed builds, instead of resetting one counter every time
  * the outcome changes shape.
  *
@@ -415,8 +417,12 @@ export function nextUnresolvedAuthoringStall(
 /** Identity of one unresolved authoring round, or null for a round that authored no unresolved candidate. */
 function unresolvedAuthoringKey(result: IterationResult): string | null {
   const { promotion } = result.steps;
+  // Gate audit 2026-09-25 (docs/gate-audit.md, held-candidate-ceiling): commented out (unsure): a zero-verified battery is the hard battery prior 10 asks for, not an authoring stall
+  // const unresolved =
+  //   result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
   const unresolved =
-    result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
+    result.build === "build-failed" ||
+    (result.build === "candidate" && promotion?.decision === "held" && promotion.battery?.verified !== 0);
   if (!unresolved) return null;
   // Key the round by what it consumed. A produced digest is new for every analysed round by
   // construction, so preferring it gives each unresolved round its own key and the declared

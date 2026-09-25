@@ -9,8 +9,7 @@
  *
  * Routing is the other half. An environment failure that reads as a product failure sends the
  * Builder to repair something that was never broken, and a declaration the author made — a tool
- * that resolves nowhere, one only the author wrote, one handed its program as an argument — must
- * reach the owner who can change that declaration.
+ * that resolves nowhere — must reach the owner who can change that declaration.
  *
  * Every case here hands the gate a probe double: what runs the census over a real bundle is
  * `solvability-*.test.ts` beside this one, and constant reference output across inputs is measured
@@ -137,16 +136,18 @@ describe("a refused declaration reaches the owner who can change it", () => {
       "correctness-model",
       'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
     ],
-    [
-      "solvability-tool-self-authored",
-      "brief",
-      "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
-    ],
-    [
-      "solvability-tool-program-argument",
-      "brief",
-      "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
-    ],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
+    // [
+    //   "solvability-tool-self-authored",
+    //   "brief",
+    //   "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
+    // ],
+    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
+    // [
+    //   "solvability-tool-program-argument",
+    //   "brief",
+    //   "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
+    // ],
   ])("%s goes to %s as its own blocking row", async (code, owner, detail) => {
     const { feedback, authorVisible } = await census(
       code,

@@ -260,6 +260,7 @@ function persistFailure(
   return feedback;
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the host environment refused settles as a typed non-result, never as a verdict on the candidate
 /**
  * One settlement for a census the host environment refused: the recorded evidence behind a digest
  * pointer, and a single environment-owned refusal row.
@@ -427,6 +428,7 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
 const censusName = (error: VerifierExecutionNonResult): string =>
   error.evidence.phase === "solvability" ? "solvability census" : "control census";
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: the host's own outcome kind decides whether a tool non-result is the author's or the environment's, and neither is a verdict
 /**
  * A tool run that started and then failed is the Builder's defect, not the environment's, and the
  * distinction decides whether a campaign continues. A declared `node checker.js` in a cell where
@@ -473,6 +475,7 @@ function settleNonResult(
   });
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a tool the host could not run twice is the environment's outage, not the candidate's defect
 function settleToolUnavailable(
   context: CensusContext,
   error: VerifierExecutionNonResult,
@@ -487,6 +490,7 @@ function settleToolUnavailable(
   );
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the wall cut reached no verdict, and its time is the candidate's own bytes to cut
 /** A census the wall cut settles like a tool run that timed out: the checks and the reference
  *  solve are the candidate's own bytes, so the time they take is the Builder's to cut. Treating it
  *  as an environment non-result instead ends the session at its first submit over a candidate with
@@ -588,6 +592,7 @@ function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
   ];
 }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: a census that did not run under the verifier identity captured at submit graded a different condition from the one measured
 /** The control findings, with the drift the census observed against the identity captured at submit. */
 function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): ContractFinding[] {
   const captured = harness.conformance?.verifierEnvironmentHash;

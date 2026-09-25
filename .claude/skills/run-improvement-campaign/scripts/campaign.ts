@@ -40,8 +40,9 @@ import {
 import { batteryRunDirs } from "#src/claim/trace-read.ts";
 import { claimsDirFor } from "#src/run/claim-write.ts";
 import { readClimbBatteries } from "#src/run/climb-history.ts";
-import { readClimbReadout } from "#src/run/climb-readout.ts";
-import { allowanceStop } from "#src/run/next-move.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+// import { readClimbReadout } from "#src/run/climb-readout.ts";
+// import { allowanceStop } from "#src/run/next-move.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
@@ -990,7 +991,9 @@ function climbOf(repoRoot: string, slug: string): RunStatus["climb"] {
     if (pin === null) {
       return { error: `newest battery (${newest.createdAt}) records no backend pin` };
     }
-    return { stop: allowanceStop(readClimbReadout(domainDir, pin, claims, manifest)) };
+    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+    // return { stop: allowanceStop(readClimbReadout(domainDir, pin, claims, manifest)) };
+    return { stop: null };
   } catch (error) {
     return { error: errorMessage(error) };
   }

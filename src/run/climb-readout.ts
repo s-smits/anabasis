@@ -534,7 +534,8 @@ function allowanceLines(readout: ClimbReadout): string[] {
   return [
     fill(FRAME.readout.allowance, {
       rounds,
-      limit: POLICY.climb.offAimStreakRounds,
+      // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+      // limit: POLICY.climb.offAimStreakRounds,
       side,
       placed,
       refused,
@@ -668,9 +669,7 @@ export function readoutHistoryDocuments(
 ): ContextDocument[] {
   const note = fill(FRAME.history.note, { legend: FRAME.readout.legend, zones: FRAME.readout.zones });
   // The allowance rides along because it is the one readout field the rows cannot reconstruct: it
-  // counts placements across product identities and includes claim-refused rounds. A Builder that
-  // cannot see it is two rounds into a three-round stop takes a smaller step than the evidence
-  // warrants.
+  // counts placements across product identities and includes claim-refused rounds.
   const overview = {
     band: readout.band,
     allowance: readout.allowance,
@@ -681,7 +680,7 @@ export function readoutHistoryDocuments(
     {
       id: "history/overview",
       source: "history",
-      title: "every measured battery, newest first, with the band and the off-aim allowance",
+      title: "every measured battery, newest first, with the band and the off-aim streak",
       text: () => `${note}\n${capturedJsonStringify(overview, null, 2)}`,
     },
     ...history.toReversed().map((row): ContextDocument => {

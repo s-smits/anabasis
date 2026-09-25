@@ -49,8 +49,8 @@ public condition recurs on a fixed product.
 Block 4, workshop and spend, reads the tool installs and the ledger. Block 4b, band placement,
 reads `difficulty-decisions/<runId>-<digest>.json` (`difficulty-decision/v6`) for the
 `placement.zone`, the target result and the off-aim allowance: `TARGET MISSED (lane 10)` where
-the declared `target` reads `missed`, and `OFF-AIM STREAK (lane 10)` where the allowance's rounds
-have reached `POLICY.climb.offAimStreakRounds`; an over-aim zone with no trigger of its own is
+the declared `target` reads `missed`, and `OFF-AIM STREAK (lane 10)` where two or more
+consecutive placements sit on one side of the aim; an over-aim zone with no trigger of its own is
 read by lanes 5 and 12. Block 4c, role spend and censoring, reads `providerResourceBudget.byRole`
 and the retry rows: `REVIEW TURNS EXCEED SOLVER TURNS (lane 24)`, `DECISION ON CENSORED BATTERY
 (lane 24)` where a decision was taken on a battery the environment cut short, and `EXPLICIT

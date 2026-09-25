@@ -100,7 +100,9 @@ describe("runs pulse", () => {
     expect(texts(first, { ...first, now: first.now + MINUTE })).toEqual([]);
   });
 
-  it("names a recorded battery with its placement and the streak that would stop the campaign", () => {
+  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
+  // it("names a recorded battery with its placement and the streak that would stop the campaign", () => {
+  it("names a recorded battery with its placement and its off-aim streak", () => {
     const before = reading(60, { batteries: [battery(6, 6, "too-easy")] });
     const claim = transition(61, "claim", "completed", {
       summary: "battery recorded — claim 7/7 truth",
@@ -114,9 +116,7 @@ describe("runs pulse", () => {
     };
     const [event, ...rest] = pulseEvents(before, after, SLUG);
     expect(rest).toEqual([]);
-    expect(event?.text).toBe(
-      "battery recorded: 7/7 pass of verified, too-easy, above the aim 2 of 3 in a row; one more above the aim stops the campaign",
-    );
+    expect(event?.text).toBe("battery recorded: 7/7 pass of verified, too-easy, above the aim 2 in a row");
     expect(event?.look).toEqual(["claims/<run>-i02.json"]);
   });
 
@@ -140,7 +140,7 @@ describe("runs pulse", () => {
       round: round({ number: 2, epoch: "epoch-b", checkpointAt: at(91) }),
     };
     expect(texts(before, after)).toEqual([
-      "◆ round 2 opened, a rebuild; last battery 7/7 pass of verified, too-easy, above the aim 1 of 3 in a row",
+      "◆ round 2 opened, a rebuild; last battery 7/7 pass of verified, too-easy, above the aim 1 in a row",
     ]);
   });
 

@@ -37,15 +37,11 @@ unsettled stage stops the rest, and F2 runs beside the census unless conformance
 **1. Bundle contract.** Reads the eight files. No timer.
 - `missing-bundle-file`: every file above exists, is readable and, where it is JSON, parses.
 - `tasks-shape`: `tasks.json` is a bare array of task rows, not `{"tasks": [...]}`.
-- `operating-guide-shape`: the guide is non-empty, has the seed placeholder removed and stays
-  under its byte cap.
 
 **2. Validation.** Validates the brief, tasks and controls against each other. No timer.
 - `shape-mismatch`: a row misses a field. A constant is
   `{"name": "maxShiftHours", "value": 8, "unit": "h", "authority": "Staff policy", "citation": "Section 2.1"}`.
-- `brief-artifact-root-unread`: name every root in some check's `artifactPaths`.
-- `tasks-duplicate-condition`: two siblings give every applicable check the same public input and
-  hidden rows. Change a declared condition in one of them, or remove it.
+- `tasks-exact-census`: the battery holds the number of tasks the round asks for.
 
 **3. Conformance.** Typechecks and loads `agent/` and `correctness-model/`, opens every task
 through the generated tools and runs each tool once. Walls: 30 s per module import and per tool
@@ -60,30 +56,19 @@ call.
 **4. Control census.** Runs every applicable check on each accept and only `expectedCheckId` on
 each reject, four examples at a time with the installed tools, on a host that may be busy. Each
 tool call gets a fresh empty home. This stage and F2 share one wall.
-- `DISCRIMINATION_REJECT_PASSED`: a reject passed the check it names. Change one fact of that
-  task's accept so the check fails, or fix the check.
 - `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief.
-- `DISCRIMINATION_CONTROL_RECEIPT_INVALID`: receipts match declarations: accepts pass, rejects
-  fail their named check, and no hidden row belongs to a check declaring `"hidden": "none"`.
+- `DISCRIMINATION_NOT_PROVEN`: a check threw on an example, or an example names a task outside
+  the battery.
 
-**5. Grounding.** Reads the tool runs the census recorded. No timer.
-- `external-check-tool-unlaunched`: the check calls `runtime.tools.run` for its declared tool.
-- `generated-external-grounding-unexecuted`: every example completes a run of each required tool
-  before the check returns. A check may not return early on some examples and call the tool for
-  others.
-
-**6. F2 reference solve.** Resolves required tools, then builds every task's artifact with
+**5. F2 reference solve.** Resolves required tools, then builds every task's artifact with
 `reference/index.ts` through the public submission path and runs the checks over it, four tasks
 at a time, each within a per-task wall.
-- `solvability-tool-self-authored`: a required executable that is your own file belongs to
-  `{"kind": "authored"}` evidence.
-- `solvability-tool-program-argument`: external evidence passes no multi-line argument and none
-  over 256 bytes; operands go in files or stdin.
+- `solvability-tool-missing`: every tool an external check names resolves under `.toolchain` or
+  on the host PATH.
 - `SOLVABILITY_CENSUS_BLOCKED`: every task's reference solve passes within its wall. Bound a
   search by a fixed iteration count, since a clock budget changes the answer between runs. A
   longer search, however long it runs, records its best artifact per task in a module under
   `reference/` for `solve` to return, so the wall bounds only the replay.
-The first two arrive upper-case with underscores.
 
 ```ts
 import type { CheckFn } from "@ana/correctness-model-bundle";

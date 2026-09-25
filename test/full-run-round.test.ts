@@ -250,6 +250,17 @@ describe("the shared unresolved-authoring allowance", () => {
     expect(loopTerminal(rounds.at(-1)!, { ...quiet, authoringStall: stall })).toStartWith(ending);
   });
 
+  it("leaves a zero-verified hold out of the allowance", () => {
+    const nonzero = heldOn(undefined);
+    const zeroVerified: IterationResult = {
+      ...nonzero,
+      steps: { ...nonzero.steps, promotion: double({ decision: "held", battery: { verified: 0 } }) },
+    };
+    const stall = nextUnresolvedAuthoringStall(null, nonzero);
+    expect(nextUnresolvedAuthoringStall(stall, zeroVerified)).toBe(stall);
+    expect(nextUnresolvedAuthoringStall(null, zeroVerified)).toBeNull();
+  });
+
   it("opens a new stall each round the consumed basis advances", () => {
     let stall: UnresolvedAuthoringStall | null = null;
     for (const basis of ["basis-1", "basis-2", "basis-3"]) {

@@ -117,13 +117,13 @@ const REFUSALS = {
     evidence: {
       discrimination: {
         claimable: false,
-        findings: [{ code: "DISCRIMINATION_REJECT_PASSED", message: "a reject passed its check" }],
+        findings: [{ code: "DISCRIMINATION_ACCEPT_REJECTED", message: "an accept was rejected" }],
         attributedCheckIds: { c1: 1 },
       },
     },
-    clause: "DISCRIMINATION_REJECT_PASSED",
+    clause: "DISCRIMINATION_ACCEPT_REJECTED",
     repairable: false,
-    detail: "a reject passed its check",
+    detail: "an accept was rejected",
   },
   "an unfingerprinted bundle": {
     evidence: { bundles: null },
@@ -210,33 +210,34 @@ const REFUSALS = {
     repairable: false,
     detail: "[__proto__]",
   },
-  "a check named __proto__ with no own attribution key": {
-    evidence: {
-      ...protoCheck,
-      discrimination: { claimable: true, findings: [], attributedCheckIds: {} },
-      truthCheckFiring: firing(protoCounts(4), protoCounts(4)),
-    },
-    score: protoScore,
-    clause: "intrinsic-grounding-uncovered",
-    repairable: false,
-    detail: '"__proto__"',
-  },
-  "an authored check no reject control failed on": {
-    evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: {} } },
-    clause: "intrinsic-grounding-uncovered",
-    repairable: false,
-  },
-  "an authored check whose attribution count is zero": {
-    evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 0 } } },
-    clause: "intrinsic-grounding-uncovered",
-    repairable: false,
-  },
-  "an authored check only a neighbouring check's rejects attribute": {
-    evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { other: 5 } } },
-    clause: "intrinsic-grounding-uncovered",
-    repairable: false,
-    detail: 'check "c1"',
-  },
+  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+  // "a check named __proto__ with no own attribution key": {
+  //   evidence: {
+  //     ...protoCheck,
+  //     discrimination: { claimable: true, findings: [], attributedCheckIds: {} },
+  //     truthCheckFiring: firing(protoCounts(4), protoCounts(4)),
+  //   },
+  //   score: protoScore,
+  //   clause: "intrinsic-grounding-uncovered",
+  //   repairable: false,
+  //   detail: '"__proto__"',
+  // },
+  // "an authored check no reject control failed on": {
+  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: {} } },
+  //   clause: "intrinsic-grounding-uncovered",
+  //   repairable: false,
+  // },
+  // "an authored check whose attribution count is zero": {
+  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { c1: 0 } } },
+  //   clause: "intrinsic-grounding-uncovered",
+  //   repairable: false,
+  // },
+  // "an authored check only a neighbouring check's rejects attribute": {
+  //   evidence: { discrimination: { claimable: true, findings: [], attributedCheckIds: { other: 5 } } },
+  //   clause: "intrinsic-grounding-uncovered",
+  //   repairable: false,
+  //   detail: 'check "c1"',
+  // },
   "no grounding at all": { evidence: { grounding: null }, clause: "grounding-missing", repairable: false },
   "a grounding that declares no check": {
     evidence: { grounding: { declared: [], execution: NO_EXTERNAL_EXECUTION } },

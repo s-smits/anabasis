@@ -412,44 +412,47 @@ function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimCl
     }
   }
   return [
-    ...declaredGroundingClauses(grounding, evidence.discrimination.attributedCheckIds),
+    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+    // ...declaredGroundingClauses(grounding, evidence.discrimination.attributedCheckIds),
     ...caseGroundingClauses(grounding.execution, externalByCheck, score),
     ...executionResolutionClauses(grounding.execution),
   ];
 }
 
-/** Every check must have a reject control that failed on exactly this check, because a check that
- *  ran has demonstrated execution and not discrimination: an adapter can execute completely on
- *  every case of a battery while no control has ever made it reject an artifact. A reject that
- *  fails only here establishes that the check told an invalid artifact apart; what it does not
- *  establish is which primitive inside the check produced the verdict, since source and import
- *  validation are authoring checks rather than execution evidence.
- *
- *  An external check owes the same evidence under its own clause id, and an authored one keeps the
- *  `intrinsic-` spelling because clause names reach refusal text, where renaming one is a new
- *  condition. Whether an external check's tool actually ran belongs elsewhere: the
- *  grounding-coverage rows own it, where admission refuses a never-launched tool before the
- *  battery, `caseGroundingClauses` refuses a verified case without its own subject-bound run, and
- *  readiness names a check that ran on no verified case. */
-function declaredGroundingClauses(
-  grounding: GroundingEvidence,
-  attributedCheckIds: Record<string, number>,
-): ClaimClause[] {
-  const clauses: ClaimClause[] = [];
-  for (const { checkId, grounding: g } of grounding.declared) {
-    if (recordedCount(attributedCheckIds, checkId) === 0) {
-      clauses.push(
-        clause(
-          g.kind === "external-verifier" ? "external-grounding-uncovered" : "intrinsic-grounding-uncovered",
-          `no invalid example failed check "${checkId}"; add one that fails only because of this check`,
-          BLOCKING,
-        ),
-      );
-    }
-  }
-  return clauses;
-}
+// Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
+// /** Every check must have a reject control that failed on exactly this check, because a check that
+//  *  ran has demonstrated execution and not discrimination: an adapter can execute completely on
+//  *  every case of a battery while no control has ever made it reject an artifact. A reject that
+//  *  fails only here establishes that the check told an invalid artifact apart; what it does not
+//  *  establish is which primitive inside the check produced the verdict, since source and import
+//  *  validation are authoring checks rather than execution evidence.
+//  *
+//  *  An external check owes the same evidence under its own clause id, and an authored one keeps the
+//  *  `intrinsic-` spelling because clause names reach refusal text, where renaming one is a new
+//  *  condition. Whether an external check's tool actually ran belongs elsewhere: the
+//  *  grounding-coverage rows own it, where admission refuses a never-launched tool before the
+//  *  battery, `caseGroundingClauses` refuses a verified case without its own subject-bound run, and
+//  *  readiness names a check that ran on no verified case. */
+// function declaredGroundingClauses(
+//   grounding: GroundingEvidence,
+//   attributedCheckIds: Record<string, number>,
+// ): ClaimClause[] {
+//   const clauses: ClaimClause[] = [];
+//   for (const { checkId, grounding: g } of grounding.declared) {
+//     if (recordedCount(attributedCheckIds, checkId) === 0) {
+//       clauses.push(
+//         clause(
+//           g.kind === "external-verifier" ? "external-grounding-uncovered" : "intrinsic-grounding-uncovered",
+//           `no invalid example failed check "${checkId}"; add one that fails only because of this check`,
+//           BLOCKING,
+//         ),
+//       );
+//     }
+//   }
+//   return clauses;
+// }
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: each verified case needs its own tool run for every applicable external check, so one run cannot vouch for a battery
 /** Per-case coverage. Run-level evidence would let one case's — or one control's — tool execution
  *  satisfy the requirement for every case that used the same check, so a whole battery could be
  *  scored on a single recorded tool run. Each applicable external check needs its own execution

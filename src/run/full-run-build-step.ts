@@ -13,12 +13,13 @@ import {
   type AdmittedClimbRow,
   type ClimbBatteriesRead,
   climbThresholds,
-  priorPublicFingerprints,
   readClimbBatteries,
 } from "./climb-history.ts";
+// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+// admitted-history public battery prints only the repeated-condition refusal read.
+// import { priorPublicFingerprints } from "./climb-history.ts";
 import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
-import { lastBatteryOf } from "../author/experiment-plan.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { harnessBundleIdentity } from "./climb-battery-admission.ts";
@@ -139,6 +140,7 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
  *  `unchangedCandidateSubmissions` is the durable per-commit tally counting this record, so
  *  reaching the ceiling adds the exact `authoring-stalled` literal the terminal reads, beside a
  *  clause naming the commit and the count. */
+// Gate audit 2026-09-25 (docs/gate-audit.md, unchanged-candidate-strike): kept: a round that settles on its own entry tree has nothing new to measure
 function unchangedCandidateClauses(outcome: BuildOutcome, unchangedCommit: string): string[] {
   const records = outcome.buildAdmissible ? outcome.unchangedCandidateSubmissions : 0;
   if (records < POLICY.loop.unchangedCandidateStrikes) return ["candidate-unchanged"];
@@ -198,8 +200,7 @@ function settleBuildOutcome(
  *  author reads what was recorded — whenever one exists, and a rebuild also reads the issue
  *  register's advice. A first build with nothing measured behind it reads neither: its reason
  *  states no measurement. The advice packet is families, kinds and counts by construction
- *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the admitted-history
- *  prints the repeat refusal compares a task-only experiment with and the sizing landing. The
+ *  (rebuild-advice.ts), so nothing protected crosses. The same read supplies the sizing landing. The
  *  history pages read every recorded model pin and threshold manifest with its condition labels:
  *  another condition enters no placement or allowance, and its public tasks stay readable. */
 function composeAuthoringMemory(
@@ -237,8 +238,9 @@ function composeAuthoringMemory(
     advisoryNote,
     measured,
     band: climbThresholds(manifestPath).band,
-    priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
-    lastBattery: readout === null ? undefined : lastBatteryOf(readout.rows),
+    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+    // admitted-history public battery prints only the repeated-condition refusal read.
+    // priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
   };
 }
 
@@ -254,7 +256,10 @@ export async function runBuildStep(
   const { move } = decision;
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const memory = composeAuthoringMemory(input, decision, domainDir, difficulty);
-  const { priorPublicTaskFingerprints, advice, band } = memory;
+  const { advice, band } = memory;
+  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+  // admitted-history public battery prints only the repeated-condition refusal read.
+  // const { priorPublicTaskFingerprints } = memory;
   const tasks = batterySizingGate(
     manifest.expectedTasks,
     adoptedTaskCount(domainDir),
@@ -303,8 +308,9 @@ export async function runBuildStep(
         experiment: "build",
         productVersionId: input.runId,
         band,
-        priorPublicTaskFingerprints,
-        ...keyIfDefined("lastBattery", memory.lastBattery),
+        // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
+        // admitted-history public battery prints only the repeated-condition refusal read.
+        // priorPublicTaskFingerprints,
         ...keyIfDefined("measured", memory.measured),
         // Reopen on the exact evidence identity. The round starts from adopted bytes, and a
         // redesign is the Builder's harness_reset call. Reusing this epoch preserves in-flight

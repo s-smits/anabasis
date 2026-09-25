@@ -9,7 +9,14 @@
  * the bytes moved decides the scope, never the loop that asked for the round, and a reopened or
  * resumed workspace keeps the edits it was interrupted in.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import {
@@ -266,7 +273,7 @@ describe("the admission a repair earns", () => {
             // The drift and a bundle break go in together: the refusal commits both without
             // settling, and the follow-up submit's own diff carries only the guide restore.
             writeFileSync(join(workspace, "agent/tools.ts"), "// cross-owner rewrite\n");
-            writeFileSync(join(workspace, "agent/BUILT_AGENTS.md"), "");
+            rmSync(join(workspace, "agent/BUILT_AGENTS.md"));
             await submit.execute("submit-2", {});
             writeFileSync(
               join(workspace, "agent/BUILT_AGENTS.md"),
@@ -327,9 +334,8 @@ describe("the admission a repair earns", () => {
   });
 
   it.concurrent("admits a model-proposed controls repair and records the proposal captured at submit", async () => {
-    const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-rebuild-unmoved-");
+    const { campaignDir, workspace, adoptedDir } = adoptedRound("ana-primary-controls-repair-");
     let captured: ReturnType<typeof proposeExperiment> | undefined;
-    let reply = "";
     const outcome = await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 1, experiment: "build", adoptedDir },
       {
@@ -342,13 +348,12 @@ describe("the admission a repair earns", () => {
           scriptedSession(async () => {
             touch(workspace, "correctness-model/controls.json");
             captured = proposeExperiment(workspace);
-            reply = await replyText(submitTool(tools), "rebuild-unmoved");
+            await replyText(submitTool(tools), "controls-repair");
             return { status: "completed", assistantText: "submitted" };
           }),
       },
     );
     expect(outcome.buildAdmissible).toBe(true);
-    expect(reply).not.toContain("rebuild-evaluation-unmoved");
     expect(outcome.experimentProposal).toEqual(captured);
     expect(outcome.iterations[0]?.experimentProposal).toEqual(captured);
     expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toEqual(captured);

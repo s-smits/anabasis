@@ -52,8 +52,6 @@ export interface IntentRow {
   /** The owner of an admitted blocking finding about the adopted product. */
   owner?: FeedbackOwner;
   edit?: (workspace: string) => void;
-  /** Refused as a scope mismatch first, then revised to product scope in the same session. */
-  revise?: true;
   /** An edit made while the gates run, after submit captured the candidate. */
   midGate?: (workspace: string) => void;
   /** No conformance probes run, so the submission condition stays unproven: a build. */
@@ -72,9 +70,8 @@ export function censusGates(lifetime: VerifierLifetime) {
   });
 }
 
-/** One scripted Builder turn: edit the workspace and submit, and optionally revise after a
- *  scope-mismatch refusal and submit again. */
-function scriptedBuilderTurn(edit: () => void, revise?: () => void) {
+/** One scripted Builder turn: edit the workspace and submit. */
+function scriptedBuilderTurn(edit: () => void) {
   const last = { prompt: "", submission: "" };
   const open: BuilderCampaignDeps["open"] = async (tools) =>
     scriptedSession(async ({ prompt }) => {
@@ -85,11 +82,6 @@ function scriptedBuilderTurn(edit: () => void, revise?: () => void) {
         "campaign submit tool",
       );
       last.submission = JSON.stringify(await submit.execute("submit", {}));
-      if (revise !== undefined) {
-        expect(last.submission).toContain("experiment-scope-mismatch");
-        revise();
-        last.submission = JSON.stringify(await submit.execute("revised", {}));
-      }
       return { status: "completed", assistantText: "submitted" };
     });
   return { open, last };
@@ -178,23 +170,17 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
     const adoptedGuide = readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8");
     const campaignDir = join(root, "continuation");
     const workspace = join(campaignDir, "workspace");
-    const writePlan = (scope: IntentRow["scope"]) =>
-      writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(proposal(scope)));
     const gates = censusGates(lifetime);
     let gateCalls = 0;
-    const session = scriptedBuilderTurn(
-      () => {
-        uppercaseFixture(workspace, row.redesign, row.tool);
-        row.edit?.(workspace);
-        writePlan(row.scope);
-      },
-      row.revise ? () => writePlan("product") : undefined,
-    );
+    const session = scriptedBuilderTurn(() => {
+      uppercaseFixture(workspace, row.redesign, row.tool);
+      row.edit?.(workspace);
+      writeFileSync(join(workspace, EXPERIMENT_FILE), JSON.stringify(proposal(row.scope)));
+    });
     const outcome = await runBuilderCampaign(
       {
         ...FRESH,
         campaignDir,
-        maxTurns: row.revise ? 2 : 1,
         experiment: "build",
         adoptedDir,
         priorEvidence: priorEvidence(row.owner),
@@ -210,8 +196,7 @@ export async function checkIntent(shared: AdoptedProduct, row: IntentRow): Promi
         },
       },
     );
-    // An admission refusal still runs the gates once, so one submit reports every stage, and a
-    // revised proposal over the same bytes does not pay for them again.
+    // An admission refusal still runs the gates once, so one submit reports every stage.
     expect(gateCalls).toBe(1);
     expect(readFileSync(join(adoptedDir, "agent/BUILT_AGENTS.md"), "utf8")).toBe(adoptedGuide);
     if (row.refused !== undefined) {

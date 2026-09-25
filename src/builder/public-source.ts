@@ -16,6 +16,7 @@ import { closeSync, mkdtempSync, openSync, rmSync, unlinkSync, writeSync } from 
 import { tmpdir } from "../meta/os.ts";
 import { join } from "../meta/path.ts";
 
+// Gate audit 2026-09-25 (docs/gate-audit.md, public-source-limits): kept: the public-address, redirect, size and time bounds keep the brokered fetch off private hosts and bounded
 const MAX_BYTES = 64 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_MS = 120_000;

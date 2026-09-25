@@ -230,7 +230,7 @@ describe("one reading per battery", () => {
     });
     const text = render(readout);
     expect(text).toContain("| claim refused: verifier environment unbound |");
-    expect(text).toContain("Off-aim allowance: 3 of 3 consecutive rounds have ended above the aim");
+    expect(text).toContain("Off-aim streak: 3 consecutive rounds have ended above the aim");
     expect(text).toContain(
       "Families of the latest admitted battery (passes of attempts, Wilson interval): beams 11/11",
     );

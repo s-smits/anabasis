@@ -140,6 +140,7 @@ function candidateStateClauses(
       'candidate-claim-refused: its claim stages end at "measured", so its battery wrote no claim and cannot replace a tree',
     );
   }
+  // Gate audit 2026-09-25 (docs/gate-audit.md, candidate-zero-verified): kept: a candidate with no verified case holds no capability evidence to replace a selected product with
   if (battery?.verified === 0) {
     clauses.push(
       "candidate-zero-verified: the candidate's battery verified no case, which is an operational result and no capability result, so it cannot replace a tree that has one",

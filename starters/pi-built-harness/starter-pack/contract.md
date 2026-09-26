@@ -126,6 +126,14 @@ there; one under TMPDIR is rebuilt on every run.
   declared artifact/public projection, and a request binding no such leaf or naming another
   check's tool is refused. For authored evidence, they may be constructed text,
   including test drivers and private scenarios derived from this check's own operands.
+- A driver, fake header, stub library or mocked API standing in for the real platform passes only
+  the answers it declares, and the census tests it only on the accepts you give it. So declare the
+  real platform's public surface for the target the task names, not only the calls your reference
+  makes: its aliases, its helpers and the macros its toolchain defines for that target. Keep the
+  stand-in's own state out of the answer's names, in its own namespace or compilation unit, and
+  give each such check at least one accept that is not your reference's output but another
+  practitioner's answer against the real platform. An answer the real toolchain builds and runs
+  correctly that the stand-in cannot build is the stand-in's defect.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.

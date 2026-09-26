@@ -53,6 +53,7 @@ import {
   adviceTotals,
   advanceIssues,
   attachIssueReadings,
+  blockingLine,
   deriveRebuildAdvice,
   isStanding,
   issueStatusWord,
@@ -849,6 +850,13 @@ describe("the issue register and its projection", () => {
     const ungraded = [caseRow("t1", { truthOk: null, pass: null, acceptedSubmit: false })];
     const blank = renderRebuildAdvice(derive(analysis(ungraded, RUN, counts), judges(), admission(), null));
     expect(blank).not.toContain("blocked no shipping artifact");
+  });
+
+  it("renders no roster, rather than an empty line, when every check lacks a recorded applicable count", () => {
+    // Untripped with no applicable row lands in none of the three lists; the orientation and the
+    // packet both drop a null line, and would have kept an empty one.
+    expect(blockingLine({ legacy: 0 }, {}, 3, 3)).toBeNull();
+    expect(blockingLine({ legacy: 0 }, { legacy: 3 }, 3, 3)).toContain("legacy 3");
   });
 
   it("keeps both fix statuses in the register and out of the render", () => {

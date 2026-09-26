@@ -118,7 +118,11 @@ function analysisOf({ passed, verified, unaccepted = 0 }: Counts): IterationAnal
   });
   return double<IterationAnalysis>({
     identities: { bundleSnapshot: {}, backendPin: PIN },
-    battery: { summary: { passed, verified, unaccepted, nonResults: 0 } },
+    battery: {
+      summary: { passed, verified, unaccepted, nonResults: 0 },
+      blockingByCheck: { "span-limit": verified - passed, "weld-rule": 0 },
+      applicableByCheck: { "span-limit": verified, "weld-rule": verified },
+    },
     cases: [
       ...Array.from({ length: verified }, (_, i) => row(`t${String(i)}`, i < passed, true)),
       ...Array.from({ length: unaccepted }, (_, i) => row(`u${String(i)}`, false, false)),
@@ -184,6 +188,18 @@ describe("the epoch reviewer's orientation", () => {
     // The placement opens the question; it is not the finding.
     expect(prompt).toContain("A placement above the aim is a lead, not a finding on its own");
     expect(prompt).not.toContain("hardness is the last of its readings");
+    // The first-probe pointer belongs to the side below the aim, and the static prompt no longer
+    // carries it to every review.
+    expect(prompt).not.toContain("start from the first one listed");
+    expect(prompt).not.toContain("blocked the most verified cases");
+    // The same per-check counts the author's advice packet carries, so a probe can start at the
+    // check that refused the most.
+    expect(prompt).toContain(
+      "Verified failures by declared check (5 failed; a case may block on several): span-limit 5.",
+    );
+    expect(prompt).toContain(
+      "blocked no shipping artifact, with the verified cases each applied to (of 25): weld-rule 25.",
+    );
   });
 
   it("says a battery on the aim reached the calibration target, and does not call it too easy", async () => {
@@ -193,6 +209,7 @@ describe("the epoch reviewer's orientation", () => {
     expect(prompt).not.toContain("too easy");
     // On the aim the battery reached what it was climbing towards, so no question opens.
     expect(prompt).not.toContain("is a lead, not a finding on its own");
+    expect(prompt).not.toContain("start from the first one listed");
   });
 
   /** The placement sentence is the author's own `FRAME` line, filled from the readout row, so the
@@ -218,6 +235,11 @@ describe("the epoch reviewer's orientation", () => {
       expect(prompt).toContain("probe an accept control at a field the public contract leaves free");
       expect(prompt).toContain("owned by `correctness-model/brief.json`");
       expect(prompt).toContain("owned by `agent/tools-spec.json`");
+      // The first probe goes to the check listed first, and that list is in the same orientation.
+      expect(prompt).toContain(
+        "Where the verified failures are listed by declared check, start from the first one listed",
+      );
+      expect(prompt).toContain("Verified failures by declared check (");
       // The question for the other side is the wrong one here.
       expect(prompt).not.toContain("the obligation of the request those tasks do not demand");
     });

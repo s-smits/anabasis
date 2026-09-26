@@ -1,8 +1,9 @@
 /**
  * Detects accept controls that are the reference solve's own output.
  *
- * Controls exist to calibrate the checks, which means an accept control is meant to be a
- * known-good artifact reached independently of `correctness-model/reference/`, so that passing it
+ * Controls show each check accepting and refusing at least once. Five of each is a presence floor,
+ * not a calibration: a rate over correct answers the author did not write is what would calibrate a
+ * check, and nothing measures one. So an accept control is meant to be a known-good artifact reached independently of `correctness-model/reference/`, so that passing it
  * says something F2 did not already say. When the accept corpus is copied from the reference, the
  * census proves only that the reference agrees with itself — which F2 proves before adoption
  * anyway — and the candidate ships with no evidence at all that its checks accept a second correct

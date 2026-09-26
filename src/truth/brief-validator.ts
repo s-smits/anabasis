@@ -15,7 +15,12 @@ import {
   recordView,
 } from "./brief.ts";
 import { jsonPathTokens } from "../meta/json-evidence.ts";
-import { citedDecisionIdFindings, ruleDecisionFieldFindings } from "./rule-decisions.ts";
+import {
+  citedDecisionIdFindings,
+  ruleDecisionFieldFindings,
+  unreadRootFindings,
+  withheldCitationFindings,
+} from "./rule-decisions.ts";
 import {
   isBoolean,
   isNumber,
@@ -306,20 +311,14 @@ function designRuleFieldFindings(brief: BriefRecord): ContractFinding[] {
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the pass
-// also returned the artifact roots its checks declare they read, which only the unread-root rule consumed.
-// /** The truth-check pass, and the artifact roots those checks declared they read, where "$" includes
-//  *  the whole artifact. A declaration makes a value available to a check; it does not prove the check
-//  *  uses it. Only paths that input validation accepted are added here, so the unread-root check below
-//  *  reads exactly the same selections this pass approved. */
-/** The truth-check pass. */
+/** The truth-check pass, and the artifact roots those checks declared they read, where "$" includes
+ *  the whole artifact. Only paths this pass accepted are added, so the unread-root rule reads exactly
+ *  the selections it approved. */
 function truthCheckFindings(brief: Brief) {
   const findings: ContractFinding[] = [];
   const checkIds = new Set<string>();
   const artifactRoots = new Set(brief.artifactSchema.map((field) => field.name));
-  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): only the
-  // unread-root rule read these roots.
-  // const readRoots = new Set<string>();
+  const readRoots = new Set<string>();
   brief.truthChecks.forEach((check, i) => {
     if (checkIds.has(check.id)) {
       findings.push(
@@ -354,10 +353,7 @@ function truthCheckFindings(brief: Brief) {
             "artifact paths must read a declared artifactSchema root",
           ),
         );
-        // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure):
-        // restoring the unread-root rule restores this else branch.
-        // } else readRoots.add(root ?? "$");
-      }
+      } else readRoots.add(root ?? "$");
     }
     for (const joinId of check.joinIds ?? []) {
       if (!brief.joins.some((join) => join.id === joinId)) {
@@ -367,10 +363,7 @@ function truthCheckFindings(brief: Brief) {
       }
     }
   });
-  return { findings };
-  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the roots
-  // go back with the unread-root rule.
-  // return { findings, readRoots };
+  return { findings, readRoots };
 }
 
 /** Each join is owned by exactly one check and repeats no decoy class, so one control cannot satisfy
@@ -418,9 +411,6 @@ function joinFindings(brief: Brief): ContractFinding[] {
 
 /** Each declared artifact root must be addressable, declared once and — where it closes a value
  *  set — carry distinct scalar allowed values. */
-// Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): restoring
-// the unread-root rule takes back the `readRoots` parameter.
-// function artifactSchemaFindings(brief: Brief, readRoots: ReadonlySet<string>): ContractFinding[] {
 function artifactSchemaFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const fieldNames = new Set<string>();
@@ -444,23 +434,6 @@ function artifactSchemaFindings(brief: Brief): ContractFinding[] {
       );
     }
     fieldNames.add(field.name);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
-    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
-    // root is measured, or its absence that it is not.
-    // // A root no check reads measures nothing: a schema can declare firmware source roots that the
-    // // reference solve fills while every check reads the derived summary alone, and then replacing or
-    // // omitting every source file is accepted. Refuse such a root before F2 executes. A check
-    // // selecting the whole artifact ("$") covers every root, and where no checks
-    // // exist at all, brief-no-truth-checks already reports that failure without a duplicate here.
-    // if (brief.truthChecks.length > 0 && !readRoots.has("$") && !readRoots.has(field.name)) {
-    //   findings.push(
-    //     finding(
-    //       "brief-artifact-root-unread",
-    //       `artifactSchema[${i}].name`,
-    //       `no truth check reads any path under artifactSchema field "${field.name}" — an agent may write anything there, or omit it entirely, and still pass every check, so the field measures nothing; declare a truth check over it or drop it from the artifact schema`,
-    //     ),
-    //   );
-    // }
     if (field.allowedValues === undefined) return;
     const scalar = (value: JsonValue) =>
       isString(value) || isBoolean(value) || (isNumber(value) && Number.isFinite(value));
@@ -537,9 +510,11 @@ export function validateBrief(value: unknown): ValidationResult {
       ),
     );
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
-  // unread-root rule read the roots the checks declare.
-  // findings.push(...artifactSchemaFindings(brief, checks.readRoots), ...designRuleConstantFindings(brief));
-  findings.push(...artifactSchemaFindings(brief), ...designRuleConstantFindings(brief));
+  findings.push(
+    ...artifactSchemaFindings(brief),
+    ...unreadRootFindings(brief, checks.readRoots),
+    ...withheldCitationFindings(brief),
+    ...designRuleConstantFindings(brief),
+  );
   return { ok: findings.length === 0, findings };
 }

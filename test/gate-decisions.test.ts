@@ -1,7 +1,7 @@
 /**
- * The gate decisions in `src/truth/decisions/`, read against what the Builder is told. A decision
- * that refuses is named under Gates in STARTER.md, so a refusal never reaches the author as a code
- * it was never told about.
+ * The gate's refusal codes, read against what the Builder is told. A code that refuses is named
+ * under Gates in STARTER.md, so a refusal never reaches the author as a code it was never told
+ * about.
  */
 import { describe, expect, it } from "bun:test";
 
@@ -13,18 +13,23 @@ import {
   timedOutControls,
 } from "../src/truth/control-receipts.ts";
 import { EXTERNAL_VERDICT_UNGROUNDED } from "../src/truth/tool-runs.ts";
+import { validateBrief } from "../src/truth/brief-validator.ts";
+import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
+import { required } from "./helpers/doubles.ts";
 import type { ControlReceipt } from "../src/truth/battery-record.ts";
 
 const STARTER = readFileSync(new URL("../starters/pi-built-harness/STARTER.md", import.meta.url), "utf8");
 
 describe("gate decisions", () => {
   it.each([
-    { code: EXTERNAL_VERDICT_UNGROUNDED },
-    { code: DISCRIMINATION_REJECT_PASSED },
-    { code: DISCRIMINATION_CHECK_UNREJECTED },
-  ])("tells the Builder $code under Gates", (decision) => {
+    EXTERNAL_VERDICT_UNGROUNDED,
+    DISCRIMINATION_REJECT_PASSED,
+    DISCRIMINATION_CHECK_UNREJECTED,
+    "brief-artifact-root-unread",
+    "brief-cited-decision-withheld",
+  ])("tells the Builder %s under Gates", (code) => {
     const gates = STARTER.slice(STARTER.indexOf("## Gates"));
-    expect(gates).toContain(`\`${decision.code}\``);
+    expect(gates).toContain(`\`${code}\``);
   });
 });
 
@@ -139,5 +144,53 @@ describe("CT-3, a timed-out example is read, not refused", () => {
     expect(timedOutControls(settled, evidence, "p").map((finding) => finding.detail)).toEqual([
       'tool "cc" hit its time limit on 1 example: "a1" after 12.0 s. That example reached no verdict, which refuses nothing here; if the tool needs longer, raise the run\'s timeoutMs or the tool-run wall in agent/config.yaml',
     ]);
+  });
+});
+
+describe("R3, declared means graded", () => {
+  const codes = (change: (brief: typeof MATCHING_BRIEF) => void) => {
+    const brief = structuredClone(MATCHING_BRIEF);
+    change(brief);
+    return validateBrief(brief).findings.map((row) => [row.code, row.path]);
+  };
+
+  it("clears a brief whose every root is read and every citation public", () => {
+    expect(codes(() => {})).toEqual([]);
+  });
+
+  it("refuses a root no check reads, unless a check reads the whole artifact", () => {
+    const extraRoot = (brief: typeof MATCHING_BRIEF) =>
+      brief.artifactSchema.push({ name: "notes", "shape": "free text" });
+    expect(codes(extraRoot)).toEqual([["brief-artifact-root-unread", "artifactSchema[1].name"]]);
+    expect(
+      codes((brief) => {
+        extraRoot(brief);
+        required(brief.truthChecks[0], "first check").execution.artifactPaths = ["$"];
+      }),
+    ).toEqual([]);
+  });
+
+  it("refuses a check citing only private rows, or a row no one declared, naming the id and not the statement", () => {
+    const privateRow = structuredClone(MATCHING_BRIEF);
+    const rule = required(privateRow.ruleDecisions?.[0], "public rule");
+    rule.visibility = "private";
+    const found = validateBrief(privateRow).findings;
+    expect(found.map((row) => row.code)).toContain("brief-cited-decision-withheld");
+    expect(found[0]?.detail).toContain("binding-completeness");
+    expect(found[0]?.detail).not.toContain(rule.statement);
+    expect(codes((brief) => (brief.ruleDecisions = []))).toContainEqual([
+      "brief-cited-decision-withheld",
+      "truthChecks[0].citedDecisionIds",
+    ]);
+  });
+
+  it("admits a private construction note cited beside a public rule", () => {
+    expect(
+      codes((brief) => {
+        const rule = required(brief.ruleDecisions?.[0], "public rule");
+        brief.ruleDecisions?.push({ ...rule, id: "construction", visibility: "private" });
+        required(brief.truthChecks[0], "first check").citedDecisionIds?.push("construction");
+      }),
+    ).toEqual([]);
   });
 });

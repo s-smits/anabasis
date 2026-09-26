@@ -174,11 +174,8 @@ describe("brief and task contract", () => {
     check.execution.artifactPaths = ["$.missing"];
     expect(codes(validateBrief(brief))).toContain("brief-check-artifact-root-undeclared");
     check.execution.artifactPaths = ["$.good"];
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
-    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
-    // root is measured, or its absence that it is not.
-    // brief.artifactSchema.push({ name: "unused", "shape": "string" });
-    // expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
+    brief.artifactSchema.push({ name: "unused", "shape": "string" });
+    expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
     check.joinIds = ["unknown"];
     expect(codes(validateBrief(brief))).toEqual(
       expect.arrayContaining(["brief-check-join-undeclared", "brief-join-check-ownership-invalid"]),
@@ -301,9 +298,7 @@ describe("brief and task contract", () => {
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));
     expect(found).toContain("brief-no-truth-checks");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
-    // unread-root rule this assertion keeps quiet is commented out.
-    // expect(found).not.toContain("brief-artifact-root-unread");
+    expect(found).not.toContain("brief-artifact-root-unread");
   });
   it("a brief in a foreign shape yields shape-mismatch findings naming the fields", () => {
     // Parseable JSON without the required Brief fields.

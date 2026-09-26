@@ -123,7 +123,10 @@ refused a writer that accepted `""` where the reference answer wrote null. The w
 are the compiled public schema, so that was a statement about a legitimately nullable string field
 rather than a carry defect, and its only recorded firing cost a forty-call repair loop. The branch
 is deleted; `contract.md` now tells the Builder to publish null as the absence value, and a solver
-that writes `""` there is graded by the checks.
+that writes `""` there is graded by the checks. Until 2026-09-27 a worker request the controller
+stopped waiting for also landed here, because it carried the protocol kind without the host's
+deadline mark. Both firings recorded on 2026-09-24 were that timeout on a loaded host, 0 of 2 a
+defect in the bytes; the request timer now marks `deadline` and the case is a host non-result.
 
 ### accept-control-rejected
 

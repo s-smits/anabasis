@@ -207,7 +207,8 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
       "solvability-representation-defect",
       "representation-defect",
     ],
-    "the removed absence-spelling branch caused the one recorded loop",
+    "the removed absence-spelling branch caused the one recorded loop; both 2026-09-24 firings were " +
+      "request timeouts on a loaded host, now a host non-result",
   ),
   row(
     ["F2-3", "representation-blocking", "kept"],

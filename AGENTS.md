@@ -891,17 +891,17 @@ live evidence.
     recovery a declared bounded allowance and then records `environment-blocked`. A provider limit,
     a missing credential, an unsupported catalogue model, a spend limit, a provider timeout or a
     sandbox refusal belongs to the environment owner and never to the task author. In F2, a
-    controller deadline reached before the generated-tool worker is ready, or while it closes
-    without an accepted submit, is a host non-result, while a worker that answered its handshake
-    and then broke its protocol is a representation defect. Once the host holds what it needed — an
-    accepted submit, or every conformance probe settled — the generated-tool worker's host-marked
-    close-handshake timeout (`closeHandshakeTimeout`) is cleanup evidence that voids no case and
-    refuses no candidate, in a battery case, in F2 and in the probes alike, and every other close
-    failure of that worker keeps its type. The Built model worker is the host's runtime rather than
-    the Builder's bytes, so after an accepted submit any way it stops — a close timeout, a silence
-    wall, a crash — is recorded on the runtime boundary and the submit is graded, unless the
-    controller cancelled the case. Without an accepted submit, either worker's failure remains a
-    non-result. At claim
+    controller deadline reached before the generated-tool worker is ready, while it waits on a
+    request, or while it closes without an accepted submit, is a host non-result, while a worker
+    that answered its handshake and then broke its protocol is a representation defect. Once the
+    host holds what it needed — an accepted submit, or every conformance probe settled — the
+    generated-tool worker's host-marked close-handshake timeout (`closeHandshakeTimeout`) is cleanup
+    evidence that voids no case and refuses no candidate, in a battery case, in F2 and in the probes
+    alike, and every other close failure of that worker keeps its type. The Built model worker is
+    the host's runtime rather than the Builder's bytes, so after an accepted submit any way it stops
+    — a close timeout, a silence wall, a crash — is recorded on the runtime boundary and the submit
+    is graded, unless the controller cancelled the case. Without an accepted submit, either
+    worker's failure remains a non-result. At claim
     time a solvability-witness tool non-result earns one fresh execution, and only for `sandbox` or
     `verifierUnavailable` — record `timeout` and `crash` on the first attempt. Persistent refusal
     leaves a typed finding and a missing-witness readiness clause beside the recorded score; it

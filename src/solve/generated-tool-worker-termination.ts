@@ -2,8 +2,9 @@
  *
  *  Every case a battery schedules is paid for, so the difference between the candidate's code
  *  crashing and the host running out of patience decides whether the run reports a capability
- *  result or a typed non-result. These three judgements are the ones the close path makes, and
- *  they are pure: the client around them keeps the child, the pipes and the timers. */
+ *  result or a typed non-result. These judgements are the ones the close path and the host's own
+ *  timers make, and they are pure: the client around them keeps the child, the pipes and the
+ *  timers. */
 
 import type { BuiltStarterNonResult, GeneratedToolWorkerEvidence } from "./built-starter.ts";
 
@@ -67,4 +68,13 @@ export function readyTimeoutCause(walls: Walls, readyTimeoutMs: number): Cause {
         `did not finish loading the candidate harness within ${readyTimeoutMs}ms of its walls being installed`,
       )
     : cause("runtime", "timed out before its ready handshake", true);
+}
+
+/** A request the host stopped waiting for. The worker had answered its handshake, but the wait says
+ *  only that no reply came in time, never that the writer cannot carry the value it was handed: in
+ *  the one recorded F2 firing (firmware-9, 2026-09-24) the same writer bytes answered on the next
+ *  check, on a host whose other workers were missing their close deadline too. So `deadline` is
+ *  set, and F2 reads the case as a host non-result rather than a representation defect. */
+export function requestTimeoutCause(requestTimeoutMs: number): Cause {
+  return cause("protocol", `request timed out after ${requestTimeoutMs}ms`, true);
 }

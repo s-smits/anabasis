@@ -118,6 +118,18 @@ describe("the representation the submission path must express", () => {
       expected: HOST_NON_RESULT,
     },
     {
+      // The same protocol kind as the row below, told apart only by the host's own clock.
+      worker: "timing out on a writer request after its handshake",
+      starter: () =>
+        starterClosingWith({
+          status: "non-result",
+          kind: "protocol",
+          message: "generated-tool worker request timed out after 30000ms",
+          deadline: true,
+        }),
+      expected: HOST_NON_RESULT,
+    },
+    {
       worker: "closing with pending requests after its handshake",
       starter: () =>
         starterClosingWith({

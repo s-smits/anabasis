@@ -24,6 +24,7 @@ import {
   exitOwner,
   exitTermination,
   readyTimeoutCause,
+  requestTimeoutCause,
 } from "./generated-tool-worker-termination.ts";
 import {
   type GeneratedWorkerPolicy,
@@ -425,7 +426,7 @@ export class WorkerClient {
       const frame = serializeGeneratedToolParentFrame({ ...message, requestId });
       const result = Promise.withResolvers<AcceptedResult>();
       const timer = setTimeout(
-        () => this.fail(this.nonResult("protocol", "request timed out")),
+        () => this.fail(raise(requestTimeoutCause(this.requestTimeoutMs))),
         this.requestTimeoutMs,
       );
       this.pending.set(requestId, { expected: REQUEST_REPLY[message.type], timer, ...result });

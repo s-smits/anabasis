@@ -181,9 +181,10 @@ export interface BuiltStarterNonResult {
    *  failed after that belongs to the bytes the Builder wrote. */
   kind: "runtime" | "protocol" | "sandbox" | "crash";
   message: string;
-  /** The controller's wait for the ready or close handshake expired, rather than the child sending
-   *  a failure. `kind` still says which operation it was; this only records that the host's own
-   *  limit ended it, which is the difference between a slow child and a broken one. */
+  /** The controller's wait for the ready handshake, a request or the close handshake expired,
+   *  rather than the child sending a failure. `kind` still says which operation it was; this only
+   *  records that the host's own limit ended it, which is the difference between a slow child and
+   *  a broken one. */
   deadline?: boolean;
 }
 

@@ -129,9 +129,9 @@ function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonVa
  *
  * A controller deadline is the exception whatever kind it carries, because the clock says only that
  * the child did not answer in time and never that its bytes are wrong. Read as a representation
- * defect, a worker that missed its ready handshake or its close deadline sends the Builder off to
- * repair a writer that passes every task before and after. Those deadlines return an operational
- * non-result instead.
+ * defect, a worker that missed its ready handshake, a request or its close deadline sends the
+ * Builder off to repair a writer that passes every task before and after. Those deadlines return an
+ * operational non-result instead.
  */
 function startedWorkerFailure(failure: BuiltStarterNonResult): SolvabilitySubmissionPathFailure {
   const detail = failure.message;

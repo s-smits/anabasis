@@ -298,6 +298,9 @@ describe("the shared unresolved-authoring allowance", () => {
       clauses: ["non-result-ratio-excessive"],
       nonResults: { provider: 3, sandbox: 1 },
     });
+    // A route that records no per-case served identity refuses every claim for that alone, however
+    // many cases verified; counted against the author, three such rounds ended a passing run.
+    const identityOnly = heldAfter({ created: false, clauses: ["runtime-model-identity-unproven"] });
     const undelivered = heldAfter({ created: false }, "provider-stopped");
     const unmeasured = heldAfter(null);
     const deadVerifier = heldAfter({
@@ -306,10 +309,18 @@ describe("the shared unresolved-authoring allowance", () => {
       nonResults: { verifierUnavailable: 6 },
     });
     const stall = nextUnresolvedAuthoringStall(null, heldOn(undefined));
-    for (const round of [environmentOnly, undelivered, unmeasured, deadVerifier]) {
+    for (const round of [environmentOnly, identityOnly, undelivered, unmeasured, deadVerifier]) {
       expect(nextUnresolvedAuthoringStall(null, round)).toBeNull();
       expect(nextUnresolvedAuthoringStall(stall, round)).toBe(stall);
     }
+  });
+
+  it("counts a hold whose claim names a clause the environment does not own beside the identity gap", () => {
+    const round = heldAfter({
+      created: false,
+      clauses: ["runtime-model-identity-unproven", "zero-verified"],
+    });
+    expect(nextUnresolvedAuthoringStall(null, round)?.rounds).toBe(1);
   });
 
   it.each([

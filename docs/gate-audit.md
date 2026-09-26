@@ -323,7 +323,14 @@ hold: its battery was not delivered (no claim, or a provider stop that created n
 clauses the climb already sets aside (`refusedForEnvironmentOnly`,
 `src/run/climb-battery-admission.ts`, one owner for both). A zero-verified battery the environment
 carried is the author's: prior 10 asks for a hard battery, and a battery nothing passed is one the
-author cannot yet read. The archived off-aim stop (`off-aim-allowance-stop`) is deleted rather than
+author cannot yet read. The old ceiling's one recorded firing, truss-sol-cb274b at b665608, ended a
+run whose four held candidates had verified 10, 15, 11 and 15 cases, every claim refused for
+`runtime-model-identity-unproven` alone because the codex route recorded no per-case served
+identity. Under R4 none of those holds counts, and `test/full-run-round.test.ts` holds that case
+beside one that adds a clause the environment does not own, which still counts. The promotion hold
+behind it (`candidate-claim-refused`, `src/run/candidate-promotion.ts`) still holds such a candidate,
+by an operator decision recorded there that routes any narrowing to the claim's own clauses in
+`src/claim/`. The archived off-aim stop (`off-aim-allowance-stop`) is deleted rather than
 restored as a flag, because `--iteration-budget` already bounds a campaign and the streak stays a
 readout fact. A resumed round no longer tells the Builder its accepted candidate was taken forward,
 which an unchanged candidate is not.

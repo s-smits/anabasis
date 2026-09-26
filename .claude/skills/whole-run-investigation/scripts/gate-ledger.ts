@@ -510,7 +510,12 @@ export const LOOP_LEDGER: readonly LoopLedgerEntry[] = [
     hold: "review-unread",
   },
   {
-    ...row(["LP-8", "held-candidate-ceiling", "rewritten"], [0.8, 0.2], [], "became R4 held-rounds"),
+    ...row(
+      ["LP-8", "held-candidate-ceiling", "rewritten"],
+      [0.8, 0.2],
+      [],
+      "became R4 held-rounds; its one firing counted identity-only claim refusals, which R4 leaves out",
+    ),
     terminal: "candidate-held",
   },
   {

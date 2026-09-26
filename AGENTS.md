@@ -535,8 +535,9 @@ live evidence.
    shortcut only when it supplies the remaining decision the solver was meant to make.
 
    An authoring review reads two things the Builder never sees. One is the bytes the Built solver
-   submitted in each of the round's blind rehearsals, beside the one verdict they earned; the
-   Builder that ran them saw the verdict and not the bytes. The other is the probes the previous
+   submitted in each of the round's failing blind rehearsals, beside the one verdict they earned;
+   the Builder that ran them saw the verdict and not the bytes, while a passing rehearsal's bytes
+   reach it through the context tool, as a measured pass's do. The other is the probes the previous
    review of the same round rested its findings on, as the exact `probe_check` calls that re-run them
    (`carriedDemonstrations`, `src/review/epoch-reviewer.ts`). A carried probe is a lead and backs
    no finding until this review runs it again, because its number belonged to another review over
@@ -763,8 +764,8 @@ live evidence.
     and any typed non-result, graded under the harness's own `check_seconds` and
     `tool_run_seconds` as a measured battery is. Each rehearsal costs one measured case from the
     provider budget, which is the only bound on how many a round runs, and writes its solve evidence
-    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
-    and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
+    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace and the artifact it submitted join the
+    context tool's traces source, and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
     ones rule 1 depends on without naming, and an agent that has not met them will try to install a

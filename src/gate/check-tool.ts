@@ -30,7 +30,7 @@ import { join } from "../meta/path.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
-import type { GateReport } from "./validation-pipeline.ts";
+import { type GateReport, stagesOf } from "./validation-pipeline.ts";
 import { SOLVABILITY_EVIDENCE_FILE } from "../run/solvability-gate.ts";
 import { CENSUS_FILE } from "../run/census-gate.ts";
 
@@ -288,6 +288,8 @@ export function createCorrectnessCheckTool(binding: CorrectnessCheckBinding): Ag
         findings: body.findings.totalFindings,
         reason: receiptReason(body),
         ...keyIfDefined("candidateId", body.snapshotId ?? undefined),
+        ...keyIfDefined("conditionId", report.conditionId),
+        ...stagesOf(report),
         ...keyIfDefined("repeated", body.repeated === undefined ? undefined : true),
         ...keyIfDefined("findingCodes", codes.length === 0 ? undefined : codes),
         ...body.findings.delta,

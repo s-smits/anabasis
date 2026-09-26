@@ -504,6 +504,47 @@ row's outcome instead of freezing a replacement.
 Subagent and reviewer reports are model output, not authority. Check every finding against the
 source before acting on it.
 
+### Track what the gate and the checks did, and backtrack a correction
+
+A score says what the verifier decided and nothing about what the gate cost to get there, and an
+evaluation correction changes the exam without saying what the old answers were worth under it. The
+whole-run investigation reads both as lanes 27 and 28, and this loop runs them every round rather
+than waiting for a suspicion, because neither shows up in a denominator.
+
+The `gates` lane walks every Builder session's `correctness_check` and submit receipts, groups
+consecutive refusals of one code into episodes, and prints each fired component's ledger prior from
+`gate-ledger.mjs` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
+actually did: repaired by a byte change, cleared with no edit at all, or left unanswered. A refusal
+that clears on unchanged bytes was not refusing something wrong, so a component that keeps doing it
+is spending the Builder's rounds against the prior the audit gave it, and a code the ledger does not
+know is a component nobody has rated. The lane gives no verdict on a component. Carry its table to
+the gate audit, which decides whether the component goes, and read a stalled episode as a round lost
+to the gate rather than to the domain.
+
+```sh
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs gates <campaign dir> [--json]
+bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
+```
+
+Backtracking is the second half. An evaluation correction leaves its issues `unmeasured` (rule 10),
+because a fresh battery on the corrected evaluator solves new attempts and never says what the
+correction would have made of the artifacts already accepted. `replay --under` grades the earlier
+battery's recorded final submissions under the later battery's bundle snapshot and diffs every
+verdict against the recorded one. A pass that flips to a fail was a pass the old checks let through;
+a fail that flips to a pass was a check the correction repaired; no flip means the correction
+changed nothing the battery reached. A task whose public digest moved between the two batteries is
+refused as `public-task-drift` rather than graded against an exam it never sat. The `gates` lane
+reads every correction from the recorded batteries, names the bundle files it moved, and prints
+`EVALUATION CORRECTION REPLAY CANDIDATE` with the exact command wherever a grading file moved, so
+regrade before judging a correction round: nine consecutive firmware corrections went by with none
+regraded. The candidate stays listed after the replay, because nothing records one, and nothing in
+the controller reads the replay's report either, so its flips inform the round's judgement while
+the advice still names the correction's issues `unmeasured`.
+
+In short, every round: read the gate's episodes against its priors, and regrade every correction
+under the evaluator that replaced it. The first says which checks cost rounds without catching
+anything; the second says whether a correction moved any verdict at all.
+
 ### When two batteries miss the band the same way, stop editing prose
 
 Two consecutive batteries of one product outside the band on the same side is a settled result, not
@@ -567,7 +608,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
+| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges, then `wri.mjs gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |

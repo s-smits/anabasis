@@ -81,6 +81,15 @@ describe("generated evaluation in a confined child", () => {
     expect(await evaluate("text", REQUEST)).toBe(true);
   });
 
+  // Replay grades a recorded bundle and runs no solver, so a solver wall current policy refuses at
+  // admission must not stop the evaluator it would otherwise load.
+  it("loads a recorded bundle whose solver wall is below the current floor", async () => {
+    const dir = fixture("function evaluate(request) { return request.artifact.text === 'real artifact'; }");
+    mkdirSync(join(dir, "agent"), { recursive: true });
+    writeFileSync(join(dir, "agent/config.yaml"), "solver:\n  solve_minutes: 1\n");
+    expect(await (await loadCorrectnessModel(dir, LIFETIME))("text", REQUEST)).toBe(true);
+  });
+
   it("preserves real host evidence and the canonical tool input", async () => {
     const dir = fixture(`async function evaluate(request, runtime) {
       const result = await runtime.tools.run({ toolId: "cat", stdin: request.artifact.text });

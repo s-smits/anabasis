@@ -3,9 +3,14 @@
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
  *  The Builder is told the file exists, not what it holds, and the host maximums live only here
- *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its default,
- * which  leaves a harness room to ask for what its domain needs without being able to declare a wall
- *  that never cuts. */
+ *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its
+ *  default, which leaves a harness room to ask for what its domain needs without being able to
+ *  declare a wall that never cuts. The solver's walls also stop at a tenth of their defaults: below
+ *  that the solver never sees a command return, and the wall's own submit of its first draft is what
+ *  the battery grades. That floor is current policy for a new candidate or a new solve, so only
+ *  `harnessConfigIssue` applies it: `harnessSettings` reads what a recorded bundle declared, and a
+ *  replay that grades one never runs its solver. The gate's walls have no floor, since a short one
+ *  costs only the Builder. */
 
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { isNumber, isRecord } from "../meta/json-shape.ts";
@@ -39,6 +44,15 @@ export interface HarnessSettings {
 
 export class HarnessConfigError extends Error {}
 
+/** A value far above its default (`"above"`), or, for a solver wall, far below it (`"below"`). */
+function hostLimitSide(section: Section, value: number, fallback: number): "above" | "below" | null {
+  if (value > fallback * HOST_MAXIMUM_FACTOR) return "above";
+  return section === "solver" && value * HOST_MAXIMUM_FACTOR < fallback ? "below" : null;
+}
+
+const hostLimitMessage = (section: Section, key: string, value: number, side: "above" | "below") =>
+  `${section}.${key} ${String(value)} is ${side} what this host allows; choose a value closer to the seeded one`;
+
 function settingsOf(raw: Raw): HarnessSettings {
   const { solver, gate, battery } = raw;
   return {
@@ -61,10 +75,8 @@ function checkedValue(section: Section, key: string, value: unknown, fallback: n
   if (!isNumber(value) || !Number.isInteger(value) || value <= 0) {
     throw new HarnessConfigError(`${section}.${key} must be a positive whole number`);
   }
-  if (value > fallback * HOST_MAXIMUM_FACTOR) {
-    throw new HarnessConfigError(
-      `${section}.${key} ${String(value)} is above what this host allows; choose a value closer to the seeded one`,
-    );
+  if (hostLimitSide(section, value, fallback) === "above") {
+    throw new HarnessConfigError(hostLimitMessage(section, key, value, "above"));
   }
   return value;
 }
@@ -86,7 +98,7 @@ function checkedSection(section: Section, value: unknown): Record<string, number
 }
 
 /** Parse the file's text; an absent file or key keeps the default. */
-function parseHarnessConfig(text: string): HarnessSettings {
+function parseHarnessConfig(text: string): Raw {
   let parsed: unknown;
   try {
     parsed = Bun.YAML.parse(text);
@@ -107,25 +119,33 @@ function parseHarnessConfig(text: string): HarnessSettings {
       "solver.shell_timeout_seconds must not exceed solver.shell_timeout_max_seconds",
     );
   }
-  return settingsOf(
-    /* SAFETY: checkedSection returned exactly the keys of each section's defaults, each a checked number. */ {
-      solver,
-      gate,
-      battery,
-    } as Raw,
-  );
+  /* SAFETY: checkedSection returned exactly the keys of each section's defaults, each a checked number. */
+  return { solver, gate, battery } as Raw;
 }
 
-/** The settings of a bundle or workspace directory; throws HarnessConfigError on a defective file. */
+function rawSettings(dir: string): Raw {
+  const file = join(dir, HARNESS_CONFIG_FILE);
+  return existsSync(file) ? parseHarnessConfig(readFileSync(file, "utf8")) : SETTINGS;
+}
+
+/** The settings a bundle or workspace directory declares, recorded ones included; throws
+ *  HarnessConfigError on a defective file. The solver floor is not applied here. */
 export function harnessSettings(dir: string): HarnessSettings {
   const file = join(dir, HARNESS_CONFIG_FILE);
-  return existsSync(file) ? parseHarnessConfig(readFileSync(file, "utf8")) : DEFAULT_HARNESS_SETTINGS;
+  return existsSync(file) ? settingsOf(rawSettings(dir)) : DEFAULT_HARNESS_SETTINGS;
 }
 
-/** The submit-time finding for a defective config, or null. */
+/** The finding that refuses admitting a candidate, or launching a solve, under this config, or null. */
 export function harnessConfigIssue(dir: string): string | null {
   try {
-    harnessSettings(dir);
+    const { solver } = rawSettings(dir);
+    const defaults: Record<string, number> = SETTINGS.solver;
+    for (const [key, value] of Object.entries(solver)) {
+      const fallback = defaults[key] ?? value;
+      if (hostLimitSide("solver", value, fallback) === "below") {
+        return `${HARNESS_CONFIG_FILE} ${hostLimitMessage("solver", key, value, "below")}`;
+      }
+    }
     return null;
   } catch (cause) {
     if (cause instanceof HarnessConfigError) return `${HARNESS_CONFIG_FILE} ${cause.message}`;

@@ -56,8 +56,7 @@ async function run(relFile, index) {
     ["--no-env-file", "test", relFile, "--coverage", "--coverage-reporter=lcov", `--coverage-dir=${covDir}`],
     repo,
     Bun.env,
-    undefined,
-    timeoutMs,
+    { timeoutMs },
   );
   const ms = Date.now() - started;
   const ran = /\bRan (\d+) tests?\b/.exec(`${outcome.stdout}${outcome.stderr}`);

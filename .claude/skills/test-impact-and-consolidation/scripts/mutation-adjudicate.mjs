@@ -180,14 +180,9 @@ async function runBunTests(files) {
   for (const file of files) {
     // The wall belongs to the launch owner: a planted fault can hang a suite, and the group
     // kill reaches the children a signal to this process alone would orphan.
-    const run = await spawnCollected(
-      Bun.argv[0],
-      ["--no-env-file", "test", file],
-      MIRROR,
-      Bun.env,
-      undefined,
-      RUN_TIMEOUT_MS,
-    );
+    const run = await spawnCollected(Bun.argv[0], ["--no-env-file", "test", file], MIRROR, Bun.env, {
+      timeoutMs: RUN_TIMEOUT_MS,
+    });
     const output = `${run.stdout}\n${run.stderr}`;
     // A signalled child has no exit code; a run that did not finish is a run error either way.
     const outcome = classifyBunTestProcess(run.status ?? 1, output);

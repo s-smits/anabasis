@@ -32,6 +32,9 @@ export type DiscriminationClaimabilityFinding = {
   message: string;
   /** The control id the message quotes, carried to `ContractFinding.subject`. */
   subject?: string;
+  /** Where the repair lies when it is not the controls file, carried to `ContractFinding.path`:
+   *  `.toolchain` for an accept whose tool could not run in the verifier cell. */
+  path?: string;
   /** What the author may read of `message` (correctness-bundle/discrimination-author-detail.ts); absent rows
    * stay withheld. */
   disclosure?: FindingDisclosure;

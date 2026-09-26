@@ -244,7 +244,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["CT-2", "accept-control-rejected", "kept"],
     [0.97, 0.03],
     ["DISCRIMINATION_ACCEPT_REJECTED", "DISCRIMINATION_CONTROL_RECEIPT_INVALID"],
-    "29 recorded firings, repaired within one to three checks",
+    "7 of 8 recorded episodes real; a tool that did no work in the census routes to .toolchain since 2026-09-27",
   ),
   row(
     ["CT-3", "controls-no-verdict", "narrowed"],

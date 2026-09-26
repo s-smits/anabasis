@@ -10,7 +10,12 @@ import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
-import type { EvaluationScopeHandle, VerifierHostHandle } from "../verify/verifier-port.ts";
+import type {
+  EvaluationScopeHandle,
+  VerifierExecutionEvidence,
+  VerifierHostHandle,
+} from "../verify/verifier-port.ts";
+import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import type { ControlReceiptSide, DiscriminationExecution } from "./battery-record.ts";
 import { type Brief, applicableTruthChecks, externalChecksOf } from "./brief.ts";
 import type { EvaluatorFn } from "./contracts.ts";
@@ -102,6 +107,14 @@ type ControlGroup = {
 };
 
 type Observation = Settled & { attempt: number };
+
+/** A declared-valid example the checks failed, as the accept loop settled it. */
+type RejectedAccept = { controlId: string; attempt: number; checkIds: string[]; issue: string };
+
+/** The shell's codes for a program it could not execute (126) or find (127). The host already
+ *  types the run as a non-result when the shell's own launch line ends stderr; a wrapper whose
+ *  launch line it did not recognise still reaches the census as an executed run with this exit. */
+const LAUNCH_EXIT_CODES = new Set<number | null>([126, 127]);
 
 // --- Checks that apply to each task ----------------------------------------------------------
 
@@ -463,7 +476,44 @@ function failedToolRuns(
   return ended.size === 0 ? "" : `, where tool runs ended [${[...ended].sort(compareCodeUnits).join(", ")}]`;
 }
 
-async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<void> {
+/** Whether a run ended nonzero without writing a byte to stdout: what a tool that could not start
+ *  its work looks like, and also what a compiler refusing a broken input looks like. */
+const silentFailure = (row: VerifierExecutionEvidence): boolean =>
+  !row.timedOut && row.exitCode !== null && row.exitCode !== 0 && row.stdoutBytes === 0;
+
+/** The tools an accept's blocking checks failed on silently, and whether every one of those runs
+ *  carries launch evidence, or null when some blocking check's failure rests on a tool that did
+ *  work. A tool counts only when every run of it in the census, accepts and rejects alike, failed
+ *  silently. Only a 126 or 127 exit says the program never started: a compiler rejecting every
+ *  example on stderr with exit 1 looks the same as a library the cell lacks, so that case stays
+ *  the correctness model's with both readings named. */
+function silentTools(
+  run: ControlSession,
+  rejected: RejectedAccept,
+): { tools: string[]; launch: boolean } | null {
+  if (run.verifier === undefined || rejected.checkIds.length === 0) return null;
+  const census = run.verifier.evidence().filter((row) => row.phase === "discrimination");
+  const worked = (toolId: string) =>
+    census.some(
+      (row) => row.toolId === toolId && !row.timedOut && (row.exitCode === 0 || row.stdoutBytes > 0),
+    );
+  const own = subjectRuns(run.verifier, {
+    phase: "discrimination",
+    subjectId: rejected.controlId,
+    attempt: rejected.attempt,
+  });
+  const tools = new Set<string>();
+  let launch = true;
+  for (const checkId of rejected.checkIds) {
+    const culprit = own.find((row) => row.checkId === checkId && silentFailure(row) && !worked(row.toolId));
+    if (culprit === undefined) return null;
+    tools.add(culprit.toolId);
+    launch &&= LAUNCH_EXIT_CODES.has(culprit.exitCode);
+  }
+  return { tools: [...tools].sort(compareCodeUnits), launch };
+}
+
+async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<RejectedAccept[]> {
   // Verified under the bound task's own hidden expectations, which is the condition a measured
   // case gets. Otherwise an accept that contradicts its task passes anyway, on the strength of an
   // empty hidden row.
@@ -473,32 +523,83 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
     (control) => evaluateInLane(run, control, run.boundTaskById.get(control.taskId)?.task.hidden ?? []),
     () => laneStopped(run),
   );
-  const issues: string[] = [];
-  const idsByChecks = new Map<string, string[]>();
+  const rejected: RejectedAccept[] = [];
   for (const [index, control] of corpus.accept.entries()) {
     const observation = observations[index];
     if (observation === undefined) break;
     const observed = admitObservation(run, control, observation);
     if (observed?.side.outcome !== "fail") continue;
-    // Issue text is protected detail and stays on the evidence message. What the author reads is
-    // the example ids grouped by the declared checks that blocked them, because ungrouped it is
-    // dozens of rows of "was rejected" that all name the same handful of checks.
-    issues.push(`"${control.id}": ${blockingIssueSummary(observed.result)}`);
-    const blockedBy = [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits);
-    const checks = `[${blockedBy.join(", ") || "no named check"}]${failedToolRuns(run, control.id, observation.attempt, blockedBy)}`;
-    idsByChecks.set(checks, [...(idsByChecks.get(checks) ?? []), control.id]);
+    rejected.push({
+      controlId: control.id,
+      attempt: observation.attempt,
+      checkIds: [...blockingFailedCheckIds(observed.result)].sort(compareCodeUnits),
+      issue: `"${control.id}": ${blockingIssueSummary(observed.result)}`,
+    });
   }
-  if (issues.length === 0) return;
-  const groups = [...idsByChecks].map(([checks, ids]) => `on ${checks}: ${namedExamples(ids)}`);
-  run.findings.push(
-    identityComposedFinding(
-      {
-        code: "DISCRIMINATION_ACCEPT_REJECTED",
-        message: `valid examples were rejected. Blocking issues: ${issues.join("; ")}`,
-      },
-      `${issues.length} valid example${issues.length === 1 ? " was" : "s were"} rejected by the correctnessModel, ${groups.join("; ")}. Fix the correctnessModel so declared-valid examples pass`,
-    ),
+  return rejected;
+}
+
+/**
+ * The rejected accepts as findings, read once the rejects have run too, so whether a tool ever
+ * worked is read over the whole census. Issue text is protected detail and stays on the evidence
+ * message. What the author reads is the example ids grouped by the declared checks that blocked
+ * them, because ungrouped it is dozens of rows of "was rejected" that all name the same handful of
+ * checks. Examples whose tools exited with the shell's launch codes form their own finding under
+ * `.toolchain`, because the repair is the install; examples whose tools only ever failed silently
+ * stay the correctness model's, with the install named as the other reading.
+ */
+function acceptRejectedFindings(
+  run: ControlSession,
+  rejected: readonly RejectedAccept[],
+): DiscriminationClaimabilityFinding[] {
+  const silent = new Map<string, { tools: string; launch: boolean; accepts: RejectedAccept[] }>();
+  const checks: RejectedAccept[] = [];
+  for (const accept of rejected) {
+    const found = silentTools(run, accept);
+    if (found === null) {
+      checks.push(accept);
+      continue;
+    }
+    const tools = found.tools.map((tool) => `"${tool}"`).join(", ");
+    const key = `${String(found.launch)} ${tools}`;
+    const group = silent.get(key) ?? { tools, launch: found.launch, accepts: [] };
+    group.accepts.push(accept);
+    silent.set(key, group);
+  }
+  const grouped = (accepts: readonly RejectedAccept[]) => {
+    const idsByChecks = new Map<string, string[]>();
+    for (const { controlId, attempt, checkIds } of accepts) {
+      const key = `[${checkIds.join(", ") || "no named check"}]${failedToolRuns(run, controlId, attempt, checkIds)}`;
+      idsByChecks.set(key, [...(idsByChecks.get(key) ?? []), controlId]);
+    }
+    return [...idsByChecks].map(([key, ids]) => `on ${key}: ${namedExamples(ids)}`).join("; ");
+  };
+  const message = (accepts: readonly RejectedAccept[]) =>
+    `valid examples were rejected. Blocking issues: ${accepts.map((accept) => accept.issue).join("; ")}`;
+  const counted = (accepts: readonly RejectedAccept[]) =>
+    `${accepts.length} valid example${accepts.length === 1 ? " was" : "s were"} rejected`;
+  const byHand =
+    "run it by hand on one of these accepts without network, with HOME and TMPDIR a scratch directory";
+  const findings = [...silent.values()].map(({ tools, launch, accepts }) =>
+    launch
+      ? identityComposedFinding(
+          { code: "DISCRIMINATION_ACCEPT_REJECTED", message: message(accepts), path: WORKSPACE_TOOL_TREE },
+          `${counted(accepts)} because tool ${tools} exited with the shell's code for a program it could not execute (126) or find (127) and no run of it in this census exited 0 or wrote to stdout, ${grouped(accepts)}. The tool could not start in the verifier cell: a moved interpreter or a wrapper that cannot launch. Repair its install under ${WORKSPACE_TOOL_TREE} and ${byHand}, before changing the correctnessModel`,
+        )
+      : identityComposedFinding(
+          { code: "DISCRIMINATION_ACCEPT_REJECTED", message: message(accepts) },
+          `${counted(accepts)} by the correctnessModel, ${grouped(accepts)}. No run of tool ${tools} in this census exited 0 or wrote to stdout, which is what a tool rejecting every example looks like and also what a tool that cannot start in the verifier cell looks like, a library the cell lacks say. To tell them apart, ${byHand}: if it runs, fix the correctnessModel or the accepts so declared-valid examples pass; if it cannot start, repair its install under ${WORKSPACE_TOOL_TREE}`,
+        ),
   );
+  if (checks.length > 0) {
+    findings.push(
+      identityComposedFinding(
+        { code: "DISCRIMINATION_ACCEPT_REJECTED", message: message(checks) },
+        `${counted(checks)} by the correctnessModel, ${grouped(checks)}. Fix the correctnessModel so declared-valid examples pass`,
+      ),
+    );
+  }
+  return findings;
 }
 
 async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<void> {
@@ -542,8 +643,9 @@ export async function runControls(
     groups: new Map(),
     observationsByControlId: new Map(),
   };
-  await runAccepts(run, corpus);
+  const rejected = await runAccepts(run, corpus);
   await runRejects(run, corpus);
+  run.findings.push(...acceptRejectedFindings(run, rejected));
   for (const { ids, notes, write } of run.groups.values()) run.findings.push(write(ids, notes));
   // R2 reads the settled receipts, the same rows the claim reads back, over every check a bound
   // task declares.

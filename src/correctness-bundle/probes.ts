@@ -196,7 +196,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
       );
       let findings: ContractFinding[] = execution.findings.map((finding) => ({
         code: finding.code,
-        path: CONTROLS_FILE,
+        path: finding.path ?? CONTROLS_FILE,
         detail: finding.message,
         disclosure: discriminationDisclosure(finding),
         ...keyIfDefined("subject", finding.subject),

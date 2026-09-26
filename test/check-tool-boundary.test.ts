@@ -280,20 +280,108 @@ it("observes the submitted entrypoint through the complete check process and con
   expect(
     verifier.evidence().filter((row) => row.toolId === "cell:product" && row.outcome === "executed"),
   ).toHaveLength(3);
-  // An accept whose tool fails inside the cell names the tool and its exit, never its output.
+  // An accept whose tool fails inside the cell names the tool and its exit, never its output. The
+  // same compiler built the valid accept beside it, so the tool runs in the cell and the rejection
+  // stays the correctnessModel's, although this failure too wrote nothing to stdout.
   const broken = await runControls(
     evaluate,
-    { accept: [{ id: "a-broken", taskId: "t", artifact: artifact("(") }], reject: [] },
+    {
+      accept: [...corpus.accept, { id: "a-broken", taskId: "t", artifact: artifact("(") }],
+      reject: [],
+    },
     [task],
     { brief, verifierLifetime: lifetime },
     host(),
   );
-  const detail = broken.findings
+  const rejected = broken.findings.filter((f) => f.code === "DISCRIMINATION_ACCEPT_REJECTED");
+  expect(rejected.map((f) => f.path)).toEqual([undefined]);
+  const detail = rejected
     .map(discriminationDisclosure)
-    .map((d) => (d.class === "authored" ? d.detail : d.note))
-    .find((text) => text?.includes("a-broken") === true);
-  expect(detail).toContain('on [behavior], where tool runs ended [cc exit 1]: "a-broken"');
+    .map((d) => (d.class === "authored" ? d.detail : d.note))[0];
+  expect(detail).toContain(
+    'by the correctnessModel, on [behavior], where tool runs ended [cc exit 1]: "a-broken"',
+  );
   expect(detail).not.toContain("error");
+});
+
+async function silentCensus(name: string, toolId: string, args: readonly string[]) {
+  const dir = join(ROOT, name);
+  mkdirSync(join(dir, "correctness-model"), { recursive: true });
+  writeFileSync(
+    join(dir, "correctness-model/evaluator.ts"),
+    `
+    export const checks = { behavior: async (_request, runtime) =>
+      (await runtime.tools.run({ toolId: ${JSON.stringify(toolId)}, args: ${JSON.stringify(args)} })).exitCode === 0 };
+  `,
+  );
+  const behavior: BriefTruthCheck = {
+    id: "behavior",
+    assertion: "the submitted entrypoint compiles",
+    execution: {
+      families: "all",
+      artifactPaths: ["$.files"],
+      publicInputPaths: [],
+      hidden: "none",
+      evidence: { kind: "authored" },
+      requiredToolIds: [toolId],
+    },
+  };
+  const brief = {
+    ...MATCHING_BRIEF,
+    joins: [],
+    truthChecks: [behavior],
+    artifactSchema: [{ name: "files", "shape": "file map", fileMap: true as const }],
+  };
+  const task = { taskId: "t", family: "f", publicInput: {}, intendedFeatures: {}, hidden: [] };
+  const accept = (id: string) => ({ id, taskId: "t", artifact: { files: { "main.c": "int main(){}" } } });
+  const path = toolId === "sh" ? "/bin/sh" : "/usr/bin/cc";
+  const verifier = createVerifierHost({
+    lifetime,
+    inventory: {
+      [toolId]: {
+        id: toolId,
+        path,
+        digest: sha256OfFile(path),
+        source: "host",
+        kind: "binary",
+        interpreter: null,
+      },
+    },
+  });
+  const result = await runControls(
+    evaluateCheckProgram(brief, await loadCorrectnessModel(dir, lifetime)),
+    { accept: [accept("a0"), accept("a1")], reject: [] },
+    [task],
+    { brief, verifierLifetime: lifetime },
+    verifier,
+  );
+  const rejected = result.findings.filter((f) => f.code === "DISCRIMINATION_ACCEPT_REJECTED");
+  const detail = discriminationDisclosure(rejected[0]!);
+  return { paths: rejected.map((f) => f.path), detail: detail.class === "authored" ? detail.detail : "" };
+}
+
+it("keeps a working compiler that rejects every accept on stderr the correctnessModel's", async () => {
+  // A real compiler that ran and refused every input the same way, exit 1 and stderr only. That is
+  // not evidence the tool could not start, so the install is named as the other reading, not the owner.
+  const { paths, detail } = await silentCensus("rejecting-compiler", "cc", ["absent.c"]);
+  expect(paths).toEqual([undefined]);
+  expect(detail).toStartWith(
+    '2 valid examples were rejected by the correctnessModel, on [behavior], where tool runs ended [cc exit 1]: "a0", "a1". No run of tool "cc" in this census exited 0 or wrote to stdout',
+  );
+  expect(detail).not.toContain("could not start in the verifier cell:");
+  expect(detail).toContain("if it cannot start, repair its install under .toolchain");
+});
+
+it("routes accepts to .toolchain when their tool exited the shell's launch code on every input", async () => {
+  // A wrapper that could not find its program exits 127; with no launch line the host recognises,
+  // the run reaches the census as executed, and the census reads the exit.
+  const { paths, detail } = await silentCensus("unlaunchable-wrapper", "sh", ["-c", "exit 127"]);
+  expect(paths).toEqual([".toolchain"]);
+  expect(detail).toStartWith(
+    '2 valid examples were rejected because tool "sh" exited with the shell\'s code for a program it could not execute (126) or find (127)',
+  );
+  expect(detail).toContain("[sh exit 127]");
+  expect(detail).toContain("Repair its install under .toolchain");
 });
 
 it("executes private authored probes and rejects a public-example lookup without narrowing valid implementations", async () => {

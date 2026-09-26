@@ -156,6 +156,8 @@ not retried, since the same bytes fail the same way.
 Refuses a candidate, and at claim time a battery, when a known-valid accept control fails a check
 (`DISCRIMINATION_ACCEPT_REJECTED`; `src/correctness-bundle/run-controls.ts`, `src/correctness-bundle/control-receipts.ts`).
 When the checks reject an answer the Builder vouches for, no measured pass can be read through them.
+Since 2026-09-27 an accept whose blocking checks' tools did no work anywhere in the census is
+routed to `.toolchain` rather than to the correctnessModel (below).
 
 ### controls-no-verdict
 
@@ -394,3 +396,16 @@ answered the first firing by deleting the annotation. The field, both codes and
 `numericBoundaryObligations`, whose only caller this was, are gone; a recorded `controls.json` that
 still carries the field is admitted, since the row parse ignores keys it does not name.
 `numericBoundaries` on a check stays, because `publishedMargins` reads it.
+
+### accept-control-rejected (routing rewritten)
+
+Seven of eight recorded refusals were real, and in five of those the fault was a tool that could
+not run in the snapshot or the verifier cell — a relocated venv, a wrapper that would not launch,
+an emulator the wall refused — while the finding told the Builder to fix the correctnessModel. A
+tool that fails silently on one input is not yet that: a compiler refusing a broken accept also
+exits 1 with nothing on stdout. What separates them is the rest of the census. An accept is routed
+to `.toolchain`, as its own `DISCRIMINATION_ACCEPT_REJECTED` finding, when each of its blocking
+checks has a run that ended nonzero with no stdout and that run's tool never exited 0 or wrote
+stdout on any accept or reject (`unrunnableTools`, `src/correctness-bundle/run-controls.ts`). One
+working run anywhere keeps the rejection the correctnessModel's. The refusal itself is unchanged;
+only its owner and remedy moved.

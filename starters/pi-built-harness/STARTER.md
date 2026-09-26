@@ -62,7 +62,9 @@ call.
 **4. Control census.** Runs every applicable check on each accept and only `expectedCheckId` on
 each reject, four examples at a time with the installed tools, on a host that may be busy. Each
 tool call gets a fresh empty home. This stage and F2 share one wall.
-- `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief.
+- `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief. When the
+  finding names `.toolchain`, that check's tool exited 126 or 127 and no run of it in the census
+  exited 0 or wrote stdout, so it could not start in the cell: repair its install first.
 - `DISCRIMINATION_NOT_PROVEN`: a check threw on an example, or an example names a task outside
   the battery.
 - `DISCRIMINATION_REJECT_PASSED`: a reject did not fail the check its `expectedCheckId` names.

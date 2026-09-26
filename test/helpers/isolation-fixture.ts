@@ -116,7 +116,7 @@ export function seedIsolationFixture(
     epochDir,
     iterationDir,
     ossRoot,
-    binding: { repoRoot, slug: "hw", epochDir, iterationDir, ossRoot },
+    binding: { repoRoot, epochDir, iterationDir, ossRoot },
   };
 }
 

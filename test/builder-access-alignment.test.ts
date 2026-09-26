@@ -70,7 +70,6 @@ describe("Builder wall alignment", () => {
   const hostPolicy = deriveCandidateIsolation(
     {
       repoRoot: hostRepo,
-      slug: "hw",
       epochDir: hostEpoch,
       iterationDir: hostWorkspace,
       ossRoot: join(hostEpoch, ".oss"),

@@ -363,7 +363,6 @@ describe.if(osIsolationSupport().ok)("the Builder's toolkit on the starter's see
     policy: deriveCandidateIsolation(
       {
         repoRoot: REPO_ROOT,
-        slug: "seed",
         epochDir: EPOCH_DIR,
         iterationDir: WORKSPACE,
         ossRoot: OSS_ROOT,

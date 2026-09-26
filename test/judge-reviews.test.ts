@@ -56,6 +56,9 @@ interface CaseSpec {
   family?: string;
   /** The judge's recorded verdict; omitted means it AGREED with the verifier. */
   judge?: Verdict;
+  /** A contradicting verdict's resample; omitted means it agreed with the verifier, as the producer
+   *  resamples every contradiction. */
+  resample?: Verdict;
 }
 
 interface BatterySpec {
@@ -160,7 +163,12 @@ function repoWith(
     log.write(`${caseRel}/public-task.json`, { taskId: row.taskId, span: 12 });
     log.write(`${caseRel}/artifact.json`, { members: [{ id: row.taskId }] });
     if (spec.census !== "none" && spec.census !== "off") {
-      const judged = subjectEvidence(row.taskId, "battery-case", judgeVerdictOf(row));
+      const verdict = judgeVerdictOf(row);
+      const judged = subjectEvidence(row.taskId, "battery-case", verdict);
+      if (isBoolean(verdict) && isBoolean(row.truthOk) && verdict !== row.truthOk) {
+        const resample = row.resample === undefined ? row.truthOk : row.resample;
+        Object.assign(judged, { confirmation: subjectEvidence(row.taskId, "battery-case", resample) });
+      }
       log.write(
         `${caseRel}/judge.json`,
         opts?.judgeWithoutRules === true
@@ -459,6 +467,21 @@ describe("coverage and historical records", () => {
       "0 were vetoes, a cited fail of a verifier pass that a second sample repeated",
     );
     expect(result.exit.reason).not.toContain("citing shown rules");
+  });
+
+  it("goes provisional when a contradicting verdict's resample returned no verdict", () => {
+    const { root, analysis } = repoWith({
+      cases: [
+        { taskId: "t1", truthOk: true, judge: false, resample: null },
+        { taskId: "t2", truthOk: true },
+      ],
+    });
+    const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: null });
+    expect(judgeOf(result)).not.toBe("incomplete-census");
+    expect(result.provisional).toBe(
+      "the judge review is incomplete: 1 contradicting verdicts returned no resample verdict",
+    );
+    expect(result.contested.map((row) => [row.taskId, row.confirmed])).toEqual([["t1", false]]);
   });
 
   it("contests no case whose Judge fail cites no rule", () => {

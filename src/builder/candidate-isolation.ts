@@ -14,7 +14,6 @@
  * already inside someone else's sandbox, because a run recorded as confined but actually
  * unconfined is worse evidence than no run at all.
  */
-import { selectedProductDir } from "../run/product-versions.ts";
 import { existsSync, readFileSync, realpathSync } from "../meta/filesystem.ts";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
@@ -132,7 +131,6 @@ type IsolationPurpose = "author" | "workshop";
 
 export interface CandidateIsolationBinding {
   repoRoot: string;
-  slug: string;
   /** campaigns/<slug>/<epoch> */
   epochDir: string;
   /** campaigns/<slug>/<epoch>/<NN>-<slug> */
@@ -421,36 +419,28 @@ function nestedBindingRoots(binding: CandidateIsolationBinding) {
   return physical;
 }
 
-/** Read grants for the adopted tool trees this session runs: the controller's adopted domain link,
- *  and the workspace's own `.toolchain` when it points outside this epoch. They can disagree — an
- *  evaluation correction keeps the tree it was seeded with while a later adoption moves the domain
- *  link — so granting one alone leaves the other behind a sibling deny. Each must resolve to
- *  `epoch-<key>/workspace/.toolchain` of this campaign, so a re-pointed link buys at worst a
- *  sibling epoch's tools, never its evaluator, its evidence or any write path. */
-function adoptedToolReadRules(
-  repoRoot: string,
-  slug: string,
-  epochDir: string,
-  iterationDir: string,
-): IsolationRule[] {
-  const inCampaign = (path: string) => {
-    const [epoch, workspace, tree, ...rest] = relative(dirname(epochDir), path).split(sep);
-    return (
-      rest.length === 0 &&
-      epoch?.startsWith("epoch-") === true &&
-      workspace === WORKSPACE_DIR &&
-      tree === WORKSPACE_TOOL_TREE
-    );
-  };
+/** A read grant for the workspace's `.toolchain` when it is a link out of this epoch. A workspace
+ *  seeded while seeded tool trees were still linked rather than copied runs the tree it was seeded
+ *  with through that link, even after a later adoption has moved the domain link on, and without
+ *  this grant `.toolchain/bun` through it is denied. The link must resolve to
+ *  `epoch-<key>/workspace/.toolchain` of this campaign, so a re-pointed link buys at worst a sibling
+ *  epoch's tools, never its evaluator, its evidence or any write path.
+ *
+ *  A workspace that owns its tree gets nothing here, and that is deliberate. The seeding copy moves
+ *  every launcher, link and venv home it can into the workspace, and a file in the copy that still
+ *  names the adopted tree reaches it only where that tree is readable. The solver's command wall and
+ *  the verifier cell each re-allow their own tool tree and nothing beside it, so granting the adopted
+ *  tree here as well would let the Builder's shell run a tool those walls then refuse. */
+function adoptedToolReadRules(epochDir: string, iterationDir: string): IsolationRule[] {
   const own = bundleSnapshotToolTree(iterationDir);
-  // The workspace's own tree is already inside the candidate-tree grant unless it links out.
-  const trees = new Set(
-    [
-      bundleSnapshotToolTree(selectedProductDir(repoRoot, slug)),
-      own !== null && containsPath(own, epochDir) ? null : own,
-    ].filter((path): path is string => path !== null && inCampaign(path)),
-  );
-  return [...trees].map((path) => ({ kind: "subpath", path, id: "adopted-toolchain" }));
+  if (own === null || containsPath(own, epochDir)) return [];
+  const [epoch, workspace, tree, ...rest] = relative(dirname(epochDir), own).split(sep);
+  const inCampaign =
+    rest.length === 0 &&
+    epoch?.startsWith("epoch-") === true &&
+    workspace === WORKSPACE_DIR &&
+    tree === WORKSPACE_TOOL_TREE;
+  return inCampaign ? [{ kind: "subpath", path: own, id: "adopted-toolchain" }] : [];
 }
 
 export function deriveCandidateIsolation(
@@ -468,7 +458,7 @@ export function deriveCandidateIsolation(
         sub(iterationDir, "candidate-tree"),
         lit(join(epochDir, BACKENDS_FILE), "session-contract"),
         lit(join(epochDir, BUILDER_SESSION_EVIDENCE_FILE), "session-contract"),
-        ...adoptedToolReadRules(repoRoot, binding.slug, epochDir, iterationDir),
+        ...adoptedToolReadRules(epochDir, iterationDir),
         ...AUTHORING_BARRELS.map(({ name }) => sub(repo(`vendor/${name}`), "vendor-bundle")),
         ...deriveBundleContract(repoRoot).map((path) => lit(path, "bundle-contract")),
         ...AGENT_AUTHORING_INTERFACE.map((path) => sub(repo(path), "agent-authoring-interface")),

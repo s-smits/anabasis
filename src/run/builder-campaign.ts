@@ -495,13 +495,19 @@ class BuilderCampaignController {
       trialsDir: join(this.input.campaignDir, "trials"),
       memory: this.candidates.validation,
     });
-    if (
+    const rejected = report.refusals.some(({ findings }) =>
+      findings.some(({ code }) => code === "DISCRIMINATION_ACCEPT_REJECTED"),
+    );
+    const clear =
       report.harness !== null &&
       report.gated !== null &&
       report.blocked === null &&
-      report.refusals.length === 0
-    ) {
-      this.reviewClock.validatedProduct(report.harness.fingerprint);
+      report.refusals.length === 0;
+    if (report.harness !== null && clear) this.reviewClock.validatedProduct(report.harness.fingerprint);
+    // Only a preview that read the controls moves a rehearsal's calibration: a blocked or refused
+    // one on other grounds says nothing about whether this candidate's check program accepts them.
+    if (report.snapshotId !== null && (rejected || clear)) {
+      this.plan.previewed(report.snapshotId, rejected ? "rejected" : "clear");
     }
     return report;
   }
@@ -655,7 +661,7 @@ class BuilderCampaignController {
       rehearsals: this.rehearsals,
       onRehearsal: (row, submitted) => {
         this.reviews?.rehearsed(row, submitted);
-        return this.plan.record(row);
+        return this.plan.record(row, submitted.candidateId);
       },
       ...keyIfDefined(
         "builtSolver",
@@ -717,7 +723,7 @@ export async function runBuilderCampaign(
   if (refused !== null) return { buildAdmissible: false, clause: refused, iterations: [] };
   const workspace = join(input.campaignDir, WORKSPACE_DIR);
   // A repair seeds from the adopted package once and resumes in-flight edits without overwriting them.
-  const { created } = initWorkspace(workspace, input.adoptedDir, true, deps.safeguardContext);
+  const { created } = initWorkspace(workspace, input.adoptedDir, deps.safeguardContext);
   const fresh: WorkspaceSeed = input.adoptedDir === undefined ? "starter" : "adopted";
   const seed = created ? fresh : "resumed";
   const controller = new BuilderCampaignController(input, deps, memory);

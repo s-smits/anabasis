@@ -177,14 +177,42 @@ describe("the plan reader", () => {
 describe("the plan evidence", () => {
   it("advises when rehearsals pass more than their predictions expected or than the at-most target", () => {
     const contradicted = new PlanEvidence(planned(), null);
-    expect(contradicted.record(pass("t1"))).toEqual([CALIBRATION_T1]);
-    expect(contradicted.record(pass("t2"))[0]).toBe(
+    expect(contradicted.record(pass("t1")).advice).toEqual([CALIBRATION_T1]);
+    expect(contradicted.record(pass("t2")).advice[0]).toBe(
       "Advice: rehearsals already passed 2 distinct task(s) (t1, t2) against a target of at most 1 verified passes.",
     );
     // A target the rehearsals meet and a prediction the verdict does not contradict advise nothing.
-    expect(new PlanEvidence(planned(), null).record(pass("t2"))).toEqual([]);
+    expect(new PlanEvidence(planned(), null).record(pass("t2")).advice).toEqual([]);
     // Without a readable plan there is nothing to advise against.
-    expect(new PlanEvidence(workspace(), null).record(pass("t1"))).toEqual([]);
+    expect(new PlanEvidence(workspace(), null).record(pass("t1")).advice).toEqual([]);
+  });
+
+  // A check program that refuses one of the candidate's own accept controls can fail a solve for its
+  // tool rather than its task, as a carried interpreter that cannot start does, so the verdict it
+  // gives says nothing about difficulty either way.
+  it("counts no rehearsal of a candidate a preview found rejecting an accept control, before or after it", () => {
+    const evidence = new PlanEvidence(planned(), null);
+    // Rehearsal first, then the rejecting preview: the earlier verdict stops counting too.
+    expect(evidence.record(pass("t1"), "cand-a")).toEqual({ advice: [CALIBRATION_T1], counted: true });
+    evidence.previewed("cand-a", "rejected");
+    const after = evidence.record(pass("t2"), "cand-a");
+    expect(after.counted).toBe(false);
+    expect(after.advice).toHaveLength(1);
+    expect(after.advice[0]).toStartWith(
+      "Advice: a preview of this candidate rejected one of its own accept controls",
+    );
+    // Neither the calibration line nor the at-most count reads the uncounted passes, where the test
+    // above shows each firing on the same two rehearsals once both count.
+    expect(evidence.advice()).toEqual([]);
+    expect(evidence.view()).toContain(
+      "t1 (span) pass (uncounted: its preview rejected an accept control) in",
+    );
+    // A clear preview of the repaired candidate counts what follows it and leaves the earlier rows.
+    evidence.previewed("cand-a", "clear");
+    expect(evidence.record(pass("t2"), "cand-a")).toEqual({ advice: [], counted: true });
+    expect(evidence.view()).toContain(
+      "t1 (span) pass (uncounted: its preview rejected an accept control) in",
+    );
   });
 
   // Firmware round 2 predicted 0.4 and 0.6 for rehearsals that both passed, and no single verdict
@@ -201,8 +229,8 @@ describe("the plan evidence", () => {
     const dir = workspace(low);
     bundle(dir, 10);
     const evidence = new PlanEvidence(dir, null);
-    expect(evidence.record(pass("t1"))).toEqual([]);
-    expect(evidence.record(pass("t2"))).toContain(calibration(2, 1, 2));
+    expect(evidence.record(pass("t1")).advice).toEqual([]);
+    expect(evidence.record(pass("t2")).advice).toContain(calibration(2, 1, 2));
     writeFileSync(
       join(dir, "EXPERIMENT.json"),
       JSON.stringify({
@@ -226,14 +254,14 @@ describe("the plan evidence", () => {
     bundle(balanced, 10);
     const cancelled = new PlanEvidence(balanced, null);
     cancelled.record(pass("t1"));
-    expect(cancelled.record({ ...pass("t2"), verdict: "fail" })).toEqual([]);
+    expect(cancelled.record({ ...pass("t2"), verdict: "fail" }).advice).toEqual([]);
   });
 
   // Run 371f8f round 2 declared at most 5 of 7 against an aim of 2 to 3, and only the readout after
   // its battery said so. The advice says it while the plan can still change.
   it("advises when the target lies above the aim of the battery as it stands", () => {
-    const seven = (verifiedPasses: number) => {
-      const dir = workspace({ ...PLAN, target: { comparator: "at-most", verifiedPasses } });
+    const seven = (verifiedPasses: number, comparator: "at-least" | "at-most" = "at-most") => {
+      const dir = workspace({ ...PLAN, target: { comparator, verifiedPasses } });
       bundle(dir, 10);
       const ids = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
       writeFileSync(
@@ -242,8 +270,13 @@ describe("the plan evidence", () => {
       );
       return new PlanEvidence(dir, null).advice();
     };
+    // An at-most target above the aim is met by a battery on the aim as well as by one past it, so
+    // only an at-least target can say that meeting it finds no limit.
     expect(seven(5)).toEqual([
-      "Advice: the target, at-most 5 verified passes, lies above the aim of 2 to 3 of 7, so a battery meeting it would find no limit.",
+      "Advice: the target, at-most 5 verified passes, lies above the aim of 2 to 3 of 7, so a battery above the aim, which finds no limit, would still meet it.",
+    ]);
+    expect(seven(4, "at-least")).toEqual([
+      "Advice: the target, at-least 4 verified passes, lies above the aim of 2 to 3 of 7, so a battery meeting it would find no limit.",
     ]);
     expect(seven(3)).toEqual([]);
   });
@@ -278,7 +311,7 @@ describe("the plan evidence", () => {
     mkdirSync(rehearsals);
     writeFileSync(join(rehearsals, "experiment-evidence.json"), "{}");
     const evidence = new PlanEvidence(dir, rehearsals);
-    expect(evidence.record({ ...pass("t1"), minutes: 30, toolCalls: 12, costUsd: null })).toEqual([
+    expect(evidence.record({ ...pass("t1"), minutes: 30, toolCalls: 12, costUsd: null }).advice).toEqual([
       CALIBRATION_T1,
     ]);
     expect(JSON.parse(readFileSync(join(rehearsals, "experiment-evidence-2.json"), "utf8"))).toMatchObject({
@@ -335,12 +368,12 @@ describe("the plan evidence", () => {
   it("counts a rehearsal at the task's current bytes and names one at earlier bytes as stale", () => {
     const dir = planned();
     const evidence = new PlanEvidence(dir, null);
-    expect(evidence.record(pass("t1"))).toEqual([CALIBRATION_T1]);
+    expect(evidence.record(pass("t1")).advice).toEqual([CALIBRATION_T1]);
 
     bundle(dir, 4, "Solve it within the tighter limit.");
     expect(evidence.advice()).toEqual([CALIBRATION_T1, staleAdvice("t1")]);
     expect(evidence.view().split("\n")).toContain(staleAdvice("t1"));
-    expect(evidence.record(pass("t2"))).toEqual([calibration(2, 0.6, 2), staleAdvice("t1")]);
+    expect(evidence.record(pass("t2")).advice).toEqual([calibration(2, 0.6, 2), staleAdvice("t1")]);
 
     // Tasks that do not load leave the current bytes unknown rather than changed: nothing counts
     // towards the target, not even a rehearsal recorded while they were unreadable, and no task is
@@ -348,7 +381,7 @@ describe("the plan evidence", () => {
     writeFileSync(join(dir, "correctness-model", "tasks.json"), "{ not json");
     const unknown =
       "Advice: the current bundle or its tasks do not load, so no rehearsal counts towards the target until they do.";
-    expect(evidence.record(pass("t1"))).toEqual([calibration(3, 0.7, 3), unknown]);
+    expect(evidence.record(pass("t1")).advice).toEqual([calibration(3, 0.7, 3), unknown]);
     expect(evidence.view().split("\n")).toContain(unknown);
 
     // Back at the first bytes, the first t1 verdict counts again and t2's stays stale.
@@ -384,7 +417,7 @@ describe("the plan evidence", () => {
     const dir = planned();
     arrange(dir);
     const evidence = new PlanEvidence(dir, null);
-    expect(evidence.record(pass("t1"))).toEqual([CALIBRATION_T1]);
+    expect(evidence.record(pass("t1")).advice).toEqual([CALIBRATION_T1]);
     change(dir);
     expect(evidence.advice()).toEqual([CALIBRATION_T1, staleAdvice("t1")]);
   });

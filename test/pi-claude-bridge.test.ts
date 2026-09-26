@@ -870,6 +870,68 @@ describe("the Pi Claude bridge streamed turn", () => {
     expect(context.turnBlocks).toHaveLength(1);
   });
 
+  // A stream cut mid-message is retried by the CLI, which first closes what it had yielded with a
+  // content_block_stop and a message_stop and no message_delta. The half-streamed call never runs:
+  // the CLI runs the retry's call instead, and that one waits on a result only pi can deliver.
+  it("drops a message the CLI abandoned to retry it, and closes the turn on the retry's call", async () => {
+    const bash = "mcp__custom-tools__bash";
+    const cut = [
+      streamed({ type: "message_start", message: { id: "msg-cut" } }),
+      ...textBlock(0, ["checking the venv"]),
+      streamed({
+        type: CONTENT_BLOCK_START,
+        index: 1,
+        content_block: { type: TOOL_USE, id: "call-cut", name: bash, input: {} },
+      }),
+      streamed({
+        type: CONTENT_BLOCK_DELTA,
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: '{"timeout": 120, "comm' },
+      }),
+      streamed({ type: CONTENT_BLOCK_STOP, index: 1 }),
+      streamed({ type: "message_stop" }),
+    ];
+    const retried = [
+      {
+        type: "toolCall" as const,
+        id: "call-retry",
+        name: "bash",
+        arguments: { command: "ls", timeout: 120 },
+      },
+    ];
+    const { context, events, ended } = await drive([
+      ...cut,
+      streamed({ type: "message_start", message: { id: "msg-retry" } }),
+      streamed({
+        type: CONTENT_BLOCK_START,
+        index: 0,
+        content_block: { type: TOOL_USE, id: "call-retry", name: bash, input: { command: "ls" } },
+      }),
+      streamed({ type: CONTENT_BLOCK_STOP, index: 0 }),
+      streamed({ type: "message_delta", delta: { stop_reason: "tool_use" } }),
+      streamed({ type: "message_stop" }),
+    ]);
+    expect(context.turnBlocks).toEqual(retried);
+    expect(context.turnToolCallIds).toEqual(["call-retry"]);
+    expect(context.turnOutput?.responseId).toBe("msg-retry");
+    expect(events.filter((event) => event.type === "done")).toHaveLength(1);
+    expect(ended()).toBe(true);
+
+    // The CLI can also retry without streaming, and the retry then arrives whole.
+    const whole = await drive([
+      ...cut,
+      {
+        type: "assistant",
+        message: {
+          id: "msg-retry",
+          content: [{ type: TOOL_USE, id: "call-retry", name: bash, input: { command: "ls" } }],
+        },
+      },
+    ]);
+    expect(whole.context.turnBlocks).toEqual(retried);
+    expect(whole.ended()).toBe(true);
+  });
+
   it("falls back to the result text only when no stream event carried the turn", async () => {
     const { events } = await drive([{ type: "result", subtype: "success", result: FACT, modelUsage: {} }]);
     expect(events.map((event) => event.type)).toEqual(["start", "text_start", "text_delta", "text_end"]);
@@ -1069,6 +1131,7 @@ describe("the Pi Claude bridge delivers one turn translation on both paths", () 
       streamed({ type: CONTENT_BLOCK_STOP, index: 1 }),
       streamed({ type: CONTENT_BLOCK_START, index: 2, content_block: blocks[2]! }),
       streamed({ type: CONTENT_BLOCK_STOP, index: 2 }),
+      streamed({ type: "message_delta", delta: { stop_reason: "tool_use" } }),
       streamed({ type: "message_stop" }),
     ]);
 

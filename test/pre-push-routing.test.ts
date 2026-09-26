@@ -84,9 +84,15 @@ function runHook(local: string, remote: string, markerName: string, gateOutput =
   return { ...result, marker };
 }
 
-function runHookWithRefs(lines: readonly string[], markerName: string, github: Record<string, string> = {}) {
+// `remote` is the name and URL Git hands the hook as its arguments; the fixture is its own remote.
+function runHookWithRefs(
+  lines: readonly string[],
+  markerName: string,
+  github: Record<string, string> = {},
+  remote: readonly string[] = [],
+) {
   const marker = join(fixture, markerName);
-  const result = spawnTextSync("sh", [hook], {
+  const result = spawnTextSync("sh", [hook, ...remote], {
     cwd: fixture,
     stdin: `${lines.join("\n")}\n`,
     env: {
@@ -164,6 +170,19 @@ describe("pre-push proof routing", () => {
       {
         ANA_FAKE_STACK_TOPS: `#11 claude/top ${docs}`,
       },
+    );
+    expect(result.status).toBe(0);
+    expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
+  });
+
+  it("reads the top's head where the same push replays it, not where GitHub last saw it", () => {
+    const result = runHookWithRefs(
+      [
+        `refs/heads/claude/top ${docs} refs/heads/claude/top ${base}`,
+        `refs/heads/next ${source} refs/heads/next ${"0".repeat(40)}`,
+      ],
+      "stack-top-moved-marker",
+      { ANA_FAKE_STACK_TOPS: `#11 claude/top ${oldDocs}` },
     );
     expect(result.status).toBe(0);
     expect(readFileSync(result.marker, "utf8")).toContain("9\trun gate");
@@ -254,6 +273,31 @@ describe("pre-push proof routing", () => {
     expect(result.stderr).toContain("#22 (topic) would list #20's commits as its own");
     expect(result.stderr).toContain("gh pr edit 22 --base lower");
     expect(existsSync(result.marker)).toBe(false);
+  });
+
+  // GitHub leaves a pull request's baseRefOid where its base stood at the pull request's own last push,
+  // so a base published by an earlier push reads stale there. The fixture is the remote, holding
+  // `lower` at the head #20 was pushed to and `trunk` behind it.
+  it("reads a base an earlier push moved from the remote, and still refuses a base that lacks it", () => {
+    git("update-ref", "refs/heads/lower", docs);
+    git("update-ref", "refs/heads/trunk", base);
+    const push = [`refs/heads/topic ${source} refs/heads/topic ${base}`];
+    const remote = ["origin", fixture];
+    const onLower = runHookWithRefs(
+      push,
+      "edge-moved-base-marker",
+      { ANA_FAKE_STACK_EDGES: `#20 lower ${docs} trunk ${base}\n#22 topic ${base} lower ${base}` },
+      remote,
+    );
+    expect(onLower.status).toBe(0);
+    const onTrunk = runHookWithRefs(
+      push,
+      "edge-trunk-base-marker",
+      { ANA_FAKE_STACK_EDGES: `#20 lower ${docs} trunk ${base}\n#22 topic ${base} trunk ${base}` },
+      remote,
+    );
+    expect(onTrunk.status).toBe(1);
+    expect(onTrunk.stderr).toContain("#22 (topic) would list #20's commits as its own");
   });
 
   it("refuses a ref the checked-out tree does not contain", () => {

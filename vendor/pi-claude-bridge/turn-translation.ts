@@ -201,6 +201,17 @@ function finalizeOnToolCall(c: QueryContext): void {
   c.currentPiStream = null;
 }
 
+/** The CLI closes a message it is about to retry with a message_stop and no message_delta, so no
+ *  stop reason ever arrived for it. None of its blocks was delivered: pi would run its half-streamed
+ *  call while the CLI runs the retry's, which then waits on a result pi never saw it ask for. */
+function abandonMessage(c: QueryContext, from: number): void {
+  c.turnBlocks.splice(from);
+  c.turnToolCallIds = [];
+  c.turnSawToolCall = false;
+  c.turnSawStreamEvent = false;
+  c.messageFrom = null;
+}
+
 // --- One block, opened, fed and closed ---
 
 /** Opens a block on the turn and reports its pi content index, or null when the CLI keeps the
@@ -351,6 +362,7 @@ function applyMessageStart(
   message: StreamMessageHeader | undefined,
 ): void {
   c.turnToolCallIds = [];
+  c.messageFrom = c.turnBlocks.length;
   if (isString(message?.id)) c.liveOutput.responseId = message.id;
   if (isString(message?.model)) c.liveOutput.responseModel = message.model;
   if (message?.usage) updateUsage(c.liveOutput, message.usage, tools.model);
@@ -384,13 +396,15 @@ export function applyStreamEvent(
     }
     case "message_delta": {
       const reason = event.delta?.stop_reason;
+      c.messageFrom = null;
       c.liveOutput.stopReason =
         reason === "tool_use" ? "toolUse" : reason === "max_tokens" ? "length" : "stop";
       if (event.usage !== undefined) updateUsage(c.liveOutput, event.usage, tools.model);
       break;
     }
     case "message_stop":
-      finalizeOnToolCall(c);
+      if (c.messageFrom === null) finalizeOnToolCall(c);
+      else abandonMessage(c, c.messageFrom);
       break;
     default:
       break;

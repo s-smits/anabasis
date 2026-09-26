@@ -80,11 +80,17 @@ const CUT_MARKER_PATTERN = /^<!-- memory cut to \d+ bytes: (\d+) older bytes dro
  *  what keeps a cut file inside the limit it was cut to. */
 const CUT_MARKER_RESERVE_BYTES = 96;
 
-/** The markers `carryMemoryForward` writes at the head of an inherited file: where it came from,
- *  and which helper files crossed beside it. A cut that dropped them would leave a predecessor's
- *  notes reading as this epoch's own. They sit at the head, which is exactly the end a
- *  newest-first cut takes, so the cut has to keep them explicitly. */
-const CARRY_MARKER_PATTERN = /^(?:<!-- (?:carried forward from|scratch\/ holds)[^\n]*-->\n+)+/;
+/** The controller lines at the head of a notes file: a cut's marker, the markers
+ *  `carryMemoryForward` writes to say where an inherited file came from and which helper files
+ *  crossed beside it, and the `controller:` line `noteAtMemoryHead` writes about how this workspace
+ *  was seeded. A cut that dropped a carry marker would leave a predecessor's notes reading as this
+ *  epoch's own. They sit at the head, which is exactly the end a newest-first cut takes, so the cut
+ *  has to keep them explicitly. Every one of them describes the epoch that wrote it, so the next
+ *  carry strips them all, a cut's marker included: left in front, it would stop the strip at the
+ *  first line and hand the successor its predecessor's lines as notes. A file holding nothing else
+ *  ends on the last marker's `-->`, because the read trims it. */
+const HEAD_MARKER_PATTERN =
+  /^(?:<!-- (?:memory cut to|carried forward from|scratch\/ holds|controller:)[^\n]*-->(?:\n+|$))+/;
 
 /** The Builder's own helper scripts — generators, local checks, debug probes — sit at the top of
  *  `scratch/`, and a successor epoch otherwise rebuilds each one from nothing, so they cross. Only
@@ -119,7 +125,7 @@ export const STARTER_MEMORY_FILES: ReadonlyArray<readonly [string, string]> = FI
 /** The authored body of one memory file, or "" when it is missing or still the untouched starter.
  *  An unwritten file is omitted from the prompt entirely, so a first pass receives the same prompt
  *  it would receive if memory did not exist, rather than an empty memory section inviting it to
- *  treat the headings as a form to fill in. */
+ *  treat the headings as a form to fill in. A starter under controller lines is just those lines. */
 function authoredBody(workspace: string, file: string, starter: string): string {
   let text: string;
   try {
@@ -127,7 +133,8 @@ function authoredBody(workspace: string, file: string, starter: string): string 
   } catch {
     return "";
   }
-  return text.trim() === starter.trim() ? "" : text.trim();
+  const markers = HEAD_MARKER_PATTERN.exec(text)?.[0] ?? "";
+  return (text.slice(markers.length).trim() === starter.trim() ? markers : text).trim();
 }
 
 /** A memory file grows by appending, so the same headed section arrives once per pass and several
@@ -162,7 +169,7 @@ function cappedToNewest(text: string, bytes: number): string {
   if (encoder.encode(text).byteLength <= bytes) return text;
   const prior = CUT_MARKER_PATTERN.exec(text);
   const uncut = prior === null ? text : text.slice(prior[0].length);
-  const pinned = CARRY_MARKER_PATTERN.exec(uncut)?.[0] ?? "";
+  const pinned = HEAD_MARKER_PATTERN.exec(uncut)?.[0] ?? "";
   const body = encoder.encode(uncut.slice(pinned.length));
   const budget = Math.max(0, bytes - encoder.encode(pinned).byteLength - CUT_MARKER_RESERVE_BYTES);
   const start = Math.max(0, body.byteLength - budget);
@@ -204,11 +211,27 @@ export function builderMemoryBlock(workspace: string): string {
   return [
     "Historical notes, model-authored and possibly stale. You wrote these files in earlier passes",
     `in ${workspace}; a "carried forward from <epoch>" marker inside a file names the earlier`,
-    "epoch it came from. Nothing here is controller-checked. Everything below this",
-    "block is current and overrides it.",
+    'epoch it came from, and a "controller:" line says how this workspace was seeded. Nothing here',
+    "is controller-checked. Everything below this block is current and overrides it.",
     "",
     blocks.join("\n\n"),
   ].join("\n");
+}
+
+/** Put one controller line at the head of MEMORY.md, for a fact about this workspace the Builder
+ *  cannot observe and would otherwise meet as a tool that is missing or a file it did not write:
+ *  what seeding did to the tool tree. The file is the right carrier because it is what every round
+ *  reads first when it opens in a workspace new to its conversation, including a session reopened
+ *  after a restart, and because the Builder may delete the line once it has acted on it. The line
+ *  shares the carry markers' pattern, so a cut keeps it and the next epoch's carry drops it, since
+ *  that workspace is seeded afresh and gets its own. */
+export function noteAtMemoryHead(workspace: string, line: string): void {
+  const file = join(workspace, MEMORY_FILE);
+  const text = existsSync(file) ? readFileSync(file, "utf8") : STARTER_MEMORY;
+  // Under a cut's marker, which a cut only recognises as the file's first line.
+  const cut = CUT_MARKER_PATTERN.exec(text)?.[0] ?? "";
+  const noted = `${cut}<!-- controller: ${line} -->\n${text.slice(cut.length)}`;
+  writeFileSync(file, cappedToNewest(noted, MEMORY_CAP_BYTES));
 }
 
 function carryScratchHelpers(prior: string, next: string): string[] {
@@ -267,7 +290,7 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
     try {
       // The predecessor's own markers name its predecessor, while this epoch names only the file it
       // inherits from. Kept, they would stack one line per epoch at the head of the file.
-      const body = authoredBody(prior, file, starter).replace(CARRY_MARKER_PATTERN, "");
+      const body = authoredBody(prior, file, starter).replace(HEAD_MARKER_PATTERN, "");
       if (body === "" || existsSync(join(next, file))) continue;
       mkdirSync(next, { recursive: true });
       // The predecessor's file may already be over its ceiling, and the marker adds to it. Cap here

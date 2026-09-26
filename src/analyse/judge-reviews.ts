@@ -17,7 +17,7 @@ import type { IterationAnalysis } from "./iteration-analysis.ts";
 import { type ContestedCase, type ContestedSubject, contestedCases, isVetoed } from "./judge-contested.ts";
 import { readValidatedBrief } from "../truth/public-resources.ts";
 import { parseJsonAs, capturedJsonParse, hashJsonBytes } from "../meta/json-runtime.ts";
-import { isRecord, isString } from "../meta/json-shape.ts";
+import { isBoolean, isRecord, isString } from "../meta/json-shape.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { safeguardJudgeReview } from "./judge-safeguards.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -174,8 +174,18 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   if (subjects.length === 0) return null;
   if (attempt.census === null) return `the battery has no census: ${attempt.reason}`;
   const { evidence } = attempt.census;
-  if (evidence.verdicts === evidence.offered) return null;
-  return `the judge review is incomplete (${judgeDecision(evidence)}): ${evidence.verdicts}/${evidence.offered} battery verdicts returned`;
+  if (evidence.verdicts !== evidence.offered) {
+    return `the judge review is incomplete (${judgeDecision(evidence)}): ${evidence.verdicts}/${evidence.offered} battery verdicts returned`;
+  }
+  // A contradicting verdict whose resample returned none is neither confirmed nor withdrawn, so the
+  // census counting its first verdict would let a standing Judge issue age towards a fix on it.
+  const unresampled = subjects.filter(({ judgeEvidence, truthOk }) =>
+    isBoolean(judgeEvidence?.verdict) && isBoolean(truthOk) && judgeEvidence.verdict !== truthOk
+      ? !isBoolean(judgeEvidence.confirmation?.verdict)
+      : false,
+  ).length;
+  if (unresampled === 0) return null;
+  return `the judge review is incomplete: ${unresampled} contradicting verdicts returned no resample verdict`;
 }
 
 function judgeExit(contested: readonly ContestedCase[], verified: number): JudgeExit {

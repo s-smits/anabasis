@@ -36,7 +36,12 @@ import { CAPTURE_MAX_BYTES, runTextSyncOrThrow } from "../meta/subprocess.ts";
 import { dirname, isAbsolute, join, relative, resolve } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
-import { CANDIDATE_INTERFACE, STARTER_MEMORY_FILES, candidatePathAllowed } from "./builder-memory.ts";
+import {
+  CANDIDATE_INTERFACE,
+  STARTER_MEMORY_FILES,
+  candidatePathAllowed,
+  noteAtMemoryHead,
+} from "./builder-memory.ts";
 import { linkWorkspaceToolTree } from "../claim/bundle-snapshot.ts";
 
 /** Pinned committer identity: workspace history must not depend on the host's git config. */
@@ -146,13 +151,31 @@ export function writeExcludeRules(dir: string): void {
   writeFileSync(join(dir, ".git", "info", "exclude"), EXCLUDE);
 }
 
+/** What the copy did, in the words the Builder reads at the head of MEMORY.md. The counts say the
+ *  tree is now the workspace's own, and the dropped names say which tools it will meet as missing
+ *  rather than as broken, which is a difference it cannot see from inside the workspace. */
+function seededToolsNote(
+  counts: { files: number; relinked: number; rewritten: number; installNames: number },
+  homes: number,
+  dropped: readonly string[],
+): string {
+  const moved = `files ${String(counts.files)}; launchers rewritten ${String(counts.rewritten)}; links moved ${String(counts.relinked)}; install names moved ${String(counts.installNames)}; venv homes moved ${String(homes)}`;
+  const first = `${dropped.slice(0, 3).join(", ")}${dropped.length > 3 ? ", ..." : ""}`;
+  const left =
+    dropped.length === 0
+      ? ""
+      : ` Left out because they still named the adopted tree, ${String(dropped.length)}: ${first}.`;
+  return `seeding copied the adopted product's .toolchain into this workspace, where it is yours to edit (${moved}).${left}`;
+}
+
 /** A repair owns its own tool installs and HOME caches, while the adopted tree it was seeded from
  *  stays read-only, so the linked seed tree is replaced by a writable copy. The copy is made before
  *  the link is replaced, which means a failed copy leaves the seed in place for a retry rather than
- *  leaving the repair with neither. */
-function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
+ *  leaving the repair with neither. Returns the line the Builder is told, or null when there was no
+ *  linked tree to copy. */
+function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | null {
   const path = join(dir, WORKSPACE_TOOL_TREE);
-  if (!lstatSync(path).isSymbolicLink()) return;
+  if (!lstatSync(path).isSymbolicLink()) return null;
   // Safeguard 53: a host kill inside the copy below skips its cleanup and leaves the partial tree
   // beside the link, where it is excluded from Git and otherwise invisible.
   const leftover = readdirSync(dir).filter((name) => name.startsWith(`${WORKSPACE_TOOL_TREE}-`));
@@ -180,8 +203,10 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
       followSymlinks: false,
     })) {
       const link = join(copy, name);
-      if (!lstatSync(link).isSymbolicLink()) {
-        counts.files += 1;
+      const entry = lstatSync(link);
+      if (!entry.isSymbolicLink()) {
+        // The walk lists directories as well, and a directory is not a file the Builder can open.
+        if (entry.isFile()) counts.files += 1;
         const relocated = relocateToolLauncher(link, source, path, name);
         // A file the copy cannot make stand alone is left out of the copy, not treated as a reason
         // to end the run. The refusal this replaces told its reader to recreate the installation in
@@ -220,12 +245,17 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
       `files=${String(counts.files)} relinked=${String(counts.relinked)} launchersRewritten=${String(counts.rewritten)} singleQuoted=${String(counts.singleQuoted)} installNames=${String(counts.installNames)} dropped=${String(dropped.length)}${dropped.length > 0 ? ` droppedFirst=${dropped.slice(0, 3).join(",")}` : ""} ms=${String(Math.round(performance.now() - started))}`,
       safeguard,
     );
-    // Safeguard 55: relocation rewrites launchers only. A copied venv keeps its `home =` line in
-    // pyvenv.cfg, so its stdlib still resolves through the adopted tree, surfacing there as
-    // sys.base_prefix.
+    // Safeguard 55: a venv names its interpreter's home by absolute path in pyvenv.cfg, and a home
+    // left in the adopted tree starts Python only where the Builder's read grant reaches, so the
+    // solver and the verifier cannot find the stdlib. The home moves with the tree; the sensor
+    // still says when it had to.
     const homed = [
       ...new Bun.Glob("**/pyvenv.cfg").scanSync({ cwd: path, dot: true, followSymlinks: false }),
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
+    for (const name of homed) {
+      const config = join(path, name);
+      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${path}/`));
+    }
     if (homed.length > 0) {
       safeguardTriggered(
         "55-rebuild-seed-venv-home-in-adopted-tree",
@@ -233,6 +263,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
         safeguard,
       );
     }
+    return seededToolsNote(counts, homed.length, dropped);
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
@@ -244,12 +275,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): void {
  * resumed campaign reuses the repository it created rather than starting a second one, which is
  * what keeps history continuous across invocations.
  */
-export function initWorkspace(
-  dir: string,
-  seedFrom?: string,
-  writableSeedTools = false,
-  safeguard?: SafeguardContext,
-) {
+export function initWorkspace(dir: string, seedFrom?: string, safeguard?: SafeguardContext) {
   mkdirSync(dir, { recursive: true });
   linkWorkspaceRuntime(dir);
   linkWorkspacePackageScopes(dir);
@@ -258,15 +284,17 @@ export function initWorkspace(
     cpSync(PI_STARTER_PACK, dir, { recursive: true });
     // Seed before Git marks this workspace initialised, so a failed copy stays retryable; an
     // existing repository keeps its in-flight correction when the same pass resumes.
+    let seeded: string | null = null;
     if (seedFrom !== undefined) {
-      materialiseAdoptedCandidate(seedFrom, dir, safeguard);
-      if (writableSeedTools) copySeedToolTree(dir, safeguard);
+      seeded = materialiseAdoptedCandidate(seedFrom, dir, safeguard);
+      seeded = copySeedToolTree(dir, safeguard) ?? seeded;
       linkWorkspaceRuntime(dir);
     }
     for (const [name, content] of STARTER_MEMORY_FILES) {
       const path = join(dir, name);
       if (!existsSync(path)) writeFileSync(path, content);
     }
+    if (seeded !== null) noteAtMemoryHead(dir, seeded);
     git(dir, ["init", "-q"]);
     writeExcludeRules(dir);
     git(dir, ["add", "-A"]);
@@ -490,8 +518,13 @@ function makeAuthoringCopyWritable(path: string): void {
 
 /** Rebuild agent/ and correctness-model/ byte-identical from the adopted tree, and link that tree's
  *  installed tools. Without the link the seeded workspace loses every control to a missing
- *  `.toolchain`, because a bundle without its tools is a bundle whose checks cannot run. */
-function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguard?: SafeguardContext): void {
+ *  `.toolchain`, because a bundle without its tools is a bundle whose checks cannot run. Returns the
+ *  line the Builder is told when those tools could not be linked, and null otherwise. */
+function materialiseAdoptedCandidate(
+  seedFrom: string,
+  slugDir: string,
+  safeguard?: SafeguardContext,
+): string | null {
   for (const bundle of ["agent", "correctness-model"] as const) {
     rmSync(join(slugDir, bundle), { recursive: true, force: true });
     cpSync(join(seedFrom, bundle), join(slugDir, bundle), { recursive: true });
@@ -509,5 +542,7 @@ function materialiseAdoptedCandidate(seedFrom: string, slugDir: string, safeguar
       `version=${seedFrom} target=${readlinkSync(seedTree)}`,
       safeguard,
     );
+    return "the adopted product's tool tree no longer resolves, so this workspace's .toolchain starts without the tools that product installed.";
   }
+  return null;
 }

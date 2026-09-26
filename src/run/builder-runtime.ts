@@ -92,7 +92,6 @@ export function campaignBuilderMount(
   mkdirSync(ossRoot, { recursive: true });
   const binding = {
     repoRoot,
-    slug,
     epochDir: campaignDir,
     iterationDir: workspace,
     ossRoot,

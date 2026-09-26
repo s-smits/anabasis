@@ -43,7 +43,7 @@ import {
   solverBlockerOf,
 } from "../truth/solve-case.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
-import type { RehearsalRow } from "../author/experiment-plan.ts";
+import type { RehearsalReading, RehearsalRow } from "../author/experiment-plan.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
 import type { RehearsalTraces } from "./context-tool.ts";
 import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
@@ -70,7 +70,7 @@ interface HarnessTrialBinding {
   /** Records each rehearsal that reached a solve into the round plan's evidence and returns the
    *  plan's advice after it. The plan reads the aggregate verdict and the solve's effort; the bytes
    *  the solver submitted go to the authoring review alone, and never back to the Builder. */
-  onRehearsal?: (row: RehearsalRow, submitted: SubmittedRehearsal) => string[];
+  onRehearsal?: (row: RehearsalRow, submitted: SubmittedRehearsal) => RehearsalReading;
 }
 
 /** What a rehearsal's solver submitted: the accepted artifact's bytes, or null when it accepted
@@ -97,6 +97,9 @@ type BlindGrade = {
   /** The harness's solve wall, read from the snapshot the solve ran under. */
   readonly wallMinutes: number;
 };
+
+/** Whether the round plan counts a rehearsal's verdict as calibration. */
+type Calibration = "counted" | "uncounted";
 
 /** What this round's rehearsals have measured so far. A rehearsal that reached no verdict measures
  *  nothing and stays out of the denominator, which is the same rule a measured battery applies to a
@@ -345,13 +348,14 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   // behind. A rehearsal that graded those bytes anyway would answer the round's difficulty question
   // with evidence the battery itself discards, so the verifier runs only when the candidate held
   // still, the solver accepted a submission and no non-result was typed.
+  const blocker = solverBlockerOf(solved);
   const { execution, truthOk } = verifierView(
-    candidate.stable && solved.acceptedSubmit && solved.solved.nonResult === undefined
+    candidate.stable && solved.acceptedSubmit && blocker === null
       ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
       : { status: "not-run" },
   );
   let status = solved.acceptedSubmit ? "completed" : "unaccepted";
-  if (solved.solved.nonResult !== undefined) status = "non-result";
+  if (blocker !== null) status = "non-result";
   if (execution.status === "execution-failed") status = "verifier-failed";
   if (execution.status === "non-result") status = "non-result";
   if (!candidate.stable) status = "candidate-changed";
@@ -377,11 +381,10 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
     );
   }
   const artifact = solved.final?.accepted === true ? solved.final.artifactJson : null;
-  const advice =
-    binding.onRehearsal?.(
-      { taskId, family: family ?? null, verdict, wallMinutes, ...effort },
-      { ordinal, artifact, candidateId: openedCandidateId },
-    ) ?? [];
+  const { advice, counted } = binding.onRehearsal?.(
+    { taskId, family: family ?? null, verdict, wallMinutes, ...effort },
+    { ordinal, artifact, candidateId: openedCandidateId },
+  ) ?? { advice: [], counted: true };
   return {
     status,
     task: { taskId, family, publicTaskDigest: loaded.committed.publicTaskDigest },
@@ -389,6 +392,7 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
     solve: solveView(solved, effort, wallMinutes),
     verifier: candidate.stable ? execution : { status: "not-run", reason: "candidate-changed" },
     truth: { verdict },
+    ...keysIf(!counted, () => ({ calibration: "uncounted" as const })),
     ...keysIf(advice.length > 0, () => ({ planAdvice: advice })),
   };
 }
@@ -416,8 +420,13 @@ function blockedNextAction(stage: string): string {
   return "The rehearsal stopped before your solver ran: this candidate could not be read as a bundle. Use harness_inspect readiness, repair it, then repeat the rehearsal.";
 }
 
-function countRehearsal(tally: RoundRehearsals, verdict: string, turns: number | null): void {
-  if (verdict !== "pass" && verdict !== "fail") return;
+function countRehearsal(
+  tally: RoundRehearsals,
+  verdict: string,
+  turns: number | null,
+  calibration: Calibration,
+): void {
+  if (calibration === "uncounted" || (verdict !== "pass" && verdict !== "fail")) return;
   tally.graded += 1;
   if (verdict !== "pass") return;
   tally.passed += 1;
@@ -444,7 +453,13 @@ function roundClause(tally: RoundRehearsals): string {
   return ` Across this round your solver has now passed ${String(tally.passed)} of ${String(tally.graded)} graded rehearsals${inOneTurn}.`;
 }
 
-function trialNextAction(status: string, verdict: string, stage: string, tally: RoundRehearsals): string {
+function trialNextAction(
+  status: string,
+  verdict: string,
+  stage: string,
+  tally: RoundRehearsals,
+  calibration: Calibration,
+): string {
   if (status === "blocked") return blockedNextAction(stage);
   if (status === "non-result" || status === "verifier-failed") {
     return "The rehearsal reached no verdict, so this task is unmeasured: it is neither hard nor easy evidence. Repair the named stage and repeat it.";
@@ -454,6 +469,9 @@ function trialNextAction(status: string, verdict: string, stage: string, tally: 
   }
   if (status === "unaccepted") {
     return "The solver ran and submitted no accepted artifact. That is a solver miss, not a check failure: it counts towards difficulty only if a correct answer is reachable from the public task with the tools you published. Read your own tool roster and brief before treating it as a hard task.";
+  }
+  if (calibration === "uncounted" && (verdict === "pass" || verdict === "fail")) {
+    return `Your solver ${verdict === "pass" ? "passed" : "missed"} this task, but a preview of this candidate rejected one of its own accept controls, so the verdict may measure the check program rather than the task and says nothing about how a battery of tasks like it scores. Preview the repaired candidate, then rehearse again.`;
   }
   if (verdict === "pass") {
     return `Your solver passed this task on its first unaided attempt, so a battery of tasks like it scores near its size.${roundClause(tally)}`;
@@ -467,7 +485,7 @@ function trialNextAction(status: string, verdict: string, stage: string, tally: 
  *  rehearsal including its own. The tally is updated here rather than by the caller because this is
  *  where the row has already been parsed, and a second parse of the same bytes is a second thing to
  *  keep right. */
-function trialResultSummary(value: unknown, tally: RoundRehearsals) {
+function trialResultSummary(value: unknown, tally: RoundRehearsals, calibration: Calibration) {
   const row = asRecord(value);
   const solve = asRecord(row?.solve);
   const candidate = asRecord(row?.candidate);
@@ -476,18 +494,20 @@ function trialResultSummary(value: unknown, tally: RoundRehearsals) {
   const status = isString(row?.status) ? row.status : "blocked";
   const stage = isString(row?.stage) ? row.stage : "";
   const submitted = isBoolean(solve?.accepted) ? solve.accepted : false;
-  const counted = { outcome: trialOutcome(status, verdict), submitted, truthVerdict: verdict };
-  const receipt: BuilderCustomToolSemantic = { ...counted };
+  const semantic = { outcome: trialOutcome(status, verdict), submitted, truthVerdict: verdict };
+  const receipt: BuilderCustomToolSemantic = { ...semantic };
   if (isNumber(solve?.turns)) receipt.turns = solve.turns;
   if (isString(candidate?.candidateId)) receipt.candidateId = candidate.candidateId;
   if (stage !== "") receipt.stage = stage;
-  countRehearsal(tally, verdict, isNumber(solve?.turns) ? solve.turns : null);
+  countRehearsal(tally, verdict, isNumber(solve?.turns) ? solve.turns : null, calibration);
   return {
-    validation: { ...counted, round: { ...tally } },
+    validation: { ...semantic, round: { ...tally } },
     // A body that already named its own cause keeps it. The status alone cannot tell a blank taskId
     // from an unreadable bundle, so recomputing here would write a vaguer sentence over the more
     // specific one the stage produced.
-    nextAction: isString(row?.nextAction) ? row.nextAction : trialNextAction(status, verdict, stage, tally),
+    nextAction: isString(row?.nextAction)
+      ? row.nextAction
+      : trialNextAction(status, verdict, stage, tally, calibration),
     receipt,
   };
 }
@@ -510,7 +530,8 @@ export function createHarnessTrialTool(binding: HarnessTrialBinding): AgentTool<
       // A rehearsal blocked before its solve wrote nothing under this ordinal, so the next call reuses
       // it without colliding with an evidence directory that exists.
       if (result.status === "blocked") ordinal -= 1;
-      const summary = trialResultSummary(result, tally);
+      // A verdict the plan does not count as calibration joins no round count that reads as one either.
+      const summary = trialResultSummary(result, tally, "calibration" in result ? "uncounted" : "counted");
       return {
         text: capturedJsonStringify({
           ...result,

@@ -38,12 +38,16 @@ import {
   WORKSPACE_DIR,
   builderMemoryBlock,
   carryMemoryForward,
+  noteAtMemoryHead,
 } from "../src/author/builder-memory.ts";
 import { type CampaignEpochEvidence, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
 import { initWorkspace } from "../src/author/domain-repo.ts";
 
 const ASK = "design steel roof trusses to Eurocode 3";
 const CORRECTED_ASK = "design steel roof trusses to Eurocode 3, including connections";
+/** The authoring passes of successive measured rounds, in the spelling the controller records. */
+const PASS_ONE = "experiment:1";
+const PASS_TWO = "experiment:2";
 const BYTES = (text: string) => new TextEncoder().encode(text).byteLength;
 const count = (text: string, part: string) => text.split(part).length - 1;
 
@@ -141,7 +145,7 @@ describe("the handover between measured rounds", () => {
       "# Builder memory\n\nunits are kN\n",
       "# Scratchpad\n\n- open: L3 span family\n",
     );
-    const next = nextPass("experiment:1");
+    const next = nextPass(PASS_ONE);
     expect(next.supersedes).toBe(first.key);
     expect(read(next, MEMORY_FILE)).toContain("units are kN");
     expect(read(next, SCRATCHPAD_FILE)).toContain("open: L3 span family");
@@ -171,7 +175,7 @@ describe("the handover between measured rounds", () => {
       "# Builder memory\n\nunits are kN\n",
       `${"- an old question\n".repeat(400)}${newest}\n`,
     );
-    const carried = read(nextPass("experiment:1"), SCRATCHPAD_FILE);
+    const carried = read(nextPass(PASS_ONE), SCRATCHPAD_FILE);
     expect(BYTES(carried)).toBeLessThanOrEqual(2_000);
     expect(carried).toContain("carried forward from");
     expect(carried).toContain(newest);
@@ -184,7 +188,7 @@ describe("the handover between measured rounds", () => {
     writeFileSync(join(prior, "scratch", "gen.ts"), "export const gen = 1;\n");
     writeFileSync(join(prior, "scratch", "run", "out.json"), "{}");
     writeFileSync(join(prior, "scratch", "trace.bin"), new Uint8Array(512 * 1024));
-    const next = nextPass("experiment:1");
+    const next = nextPass(PASS_ONE);
     expect(readFileSync(join(workspaceOf(next), "scratch", "gen.ts"), "utf8")).toBe(
       "export const gen = 1;\n",
     );
@@ -193,15 +197,15 @@ describe("the handover between measured rounds", () => {
     expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s helper files`);
     expect(read(next, MEMORY_FILE)).toContain("gen.ts");
     // A second carry names only its own predecessor's helpers, in one line.
-    const third = read(nextPass("experiment:2"), MEMORY_FILE);
+    const third = read(nextPass(PASS_TWO), MEMORY_FILE);
     expect(count(third, "scratch/ holds")).toBe(1);
     expect(third).toContain(`scratch/ holds ${next.key}'s helper files`);
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
     const { nextPass } = campaign("# Builder memory\n\nunits are kN\n", "# Scratchpad\n\n- open: L3\n");
-    const second = nextPass("experiment:1");
-    const third = nextPass("experiment:2");
+    const second = nextPass(PASS_ONE);
+    const third = nextPass(PASS_TWO);
     for (const file of [MEMORY_FILE, SCRATCHPAD_FILE]) {
       expect(count(read(third, file), "carried forward from")).toBe(1);
       expect(read(third, file)).toContain(`carried forward from ${second.key}`);
@@ -214,7 +218,7 @@ describe("the handover between measured rounds", () => {
     const { first, nextPass } = campaign(
       `${"an early lesson\n".repeat(Math.ceil((MEMORY_CAP_BYTES * 2) / 16))}${newest}\n`,
     );
-    const next = nextPass("experiment:1");
+    const next = nextPass(PASS_ONE);
     const carried = read(next, MEMORY_FILE);
     expect(BYTES(carried)).toBeLessThanOrEqual(MEMORY_CAP_BYTES);
     expect(carried).toContain(`carried forward from ${first.key}`);
@@ -227,7 +231,7 @@ describe("the handover between measured rounds", () => {
   it("keeps the carry marker when the Builder edits a carried file back over the ceiling", () => {
     // A newest-first cut takes the head, which is where the marker sits.
     const { first, nextPass } = campaign("units are kN\n");
-    const next = nextPass("experiment:1");
+    const next = nextPass(PASS_ONE);
     const newest = "the newest hand-written lesson";
     appendFileSync(
       join(workspaceOf(next), MEMORY_FILE),
@@ -240,21 +244,55 @@ describe("the handover between measured rounds", () => {
     expect(block).toContain("memory cut to");
   });
 
+  it("hands the next epoch the notes and not the controller line about how this one was seeded", () => {
+    const seeded = "seeding copied the adopted product's .toolchain into this workspace";
+    const { first, nextPass } = campaign("# Builder memory\n\nunits are kN\n");
+    noteAtMemoryHead(workspaceOf(first), seeded);
+    expect(read(first, MEMORY_FILE).startsWith(`<!-- controller: ${seeded} -->\n`)).toBe(true);
+    const next = nextPass(PASS_ONE);
+    expect(read(next, MEMORY_FILE)).toContain("units are kN");
+    expect(read(next, MEMORY_FILE)).not.toContain("controller:");
+    // A carried file over its ceiling opens on a cut's marker. The line goes under it, which is the
+    // only place a later cut still recognises that marker, and stays inside the ceiling.
+    const newest = "units are kN and the verifier rejects bare floats";
+    const long = campaign(`${"an early lesson\n".repeat(Math.ceil((MEMORY_CAP_BYTES * 2) / 16))}${newest}\n`);
+    const cut = long.nextPass(PASS_ONE);
+    noteAtMemoryHead(workspaceOf(cut), seeded);
+    const noted = read(cut, MEMORY_FILE);
+    expect(noted.startsWith("<!-- memory cut to")).toBe(true);
+    expect(noted.split("\n")[1]).toBe(`<!-- controller: ${seeded} -->`);
+    expect(count(noted, "memory cut to")).toBe(1);
+    expect(BYTES(noted)).toBeLessThanOrEqual(MEMORY_CAP_BYTES);
+    expect(builderMemoryBlock(workspaceOf(cut))).toContain(newest);
+    // A cut file the Builder has since trimmed under its ceiling is carried uncut, so the carry's
+    // own strip is all that stands between the successor and its predecessor's head lines. It has
+    // to take the cut's marker too, or the strip stops at the first line and keeps them all.
+    const trimmed = campaign(
+      `<!-- memory cut to ${String(MEMORY_CAP_BYTES)} bytes: 900 older bytes dropped -->\n# Builder memory\n\nunits are kN\n`,
+    );
+    noteAtMemoryHead(workspaceOf(trimmed.first), seeded);
+    const after = read(trimmed.nextPass(PASS_ONE), MEMORY_FILE);
+    expect(after).toContain("units are kN");
+    expect(after).not.toContain("controller:");
+    expect(after).not.toContain("memory cut to");
+    expect(count(after, "carried forward from")).toBe(1);
+  });
+
   it("never overwrites notes an epoch already has, and never fails on a missing predecessor", () => {
     const { root, nextPass } = campaign(
       "# Builder memory\n\nthe predecessor's text\n",
       "# Scratchpad\n\n- theirs\n",
     );
-    const own = selectCampaignEpoch(root, { kickoff: ASK, pass: "experiment:1" });
+    const own = selectCampaignEpoch(root, { kickoff: ASK, pass: PASS_ONE });
     initWorkspace(workspaceOf(own));
     writeFileSync(join(workspaceOf(own), MEMORY_FILE), "# Builder memory\n\nthis epoch's own text\n");
     writeFileSync(join(workspaceOf(own), SCRATCHPAD_FILE), "# Scratchpad\n\n- mine\n");
     // Resume re-runs the carry on every invocation; the epoch's own notes outrank its parent's.
-    const resumed = nextPass("experiment:1");
+    const resumed = nextPass(PASS_ONE);
     expect(read(resumed, MEMORY_FILE)).not.toContain("carried forward");
     expect(read(resumed, SCRATCHPAD_FILE)).toContain("mine");
     rmSync(workspaceOf(resumed), { recursive: true, force: true });
-    const orphan = nextPass("experiment:2");
+    const orphan = nextPass(PASS_TWO);
     expect(existsSync(join(workspaceOf(orphan), MEMORY_FILE))).toBe(false);
     // A first epoch has no predecessor, and an unrecorded epoch has no binding to compare.
     const fresh = mkdtempSync(join(tmpdir(), "ana-epochs-fresh-"));

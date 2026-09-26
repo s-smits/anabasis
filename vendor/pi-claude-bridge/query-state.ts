@@ -40,6 +40,8 @@ export class QueryContext {
 	turnStarted = false;
 	turnSawStreamEvent = false;
 	turnSawToolCall = false;
+	/** Where the streaming message's blocks begin, until its message_delta says it completed. */
+	messageFrom: number | null = null;
 
 	/** Output and stream exist between ensureTurnStarted and the stream ending; stated once, here. */
 	get liveOutput(): AssistantMessage { if (!this.turnOutput) throw new Error("turnOutput accessed before resetTurnState"); return this.turnOutput; }
@@ -54,7 +56,7 @@ export class QueryContext {
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 			stopReason: "stop", timestamp: Date.now(),
 		};
-		this.turnStarted = false; this.turnSawStreamEvent = false; this.turnSawToolCall = false;
+		this.turnStarted = false; this.turnSawStreamEvent = false; this.turnSawToolCall = false; this.messageFrom = null;
 		// turnToolCallIds is retained across tool-result delivery
 		// callbacks within the same assistant message so results can be routed to
 		// this query while its handlers are still pending.

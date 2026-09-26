@@ -94,8 +94,8 @@ export function workerBindingDriftFindings(
 
 /** One refusal per probed worker that did not settle. A close-handshake timeout after all probes
  *  have settled concerns host cleanup rather than the agent bytes, so refusing on it rejects a
- *  candidate that the next submit accepts unchanged, round after round. The Built slot already
- *  treats the same termination as benign after a submit (pi-built.ts). */
+ *  candidate that the next submit accepts unchanged, round after round. It is the one close rule
+ *  the battery workers (pi-built.ts) and F2 (solvability-submission.ts) apply after an accepted submit. */
 export function terminationFindings(
   closed: ReadonlyArray<{ termination: GeneratedToolWorkerEvidence["termination"] } | undefined>,
 ): ContractFinding[] {

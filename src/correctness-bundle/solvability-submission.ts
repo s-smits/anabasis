@@ -141,7 +141,12 @@ function startedWorkerFailure(failure: BuiltStarterNonResult): SolvabilitySubmis
     : { status: "non-result", detail };
 }
 
-async function closeFailure(starter: BuiltStarter): Promise<SolvabilitySubmissionPathFailure | null> {
+/** A close-handshake timeout after an accepted submit is cleanup: the host already holds the
+ *  bytes, as a battery case does. Every other close failure keeps its type. */
+async function closeFailure(
+  starter: BuiltStarter,
+  accepted = false,
+): Promise<SolvabilitySubmissionPathFailure | null> {
   let evidence: GeneratedToolWorkerEvidence | undefined;
   try {
     evidence = await starter.close?.();
@@ -149,6 +154,7 @@ async function closeFailure(starter: BuiltStarter): Promise<SolvabilitySubmissio
     return { status: "non-result", detail: `submission worker close failed: ${errorMessage(error)}` };
   }
   if (evidence === undefined || evidence.termination.status === "normal") return null;
+  if (accepted && evidence.termination.closeHandshakeTimeout === true) return null;
   return startedWorkerFailure(evidence.termination);
 }
 
@@ -227,7 +233,7 @@ async function executePath(
   } catch (error) {
     outcome = { status: "representation-defect", detail: errorMessage(error) };
   }
-  return (await closeFailure(starter)) ?? outcome;
+  return (await closeFailure(starter, outcome.status === "accepted")) ?? outcome;
 }
 
 function fileCalls(

@@ -25,6 +25,7 @@ import { boundText } from "../meta/bounded-text.ts";
 
 type PiChild = ReturnType<typeof spawnUnderSolveIsolation>;
 type Done = Extract<PiWire.PiBuiltChildMessage, { type: "done" }>;
+type WorkerTermination = BuiltRuntimeBoundaryEvidence["modelWorker"]["termination"];
 type Forwarded = Exclude<PiWire.PiBuiltChildMessage, { type: "ready" | "tool_call" | "done" | "closing" }>;
 type Ready = Extract<PiWire.PiBuiltChildMessage, { type: "ready" }>;
 type PermitRequest = Extract<PiWire.PiBuiltChildMessage, { type: "turn_permit_request" }>;
@@ -46,6 +47,7 @@ const READY_TIMEOUT_MS = 30_000;
 const CLOSE_TIMEOUT_MS = 2_000;
 const TURN_TIMEOUT_MS = 300_000;
 const SOLVE_WALL_MESSAGE = "Pi Built worker exceeded its bounded solve time";
+const CLOSE_TIMEOUT_MESSAGE = "Pi Built worker did not close after completion";
 /** A stopped worker's aborted tool calls settle within this; the shell kills its process tree on abort. */
 const DISPATCH_SETTLE_MS = 10_000;
 
@@ -404,7 +406,7 @@ function receiveWorkerMessage(binding: WorkerBinding, message: PiWire.PiBuiltChi
     }
     state.done = message;
     state.phase = "closing";
-    variantTimer(child, state, CLOSE_TIMEOUT_MS, "Pi Built worker did not close after completion");
+    variantTimer(child, state, CLOSE_TIMEOUT_MS, CLOSE_TIMEOUT_MESSAGE);
     write({ type: "close" }, true);
     return;
   }
@@ -442,6 +444,17 @@ function receiveWorkerMessage(binding: WorkerBinding, message: PiWire.PiBuiltChi
   onMessage(message);
 }
 
+function workerTermination(
+  failure: Pick<Extract<WorkerTermination, { status: "non-result" }>, "kind" | "message"> | null,
+  exhausted: boolean,
+  closeTimedOut: boolean,
+): WorkerTermination {
+  if (failure === null) return { status: "normal" };
+  if (exhausted) return { status: "solve-wall", message: failure.message };
+  const nonResult = { status: "non-result" as const, kind: failure.kind, message: failure.message };
+  return closeTimedOut ? { ...nonResult, closeHandshakeTimeout: true } : nonResult;
+}
+
 function settleWorker(input: WorkerCompletion, code: number | null): void {
   const { child, state, runtime, bundle, workerInstanceId, conditionDigest, resolve, reject } = input;
   if (state.timer !== null) clearTimeout(state.timer);
@@ -458,6 +471,9 @@ function settleWorker(input: WorkerCompletion, code: number | null): void {
         }
       : null);
   const exhausted = state.calledTool && state.failure?.message === SOLVE_WALL_MESSAGE;
+  // A worker that reported `done` and then outlived its close timer has finished its solve: the
+  // timeout is cleanup evidence on the termination, and the caller decides from the submit.
+  const closeTimedOut = state.done !== null && state.failure?.message === CLOSE_TIMEOUT_MESSAGE;
   const modelWorker: BuiltRuntimeBoundaryEvidence["modelWorker"] = {
     workerInstanceId,
     conditionDigest,
@@ -467,15 +483,11 @@ function settleWorker(input: WorkerCompletion, code: number | null): void {
     policyHash: runtime.policy.policyHash,
     bundleDigest: bundle.digest,
     modelSelection: state.modelSelection,
-    termination:
-      finalFailure === null
-        ? { status: "normal" }
-        : exhausted
-          ? { status: "solve-wall", message: finalFailure.message }
-          : { status: "non-result", kind: finalFailure.kind, message: finalFailure.message },
+    termination: workerTermination(finalFailure, exhausted, closeTimedOut),
   };
-  if (finalFailure === null && state.done !== null) resolve({ done: state.done, modelWorker });
-  else {
+  if ((finalFailure === null || closeTimedOut) && state.done !== null) {
+    resolve({ done: state.done, modelWorker });
+  } else {
     const failed = finalFailure ?? { kind: "runtime" as const, message: "Pi Built worker failed" };
     reject(new PiBuiltWorkerNonResult(failed.kind, failed.message, modelWorker, exhausted));
   }

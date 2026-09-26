@@ -24,7 +24,13 @@ export type SolverNonResult = {
 type BuiltWorkerTermination =
   | { status: "normal" }
   | { status: "solve-wall"; message: string }
-  | { status: "non-result"; kind: SolverNonResult["kind"]; message: string };
+  | {
+      status: "non-result";
+      kind: SolverNonResult["kind"];
+      message: string;
+      /** The worker reported its solve done and then did not close in time. */
+      closeHandshakeTimeout?: true;
+    };
 
 /** The model-visible solve contract the runtime opened, disclosed as separate identities so two
  *  runs can be diffed field by field instead of digest-versus-digest. Every field is constant

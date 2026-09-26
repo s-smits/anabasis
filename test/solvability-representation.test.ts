@@ -146,4 +146,21 @@ describe("the representation the submission path must express", () => {
       expect.objectContaining({ ...finding, disclosure: expect.objectContaining({ classification }) }),
     );
   });
+
+  // The battery's rule: once the reference submit was accepted, the host-marked close handshake
+  // timeout is cleanup evidence. Without the marker the same deadline stays a host non-result above.
+  it.concurrent("keeps an accepted reference submit whose worker timed out closing", async () => {
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starterClosingWith({
+        status: "non-result",
+        kind: "runtime",
+        message: "generated-tool worker did not close within 1000ms",
+        deadline: true,
+        closeHandshakeTimeout: true,
+      }),
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(statuses(result)).toEqual(["passed", "passed"]);
+  });
 });

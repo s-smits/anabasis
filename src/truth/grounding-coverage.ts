@@ -233,8 +233,8 @@ export function rejectsBlockedBy(receipts: readonly CoverageReceipt[], checkId: 
 }
 
 /**
- * The admission refusal for an inert tool declaration, before any paid battery, and the readiness
- * clause for a declared check that ran on no verified case of a measured battery (`scope`).
+ * The readiness clause for a declared external check whose tool ran on none of `scope`, the
+ * verified cases of a measured battery.
  *
  * A check whose tool the host never ran decides by some other route than the one its grounding
  * names. The finding names public authoring identities only — check id, tool id and counts — so
@@ -242,7 +242,7 @@ export function rejectsBlockedBy(receipts: readonly CoverageReceipt[], checkId: 
  */
 export function inertToolFindings(
   coverage: readonly ToolCheckCoverage[],
-  scope = "the whole control census",
+  scope: string,
 ): { code: string; path: string; detail: string }[] {
   return coverage
     .values()

@@ -33,8 +33,6 @@ import {
   type GroundingFinding,
   type SettledControl,
   checkCostRows,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-  // inertToolFindings,
   rejectsBlockedBy,
   toolCheckCoverage,
   unexecutedGroundingFindings,
@@ -220,8 +218,6 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
             evidence: hostEvidence,
             path: EVALUATOR_FILE,
           }),
-          // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-          // inertToolFindings(coverage),
           [...settled].flatMap(([id, row]) => (row.hostNonResult === null ? [] : [id])),
         );
       }
@@ -267,8 +263,6 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
 export function withGroundingFindings(
   findings: ContractFinding[],
   grounding: GroundingFinding[],
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): the census no longer joins a never-launched tool's row (`...inert`) to the grounding rows below
-  // inert: ContractFinding[],
   noVerdictIds: readonly string[],
 ): ContractFinding[] {
   const covered = new Set(grounding.flatMap((row) => row.controlIds));

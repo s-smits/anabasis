@@ -38,9 +38,6 @@ import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_ACCEPTS,
   MATCHING_BRIEF,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy, operating-guide-retired-tool):
-  // commented out (unsure): only the guide cases below read it.
-  // MATCHING_OPERATING_GUIDE,
   MATCHING_REJECTS,
   MATCHING_TASKS,
   MATCHING_TOOLS_SPEC,
@@ -136,9 +133,7 @@ describe("the bundle a candidate must present", () => {
     const { findings, brief } = loadValidatedBundle(dir, ASK);
     expect(brief).toBeNull();
     const named = findings.map(({ code, path }) => `${code} ${path}`);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): a blank
-    // guide is no longer refused by shape.
-    // expect(named).toContain("operating-guide-shape agent/BUILT_AGENTS.md");
+    expect(named).toContain("operating-guide-shape agent/BUILT_AGENTS.md");
     expect(named).toContain("shape-mismatch correctness-model/controls.json");
     expect(named.some((row) => row.startsWith("tools-"))).toBe(true);
     expect(named.some((row) => row.includes("correctnessContract"))).toBe(true);
@@ -325,82 +320,34 @@ describe("the agent the solver gets", () => {
   });
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): these cases pin
-// the empty, oversized, placeholder and task-naming guide refusals and their accepted neighbours.
-// /** The Built Harness reads this guide. Validation checks for nonempty bounded text carrying no
-//  *  task identifier; it does not judge whether the advice is useful. The Builder remains
-//  *  responsible for writing a procedure that serves the domain. */
-// describe("the operating guide", () => {
-//   const guide = (dir: string, text: string) => writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), text);
-//
-//   const refused: Array<[string, string, string]> = [
-//     ["an empty guide", "  \n", "operating-guide-shape"],
-//     [
-//       `a guide naming task ${T1.taskId}`,
-//       `${MATCHING_OPERATING_GUIDE}\nOn ${T1.taskId}, bind first.\n`,
-//       "operating-guide-task-identifier",
-//     ],
-//   ];
-//   for (const [name, text, code] of refused) {
-//     it(`refuses ${name}`, () => {
-//       const dir = workspace();
-//       guide(dir, text);
-//       expect(codes(refuse(dir).findings)).toContain(code);
-//     });
-//   }
-//
-//   it("names the size bound and the starter placeholder in its refusal", () => {
-//     const dir = workspace();
-//     guide(dir, `${MATCHING_OPERATING_GUIDE}${"Declare every part before binding. ".repeat(300)}`);
-//     expect(refuse(dir).findings).toContainEqual(
-//       expect.objectContaining({
-//         code: "operating-guide-shape",
-//         detail: expect.stringContaining("the limit is 8192"),
-//       }),
-//     );
-//
-//     // The starter guide carries an explicit marker, so the unchanged seed is refused by name.
-//     guide(
-//       dir,
-//       readFileSync(join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"), "utf8"),
-//     );
-//     expect(refuse(dir).findings).toContainEqual(
-//       expect.objectContaining({
-//         code: "operating-guide-shape",
-//         path: "agent/BUILT_AGENTS.md",
-//         detail: expect.stringContaining("starter placeholder marker"),
-//       }),
-//     );
-//   });
-//
-//   // The scan uses identifier boundaries: `t1x` and `slot-t1` hold a task id inside a longer word,
-//   // and a substring search would refuse the whole candidate over either. Declared advisers and
-//   // readers are ordinary guide content; their names are not answers.
-//   const accepted: Array<[string, string]> = [
-//     [
-//       "prose holding a task id only inside longer words",
-//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:name-the-slot -->\nName each slot t1x, not slot-t1, and check the output.\n`,
-//     ],
-//     [
-//       "plain prose with no rule marker",
-//       "# Operating Guide\n\nDeclare every part before binding a slot to it.\n",
-//     ],
-//     [
-//       "a repeated legacy rule marker",
-//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:understand-before-writing -->\nDeclare again.\n`,
-//     ],
-//     [
-//       "a guide coordinating a declared advisor",
-//       `${MATCHING_OPERATING_GUIDE}\n<!-- rule:review-before-submit -->\nRun hint before binding a slot.\n`,
-//     ],
-//   ];
-//   for (const [name, text] of accepted) {
-//     it(`accepts ${name}`, () => {
-//       const dir = workspace();
-//       guide(dir, text);
-//       accept(dir);
-//     });
-//   }
+/** The Built Harness reads this guide before every task. Validation refuses one nobody wrote; it
+ *  does not judge whether the advice is useful, which stays with review. */
+describe("the operating guide", () => {
+  const guide = (dir: string, text: string) => writeFileSync(join(dir, "agent/BUILT_AGENTS.md"), text);
+
+  it("refuses an empty guide and the unchanged starter seed, by name", () => {
+    const dir = workspace();
+    guide(dir, "  \n");
+    expect(codes(refuse(dir).findings)).toContain("operating-guide-shape");
+    guide(
+      dir,
+      readFileSync(join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"), "utf8"),
+    );
+    expect(refuse(dir).findings).toContainEqual(
+      expect.objectContaining({
+        code: "operating-guide-shape",
+        path: "agent/BUILT_AGENTS.md",
+        detail: expect.stringContaining("starter placeholder marker"),
+      }),
+    );
+  });
+
+  it("accepts any written guide, however long", () => {
+    const dir = workspace();
+    guide(dir, `# Operating Guide\n\n${"Declare every part before binding. ".repeat(300)}`);
+    accept(dir);
+  });
+});
 
 describe("what a candidate owes beyond a readable bundle", () => {
   it("refuses an accept the public schema cannot hold", () => {

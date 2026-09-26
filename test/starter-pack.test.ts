@@ -10,9 +10,6 @@ import { validateToolsSpec } from "../src/truth/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
 import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): only the guide
-// size assertion below read it.
-// import { MAX_GUIDE_BYTES } from "../src/author/candidate-check.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
@@ -110,22 +107,6 @@ ${fence("### Installed tools", "ts")}
 const workedBrief = () => brief("## The worked domain");
 
 describe("pi starter pack brief vocabulary", () => {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the guide
-  // size cap is commented out with the guide policy.
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the candidate
-  // check no longer refuses the placeholder marker or a guide over the cap.
-  // // The seeded guide is the one required file with no green shape to start from unless the starter
-  // // ships one, and the candidate check refuses both its placeholder marker and a guide over the cap.
-  // it.concurrent("the seeded operating guide carries the marker the candidate check refuses and fits the cap", () => {
-  //   const guide = readFileSync(
-  //     join(import.meta.dir, "../starters/pi-built-harness/agent/BUILT_AGENTS.md"),
-  //     "utf8",
-  //   );
-  //   expect(guide).toContain("<!-- starter-placeholder:replace-before-submit -->");
-  //   expect(new TextEncoder().encode(guide).byteLength).toBeLessThan(MAX_GUIDE_BYTES);
-  // });
-
   // The gate map's passing shapes are examples too: the constant row must pass the brief validator
   // and the check shape must typecheck against CheckFn with the runtime as its second argument.
   it.concurrent("the STARTER.md gate map shapes satisfy their schemas", () => {

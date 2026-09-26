@@ -228,34 +228,22 @@ Refuses `harness_reset` outside a reopen rebuild and a second reset of one scope
 (`src/builder/harness-reset.ts`). A fresh build has no seed to return to, and the per-scope marker
 keeps a resumed round from wiping its own work.
 
-## Commented out (unsure)
+## Narrowed, 2026-09-26
 
-Each entry below names what the component refused, why the audit was unsure it refuses something
-actually wrong, and how to restore it. To restore one, uncomment every block under a marker naming
-its id (`grep -rn "gate-audit.md, <id>" src tools test .claude`), then put back the prose this entry
-names.
+### operating-guide-shape
 
-### representation-blocking
+Refuses an empty operating guide and the unchanged starter seed, which carries a
+`starter-placeholder:` marker (`guideFindings`, `src/author/candidate-check.ts`). Both are a guide
+nobody wrote. The 8,192-byte cap and the task-identifier scan are deleted: a long guide is a cost
+the battery measures, and whether guidance says too much is review's.
 
-Refused a candidate whose reference answer spelled an absence or whose artifact root transcribed a
-public input (`REFERENCE_ANSWER_SPELLS_ABSENCE`, `ARTIFACT_ROOT_TRANSCRIBES_PUBLIC_INPUT`;
-`src/run/representation-census.ts`, `src/run/solvability-gate.ts`). Both are shape heuristics over
-the answer rather than a demonstrated wrong verdict. The witness shape and `inputInsensitivity`
-stay live.
+### key-material-file
 
-### census-inert-tool
-
-Refused adoption when the census never launched a declared external tool
-(`external-check-tool-unlaunched` at the census, `src/truth/probes.ts`). Readiness still names the
-same fact through `inertToolFindings`, where it bounds a claim rather than an authoring round.
-
-### operating-guide-policy
-
-Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming operating guide
-(`operating-guide-shape`, `operating-guide-task-identifier`, `MAX_GUIDE_BYTES`;
-`src/author/candidate-check.ts`). A missing guide is still refused. Whether these byte shapes earn a
-refusal rather than review was unclear. Restore the contract.md and STARTER.md guide-size sentences
-with it.
+Refuses an agent file whose name can only mean an answer: an answer key, an `answers.json` and its
+siblings, or hidden expectations (`KEY_MATERIAL_RE`, `src/claim/bundle-validation.ts`). The
+`reference-solver` and `expected-outputs` patterns are deleted, because a solver-side search or a
+tool tabulating what a public input implies is legitimate agent code under exactly those names, and
+no recorded campaign ever tripped the rule. The rest of `bundle-walls` is unchanged.
 
 ## Rewritten, 2026-09-26
 
@@ -321,5 +309,8 @@ no decision these twelve changed correctly, so their commented-out code, markers
 rather than waiting to be restored: `tool-program-argument`, `tool-self-authored`, `repeated-public-
 condition`, `product-repair-required`, `operating-guide-retired-tool`, `task-variation`, `brief-
 constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeated-findings-stall`,
-`tool-non-result-ceiling`, `preview-attempt-spent`. Two live refusals with no producer left to
+`tool-non-result-ceiling`, `preview-attempt-spent`, and in the pass after them `representation-blocking`
+(a copied root or an absence spelling on every reference witness, shape heuristics that R3's root
+probe and the reviewer's most-failed-check probe now ask by measurement) and `census-inert-tool`
+(readiness's `inertToolFindings` already bounds the claim on the same fact). Two live refusals with no producer left to
 refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-state`.

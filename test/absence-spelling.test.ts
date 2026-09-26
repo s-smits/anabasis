@@ -7,8 +7,7 @@
  * The shape it catches is a writer declaring `Type.Union([Type.String(), Type.Null()])` for a field
  * the reference answer leaves null: the agent writes "" on exactly those rows and the cases fail on
  * that alone, with every count and every other field already correct. Nothing else refuses the
- * schema first, because F2 accepts the reference artifact and the representation census reads that
- * same reference answer, which used null correctly. So this probe is the enforcement for the
+ * schema first, because F2 accepts the reference artifact, which used null correctly. So this probe is the enforcement for the
  * Builder prompt rule that a nullable writer field gives its string branch a minimum length.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";

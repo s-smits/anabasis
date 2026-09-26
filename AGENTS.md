@@ -535,8 +535,9 @@ live evidence.
    shortcut only when it supplies the remaining decision the solver was meant to make.
 
    An authoring review reads two things the Builder never sees. One is the bytes the Built solver
-   submitted in each of the round's blind rehearsals, beside the one verdict they earned; the
-   Builder that ran them saw the verdict and not the bytes. The other is the probes the previous
+   submitted in each of the round's failing blind rehearsals, beside the one verdict they earned;
+   the Builder that ran them saw the verdict and not the bytes, while a passing rehearsal's bytes
+   reach it through the context tool, as a measured pass's do. The other is the probes the previous
    review of the same round rested its findings on, as the exact `probe_check` calls that re-run them
    (`carriedDemonstrations`, `src/review/epoch-reviewer.ts`). A carried probe is a lead and backs
    no finding until this review runs it again, because its number belonged to another review over
@@ -763,8 +764,8 @@ live evidence.
     and any typed non-result, graded under the harness's own `check_seconds` and
     `tool_run_seconds` as a measured battery is. Each rehearsal costs one measured case from the
     provider budget, which is the only bound on how many a round runs, and writes its solve evidence
-    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace joins the context tool's traces source,
-    and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
+    under `<campaignDir>/rehearsals/`. A passing rehearsal's trace and the artifact it submitted join the
+    context tool's traces source, and each rehearsal's verdict and effort join the round's plan evidence. Parameterless `submit` alone freezes and accepts candidate bytes.
 
     Two of the fifteen tools in `BUILDER_TOOLS` (`src/builder/builder-tool-interface.ts`) are the
     ones rule 1 depends on without naming, and an agent that has not met them will try to install a
@@ -794,7 +795,9 @@ live evidence.
     `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300` and
     `shell_timeout_max_seconds 900`; and for the gate, `reference_solve_seconds 120`,
     `census_minutes 30`, `check_seconds 600` and `tool_run_seconds 300`. A harness may raise any of
-    them to **ten times** its default, and above that the host refuses. The Built Harness prompt
+    them to **ten times** its default, and above that the host refuses; a solver wall may also fall
+    no lower than a tenth of its default, because below that the solver never sees a command return
+    and the battery grades whatever draft the wall's own submit sent. The Built Harness prompt
     derives and names its exact closed tool roster. It asks the solver to spend remaining time
     widening the worst margin only where a requirement is a numeric limit. A requirement that is
     simply met or not is finished once a run has shown it met, because the unconditional version of
@@ -805,8 +808,10 @@ live evidence.
     since `files` already carries the shell. That is the operator decision of 2026-09-14, taken
     after truss epochs kept declining `files`, whose draft files become the answer. Read a measured
     battery's roster before attributing its failures to it. A Built turn is bounded by silence, one
-    model call plus one command at its ceiling; a solve the whole-solve wall stops after it had
-    called a tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
+    model call plus one command at its ceiling. When the whole-solve wall stops a solve, the host
+    submits whatever draft it holds through the solver's own `submit` (`submitAtWall`,
+    `src/backends/pi-built.ts`): an accepted one is graded, and otherwise a solve that had called a
+    tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
 
     For generated tools, `text` is the whole model-visible result and `details` is host and trace
     evidence, so every promised value belongs in `text`. A Builder tool result that drops bytes

@@ -1,5 +1,5 @@
 # Runtime settings of this harness, read from the submitted candidate. A change is a product change.
-# Lowering a value is always allowed; the host refuses a value far above its seeded one, and a
+# At submit the host refuses a value far above its seeded one, or a solver value far below it, and a
 # longer solve makes every measured round slower.
 solver:
   solve_minutes: 120 # whole solve time of one task

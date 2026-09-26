@@ -5,7 +5,7 @@
  * The solver receives only the public task and the tools the Builder wrote; it never sees the
  * hidden expectations, the reference solve or the author's intent. What comes back is one aggregate
  * pass/fail bit over the bytes it submitted, plus how far it got. Failing check ids,
- * counterexamples, the artifact and every verifier diagnostic stay protected, and submit remains
+ * counterexamples, a failing artifact and every verifier diagnostic stay protected, and submit remains
  * the sole admission path.
  *
  * This is the only instrument in the authoring loop that can observe a battery being easier than
@@ -73,7 +73,7 @@ interface HarnessTrialBinding {
   rehearsals?: RehearsalTraces;
   /** Records each rehearsal that reached a solve into the round plan's evidence and returns the
    *  plan's advice after it. The plan reads the aggregate verdict and the solve's effort; the bytes
-   *  the solver submitted go to the authoring review alone, and never back to the Builder. */
+   *  the solver submitted go to the authoring review, and back to the Builder only for a pass. */
   onRehearsal?: (row: RehearsalRow, submitted: SubmittedRehearsal) => RehearsalReading;
 }
 
@@ -387,17 +387,18 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
     ...traceEffort(solved.solved.trace),
     ...keyIfDefined("toolCalls", solved.solved.toolCalls),
   };
+  const artifact = solved.final?.accepted === true ? solved.final.artifactJson : null;
   // A passing solve is the solver's own record of a task it can do, which the context tool offers
   // beside the measured passes; a failing one would show where a check bit, so it stays here.
   if (verdict === "pass") {
     const heading = `${taskId} in rehearsal ${String(ordinal)}`;
-    binding.rehearsals?.add(
-      `traces/rehearsal-${String(ordinal)}/${taskId}`,
-      `the passing rehearsal of ${taskId}`,
+    binding.rehearsals?.addPass(
+      ordinal,
+      taskId,
       solverTraceLines(heading, solved.solved.trace, wallMinutes),
+      artifact,
     );
   }
-  const artifact = solved.final?.accepted === true ? solved.final.artifactJson : null;
   const { advice, counted } = binding.onRehearsal?.(
     { taskId, family: family ?? null, verdict, wallMinutes, ...effort },
     { ordinal, artifact, candidateId: openedCandidateId },

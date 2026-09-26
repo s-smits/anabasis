@@ -394,7 +394,7 @@ describe("the admission a repair earns", () => {
       "extra cases on the same rule establish coverage, a new identifier",
       "Move one part per experiment",
       "recorded as a build, and their result credits neither",
-      "fix a known evaluator defect before claiming a task-only challenge",
+      "fix a blocking evaluator defect before claiming a task-only challenge",
     ]) {
       expect(prompt).toContain(sentence);
     }

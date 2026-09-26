@@ -339,6 +339,12 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     "four recorded firings, each dodged by renaming or moving code; contract.md no longer states it",
     ["agent-carries-deciding-computation"],
   ),
+  row(
+    ["BR-9", "numeric-boundary-constant", "rewritten"],
+    [0.95, 0.02],
+    ["brief-numeric-boundary-constant-invalid"],
+    "its one firing refused a per-task limit and got an invented number; now a number only where no task states one",
+  ),
   // DF: difficulty, task set and admission
   row(
     ["DF-2", "candidate-zero-verified", "readout"],
@@ -447,7 +453,6 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
     "brief-duplicate-join-id",
     "brief-no-artifact-schema",
     "brief-no-truth-checks",
-    "brief-numeric-boundary-constant-invalid",
     "brief-numeric-boundary-duplicate",
     "unsupported-correctness-contract",
   ].map((code): [string, string] => [code, BRIEF]),

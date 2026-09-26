@@ -55,7 +55,8 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
   holding the limit, the `designRuleConstants` row naming it, the artifact path reporting the
-  bounded value, and `"atMost"` or `"atLeast"`. The last two are an optional pair, but declare
+  bounded value, and `"atMost"` or `"atLeast"`. The limit is read from the task; the row's value
+  may say in words where each task states its own, and needs a number only when no task does. The last two are an optional pair, but declare
   them: all four make one public comparison the harness runs on each prepared answer and returns as
   a margin, and a boundary without them is never measured.
 

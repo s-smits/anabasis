@@ -1,7 +1,8 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
+import { resolveJsonPath } from "../meta/json-evidence.ts";
 import type { Brief, BriefTruthCheck, ContractFinding } from "./brief.ts";
 import { fieldFinding, finding, jsonPathFinding } from "./brief.ts";
-import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
+import { isNumber, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 import type { MarginDirection, PublishedMargin } from "../solve/published-margin.ts";
 
 const DIRECTIONS = ["atMost", "atLeast"] as const;
@@ -110,16 +111,57 @@ export function numericBoundaryFindings(
         ...jsonPathFinding(boundary.artifactPath, `${base}.artifactPath`, "numeric boundary artifact path"),
       );
     }
-    const constant = brief.designRuleConstants.find((candidate) => candidate.name === boundary.constantName);
-    if (constant === undefined || !isNumber(constant.value)) {
+    if (!brief.designRuleConstants.some((candidate) => candidate.name === boundary.constantName)) {
       findings.push(
         finding(
           "brief-numeric-boundary-constant-invalid",
           `${base}.constantName`,
-          `numeric boundary must name a declared designRuleConstants entry with a numeric value, got ${capturedJsonStringify(boundary.constantName)}`,
+          `numeric boundary must name a declared designRuleConstants entry, got ${capturedJsonStringify(boundary.constantName)}`,
         ),
       );
     }
   }
   return findings;
+}
+
+/**
+ * A boundary's limit has to be a number somewhere. `readMargins` reads it from the task at
+ * `publicInputPath` and nothing reads the constant's value, so a per-task limit whose constant row
+ * says in words where each task publishes it is a complete declaration. Only a boundary that no task
+ * its check applies to states as a number needs the constant to carry one. A check that applies to
+ * no task in this battery is not read here, as it measures nothing this battery.
+ */
+export function unstatedLimitFindings(
+  brief: Brief,
+  rows: readonly { task: { publicInput: JsonValue }; applicable: readonly BriefTruthCheck[] }[],
+): ContractFinding[] {
+  const key = (check: BriefTruthCheck, boundary: NumericBoundaryDeclaration) =>
+    capturedJsonStringify([check.id, boundary.publicInputPath]);
+  const bound = new Set(rows.flatMap(({ applicable }) => applicable.map((check) => check.id)));
+  const stated = new Set(
+    rows.flatMap(({ task, applicable }) =>
+      applicable.flatMap((check) =>
+        (check.numericBoundaries ?? []).flatMap((boundary) => {
+          const limit = resolveJsonPath(task.publicInput, boundary.publicInputPath);
+          return limit.found && isNumber(limit.value) ? [key(check, boundary)] : [];
+        }),
+      ),
+    ),
+  );
+  const numeric = new Set(
+    brief.designRuleConstants.flatMap((constant) => (isNumber(constant.value) ? [constant.name] : [])),
+  );
+  return brief.truthChecks.flatMap((check, checkIndex) =>
+    (bound.has(check.id) ? (check.numericBoundaries ?? []) : []).flatMap((boundary, boundaryIndex) =>
+      numeric.has(boundary.constantName) || stated.has(key(check, boundary))
+        ? []
+        : [
+            finding(
+              "brief-numeric-boundary-constant-invalid",
+              `truthChecks[${checkIndex}].numericBoundaries[${boundaryIndex}].constantName`,
+              `no task check "${check.id}" applies to states a number at ${boundary.publicInputPath}, and constant ${capturedJsonStringify(boundary.constantName)} has no numeric value, so this limit is a number nowhere; publish it on the tasks or give the constant its value`,
+            ),
+          ],
+    ),
+  );
 }

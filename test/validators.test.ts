@@ -10,6 +10,7 @@ import { normalizeToolsSpec, validateToolsSpec } from "../src/correctness-bundle
 import { validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { resolveJsonPath } from "../src/meta/json-evidence.ts";
+import type { JsonValue } from "../src/meta/json-shape.ts";
 import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 
 function greenBrief(overrides: Partial<Brief> = {}): Brief {
@@ -92,6 +93,35 @@ describe("brief and task contract", () => {
     });
     expect(unbound.ok).toBe(true);
   });
+  it("requires a numeric boundary constant only where no task states the limit as a number", () => {
+    // Recorded truss 3fd52f9e-16: each task published its own mass cap, the constant said so in
+    // words, and the refusal made the Builder invent the tightest cap as the constant's value.
+    const brief = greenBrief();
+    const check = required(brief.truthChecks[0], "first check");
+    check.numericBoundaries = [{ publicInputPath: "$.limits.batchSize", constantName: "max-batch-size" }];
+    const constant = required(brief.designRuleConstants[0], "constant");
+    constant.value = "published per task at $.limits.batchSize";
+    expect(validateBrief(brief).ok).toBe(true);
+    const withLimit = (batchSize: JsonValue) => ({
+      ...task("aa", "a", "ghost-ref"),
+      publicInput: { limits: { batchSize } },
+    });
+    const other = task("bb", "b", "slot-binding");
+    expect(validateTasks(brief, { tasks: [withLimit(180), other] }).ok).toBe(true);
+    for (const unstated of [withLimit("180"), task("aa", "a", "ghost-ref")]) {
+      expect(validateTasks(brief, { tasks: [unstated, other] }).findings).toContainEqual(
+        expect.objectContaining({
+          code: "brief-numeric-boundary-constant-invalid",
+          path: "truthChecks[0].numericBoundaries[0].constantName",
+        }),
+      );
+    }
+    // A numeric constant states the limit itself, and a check this battery never runs states none.
+    constant.value = 220;
+    expect(validateTasks(brief, { tasks: [withLimit("180"), other] }).ok).toBe(true);
+    constant.value = "published per task";
+    expect(validateTasks(brief, { tasks: [task("bb", "b", "slot-binding")] }).ok).toBe(true);
+  });
   it("admits safe task identities and refuses path-like and duplicate ones", () => {
     const brief = greenBrief();
     const second = task("bb", "b", "slot-binding");
@@ -168,6 +198,7 @@ describe("brief and task contract", () => {
     ).toContain("tasks-public-rule-path-missing");
     check.numericBoundaries[0] = { publicInputPath: "$.batchSize", constantName: "missing" };
     expect(codes(validateBrief(brief))).toContain("brief-numeric-boundary-constant-invalid");
+    check.numericBoundaries[0] = { publicInputPath: "$.batchSize", constantName: "max-batch-size" };
     check.numericBoundaries[0] = { publicInputPath: "$.limits.batchSize", constantName: "max-batch-size" };
     expect(validateBrief(brief).ok).toBe(true);
     delete check.numericBoundaries;

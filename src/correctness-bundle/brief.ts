@@ -47,8 +47,9 @@ export type BriefTruthCheck = TruthCheck & {
   /** Ids of `brief.ruleDecisions` whose statements state this check's rule. Every cited decision
    * must be public, so the condition this check enforces is one the solver can read. */
   citedDecisionIds?: string[];
-  /** Exact numeric equality points that distinguish inclusive from strict rules. The value comes
-   * from one cited design-rule constant; tasks and controls must witness this point directly. */
+  /** Exact numeric equality points that distinguish inclusive from strict rules. The limit is read
+   * from each task at its public input path and named by one cited design-rule constant, which
+   * needs a numeric value only when no task states the limit (`unstatedLimitFindings`). */
   numericBoundaries?: NumericBoundaryDeclaration[];
 };
 

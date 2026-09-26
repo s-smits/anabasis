@@ -22,6 +22,7 @@ import {
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
 import { resolvePredicatePath } from "./predicate.ts";
+import { unstatedLimitFindings } from "./numeric-boundary.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
@@ -257,6 +258,7 @@ export function validateTasks(
     ...identityFindings(rows),
     ...applicabilityFindings(rows, declared),
     ...declaredPathFindings(rows),
+    ...unstatedLimitFindings(brief, rows),
   ];
   return { ok: findings.length === 0, findings: controllerValidatedFindings(findings) };
 }

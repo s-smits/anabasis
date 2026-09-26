@@ -372,6 +372,18 @@ restored as a flag, because `--iteration-budget` already bounds a campaign and t
 readout fact. A resumed round no longer tells the Builder its accepted candidate was taken forward,
 which an unchanged candidate is not.
 
+### numeric-boundary-constant (BR-9), 2026-09-27
+
+A truth check's `numericBoundaries` row names the task path holding a limit and the
+`designRuleConstants` row naming it (`src/correctness-bundle/numeric-boundary.ts`). The brief
+validator required that row's value to be a number, but nothing reads it: `readMargins` takes the
+limit from the task, and the control census matches the (check, path, constant) triple alone. Its
+one recorded firing, truss 3fd52f9e-16, refused a constant whose value said each task publishes its
+own cap, and the Builder answered by writing the tightest cap in as the value. The brief now needs
+the constant declared, and task validation (`unstatedLimitFindings`) refuses a non-numeric one only
+when no task the check applies to states the limit as a number, which is a limit stated nowhere.
+Same code, `brief-numeric-boundary-constant-invalid`, at both stages.
+
 ## Deleted, 2026-09-26
 
 The second audit (54 components read against their recorded firings and their stated reason) found

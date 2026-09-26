@@ -438,7 +438,7 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
 describe("what a rehearsal hands the round plan", () => {
   // The plan's evidence and the traces source receive the verdict the result already states and
   // what the solve spent; a failing solve's trace would show where a check bit, so it stays out.
-  it("records the verdict and effort, returns the plan's advice, and offers only a passing trace", async () => {
+  it("records the verdict and effort, returns the plan's advice, and offers only a passing trace and its artifact", async () => {
     const dir = workspace();
     const rehearsals = new RehearsalTraces();
     const rows: RehearsalRow[] = [];
@@ -468,8 +468,14 @@ describe("what a rehearsal hands the round plan", () => {
       "verdict",
       "wallMinutes",
     ]);
-    expect(rehearsals.list().map((doc) => doc.id)).toEqual([`traces/rehearsal-1/${TASK_ID}`]);
-    for (const doc of rehearsals.list()) expectNoProtectedDetail("text" in doc ? doc.text() : "");
+    expect(rehearsals.list().map((doc) => doc.id)).toEqual([
+      `traces/rehearsal-1/${TASK_ID}`,
+      `traces/rehearsal-1/${TASK_ID}/artifact`,
+    ]);
+    const texts = rehearsals.list().map((doc) => ("text" in doc ? doc.text() : ""));
+    for (const text of texts) expectNoProtectedDetail(text);
+    expect(texts[1]).toContain(RIGHT_SLOT);
+    expect(texts.join("\n")).not.toContain(WRONG_SLOT);
   }, 60_000);
 
   // The verdict still crosses, but a check program that refused a known-good answer may have decided

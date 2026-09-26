@@ -6,9 +6,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
-import type { Brief, GeneratedExecutionClassification } from "./brief.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-witness-relay): commented out (unsure): imports only the witness relay marking below read
-// import { externalChecksOf } from "./brief.ts";
+import { type Brief, type GeneratedExecutionClassification, externalChecksOf } from "./brief.ts";
 import type { EvaluatorFn } from "./contracts.ts";
 import { isAuthoredEvaluatorFailure } from "./evaluator-process.ts";
 import {
@@ -18,9 +16,12 @@ import {
 } from "./predicate.ts";
 import { commitPublicTask, evaluationPublicTask } from "./task-split.ts";
 import type { BuildTask } from "./tasks.ts";
-import { hostNonResult } from "./tool-runs.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-witness-relay): commented out (unsure): imports only the witness relay marking below read
-// import { uncoveredExternalCheckIds } from "./tool-runs.ts";
+import {
+  hostNonResult,
+  type UngroundedCheck,
+  ungroundedPassChecks,
+  ungroundedSentence,
+} from "./tool-runs.ts";
 import { VerifierExecutionNonResult } from "./verifier-nonresult.ts";
 
 /** One artifact's evaluation result, with host-observed execution failures and protected
@@ -30,6 +31,8 @@ interface EvaluatedWitness {
   error: string | null;
   authorClassification: GeneratedExecutionClassification | null;
   predicateFailures: CheckFailureDetail[];
+  /** The checks a passing verdict rested on without their tools; the evaluator owns this failure. */
+  ungrounded: UngroundedCheck[];
 }
 
 /** The fixed condition every witness of one census is evaluated under. */
@@ -101,27 +104,21 @@ export async function evaluateWitness(
     error = `${pending} tool run(s) were still pending when evaluate returned`;
     authorClassification ??= "generated-correctness-model-pending";
   }
+  // R1: a reference that passed a check without running its required tools proves no path.
+  const ungrounded = ungroundedPassChecks(
+    error === null ? result : null,
+    applicableTruthChecks(brief, fullTask).map((check) => check.id),
+    externalChecksOf(brief),
+    census.verifier.executedBindings(),
+    subject,
+  );
+  if (ungrounded.length > 0) error = ungroundedSentence(ungrounded);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, f2-witness-relay): commented out (unsure): a reference solve whose externally grounded check ran no completed tool no longer fails its F2 witness
-  // const uncovered = uncoveredExternalCheckIds(
-  //   applicableTruthChecks(brief, fullTask).map((check) => check.id),
-  //   externalChecksOf(brief),
-  //   census.verifier.executedBindings(),
-  //   subject,
-  // );
-  // if (uncovered.length > 0) {
-  //   error = [
-  //     error,
-  //     `externally grounded check(s) [${uncovered.join(", ")}] ran no completed tool for this witness`,
-  //   ]
-  //     .filter((item): item is string => item !== null)
-  //     .join("; ");
-  //   authorClassification ??= "generated-correctness-model-relay";
-  // }
   return {
     result,
     error,
     authorClassification,
+    ungrounded,
     predicateFailures: checkProgramFailureDetails(
       brief,
       predicateRequest,

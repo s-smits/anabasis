@@ -68,8 +68,10 @@ campaign census (37,290 `generated-external-grounding-unexecuted` and 25,156
 In those records, a declared external check with no tool run on an applicable case is
 `generated-external-grounding-unexecuted`. A verdict that contradicts the run it received (an
 ignored non-zero exit), a run still in flight when evaluate returns, and a `runtimeNonResult` the
-host never created are all `EXTERNAL_RESULT_UNBOUND`. These are historical finding names; read the
-current host checks for today's refusal codes. Use the run's own result for the check it supports
+host never created are all `EXTERNAL_RESULT_UNBOUND`. These are historical finding names; today a
+pass decided by a check that declares required tools, with no completed run of one of them, is
+`EXTERNAL_VERDICT_UNGROUNDED` at every stage (`ungroundedPassChecks`, `src/truth/tool-runs.ts`); a
+fail is graded as it stands. Use the run's own result for the check it supports
 and await every run before returning.
 
 ## Choose a tool by

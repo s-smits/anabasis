@@ -19,6 +19,8 @@ type DiscriminationClaimabilityCode =
   // From runControls: a control the host could not run to a verdict (timeout, crash, sandbox,
   // unavailable tool).
   | "DISCRIMINATION_PROBE_NO_VERDICT"
+  // From runControls: a verdict an external check decided with no completed run of its tool (R1).
+  | "EXTERNAL_VERDICT_UNGROUNDED"
   | "DISCRIMINATION_CONTROL_RECEIPT_INVALID";
 
 export type DiscriminationClaimabilityFinding = {

@@ -102,7 +102,7 @@ export class Claim {
       ...runStatusClauses(evidence),
       ...conditionIdentityClauses(evidence, identityFindings),
       ...bundleClauses(evidence.bundles),
-      ...groundingClauses(evidence, score),
+      ...groundingClauses(evidence),
       ...truthCheckFiringClauses(evidence),
       ...predictionClauses(evidence.predictions),
       ...denominatorClauses(evidence.runStatus, score.length),
@@ -397,24 +397,16 @@ function bundleClauses(bundles: BundleHashesEvidence | null): ClaimClause[] {
   return [];
 }
 
-function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimClause[] {
+function groundingClauses(evidence: ClaimEvidence): ClaimClause[] {
   const { grounding } = evidence;
   if (!grounding || grounding.declared.length === 0) {
     return [
       clause("grounding-missing", "every truth check must name where its evidence comes from", BLOCKING),
     ];
   }
-  const externalByCheck = new Map<string, string[]>();
-  for (const { checkId, grounding: g, requiredToolIds } of grounding.declared) {
-    const tools = [...(g.kind === "external-verifier" ? [g.adapterId] : []), ...(requiredToolIds ?? [])];
-    if (tools.length > 0) {
-      externalByCheck.set(checkId, [...new Set([...(externalByCheck.get(checkId) ?? []), ...tools])]);
-    }
-  }
   return [
     // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
     // ...declaredGroundingClauses(grounding, evidence.discrimination.attributedCheckIds),
-    ...caseGroundingClauses(grounding.execution, externalByCheck, score),
     ...executionResolutionClauses(grounding.execution),
   ];
 }
@@ -451,46 +443,6 @@ function groundingClauses(evidence: ClaimEvidence, score: ScoredCase[]): ClaimCl
 //   }
 //   return clauses;
 // }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: each verified case needs its own tool run for every applicable external check, so one run cannot vouch for a battery
-/** Per-case coverage. Run-level evidence would let one case's — or one control's — tool execution
- *  satisfy the requirement for every case that used the same check, so a whole battery could be
- *  scored on a single recorded tool run. Each applicable external check needs its own execution
- *  record for the specific verified case being scored; another case's run does not cover it. */
-function caseGroundingClauses(
-  execution: GroundingEvidence["execution"],
-  externalByCheck: Map<string, string[]>,
-  score: ScoredCase[],
-): ClaimClause[] {
-  if (externalByCheck.size === 0) return [];
-  const clauses: ClaimClause[] = [];
-  const executedTriples = new Set(
-    execution.executed.map((b) =>
-      capturedJsonStringify([b.phase, b.subjectId, b.attempt, b.checkId, b.adapterId]),
-    ),
-  );
-  for (const scored of score) {
-    // A fail decided by a check with complete evidence needs no run of the tool it skipped, since
-    // that run could only ever have withheld a pass, never granted one (`acceptedOutcome` in
-    // src/truth/solve-case.ts).
-    if (!scored.truthVerified || !scored.passed) continue;
-    for (const checkId of scored.checkIds) {
-      for (const adapterId of externalByCheck.get(checkId) ?? []) {
-        if (executedTriples.has(capturedJsonStringify(["battery", scored.caseId, 1, checkId, adapterId]))) {
-          continue;
-        }
-        clauses.push(
-          clause(
-            "external-grounding-case-uncovered",
-            `no adapter result was recorded for case "${scored.caseId}" and check "${checkId}"; run adapter "${adapterId}" for every applicable case`,
-            BLOCKING,
-          ),
-        );
-      }
-    }
-  }
-  return clauses;
-}
 
 /** A tool that ran is identified by the bytes the host hashed before spawning it, never by what it
  *  reports about itself: a tool can report the same version after its binary changes. */

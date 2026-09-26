@@ -186,7 +186,6 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         {
           onSettled: (controlId, observation) => settled.set(controlId, observation),
           brief,
-          externalChecks,
           ...keyIfDefined("verifierLifetime", options.verifierLifetime),
           ...keyIfDefined("stopped", stopped),
         },

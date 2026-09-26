@@ -37,6 +37,7 @@ import { type ContractFinding, controllerValidatedFindings } from "../truth/brie
 import type { BuildDeps } from "../truth/build-deps.ts";
 import { type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
 import { referenceSolveTimedOut } from "../truth/reference-solve.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED } from "../truth/tool-runs.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { acceptControlIndependence, acceptIndependenceFeedback } from "./accept-control-independence.ts";
 import { type Witness, inputInsensitivity } from "./representation-census.ts";
@@ -274,6 +275,28 @@ function representationDefectFeedback(
   };
 }
 
+/** R1 in the reference solve: a pass a check decided without running its required tools is the
+ *  evaluator's defect, not the reference's. Each case's sentence names check and tool ids only, so
+ *  the distinct sentences cross whole and the task identities stay in the host evidence. */
+function ungroundedFeedback(cases: readonly SolvabilityCaseEvidence[]): CampaignFeedback[] {
+  const rows = cases.flatMap((row) =>
+    row.status === "failed" && row.failure === "ungrounded" ? [row.error] : [],
+  );
+  if (rows.length === 0) return [];
+  const sentences = [...new Set(rows)].sort(compareCodeUnits);
+  return [
+    {
+      owner: EVALUATOR_FILE,
+      severity: "blocking",
+      claim: `solvability census: ${rows.length} of ${cases.length} reference solves passed a check that never ran its required tools`,
+      evidence: PROTECTED_EVIDENCE,
+      findings: controllerValidatedFindings(
+        sentences.map((detail) => ({ code: EXTERNAL_VERDICT_UNGROUNDED, path: EVALUATOR_FILE, detail })),
+      ),
+    },
+  ];
+}
+
 function censusFeedback(
   evidence: Pick<SolvabilityEvidence, "cases"> | null,
   insensitivity: ContractFinding[],
@@ -302,7 +325,8 @@ function censusFeedback(
     (row) => row.status === "failed" && row.failure === "representation-defect",
   ).length;
   const failed = cases.filter(
-    (row) => row.status === "failed" && row.failure !== "representation-defect",
+    (row) =>
+      row.status === "failed" && row.failure !== "representation-defect" && row.failure !== "ungrounded",
   ).length;
   const nonResults = cases.filter((row) => row.status === "non-result").length;
   const feedback: CampaignFeedback[] = [];
@@ -319,6 +343,7 @@ function censusFeedback(
     feedback.push(representationDefectFeedback(cases, representationDefects));
   }
   // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a battery the candidate's own reference solve cannot pass would measure the checks rather than the solver
+  feedback.push(...ungroundedFeedback(cases));
   if (failed > 0) {
     // How many of the failed solves the per-task wall stopped, stated separately so a slow search
     // is not repaired as a wrong one.

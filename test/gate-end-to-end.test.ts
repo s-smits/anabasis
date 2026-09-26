@@ -172,8 +172,6 @@ describe("the submit gate end to end", () => {
       true,
     );
     expect(outcome.gated).toMatchObject({ feedback: [{ severity: "blocking" }] });
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // expect(rows(outcome)).toEqual([["generated-external-grounding-unexecuted"]]);
     expect(rows(outcome)).toEqual([["DISCRIMINATION_PROBE_NO_VERDICT"]]);
   }, 120_000);
 

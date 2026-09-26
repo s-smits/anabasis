@@ -151,7 +151,6 @@ export type GeneratedExecutionClassification =
   | "generated-toolset-load"
   | "generated-toolset-contract"
   | "generated-correctness-model-pending"
-  | "generated-correctness-model-relay"
   | "reference-solve-host"
   | "submission-path-host";
 

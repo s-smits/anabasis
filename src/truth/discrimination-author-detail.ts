@@ -30,14 +30,14 @@ export function withheldDiscrimination(
   return { ...finding, disclosure };
 }
 
-/** An unmarked row is a withheld evaluate result, or a verifier relay for an unbound tool result. */
+/** An unmarked row is a withheld evaluate result, or a check still pending on its tool runs. */
 export function discriminationDisclosure(finding: DiscriminationClaimabilityFinding): FindingDisclosure {
   return (
     finding.disclosure ?? {
       class: "withheld",
       classification:
         finding.code === "EXTERNAL_RESULT_UNBOUND"
-          ? "generated-correctness-model-relay"
+          ? "generated-correctness-model-pending"
           : "generated-evaluate-result",
     }
   );

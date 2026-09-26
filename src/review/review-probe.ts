@@ -349,7 +349,6 @@ async function runPair(
     candidate.tasks,
     {
       brief: candidate.brief,
-      externalChecks: externalChecksOf(candidate.brief),
       lanes: 1,
       verifierLifetime: candidate.lifetime,
     },

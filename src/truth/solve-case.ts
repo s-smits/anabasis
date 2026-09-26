@@ -58,11 +58,16 @@ import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifi
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { CaseRecord } from "./battery-record.ts";
 import { type Brief, applicableTruthChecks, externalChecksOf, requiredToolsOf } from "./brief.ts";
-import { hostNonResult, uncoveredExternalCheckIds } from "./tool-runs.ts";
+import {
+  hostNonResult,
+  type UngroundedCheck,
+  ungroundedPassChecks,
+  ungroundedSentence,
+} from "./tool-runs.ts";
 import { solverNonResultReason } from "./runtime-blocker.ts";
-import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
+import { blockingTruthFailure } from "./verdict-binding.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
-import { EvaluatorProcessFailure } from "./evaluator-process.ts";
+import { EvaluatorProcessFailure, isAuthoredEvaluatorFailure } from "./evaluator-process.ts";
 import { resolveVerifier } from "./verification-registry.ts";
 import { asError, errorMessage } from "../meta/runtime-values.ts";
 
@@ -377,10 +382,17 @@ function lifetimeUsable(lifetime: VerifierLifetime | undefined): boolean {
 function rehearsalFailure(error: unknown, callerSignal: AbortSignal | undefined) {
   if (error instanceof VerifierOperationalStop) return { status: "non-result", kind: "cleanup-pending" };
   if (callerSignal?.aborted === true) return { status: "non-result", kind: "cancelled" };
-  if (error instanceof EvaluatorProcessFailure && ["timeout", "crash", "sandbox"].includes(error.kind)) {
-    return { status: "non-result", kind: error.kind };
-  }
+  const kind = evaluatorProcessKind(error);
+  if (kind !== null) return { status: "non-result", kind };
   return { status: "execution-failed" };
+}
+
+/** The evaluator child's own timeout, crash or sandbox failure, which is the host's to name rather
+ *  than a throw of the check program. */
+function evaluatorProcessKind(error: unknown): "timeout" | "crash" | "sandbox" | null {
+  if (!(error instanceof EvaluatorProcessFailure)) return null;
+  const { kind } = error;
+  return kind === "timeout" || kind === "crash" || kind === "sandbox" ? kind : null;
 }
 
 /** Invokes the existing check program and host over the rehearsal's accepted bytes. The execution
@@ -437,7 +449,8 @@ export async function rehearseCase(
     const outcome = acceptedOutcome(
       scoped,
       hostNonResult(verifier, subject),
-      uncoveredExternalCheckIds(
+      ungroundedPassChecks(
+        scoped.verdict,
         checks.map((check) => check.id),
         externalChecksOf(brief),
         verifier.executedBindings(),
@@ -454,41 +467,40 @@ export async function rehearseCase(
 /**
  * The ordered reasons an accepted artifact scores nothing, and the truth bit when none of them
  * holds. The order is the contract, not an implementation detail: a cleanup failure outranks the
- * verdict it may have corrupted, a throw outranks a missing host run, and a host outage outranks a
- * grounded check that ran no tool, because the outage is what explains the missing run.
+ * verdict it may have corrupted, and a host outage outranks a throw, because a check whose tool
+ * timed out throws on the output it never got and the host's own row already owns that failure.
+ * Only an authored evaluator failure outranks the host row, as the control census reads it. A throw
+ * that is the evaluator child's own timeout, crash or sandbox failure keeps that kind, as a
+ * rehearsal records it; any other throw is the author's. A host outage also outranks a grounded
+ * check that ran no tool, because the outage is what explains the missing run.
  */
 function acceptedOutcome(
   scoped: Awaited<ReturnType<typeof runCaseScope>>,
   hostFailure: ReturnType<typeof hostNonResult>,
-  missingExternalVerdicts: readonly string[],
+  ungrounded: readonly UngroundedCheck[],
 ): CaseOutcome {
   if (scoped.cleanupPending) {
     return nonResult("verifier-cleanup-pending: host process cleanup is incomplete", "sandbox");
   }
+  const outage =
+    hostFailure === null || hostFailure.outcome === "executed"
+      ? null
+      : nonResult(
+          `tool "${hostFailure.toolId}" for check "${hostFailure.checkId}" reached no completed run (${hostFailure.outcome})`,
+          hostFailure.outcome,
+        );
+  if (outage !== null && (scoped.verdict !== null || !isAuthoredEvaluatorFailure(scoped.failure))) {
+    return outage;
+  }
   if (scoped.verdict === null) {
     return nonResult(
       `verifier threw (${errorMessage(scoped.failure)}) — a declared check returns a Boolean, never throws`,
-      "verifier-throw",
+      evaluatorProcessKind(scoped.failure) ?? "verifier-throw",
     );
   }
-  if (hostFailure !== null && hostFailure.outcome !== "executed") {
-    return nonResult(
-      `tool "${hostFailure.toolId}" for check "${hostFailure.checkId}" reached no completed run (${hostFailure.outcome})`,
-      hostFailure.outcome,
-    );
-  }
-  // A blocking fail on a check whose evidence is complete decides the case, because a tool run
-  // that was skipped could only ever have withheld a pass, never created one. A case that failed
-  // to compile is filed here rather than as a non-result.
-  const failed = [...blockingFailedCheckIds(scoped.verdict)];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a verified case whose externally grounded check ran no tool has no tool evidence behind its verdict
-  if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
-    // The unattributed verifier kind belongs to generated behaviour, not the environment.
-    return nonResult(
-      `externally grounded check(s) ${missingExternalVerdicts.map((id) => `"${id}"`).join(", ")} ran no tool for this case`,
-      "verifier",
-    );
-  }
+  // R1 (`ungroundedPassChecks`). The unattributed verifier kind belongs to generated behaviour,
+  // not the environment. A case that failed to compile is filed here rather than as a non-result.
+  if (ungrounded.length > 0) return nonResult(ungroundedSentence(ungrounded), "verifier");
   return { kind: "truth", truthOk: !blockingTruthFailure(scoped.verdict) };
 }
 
@@ -509,15 +521,15 @@ async function gradeAcceptedArtifact(
   const scoped = await runCaseScope(deps, solved, artifactJson);
   const subject = { phase: "battery" as const, subjectId: taskId, attempt: 1 };
   // Coverage is required only after accepted bytes reached a real correctness-model verdict.
-  const missingExternalVerdicts =
-    solved.acceptedSubmit && scoped.verdict !== null
-      ? uncoveredExternalCheckIds(
-          deps.applicableIds,
-          deps.externalChecks,
-          deps.verifier.executedBindings(),
-          subject,
-        )
-      : [];
+  const ungrounded = solved.acceptedSubmit
+    ? ungroundedPassChecks(
+        scoped.verdict,
+        deps.applicableIds,
+        deps.externalChecks,
+        deps.verifier.executedBindings(),
+        subject,
+      )
+    : [];
   const unbound =
     scoped.pendingInvocations > 0
       ? [
@@ -525,7 +537,7 @@ async function gradeAcceptedArtifact(
         ]
       : [];
   return {
-    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), missingExternalVerdicts),
+    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), ungrounded),
     // A verdict the cleanup failure may have corrupted is not published as this case's verdict.
     verdict: scoped.cleanupPending ? null : scoped.verdict,
     unbound,

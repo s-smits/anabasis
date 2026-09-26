@@ -80,17 +80,13 @@ describe("brief and task contract", () => {
     const noFamily = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "uncovered", hidden: [] }],
     });
-    expect(codes(noFamily)).toEqual(
-      expect.arrayContaining(["tasks-no-applicable-checks", "tasks-check-family-unbound"]),
-    );
-    // "slot-binding" is scoped to family "b"; a battery whose tasks are all "a" never runs it.
+    expect(codes(noFamily)).toContain("tasks-no-applicable-checks");
+    // "slot-binding" is scoped to family "b"; a task probe whose tasks are all "a" does not run it
+    // this battery, which the claim's firing counts record, and nothing is wrong with the candidate.
     const unbound = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "a", hidden: [{ checkId: "ghost-ref", expectation: true }] }],
     });
-    expect(codes(unbound)).toContain("tasks-check-family-unbound");
-    expect(unbound.findings.find((f) => f.code === "tasks-check-family-unbound")?.detail).toContain(
-      '"slot-binding"',
-    );
+    expect(unbound.ok).toBe(true);
   });
   it("admits safe task identities and refuses path-like and duplicate ones", () => {
     const brief = greenBrief();

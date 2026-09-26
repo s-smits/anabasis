@@ -79,7 +79,8 @@ it. The host runs every reference answer through the same checks as controls and
   controls: an object admits only the key sets those accepts show. A record keyed by task data,
   such as `{partId: address}`, lists its dotted path in `openMapPaths` (`"$"` for the root) so
   any key is admitted while each value keeps its shape; a declared path no accept reaches is
-  refused.
+  refused. Where an accept writes `null` for "does not apply", say so in the brief: a solver left
+  to choose may write `""` there instead, and a check reading `null` then fails it.
 - `allowedValues` names the only scalars a field takes; submission refuses any other before
   verification. `designRuleConstants` rows are `{name, value, unit?, authority, citation}`, and
   optional `designRuleSets` rows `{name, values, unit?, authority, citation}` publish a permitted
@@ -144,8 +145,8 @@ Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come fr
 ## Task battery and controls
 
 `tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are
-safe directory names. Every check applies to at least one task, every declared public input path
-exists on each applicable task, and every required hidden row is `{checkId, expectation}`; tool
+safe directory names. Every task has at least one applicable check, every declared public input
+path exists on at least one task it applies to, and every required hidden row is `{checkId, expectation}`; tool
 checks need no synthetic hidden marker.
 
 `controls.json` is `{accept: [...], reject: [...]}` with at least 5 known-correct and 5

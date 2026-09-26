@@ -326,10 +326,11 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["brief-constant-uncited"],
   ),
   row(
-    ["BR-6", "brief-join-no-decoys", "kept"],
+    ["BR-6", "brief-join-no-decoys", "deleted"],
     [0.1, 0.3],
+    [],
+    "nothing reads decoyClasses, so a repeated class refused a duplicate of no obligation",
     ["brief-duplicate-decoy-class"],
-    "the audit deleted it because nothing reads decoyClasses, but the brief validator still refuses",
   ),
   row(
     ["BR-7", "agent-deciding-computation", "deleted"],

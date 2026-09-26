@@ -263,11 +263,6 @@ describe("brief and task contract", () => {
       { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },
       { code: "brief-duplicate-join-id" },
     ],
-    [
-      "a duplicate decoy class",
-      { joins: [join("parts-to-slots", ["alias-swap", "alias-swap"])] },
-      { code: "brief-duplicate-decoy-class" },
-    ],
     ["an empty artifact schema", { artifactSchema: [] }, { code: "brief-no-artifact-schema" }],
     [
       "a duplicate artifact field",
@@ -294,6 +289,11 @@ describe("brief and task contract", () => {
     expect(findings.map((finding) => finding.code)).not.toContain(
       "brief-artifact-field-allowed-values-invalid",
     );
+  });
+  it("admits a join that repeats a decoy class, because nothing reads the classes", () => {
+    expect(
+      validateBrief(greenBrief({ joins: [join("parts-to-slots", ["alias-swap", "alias-swap"])] })).ok,
+    ).toBe(true);
   });
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));

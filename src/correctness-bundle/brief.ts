@@ -17,9 +17,8 @@ import {
  *  - decisions and gates non-empty, because a brief that decides nothing builds nothing;
  *  - truth checks typed with decidable text, because otherwise the verifier returns verdicts under
  *    checkIds the brief never declared;
- *  - joins carrying decoy obligations, because covering the check labels does not prove the join is
- *    correct. Each declared join must name the decoy classes that would fool a presence-only check,
- *    and the control corpus must cover them (see controls.ts);
+ *  - joins owned by exactly one check, so a reject aimed at a join names the check that must fail
+ *    on it (see controls.ts);
  *  - design-rule constants citing an external authority, because a join can be sound while the rule
  *    it enforces is wrong and every reader inside the build agrees with it. A constant needs a
  *    source outside the build so that a reviewer can check the value against something the build
@@ -57,7 +56,8 @@ type BriefJoin = {
   id: string;
   /** What is joined against what, by which exact key. */
   description: string;
-  /** Decoy classes a presence-only or lookalike check would miss; every one needs a reject control. */
+  /** Decoy classes a presence-only or lookalike check would miss. The Builder's own plan: no code
+   *  reads them, and no control is required per class. */
   decoyClasses: string[];
 };
 

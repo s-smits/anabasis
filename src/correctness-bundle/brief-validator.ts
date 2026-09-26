@@ -366,8 +366,7 @@ function truthCheckFindings(brief: Brief) {
   return { findings, readRoots };
 }
 
-/** Each join is owned by exactly one check and repeats no decoy class, so one control cannot satisfy
- *  two obligations. */
+/** Each join is declared once and owned by exactly one check. */
 function joinFindings(brief: Brief): ContractFinding[] {
   const findings: ContractFinding[] = [];
   const joinOwners = new Map<string, string[]>();
@@ -393,15 +392,6 @@ function joinFindings(brief: Brief): ContractFinding[] {
           "brief-join-check-ownership-invalid",
           `joins[${i}].id`,
           `join "${join.id}" must be owned by exactly one named truth check, got [${owners.join(", ")}]`,
-        ),
-      );
-    }
-    if (new Set(join.decoyClasses).size !== join.decoyClasses.length) {
-      findings.push(
-        finding(
-          "brief-duplicate-decoy-class",
-          `joins[${i}].decoyClasses`,
-          `join "${join.id}" repeats a decoy class — one control must not satisfy duplicate obligations`,
         ),
       );
     }

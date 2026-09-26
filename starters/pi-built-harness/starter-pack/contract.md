@@ -45,7 +45,7 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   together. A private row no check reads, such as the order your own reference happened to search
   in, withholds nothing, and a battery whose projection spells out how to build a passing answer
   measures transcription.
-- A check owning a join lists its `joinIds`; controls cover that join's decoy classes.
+- A check owning a join lists its `joinIds`.
 - Read every value your rule names from the task, at the moment the check runs. A constant written
   into checker source for a value the brief publishes as an input is a defect even when every
   present task publishes the same number: it grades today's battery correctly and silently forbids

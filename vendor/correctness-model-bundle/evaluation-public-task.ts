@@ -1,8 +1,8 @@
 import { jsonPathTokens } from "../../src/meta/json-evidence.ts";
 import { isRecord, type JsonValue } from "../../src/meta/json-shape.ts";
-import type { Brief, BriefTruthCheck, CheckExecution } from "../../src/truth/brief.ts";
-import type { PublicTask } from "../../src/truth/task-split.ts";
-import type { EvaluationRequest } from "../../src/truth/correctness-model-contract.ts";
+import type { Brief, BriefTruthCheck, CheckExecution } from "../../src/correctness-bundle/brief.ts";
+import type { PublicTask } from "../../src/correctness-bundle/task-split.ts";
+import type { EvaluationRequest } from "../../src/correctness-bundle/correctness-model-contract.ts";
 
 export const CHECK_PROGRAM_CONTRACT = "check-program/v1";
 

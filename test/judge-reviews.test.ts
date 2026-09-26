@@ -35,9 +35,9 @@ import {
   type JudgeObservation,
   type JudgeSubjectEvidence,
   summarizeJudge,
-} from "../src/truth/judge.ts";
-import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
-import { ACTIVE_JUDGE_PROMPTS } from "../src/truth/judge-prompt-policy.ts";
+} from "../src/review/judge.ts";
+import { SANITIZER_VERSION } from "../src/correctness-bundle/sanitize.ts";
+import { ACTIVE_JUDGE_PROMPTS } from "../src/review/judge-prompt-policy.ts";
 import { isBoolean, type JsonObject } from "../src/meta/json-shape.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

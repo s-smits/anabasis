@@ -34,9 +34,9 @@ import {
 import { BUILT_SHELL_RULES } from "../src/solve/dcg-rules.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
-import { solverNonResultReason } from "../src/truth/runtime-blocker.ts";
-import { builtStarterFactoryForSolver } from "../src/truth/solve.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
+import { solverNonResultReason } from "../src/correctness-bundle/runtime-blocker.ts";
+import { builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";

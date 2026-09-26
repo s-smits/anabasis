@@ -8,14 +8,19 @@
  */
 import { existsSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
-import { BATTERY_FILE, batteryPath, CASE_ARTIFACT_FILE, CASE_JUDGE_FILE } from "../truth/battery-record.ts";
+import {
+  BATTERY_FILE,
+  batteryPath,
+  CASE_ARTIFACT_FILE,
+  CASE_JUDGE_FILE,
+} from "../correctness-bundle/battery-record.ts";
 import { type JudgeEvidence, judgeDecision, validateJudgeEvidence } from "../claim/judge.ts";
 import { type EvidenceLogViolation, recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
-import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../truth/judge-prompt-policy.ts";
-import type { JudgeSubjectEvidence } from "../truth/judge.ts";
+import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../review/judge-prompt-policy.ts";
+import type { JudgeSubjectEvidence } from "../review/judge.ts";
 import type { IterationAnalysis } from "./iteration-analysis.ts";
 import { type ContestedCase, type ContestedSubject, contestedCases, isVetoed } from "./judge-contested.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { parseJsonAs, capturedJsonParse, hashJsonBytes } from "../meta/json-runtime.ts";
 import { isBoolean, isRecord, isString } from "../meta/json-shape.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";

@@ -26,7 +26,7 @@ import {
   promoteCandidate,
   recordExperimentIntegrityHold,
 } from "../src/run/candidate-promotion.ts";
-import type { BundleSnapshotFact } from "../src/truth/battery-record.ts";
+import type { BundleSnapshotFact } from "../src/correctness-bundle/battery-record.ts";
 import {
   measuredSelectedProduct,
   publishProductVersion,

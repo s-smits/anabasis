@@ -13,7 +13,7 @@
  */
 import { BuildAgentTurnNonResult } from "../author/build-agent.ts";
 import { EnvironmentRefusal } from "../backends/environment-refusal.ts";
-import { RUNTIME_NON_RESULT_MESSAGE } from "../truth/runtime-blocker.ts";
+import { RUNTIME_NON_RESULT_MESSAGE } from "../correctness-bundle/runtime-blocker.ts";
 import { errorCode } from "../meta/runtime-values.ts";
 import { CampaignBudgetExhausted } from "./controller-ledger.ts";
 import { ProviderResourceBudgetExhausted } from "./provider-resource-budget.ts";

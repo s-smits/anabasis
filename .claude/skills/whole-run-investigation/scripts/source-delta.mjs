@@ -25,8 +25,15 @@ import { campaignRuns, latestRun } from "#tools/runs/discover.ts";
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SAFEGUARD_CALL = /safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g;
-/** Broad path heuristic for possible model-visible changes; verify delivery before making a claim. */
-const MODEL_VISIBLE = [/^src\/author\//, /^src\/builder\//, /^starters\//, /prompt/i, /^src\/truth\/judge/];
+/** Broad path heuristic for possible model-visible changes; verify delivery before making a claim.
+ *  The Judge's files moved from src/truth to src/review, and a recorded run may sit on either side. */
+const MODEL_VISIBLE = [
+  /^src\/author\//,
+  /^src\/builder\//,
+  /^starters\//,
+  /prompt/i,
+  /^src\/(truth|review)\/judge/,
+];
 
 /** Git's name-status letter for the change a path underwent; anything else is a modification. */
 const CHANGE_BY_STATUS = { A: "added", D: "deleted", R: "renamed" };

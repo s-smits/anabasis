@@ -25,7 +25,7 @@ import {
 } from "../builder/vm-workshop-cell.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
-import type { Solver } from "../truth/solve.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import { builderSessionOpener, builderShellWall, builderSlot } from "./builder-backend.ts";

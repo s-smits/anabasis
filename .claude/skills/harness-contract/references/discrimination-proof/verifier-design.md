@@ -44,7 +44,7 @@ Boolean checks on those accepted bytes. Keep one truth owner and no shared mutab
 
 The brief declares `correctnessContract: "check-program/v1"`. Each truth check names one Boolean
 function in `correctness-model/evaluator.ts` and declares its execution inputs in
-`src/truth/brief.ts`. The host runs each applicable function in a fresh confined child.
+`src/correctness-bundle/brief.ts`. The host runs each applicable function in a fresh confined child.
 
 | Declaration | Meaning | Refusal boundary |
 |---|---|---|

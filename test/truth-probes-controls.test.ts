@@ -11,12 +11,12 @@ import {
   type BriefTruthCheck,
   type ContractFinding,
   projectFindingForAuthor,
-} from "../src/truth/brief.ts";
-import { probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { makeProbeControls, withGroundingFindings } from "../src/truth/probes.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+} from "../src/correctness-bundle/brief.ts";
+import { probeGeneratedCorrectnessModelModule } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { makeProbeControls, withGroundingFindings } from "../src/correctness-bundle/probes.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";

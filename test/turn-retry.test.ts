@@ -19,7 +19,7 @@ import { BuildAgentTurnNonResult } from "../src/author/build-agent.ts";
 import { BuilderExecutionRecorder } from "../src/author/builder-execution.ts";
 import { runBuilderTurn, type BuilderTurnState } from "../src/author/builder-turn-loop.ts";
 import { PROVIDER_RESET_MARGIN_MS, TURN_RETRY_BACKOFF_MS } from "../src/author/turn-retry.ts";
-import { allowanceWait, providerResetAt } from "../src/truth/provider-reset.ts";
+import { allowanceWait, providerResetAt } from "../src/correctness-bundle/provider-reset.ts";
 import { ProviderResourceBudget } from "../src/run/provider-resource-budget.ts";
 import { ControllerSignalAbort, controllerAbortClause } from "../src/run/controller-abort-clause.ts";
 

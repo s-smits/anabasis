@@ -21,10 +21,10 @@ import {
 } from "../claim/conformance-evidence.ts";
 import { fingerprintSlug, type FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { HarnessAuthoring, HarnessExperiment } from "../critic/types.ts";
-import type { Brief } from "../truth/brief.ts";
-import { briefPublicResources, judgePublicTaskOf } from "../truth/public-resources.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+import type { Brief } from "../correctness-bundle/brief.ts";
+import { briefPublicResources, judgePublicTaskOf } from "../correctness-bundle/public-resources.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import {
   type ExperimentPlan,
   ExperimentSubmissionSchema,

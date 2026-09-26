@@ -12,8 +12,8 @@
  * that also decides anything. A clause name is never recycled for a different meaning: an older
  * record stays recognisable only while the words in it still mean what they meant.
  */
-import type { GroundingEvidence, TruthGrounding } from "../truth/grounding.ts";
-import type { ToolCheckCoverage } from "../truth/grounding-coverage.ts";
+import type { GroundingEvidence, TruthGrounding } from "../correctness-bundle/grounding.ts";
+import type { ToolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import type { DiscriminationClaimabilityFinding } from "./discrimination-claimability.ts";
 import type { JudgeDecision, JudgeEvidence, JudgeState } from "./judge.ts";
 import type { RuntimeIdentityCaseEvidence } from "./runtime-model-identity.ts";

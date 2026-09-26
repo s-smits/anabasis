@@ -26,8 +26,8 @@ import {
 import { GeneratedToolWorkerNonResult, createGeneratedToolStarter } from "../solve/generated-tool-worker.ts";
 import { withTimeLeftAtSubmit } from "../solve/submit-time-left.ts";
 import { PENDING_REQUESTS_AT_CLOSE } from "../solve/generated-tool-worker-termination.ts";
-import { loadBuiltControllerInterface } from "../truth/contracts.ts";
-import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
+import { loadBuiltControllerInterface } from "../correctness-bundle/contracts.ts";
+import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
 import {
   type BuiltRuntimeBoundaryEvidence,
   type SolveOutcome,
@@ -36,7 +36,7 @@ import {
   type SolverNonResult,
   nonResultOutcome,
   withSolverBuiltStarterFactory,
-} from "../truth/solve.ts";
+} from "../correctness-bundle/solve.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { type PiCredential, type PiProfile, claudeCliExecutable, resolvePiSlot } from "./pi-providers.ts";
 import { PI_AGENT_RUNTIME } from "./model-selection.ts";
@@ -48,7 +48,7 @@ import {
   PiBuiltWorkerNonResult,
   startPiBuiltWorker,
 } from "./pi-built-process.ts";
-import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import type { ResolvedSlots } from "./resolve.ts";
 import { createTraceRecorder } from "./trace-capture.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";

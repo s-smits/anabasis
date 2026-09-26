@@ -2,9 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
-import type { Brief } from "../src/truth/brief.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { judgeSubject } from "../src/truth/judge.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import { judgeSubject } from "../src/review/judge.ts";
 import {
   PUBLIC_RESOURCES_TOOL,
   briefPublicResources,
@@ -12,8 +12,8 @@ import {
   judgePublicTaskOf,
   publicResourcesTool,
   readPublicResources,
-} from "../src/truth/public-resources.ts";
-import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.ts";
+} from "../src/correctness-bundle/public-resources.ts";
+import { normalizeToolsSpec, validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { double } from "./helpers/doubles.ts";
 

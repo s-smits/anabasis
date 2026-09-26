@@ -18,11 +18,14 @@ import { defineDraftTool } from "../../src/solve/draft-tool.ts";
 import { sha256OfFile } from "../../src/meta/digest.ts";
 import { createVerifierHost } from "../../src/verify/host.ts";
 import type { ToolEntry, VerifierHostHandle } from "../../src/verify/verifier-port.ts";
-import type { SolvabilityStageCache } from "../../src/truth/solvability-stages.ts";
+import type { SolvabilityStageCache } from "../../src/correctness-bundle/solvability-stages.ts";
 import { double } from "./doubles.ts";
 import { overrideHost } from "./host-override.ts";
 import { scratchDir } from "./scratch.ts";
-import { type SolvabilityProbeOptions, makeProbeSolvability } from "../../src/truth/solvability.ts";
+import {
+  type SolvabilityProbeOptions,
+  makeProbeSolvability,
+} from "../../src/correctness-bundle/solvability.ts";
 import { keyIfDefined, keysIf } from "../../src/meta/optional-key.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { makeSolvabilityCensusGate } from "../../src/run/solvability-gate.ts";

@@ -24,14 +24,14 @@ import {
   RUNTIME_NON_RESULT_MESSAGE,
   runtimeNonResultReason,
   solverNonResultReason,
-} from "../src/truth/runtime-blocker.ts";
-import { providerResetAt } from "../src/truth/provider-reset.ts";
+} from "../src/correctness-bundle/runtime-blocker.ts";
+import { providerResetAt } from "../src/correctness-bundle/provider-reset.ts";
 import {
   ENVIRONMENT_OWNED_TOOL_NON_RESULT_KINDS,
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
-} from "../src/truth/verifier-nonresult.ts";
-import { hostNonResult, subjectRuns } from "../src/truth/tool-runs.ts";
+} from "../src/correctness-bundle/verifier-nonresult.ts";
+import { hostNonResult, subjectRuns } from "../src/correctness-bundle/tool-runs.ts";
 import type { VerifierExecutionEvidence, VerifierHostHandle } from "../src/verify/verifier-port.ts";
 import { double } from "./helpers/doubles.ts";
 

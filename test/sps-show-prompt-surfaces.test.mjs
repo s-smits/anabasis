@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { builderSystemPrompt } from "../src/author/builder-start-prompt.ts";
 import { BUILT_NUDGE, builtSystemPrompt } from "../src/solve/built-starter.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { runTypeScript } from "../.claude/skills/system-path-simulation/scripts/test-support.mjs";
 
 function run(args) {

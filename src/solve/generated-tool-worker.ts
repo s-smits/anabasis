@@ -9,13 +9,13 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { sha256 } from "../meta/digest.ts";
 import { sameJsonValue, canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
-import { controllerToolAuthority } from "../truth/built-presets.ts";
-import type { PublicTask } from "../truth/task-split.ts";
+import { controllerToolAuthority } from "../correctness-bundle/built-presets.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
 import type { OsIsolationSupport } from "../verify/os-isolation.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
 import { createBuiltBashTool } from "./built-bash.ts";
-import { harnessConfigIssue, harnessSettings } from "../truth/harness-config.ts";
-import { type PublicBriefResource, readPublicResources } from "../truth/public-resources.ts";
+import { harnessConfigIssue, harnessSettings } from "../correctness-bundle/harness-config.ts";
+import { type PublicBriefResource, readPublicResources } from "../correctness-bundle/public-resources.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { BUILT_COMMAND_SCRATCH_ROOT } from "../verify/solve-command-isolation.ts";
@@ -28,7 +28,7 @@ import {
   submitMaterializedArtifact,
   submitToolDescription,
 } from "./built-starter.ts";
-import type { BuiltControllerInterface } from "../truth/contracts.ts";
+import type { BuiltControllerInterface } from "../correctness-bundle/contracts.ts";
 import { CONFORMANCE_PROBE_POLICY, type ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { fileArtifactRoot, fileArtifactRootIssue } from "./draft-files.ts";

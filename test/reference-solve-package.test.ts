@@ -9,15 +9,18 @@ import {
 } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import * as processRuntime from "../src/meta/process.ts";
-import { bundleEvaluator, bundleReferenceSolve } from "../src/truth/evaluator-process-bundle.ts";
-import { makeProbeSolvability } from "../src/truth/solvability.ts";
-import { referenceSolveStage } from "../src/truth/reference-solve.ts";
-import { loadCorrectnessModel, probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
+import { bundleEvaluator, bundleReferenceSolve } from "../src/correctness-bundle/evaluator-process-bundle.ts";
+import { makeProbeSolvability } from "../src/correctness-bundle/solvability.ts";
+import { referenceSolveStage } from "../src/correctness-bundle/reference-solve.ts";
+import {
+  loadCorrectnessModel,
+  probeGeneratedCorrectnessModelModule,
+} from "../src/correctness-bundle/contracts.ts";
 import { type VerifierLifetime, createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import { type Brief, projectFindingForAuthor } from "../src/truth/brief.ts";
-import { typecheckGeneratedModule } from "../src/truth/generated-module-typecheck.ts";
+import { type Brief, projectFindingForAuthor } from "../src/correctness-bundle/brief.ts";
+import { typecheckGeneratedModule } from "../src/correctness-bundle/generated-module-typecheck.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-reference-package-"));
 const CANARY = "private-evaluator-canary-782204";

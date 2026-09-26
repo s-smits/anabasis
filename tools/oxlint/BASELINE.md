@@ -42,7 +42,7 @@ is reported. A caller at either ceiling has no legal spelling that also absorbs 
 report asked for a file that could not pass the gate; that is the admission test in
 `SHAPE-RULESET.md` failing at a site, and the rule yields at the site rather than being baselined
 per file. Twelve reports across `src/author`, `src/backends`, `src/builder`, `src/solve`,
-`src/truth` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
+`src/correctness-bundle` and `vendor/pi-claude-bridge` went that way, and no site that should report stopped
 reporting: the whole-tree A/B with the ledger block emptied read 41 before and 28 after.
 
 Two details of that measurement are worth keeping. The line ceiling reads the **outermost**
@@ -849,7 +849,7 @@ something else, and the collision is silent at the point of insertion.
 
 ### Two files at a frozen size refused the import line
 
-`src/builder/tools.ts` is held at 403 nonblank lines and `src/truth/probes.ts` at 436 in
+`src/builder/tools.ts` is held at 403 nonblank lines and `src/correctness-bundle/probes.ts` at 436 in
 `tools/loc/source-policy.json`. An import line is a line, and both went one over. Three conditions
 in those two files therefore spell the comparison out instead of importing the predicate. That is
 the frozen limit working as intended — it asks for the smaller honest form, and here the smaller
@@ -907,7 +907,7 @@ trees are in scope for this rule now, and the anti-slop sites it was hiding are 
 which the rule does not read: it charges each report against the 115-line function ceiling and
 complexity 22, the two ceilings its doc names, and not against a file frozen at its size. Inlining
 into such a file fails the gate the same way, which is the admission test failing at one site. This
-pass hit that from the other direction — `src/builder/tools.ts` and `src/truth/probes.ts` had no
+pass hit that from the other direction — `src/builder/tools.ts` and `src/correctness-bundle/probes.ts` had no
 room for an import line, three sections above.
 
 ### The next rung after that
@@ -927,7 +927,7 @@ wrong about this tree, in four repeatable ways.
 
 **A `let` a closure assigns — nine.** Control-flow analysis does not follow an assignment made
 inside a callback, so a flag set in a `forEach` or a stream handler reads as never-assigned at the
-`if` below it. `src/builder/file-window.ts:166` and `:193`, `src/truth/verification-runner.ts:494`
+`if` below it. `src/builder/file-window.ts:166` and `:193`, `src/correctness-bundle/verification-runner.ts:494`
 and `:497`, `src/builder/command-guard.ts:245`, `src/review/review-sources.ts:70`,
 `tools/runtime/test-suite.ts:348`, `test/read-root-attestation.test.ts:26`. Deleting any of those
 checks changes what the program does.
@@ -1451,7 +1451,7 @@ which is why the count was three times the work.
 | `vendor/pi-built/jsonl-reader.ts` | 2 | fixed — `append` takes and returns the dropping state |
 | `src/builder/command-guard.ts` | 1 | fixed — the rewriter collects targets, the decision reads them |
 | `src/review/review-sources.ts` | 1 | fixed — `add` and `walk` answer whether the cap is still open |
-| `src/truth/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
+| `src/correctness-bundle/verification-runner.ts` | 3 | **no outcome to return.** `gradingStarted` and `gradingStopped` are one phase's lifecycle, set by a per-case callback a bounded-concurrency pool invokes. The pool has no single outcome to hand back, and the phase lines are the point |
 | `src/verify/host.ts` | 1 | a different cause: `scope.closed` is narrowed by a guard before an `await` and changed by another task during it, the fifth cause this file already records |
 | `tools/runtime/test-suite.ts` | 1 | `walled` is set by a `setInterval` tick. A timer has no return path at all |
 | `vendor/pi-claude-bridge/prompt-stream.ts` | 1 | in the tree `claude/bridge-rewrite-0919` is rewriting; take it there |
@@ -1660,7 +1660,7 @@ one-off, because once a rule is in the gate its sites never accumulate again, wh
 what makes the next one-off safe.
 
 The oracle has to be the whole gate and not just the type checker, and the size policy is the
-reason. Two files, `src/builder/tools.ts` and `src/truth/probes.ts`, sit at a frozen size in
+reason. Two files, `src/builder/tools.ts` and `src/correctness-bundle/probes.ts`, sit at a frozen size in
 `tools/loc/source-policy.json`, where the one added import line is the whole cost. A file like
 that is not held — the edits were not wrong — it is **constrained**, and the fixer is told it may
 not grow. What to do then is the fixer's business, and this one writes the predicate out inline,
@@ -1922,7 +1922,7 @@ keeping:
 - **A decision chain.** A body that is nothing but `if (…) return a;` lines and a final `return z`
   has no spelling *this ruleset* accepts: a nested ternary trips `ana/no-tangled-ternary`, and one
   assignment per arm trips `ana/no-arms-differing-in-one-term`. `leafCategory`
-  (`src/truth/draft-summary.ts:6`) is three of them, and every legal form of it inside
+  (`src/correctness-bundle/draft-summary.ts:6`) is three of them, and every legal form of it inside
   `boundedDraftSummary` is refused by one of this repository's own rules.
 
 That left **17**, swept by hand across sixteen files, and the rule measures 0.
@@ -2476,7 +2476,7 @@ manifest this reader cannot read. It now parses `JsonValue` and builds the manif
 rows; a row it cannot read is `run-unrecorded`, which is the refusal the comment already promised.
 Two hostile cases in `test/evidence-log.test.ts` fail when either guard is weakened to a `continue`.
 
-**`src/truth/reference-solve-child.ts` and `src/truth/evaluator-process-child.ts` — admitted.**
+**`src/correctness-bundle/reference-solve-child.ts` and `src/correctness-bundle/evaluator-process-child.ts` — admitted.**
 Both read a protocol message from the parent process that spawned them, over a pipe the host owns.
 `request.protocol !== PROTOCOL` and `row.type === "start"` are version tripwires over bytes this
 program wrote itself, not validation of untrusted input, and the writer is one build away from the

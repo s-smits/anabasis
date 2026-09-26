@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { SANITIZER_VERSION, sanitizeForEvaluator } from "../src/truth/sanitize.ts";
+import { SANITIZER_VERSION, sanitizeForEvaluator } from "../src/correctness-bundle/sanitize.ts";
 
 /** The sanitized value, which the sanitizer answers as `unknown` because it takes `unknown`. */
 const sanitized = <T>(out: { value: unknown }): T =>

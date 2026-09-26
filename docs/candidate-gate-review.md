@@ -45,7 +45,7 @@ reading cannot be allowed to refuse a submit on its own.
 | validation | `admit`, `src/gate/validation-pipeline.ts:369` | a missing or malformed `EXPERIMENT.json`, a repeated public condition | whether the stated experiment is the one the bytes make |
 | conformance | `executeStages`, `validation-pipeline.ts:273` | a generated tool that does not load, answer or keep one registration across tasks | whether the tools help the solver |
 | gates: census | `makeCensusGate`, `src/run/census-gate.ts:532` | an accept that fails, a reject that passes or fails elsewhere, an unread root, transplanted deliverables | a reject that is a one-fact edit of the Builder's own answer, which calibrates only against the Builder's own misconceptions |
-| gates: F2 | `makeSolvabilityCensusGate`, `src/run/solvability-gate.ts:99`, over `src/truth/solvability.ts` | a task the reference cannot submit through the generated tools | a reference that replays a precomputed design: it proves the submission path, as rule 12 already says, and not solvability from public input |
+| gates: F2 | `makeSolvabilityCensusGate`, `src/run/solvability-gate.ts:99`, over `src/correctness-bundle/solvability.ts` | a task the reference cannot submit through the generated tools | a reference that replays a precomputed design: it proves the submission path, as rule 12 already says, and not solvability from public input |
 
 Previews and submits share the gate through `sharedGate` (`validation-pipeline.ts:241`), keyed by
 snapshot and engine condition, so a submit of previewed bytes reuses the clear run. Two memories
@@ -112,7 +112,7 @@ That last decision belongs to the operator.
 - `src/gate/check-tool.ts`, `src/author/builder-custom-tool-call.ts`,
   `tools/outcome/builder-execution-current.ts`: preview receipts carry the distinct blocking codes,
   and the model-visible body is unchanged, which the test asserts.
-- `src/meta/json-evidence.ts`, `src/review/review-probe.ts`, `src/truth/brief-validator.ts`: quoted
+- `src/meta/json-evidence.ts`, `src/review/review-probe.ts`, `src/correctness-bundle/brief-validator.ts`: quoted
   keys are part of `jsonPathTokens`, and `probeSteps` is removed. The starter contract gains one
   sentence naming the spelling.
 - `AGENTS.md` rule 14 now says the review trigger includes battery bytes.

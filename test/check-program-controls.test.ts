@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { CheckFn } from "../src/truth/correctness-model-contract.ts";
-import { runControls } from "../src/truth/run-controls.ts";
-import { applicableTruthChecks } from "../src/truth/brief.ts";
-import { checkReceiptSet } from "../src/truth/control-receipts.ts";
+import type { CheckFn } from "../src/correctness-bundle/correctness-model-contract.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
+import { applicableTruthChecks } from "../src/correctness-bundle/brief.ts";
+import { checkReceiptSet } from "../src/correctness-bundle/control-receipts.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,

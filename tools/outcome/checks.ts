@@ -11,9 +11,9 @@ import { recordedEvidence, verifyRunDir } from "../../src/claim/evidence-log.ts"
 import { campaignTraceRoots } from "../../src/claim/trace-read.ts";
 import { capturedJsonParse } from "../../src/meta/json-runtime.ts";
 import { isRecord, isString, type JsonObject } from "../../src/meta/json-shape.ts";
-import { harnessSettings } from "../../src/truth/harness-config.ts";
+import { harnessSettings } from "../../src/correctness-bundle/harness-config.ts";
 import { BUNDLE_SNAPSHOT_DIRECTORY } from "../../src/claim/bundle-snapshot.ts";
-import { BATTERY_FILE } from "../../src/truth/battery-record.ts";
+import { BATTERY_FILE } from "../../src/correctness-bundle/battery-record.ts";
 import type { CheckRun } from "../../src/verify/correctness-model-result.ts";
 import type { VerifierExecutionEvidence } from "../../src/verify/verifier-port.ts";
 

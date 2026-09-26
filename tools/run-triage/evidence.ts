@@ -11,7 +11,7 @@ import { basename, join } from "../../src/meta/path.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 import { JUDGE_REVIEWS_SCHEMA, type JudgeReviewsResult } from "../../src/analyse/judge-reviews.ts";
 import { judgeDecision } from "../../src/claim/judge.ts";
-import { BATTERY_FILE } from "../../src/truth/battery-record.ts";
+import { BATTERY_FILE } from "../../src/correctness-bundle/battery-record.ts";
 
 interface LogLine {
   at: string;

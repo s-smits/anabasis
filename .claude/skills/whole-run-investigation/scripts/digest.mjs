@@ -21,7 +21,7 @@ import { campaignTraceRoots, readVerifiedTrace } from "#src/claim/trace-read.ts"
 import { defaultProductDir } from "#src/meta/campaign-root.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import { recordedEvidence } from "#src/claim/evidence-log.ts";
-import { readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
+import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
 import { verifyTree } from "#src/claim/bundle-snapshot-verify.ts";
 import { CASE_TRACE_SCHEMA } from "#src/backends/trace-capture.ts";
@@ -154,7 +154,7 @@ function shippingEvidence(caseRows, caseRootOf) {
     }
     gradedOracleFiles += 1;
     // A measured rejection follows the shared blocking-failure rule:
-    // `src/truth/verdict-binding.ts` (`blockingTruthFailure`) reads
+    // `src/correctness-bundle/verdict-binding.ts` (`blockingTruthFailure`) reads
     // `issue.severity === "error" && issue.blocking !== false`, so an OMITTED `blocking` blocks.
     // The field is optional in `CorrectnessModelIssue`, so a `blocking === true` test counts no
     // rejection from an evaluator that omits it and calls its live checks inert.

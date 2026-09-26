@@ -30,7 +30,7 @@ download or build alone establishes no correctness. Use `oss-verifier-grounding`
 
 ## Solve-side public data
 
-The controller supplies `query_public_data` from `src/truth/data-tool.ts`. It captures the public
+The controller supplies `query_public_data` from `src/correctness-bundle/data-tool.ts`. It captures the public
 task and domain resources before generated code starts, then builds an in-memory SQLite database
 inside a disposable process. It does not open a generated `data.sqlite` file. Maintain these rules:
 

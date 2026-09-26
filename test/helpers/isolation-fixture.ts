@@ -12,7 +12,8 @@ import { dirname, join } from "../../src/meta/path.ts";
 export const REMEDY_LEAK = "OpenSees static analysis did not converge | remedy: triangulate and restrain";
 
 export interface IsolationFixtureSeeds {
-  /** The two further vendor barrels and the src/truth + src/verify stub targets they re-export. */
+  /** The two further vendor barrels and the src/correctness-bundle + src/verify stub targets they re-export.
+   * */
   correctnessBarrels?: boolean;
   /** Protected engine source seeded at src/verify/host.ts (implies the src/verify directory). */
   protectedEngineSource?: string;
@@ -95,7 +96,7 @@ export function seedIsolationFixture(
     iterationDir,
     ...(createOssCell ? [ossRoot] : []),
     ...(options.correctnessBarrels === true
-      ? [join(repoRoot, "src", "truth"), join(repoRoot, "src", "verify")]
+      ? [join(repoRoot, "src", "correctness-bundle"), join(repoRoot, "src", "verify")]
       : []),
   ];
   for (const dir of emptyDirs) mkdirSync(dir, { recursive: true });

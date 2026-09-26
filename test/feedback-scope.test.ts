@@ -11,7 +11,7 @@ import {
 import { settleGateRun } from "../src/gate/settlement.ts";
 import { settleUnresolved } from "../src/author/campaign-memory.ts";
 import { decideNextMove } from "../src/run/next-move.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
 import type { CampaignFeedback, FeedbackOwner } from "../src/author/campaign-types.ts";
 import { double } from "./helpers/doubles.ts";
 

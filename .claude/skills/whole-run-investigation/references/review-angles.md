@@ -83,7 +83,7 @@ it, and validate every later stage from that snapshot rather than from the works
 under, so the same snapshot over different installed tools is a different condition. Check the
 fingerprint against the tree the gates actually read, through that snapshot. The census
 (`census.json`, gate path only) needs exactly one `control-receipt/v2` receipt per declared
-accept and reject control (`src/truth/control-receipts.ts`): join `controlId`, task, kind and
+accept and reject control (`src/correctness-bundle/control-receipts.ts`): join `controlId`, task, kind and
 expected check to the recorded corpus, keep non-results in that denominator, and read a
 missing, duplicate, extra or foreign receipt as a census failure. A census that failed for a
 non-blocking finding is a defect in the gate, not in the bundle. This is the gate census; the
@@ -91,7 +91,7 @@ Judge battery census belongs to lane 16.
 
 **F. F2 solvability.** Did solvability settle for every authored task? Read `solvability.json`,
 and each graded case's `cases/<taskId>/verifier.json`, whose `checkReceipts` name every declared
-check that fired (`src/truth/verification-runner.ts`). F2 runs every task's reference solve
+check that fired (`src/correctness-bundle/verification-runner.ts`). F2 runs every task's reference solve
 through the public writer, DraftStore and submit path the live solver uses, and what it proves is
 the submission path, not end-user correctness. Report completed, unsettled and non-result counts
 separately: `evidence: null` with no cases means F2 never executed, which leaves the tasks
@@ -107,7 +107,7 @@ partition of `case-record.jsonl` through the shared classifier in `src/claim/cas
 verified cases give an operational result and no capability result at all; an entirely unaccepted
 battery is placed nowhere. Say whether an unaccepted submit sits inside or outside each
 denominator and name the owner of that answer. Join each admitted battery to its own
-`battery.json` through `readBatteryJoinSlice` (`src/truth/battery-record.ts`): `skipped-precase`
+`battery.json` through `readBatteryJoinSlice` (`src/correctness-bundle/battery-record.ts`): `skipped-precase`
 is the only recorded zero-row disposition, an absent record is absent evidence, and a
 recorded-count against record-count mismatch is a refusal. Zero cases are not a zero capability
 rate. The partition can be perfect on measured cases while the same rule is violated upstream in
@@ -310,7 +310,7 @@ Starts from block 6's `REHEARSAL NOT-RUN (lane 9)`.
 
 The question is which families the rehearsal instrument could grade at all. `harness_trial`
 (`src/builder/harness-trial.ts`) solves one task blind with the measured Built solver and grades
-it through `rehearseCase` in `src/truth/solve-case.ts` under the harness's own `check_seconds`
+it through `rehearseCase` in `src/correctness-bundle/solve-case.ts` under the harness's own `check_seconds`
 and `tool_run_seconds` from `agent/config.yaml`, the walls the battery grades under. A run recorded
 before that change graded under a fixed 30-second total instead, so there a family whose check
 compiles for longer returns `not-run` however the solver did, and the one instrument meant to
@@ -320,7 +320,7 @@ catch a too-easy battery before payment could grade only the fast families. Read
 durations in the graded battery's `verifier.json`, and the harness's declared walls. A `not-run`
 whose row reason is a provider allowance is lane 24's. Do not read per-check results, which the
 instrument withholds by design. The decision it changes is whether rehearsal evidence covers the
-families the target is about; it routes to `src/truth/solve-case.ts` when the deadline is the
+families the target is about; it routes to `src/correctness-bundle/solve-case.ts` when the deadline is the
 limit and to `instructions` when the guide sends the solver into work the rehearsal cannot grade.
 
 **10. Difficulty calibration loop.**
@@ -461,7 +461,7 @@ reading the artifact against that rule yourself: the common case is a Judge misc
 rule, and an advice issue still carrying a settled miscount as `judge-failed-verifier-passed` is
 noise to name. The other case, a cited rule the artifact really breaks under a verifier pass, is a
 reason to inspect the check, which lane 6 owns. Read the Judge framing in
-`src/truth/judge-framing.ts` and `src/analyse/judge-contested.ts` for what the Judge saw. Do not
+`src/review/judge-framing.ts` and `src/analyse/judge-contested.ts` for what the Judge saw. Do not
 rescore and do not compare two artifacts. The decision it changes is whether the veto reaches the
 Builder as a count and family; it routes to `correctness-model` for a real defect and to
 `src/author/rebuild-advice.ts` for a miscount kept as advice.
@@ -570,7 +570,7 @@ Starts from the `walls` lane's `time-bound`, `turn-bound` and `submitted` rows a
 share, and from block 1b's `CHECK TOOL IN SOLVER TRACE (lane 23)` read as a lead.
 
 The question is how the solver spent its walls. `agent/config.yaml` owns `solve_minutes`,
-`max_turns`, `shell_timeout_seconds` and `shell_timeout_max_seconds` (`src/truth/harness-config.ts`),
+`max_turns`, `shell_timeout_seconds` and `shell_timeout_max_seconds` (`src/correctness-bundle/harness-config.ts`),
 each raisable to ten times its default. A turn is one outer prompt carrying an unbounded tool loop,
 so a turn count below `max_turns` is not room the solver could have used; the tool calls are the
 work. A case that reached a wall without passing is a truncated solve and not a settled capability
@@ -617,7 +617,7 @@ The question is what each long gap was and who owns it. Read `observability/<run
 the gaps, each epoch's `turnRetries[]` (`reason`, `waitMs`, attempt and role;
 `src/author/turn-retry.ts`), `budget.json`, the controller's `providerResourceBudget.byRole`
 (`builder`, `built`, `review`), the `rehearsals/` timestamps and the review files' UUIDv7 names.
-An allowance that names its reset clock is a wait (`allowanceWait`, `src/truth/provider-reset.ts`)
+An allowance that names its reset clock is a wait (`allowanceWait`, `src/correctness-bundle/provider-reset.ts`)
 and a retry row carrying that reason is explicit exhaustion: an operational interruption the
 controller handled correctly, which still costs whatever it interrupted — a rehearsal that came
 back `not-run`, a review that never ran — so name those costs beside the classification. The shape
@@ -758,7 +758,7 @@ These mechanisms have left the source or the skill, and a reader meeting one in 
 reads it from that archive alone: the model repair-engineer session, since the diagnosis reader
 and the deterministic advice packet replaced it; the progress guard, which held promotions and
 has no consumer in the loop; the judge-prompt maintainer, since the Judge framing is one file in
-`src/truth/`; the Judge control census and its bait subjects, since no control reaches the Judge;
+`src/correctness-bundle/`; the Judge control census and its bait subjects, since no control reaches the Judge;
 the paired promotion contest, since a candidate is adopted on its own admitted battery and there
 is no contest with current; the separate `DIFFICULTY.json` session and the difficulty ladder,
 since there is one authoring path; controller memory curation, since `MEMORY.md` is the Builder's

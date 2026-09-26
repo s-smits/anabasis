@@ -204,7 +204,7 @@ export async function awaitedTail(value: string) {
  * nonblank lines and `tools/loc/complexity-policy.ts` refuses one at 22 branches, so a caller
  * already there has no spelling that absorbs a helper: reporting it would ask for a file that
  * cannot pass the gate. Six sites in this tree are of that kind, across `src/backends`,
- * `src/builder`, `src/solve`, `src/truth`, `src/author` and `vendor/pi-claude-bridge`.
+ * `src/builder`, `src/solve`, `src/correctness-bundle`, `src/author` and `vendor/pi-claude-bridge`.
  *
  * The last pair is the same argument for a caller with room for one of them. Reporting both is
  * what the rule did to `settle` in `src/builder/verifier-workshop.ts`, whose two helpers each

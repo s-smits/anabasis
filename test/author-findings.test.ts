@@ -7,11 +7,11 @@ import {
   controllerValidatedFindings,
   generatedExecutionFinding,
   projectFindingForAuthor,
-} from "../src/truth/brief.ts";
+} from "../src/correctness-bundle/brief.ts";
 import {
   discriminationDisclosure,
   identityComposedFinding,
-} from "../src/truth/discrimination-author-detail.ts";
+} from "../src/correctness-bundle/discrimination-author-detail.ts";
 
 import {
   BuilderAuthorFeedback,

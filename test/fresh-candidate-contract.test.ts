@@ -30,10 +30,10 @@ import {
   validatedBundle,
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
-import { projectFindingForAuthor } from "../src/truth/brief.ts";
+import { projectFindingForAuthor } from "../src/correctness-bundle/brief.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
-import { probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
+import { probeGeneratedCorrectnessModelModule } from "../src/correctness-bundle/contracts.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_ACCEPTS,

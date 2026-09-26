@@ -21,14 +21,14 @@
  * see what to match.
  */
 import { describe, expect, it } from "bun:test";
-import type { Brief, ValidationResult } from "../src/truth/brief.ts";
+import type { Brief, ValidationResult } from "../src/correctness-bundle/brief.ts";
 import {
   type AcceptControl,
   type RejectControl,
   validateAcceptControls,
   validateControls,
-} from "../src/truth/controls.ts";
-import { projectPublic } from "../src/truth/task-split.ts";
+} from "../src/correctness-bundle/controls.ts";
+import { projectPublic } from "../src/correctness-bundle/task-split.ts";
 import {
   MATCHING_ACCEPTS,
   MATCHING_BRIEF,

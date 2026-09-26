@@ -9,7 +9,7 @@ import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { createTraceRecorder } from "../src/backends/trace-capture.ts";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
-import { type Solver } from "../src/truth/solve.ts";
+import { type Solver } from "../src/correctness-bundle/solve.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { double } from "./helpers/doubles.ts";
 import {

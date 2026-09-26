@@ -18,9 +18,9 @@ import { recordedEvidence } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { decideDifficulty } from "../src/run/climb-readout.ts";
-import { type Solver, nonResultOutcome } from "../src/truth/solve.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { makeVerify } from "../src/truth/verification-runner.ts";
+import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { makeVerify } from "../src/correctness-bundle/verification-runner.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   ACCEPTS,

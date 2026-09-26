@@ -1,5 +1,5 @@
 /** Conformance-only direct access tracing inside the confined generated-tool worker. */
-import type { PublicTask } from "../truth/task-split.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
 import { isBoolean, isNumber, isObject, isString, type JsonValue } from "../meta/json-shape.ts";
 import { capturedIsProxy } from "../meta/json-runtime.ts";
 

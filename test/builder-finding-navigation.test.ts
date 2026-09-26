@@ -1,4 +1,4 @@
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
 import { afterEach, expect, it } from "bun:test";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { createHarnessInspectTool } from "../src/builder/harness-inspect.ts";

@@ -10,7 +10,10 @@
  */
 import { describe, expect, it } from "bun:test";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { JUDGE_PUBLIC_CONTEXT_DECLARATION, projectDeclared } from "../src/truth/declared-projection.ts";
+import {
+  JUDGE_PUBLIC_CONTEXT_DECLARATION,
+  projectDeclared,
+} from "../src/correctness-bundle/declared-projection.ts";
 import {
   type JudgeAttempt,
   type JudgeInput,
@@ -19,9 +22,9 @@ import {
   type JudgePublicTask,
   type JudgeRequest,
   judgeSubject,
-} from "../src/truth/judge.ts";
-import { judgeTurnPrompt } from "../src/truth/judge-framing.ts";
-import { sanitizeForEvaluator } from "../src/truth/sanitize.ts";
+} from "../src/review/judge.ts";
+import { judgeTurnPrompt } from "../src/review/judge-framing.ts";
+import { sanitizeForEvaluator } from "../src/correctness-bundle/sanitize.ts";
 import { double, required } from "./helpers/doubles.ts";
 
 const DOMAIN: JudgePublicDomain = {

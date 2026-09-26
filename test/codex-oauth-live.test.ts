@@ -12,7 +12,7 @@ import { join } from "../src/meta/path.ts";
 import type { ResolvedSlots, SlotChoice } from "../src/backends/resolve.ts";
 import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
 import { builtAgentInterface, starterRegistration } from "../src/solve/built-starter.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 
 const runLive = Bun.env.ANA_RUN_CODEX_OAUTH_LIVE === "1";
 

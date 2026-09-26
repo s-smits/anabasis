@@ -11,8 +11,8 @@
  * `claim-evidence.ts` owns the vocabulary these clauses read. This module owns the decisions.
  */
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
-import type { GroundingEvidence } from "../truth/grounding.ts";
-import { type ToolCheckCoverage, toolCheckCoverage } from "../truth/grounding-coverage.ts";
+import type { GroundingEvidence } from "../correctness-bundle/grounding.ts";
+import { type ToolCheckCoverage, toolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type {
@@ -484,7 +484,8 @@ function predictionClauses(predictions: PredictionItem[] | null): ClaimClause[] 
 /** Explains why too many attempted cases are absent from the score denominator. The ratio decides
  *  whether the clause applies, and the recorded terminal reason is what may identify a provider
  *  stop; an outage is never inferred from the ratio alone, because a ratio cannot tell a dead
- *  provider from a harness that crashes its own cases. The producer in `src/truth/battery-record.ts`
+ *  provider from a harness that crashes its own cases. The producer in
+ * `src/correctness-bundle/battery-record.ts`
  *  writes the shared `PROVIDER_STOPPED_REASON_PREFIX`, which keeps this reader aligned with the
  *  format the reason is actually recorded in. */
 function nonResultRatioDetail(reason: string | null, nonResultTotal: number, attempted: number): string {

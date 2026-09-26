@@ -27,7 +27,7 @@ import {
   ProviderResourceBudget,
   ProviderResourceBudgetExhausted,
 } from "../src/run/provider-resource-budget.ts";
-import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../src/truth/judge-prompt-policy.ts";
+import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../src/review/judge-prompt-policy.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

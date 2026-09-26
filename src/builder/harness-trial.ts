@@ -32,10 +32,10 @@ import { existsSync, mkdirSync } from "../meta/filesystem.ts";
 import { dirname, join } from "../meta/path.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { defineTool } from "../solve/define-tool.ts";
-import { SUBMIT_MAX_ATTEMPTS } from "../truth/battery-record.ts";
-import { commitPublicTask } from "../truth/task-split.ts";
-import { builtStarterFactoryForSolver } from "../truth/solve.ts";
-import type { Solver } from "../truth/solve.ts";
+import { SUBMIT_MAX_ATTEMPTS } from "../correctness-bundle/battery-record.ts";
+import { commitPublicTask } from "../correctness-bundle/task-split.ts";
+import { builtStarterFactoryForSolver } from "../correctness-bundle/solve.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
 import { authorFindingOverview } from "./author-feedback.ts";
 import { visibleError } from "./read-window.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
@@ -45,10 +45,10 @@ import {
   rehearseCase,
   solveCase,
   solverBlockerOf,
-} from "../truth/solve-case.ts";
+} from "../correctness-bundle/solve-case.ts";
 import { writeJsonFile } from "../meta/completed-json.ts";
 import type { RehearsalReading, RehearsalRow } from "../author/experiment-plan.ts";
-import { harnessSettings } from "../truth/harness-config.ts";
+import { harnessSettings } from "../correctness-bundle/harness-config.ts";
 import type { RehearsalTraces } from "./context-tool.ts";
 import { effortPhrase, type SolveEffort, solverTraceLines, traceEffort } from "./solver-trace-text.ts";
 
@@ -356,8 +356,8 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, write, wallMinutes } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
   // The battery's branch order decides this rather than convenience: `gradeOutcome` in
-  // `src/truth/solve-case.ts` returns the solver's non-result before it ever looks at the accepted
-  // artifact, because a solve the environment cut short has no truth to read whatever bytes it left
+  // `src/correctness-bundle/solve-case.ts` returns the solver's non-result before it ever looks at the
+  // accepted artifact, because a solve the environment cut short has no truth to read whatever bytes it left
   // behind. A rehearsal that graded those bytes anyway would answer the round's difficulty question
   // with evidence the battery itself discards, so the verifier runs only when the candidate held
   // still, the solver accepted a submission and no non-result was typed.

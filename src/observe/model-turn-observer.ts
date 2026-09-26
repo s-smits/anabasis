@@ -2,7 +2,7 @@
 import { sha256 } from "../meta/digest.ts";
 import { hashJsonBytes } from "../meta/json-runtime.ts";
 import type { RunObserver } from "./run-observer.ts";
-import type { Solver } from "../truth/solve.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 
 /** Open the case span that owns one measured Built trajectory. */

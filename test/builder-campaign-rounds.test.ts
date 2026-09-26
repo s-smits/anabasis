@@ -49,7 +49,7 @@ import type { CampaignFeedback } from "../src/author/campaign-types.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { BuilderCampaignDeps, BuilderCampaignInput } from "../src/run/builder-campaign.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
-import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
+import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 
 afterAll(cleanupScratch);

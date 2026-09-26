@@ -26,10 +26,10 @@ import { capturedJsonParse, capturedJsonStringify, parseJsonAs } from "../meta/j
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { readMargins, renderMargins } from "../solve/published-margin.ts";
-import { CASE_ARTIFACT_FILE, readRecordedBatteryRecord } from "../truth/battery-record.ts";
-import { publishedMargins } from "../truth/numeric-boundary.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../truth/harness-config.ts";
+import { CASE_ARTIFACT_FILE, readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
+import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../correctness-bundle/harness-config.ts";
 import { type AdmittedClimbRow, recordedPublicTasks, retainedRunDir } from "./climb-history.ts";
 
 const DEFAULT_WALL_MINUTES = DEFAULT_HARNESS_SETTINGS.solveMs / 60_000;

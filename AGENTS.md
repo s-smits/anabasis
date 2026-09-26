@@ -367,7 +367,7 @@ live evidence.
    `tools/loc/source-policy.json`, and an entry there does two things at once that are easy to read
    as one. It replaces the 800-line ceiling with that file's own figure, and it switches the
    per-function check off for that file entirely. Only two of the six numbers are above 800, which
-   is the tell: the rest are not exemptions from the file ceiling at all. `src/truth/probes.ts` is
+   is the tell: the rest are not exemptions from the file ceiling at all. `src/correctness-bundle/probes.ts` is
    held at 436 while sitting at 432, nowhere near the ceiling it is nominally exempt from, because
    what the entry actually buys is room for `makeProbeControls` at 150 lines against a limit of
    115. So the figure tells you nothing until you know which of the two checks it was bought for,
@@ -708,7 +708,7 @@ live evidence.
     starter pack, where `test/starter-pack.test.ts` holds the sentence to the declared number; its
     one non-test consumer is `acceptIndependenceFeedback`
     (`src/run/accept-control-independence.ts`), which is advisory and refuses no candidate. What the
-    gate runs over the corpus is `validateControls` (`src/truth/controls.ts`): every control binds a
+    gate runs over the corpus is `validateControls` (`src/correctness-bundle/controls.ts`): every control binds a
     real task and names checks, joins and boundaries the brief declares, and each reject's named
     check applies to its task. The census then runs every control, and an accept that fails a check
     refuses the candidate. Build each reject from the known-correct accept for the same task and
@@ -789,7 +789,7 @@ live evidence.
     a bad round; it is what makes rule 10's harness intervention a clean start rather than an
     accumulation.
 
-    **`agent/config.yaml` owns each harness's runtime walls** (`src/truth/harness-config.ts`). The
+    **`agent/config.yaml` owns each harness's runtime walls** (`src/correctness-bundle/harness-config.ts`). The
     Builder is told the file exists, not what it holds. The defaults are, for the solver,
     `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300` and
     `shell_timeout_max_seconds 900`; and for the gate, `reference_solve_seconds 120`,
@@ -959,7 +959,7 @@ unconfined run.
 Builder access is stated once per backend, through the host-controlled file and command tools. Open
 to it: the workspace, the public inputs, prior traces, the host toolchain paths, compiler scratch
 and the exact `src/solve` and `src/meta` authoring interfaces. Closed: controller evidence,
-credentials, other accounts and the `src/truth`, `src/verify` and `src/gate` trees, including
+credentials, other accounts and the `src/correctness-bundle`, `src/verify` and `src/gate` trees, including
 evidence created after the session started. The Built Harness keeps a narrower file wall but has
 outbound network, so that it can fetch a toolchain into its private home (operator decision
 2026-08-15, reaffirmed 2026-09-06). The controller brokers each HTTPS public-source hop: the

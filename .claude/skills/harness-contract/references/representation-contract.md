@@ -59,7 +59,7 @@ Recheck tool schemas, checkpoints, submission hashes, task identity, controls, v
 
 Design tools around decisions and evidence, not endpoints or file count. Builder tools in
 `src/builder/tools.ts` work on the request, admitted context, approved public sources and the
-candidate tree; Built Harness tools from `src/truth/tools-spec.ts` see the public task and registered
+candidate tree; Built Harness tools from `src/correctness-bundle/tools-spec.ts` see the public task and registered
 solve capabilities only. Do not move a capability across that boundary.
 
 Classify the need before naming the tool: decision (model chooses among domain options), data

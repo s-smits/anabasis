@@ -27,8 +27,8 @@ import type { ReviewChoice } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
-import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "../truth/judge-prompt-policy.ts";
-import { type JudgeSession, sessionJudge } from "../truth/judge.ts";
+import { ACTIVE_JUDGE_PROMPT_DIGESTS } from "./judge-prompt-policy.ts";
+import { type JudgeSession, sessionJudge } from "./judge.ts";
 
 type EnabledReview = Extract<ReviewChoice, { enabled: true }>;
 

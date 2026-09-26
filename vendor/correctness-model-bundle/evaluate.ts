@@ -7,8 +7,11 @@ import { capturedStructuredClone } from "../../src/meta/json-runtime.ts";
 import { canonicalJson } from "../../src/meta/stable-json.ts";
 import { sha256 } from "../../src/meta/digest.ts";
 import { isBoolean, isRecord, isString } from "../../src/meta/json-shape.ts";
-import type { Brief, BriefTruthCheck } from "../../src/truth/brief.ts";
-import type { CheckRunner, EvaluationRequest } from "../../src/truth/correctness-model-contract.ts";
+import type { Brief, BriefTruthCheck } from "../../src/correctness-bundle/brief.ts";
+import type {
+  CheckRunner,
+  EvaluationRequest,
+} from "../../src/correctness-bundle/correctness-model-contract.ts";
 import type {
   CheckRun,
   CheckRunObserver,

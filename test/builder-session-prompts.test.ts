@@ -36,7 +36,7 @@ import type { CandidateCheckOutcome } from "../src/author/candidate-check.ts";
 import { initWorkspace } from "../src/author/domain-repo.ts";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
-import { controllerValidatedFinding, controllerValidatedFindings } from "../src/truth/brief.ts";
+import { controllerValidatedFinding, controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   ACCEPTED,

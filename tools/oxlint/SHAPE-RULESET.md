@@ -422,11 +422,11 @@ pairs import each other.** The asymmetry in most of them says which direction is
 
 | pair | imports | back |
 | --- | --- | --- |
-| `src/run` ↔ `src/truth` | 69 | 8 |
-| `src/truth` ↔ `src/verify` | 46 | 1 |
-| `src/claim` ↔ `src/truth` | 45 | 10 |
+| `src/run` ↔ `src/correctness-bundle` | 69 | 8 |
+| `src/correctness-bundle` ↔ `src/verify` | 46 | 1 |
+| `src/claim` ↔ `src/correctness-bundle` | 45 | 10 |
 | `src/backends` ↔ `src/run` | 41 | 3 |
-| `src/solve` ↔ `src/truth` | 38 | 13 |
+| `src/solve` ↔ `src/correctness-bundle` | 38 | 13 |
 | `src/builder` ↔ `src/run` | 26 | 2 |
 | `src/author` ↔ `src/gate` | 18 | 2 |
 
@@ -567,7 +567,7 @@ which is the measure that matters, and an export count is a worse proxy for the 
    15 that went were false positives the chain predicate had admitted, which is the whole of the
    difference.
 
-   Reading three of the surviving 20 refused the rung. `sanitizeJudgeInput` in `src/truth/judge.ts`
+   Reading three of the surviving 20 refused the rung. `sanitizeJudgeInput` in `src/review/judge.ts`
    is two statements under nineteen lines of comment explaining a protected-detail boundary and a
    SAFETY cast; inlining it moves that argument into the middle of its caller. `familyConflict` in
    `src/run/difficulty-select.ts` is four statements under four lines saying why the interval width
@@ -1263,7 +1263,7 @@ reports `owner: "bh-correctness-model"`: a controller-side typo routed to the ca
 correctness model as a `generated-solve-protocol` product defect. Neither end could hold the
 constant either. The parent's import graph is spawn, bundling and confinement witnessing, which is
 the whole of what the confined child is meant not to contain, and the child binds `Bun.stdin`'s
-reader at import. `src/truth/reference-solve-wire.ts` holds the two strings and nothing else.
+reader at import. `src/correctness-bundle/reference-solve-wire.ts` holds the two strings and nothing else.
 
 Three rows are **answered no** and stay printed. `packages/ui/src` appears in `EXPORT_ROOTS` in
 `tools/loc/source-policy.ts` and in `DECLARING_ROOTS` in `tools/oxlint/tree-findings.ts`: two
@@ -1349,7 +1349,7 @@ through `loginOpenAICodex`, which is the path the product takes.
 Six changes, each measured on the tree before and after:
 
 - The reader must have room under its own ceiling in `tools/loc/source-policy.ts`, including a
-  frozen `copiedFileLimits` entry. `src/truth/probes.ts` sits on 436 of 436, so nothing can move
+  frozen `copiedFileLimits` entry. `src/correctness-bundle/probes.ts` sits on 436 of 436, so nothing can move
   into it and reporting one asks for a change the gate then refuses. Five of 66.
 - The home file must hold exactly one export. A file holding several is a layer, and one of its
   names having a single reader says nothing about where that name belongs —
@@ -1360,7 +1360,7 @@ Six changes, each measured on the tree before and after:
   `ana/no-single-caller-helper` and already in the gate.
 - Home and reader must sit in one directory. Different directories are different areas of this
   tree, and here one of those boundaries is the Builder's file wall: `published-rules.ts` is a
-  `src/truth` contract read from `src/author`, and a move would publish a correctness check to the
+  `src/correctness-bundle` contract read from `src/author`, and a move would publish a correctness check to the
   sessions it judges.
 - A module the reader resolves as a path is a process image, not a helper.
   `evaluator-process-bundle.ts` bundles `"./reference-solve-child.ts"` into its own executable,
@@ -1471,7 +1471,7 @@ the per-file floor of four, and three single spellings the per-file rule cannot 
 **The 17 rows, decided — 2026-09-21.** Fourteen were answered by naming the file once in the module
 that writes it, and every reader now imports that name: `OPENING_FILE` and `TERMINAL_FILE` in
 `src/run/controller-lineage.ts` (the private `OPENING`/`TERMINAL` in `controller-evidence.ts`
-went), `BATTERY_FILE`, `CASE_ARTIFACT_FILE` and `CASE_JUDGE_FILE` in `src/truth/battery-record.ts`
+went), `BATTERY_FILE`, `CASE_ARTIFACT_FILE` and `CASE_JUDGE_FILE` in `src/correctness-bundle/battery-record.ts`
 beside `batteryPath`, `ITERATION_FILE` in `src/builder/campaign-iterations.ts` (the private copy in
 `campaign-memory.ts` went), `CENSUS_FILE` in `src/run/census-gate.ts`, `BACKENDS_FILE` in
 `src/run/model-preflight.ts`, `SEATBELT_BASELINE` in `src/verify/wall-policy.ts` and
@@ -1505,7 +1505,7 @@ turned out to be.
 | the temporary-then-rename write ×3 | `writeAtomic` in `src/meta/completed-json.ts` |
 | the guarded-path decision ×2 | `decideGuardedPaths` in `src/builder/candidate-isolation-runtime.ts` |
 | the opening's backend record ×2 | `backendStartupEvidence` in `src/run/model-preflight.ts` |
-| the attempt with no verdict ×2 | `noVerdictAttempt` in `src/truth/judge-drivers.ts` |
+| the attempt with no verdict ×2 | `noVerdictAttempt` in `src/review/judge-drivers.ts` |
 | the captured `git` command ×4 | `runSyncOrThrow` and `CAPTURE_MAX_BYTES` in `src/meta/subprocess.ts` |
 | the per-family counts ×2 | `familyTally` in `src/claim/case-record.ts`, beside `outcomeTally` |
 
@@ -2000,7 +2000,7 @@ two writers and builder-tools' named old schema.
 first seen before 2026-09-09, 9 of 13 since), six of the sixteen the members of two difficulty
 vocabularies that left with the difficulty path. Simplify itself removed 3 of 20 per visit and 3
 of the 8 sites in a file it touched, all three members of one `kind` vocabulary in
-src/truth/brief.ts that one commit took at once; the base rate of a produced member in a touched
+src/correctness-bundle/brief.ts that one commit took at once; the base rate of a produced member in a touched
 file is 0.05 for a union and 0.08 for a property. `as const` arrays scored 109 sites at 0.52
 eventual and 3 of 139 per visit and are left out: what they hold — bubblewrap paths, JSON-schema
 keys, package.json fields — is another program's vocabulary, listed here and produced elsewhere.

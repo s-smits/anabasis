@@ -43,8 +43,11 @@ import { join } from "../meta/path.ts";
 import type { GateScope } from "../run/census-gate.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { ContractFinding } from "../truth/brief.ts";
-import { type SolvabilityStageCache, createSolvabilityStageCache } from "../truth/solvability-stages.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
+import {
+  type SolvabilityStageCache,
+  createSolvabilityStageCache,
+} from "../correctness-bundle/solvability-stages.ts";
 import { type AdmissionInput, admissionFindings, experimentOperation } from "./experiment-admission.ts";
 
 /** The codes of a run that did not finish in time: a check's tool run, or the whole census wall. */

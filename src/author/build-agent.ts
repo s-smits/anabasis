@@ -1,6 +1,6 @@
 /** Reserve Builder calls and classify known provider and transport failures. */
 import type { TurnUsage } from "../backends/backend-types.ts";
-import { runtimeNonResultReason } from "../truth/runtime-blocker.ts";
+import { runtimeNonResultReason } from "../correctness-bundle/runtime-blocker.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { errorMessage } from "../meta/runtime-values.ts";

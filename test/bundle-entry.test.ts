@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/fi
 import { join } from "../src/meta/path.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { checkBundleArtifact } from "../src/run/bundle-entry.ts";
-import { blockingIssueSummary, publicTaskVerdict } from "../src/truth/verdict-binding.ts";
+import { blockingIssueSummary, publicTaskVerdict } from "../src/correctness-bundle/verdict-binding.ts";
 import { writeMatchingSlug } from "./helpers/matching-fixture.ts";
 
 const roots: string[] = [];

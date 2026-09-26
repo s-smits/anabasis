@@ -28,7 +28,7 @@ import type { PiBuiltRuntime } from "../src/backends/pi-built.ts";
 import { builtSolveIsolation } from "../src/run/built-agent-runtime.ts";
 import { ProviderResourceBudget, runBudgetedAgentTurn } from "../src/run/provider-resource-budget.ts";
 import { builtAgentInterface, starterRegistration } from "../src/solve/built-starter.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { double } from "./helpers/doubles.ts";
 
 const roots: string[] = [];

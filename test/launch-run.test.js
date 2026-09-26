@@ -336,7 +336,7 @@ describe("one-command run launcher", () => {
       expect(parsed.backendSelections).toEqual({ builder: "claude", built: "claude", review: "claude" });
     }
     expect(slotEnvironment("sol")).toMatchObject({
-      CODEX_BUILDER_MODEL: "gpt-5.6-sol",
+      CODEX_BUILDER_MODEL: "gpt-6-sol",
       CODEX_BUILT_REASONING_EFFORT: "high",
       CODEX_REVIEW_REASONING_EFFORT: "medium",
     });
@@ -575,7 +575,7 @@ describe("one-command run launcher", () => {
     for (const plan of fixture.plans) {
       expect(parseFullRunArgs(plan.argv).stopAfterMs).toBe(14400000);
       expect(plan.environment.CODEX_BUILT_MODEL).toBe(
-        plan.condition === "astra" ? "gpt-6-astra" : "gpt-5.6-sol",
+        plan.condition === "astra" ? "gpt-6-astra" : "gpt-6-sol",
       );
       const wrong = openingFor(plan);
       wrong.modelSlots.built.model = "unrequested-model";

@@ -13,7 +13,7 @@ export const PRESETS = {
 const PRESET_NAMES = Object.keys(PRESETS).join("|");
 export const SLOTS = ["builder", "built", "review"] as const;
 export const CONDITIONS = {
-  sol: { kind: "codex", model: "gpt-5.6-sol", efforts: ["high", "high", "medium"] },
+  sol: { kind: "codex", model: "gpt-6-sol", efforts: ["high", "high", "medium"] },
   luna: { kind: "codex", model: "gpt-5.6-luna", efforts: ["max", "max", "max"] },
   astra: { kind: "codex", model: "gpt-6-astra", efforts: ["medium", "low", "low"] },
   opus: { kind: "claude", model: "claude-opus-5", efforts: ["medium", "medium", "medium"] },

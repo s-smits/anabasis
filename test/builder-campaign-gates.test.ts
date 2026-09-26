@@ -842,6 +842,8 @@ describe("a check that names an installed tool", () => {
     expect(iteration.feedback).toEqual([
       expect.objectContaining({ owner: "environment", severity: "blocking" }),
     ]);
-    expect(iteration.feedback[0].findings ?? []).toHaveLength(0);
+    expect(iteration.feedback[0].findings).toEqual([
+      expect.objectContaining({ code: "tool-unavailable", path: "environment" }),
+    ]);
   });
 });

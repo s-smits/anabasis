@@ -174,10 +174,13 @@ describe("a census that ends in a verifier non-result", () => {
     expect(probeCalls).toBe(probes);
     expect(feedback.map((row) => row.owner)).toEqual([owner]);
     if (owner !== "environment") return;
-    // An environment row carries no repairable path, and the census records a non-result.
+    // An environment row names the host step it stopped on, with no repairable path, and the
+    // census records a non-result.
     expect(feedback[0]?.severity).toBe("blocking");
     expect(feedback[0]?.claim).toContain(`tool "${evidence.toolId}" (${evidence.outcome}), twice`);
-    expect(feedback[0]?.findings ?? []).toHaveLength(0);
+    expect((feedback[0]?.findings ?? []).map((found) => [found.code, found.path])).toEqual([
+      [evidence.outcome === "sandbox" ? "tool-wall-refusal" : "tool-unavailable", "environment"],
+    ]);
     expect(read("census.json").verdict).toMatchObject({
       kind: "non-result",
       evidence: { path: "environment-non-result.json", sha256: expect.any(String) },
@@ -255,7 +258,11 @@ describe("a census that ends in a verifier non-result", () => {
       "correctness-model/evaluator.ts",
       "correctness-model/evaluator.ts",
     ]);
-    expect(codesOf(feedback)).toEqual(["DISCRIMINATION_REJECT_PASSED", "SOLVABILITY_CENSUS_BLOCKED"]);
+    expect(codesOf(feedback)).toEqual([
+      TOOL_REFUSED_CODE,
+      "DISCRIMINATION_REJECT_PASSED",
+      "SOLVABILITY_CENSUS_BLOCKED",
+    ]);
     const census = read("census.json");
     expect(census.verdict).toMatchObject({ kind: "non-result" });
     expect(census.blocking).toHaveLength(3);

@@ -280,7 +280,23 @@ function settleEnvironment(
   writeCompleted(join(context.iterationDir, file), payload);
   return persistFailure(
     context,
-    [{ owner: "environment", severity: "blocking", claim, evidence }],
+    [
+      {
+        owner: "environment",
+        severity: "blocking",
+        claim,
+        evidence,
+        // The claim is composed from public identities alone (a declared tool, a control id, a vendor
+        // package), so it crosses as the finding's detail under the code naming what the host could not do.
+        findings: controllerValidatedFindings([
+          {
+            code: "kind" in payload ? payload.kind : toolNonResultCode(payload),
+            path: "environment",
+            detail: claim,
+          },
+        ]),
+      },
+    ],
     completed,
     { kind: "non-result", evidence: tracePointer(context.iterationDir, file) },
   );

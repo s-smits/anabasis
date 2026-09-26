@@ -135,7 +135,7 @@ type ReferenceSubmissionAttempt = SolvabilitySubmissionOutcome & {
 
 /** The finding code each unpassed case routes to. A host stop that interrupts the census is
  *  admitted once as `verifier-cleanup-pending`, however many cases it left without a verdict. */
-const CASE_CODE = {
+export const CASE_CODE = {
   "representation-defect": "solvability-representation-defect",
   isolation: "solvability-reference-solve-isolation",
   witness: "solvability-witness-failed",

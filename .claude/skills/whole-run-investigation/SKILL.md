@@ -305,7 +305,8 @@ and the second sends the attribution question on to lane 20.
 **`climb`** reads the task bytes under `versions/`, so an edge is readable the moment its later
 candidate is adopted and before a single case of it has been paid for. Per battery it reports the
 check-tier histogram and a structural row; per edge it says `restated`, `adjusted`, `narrowed`,
-`widened`, `eased` or `escalated`, and only `escalated` changes what a solver has to reason about.
+`widened`, `eased`, `escalated` or `replaced`, and only `escalated` changes what a solver has to
+reason about. `replaced` says no task id carried over, so the edge was not read at all.
 An edge label is read first by lane 20 for what moved, and by lane 10 beside the placement it
 produced. [The climb reference](references/climb.md) owns what to do when that reading and the recorded
 difficulty decision disagree, which they do whenever a battery scores well on tasks that did not

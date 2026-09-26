@@ -233,11 +233,22 @@ describe("climb velocity", () => {
 
   // Direction is absent on purpose: a loosened limit moved just as far as a tightened one.
   it.concurrent.each([
-    [100, { median: 0, moved: 0 }],
-    [90, { median: 0.1, moved: 1 }],
-    [110, { median: 0.1, moved: 1 }],
+    [100, { median: 0, moved: 0, joined: 1 }],
+    [90, { median: 0.1, moved: 1, joined: 1 }],
+    [110, { median: 0.1, moved: 1, joined: 1 }],
   ])("measures how far a published number of 100 moved to %d", (after, drift) => {
     expect(numericDriftOf(reading(100), reading(after))).toEqual(drift);
+  });
+
+  // Renaming every task once read as "numbers moved 0" and so as `restated`, over batteries whose
+  // limits had moved 3.75 times: the join found nothing and reported nothing as no change.
+  it.concurrent("names a battery whose task ids all changed as replaced, not restated", () => {
+    const renamed = { rows: [{ taskId: "heavy-02", numerics: { "limits.mass": 375 } }] };
+    const drift = numericDriftOf(reading(100), renamed);
+    expect(drift).toEqual({ median: 0, moved: 0, joined: 0 });
+    const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
+    const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
+    expect(verdictOf(tiers, tiers, null, flat, drift)).toBe("replaced");
   });
 
   const counts = (passed: number, verified: number, unaccepted = 0) => ({
@@ -395,7 +406,7 @@ describe("climb velocity", () => {
   // script exists to prevent.
   it.concurrent("names a retreat instead of reporting it as adjusted", () => {
     const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
-    const still = { median: 0, moved: 0 };
+    const still = { median: 0, moved: 0, joined: 1 };
     const tiers = (medium: number, hard: number) => ({ checkTiers: { easy: 0, medium, hard, frontier: 0 } });
     expect(verdictOf(tiers(0, 2), tiers(2, 0), null, flat, still)).toBe("eased");
     expect(verdictOf(tiers(2, 0), tiers(0, 2), null, flat, still)).toBe("escalated");

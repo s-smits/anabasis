@@ -101,12 +101,6 @@ your own algorithm, with optional `execution.requiredToolIds`; or `{"kind":"exte
 never both. Authored execution proves your algorithm even when an installed interpreter runs it;
 it does not become independent domain evidence, and a tool call cannot change the mode.
 
-Keep the deciding computation in `correctness-model/`. An `agent/` module that ships the
-computations a correctness-model module decides with answers the question the battery asks from
-the solver's own roster. The solver may still analyse its candidate and check it
-against published limits — write that capability in the agent's own code, and let the check decide
-through an installed domain tool wherever the field has one.
-
 A check calls `runtime.tools.run({toolId, args, files, stdin, timeoutMs})` and never spawns a
 process itself. The host supplies the check id, refuses undeclared tool ids, and owns sandbox,
 timeout and cleanup. A check that declares required tools, authored or external, passes only after

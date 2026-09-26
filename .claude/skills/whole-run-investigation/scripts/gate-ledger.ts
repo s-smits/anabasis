@@ -336,7 +336,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["BR-7", "agent-deciding-computation", "deleted"],
     [0.3, 0.6],
     [],
-    "four recorded firings, each dodged by renaming or moving code",
+    "four recorded firings, each dodged by renaming or moving code; contract.md no longer states it",
     ["agent-carries-deciding-computation"],
   ),
   // DF: difficulty, task set and admission

@@ -47,6 +47,9 @@ import type { ContractFinding } from "../truth/brief.ts";
 import { type SolvabilityStageCache, createSolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { type AdmissionInput, admissionFindings, experimentOperation } from "./experiment-admission.ts";
 
+/** The codes of a run that did not finish in time: a check's tool run, or the whole census wall. */
+const TIMEOUT_CODES = new Set(["tool-timeout", "census-wall-exceeded"]);
+
 /** `stages` is the session's F2 stage memory: settled stage results keyed by the bytes each read. */
 export type Gate = (
   harness: BuiltHarness,
@@ -142,13 +145,34 @@ export function createValidationMemory(): ValidationMemory {
   };
 }
 
+const blockingOf = (feedback: readonly CampaignFeedback[]) =>
+  feedback.filter((row) => row.severity === "blocking");
+
 /** A blocking row the environment owns says the host refused, not that these bytes are wrong. */
 function hostRefused(feedback: readonly CampaignFeedback[]): boolean {
   return feedback.some((row) => row.owner === "environment" && row.severity === "blocking");
 }
 
-const blockingOf = (feedback: readonly CampaignFeedback[]) =>
-  feedback.filter((row) => row.severity === "blocking");
+/** A refusal whose every blocking finding is a timeout. The author still owns it — the checks and
+ *  their walls are the candidate's — but a timeout on a loaded host often completes on the next run
+ *  of the same request, so the refusal is not remembered as the verdict on these bytes: the same
+ *  bytes run again rather than being answered from memory. */
+function timedOutOnly(feedback: readonly CampaignFeedback[]): boolean {
+  const blocking = blockingOf(feedback);
+  return (
+    blocking.length > 0 &&
+    blocking.every(
+      (row) =>
+        row.findings !== undefined &&
+        row.findings.length > 0 &&
+        row.findings.every((found) => TIMEOUT_CODES.has(found.code)),
+    )
+  );
+}
+
+/** A gate run that is no verdict on the bytes: the host refused it, or it only timed out. */
+const notAVerdict = (feedback: readonly CampaignFeedback[]) =>
+  hostRefused(feedback) || timedOutOnly(feedback);
 
 async function timed<T>(
   run: () => Promise<T> | T,
@@ -209,8 +233,8 @@ export function freshRunDir(root: string, label: string): string {
   }
 }
 
-/** One gate run per condition and scope, shared across calls; a thrown or host-refused run is
- *  forgotten. `runDir` names a new evidence directory and is asked only when the gate executes. */
+/** One gate run per condition and scope, shared across calls; a thrown, host-refused or timed-out
+ *  run is forgotten. `runDir` names a new evidence directory and is asked only when the gate executes. */
 async function sharedGate(
   candidate: CandidateSnapshot,
   harness: BuiltHarness,
@@ -224,7 +248,7 @@ async function sharedGate(
   const prior = memory.gates.get(key);
   if (prior !== undefined) {
     const run = await prior.catch(() => undefined);
-    if (run !== undefined && !hostRefused(run.feedback)) return { run, reused: true };
+    if (run !== undefined && !notAVerdict(run.feedback)) return { run, reused: true };
   }
   const dir = runDir(label);
   mkdirSync(dir, { recursive: true });
@@ -234,7 +258,7 @@ async function sharedGate(
   memory.gates.set(key, pending);
   try {
     const run = await pending;
-    if (hostRefused(run.feedback) && memory.gates.get(key) === pending) memory.gates.delete(key);
+    if (notAVerdict(run.feedback) && memory.gates.get(key) === pending) memory.gates.delete(key);
     return { run, reused: false };
   } catch (cause) {
     if (memory.gates.get(key) === pending) memory.gates.delete(key);
@@ -362,11 +386,20 @@ export async function submitStages(
   return report(candidate, admission.findings, admission.ms, executed, 0);
 }
 
-/** A result that judges the bytes: not blocked, no runtime non-result and no host refusal. */
+/** A result that judges the bytes: not blocked, no runtime non-result, no host refusal and not only a timeout. */
 export const memorable = (executed: ExecutedStages) =>
   executed.blocked === null &&
   !executed.runtimeNonResult &&
-  !(executed.gated !== null && hostRefused(executed.gated.feedback));
+  !(executed.gated !== null && notAVerdict(executed.gated.feedback));
+
+/** A result the environment may own: a block, a runtime non-result or a host refusal. A refusal
+ *  that only timed out is not among them: it is not remembered, but an unchanged resubmit of it
+ *  still strikes, so a candidate whose checks time out on every run stays bounded by the no-op
+ *  strike ceiling. */
+export const strikeExempt = (executed: ExecutedStages) =>
+  executed.blocked !== null ||
+  executed.runtimeNonResult ||
+  (executed.gated !== null && hostRefused(executed.gated.feedback));
 
 /** Hold a run as this condition's preview result while it runs, and keep it only if memorable. */
 function track(

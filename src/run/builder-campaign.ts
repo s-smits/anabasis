@@ -73,6 +73,7 @@ import {
   clearPreview,
   freshRunDir,
   memorable,
+  stagesOf,
   strikeExempt,
   previewCandidate,
   submitStages,
@@ -410,10 +411,14 @@ class BuilderCampaignController {
     // A clean candidate whose gate run another call executed opens its iteration here.
     const settling =
       opened ?? (report.refusals.every((refusal) => refusal.stage === "gates") ? this.openIteration() : null);
-    const { outcome, executed } =
+    const settled =
       settling !== null && report.harness !== null && report.gated !== null
         ? await this.settle(candidate, report.harness, report.gated, settling, turn)
         : this.unsettled(candidate, report);
+    const { executed } = settled;
+    // The receipt names each code's stage as a preview's does; the remembered refusal does not,
+    // because answering it from memory runs no stage.
+    const outcome = settled.outcome.ok ? settled.outcome : { ...settled.outcome, ...stagesOf(report) };
     // Safeguard 33: the preview promises parity with submit on unchanged bytes, so a clear check
     // followed by a refused submit of the same snapshot says the two paths diverged, and nothing
     // else records the pair. Admission is left out because it reads EXPERIMENT.json, which the

@@ -95,6 +95,9 @@ interface ExecutedStages {
 
 export interface GateReport extends ExecutedStages {
   snapshotId: string | null;
+  /** `conditionKey` of the candidate: its bytes and its installed tool tree together. Receipts carry
+   *  it because the same snapshot over a repaired tool tree is a different condition. */
+  conditionId?: string;
   /** Author-projected blocking findings of every stage that refused, in stage order. */
   refusals: Array<{ stage: AuthorCheckStage; findings: ContractFinding[] }>;
   experiment?: ExperimentOperation;
@@ -330,6 +333,24 @@ async function executeStages(
   };
 }
 
+/** The stages that reached a verdict on this report, and each blocking code under the stage that
+ *  emitted it. The gates stage is named `census` when the reference solve did not run, because a
+ *  run that skipped it could not have repeated a reference-solve refusal, and a reader of the
+ *  receipt must not take that code's absence for an answer to it. */
+export function stagesOf(gateReport: Pick<GateReport, "gated" | "receipts" | "refusals">) {
+  const gatesAs = gateReport.gated?.scope.referenceSolve === false ? "census" : "gates";
+  const name = (stage: AuthorCheckStage): string => (stage === "gates" ? gatesAs : stage);
+  const staged = gateReport.refusals.flatMap((refusal) =>
+    refusal.findings.map((finding) => `${name(refusal.stage)}:${finding.code}`),
+  );
+  return {
+    stagesRun: gateReport.receipts
+      .filter((receipt) => receipt.status === "passed" || receipt.status === "refused")
+      .map((receipt) => name(receipt.stage)),
+    stagedCodes: [...new Set(staged)].sort(),
+  };
+}
+
 function report(
   candidate: CandidateSnapshot,
   admission: ContractFinding[],
@@ -346,6 +367,7 @@ function report(
   return {
     ...executed,
     snapshotId: candidate.snapshotId,
+    conditionId: conditionKey(candidate),
     refusals,
     receipts: [
       { stage: "bundle", status: "passed", source: "executed", ms: bundleMs },

@@ -11,7 +11,7 @@ import type {
   BuilderExecutionRecorder,
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
-import type { CandidateSnapshot } from "../author/candidate-check.ts";
+import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
 import type { ExperimentSubmission } from "../author/experiment-plan.ts";
 import {
   type AuthorCheckStage,
@@ -46,6 +46,10 @@ export type BuilderSubmitOutcome =
       experimentProposal?: ExperimentSubmission;
       /** Where the plan and this round's rehearsals disagree: advice, never a refusal. */
       advice?: readonly string[];
+      /** The stages that reached a verdict and each code under its stage (`stagesOf`), for a
+       *  refusal a gate run produced; `stage` names only the first stage that refused. */
+      stagesRun?: string[];
+      stagedCodes?: string[];
     } & SubmittedTree);
 
 type Refused = Extract<BuilderSubmitOutcome, { ok: false }>;
@@ -193,7 +197,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
     return {
       ...text(
         `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
-        { outcome: "accepted", candidateId: outcome.snapshotId },
+        { outcome: "accepted", candidateId: outcome.snapshotId, conditionId: conditionKey(outcome) },
       ),
       terminate: true,
     };
@@ -215,6 +219,8 @@ async function settleSubmit(binding: SubmitToolBinding) {
           ? undefined
           : [...new Set(outcome.findings.map((finding) => finding.code))].sort(),
       ),
+      ...keyIfDefined("stagesRun", outcome.stagesRun),
+      ...keyIfDefined("stagedCodes", outcome.stagedCodes),
       ...keyIfDefined("reason", state.terminal ? "terminal-refusal" : undefined),
     }),
     terminate: state.terminal,

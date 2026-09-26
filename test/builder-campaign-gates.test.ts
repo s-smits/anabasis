@@ -433,6 +433,10 @@ describe("the receipts a gate run records", () => {
     expect(semantic("submit")).toMatchObject({
       outcome: "refused",
       findingCodes: ["generated-load-crash", "submit-bound"],
+      // Staged as a preview stages them, so a reader never files a code under the aggregate
+      // stage; the submit bound no stage emitted stays unstaged.
+      stagesRun: ["bundle", "validation", "conformance", "census"],
+      stagedCodes: ["conformance:generated-load-crash"],
     });
     expect(semantic("correctness_check")).toMatchObject({ outcome: "clear" });
     expect(semantic("correctness_check")).not.toHaveProperty("findingCodes");

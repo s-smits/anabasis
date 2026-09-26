@@ -49,7 +49,7 @@ import {
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
-import { type Brief, controllerValidatedFinding } from "../src/truth/brief.ts";
+import { type Brief, controllerValidatedFinding, controllerValidatedFindings } from "../src/truth/brief.ts";
 import type { BuildTask } from "../src/truth/tasks.ts";
 import type { ControlCorpus } from "../src/truth/controls.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
@@ -563,6 +563,42 @@ describe("correctness_check", () => {
     expect(gateCalls).toBe(2);
     expect(second.repeated).toBeUndefined();
     expect(codesOf(second)).toEqual(["gate-unvalidated"]);
+  });
+
+  /** A census refusal whose one finding carries `code`, owned by the evaluator as every tool
+   *  non-result is: the author still owns it, and only memory treats a timeout differently. */
+  const toolRefusal = (code: string): CampaignFeedback[] => [
+    {
+      owner: "correctness-model/evaluator.ts",
+      severity: "blocking",
+      claim: "control census: a declared check's tool run ended without a verdict",
+      evidence: "protected host evidence",
+      findings: controllerValidatedFindings([
+        { code, path: "correctness-model/evaluator.ts", detail: "tool run" },
+      ]),
+    },
+  ];
+
+  it.each([
+    ["tool-timeout", 2, false],
+    ["census-wall-exceeded", 2, false],
+    ["tool-crash", 1, true],
+  ])("remembers a %s refusal only when it is a verdict on the bytes", async (code, calls, remembered) => {
+    // A timeout mostly measures the host's load, so the same bytes may finish next time; a crash
+    // is a verdict on those bytes and repeats for free.
+    const dir = workspace(`timeout-${code}`);
+    let gateCalls = 0;
+    const { check } = session(dir, {
+      gate: async () => {
+        gateCalls += 1;
+        return toolRefusal(code);
+      },
+    });
+    expect((await check()).status).toBe("findings");
+    const second = await check();
+    expect(gateCalls).toBe(calls);
+    expect(second.repeated !== undefined).toBe(remembered);
+    expect(codesOf(second)).toEqual([code]);
   });
 
   it("previews every distinct candidate and answers unchanged bytes from memory", async () => {

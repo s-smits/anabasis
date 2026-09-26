@@ -73,6 +73,7 @@ import {
   clearPreview,
   freshRunDir,
   memorable,
+  strikeExempt,
   previewCandidate,
   submitStages,
 } from "../gate/validation-pipeline.ts";
@@ -403,7 +404,7 @@ class BuilderCampaignController {
       },
     });
     if (report.blocked !== null) throw report.blocked.cause;
-    const retryable = !memorable(report);
+    const retryable = strikeExempt(report);
     const opened =
       /* SAFETY: assigned inside runDir; the control-flow narrowing of a closure write is lost. */ iteration as Iteration | null;
     // A clean candidate whose gate run another call executed opens its iteration here.
@@ -426,7 +427,7 @@ class BuilderCampaignController {
     }
     if (outcome.ok) return { outcome, retryable };
     safeguardRepeatedRefusalCode(outcome, this.deps.safeguardContext);
-    this.candidates.remember(key, executed, retryable ? "retryable" : "verdict");
+    this.candidates.remember(key, executed, memorable(report) ? "verdict" : "retryable");
     return { outcome, retryable };
   }
 

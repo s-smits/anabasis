@@ -64,6 +64,15 @@ export interface BuilderCustomToolSemantic {
   workshopSequence?: number;
   subjectDigest?: string;
   candidateId?: string;
+  /** The candidate's bytes and installed tool tree together (`conditionKey`), so a refusal cleared
+   *  by a tool repair over unchanged bytes reads as a different condition, not as no edit. */
+  conditionId?: string;
+  /** The gate stages a correctness_check ran to a verdict, `census` standing for a gates stage
+   *  that skipped the reference solve. */
+  stagesRun?: string[];
+  /** Each blocking code as `<stage>:<code>`, so a reader knows which stage must run again before
+   *  the code's absence answers it. */
+  stagedCodes?: string[];
   artifactDigest?: string;
   findings?: number;
   /** Turns the rehearsed solve took. */
@@ -188,6 +197,7 @@ export function semanticFromResult(result: unknown): BuilderCustomToolSemantic |
     "resultDigest",
     "subjectDigest",
     "candidateId",
+    "conditionId",
     "artifactDigest",
     "truthVerdict",
   ] as const) {
@@ -209,6 +219,10 @@ export function semanticFromResult(result: unknown): BuilderCustomToolSemantic |
   const codes = receipt.findingCodes;
   if (Array.isArray(codes) && codes.length > 0) {
     semantic.findingCodes = codes.filter(isString).slice(0, MAX_FINDING_CODES);
+  }
+  for (const key of ["stagesRun", "stagedCodes"] as const) {
+    const value = receipt[key];
+    if (Array.isArray(value)) semantic[key] = value.filter(isString).slice(0, MAX_FINDING_CODES);
   }
   return semantic;
 }

@@ -46,6 +46,7 @@ import {
   clearPreview,
   createValidationMemory,
   previewCandidate,
+  stagesOf,
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
@@ -665,11 +666,20 @@ describe("correctness_check", () => {
       stage: "gates",
       findings: 2,
       candidateId: expect.any(String),
+      conditionId: expect.any(String),
       reason: "refused-gates",
       // Which gates refused the tree survives the session on the receipt, never in the text.
       findingCodes: ["gate-unvalidated", "tasks-hidden-operand-unexpected"],
+      // Each code under the stage that emitted it, and the stages that ran, so a later receipt that
+      // never reached this stage is not read as having answered it.
+      stagesRun: ["bundle", "validation", "conformance", "gates"],
+      stagedCodes: ["gates:gate-unvalidated", "gates:tasks-hidden-operand-unexpected"],
     });
     expect(JSON.stringify(body)).not.toContain("findingCodes");
+    expect(JSON.stringify(body)).not.toContain("stagedCodes");
+    // The condition is the bytes and the installed tool tree; with no declared tool it is the bytes.
+    expect(receipt()?.conditionId).toBe(receipt()?.candidateId);
+    expect(JSON.stringify(body)).not.toContain("conditionId");
     answer = [];
     writeFileSync(join(dir, "correctness-model", "guide.md"), "# repaired\n");
     const repaired = await check();
@@ -1051,5 +1061,49 @@ describe("assertTaskSetMatchesFingerprint (conformance-evidence task-set binding
     expect(() =>
       assertTaskSetMatchesFingerprint(slugDir, fingerprint.taskSetHash, "conformance evidence"),
     ).toThrow(/task identity drifted/);
+  });
+});
+
+describe("stagesOf", () => {
+  const finding = (code: string) => ({ code, path: "correctness-model/brief.json", detail: code });
+  const ran = (referenceSolve: boolean) =>
+    stagesOf({
+      gated: { trialDir: "", feedback: [], conditionDigest: null, scope: { referenceSolve } },
+      receipts: [
+        { stage: "bundle", status: "passed", source: "executed", ms: 0 },
+        { stage: "validation", status: "refused", source: "executed", ms: 0 },
+        { stage: "conformance", status: "passed", source: "executed", ms: 0 },
+        { stage: "gates", status: "refused", source: "executed", ms: 0 },
+      ],
+      refusals: [
+        { stage: "validation", findings: [finding("experiment-proposal-shape")] },
+        { stage: "gates", findings: [finding("DISCRIMINATION_ACCEPT_REJECTED")] },
+      ],
+    });
+
+  it("files each code under the stage that emitted it", () => {
+    expect(ran(true)).toEqual({
+      stagesRun: ["bundle", "validation", "conformance", "gates"],
+      stagedCodes: ["gates:DISCRIMINATION_ACCEPT_REJECTED", "validation:experiment-proposal-shape"],
+    });
+  });
+
+  it("names a gates run that skipped the reference solve `census`, so it answers no reference-solve code", () => {
+    expect(ran(false)).toEqual({
+      stagesRun: ["bundle", "validation", "conformance", "census"],
+      stagedCodes: ["census:DISCRIMINATION_ACCEPT_REJECTED", "validation:experiment-proposal-shape"],
+    });
+  });
+
+  it("leaves a stage that never reached a verdict out of the stages run", () => {
+    const blocked = stagesOf({
+      gated: null,
+      receipts: [
+        { stage: "conformance", status: "blocked", source: "executed", ms: 0 },
+        { stage: "gates", status: "not-run", source: "executed", ms: 0 },
+      ],
+      refusals: [],
+    });
+    expect(blocked).toEqual({ stagesRun: [], stagedCodes: [] });
   });
 });

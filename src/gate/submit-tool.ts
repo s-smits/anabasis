@@ -11,7 +11,7 @@ import type {
   BuilderExecutionRecorder,
   BuilderSubmitAttempt,
 } from "../author/builder-execution.ts";
-import type { CandidateSnapshot } from "../author/candidate-check.ts";
+import { type CandidateSnapshot, conditionKey } from "../author/candidate-check.ts";
 import type { ExperimentSubmission } from "../author/experiment-plan.ts";
 import {
   type AuthorCheckStage,
@@ -193,7 +193,7 @@ async function settleSubmit(binding: SubmitToolBinding) {
     return {
       ...text(
         `Accepted. Agent ${outcome.fingerprint.agentHash.slice(0, 12)}, correctnessModel ${outcome.fingerprint.correctnessModelHash.slice(0, 12)}, ${outcome.changedPaths.length} changed paths. The candidate is fixed at this accepted tree: the build is complete, and later file edits are not part of it.`,
-        { outcome: "accepted", candidateId: outcome.snapshotId },
+        { outcome: "accepted", candidateId: outcome.snapshotId, conditionId: conditionKey(outcome) },
       ),
       terminate: true,
     };

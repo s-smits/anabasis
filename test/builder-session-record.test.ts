@@ -156,7 +156,16 @@ describe("the record a round settles", () => {
       description: "inspect",
       execute: async () => ({
         content: [{ type: "text", text: "private-result-text" }],
-        details: { receipt: { outcome: "clear", findings: 0, resultDigest: "safe-result-digest" } },
+        details: {
+          receipt: {
+            outcome: "clear",
+            findings: 0,
+            resultDigest: "safe-result-digest",
+            conditionId: "snap-tools",
+            stagesRun: ["bundle", "census"],
+            stagedCodes: ["census:tool-timeout", 7],
+          },
+        },
       }),
     });
     const trialTool = toolDouble({
@@ -191,7 +200,14 @@ describe("the record a round settles", () => {
         action: "task",
         target: { taskId: "public-task-7" },
         dispatchOutcome: "returned",
-        semantic: { outcome: "clear", findings: 0, resultDigest: "safe-result-digest" },
+        semantic: {
+          outcome: "clear",
+          findings: 0,
+          resultDigest: "safe-result-digest",
+          conditionId: "snap-tools",
+          stagesRun: ["bundle", "census"],
+          stagedCodes: ["census:tool-timeout"],
+        },
       },
       {
         sequence: 2,

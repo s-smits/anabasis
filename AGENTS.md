@@ -845,9 +845,12 @@ live evidence.
     projection of its findings rides the first tool result after that. Submit is the one call that
     waits for it. A submit made while a review runs is held until the review finishes, which the
     reader session's one-hour deadline bounds (`READER_DEADLINE_MS`, `src/review/review-reader.ts`),
-    and when the review shows findings the Builder has not read, they come back in place of the
-    verdict and the call counts as no submit (`reason: "review-unread"`), so the same bytes sent
-    next are a first submission of them. No probe budget and no no-submit strike bounds a
+    and when the review shows a blocking finding the Builder has not read, the review comes back in
+    place of the verdict and the call counts as no submit (`reason: "review-unread"`), so the same
+    bytes sent next are a first submission of them. A review showing advisory findings alone holds
+    nothing and rides the next tool result, because an advisory finding asks for no change before
+    submit; across the recorded runs up to 2026-09-27, 34 holds in 19 chains cost about 79 minutes,
+    and two whole campaigns held for reviews whose every finding was advisory. No probe budget and no no-submit strike bounds a
     session's reconnaissance before its first authoring change. A round runs as a Codex goal
     (`src/author/builder-continuation.ts`): every continuation restates the request and the round's
     facts, a round has no turn cap unless `--max-builder-turns` sets one, and three turns in a row

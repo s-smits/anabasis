@@ -216,8 +216,13 @@ Holds a measured candidate with no verified case instead of selecting it
 
 ### review-unread-hold
 
-Returns an authoring review's unread findings in place of a submit verdict (`review-unread`,
-`src/gate/submit-tool.ts`). The Builder reads them before a submit ends the round they apply to.
+Returns an unread authoring review in place of a submit verdict when it shows a blocking finding
+(`review-unread`, `src/gate/submit-tool.ts`, `join` in `src/run/authoring-review.ts`), so the
+Builder reads a demonstrated defect before a submit ends the round it applies to. Until 2026-09-27
+it held for any shown finding, advisory ones included, and the triage of 28 recorded runs counted
+34 holds in 19 chains and about 79 minutes of waiting, with two campaigns whose every held review
+was advisory and whose identical candidate was then accepted. An advisory finding asks for no change
+before submit, so it now rides the next tool result and holds nothing.
 
 ### continuation-nudge
 

@@ -260,7 +260,7 @@ export function authoringReviewText(
     ...(shown.length === 0 ? [] : [`Original request: ${capturedJsonStringify(request)}`]),
     ...rows,
   ].join("\n");
-  return { text, findings: shown.length };
+  return { text, blocking };
 }
 
 /** Carry an authoring review's disputes onto the issue register the next build reads. The measured

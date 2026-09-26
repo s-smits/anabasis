@@ -135,7 +135,7 @@ async function handed(rehearsals: readonly Rehearsal[]) {
     new AuthoringReviewClock(null, 0),
     async (root, _trigger, _plan, cases?: readonly unknown[]) => {
       seen = { root, rehearsals: cases ?? [] };
-      return { text: "", findings: 0 };
+      return { text: "", blocking: 0 };
     },
   );
   for (const { row, submitted } of rehearsals) {

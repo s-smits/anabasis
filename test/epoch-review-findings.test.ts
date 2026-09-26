@@ -264,9 +264,9 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(advisory).not.toMatch(/repair that contract|Repair the complete/);
     expect(blocking).toContain("inspect and repair that contract");
     expect(blocking).toContain("Repair the complete public obligation");
-    const { text, findings: shown } = authoringReviewText("repair", "completed", "design trusses", findings);
-    // The count is what holds a submit that arrives before the Builder has read the review.
-    expect(shown).toBe(1);
+    const { text, blocking: held } = authoringReviewText("repair", "completed", "design trusses", findings);
+    // The blocking count is what holds a submit that arrives before the Builder has read the review.
+    expect(held).toBe(1);
     expect(text.split("design trusses")).toHaveLength(2);
     expect(text).toContain("1 blocking finding(s)");
     expect(text).not.toContain("private remedy");
@@ -279,16 +279,17 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     // that later edits are not in them; a review showing nothing holds no submit.
     expect(deferredOnly).toEqual({
       text: "Epoch review of the candidate your clear correctness_check previewed. It ran while you kept working, so edits made since are not in it. Review completed. No finding blocks submit.",
-      findings: 0,
+      blocking: 0,
     });
     expect(authoringReviewText("backstop", "completed", "design trusses", []).text).toStartWith(
       "Epoch review of your workspace, frozen when the review began. It ran while you kept working",
     );
-    // A probe behind an advisory row is executed evidence, and it still crosses.
+    // A probe behind an advisory row is executed evidence, and it still crosses; being advisory, it
+    // rides the next tool result and holds no submit.
     const probed = [{ ...findings[0]!, probes: [{ controlId: "a", path: "x", movedCheckIds: [] }] }];
     expect(authoringReviewText("repair", "completed", "design trusses", probed)).toMatchObject({
       text: expect.stringContaining("- [advisory] "),
-      findings: 1,
+      blocking: 0,
     });
     // Without the authoring reading, the measured-battery projection keeps its repair order.
     expect(publicEpochReview(review, { brief: null }).findings[0]?.claim).toContain(

@@ -19,7 +19,7 @@
 
 import { isString } from "#src/meta/json-shape.ts";
 
-export const LEDGER_DATE = "2026-09-26";
+export const LEDGER_DATE = "2026-09-27";
 /** The refusal bar the gate audit applied: at least this sure a firing refuses something wrong. */
 export const REFUSAL_BAR = 0.98;
 
@@ -502,10 +502,10 @@ export const LOOP_LEDGER: readonly LoopLedgerEntry[] = [
   },
   {
     ...row(
-      ["LP-6", "review-unread-hold", "kept"],
-      [0.9, 0.05],
+      ["LP-6", "review-unread-hold", "narrowed"],
+      [0.95, 0.02],
       [],
-      "chains of up to 4 holds; consider holding only on blocking findings",
+      "held on advisory-only reviews too (34 holds, 79 min); now holds only on a blocking finding",
     ),
     hold: "review-unread",
   },

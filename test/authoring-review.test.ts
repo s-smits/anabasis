@@ -50,8 +50,9 @@ afterAll(cleanupScratch);
 
 const noop = toolDouble({ name: "noop", execute: async () => ({ content: [{ type: "text", text: "ok" }] }) });
 
-function advice(findings: number): AuthoringAdvice {
-  return { text: `${ADVICE} (${String(findings)} shown)`, findings };
+/** A review's public text, showing `blocking` blocking findings among whatever advisory ones. */
+function advice(blocking: number): AuthoringAdvice {
+  return { text: `${ADVICE} (${String(blocking)} blocking)`, blocking };
 }
 
 /** The tool result as the model reads it, refused if it waited on a review longer than a prompt
@@ -334,9 +335,11 @@ describe("the Epoch Reviewer beside an authoring session", () => {
     expect(outcome.buildAdmissible).toBe(true);
   });
 
-  it("lets a submit through when the review it waited for shows no finding", async () => {
+  it("lets a submit through when the review it waited for shows advisory findings alone", async () => {
+    // An advisory finding asks for no change before submit, so holding the submit for one only
+    // spends the round's time: the same bytes come back accepted once it has been read.
     const held = new HeldReviews();
-    const { workspace, run } = campaign("ana-review-join-clear-", held);
+    const { workspace, run } = campaign("ana-review-join-advisory-", held);
     const outcome = await run(async (tools) => {
       authorable(workspace);
       await promptly(namedTool(tools, "correctness_check").execute("check", {}));
@@ -344,7 +347,7 @@ describe("the Epoch Reviewer beside an authoring session", () => {
       await held.finish(0, advice(0));
       const result = await promptly(submitting);
       expect(result).toContain("Accepted.");
-      expect(result).not.toContain(ADVICE);
+      expect(result).not.toContain("Nothing was submitted.");
     });
     expect(outcome.buildAdmissible).toBe(true);
   });

@@ -19,8 +19,6 @@ import {
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import {
   type CampaignMemory,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // extendTrailingBlockedFindings,
   nextOrdinal,
   resumeCampaignMemory,
   unchangedCandidateSubmissions,
@@ -55,8 +53,6 @@ import {
   type CampaignBudgetGate,
   type SavedCampaignBudgetGate,
 } from "./campaign-budget.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-// import { toolNonResultFinding } from "../author/tool-non-result.ts";
 import { AuthoringReviewClock, REVIEW_INTERVAL_MS } from "../gate/review-clock.ts";
 import { AuthoringReviews, type ReviewAuthoring } from "./authoring-review.ts";
 import { CandidateMemory } from "../gate/candidate-memory.ts";
@@ -69,9 +65,6 @@ import { createHarnessResetTool } from "../builder/harness-reset.ts";
 import { createHarnessTrialTool } from "../builder/harness-trial.ts";
 import { createCorrectnessCheckTool } from "../gate/check-tool.ts";
 import { admissionFindings } from "../gate/experiment-admission.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-// admitted-history public battery prints only the repeated-condition refusal read.
-// import type { AdmissionInput } from "../gate/experiment-admission.ts";
 import {
   type Gate,
   type GateReport,
@@ -93,9 +86,6 @@ import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { Solver } from "../truth/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-// admitted-history public battery prints only the repeated-condition refusal read.
-// export interface BuilderCampaignInput extends Pick<AdmissionInput, "priorPublicTaskFingerprints"> {
 export interface BuilderCampaignInput {
   campaignDir: string;
   slug: string;
@@ -458,12 +448,6 @@ class BuilderCampaignController {
   private pipelineInput(): PipelineInput {
     return {
       toolsProbes: this.deps.toolsProbes,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): only the
-      // product-repair refusal read the admitted feedback.
-      // ...keyIfDefined("feedback", this.input.priorEvidence?.feedback),
-      // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-      // admitted-history public battery prints only the repeated-condition refusal read.
-      // ...keyIfDefined("priorPublicTaskFingerprints", this.input.priorPublicTaskFingerprints),
       ...keyIfDefined("adoptedDir", this.input.adoptedDir),
     };
   }
@@ -527,19 +511,7 @@ class BuilderCampaignController {
       attempts: { builder: Math.max(1, turn - this.lastRecordedTurn) },
       ordinal,
       dir,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-      // // The disk-replayed trailing run, extended by this session's own settled iterations under the
-      // // one shared rule, so a session that resumes a campaign continues the same streak.
-      // priorBlockedFindingsHashes: this.iterations.reduce(
-      //   extendTrailingBlockedFindings,
-      //   this.memory.trailingBlockedFindingsHashes,
-      // ),
     });
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // // Charged before the copy, so the iteration's copy carries the run's charge marker and a
-    // // replay counts the run once rather than again.
-    // const toolStrike =
-    //   step.kind === "build-admissible" ? { terminal: false, findings: [] } : this.chargeToolNonResult(run);
     if (run.trialDir !== iterationDir) cpSync(run.trialDir, iterationDir, { recursive: true });
     const evidence = decorateIterationEvidence(step.evidence, {
       first: this.iterations.length === 0,
@@ -580,31 +552,12 @@ class BuilderCampaignController {
       ok: false,
       stage: "gates",
       commit: candidate.commit,
-      findings: [
-        ...gated,
-        // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-        // ...(step.kind === "continue" && step.steering !== undefined ? [step.steering] : []),
-        // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-        // ...toolStrike.findings,
-      ],
-      // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-      // ...keyIfTruthy("terminal", step.kind === "terminal" || toolStrike.terminal),
+      findings: [...gated],
       ...keyIfTruthy("terminal", step.kind === "terminal"),
     };
     // Only the rows the bytes earned are remembered; steering and strike counts belong to this call.
     return { outcome: refused, executed: { ...refused, findings: gated } };
   }
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // /** One strike per executed gate run whose host reached no completed tool run. At the declared
-  //  *  ceiling the campaign settles as the `verifier-required` terminal, rather than opening another
-  //  *  authoring round against the same failing tool. */
-  // private chargeToolNonResult(run: GateRun) {
-  //   const strike = this.candidates.chargeToolNonResult(run.trialDir);
-  //   const terminal = strike?.terminal === true;
-  //   if (terminal) this.terminalClause = "verifier-required";
-  //   return { terminal, findings: strike === null ? [] : [toolNonResultFinding(strike)] };
-  // }
 
   /** A candidate refused before settlement writes no iteration, but a gate run it executed still
    *  ends the session on a blocking environment row. */
@@ -613,13 +566,6 @@ class BuilderCampaignController {
     if (report.gated === null) return refused;
     const clause = gateTerminalClause(report.gated.feedback);
     if (clause !== null) this.terminalClause = clause;
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // const toolStrike = this.chargeToolNonResult(report.gated);
-    // const outcome: Refused = {
-    //   ...refused.outcome,
-    //   findings: [...refused.outcome.findings, ...toolStrike.findings],
-    //   ...keyIfTruthy("terminal", clause !== null || toolStrike.terminal),
-    // };
     const outcome: Refused = { ...refused.outcome, ...keyIfTruthy("terminal", clause !== null) };
     return { outcome, executed: refused.executed };
   }

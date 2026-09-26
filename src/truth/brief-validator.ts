@@ -403,18 +403,6 @@ function joinFindings(brief: Brief): ContractFinding[] {
         ),
       );
     }
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
-    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
-    // declared class.
-    // if (join.decoyClasses.length === 0) {
-    //   findings.push(
-    //     finding(
-    //       "brief-join-no-decoys",
-    //       `joins[${i}].decoyClasses`,
-    //       `join "${join.id}" declares no decoy classes — discrimination would prove label completeness, not join soundness`,
-    //     ),
-    //   );
-    // }
     if (new Set(join.decoyClasses).size !== join.decoyClasses.length) {
       findings.push(
         finding(
@@ -517,18 +505,6 @@ function designRuleConstantFindings(brief: Brief): ContractFinding[] {
       );
     }
     constantNames.add(constant.name);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
-    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
-    // right.
-    // if (!constant.authority.trim() || !constant.citation.trim()) {
-    //   findings.push(
-    //     finding(
-    //       "brief-constant-uncited",
-    //       `designRuleConstants[${i}]`,
-    //       `"${constant.name}" has no external authority/citation — the hw22 wrong-rule-content class`,
-    //     ),
-    //   );
-    // }
   });
   return findings;
 }

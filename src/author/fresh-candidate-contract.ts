@@ -10,9 +10,6 @@ import type { TaskValidationContext } from "../truth/tasks.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 export function freshTaskValidationContext(exactTasks?: number): TaskValidationContext {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): the variation rule
-  // this switched on is commented out.
-  // return { exactTasks: exactTasks ?? null, authoring: true };
   return { exactTasks: exactTasks ?? null };
 }
 

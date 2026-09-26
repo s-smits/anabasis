@@ -176,25 +176,6 @@ function missingToolFeedback(findings: readonly ContractFinding[]): CampaignFeed
   ];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-// // A check grounded only by a script the author wrote into `.toolchain` measures agreement with
-// // that script and nothing else, so a battery that passes every task under one has measured the
-// // author against itself. This row and the one below sat beside the missing-tool row in a
-// // code-to-owner table; restoring either restores that table.
-// [
-//   "solvability-tool-self-authored",
-//   "brief",
-//   () =>
-//     "installed tools: an external check is grounded only by a script under the candidate's own tool tree, so a battery would measure that script's agreement with itself",
-// ],
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// [
-//   "solvability-tool-program-argument",
-//   "brief",
-//   () =>
-//     "installed tools: an external check hands its program to the tool as an argument, so the attested tool is only an interpreter and a battery would measure the candidate's own checker",
-// ],
-
 /**
  * The F2 witnesses paired with the public input the agent would have been given, filtered to one
  * status because the two readers take different subsets. The accept-independence reading takes passed

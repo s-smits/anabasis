@@ -48,20 +48,12 @@ import {
   validateControls,
   validateAcceptControls,
 } from "../truth/controls.ts";
-import { DATA_FILE, DATA_READER_MODULE } from "../truth/data-session.ts";
 import { type HiddenExpectation, type TaskBattery, validateTasks } from "../truth/tasks.ts";
 import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../truth/tools-spec.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only the
-// retired-tool scan used it.
-// import { expectedBuiltToolNames } from "../truth/tools-spec.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): only the
-// retired-tool scan used these.
-// import { fileRevisions } from "./domain-repo.ts";
-// import { isRecord } from "../meta/json-shape.ts";
 import { EXPERIMENT_FILE } from "./builder-memory.ts";
 import { type ExperimentSubmission, captureExperimentSubmission } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
@@ -319,79 +311,13 @@ function guideFindings(workspace: string): ContractFinding[] {
   return guide === null ? [missingBundleFile(BUILT_AGENTS_FILE)] : [];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): a guide
-// naming a tool the spec once declared and no longer does; unsure a git-history scan of code spans earns a
-// refusal rather than a solve that finds the tool absent.
-// /** Every tool name the tools spec declared in the history of `commit`. Git is the Builder's memory,
-//  *  and the only record of which words were once tools. The walk starts at the commit the candidate
-//  *  was captured at, never at HEAD, because the Builder can commit while a check runs. A revision
-//  *  committed half-written is not JSON and names no tools. */
-// function historicalToolNames(workspace: string, commit: string): Set<string> {
-//   const names: unknown[] = [];
-//   for (const text of fileRevisions(workspace, commit, TOOLS_SPEC_FILE)) {
-//     try {
-//       const spec = capturedJsonParse(text);
-//       if (isRecord(spec) && Array.isArray(spec.tools)) {
-//         names.push(...spec.tools.filter(isRecord).map((tool) => tool.name));
-//       }
-//     } catch {
-//       // Half-written: the revisions around it still name their tools.
-//     }
-//   }
-//   return new Set(names.filter(isString));
-// }
-//
-// /** Refuses a guide that names, as code, a tool this bundle's spec once declared and declares no
-//  *  longer: the solver has no such tool, and a guide telling it to call one sends it into a refused
-//  *  call on every case. Each retired name is its own finding, so every detail names one tool. Only the word a code span opens with counts, and only when the span is that
-//  *  word or continues it with a call's parenthesis or an argument, because a retired name in prose
-//  *  or inside a longer identifier may be a field or a concept that shares the word.
-//  *
-//  *  The guide and the roster are the snapshot's. The snapshot is one tree with no history, so the
-//  *  names it once declared come from the workspace repository at `commit`, the commit it was
-//  *  captured at, and the verdict is a function of those immutable objects. The same bytes captured
-//  *  at two commits can therefore differ, and each outcome records the commit its verdict read. */
-// export function retiredToolFindings(
-//   workspace: string,
-//   commit: string,
-//   snapshotDir: string,
-//   toolsSpec: ToolsSpec | null,
-// ): ContractFinding[] {
-//   const guide = readBundleFile(snapshotDir, BUILT_AGENTS_FILE);
-//   if (toolsSpec === null || guide === null) return [];
-//   const roster = new Set(expectedBuiltToolNames(toolsSpec, { publicResources: true }));
-//   const opened = new Set(Array.from(guide.matchAll(/`([^`\n( ]*)[^`\n]*`/g), ([, word]) => word));
-//   return [...historicalToolNames(workspace, commit)]
-//     .filter((name) => opened.has(name) && !roster.has(name))
-//     .sort()
-//     .map((name) =>
-//       controllerValidatedFinding({
-//         code: "operating-guide-retired-tool",
-//         path: BUILT_AGENTS_FILE,
-//         detail: `${BUILT_AGENTS_FILE} names ${name} as a tool, which ${TOOLS_SPEC_FILE} declared earlier and declares no longer — the solver has no such tool, so name only the tools its roster holds now`,
-//       }),
-//     );
-// }
-
 // Gate audit 2026-09-25 (docs/gate-audit.md, tools-spec-structure): kept: the tool contract must parse and
-// name a preparer before the worker registers one stable roster, and leftover data-reader files would shadow
-// the controller's own resources.
+// name a preparer before the worker registers one stable roster.
 /** Mirrors `validatedBrief` for the tools contract: validate one bundle file, push its findings and
- *  return the parsed value only when it is clean. The controller supplies public data itself, so
- *  the check for leftover generated copies lives beside the spec rather than in every caller. */
-function validatedToolsSpec(workspace: string, raw: unknown, findings: ContractFinding[]): ToolsSpec | null {
+ *  return the parsed value only when it is clean. */
+function validatedToolsSpec(raw: unknown, findings: ContractFinding[]): ToolsSpec | null {
   if (raw === undefined) return null;
   const normalized = normalizeToolsSpec(raw);
-  if ([DATA_FILE, DATA_READER_MODULE].some((name) => existsSync(join(workspace, "agent", name)))) {
-    findings.push(
-      controllerValidatedFinding({
-        code: "tools-data-reader-state",
-        path: "agent",
-        detail:
-          "Remove legacy generated data files; the controller supplies SQL over the committed public task and domain resources.",
-      }),
-    );
-  }
   const specFindings = validateToolsSpec(normalized.value).findings;
   findings.push(...controllerValidatedFindings(specFindings));
   return specFindings.length === 0
@@ -484,7 +410,7 @@ export function loadValidatedBundle(
   // tools spec, the operating guide and the controls envelope do not read the brief at all, so they
   // are still reported: otherwise an author spends one check per validator meeting them in turn.
   if (brief === null) {
-    validatedToolsSpec(workspace, specRaw, findings);
+    validatedToolsSpec(specRaw, findings);
     if (controlsRaw !== undefined && !isControlCorpus(controlsRaw)) {
       findings.push(
         controllerValidatedFinding(
@@ -523,7 +449,7 @@ export function loadValidatedBundle(
     }
   }
 
-  const toolsSpec = validatedToolsSpec(workspace, specRaw, findings);
+  const toolsSpec = validatedToolsSpec(specRaw, findings);
   filesPresetCapabilityCheck(workspace, brief, toolsSpec, findings);
   findings.push(...guideFindings(workspace));
   if (mode === "admission") {
@@ -620,13 +546,7 @@ export function checkCandidate(
     ...new Set((loaded.brief?.truthChecks ?? []).flatMap((check) => requiredToolsOf(check.execution))),
   ].sort();
   const toolCondition = candidateToolVerdict(snapshot.dir, requiredToolIds, toolFindings);
-  const findings = [
-    ...loaded.findings,
-    ...toolFindings,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-retired-tool): commented out (unsure): the
-    // retired-tool scan above is commented out.
-    // ...retiredToolFindings(workspace, change.commit, snapshot.dir, loaded.toolsSpec),
-  ];
+  const findings = [...loaded.findings, ...toolFindings];
   if (findings.length > 0) {
     return { ok: false, stage: "bundle", findings, commit: change.commit, ...proposalKeys };
   }

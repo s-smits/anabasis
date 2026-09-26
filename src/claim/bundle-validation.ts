@@ -19,9 +19,6 @@ type BundleValidationFindingCode =
   | "missing-bundle"
   | "non-regular-entry"
   | "correctness-model-capability-escape";
-// Gate audit 2026-09-25 (docs/gate-audit.md, agent-deciding-computation): commented out (unsure): nothing
-// produces this code while the agent-side copy scan is commented out.
-// | "agent-carries-deciding-computation";
 
 export interface BundleValidationFinding {
   code: BundleValidationFindingCode;

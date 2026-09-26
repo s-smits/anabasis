@@ -243,19 +243,6 @@ public input (`REFERENCE_ANSWER_SPELLS_ABSENCE`, `ARTIFACT_ROOT_TRANSCRIBES_PUBL
 the answer rather than a demonstrated wrong verdict. The witness shape and `inputInsensitivity`
 stay live.
 
-### tool-program-argument
-
-Refused an external check passing program text as a tool argument, multi-line or over 256 bytes
-(`solvability-tool-program-argument`, `src/verify/self-grounding.ts`). An argument's length does
-not show whose algorithm decides. Restore the STARTER.md and AGENTS.md sentences on the argument
-limit with it.
-
-### tool-self-authored
-
-Refused an external check whose tool bytes equal candidate-authored files
-(`solvability-tool-self-authored`, `src/verify/self-grounding.ts`). A bounded digest match is not a
-proof of provenance either way; the claim records each tool's source and digest instead.
-
 ### census-inert-tool
 
 Refused adoption when the census never launched a declared external tool
@@ -284,22 +271,6 @@ Refused a candidate, and at claim time a battery, when a reject control passed i
 could not tell which one the refusal was catching. A candidate whose rejects pass is now measured
 and claimable.
 
-### repeated-public-condition
-
-Refused a task-only round on a fixed product whose public-battery fingerprint matched a condition
-that product had already measured (`climb-battery-repeats-history` from `REPEATED_CONDITION`;
-`src/gate/experiment-admission.ts`, `src/run/climb-history.ts`, `src/run/builder-campaign.ts`,
-`src/run/full-run-build-step.ts`, `src/run/harness-build.ts`). The fingerprint hashes public inputs
-only, and a repeat measures the same condition again rather than misstating one. Restore AGENTS.md
-rule 10's "Refuse a repeated public condition on a fixed product".
-
-### product-repair-required
-
-Refused a task-only round while admitted blocking feedback still owed a product repair
-(`experiment-product-repair-required`, `src/gate/experiment-admission.ts`). The audit could not show
-that the owner routing names a real product blocker rather than an advisory row. Restore AGENTS.md
-rule 10's "A known product blocker cannot be evaded by changing tasks or relabelling scope".
-
 ### public-rule-control-coverage
 
 Refused a control corpus missing an accept per check-by-family cell, or a reject per check and per
@@ -309,12 +280,6 @@ and the audit was unsure that a coverage count refuses a wrong corpus rather tha
 `starter-pack/contract.md` still asks for that coverage as advice; restore AGENTS.md rule 12's
 statement that the gate checks it.
 
-### operating-guide-retired-tool
-
-Refused an operating guide naming a tool an earlier tools spec declared and the current one does
-not, found by scanning Git history (`operating-guide-retired-tool`; `src/author/candidate-check.ts`,
-`src/author/domain-repo.ts`). A history scan of code spans is a weak witness for a stale guide.
-
 ### operating-guide-policy
 
 Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming operating guide
@@ -322,13 +287,6 @@ Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming opera
 `src/author/candidate-check.ts`). A missing guide is still refused. Whether these byte shapes earn a
 refusal rather than review was unclear. Restore the contract.md and STARTER.md guide-size sentences
 with it.
-
-### task-variation
-
-Refused a family whose declared public paths held one value across its tasks
-(`tasks-structural-variation-shortfall`, `src/truth/tasks.ts`). Declared variation proves coverage
-rather than demand: 18 firmware tasks satisfied it while every one published the same display.
-Restore the contract.md, FRAME `firstBattery` and AGENTS.md rule 11 variation sentences with it.
 
 ### brief-artifact-root-unread
 
@@ -344,24 +302,6 @@ of `src/truth/rule-decisions.ts`, beside the citation shape it read, and its cal
 `src/author/fresh-candidate-contract.ts`. A citation cannot show that the cited prose states what
 the check enforces.
 
-### brief-constant-uncited
-
-Refused a design-rule constant with no authority or citation (`brief-constant-uncited`,
-`src/truth/brief-validator.ts`). A non-empty string does not prove the value is sourced.
-
-### brief-join-no-decoys
-
-Refused a declared join with no decoy classes (`brief-join-no-decoys`,
-`src/truth/brief-validator.ts`). No rule asks for a control of any declared class, so the empty list
-decided nothing.
-
-### agent-deciding-computation
-
-Refused an agent module exporting the computations a correctness-model module decides with, found
-by an AST copy scan (`agent-carries-deciding-computation`; `src/claim/bundle-validation.ts`,
-`src/claim/correctness-model-hygiene.ts`, `src/claim/fingerprint.ts`). A name-and-shape scan does
-not identify a copied decision. `scannableBundleSource` and the capability-escape scan stay live.
-
 ### off-aim-allowance-stop
 
 Stopped a campaign after `climb.offAimStreakRounds` consecutive rounds on one side of the aim
@@ -375,24 +315,12 @@ Counted `candidate-zero-verified` holds toward the build-failed stall limit
 (`src/run/full-run-round.ts`). A zero-verified battery is the hard battery design prior 10 asks
 for, not an authoring stall.
 
-### repeated-findings-stall
+## Deleted, 2026-09-26
 
-Ended a session as `authoring-stalled` when one refusal repeated `stalledFindingsRepeats` times
-(`authoring-repeated-findings`; `src/gate/candidate-memory.ts`, `src/gate/settlement.ts`,
-`src/run/builder-campaign.ts`). One refusal over changed bytes is repair in progress, not a proven
-stall.
-
-### tool-non-result-ceiling
-
-Ended a campaign after `toolNonResultRefusals` repeated tool non-results
-(`tool-non-result-repeat`, `tool-non-result-ceiling`; `src/author/tool-non-result.ts` and the
-campaign memory). A tool that cannot run is an environment fact each run records (rule 15), not a
-Builder stall.
-
-### preview-attempt-spent
-
-Refused a `correctness_check` retry on bytes whose last preview ended without a verdict
-(`src/gate/check-tool.ts`, `src/gate/validation-pipeline.ts`). A runtime non-result is no verdict on
-the bytes, so a retry on them now runs. The clear-verdict cache and the shared in-flight gate stay.
-Restore AGENTS.md rule 14's "remembered as spent" sentence and the `harness_inspect` readiness
-wording with it.
+The second audit (54 components read against their recorded firings and their stated reason) found
+no decision these twelve changed correctly, so their commented-out code, markers and tests are gone
+rather than waiting to be restored: `tool-program-argument`, `tool-self-authored`, `repeated-public-
+condition`, `product-repair-required`, `operating-guide-retired-tool`, `task-variation`, `brief-
+constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeated-findings-stall`,
+`tool-non-result-ceiling`, `preview-attempt-spent`. Two live refusals with no producer left to
+refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-state`.

@@ -43,8 +43,6 @@ import { join } from "../meta/path.ts";
 import type { GateScope } from "../run/census-gate.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-// import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
 import type { ContractFinding } from "../truth/brief.ts";
 import { type SolvabilityStageCache, createSolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { type AdmissionInput, admissionFindings, experimentOperation } from "./experiment-admission.ts";
@@ -89,9 +87,6 @@ interface ExecutedStages {
   blocked: { stage: AuthorCheckStage; cause: unknown } | null;
   /** A generated-runtime worker that did not settle: an environment fact, not a verdict on bytes. */
   runtimeNonResult: boolean;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // /** This condition already spent its preview attempt without a memorable result; nothing ran. */
-  // attemptSpent?: true;
   receipts: StageReceipt[];
 }
 
@@ -110,9 +105,6 @@ interface ValidationMemory {
   /** Executed stages a preview remembers per condition, in flight included, so a second call on
    *  the same bytes joins the first instead of spending nothing on a refusal. */
   previews: Map<string, Promise<ExecutedStages>>;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // /** Conditions that spent their preview attempt, including blocked and non-result ones. */
-  // attempted: Set<string>;
   /** Gate runs a preview returned as a complete clear report, by condition. */
   clear: Map<string, GateRun>;
   stages: SolvabilityStageCache;
@@ -141,38 +133,14 @@ interface PreviewDeps {
   memory: ValidationMemory;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-// const SPENT: ExecutedStages = {
-//   conformance: [],
-//   harness: null,
-//   gated: null,
-//   blocked: null,
-//   runtimeNonResult: false,
-//   attemptSpent: true,
-//   receipts: [
-//     { stage: "conformance", status: "not-run", source: "reused", ms: 0 },
-//     { stage: "gates", status: "not-run", source: "reused", ms: 0 },
-//   ],
-// };
-
 export function createValidationMemory(): ValidationMemory {
   return {
     gates: new Map(),
     previews: new Map(),
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // attempted: new Set(),
     clear: new Map(),
     stages: createSolvabilityStageCache(),
   };
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-// export const PREVIEW_ATTEMPT_SPENT = controllerValidatedFinding({
-//   code: "preview-attempt-spent",
-//   path: "agent",
-//   detail:
-//     "this exact tree and installed-tool condition already spent their preview attempt this session and produced no memorable outcome (blocked or a runtime non-result); repair the bytes and preview the changed tree, or submit",
-// });
 
 /** A blocking row the environment owns says the host refused, not that these bytes are wrong. */
 function hostRefused(feedback: readonly CampaignFeedback[]): boolean {
@@ -349,11 +317,6 @@ function report(
   const refusals = [
     { stage: "validation" as const, findings: admission },
     { stage: "conformance" as const, findings: executed.conformance },
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // {
-    //   stage: "gates" as const,
-    //   findings: executed.attemptSpent === true ? [PREVIEW_ATTEMPT_SPENT] : gateRows,
-    // },
     { stage: "gates" as const, findings: gateRows },
   ].filter((row) => row.findings.length > 0);
   return {
@@ -488,11 +451,6 @@ export async function previewCandidate(
     return result;
   };
   const prior = deps.memory.previews.get(key);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // // A joined call spends the attempt too: if the run it joined ends unmemorable, the next preview
-  // // of these bytes must not buy the sequence a second time to learn the same nothing.
-  // const spent = deps.memory.attempted.has(key);
-  // deps.memory.attempted.add(key);
   if (prior !== undefined) {
     const executed = await prior;
     // A remembered result names every executed stage as reused, at no cost; a joined call that
@@ -503,8 +461,6 @@ export async function previewCandidate(
     };
     return memorable(executed) ? { ...reported(reused), repeated: true } : reported(executed);
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // if (spent) return reported(SPENT);
   const runDir = (_clean: boolean, label: string) => freshRunDir(join(deps.trialsDir, key), label);
   const executed = await track(
     deps.memory,

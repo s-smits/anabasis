@@ -22,9 +22,6 @@ import {
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
 import { resolvePredicatePath } from "./predicate.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): only the variation rule
-// read it.
-// import { canonicalJson } from "../meta/stable-json.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
@@ -63,11 +60,6 @@ export interface TaskValidationContext {
   /** The smallest accepted size when the round leaves the count to the Builder; absent when the ask
    *  states one size. */
   minTasks?: number | null;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): only the variation
-  // rule read it.
-  // /** True for new authoring, which enforces public variation; a fingerprinted tree keeps its
-  //  *  recorded policy. */
-  // authoring?: boolean;
 }
 
 /** One task bound to its index and to the checks that apply to it, so no rule resolves either
@@ -116,18 +108,9 @@ function fieldFindings(value: unknown): ContractFinding[] {
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, task-count): kept: the battery holds the task count the run
 // asked for, which the measured denominator is sized on.
-/** Battery-level shape no task walk can decide: the retired label and the requested census. */
+/** Battery-level shape no task walk can decide: the requested census. */
 function censusFindings(battery: TaskBattery, context: TaskValidationContext): ContractFinding[] {
   const findings: ContractFinding[] = [];
-  // A battery-wide difficulty (or the retired rung) labels nothing the controller reads.
-  if (Object.hasOwn(battery, "difficulty") || Object.hasOwn(battery, "rung")) {
-    findings.push({
-      code: "tasks-difficulty-unrequested",
-      path: "difficulty",
-      detail:
-        "remove the top-level difficulty field; the controller reads difficulty from measured results, not from a label",
-    });
-  }
   if (battery.tasks.length === 0) {
     findings.push({
       code: "tasks-empty",
@@ -292,44 +275,6 @@ function coverageFindings(
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): a family must vary one
-// declared public input; unsure whether that shape rule measures anything a battery would not show.
-// /** A family must vary a shared declared verifier input. The comparison is per declared path, so a
-//  *  check that declares a coarse path is satisfied by any change inside it; this proves declared
-//  *  coverage, not semantic dependence or harder decisions, and measurement owns those claims. */
-// function variationFindings(rows: readonly TaskRow[]): ContractFinding[] {
-//   const findings: ContractFinding[] = [];
-//   for (const family of new Set(rows.map(({ task }) => task.family))) {
-//     const members = rows.filter(({ task }) => task.family === family);
-//     const values = members.map(
-//       ({ task, applicable }) =>
-//         new Map(
-//           applicable
-//             .flatMap((check) => check.execution.publicInputPaths)
-//             .flatMap((path) => {
-//               const resolved = resolvePredicatePath(task.publicInput, path);
-//               return resolved.found ? [[path, canonicalJson(resolved.value)] as const] : [];
-//             }),
-//         ),
-//     );
-//     // A path the whole family provides, holding two values somewhere in it. The first member's
-//     // paths are the only candidates: one it lacks is not shared.
-//     const varied = [...(values[0]?.keys() ?? [])].some(
-//       (path) =>
-//         values.every((member) => member.has(path)) &&
-//         new Set(values.map((member) => member.get(path))).size >= 2,
-//     );
-//     if (!varied) {
-//       findings.push({
-//         code: "tasks-structural-variation-shortfall",
-//         path: "tasks",
-//         detail: `family "${family}" needs at least two distinct values at one shared publicInput path declared by its applicable truth checks. Vary a condition the verifier uses; labels and undeclared metadata do not qualify. Declared coverage does not prove semantic difficulty`,
-//       });
-//     }
-//   }
-//   return findings;
-// }
-
 export function validateTasks(
   brief: Brief,
   value: unknown,
@@ -351,9 +296,6 @@ export function validateTasks(
     ...applicabilityFindings(rows, declared),
     ...declaredPathFindings(rows),
     ...coverageFindings(brief, battery, new Set(rows.map(({ task }) => task.family))),
-    // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): the variation rule
-    // above is commented out.
-    // ...(context.authoring === true ? variationFindings(rows) : []),
   ];
   return { ok: findings.length === 0, findings: controllerValidatedFindings(findings) };
 }

@@ -49,12 +49,6 @@ export const POLICY = {
      *  src/run/full-run-round.ts as `AUTHORING_STALL_LIMIT`, which explains there why a held
      *  candidate is counted against the same allowance. */
     buildFailedRounds: 3,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // /** Consecutive gate refusals carrying one findings hash before the authoring loop terminates,
-    //  *  counting the current attempt. Eight sits strictly between the deepest observed convergent
-    //  *  streak — one hash repeated six times before the gates cleared — and the observed
-    //  *  non-convergent one, which repeated a hash fourteen times. Read by src/gate/settlement.ts. */
-    // stalledFindingsRepeats: 8,
     /** Consecutive byte-identical resubmits of a refused authoring identity before the session ends
      *  as authoring-stalled. One repeat used to end it outright, which stopped sessions that had a
      *  changed next move already in the transcript; each strike below the ceiling now returns a
@@ -69,13 +63,6 @@ export const POLICY = {
      *  so the in-session counter starts at zero again. Keyed by commit, so a Builder that writes
      *  anything starts a new key. Read by src/run/full-run-build-step.ts. */
     unchangedCandidateStrikes: 3,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // /** Refused control censuses attributed to one tool id across a campaign before it ends as
-    //  *  `verifier-required`. Counted by tool id rather than candidate identity because each repair
-    //  *  changes the tree while the unsuccessful tool run does not, so the no-op strike counter sees
-    //  *  a different tree every time. Three matches `noopSubmitStrikes`: report the defect, allow the
-    //  *  repair, end the repetition. Read by src/author/tool-non-result.ts. */
-    // toolNonResultRefusals: 3,
   },
   battery: {
     /** The accepted range for a requested battery size. An out-of-range request fails rather than

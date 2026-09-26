@@ -28,7 +28,14 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { Type } from "typebox";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -235,6 +242,10 @@ function modelVisible(result: unknown): JsonObject {
   return required(asRecord(JSON.parse(body)), "a parsed rehearsal body");
 }
 
+function readJson(path: string): JsonObject {
+  return required(asRecord(JSON.parse(readFileSync(path, "utf8"))), path);
+}
+
 function expectNoProtectedDetail(subject: string): void {
   for (const marker of PROTECTED_MARKERS) expect(subject).not.toContain(marker);
 }
@@ -383,6 +394,44 @@ describe("what a rehearsal may tell its author about its own answer key", () => 
     expect(body.truth).toEqual({ verdict: "not-run" });
     expectNoProtectedDetail(JSON.stringify(result));
     expectWithinCensus(body);
+  }, 60_000);
+
+  /**
+   * The per-check log is the protected detail itself: which check failed is a failure location.
+   * Two rehearsals that fail on different checks must therefore say the same thing to the author
+   * while their host-side `checks.json` records differ, which is the rule-4 test stated exactly.
+   */
+  it("records which check failed beside the solve and returns the same bytes whichever it was", async () => {
+    const failingOn = async (failing: string) => {
+      const dir = workspace();
+      const bodies = [PASSING_CHECK, FAILING_CHECK].map((id) => `"${id}": () => ${String(id !== failing)}`);
+      writeFileSync(
+        join(dir, "correctness-model/evaluator.ts"),
+        `export const checks = { ${bodies.join(", ")} };`,
+      );
+      const { rehearsalDir, tool } = round(dir, assigningSolver(RIGHT_SLOT));
+      const result = await rehearse(tool);
+      expectNoProtectedDetail(JSON.stringify(result));
+      const body = modelVisible(result);
+      // The candidate's id digests its own evaluator bytes and the effort is wall time; neither
+      // reads the verifier's result.
+      delete body.candidate;
+      delete asRecord(body.solve)?.effort;
+      const log = readJson(join(rehearsalDir, "rehearsal-1", "checks.json"));
+      return { body, log };
+    };
+    const a = await failingOn(FAILING_CHECK);
+    const b = await failingOn(PASSING_CHECK);
+
+    expect(a.body.truth).toEqual({ verdict: "fail" });
+    expect(JSON.stringify(a.body)).toBe(JSON.stringify(b.body));
+    const failed = (log: JsonObject) =>
+      (Array.isArray(log.checkRuns) ? log.checkRuns : []).flatMap((row) =>
+        asRecord(row)?.outcome === "fail" ? [asRecord(row)?.checkId] : [],
+      );
+    expect(failed(a.log)).toEqual([FAILING_CHECK]);
+    expect(failed(b.log)).toEqual([PASSING_CHECK]);
+    expect(a.log.toolRuns).toEqual([]);
   }, 60_000);
 });
 
@@ -654,12 +703,22 @@ describe("the wall a rehearsal grades under", () => {
   }, 120_000);
 
   it("stops the same check at the check wall the harness declares", async () => {
-    const { tool } = round(slowWorkspace("gate:\n  check_seconds: 1\n"), assigningSolver(RIGHT_SLOT));
+    const { rehearsalDir, tool } = round(
+      slowWorkspace("gate:\n  check_seconds: 1\n"),
+      assigningSolver(RIGHT_SLOT),
+    );
     const body = modelVisible(await rehearse(tool));
 
     expect(body.status).toBe("non-result");
     expect(body.truth).toEqual({ verdict: "not-run" });
     expectWithinCensus(body);
+    // The host log names the check the wall stopped, by kind, and the checks it never reached.
+    const log = readJson(join(rehearsalDir, "rehearsal-1", "checks.json"));
+    const rows = (Array.isArray(log.checkRuns) ? log.checkRuns : []).map((row) => asRecord(row));
+    const at = rows.findIndex((row) => row?.checkId === PASSING_CHECK);
+    expect(rows[at]).toMatchObject({ outcome: "threw", errorKind: "timeout" });
+    expect(Number(rows[at]?.durationMs)).toBeGreaterThanOrEqual(1000);
+    expect(rows.slice(at + 1).every((row) => row?.outcome === "not-run")).toBe(true);
   }, 60_000);
 });
 

@@ -3,7 +3,7 @@ import { VerifierContractError } from "../../vendor/correctness-model-bundle/con
 import { applicableTruthChecks } from "../../vendor/correctness-model-bundle/evaluation-public-task.ts";
 import { parseJsonAs, capturedJsonParse, capturedStructuredClone } from "../meta/json-runtime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { VerifierOperationalStop } from "../verify/verifier-lifetime.ts";
 import { type Brief, type GeneratedExecutionClassification, externalChecksOf } from "./brief.ts";
@@ -33,6 +33,7 @@ interface EvaluatedWitness {
   predicateFailures: CheckFailureDetail[];
   /** The checks a passing verdict rested on without their tools; the evaluator owns this failure. */
   ungrounded: UngroundedCheck[];
+  checkRuns: CheckRun[];
 }
 
 /** The fixed condition every witness of one census is evaluated under. */
@@ -79,13 +80,19 @@ export async function evaluateWitness(
   let authorClassification: GeneratedExecutionClassification | null = null;
   let failure: unknown;
   let pending: number;
+  const checkRuns: CheckRun[] = [];
   const predicateRequest = {
     publicTask: evaluateView,
     artifact: capturedJsonParse(artifactJson),
     hidden: capturedStructuredClone(fullTask.hidden),
   };
   try {
-    result = await census.evaluate(capturedStructuredClone(predicateRequest), { tools: scope.port });
+    result = await census.evaluate(
+      capturedStructuredClone(predicateRequest),
+      { tools: scope.port },
+      undefined,
+      (row) => checkRuns.push(row),
+    );
   } catch (caught) {
     if (caught instanceof VerifierOperationalStop) throw caught;
     failure = caught;
@@ -119,6 +126,7 @@ export async function evaluateWitness(
     error,
     authorClassification,
     ungrounded,
+    checkRuns,
     predicateFailures: checkProgramFailureDetails(
       brief,
       predicateRequest,

@@ -98,6 +98,8 @@ type BlindGrade = {
   readonly solved: SolvedCase;
   readonly openedCandidateId: string | null;
   readonly ordinal: number;
+  /** This rehearsal's evidence directory, shared by the solve and the grading. */
+  readonly write: ReturnType<typeof rehearsalWriter>;
   /** The harness's solve wall, read from the snapshot the solve ran under. */
   readonly wallMinutes: number;
 };
@@ -265,7 +267,7 @@ function rehearsalWriter(dir: string | undefined, ordinal: number) {
 async function solveBlind(
   binding: HarnessTrialBinding,
   loaded: LoadedTrial,
-  ordinal: number,
+  write: ReturnType<typeof rehearsalWriter>,
 ): Promise<SolvedCase> {
   const solver = binding.builtSolver?.();
   if (solver === undefined) throw new Error("no Built solver is bound to this session");
@@ -278,7 +280,7 @@ async function solveBlind(
       solver,
       publicArtifactSchema: loaded.publicArtifactSchema,
       maxSubmitAttempts: SUBMIT_MAX_ATTEMPTS,
-      write: rehearsalWriter(binding.rehearsalDir, ordinal),
+      write,
     },
     loaded.task,
   );
@@ -333,8 +335,9 @@ async function runTrial(
     return { status: "blocked", stage: "cancelled", error: "the call was cancelled before its solve began" };
   }
   let solved: SolvedCase;
+  const write = rehearsalWriter(binding.rehearsalDir, ordinal);
   try {
-    solved = await solveBlind(binding, loaded, ordinal);
+    solved = await solveBlind(binding, loaded, write);
   } catch (error) {
     return {
       status: "non-result",
@@ -344,13 +347,13 @@ async function runTrial(
     };
   }
   return gradeBlind(
-    { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes },
+    { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, write, wallMinutes },
     signal,
   );
 }
 
 async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
-  const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, wallMinutes } = grade;
+  const { binding, sourceBinding, loaded, solved, openedCandidateId, ordinal, write, wallMinutes } = grade;
   const candidate = candidateView(openedCandidateId, candidateId(sourceBinding), loaded.findings);
   // The battery's branch order decides this rather than convenience: `gradeOutcome` in
   // `src/truth/solve-case.ts` returns the solver's non-result before it ever looks at the accepted
@@ -361,7 +364,11 @@ async function gradeBlind(grade: BlindGrade, signal?: AbortSignal) {
   const blocker = solverBlockerOf(solved);
   const { execution, truthOk } = verifierView(
     candidate.stable && solved.acceptedSubmit && blocker === null
-      ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, signal)
+      ? await rehearseCase(binding.workspace, loaded.brief, solved, binding.verifierLifetime, {
+          signal,
+          // Host evidence beside the solve, for the operator; the author's view is `verifierView` alone.
+          record: (checkRuns, toolRuns) => write("checks.json", { checkRuns, toolRuns }),
+        })
       : { status: "not-run" },
   );
   let status = solved.acceptedSubmit ? "completed" : "unaccepted";

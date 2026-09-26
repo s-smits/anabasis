@@ -43,7 +43,7 @@ import type { BuiltStarter } from "../solve/built-starter.ts";
 import type { GeneratedToolStarterOptions } from "../solve/generated-tool-worker.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { createVerifierHost } from "../verify/host.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { validateBrief } from "./brief-validator.ts";
@@ -393,9 +393,10 @@ async function runSolvabilityCase(
   let { error, authorClassification, attribution } = attempt;
   let result: CorrectnessModelResult | null = null;
   let predicateFailures: CheckFailureDetail[] = [];
+  let checkRuns: CheckRun[] | undefined;
   if (accepted !== null && error === null) {
     const verified = await evaluateWitness(session.census, fullTaskJson, accepted, `self:${task.taskId}`);
-    ({ result, error, authorClassification, predicateFailures } = verified);
+    ({ result, error, authorClassification, predicateFailures, checkRuns } = verified);
     if (verified.ungrounded.length > 0) attribution = { failure: "ungrounded" };
     if (result !== null && blockingFailure(result)) {
       const blocked = failedCheckIds(result);
@@ -413,6 +414,7 @@ async function runSolvabilityCase(
     referenceSolve: attempt.referenceSolve,
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
+    ...keyIfDefined("checkRuns", checkRuns),
     ...caseVerdict({ ...attempt, attribution }, passed, error),
   };
   if (row.status === "passed") return { row, finding: null };

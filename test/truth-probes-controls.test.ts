@@ -288,6 +288,18 @@ describe("the controls probe", () => {
     const result = await makeProbeControls({ verifierLifetime: LIFETIME })(slugDir, brief, hostile, tasks);
     // Attribution is only observable once the second check reached a verdict of its own.
     expect(result.checkCost?.map((row) => row.checkId)).toContain("unrelated-limit");
+    // The census records a row per dispatched check, bound to its control, one for each the bill counts.
+    for (const cost of result.checkCost ?? []) {
+      const rows = (result.checkRuns ?? []).filter(
+        (row) => row.checkId === cost.checkId && row.outcome !== "not-run",
+      );
+      expect(rows).toHaveLength(cost.evaluations);
+      expect(
+        rows.every((row) =>
+          [...hostile.accept, ...hostile.reject].some((control) => control.id === row.subjectId),
+        ),
+      ).toBe(true);
+    }
     // The alias reject fails its named check and unrelated-limit together; the named check
     // rejected it, so the cascade is attributed. No reject names unrelated-limit, so R2 refuses that.
     expect(result.findings.map((finding) => finding.code)).toEqual(["DISCRIMINATION_CHECK_UNREJECTED"]);

@@ -52,8 +52,8 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
 import type { NonResultKind } from "../claim/record-events.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
-import type { VerifierHostHandle } from "../verify/verifier-port.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { VerifierExecutionEvidence, VerifierHostHandle } from "../verify/verifier-port.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { CaseRecord } from "./battery-record.ts";
@@ -148,11 +148,19 @@ export interface GradedCase {
   unboundFindings: DiscriminationClaimabilityFinding[];
   /** Solver-side non-results have different censoring rules from verifier-side failures. */
   solverOrigin: boolean;
+  /** One row per check grading reached, empty when nothing was graded. */
+  checkRuns: CheckRun[];
 }
 
 /** What the case records as its final-submission evidence: the controller-written fact itself,
  *  or, when that fact does not serialize, the note recording why nothing else could be written in
  *  its place — an absent field would read as "no submission", which is a different event. */
+/** The caller's abort, and where the host's own rows for this grading go; neither reaches a model. */
+type RehearsalWatch = {
+  signal?: AbortSignal | undefined;
+  record?: (checkRuns: CheckRun[], toolRuns: VerifierExecutionEvidence[]) => void;
+};
+
 type FinalSubmissionEvidence = FinalSubmission | null | { falsifiedFact: true; note: string };
 
 /** What grading decided about one case beyond the solver's own telemetry. Exactly one arm holds,
@@ -175,6 +183,7 @@ interface GradedOutcome {
   unbound: string[];
   verdict: CorrectnessModelResult | null;
   solverOrigin: boolean;
+  checkRuns?: CheckRun[];
 }
 
 const nonResult = (reason: string, nonResultKind: NonResultKind): CaseOutcome => ({
@@ -304,6 +313,7 @@ async function runCaseScope(
   failure: Error | null;
   pendingInvocations: number;
   cleanupPending: boolean;
+  checkRuns: CheckRun[];
 }> {
   const { task, committed } = solved;
   // One projection serves all three evaluate-side consumers: the host subject, the generated
@@ -330,6 +340,7 @@ async function runCaseScope(
   let failure: Error | null = null;
   let cleanupPending = false;
   let closedScope: Awaited<ReturnType<typeof scope.close>>;
+  const checkRuns: CheckRun[] = [];
   const abort = () => {
     void scope.close().catch(() => {});
   };
@@ -348,6 +359,8 @@ async function runCaseScope(
         hidden: task.hidden,
       }),
       { tools: scope.port },
+      undefined,
+      (run) => checkRuns.push(run),
     );
   } catch (error) {
     cleanupPending = error instanceof VerifierOperationalStop;
@@ -363,6 +376,7 @@ async function runCaseScope(
     failure,
     pendingInvocations: closedScope.pendingInvocations,
     cleanupPending: cleanupPending || lifetimeStopped || closedScope.cleanup?.state === "pending",
+    checkRuns,
   };
 }
 
@@ -404,8 +418,9 @@ export async function rehearseCase(
   brief: Brief,
   solved: Pick<SolvedCase, "task" | "committed" | "final">,
   lifetime?: VerifierLifetime,
-  callerSignal?: AbortSignal,
+  watch: RehearsalWatch = {},
 ) {
+  const { signal: callerSignal, record } = watch;
   const { final, task } = solved;
   if (final?.accepted !== true || final.kind !== "artifact" || final.artifactJson === null) {
     return { status: "not-run" };
@@ -433,6 +448,7 @@ export async function rehearseCase(
       final.artifactJson,
       callerSignal,
     );
+    record?.(scoped.checkRuns, verifier.evidence());
     if (scoped.cleanupPending) return { status: "non-result", kind: "cleanup-pending" };
     if (scoped.failure !== null) throw scoped.failure;
     callerSignal?.throwIfAborted();
@@ -527,6 +543,7 @@ async function gradeAcceptedArtifact(
     verdict: scoped.cleanupPending ? null : scoped.verdict,
     unbound,
     solverOrigin: false,
+    checkRuns: scoped.checkRuns,
   };
 }
 
@@ -637,5 +654,6 @@ export async function gradeCase(deps: GradeCaseDeps, solvedCase: SolvedCase): Pr
         : null,
     unboundFindings: graded.unbound.map((message) => ({ code: "EXTERNAL_RESULT_UNBOUND", message })),
     solverOrigin: graded.solverOrigin,
+    checkRuns: graded.checkRuns ?? [],
   };
 }

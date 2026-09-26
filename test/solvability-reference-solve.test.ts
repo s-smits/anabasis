@@ -260,6 +260,10 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
 
     expect(result.findings).toEqual([]);
     expect(result.evidence?.cases.map((row) => row.artifact)).toEqual([{ answer: "A" }, { answer: "B" }]);
+    // Each reference evaluation keeps its own check rows beside its verdict.
+    expect(
+      result.evidence?.cases.map((row) => row.checkRuns?.map((run) => [run.checkId, run.outcome])),
+    ).toEqual([[["answer", "pass"]], [["answer", "pass"]]]);
   });
 });
 

@@ -18,6 +18,8 @@ import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
 import { builtStarterFactoryForSolver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import type { CheckRun } from "../src/verify/correctness-model-result.ts";
+import { checksReport } from "../tools/outcome/checks.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   FIRST_TASK,
@@ -67,7 +69,20 @@ describe("a case solved through the production Pi path", () => {
     // The submission record and the graded artifact are the same bytes, not two renderings.
     expect(final.accepted).toBe(true);
     expect(final.artifactJson).toBe(JSON.stringify(artifact));
-    expect(existsSync(join(caseDir, "verifier.json"))).toBe(true);
+    // Each check the case reached sits beside the verdict, and the operator's reader totals them.
+    const verdict = parseJsonAs<{ checkReceipts: Array<{ checkId: string }>; checkRuns: CheckRun[] }>(
+      readFileSync(join(caseDir, "verifier.json"), "utf8"),
+    );
+    expect(verdict.checkRuns.map((row) => [row.checkId, row.outcome])).toEqual(
+      verdict.checkReceipts.map((receipt) => [receipt.checkId, "pass"]),
+    );
+    const checks = checksReport(slugDir, "run-direct-pi-eval");
+    expect(checks.cases).toMatchObject([{ taskId: "t1", recorded: true, ok: true }]);
+    expect(checks.checkWallMs).toBe(600_000);
+    const byId = (a: readonly unknown[], b: readonly unknown[]) => String(a[0]).localeCompare(String(b[0]));
+    expect(checks.byCheck.map((row) => [row.checkId, row.pass, row.atWall]).sort(byId)).toEqual(
+      verdict.checkReceipts.map((receipt) => [receipt.checkId, 1, 0]).sort(byId),
+    );
     expect(runtime.modelWorker.termination).toEqual({ status: "normal" });
     expect(runtime.generatedTools.termination).toEqual({ status: "normal" });
     expect(verifyRunDir(join(slugDir, "runs/run-direct-pi-eval"))).toEqual([]);

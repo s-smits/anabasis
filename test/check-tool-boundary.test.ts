@@ -236,6 +236,7 @@ it("observes the submitted entrypoint through the complete check process and con
   const externalChecks = externalChecksOf(brief);
   const evaluate = evaluateCheckProgram(brief, await loadCorrectnessModel(dir, lifetime));
   const settled = new Map<string, SettledControl>();
+  const checkRuns: Array<{ controlId: string; attempt: number; checkId: string; outcome: string }> = [];
   const result = await runControls(
     evaluate,
     corpus,
@@ -244,10 +245,26 @@ it("observes the submitted entrypoint through the complete check process and con
       brief,
       verifierLifetime: lifetime,
       onSettled: (controlId, observation) => settled.set(controlId, observation),
+      onCheckRun: (controlId, attempt, { checkId, outcome }) =>
+        checkRuns.push({ controlId, attempt, checkId, outcome }),
     },
     verifier,
   );
   expect(result.findings).toEqual([]);
+  // One row per control's check, and every tool run joins to the row of the check that launched it.
+  expect(checkRuns.map((row) => `${row.controlId}:${row.checkId}:${row.outcome}`).sort()).toEqual([
+    "a0:behavior:pass",
+    "a1:behavior:pass",
+    "wrong-behavior:behavior:fail",
+  ]);
+  for (const tool of verifier.evidence()) {
+    expect(
+      checkRuns.some(
+        (row) =>
+          row.controlId === tool.subjectId && row.attempt === tool.attempt && row.checkId === tool.checkId,
+      ),
+    ).toBe(true);
+  }
   expect(result).toMatchObject({ claimable: true, acceptsPassed: 2, rejectsFailed: 1, rejectsAttributed: 1 });
   expect(
     unexecutedGroundingFindings({

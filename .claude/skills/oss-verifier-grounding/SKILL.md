@@ -70,7 +70,7 @@ In those records, a declared external check with no tool run on an applicable ca
 ignored non-zero exit), a run still in flight when evaluate returns, and a `runtimeNonResult` the
 host never created are all `EXTERNAL_RESULT_UNBOUND`. These are historical finding names; today a
 pass decided by a check that declares required tools, with no completed run of one of them, is
-`EXTERNAL_VERDICT_UNGROUNDED` at every stage (`ungroundedPassChecks`, `src/truth/tool-runs.ts`); a
+`EXTERNAL_VERDICT_UNGROUNDED` at every stage (`ungroundedPassChecks`, `src/correctness-bundle/tool-runs.ts`); a
 fail is graded as it stands. Use the run's own result for the check it supports
 and await every run before returning.
 

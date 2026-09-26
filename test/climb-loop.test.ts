@@ -32,8 +32,8 @@ import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } fr
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir } from "../src/run/product-versions.ts";
-import type { Solver } from "../src/truth/solve.ts";
-import { readRecordedBatteryRecord } from "../src/truth/battery-record.ts";
+import type { Solver } from "../src/correctness-bundle/solve.ts";
+import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
 import { required } from "./helpers/doubles.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { type ScriptedTurn, scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";

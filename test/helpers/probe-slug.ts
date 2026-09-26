@@ -1,5 +1,5 @@
 /**
- * The candidate slug the authoring probes in src/truth/probes.ts run over, and the two-tool
+ * The candidate slug the authoring probes in src/correctness-bundle/probes.ts run over, and the two-tool
  * generated toolset they conform.
  *
  * This is deliberately not `writeMatchingSlug` from matching-fixture.ts, whose bundle the run
@@ -15,11 +15,11 @@
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { compilePublicArtifactSchema } from "../../src/solve/public-artifact-schema.ts";
-import type { Brief } from "../../src/truth/brief.ts";
-import type { ControlCorpus } from "../../src/truth/controls.ts";
-import { probeConformanceWithEvidence } from "../../src/truth/probes.ts";
-import type { BuildTask } from "../../src/truth/tasks.ts";
-import type { ToolsSpec } from "../../src/truth/tools-spec.ts";
+import type { Brief } from "../../src/correctness-bundle/brief.ts";
+import type { ControlCorpus } from "../../src/correctness-bundle/controls.ts";
+import { probeConformanceWithEvidence } from "../../src/correctness-bundle/probes.ts";
+import type { BuildTask } from "../../src/correctness-bundle/tasks.ts";
+import type { ToolsSpec } from "../../src/correctness-bundle/tools-spec.ts";
 import {
   MATCHING_BRIEF,
   MATCHING_EVALUATOR_SOURCE,

@@ -12,9 +12,9 @@ reference the change touches; read two only when the change crosses their bounda
 | The change touches | Read | Owner in source |
 |---|---|---|
 | what must be green before paid measurement: task conformance, control census, full-task solvability (F2), exact task count, fingerprint, protected-evidence projection | [references/adoption-gates.md](references/adoption-gates.md) | `src/run/census-gate.ts`, `src/run/candidate-promotion.ts` |
-| whether the verifier separates a correct artifact from a plausible wrong one: check semantics, grounding, safe issues, floors, accept/reject controls, `expectedCheckId`, hidden differentials | [references/discrimination-proof.md](references/discrimination-proof.md) | `src/truth/`, `src/verify/` |
+| whether the verifier separates a correct artifact from a plausible wrong one: check semantics, grounding, safe issues, floors, accept/reject controls, `expectedCheckId`, hidden differentials | [references/discrimination-proof.md](references/discrimination-proof.md) | `src/correctness-bundle/`, `src/verify/` |
 | the artifact from editable draft to accepted bytes: DraftStore shape, public schema and writer parity, canonical equivalence, checkpoint and submit, hidden expectations | [references/representation-contract.md](references/representation-contract.md) | `src/solve/`, `src/author/adopted-candidate.ts` |
-| text a model can see: session prompts, start framing, steering, follow-ups, Judge framing, before and after tool-call adapters, prompt digests | [references/prompt-and-hook-design.md](references/prompt-and-hook-design.md) | `src/author/`, `src/builder/`, `src/truth/judge-framing.ts` |
+| text a model can see: session prompts, start framing, steering, follow-ups, Judge framing, before and after tool-call adapters, prompt digests | [references/prompt-and-hook-design.md](references/prompt-and-hook-design.md) | `src/author/`, `src/builder/`, `src/review/judge-framing.ts` |
 | a bounded code, type, test or evaluation change: source-first inspection, one-owner fixes, size ceilings, honest status, proportional proof | [references/coding-discipline.md](references/coding-discipline.md) | the changed file and its smallest owning test |
 
 ## Rules that hold in every area

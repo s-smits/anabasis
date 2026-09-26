@@ -98,8 +98,8 @@ PROMPT_FILES = (
     "src/author/rebuild-advice.ts",
     "src/builder/harness-inspect.ts",
     "src/builder/harness-trial.ts",
-    "src/truth/judge-framing.ts",
-    "src/truth/judge-prompt-policy.ts",
+    "src/review/judge-framing.ts",
+    "src/review/judge-prompt-policy.ts",
 )
 DOC_FILES = (
     "starters/pi-built-harness/starter-pack/contract.md",

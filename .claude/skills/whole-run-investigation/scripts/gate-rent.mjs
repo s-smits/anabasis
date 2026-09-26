@@ -57,7 +57,7 @@ import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import { readJsonFileOrNull } from "#src/meta/completed-json.ts";
 import { sha256 } from "#src/meta/digest.ts";
 import { canonicalJson } from "#src/meta/stable-json.ts";
-import { commitPublicTask } from "#src/truth/task-split.ts";
+import { commitPublicTask } from "#src/correctness-bundle/task-split.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
 import { readControllerEvidence } from "#src/run/controller-evidence.ts";

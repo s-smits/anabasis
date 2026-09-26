@@ -25,7 +25,7 @@ Examples of the distinct boundaries:
   raw values. Their checks must still distinguish an absent file from malformed content.
 - `src/claim/readiness.ts`: `SolvabilityCaseEvidence.artifact` comes from the controller's parsed
   accepted JSON or its null sentinel. Its census consumer reuses that evidence contract.
-- `src/truth/judge-contract.ts`: the submitted artifact reaches the sanitizer as untrusted input;
+- `src/review/judge-contract.ts`: the submitted artifact reaches the sanitizer as untrusted input;
   changing the annotation must not skip sanitization or the declared public projection.
 - `vendor/pi-claude-bridge/query-state.ts`: `activeQuery` stores the result of the aliased SDK's
   `query` call; `null` represents no current handle.

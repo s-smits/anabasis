@@ -30,7 +30,7 @@ import {
 } from "./brief.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { type BriefRuleDecision, isPublicRule } from "./rule-decisions.ts";
-import type { JudgePublicDomain, JudgePublicTask } from "./judge.ts";
+import type { JudgePublicDomain, JudgePublicTask } from "../review/judge.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { BRIEF_FILE } from "../meta/bundle-layout.ts";
 

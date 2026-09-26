@@ -45,8 +45,8 @@
  * The middle one is not a refusal any more, and neither is a file `--constrained` holds at a
  * frozen size. Both mean only that the import cannot be added, and the predicate has a spelling
  * that needs no import: `(s ?? "") !== ""` is what the helper does. That is also what a reader
- * reached for by hand in `src/builder/tools.ts` and `src/truth/probes.ts`, whose sizes are frozen
- * in `tools/loc/source-policy.json`, where an import line is a line like any other.
+ * reached for by hand in `src/builder/tools.ts` and `src/correctness-bundle/probes.ts`, whose sizes are
+ * frozen in `tools/loc/source-policy.json`, where an import line is a line like any other.
  *
  * The last cannot be decided before the edit, so the tool is meant to be run under
  * `fix-loop.ts`: apply, typecheck, add every line the compiler complains about to `--hold`,

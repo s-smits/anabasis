@@ -12,7 +12,11 @@
  * `hostToolchainEnv` already exists to name, so the redirect holds under every policy.
  */
 import { mkdirSync } from "../meta/filesystem.ts";
-import { HARNESS_CONFIG_FILE, type HarnessSettings, harnessSettings } from "../truth/harness-config.ts";
+import {
+  HARNESS_CONFIG_FILE,
+  type HarnessSettings,
+  harnessSettings,
+} from "../correctness-bundle/harness-config.ts";
 import { availableParallelism, loadavg } from "../meta/os.ts";
 import { dirname, join } from "../meta/path.ts";
 import { runtimeProcess } from "../meta/process.ts";

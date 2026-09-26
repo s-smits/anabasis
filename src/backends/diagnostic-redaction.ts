@@ -1,7 +1,7 @@
 import { boundText } from "../meta/bounded-text.ts";
 
 /** Shared limit, in UTF-8 bytes, for retained diagnostic text. The Judge's own error capture
- *  (`src/truth/judge-drivers.ts`) uses this value rather than defining a second 500-byte limit
+ *  (`src/review/judge-drivers.ts`) uses this value rather than defining a second 500-byte limit
  *  beside it, so the two records agree on how much of a failure they keep. A caller with a
  *  different record to govern passes its own bound instead: the trace's `PREVIEW_BYTES` does. */
 export const DEFAULT_DIAGNOSTIC_MAX_BYTES = 500;

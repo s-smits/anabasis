@@ -3,8 +3,8 @@ import { describe, expect, it } from "bun:test";
 import type { AgentSession } from "../src/backends/backend-types.ts";
 import { evaluatorIndependence } from "../src/claim/calibration.ts";
 import { judgeDecision, validateJudgeEvidence } from "../src/claim/judge.ts";
-import { JudgeCensus, type JudgeCensusSubject } from "../src/truth/judge-census.ts";
-import { runJudgePhase } from "../src/truth/judge-phase.ts";
+import { JudgeCensus, type JudgeCensusSubject } from "../src/review/judge-census.ts";
+import { runJudgePhase } from "../src/review/judge-phase.ts";
 import {
   type JudgeAttempt,
   type JudgeSession,
@@ -14,9 +14,9 @@ import {
   judgeSubject,
   sessionJudge,
   summarizeJudge,
-} from "../src/truth/judge.ts";
-import { SANITIZER_VERSION } from "../src/truth/sanitize.ts";
-import { RATIONALE_MAX, errorText } from "../src/truth/judge-drivers.ts";
+} from "../src/review/judge.ts";
+import { SANITIZER_VERSION } from "../src/correctness-bundle/sanitize.ts";
+import { RATIONALE_MAX, errorText } from "../src/review/judge-drivers.ts";
 import { double, required, scriptedSession } from "./helpers/doubles.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import {

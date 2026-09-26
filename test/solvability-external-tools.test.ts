@@ -13,8 +13,8 @@ import { cleanupScratch } from "./helpers/scratch.ts";
 import { readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { type Brief, projectFindingForAuthor } from "../src/truth/brief.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
+import { type Brief, projectFindingForAuthor } from "../src/correctness-bundle/brief.ts";
+import { VerifierExecutionNonResult } from "../src/correctness-bundle/verifier-nonresult.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { required } from "./helpers/doubles.ts";
 import {

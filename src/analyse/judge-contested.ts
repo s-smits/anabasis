@@ -9,7 +9,7 @@
  * of these rows is what the Judge exit in judge-reviews.ts reads.
  */
 import { join } from "../meta/path.ts";
-import { confirmedDisagreement, type JudgeSubjectEvidence } from "../truth/judge.ts";
+import { confirmedDisagreement, type JudgeSubjectEvidence } from "../review/judge.ts";
 import { isBoolean, type JsonValue } from "../meta/json-shape.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 

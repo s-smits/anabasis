@@ -17,7 +17,7 @@ import type { HostSession, PiTool } from "../../src/backends/pi-session.ts";
 import type { BuilderExecutionEvidence } from "../../src/author/builder-execution.ts";
 import type { BuilderSessionDeps } from "../../src/author/builder-session.ts";
 import type { CandidateCheckOutcome } from "../../src/author/candidate-check.ts";
-import { controllerValidatedFinding } from "../../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../../src/correctness-bundle/brief.ts";
 import { required, scriptedSession } from "./doubles.ts";
 import { MATCHING_BRIEF } from "./matching-fixture.ts";
 

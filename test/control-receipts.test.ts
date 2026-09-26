@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import type { Brief } from "../src/truth/brief.ts";
-import type { EvaluatorFn } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { EvaluatorProcessFailure } from "../src/truth/evaluator-process.ts";
-import { inLanes, runControls } from "../src/truth/run-controls.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import type { EvaluatorFn } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { EvaluatorProcessFailure } from "../src/correctness-bundle/evaluator-process.ts";
+import { inLanes, runControls } from "../src/correctness-bundle/run-controls.ts";
 import {
   type SettledControl,
   TOOL_REFUSED_CODE,
   unexecutedGroundingFindings,
-} from "../src/truth/grounding-coverage.ts";
+} from "../src/correctness-bundle/grounding-coverage.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
-import { checkReceiptSet, totalsMatchRecorded } from "../src/truth/control-receipts.ts";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import { checkReceiptSet, totalsMatchRecorded } from "../src/correctness-bundle/control-receipts.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import type {
   EvaluationScopeHandle,
   ExecutedCheckBinding,

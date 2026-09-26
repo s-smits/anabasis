@@ -12,7 +12,7 @@ import { readFileSync, existsSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
 import {
   ACCEPTS,
   EVALUATOR_SOURCE,

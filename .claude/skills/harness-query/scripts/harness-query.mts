@@ -39,7 +39,7 @@ import {
   bundleSnapshotToolTree,
 } from "#src/claim/bundle-snapshot.ts";
 import { resolveToolInventory } from "#src/verify/tool-inventory.ts";
-import { batteryPath, readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
+import { batteryPath, readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
 import { JUDGE_FLAG_DEFAULTS, type JudgeFlags, judgeProfileFor } from "../judge/judge-option.mts";
 import { asRecord, isRecord, isString, jsonKind } from "#src/meta/json-shape.ts";

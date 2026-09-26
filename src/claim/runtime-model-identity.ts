@@ -190,7 +190,7 @@ function inspectCase(
     // ordinary shape: dozens of tool calls, an accepted submit, a verifier pass, and an ended turn
     // at the wall, which refuses the battery's whole claim if it is treated as invalid.
     // `unattested` is the bucket for it — the statement leaves `modelIdentity` unverified and
-    // nothing refuses — and it is the same line `src/truth/runtime-blocker.ts` draws on this
+    // nothing refuses — and it is the same line `src/correctness-bundle/runtime-blocker.ts` draws on this
     // count, where zero completed turns is an environment blocker only with no tool calls and no
     // accepted submit.
     //

@@ -23,7 +23,7 @@ import {
   resumeCampaignMemory,
   unchangedCandidateSubmissions,
 } from "../author/campaign-memory.ts";
-import { safeguardRepeatedRefusalCode } from "../truth/run-safeguards.ts";
+import { safeguardRepeatedRefusalCode } from "../correctness-bundle/run-safeguards.ts";
 import { POLICY } from "../critic/policy.ts";
 import { renderBatteryContract } from "./climb-readout.ts";
 import { taskCountSentence } from "./battery-sizing.ts";
@@ -84,7 +84,7 @@ import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { decorateIterationEvidence, stampSubmissionCondition } from "./campaign-evidence.ts";
 import { keyIfDefined, keyIfTruthy, keysIf } from "../meta/optional-key.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
-import type { Solver } from "../truth/solve.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
 import { readableFingerprint, type ExperimentScope } from "./experiment-freeze.ts";
 
 export interface BuilderCampaignInput {

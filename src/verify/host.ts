@@ -16,7 +16,7 @@
  * that rejects the artifact has answered and the evaluator reads that answer. Missing tool, wall
  * refusal, changed tool bytes, timeout, spawn failure, a program the tool's shell could not execute
  * and stdout past the host's cap are typed non-results: no answer exists, and the row says which kind. The evaluator's own returned result cannot turn a non-result into an
- * answer, because the runner reads these rows directly (`src/truth/tool-runs.ts`).
+ * answer, because the runner reads these rows directly (`src/correctness-bundle/tool-runs.ts`).
  */
 import {
   lstatSync,

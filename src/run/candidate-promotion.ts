@@ -4,7 +4,7 @@ import { basename, join, normalize } from "../meta/path.ts";
 import { writeCompleted } from "../author/campaign-epoch.ts";
 import { type FingerprintEvidence, fingerprintSlug, taskSetDigest } from "../claim/fingerprint.ts";
 import type { HarnessExperiment } from "../critic/types.ts";
-import type { BundleSnapshotFact } from "../truth/battery-record.ts";
+import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts";
 import { CLAIM_STAGES, type ClaimStage, claimStage } from "./claim-stages.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { validateExperiment } from "./experiment-freeze.ts";

@@ -24,7 +24,7 @@ import { DIFFICULTY_DECISION_SCHEMA } from "#src/run/difficulty-decision.ts";
 import { EPOCH_REVIEW_SCHEMA } from "#src/review/epoch-review-findings.ts";
 import { JUDGE_REVIEWS_SCHEMA } from "#src/analyse/judge-reviews.ts";
 import { classifyCaseOutcome, familyTally, outcomeTally } from "#src/claim/case-record.ts";
-import { PROVIDER_ALLOWANCE } from "#src/truth/runtime-blocker.ts";
+import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 import { controllerRunOfBattery } from "#src/run/controller-battery-record-policy.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { openRecordedRun } from "../../main/run.ts";
@@ -309,7 +309,7 @@ export function readJudgeReviews(campaign) {
 }
 
 /** Judge/verifier disagreement per battery, from the census each review records, with the vetoes
- *  the review's exit counted. The census holds no controls by construction — `src/truth/judge.ts`
+ *  the review's exit counted. The census holds no controls by construction — `src/review/judge.ts`
  *  records no control count — so this block reads the battery subjects offered alone. */
 export function judgeCensusLines({ judgeReviews }) {
   const lines = ["", "## 2b judge census (analysis/*-judges.json)"];

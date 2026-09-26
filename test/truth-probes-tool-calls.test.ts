@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { makeAgentToolsProbes } from "../src/author/agent-tools-session.ts";
 import { CONFORMANCE_PROBE_POLICY } from "../src/claim/conformance-evidence.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
-import type { ToolsSpec } from "../src/truth/tools-spec.ts";
+import type { ToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { SCHEMA, SPEC, TASK, TOOLS_SOURCE, probeConformance, probeSlugs } from "./helpers/probe-slug.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

@@ -32,7 +32,7 @@ import {
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { type PredictionScore, predictionScore } from "../author/experiment-plan.ts";
 import { productHistoryDirs } from "./product-versions.ts";
-import { HarnessConfigError, harnessSettings } from "../truth/harness-config.ts";
+import { HarnessConfigError, harnessSettings } from "../correctness-bundle/harness-config.ts";
 
 /** Named where the refusals are decided and re-exported here, because this module is the face
  *  every reader of climb evidence goes through. */

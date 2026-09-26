@@ -14,7 +14,7 @@ import {
   observePromotion,
   startFullRunObservation,
 } from "../src/observe/run-observer.ts";
-import { sessionJudge } from "../src/truth/judge.ts";
+import { sessionJudge } from "../src/review/judge.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { double, scriptedSession, text } from "./helpers/doubles.ts";
 import { builtBatteryRuntime } from "../src/run/built-agent-runtime.ts";

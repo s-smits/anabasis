@@ -1,5 +1,5 @@
 /**
- * The readers in `src/truth/tool-runs.ts`, over rows a real host recorded.
+ * The readers in `src/correctness-bundle/tool-runs.ts`, over rows a real host recorded.
  *
  * The verification runner never reads the host's evidence array directly: it asks which runs
  * belong to one evaluation, whether that evaluation hit a non-result, which checks passed without
@@ -17,9 +17,9 @@ import {
   subjectRuns,
   ungroundedPassChecks,
   ungroundedSentence,
-} from "../src/truth/tool-runs.ts";
+} from "../src/correctness-bundle/tool-runs.ts";
 import type { CorrectnessModelResult } from "../src/verify/correctness-model-result.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
 import { hostFixture, runOnce, subject, toolPath } from "./helpers/verifier-host.ts";

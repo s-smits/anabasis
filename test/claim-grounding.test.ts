@@ -13,8 +13,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import type { ClaimEvidence, ScoredCase } from "../src/claim/claim-evidence.ts";
-import type { ToolCheckCoverage } from "../src/truth/grounding-coverage.ts";
-import { NO_EXTERNAL_EXECUTION, type VerifierExecutionEvidence } from "../src/truth/grounding.ts";
+import type { ToolCheckCoverage } from "../src/correctness-bundle/grounding-coverage.ts";
+import {
+  NO_EXTERNAL_EXECUTION,
+  type VerifierExecutionEvidence,
+} from "../src/correctness-bundle/grounding.ts";
 import {
   AUTHORED_C1,
   GREEN_SCORE,

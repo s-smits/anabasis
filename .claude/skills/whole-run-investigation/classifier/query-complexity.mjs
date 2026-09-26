@@ -208,7 +208,7 @@ export function structureOf(task, brief) {
   for (const check of checks) {
     limits += (check.numericBoundaries ?? []).length;
     // An authored check names its interpreter on `execution`, an external one its instrument on
-    // `execution.evidence` (src/truth/brief.ts); either is a check an installed tool runs.
+    // `execution.evidence` (src/correctness-bundle/brief.ts); either is a check an installed tool runs.
     const execution = check.execution ?? {};
     const toolIds = [...(execution.requiredToolIds ?? []), ...(execution.evidence?.requiredToolIds ?? [])];
     if (toolIds.length > 0) tooled += 1;

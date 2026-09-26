@@ -7,10 +7,10 @@
 import { mkdirSync, writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../../src/claim/calibration.ts";
-import type { Brief } from "../../src/truth/brief.ts";
-import type { Toolset } from "../../src/truth/contracts.ts";
-import type { Solver } from "../../src/truth/solve.ts";
-import type { BuildTask } from "../../src/truth/tasks.ts";
+import type { Brief } from "../../src/correctness-bundle/brief.ts";
+import type { Toolset } from "../../src/correctness-bundle/contracts.ts";
+import type { Solver } from "../../src/correctness-bundle/solve.ts";
+import type { BuildTask } from "../../src/correctness-bundle/tasks.ts";
 import { double } from "./doubles.ts";
 import type { JsonObject } from "../../src/meta/json-shape.ts";
 

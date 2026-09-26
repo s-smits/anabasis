@@ -11,7 +11,7 @@
  */
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { VerifierCleanup } from "./verifier-lifetime.ts";
-import type { BriefTruthCheck } from "../truth/brief.ts";
+import type { BriefTruthCheck } from "../correctness-bundle/brief.ts";
 
 /**
  * What either wall mechanism is asked to confine: one resolved command and its arguments, the

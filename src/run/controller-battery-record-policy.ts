@@ -5,7 +5,7 @@
 import { existsSync } from "../meta/filesystem.ts";
 import { campaignDir, defaultProductDir } from "../meta/campaign-root.ts";
 import { basename, dirname, join } from "../meta/path.ts";
-import { batteryPath, readBatteryJoinSlice } from "../truth/battery-record.ts";
+import { batteryPath, readBatteryJoinSlice } from "../correctness-bundle/battery-record.ts";
 import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
 import { measuredProductDir } from "./product-versions.ts";
 

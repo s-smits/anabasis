@@ -131,7 +131,7 @@ work blocked by a gate that pays no rent. Three readers found live instances, an
 shape worth naming: **the refusal does not stop the bad thing, it does stop the ordinary thing, and
 the remedy routes through a less inspectable path.**
 
-Stage 4 of `src/truth/solvability.ts` refuses an external check whose tool argument holds a newline
+Stage 4 of `src/correctness-bundle/solvability.ts` refuses an external check whose tool argument holds a newline
 or exceeds 256 bytes, while the code's own comment concedes the rule "detects some such cases and
 proves no provenance". It therefore refuses a long flag or a JSON operand, and 256 bytes is ample
 for an authored program anyway. `exportTarget` refuses any destination that already exists, which is

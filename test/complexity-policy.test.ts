@@ -64,7 +64,7 @@ describe("complexity policy", () => {
         {
           message: "async function `judgeSubject` has a complexity of 24. Maximum allowed is 21.",
           code: "eslint(complexity)",
-          filename: "src/truth/judge.ts",
+          filename: "src/review/judge.ts",
           labels: [{ span: { offset: 1, length: 2, line: 107, column: 8 } }],
         },
         {
@@ -77,7 +77,7 @@ describe("complexity policy", () => {
       ],
     });
     expect(parseOxlintJson(text)).toEqual([
-      row("src/truth/judge.ts", "judgeSubject", 24, 107),
+      row("src/review/judge.ts", "judgeSubject", 24, 107),
       row("src/solve/schema.ts", "(anonymous)", 30, 355),
     ]);
     expect(() => parseOxlintJson("{}")).toThrow("no diagnostics array");

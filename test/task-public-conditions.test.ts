@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type BuildTask, validateTasks } from "../src/truth/tasks.ts";
+import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 
 const brief = {

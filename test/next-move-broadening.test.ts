@@ -22,7 +22,7 @@ import {
 import type { FullRunDeps } from "../src/run/full-run.ts";
 import { createRunObserver } from "../src/observe/run-observer.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
-import { validateTasks, type BuildTask } from "../src/truth/tasks.ts";
+import { validateTasks, type BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { MATCHING_BRIEF, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 import { double, required } from "./helpers/doubles.ts";

@@ -49,7 +49,7 @@ import { placeOnBand } from "#src/claim/battery-difficulty.ts";
 import { POLICY } from "#src/critic/policy.ts";
 import { join } from "#src/meta/path.ts";
 import { decidingSample } from "#src/run/climb-history.ts";
-import { readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
+import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import {
   MODEL_IDENTITY,
   STRUCTURE_KEYS,

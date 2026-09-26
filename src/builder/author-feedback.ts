@@ -10,7 +10,11 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type ContractFinding, controllerValidatedFinding, projectFindingForAuthor } from "../truth/brief.ts";
+import {
+  type ContractFinding,
+  controllerValidatedFinding,
+  projectFindingForAuthor,
+} from "../correctness-bundle/brief.ts";
 import { characterWindow, windowRange } from "./read-window.ts";
 import { boundText } from "../meta/bounded-text.ts";
 

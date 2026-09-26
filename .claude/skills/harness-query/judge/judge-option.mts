@@ -11,7 +11,7 @@
  * A profile only chooses and opens a reviewer. The Judge stays advisory everywhere: it cannot
  * change a verdict, a pass, a claim or an adoption, and harness-query writes none of those.
  */
-import type { JudgeSession } from "#src/truth/judge.ts";
+import type { JudgeSession } from "#src/review/judge.ts";
 
 /** measureHarness's judge tri-state: `null` disables the census, `undefined` makes it resolve the
  *  configured review slot, and a session is the one this profile opened itself. */

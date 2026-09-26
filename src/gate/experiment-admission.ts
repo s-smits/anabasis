@@ -19,8 +19,8 @@ import {
   readableFingerprint,
 } from "../run/experiment-freeze.ts";
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { ContractFinding } from "../truth/brief.ts";
-import { isControlCorpus } from "../truth/controls.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
+import { isControlCorpus } from "../correctness-bundle/controls.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 
 export interface AdmissionInput {

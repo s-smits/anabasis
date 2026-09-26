@@ -54,8 +54,8 @@ import {
   JUDGE_PUBLIC_CONTEXT_FILE,
   JUDGE_PUBLIC_CONTEXT_SCHEMA,
   projectDeclared,
-} from "../truth/declared-projection.ts";
-import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../truth/harness-config.ts";
+} from "../correctness-bundle/declared-projection.ts";
+import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
 import { TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { type JsonValue, isRecord, isString } from "../meta/json-shape.ts";

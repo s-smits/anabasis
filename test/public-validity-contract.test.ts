@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { required } from "./helpers/doubles.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { type Brief, applicableTruthChecks } from "../src/truth/brief.ts";
-import { validateControls } from "../src/truth/controls.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import { type Brief, applicableTruthChecks } from "../src/correctness-bundle/brief.ts";
+import { validateControls } from "../src/correctness-bundle/controls.ts";
 import { checkEvaluationRequest, evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import { validateTasks } from "../src/truth/tasks.ts";
+import { validateTasks } from "../src/correctness-bundle/tasks.ts";
 
 function publicReferenceBrief(): Brief {
   return {

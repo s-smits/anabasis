@@ -4,7 +4,7 @@
  * both sides on the same bytes.
  */
 import { readFileSync } from "../../src/meta/filesystem.ts";
-import type { Brief } from "../../src/truth/brief.ts";
+import type { Brief } from "../../src/correctness-bundle/brief.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
 
 export const STARTER_ENTRY = readFileSync(

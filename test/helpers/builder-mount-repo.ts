@@ -21,7 +21,9 @@ export function mountRepo(scratchRoot: string, label: string) {
   for (const dir of ["agent-bundle", "correctness-model-bundle", "correctness-model-prims"]) {
     mkdirSync(join(repoRoot, "vendor", dir), { recursive: true });
   }
-  for (const dir of ["solve", "truth", "verify"]) mkdirSync(join(repoRoot, "src", dir), { recursive: true });
+  for (const dir of ["solve", "correctness-bundle", "verify"]) {
+    mkdirSync(join(repoRoot, "src", dir), { recursive: true });
+  }
   mkdirSync(campaignDir, { recursive: true });
   writeFileSync(
     join(repoRoot, "vendor", "agent-bundle", "index.ts"),

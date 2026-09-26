@@ -75,8 +75,8 @@ export type CaseOutcomeFields = {
  * `false`: every consumer that read `pass` without remembering to also read `runtimeNonResult`
  * would otherwise count an environment failure as a product failure.
  *
- * `CaseRecord` in `src/truth/battery-record.ts` and `CaseEvidence` in the iteration analysis both
- * extend this type rather than restating its fields, because each restatement is another chance
+ * `CaseRecord` in `src/correctness-bundle/battery-record.ts` and `CaseEvidence` in the iteration analysis
+ * both extend this type rather than restating its fields, because each restatement is another chance
  * to get the nulls wrong, and the nulls are the whole of what the paragraph above defends.
  */
 export type CaseVerdict = CaseOutcomeFields & {

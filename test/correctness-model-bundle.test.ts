@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type GeneratedTask, commitPublicTask, projectPublic } from "../src/truth/task-split.ts";
+import { type GeneratedTask, commitPublicTask, projectPublic } from "../src/correctness-bundle/task-split.ts";
 
 describe("public/hidden split", () => {
   it("projectPublic picks public fields — hidden never crosses, even fields added later", () => {

@@ -18,22 +18,22 @@ import type { BuiltHarness, CampaignFeedback, FeedbackOwner } from "../author/ca
 import { TOOL_NON_RESULT_FILE, toolNonResultCode } from "../author/tool-non-result.ts";
 import { type TracePointer, tracePointer } from "../claim/case-record.ts";
 import { writeCompleted } from "../meta/completed-json.ts";
-import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
-import { TOOL_REFUSED_CODE } from "../truth/grounding-coverage.ts";
-import type { ProbeControls, ProbeControlsResult } from "../truth/probes.ts";
-import type { ControlReceipt } from "../truth/battery-record.ts";
-import { REFERENCE_SOLVE_ENTRY } from "../truth/evaluator-process-bundle.ts";
-import type { CheckCost, ToolCheckCoverage } from "../truth/grounding-coverage.ts";
+import { type ContractFinding, controllerValidatedFindings } from "../correctness-bundle/brief.ts";
+import { TOOL_REFUSED_CODE } from "../correctness-bundle/grounding-coverage.ts";
+import type { ProbeControls, ProbeControlsResult } from "../correctness-bundle/probes.ts";
+import type { ControlReceipt } from "../correctness-bundle/battery-record.ts";
+import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
+import type { CheckCost, ToolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import {
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
   toolRetryDelay,
-} from "../truth/verifier-nonresult.ts";
+} from "../correctness-bundle/verifier-nonresult.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
-import { harnessSettings } from "../truth/harness-config.ts";
-import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
+import { harnessSettings } from "../correctness-bundle/harness-config.ts";
+import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";

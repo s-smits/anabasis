@@ -18,7 +18,11 @@ import {
   verifyTracePointers,
 } from "../src/claim/case-record.ts";
 import { batteryCondition, driveBattery, summarizeRun } from "../src/run/run-driver.ts";
-import { type BuiltRuntimeBoundaryEvidence, type Solver, nonResultOutcome } from "../src/truth/solve.ts";
+import {
+  type BuiltRuntimeBoundaryEvidence,
+  type Solver,
+  nonResultOutcome,
+} from "../src/correctness-bundle/solve.ts";
 import type { GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
 import {
   MATCHING_TOOLS_SPEC,
@@ -34,13 +38,13 @@ import {
   batteryDisposition,
   batteryTerminalReason,
   readRecordedBatteryRecord,
-} from "../src/truth/battery-record.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
+} from "../src/correctness-bundle/battery-record.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
 import { batteryClaimInput, batteryRunEvidence } from "../src/claim/battery-run-evidence.ts";
-import { NEVER_ATTEMPTED_PREFIX } from "../src/truth/battery-provider-stop.ts";
+import { NEVER_ATTEMPTED_PREFIX } from "../src/correctness-bundle/battery-provider-stop.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
-import type { JudgeSession } from "../src/truth/judge-contract.ts";
+import type { JudgeSession } from "../src/review/judge-contract.ts";
 import { ProviderResourceBudgetExhausted } from "../src/run/provider-resource-budget.ts";
 
 const SCRIPTED_NONE = "scripted/none";

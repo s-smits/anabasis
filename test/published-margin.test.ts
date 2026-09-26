@@ -5,9 +5,9 @@ import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.t
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-submission.ts";
 import { WRITER_BINDING_SENTENCE, readMargins, renderMargins } from "../src/solve/published-margin.ts";
-import { publishedMargins } from "../src/truth/numeric-boundary.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import type { Brief } from "../src/truth/brief.ts";
+import { publishedMargins } from "../src/correctness-bundle/numeric-boundary.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const MARGINS = [

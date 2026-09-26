@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { dataTool } from "../src/truth/data-tool.ts";
-import { commitPublicTask } from "../src/truth/task-split.ts";
+import { dataTool } from "../src/correctness-bundle/data-tool.ts";
+import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 
 test("controller SQL queries a fixed public snapshot and bounds hostile statements", async () => {
   const original = {

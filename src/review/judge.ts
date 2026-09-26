@@ -23,8 +23,11 @@ export type {
   JudgeSession,
   JudgeSubjectEvidence,
 } from "./judge-contract.ts";
-import { JUDGE_PUBLIC_CONTEXT_DECLARATION, projectDeclared } from "./declared-projection.ts";
-import { SANITIZER_VERSION, sanitizeForEvaluator } from "./sanitize.ts";
+import {
+  JUDGE_PUBLIC_CONTEXT_DECLARATION,
+  projectDeclared,
+} from "../correctness-bundle/declared-projection.ts";
+import { SANITIZER_VERSION, sanitizeForEvaluator } from "../correctness-bundle/sanitize.ts";
 import { isBoolean, isString } from "../meta/json-shape.ts";
 
 import { RATIONALE_MAX, errorText, noVerdictAttempt } from "./judge-drivers.ts";

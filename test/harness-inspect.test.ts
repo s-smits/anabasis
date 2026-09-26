@@ -8,7 +8,7 @@
  * tools at once.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { controllerValidatedFindings } from "../src/truth/brief.ts";
+import { controllerValidatedFindings } from "../src/correctness-bundle/brief.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { isRecord, type JsonValue } from "../src/meta/json-shape.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
@@ -19,7 +19,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import { loadValidatedBundle } from "../src/author/candidate-check.ts";
 import { BuilderAuthorFeedback } from "../src/builder/author-feedback.ts";
 import { createHarnessInspectTool } from "../src/builder/harness-inspect.ts";
-import { commitPublicTask } from "../src/truth/task-split.ts";
+import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { fence } from "./helpers/starter-contracts.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";

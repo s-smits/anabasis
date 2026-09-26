@@ -2,11 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/files
 import { join } from "../src/meta/path.ts";
 
 import { describe, expect, it } from "bun:test";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { typecheckGeneratedModule } from "../src/truth/generated-module-typecheck.ts";
-import { type ControlCorpus, validateControls } from "../src/truth/controls.ts";
-import { type BuildTask, validateTasks } from "../src/truth/tasks.ts";
-import { validateToolsSpec } from "../src/truth/tools-spec.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import { typecheckGeneratedModule } from "../src/correctness-bundle/generated-module-typecheck.ts";
+import { type ControlCorpus, validateControls } from "../src/correctness-bundle/controls.ts";
+import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.ts";
+import { validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
 import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
@@ -15,7 +15,7 @@ import { createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { CheckFn } from "../src/truth/correctness-model-contract.ts";
+import type { CheckFn } from "../src/correctness-bundle/correctness-model-contract.ts";
 
 it.skipIf(Bun.which("python3") === null)(
   "the installed-tool example exercises the submitted entrypoint and binds its evidence",

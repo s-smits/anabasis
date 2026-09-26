@@ -1,5 +1,5 @@
 /**
- * `bun run replay -- <campaign>/<runId> [--out /private/tmp/.../replay.json]`
+ * `bun run replay -- <campaign>/<runId> [--under <campaign>/<runId>] [--out /private/tmp/.../replay.json]`
  *
  * Re-grade one recorded battery's accepted artifacts through THIS tree's verifier and diff the
  * verdicts against the recorded ones. The candidate bytes are fixed: the recorded bundle snapshot
@@ -9,7 +9,17 @@
  * reports. No model is called: each case runs `gradeCase`, the same entry the measured battery
  * used. The report is one JSON document on stdout, and also in the `--out` file when one is named;
  * it names the commit of the tree that graded it, and each replayed row carries the check rows its
- * grading reached. Process cleanup receipts stay in the campaign.
+ * grading reached. Verifier cleanup receipts go to a private
+ * directory under the host temp root, named in the report's `cleanup`, and never into the campaign:
+ * the campaign's own receipt roots belong to the controller that holds its lock, so a replay neither
+ * recovers another run's receipts nor leaves a killed replay's behind for that controller.
+ *
+ * `--under` grades the first battery's accepted artifacts under a second battery's bundle snapshot
+ * instead of its own: its brief, evaluator, tasks and tool tree. That is the regrade an evaluation
+ * correction owes, because the corrected evaluator never saw the artifacts the old one scored, so
+ * without it an issue the correction removed reads `unmeasured` rather than fixed or not. The
+ * public exam must be the one both batteries sat: a task whose committed public digest moved is
+ * refused as `public-task-drift`, never graded against inputs its artifact was not written for.
  */
 import { campaignRoot } from "../../src/meta/campaign-root.ts";
 import {
@@ -20,9 +30,10 @@ import {
 import { tracePointerPath } from "../../src/claim/case-record.ts";
 import { recordedEvidence, verifyRunDir } from "../../src/claim/evidence-log.ts";
 import { campaignTraceRoots } from "../../src/claim/trace-read.ts";
-import { existsSync, readFileSync } from "../../src/meta/filesystem.ts";
+import { existsSync, mkdtempSync, readFileSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs, capturedJsonParse } from "../../src/meta/json-runtime.ts";
 import { isString } from "../../src/meta/json-shape.ts";
+import { tmpdir } from "../../src/meta/os.ts";
 import { dirname, join, resolve } from "../../src/meta/path.ts";
 import { BRIEF_FILE, TASKS_FILE } from "../../src/meta/bundle-layout.ts";
 import { assertPathSegment } from "../../src/meta/path-segment.ts";
@@ -38,7 +49,6 @@ import { validateBrief } from "../../src/truth/brief-validator.ts";
 import { loadCorrectnessModel } from "../../src/truth/contracts.ts";
 import { type GradeCaseDeps, gradeCase } from "../../src/truth/solve-case.ts";
 import { evaluateCheckProgram } from "../../src/truth/predicate.ts";
-import { campaignVerifierLifetime } from "../../src/run/verifier-lifetime.ts";
 import { applicableCheckIds } from "../../src/truth/run-controls.ts";
 import { commitPublicTask } from "../../src/truth/task-split.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "../../src/truth/tasks.ts";
@@ -47,13 +57,18 @@ import { resolveVerifier } from "../../src/truth/verification-registry.ts";
 import type { CheckRun, CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
 import { SOURCE_IDENTITY } from "../../src/run/source-identity.ts";
 import { writeJsonFile } from "../../src/meta/completed-json.ts";
-import { VerifierOperationalStop, type VerifierCleanup } from "../../src/verify/verifier-lifetime.ts";
+import {
+  createVerifierLifetime,
+  VerifierOperationalStop,
+  type VerifierCleanup,
+} from "../../src/verify/verifier-lifetime.ts";
 
 export const USAGE = [
-  "usage: replay <campaignDir>/<runId> [--out <report.json>]",
+  "usage: replay <campaignDir>/<runId> [--under <campaignDir>/<runId>] [--out <report.json>]",
   "",
   "<campaignDir> is a path, or a name under ./campaigns. The recorded battery is searched under",
   "the campaign, its domains/ sibling and its candidates/, contest/ and promotions/ children.",
+  "--under grades the first battery's accepted artifacts under the second battery's bundle snapshot.",
 ].join("\n");
 
 // --- Recorded side -----------------------------------------------------------------------------
@@ -110,7 +125,7 @@ interface Replayed {
   missingTools: string[];
   /** Digest and source of every tool that ran, keyed by tool id. */
   tools: Record<string, { digest: string; source: string }>;
-  cleanup: VerifierCleanup;
+  cleanup: VerifierCleanup & { root: string };
 }
 
 // --- Diff ----------------------------------------------------------------------------------------
@@ -156,11 +171,7 @@ export function resolveRecordedCandidate(candidate: string, cwd: string): Record
     if (tracePointerPath(slugDir, `runs/${runId}/battery.json`) === null) continue;
     const runDir = join(slugDir, "runs", runId);
     const battery = readRecordedBatteryRecord(runDir, runId);
-    const fact =
-      /* SAFETY: records before 2026-08-31 name the snapshot `sealedBundle`; both spellings are checked for an id below. */
-      (battery.bundleSnapshot ?? (battery as { sealedBundle?: BundleSnapshotFact }).sealedBundle) as
-        | Partial<BundleSnapshotFact>
-        | undefined;
+    const fact: Partial<BundleSnapshotFact> | undefined = battery.bundleSnapshot;
     if (!isString(fact?.id)) throw new Error(`${runDir}/battery.json names no bundle snapshot`);
     assertPathSegment("bundle snapshot", fact.id);
     const brief = [BUNDLE_SNAPSHOT_DIRECTORY, EARLIER_BUNDLE_SNAPSHOT_DIRECTORY]
@@ -288,11 +299,14 @@ async function replayOne(
   };
 }
 
+/** Grade `cases` under `recorded`'s bundle snapshot, which is the battery the artifacts came from
+ *  unless `--under` named another. */
 async function replayCases(recorded: RecordedCandidate, cases: readonly ReplayCase[]): Promise<Replayed> {
   const { brief, tasks } = loadContract(recorded.candidateDir);
-  const verifierLifetime = campaignVerifierLifetime(recorded.campaignDir);
+  const root = mkdtempSync(join(tmpdir(), "ana-replay-"));
+  const verifierLifetime = createVerifierLifetime({ root });
   let result: Omit<Replayed, "cleanup">;
-  let cleanup: VerifierCleanup;
+  let cleanup: Replayed["cleanup"];
   try {
     const evaluate = evaluateCheckProgram(
       brief,
@@ -325,7 +339,7 @@ async function replayCases(recorded: RecordedCandidate, cases: readonly ReplayCa
     result = { rows, missingTools, tools };
   } finally {
     const receiptIds = await verifierLifetime.close();
-    cleanup = receiptIds.length === 0 ? { state: "complete" } : { state: "pending", receiptIds };
+    cleanup = receiptIds.length === 0 ? { state: "complete", root } : { state: "pending", receiptIds, root };
   }
   return { ...result, cleanup };
 }
@@ -389,23 +403,33 @@ export function diffVerdicts(
 
 // --- Entry ---------------------------------------------------------------------------------------
 
-export async function main(argv: readonly string[], cwd: string): Promise<string> {
-  const [candidate, flag, out, ...rest] = argv;
-  if (
-    candidate === undefined ||
-    rest.length > 0 ||
-    (flag !== undefined && (flag !== "--out" || out === undefined))
-  ) {
-    throw new Error(USAGE);
+/** The battery whose artifacts are replayed, and the one whose snapshot grades them. */
+function replayTargets(argv: readonly string[]) {
+  const [source, ...rest] = argv;
+  const flags = new Map<string, string>();
+  for (let index = 0; index < rest.length; index += 2) {
+    const [flag, value] = [rest[index], rest[index + 1]];
+    if ((flag !== "--under" && flag !== "--out") || value === undefined || flags.has(flag)) {
+      throw new Error(USAGE);
+    }
+    flags.set(flag, value);
   }
-  const recorded = resolveRecordedCandidate(candidate, cwd);
+  if (source === undefined) throw new Error(USAGE);
+  return { source, grader: flags.get("--under") ?? null, out: flags.get("--out") };
+}
+
+export async function main(argv: readonly string[], cwd: string): Promise<string> {
+  const targets = replayTargets(argv);
+  const recorded = resolveRecordedCandidate(targets.source, cwd);
+  const grader = targets.grader === null ? recorded : resolveRecordedCandidate(targets.grader, cwd);
   const { sides, cases, skippedUnaccepted } = recordedCases(recorded);
-  const replayed = await replayCases(recorded, cases);
+  const replayed = await replayCases(grader, cases);
   const report = {
     runId: recorded.runId,
     slugDir: recorded.slugDir,
-    candidateDir: recorded.candidateDir,
-    bundleSnapshot: recorded.bundleSnapshot,
+    candidateDir: grader.candidateDir,
+    bundleSnapshot: grader.bundleSnapshot,
+    underBattery: grader === recorded ? null : { runId: grader.runId, slugDir: grader.slugDir },
     // The tree that graded, by commit rather than by path: a checkout path names whatever is
     // checked out there later.
     gradedUnder: SOURCE_IDENTITY,
@@ -414,7 +438,7 @@ export async function main(argv: readonly string[], cwd: string): Promise<string
     cleanup: replayed.cleanup,
     ...diffVerdicts(sides, replayed.rows, skippedUnaccepted.length),
   };
-  if (out !== undefined) writeJsonFile(resolve(cwd, out), report);
+  if (targets.out !== undefined) writeJsonFile(resolve(cwd, targets.out), report);
   return JSON.stringify(report, null, 2);
 }
 

@@ -108,6 +108,10 @@ export interface WrittenRunClaim {
    * score at all and let a zero-verified candidate through to a paid comparison battery.
    */
   batteryScore: BatteryScore;
+  /** The battery's non-result counts by kind, the same map the claim's denominator clauses read, so
+   *  a reader deciding who owns a `non-result-ratio-excessive` refusal can tell a provider outage
+   *  from a checker that crashes its own cases. */
+  nonResults: Record<string, number>;
   clauses: ClaimClause[];
   /** Null exactly when the claim was not created, since readiness presupposes a measurement
    *  honest enough to make a statement about. */
@@ -464,6 +468,7 @@ export async function writeRunClaim(options: WriteRunClaimOptions): Promise<Writ
     batteryRecorded: verifyRunDir(join(slugDir, "runs", runId)).length === 0,
     statement: claim.ok ? claim.statement : null,
     batteryScore: batteryScoreOf(recordedInput.score),
+    nonResults: evidence.runStatus.nonResults,
     clauses: claim.ok ? [] : claim.clauses,
     readiness,
     solvabilityFindings,

@@ -9,6 +9,7 @@
  * compaction may have cut. Completion is the one thing it does not borrow. Codex lets the model
  * declare its goal complete; here only a submit the gate accepts does.
  */
+import { POLICY } from "../critic/policy.ts";
 
 /** Completed turns with no submit before the continuation asks for authoring. A fixed count rather
  *  than a share of a ceiling, because a round has no turn ceiling at all unless the operator sets
@@ -24,11 +25,6 @@ const NO_SUBMIT_REMINDER_TURNS = 8;
  *  cannot fire inside one permitted toolchain install. The same bound drives the one notice sent
  *  inside a running turn, through `sessionClock` in builder-tool-receipts.ts. */
 export const NO_SUBMIT_REMINDER_MS = 7_200_000;
-
-/** Consecutive turns without one successful tool call that end the round as `no-progress`. Codex
- *  blocks a goal after three automatic turns without a tool call, or three whose commands all
- *  failed (codex-rs/ext/goal/src/accounting.rs); one count covers both cases here. */
-export const STALLED_TURNS = 3;
 
 /** The ask once a round has run long without a submit. The continuation states it at a turn
  *  boundary and `sessionClock` inside a running turn, and both read this one constant so the two
@@ -53,7 +49,7 @@ interface GoalState {
 const persist =
   "Continue towards this round's goal. The goal persists across turns: ending a turn does not end it, and only a submit the gate accepts completes it.";
 
-const progress = `A turn that changes no file, runs no check and learns nothing that changes the next action made no progress; take the next concrete step instead of restating the plan. ${STALLED_TURNS} turns in a row without a successful tool call end the round.`;
+const progress = `A turn that changes no file, runs no check and learns nothing that changes the next action made no progress; take the next concrete step instead of restating the plan. ${POLICY.loop.stalledTurns} turns in a row without a successful tool call end the round.`;
 
 /** The goal's facts: how far the round has come, and what is left of a cap when there is one. */
 function goalFacts(goal: GoalState): string {

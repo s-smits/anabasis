@@ -4,8 +4,6 @@ import { existsSync } from "../meta/filesystem.ts";
 import { campaignDir } from "../meta/campaign-root.ts";
 import { join, relative } from "../meta/path.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../critic/policy.ts";
 import { type CampaignBindingInput, latestCampaignEpochForBinding } from "../author/campaign-epoch.ts";
 import { latestPreAdoptionFeedback } from "../author/campaign-memory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
@@ -43,27 +41,6 @@ export function epochPassOf(decision: NextMove): string | undefined {
   return decision.reopenKey ?? decision.reason;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// /** The stop once the off-aim allowance is spent, or null while it lasts. The sentence is the run's
-//  * last word to the operator and no Builder reads it, so it lives here rather than in the climb
-//  * frame, whose revision names what a Builder was told. A streak above the aim says the run found no
-//  * limit; it never says none is reachable, because easy batteries show only that this search did not
-//  * reach one. A streak below the aim says nothing about a limit at all. */
-// export function allowanceStop(readout: ClimbReadout | null): string | null {
-//   const allowance = readout?.allowance ?? null;
-//   if (allowance === null || allowance.rounds < POLICY.climb.offAimStreakRounds) return null;
-//   const { rounds, placed, refused, side, products } = allowance;
-//   return [
-//     `Stopped at the configured off-aim allowance: ${rounds} consecutive rounds ended ${side} the aim or with a refused claim (${placed} placed ${side} the aim, ${refused} claim-refused) across ${products} product identities.`,
-//     side === "above"
-//       ? "This run did not find a limit: every placed battery in the streak landed above the aim."
-//       : null,
-//     "This ends the allocated search; it does not establish that another product would add no evidence.",
-//   ]
-//     .filter((line) => line !== null)
-//     .join(" ");
-// }
-
 /** Build when no adopted product exists; measure a condition that has not been measured.
  * Thereafter the Builder chooses a hypothesis and a permitted scope from the actual evidence.
  * A host/environment blocker still stops before another authoring or measurement spend. */
@@ -85,12 +62,6 @@ export function decideNextMove(
       reason: `blocking feedback includes environment outside the product (${blocking.join(", ")}); authoring cannot clear the complete packet`,
     };
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // // The allowance counts rounds that ended off the aim or with a refused claim; the Builder still
-  // // chooses what to change while it runs, and spending it ends the campaign rather than holding
-  // // anything fixed.
-  // const stop = allowanceStop(readout);
-  // if (stop !== null) return { move: "stop", reason: stop };
   // A same-condition battery that created no claim was still an attempt at this condition, so the
   // round has been observed; an identity or comparability refusal says nothing about it.
   const observed = (readout?.admitted ?? 0) > 0 || (readout?.excluded ?? []).some((row) => row.claimRefused);

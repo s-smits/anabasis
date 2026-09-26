@@ -27,8 +27,6 @@ import {
   excludedSummary,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../src/critic/policy.ts";
 import { type OffAimAllowance, readClimbReadout, renderReadout } from "../src/run/climb-readout.ts";
 import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required } from "./helpers/doubles.ts";
@@ -446,10 +444,8 @@ describe("the off-aim allowance, read from recorded batteries", () => {
   const readout = (tree: string, manifest?: string) =>
     required(readClimbReadout(tree, RUN_PIN, join(tree, "claims"), manifest), "a climb readout");
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // const limit = POLICY.climb.offAimStreakRounds;
-  const limit = 3;
-  const products = Array.from({ length: limit }, (_, i) => ({ passed: above, agent: `agent-${String(i)}` }));
+  const streak = 3;
+  const products = Array.from({ length: streak }, (_, i) => ({ passed: above, agent: `agent-${String(i)}` }));
   const olderRefusals = [{ passed: null }, { passed: null }, { passed: 2 }, { passed: above }];
 
   it.each<[string, Round[], Partial<OffAimAllowance>]>([
@@ -490,7 +486,7 @@ describe("the off-aim allowance, read from recorded batteries", () => {
       ],
       { rounds: 3, placed: 2, refused: 1, side: "above", products: 1, sameSchema: 0 },
     ],
-    // Reading the campaign-wide exclusion list into the count would stop a new run on its first round.
+    // Reading the campaign-wide exclusion list into the count would start a new run mid-streak.
     ["does not count refusals older than the run", olderRefusals, { rounds: 1, refused: 0 }],
     [
       "counts a refusal beside the run's own miss",
@@ -498,11 +494,11 @@ describe("the off-aim allowance, read from recorded batteries", () => {
       { rounds: 2, placed: 1, refused: 1 },
     ],
     [
-      "counts a whole allowance of above-aim rounds, each product identity once",
+      "counts a streak of above-aim rounds, each product identity once",
       products,
-      { rounds: limit, placed: limit, refused: 0, side: "above", products: limit },
+      { rounds: streak, placed: streak, refused: 0, side: "above", products: streak },
     ],
-    ["counts one short of the allowance", products.slice(1), { rounds: limit - 1 }],
+    ["counts one fewer when the oldest product leaves the window", products.slice(1), { rounds: streak - 1 }],
   ])("%s", (_name, rounds, allowance) => {
     expect(readout(roundsTree(rounds)).allowance).toMatchObject(allowance);
   });

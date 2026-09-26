@@ -19,8 +19,6 @@ import { EXPERIMENT_FILE } from "../../src/author/builder-memory.ts";
 import { currentPlan, EVIDENCE_SCHEMA, EVIDENCE_STEM } from "../../src/author/experiment-plan.ts";
 import { placeOnBand, type BandZone } from "../../src/claim/battery-difficulty.ts";
 import { CASE_RECORD_FILE } from "../../src/claim/case-record.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../../src/critic/policy.ts";
 import { FROZEN_MANIFEST_PATH } from "../../src/critic/manifest.ts";
 import { existsSync, readFileSync, readdirSync, statfsSync } from "../../src/meta/filesystem.ts";
 import { parseJsonAs } from "../../src/meta/json-runtime.ts";
@@ -185,10 +183,6 @@ export function offAimStreak(
 function streakText(batteries: readonly PulseBattery[]): string {
   const streak = offAimStreak(batteries);
   if (streak === null) return "";
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // const limit = POLICY.climb.offAimStreakRounds;
-  // const next = streak.rounds === limit - 1 ? `; one more ${streak.side} the aim stops the campaign` : "";
-  // return `, ${streak.side} the aim ${String(streak.rounds)} of ${String(limit)} in a row${next}`;
   return `, ${streak.side} the aim ${String(streak.rounds)} in a row`;
 }
 

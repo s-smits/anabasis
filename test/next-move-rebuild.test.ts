@@ -19,16 +19,12 @@ import { claimsDirFor } from "../src/run/claim-write.ts";
 import { BATTERY_SIZE } from "../src/run/battery-sizing.ts";
 import { decideNextMove, selectNextMoveFromDisk } from "../src/run/next-move.ts";
 import type { ClimbReadout, OffAimAllowance } from "../src/run/climb-readout.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { POLICY } from "../src/critic/policy.ts";
 import { ControllerLedger } from "../src/run/controller-ledger.ts";
 import { FEEDBACK_POLICY } from "../src/analyse/iteration-analysis.ts";
 import { SHIPPING_VARIANT } from "../src/run/run-driver.ts";
 import { fixtureThresholdDigest, writeFixtureThresholds } from "./helpers/thresholds.ts";
 
 const SLUG = "bridge-truss-design";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// const LIMIT = POLICY.climb.offAimStreakRounds;
 const scratch: string[] = [];
 
 const rows = (severity: CampaignFeedback["severity"], ...owners: FeedbackOwner[]): CampaignFeedback[] =>
@@ -61,46 +57,6 @@ function streak(
       placed === 0 ? null : { rounds: placed + refused, placed, refused, side, products: 1, sameSchema: 0 },
   };
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// describe("the off-aim stop", () => {
-//   it("stops at the allowance and leaves the round to the Builder one round before it", () => {
-//     const stop = decideNextMove("adopted", [], streak(LIMIT));
-//     expect(stop.move).toBe("stop");
-//     expect(stop.reason).toContain(`${String(LIMIT)} consecutive rounds ended above the aim`);
-//     expect(stop).not.toHaveProperty("seed");
-//     expect(decideNextMove("adopted", [], streak(LIMIT - 1)).move).toBe("rebuild");
-//   });
-//
-//   it("counts claim-refused rounds inside the streak, and never refusals alone", () => {
-//     const refused = decideNextMove("adopted", [], streak(1, "above", LIMIT - 1));
-//     expect(refused.move).toBe("stop");
-//     expect(refused.reason).toContain(`(1 placed above the aim, ${String(LIMIT - 1)} claim-refused)`);
-//     // Refusals with no placement are a different failure with its own owner; they still count as
-//     // an observed round, so the move is a rebuild and not a first measurement.
-//     expect(decideNextMove("adopted", [], streak(0, "above", 0, 5)).move).toBe("rebuild");
-//   });
-//
-//   it("says a streak above the aim found no limit, and never that none is reachable", () => {
-//     const { reason } = decideNextMove("adopted", [], streak(LIMIT));
-//     expect(reason).toContain("This run did not find a limit");
-//     expect(reason).toContain("it does not establish that another product would add no evidence");
-//     expect(reason).not.toMatch(/no limit (is|was) reachable|cannot be (reached|found)/i);
-//   });
-//
-//   it("claims nothing about a limit when the streak ran below the aim", () => {
-//     const { move, reason } = decideNextMove("adopted", [], streak(LIMIT, "below"));
-//     expect(move).toBe("stop");
-//     expect(reason).toContain(`${String(LIMIT)} consecutive rounds ended below the aim`);
-//     expect(reason).not.toContain("did not find a limit");
-//   });
-//
-//   it("stops on a blocking environment row before it reads the streak", () => {
-//     const blocked = decideNextMove("adopted", rows("blocking", "environment"), streak(LIMIT));
-//     expect(blocked.reason).toContain("environment outside the product");
-//     expect(blocked.reason).not.toContain("off-aim");
-//   });
-// });
 
 describe("an off-aim streak", () => {
   it("leaves the round to the Builder however long the streak has run, on either side", () => {
@@ -221,22 +177,6 @@ describe("the next move on disk", () => {
     cpSync(join(moved, "domains", SLUG), version, { recursive: true });
     expect(selectAs(moved, "round-3", version).decision.reopenKey).not.toBe(first.decision.reopenKey);
   });
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // it("leaves saturated batteries to the Builder until the allowance is spent, then stops honestly", () => {
-  //   const root = scratchRepo();
-  //   for (let i = 1; i < LIMIT; i += 1) {
-  //     sealSaturatedBattery(root, `saturated-${String(i)}`, `2026-08-10T0${String(i)}:00:00Z`);
-  //   }
-  //   const open = selectAs(root, "round-1").decision;
-  //   expect(open).toMatchObject({ move: "rebuild", seed: "adopted" });
-  //   expect(open.reason).toContain("Builder");
-  //   sealSaturatedBattery(root, `saturated-${String(LIMIT)}`, `2026-08-10T0${String(LIMIT)}:00:00Z`);
-  //   const stopped = selectAs(root, "round-2").decision;
-  //   expect(stopped.move).toBe("stop");
-  //   expect(stopped.reason).toContain("This run did not find a limit");
-  //   expect(stopped).not.toHaveProperty("reopenKey");
-  // });
 
   it("leaves saturated batteries to the Builder however many have landed", () => {
     const root = scratchRepo();

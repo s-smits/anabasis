@@ -206,7 +206,7 @@ export interface BuilderExecutionEvidence {
     | "recorded"
     | "turn-bound"
     | "terminal-refusal"
-    /** The round went `STALLED_TURNS` turns without a successful tool call. */
+    /** The round went `POLICY.loop.stalledTurns` turns without a successful tool call. */
     | "no-progress"
     /** The run's model budget ran out inside the round. */
     | "budget-limited"

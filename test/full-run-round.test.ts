@@ -269,16 +269,60 @@ describe("the shared unresolved-authoring allowance", () => {
     expect(loopTerminal(rounds.at(-1)!, { ...quiet, authoringStall: stall })).toStartWith(ending);
   });
 
-  it("leaves a zero-verified hold out of the allowance", () => {
-    const nonzero = heldOn(undefined);
-    const zeroVerified: IterationResult = {
-      ...nonzero,
-      steps: { ...nonzero.steps, promotion: double({ decision: "held", battery: { verified: 0 } }) },
+  const heldAfter = (
+    claim: { created: boolean; clauses?: string[]; nonResults?: Record<string, number> } | null,
+    disposition = "completed",
+  ) => {
+    const round = heldOn(undefined);
+    const measure = {
+      disposition,
+      claim: claim && {
+        created: claim.created,
+        clauses: (claim.clauses ?? []).map((clause) => ({ clause })),
+        nonResults: claim.nonResults ?? {},
+      },
     };
-    const stall = nextUnresolvedAuthoringStall(null, nonzero);
-    expect(nextUnresolvedAuthoringStall(stall, zeroVerified)).toBe(stall);
-    expect(nextUnresolvedAuthoringStall(null, zeroVerified)).toBeNull();
+    return double<IterationResult>({ ...round, steps: { ...round.steps, measure } });
+  };
+
+  it("counts a held candidate whose delivered battery verified nothing", () => {
+    expect(
+      nextUnresolvedAuthoringStall(null, heldAfter({ created: false, clauses: ["zero-verified"] }))?.rounds,
+    ).toBe(1);
+    expect(nextUnresolvedAuthoringStall(null, heldAfter({ created: true }))?.rounds).toBe(1);
   });
+
+  it("leaves a hold the environment owns out of the allowance", () => {
+    const environmentOnly = heldAfter({
+      created: false,
+      clauses: ["non-result-ratio-excessive"],
+      nonResults: { provider: 3, sandbox: 1 },
+    });
+    const undelivered = heldAfter({ created: false }, "provider-stopped");
+    const unmeasured = heldAfter(null);
+    const deadVerifier = heldAfter({
+      created: false,
+      clauses: ["empty-denominator", "non-result-ratio-excessive"],
+      nonResults: { verifierUnavailable: 6 },
+    });
+    const stall = nextUnresolvedAuthoringStall(null, heldOn(undefined));
+    for (const round of [environmentOnly, undelivered, unmeasured, deadVerifier]) {
+      expect(nextUnresolvedAuthoringStall(null, round)).toBeNull();
+      expect(nextUnresolvedAuthoringStall(stall, round)).toBe(stall);
+    }
+  });
+
+  it.each([
+    ["crash", { crash: 3, provider: 1 }],
+    ["protocol", { protocol: 2 }],
+    ["verifier-throw", { "verifier-throw": 2 }],
+  ])(
+    "counts a non-result-ratio hold whose non-results include %s against the author",
+    (_kind, nonResults) => {
+      const round = heldAfter({ created: false, clauses: ["non-result-ratio-excessive"], nonResults });
+      expect(nextUnresolvedAuthoringStall(null, round)?.rounds).toBe(1);
+    },
+  );
 
   it("opens a new stall each round the consumed basis advances", () => {
     let stall: UnresolvedAuthoringStall | null = null;
@@ -338,7 +382,25 @@ it("cites the promotion row behind a held candidate, and nothing behind any othe
 it.each<[string, object | null, number, number]>([
   ["a blocked battery", { claim: null }, 0, 1],
   ["another blocked battery", { claim: null }, 2, 3],
-  ["a zero-pass claim", { claim: { statement: { passRate: 0 } } }, 2, 0],
+  ["a zero-pass claim", { claim: { created: true, statement: { passRate: 0 } } }, 2, 0],
+  [
+    "a refusal whose every case the verifier host failed",
+    {
+      claim: {
+        created: false,
+        clauses: [{ clause: "empty-denominator" }],
+        nonResults: { verifierUnavailable: 6 },
+      },
+    },
+    2,
+    3,
+  ],
+  [
+    "a refusal whose every case a checker crashed",
+    { claim: { created: false, clauses: [{ clause: "empty-denominator" }], nonResults: { crash: 6 } } },
+    2,
+    0,
+  ],
   ["a provider-stopped refusal", { disposition: "provider-stopped", claim: { created: false } }, 2, 3],
   [
     "a provider-stopped battery that still created its claim",

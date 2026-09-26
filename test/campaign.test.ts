@@ -385,12 +385,6 @@ describe("watch rows over one reading", () => {
     expect(rows.map((row) => row.detail)).toContain(
       "1 climb decision(s) recorded under a schema this reader does not open",
     );
-    expect(deviations(next, { ...next, climb: { stop: "three batteries above the aim" } })).toContainEqual({
-      runId: RUN,
-      level: "stop",
-      act: "overhaul",
-      detail: "three batteries above the aim",
-    });
   });
 
   it("stops on a safeguard's first firing and reads its repeats as progress", () => {

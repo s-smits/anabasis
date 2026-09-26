@@ -1370,6 +1370,13 @@ lanes are editing, `SOLVABILITY_SOURCE_DRIFT` (`src/run/claim-write.ts`), parse 
 half-edited files and host-wall timeouts are all expected. The lane re-runs a failing file alone
 before reporting it, and the coordinator runs the full suite once after every lane has finished.
 
+When the launching session holds much context and lanes are to change a pull request, split it by
+commit, one lane and worktree each, and have every lane read, then stop at a proposal naming its
+evidence and the commit each fix folds into. Answer each at most twice, steering with what other
+lanes and the wider system show, then let it commit `--fixup`s with focused checks; fold and push
+once. On 2026-09-26 a reply stopped a lane handing timeouts to the environment, which another lane
+had shown ends the campaign at submit.
+
 A comment-only pass is still a source change, and it carries six hazards. `unusedExports`
 (`tools/loc/source-policy.ts`) takes the exports of `AUTHORED_ROOTS` — `src`, `tools` and
 `packages/ui/src` — and looks for a reader anywhere under the eight `READER_ROOTS`, which are

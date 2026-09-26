@@ -16,6 +16,7 @@ import type { FullRunArgs } from "./launch-arguments.ts";
 import type { ProjectIdentity } from "./launch-project.ts";
 import { assertSupportedHostRuntime, hostRuntimeIdentity } from "./host-runtime-policy.ts";
 import { SOURCE_IDENTITY, type SourceIdentity } from "./source-identity.ts";
+import { launchSourceRef, SOURCE_REF_ENV } from "./source-ref.ts";
 import { type CampaignBudget, loadBudget } from "./controller-ledger.ts";
 import {
   type ControllerAbortClause,
@@ -261,6 +262,9 @@ function writeControllerOpening(input: {
     writtenAt: new Date().toISOString(),
     runtime: hostRuntimeIdentity(),
     source: SOURCE_IDENTITY,
+    // The pull request and stack the launcher forked the commit from; null for a launch that
+    // named none, such as a direct fullrun.
+    sourceRef: launchSourceRef(Bun.env[SOURCE_REF_ENV], SOURCE_IDENTITY.commit),
     project: input.project,
     runId: input.runId,
     // Derived under the held campaign lock, before this run's own evidence exists, so a first run

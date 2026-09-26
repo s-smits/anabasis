@@ -45,6 +45,7 @@ import {
 /** The tally its own producer returns: the shape stays owned by `outcomeTally`, not restated here. */
 type OutcomeTally = ReturnType<typeof outcomeTally>;
 import type { RunLocation } from "./discover.ts";
+import { type SourceRef, sourceRefOf } from "../../src/run/source-ref.ts";
 
 const SLOT_ROLES = ["builder", "built", "review"] as const;
 type SlotRole = (typeof SLOT_ROLES)[number];
@@ -75,6 +76,8 @@ export interface OpeningFacts {
   slots: SlotFacts[];
   /** The provider-turn cap the run opened with; the counter beside it is always 0 at open. */
   cap: number | null;
+  /** The pull request and stack the launcher forked the commit from; null when none was recorded. */
+  sourceRef: SourceRef | null;
 }
 
 interface TerminalFacts {
@@ -219,6 +222,7 @@ function openingFacts(opening: JsonObject): OpeningFacts {
     epochKey: stringOr(nested(opening, "epoch")?.key),
     slots: roles,
     cap: numberOr(nested(opening, "providerResourceBudget")?.cap),
+    sourceRef: null,
   };
 }
 
@@ -364,6 +368,7 @@ export function readRunEvidence(location: RunLocation): RunEvidence {
     const raw = readJson(location.openingPath);
     opening = raw === null ? null : openingFacts(raw);
     if (opening === null) damaged.push("opening.json is not a recorded opening");
+    else opening.sourceRef = sourceRefOf(raw?.sourceRef, opening.commit ?? undefined);
   } catch (error) {
     damaged.push(`opening.json unreadable: ${String(error)}`);
   }

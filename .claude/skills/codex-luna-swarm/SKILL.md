@@ -176,6 +176,12 @@ shape in one instruction packet. A session row then needs only:
 - read-only or explicit write authority; and
 - the required report or patch outcome.
 
+When several sessions would repeat the same mechanical step, such as a census over `campaigns/`, a
+replay or a digest, put it in the packet once as an exact command. Look for it first in the
+`bun run` entries, the CLIs under `tools/` and the owning skill's `scripts/`, and write it only
+when none of them has it. A helper written for a swarm has now been used twice, so keep it as
+AGENTS.md's "Keep a script on its second use" describes.
+
 For a broad request such as “investigate this repo”, inspect the top-level structure once and divide
 the named count into independent components or risks. Do not invent a suspected defect for
 every session and do not perform the investigation in the parent before launch. If the session count is

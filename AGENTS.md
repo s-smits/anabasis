@@ -1085,6 +1085,23 @@ specifiers from the importing file, so the same script sitting under a job scrat
 with `Cannot find module` however absolute its paths are. A clean Git status proves the tracked
 source, not that ignored dependencies match a rebased head.
 
+**Keep a script on its second use.** Sessions here write helpers readily, and almost all of them
+die with the session. Across the recorded transcripts up to 2026-09-26, 464 scripts went to scratch
+directories over 63 sessions, and the same ones kept coming back: 18 push or restack scripts beside
+a `stack-hop` that already owns publication, 13 replays and 7 censuses over `campaigns/`, each
+written from nothing in a new session. So before writing a helper, look for one: the `bun run`
+entries in `package.json`, the CLIs under `tools/` (`runs`, `replay`, `outcome`, `triage`), and the
+`scripts/` of the skill that owns the work. And keep one the moment it is used a second time —
+handed to a subagent lane, or needed again by a later session. It then moves out of scratch to
+where its owner reads it: a subcommand of the matching `tools/` CLI when it reads repository source
+or recorded evidence, or the owning skill's `scripts/` when it serves only that procedure, with one
+line in that skill's `SKILL.md` saying what it answers and how to run it, so the next session finds
+it. The runs pulse took that route on 2026-09-25, into `tools/runs/` and one line of the
+`launch-run` skill. Record it in the owning skill and not here, because this file states principle
+and an inventory of tools would go stale in it. A promoted script is source like any other, held
+to the lint and the size policy, with a test when a test can see it. A one-off stays in scratch,
+because promoting it buys nothing.
+
 **Look further back in `harness-builder-v4`.** This repository's history starts at one squashed
 `initial commit` (d21f1a2, 2026-09-22), so `git log` and `git blame` here stop there and cannot say
 when or why a line was written. The same code's full history lives in the local clone at
@@ -1360,7 +1377,11 @@ Honour the user's requested concurrency up to 200: launch all the requested lane
 imposing a lower cap or batching them unless asked. Launch parallel subagents directly from the
 current session in one message, one bounded task each — no coordinator, and no further delegation.
 Each prompt names the authority, the exact paths and revision, the observed facts, the question and
-the required output. State read-only unless the operator asked for changes.
+the required output. State read-only unless the operator asked for changes. When the lanes share a
+mechanical step, such as counting codes over `campaigns/` or replaying a recorded battery, do it
+once before the launch: find the existing CLI or write the helper, and give every lane the exact
+command to run, together with the instruction to treat its rows as leads. That also counts as the
+helper's second use, so it is kept as the paragraph on keeping scripts describes.
 
 Lanes editing one worktree at the same time share its files, its scratch directory and its test
 runs. Give each lane a disjoint path set and its own scratch subdirectory, and never a shared

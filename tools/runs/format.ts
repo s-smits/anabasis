@@ -15,6 +15,7 @@ import type { CaseCounts, DifficultyDecisions, Observation, RunEvidence } from "
 import { DIFFICULTY_DECISION_SCHEMA } from "../../src/run/difficulty-decision.ts";
 import { readClaims, readDifficultyDecisions, observabilityPath } from "./evidence.ts";
 import type { RunDetail, RunRow } from "./rows.ts";
+import { describeSourceRef } from "../../src/run/source-ref.ts";
 
 const HOME = homedir();
 
@@ -233,10 +234,27 @@ function recentObservations(evidence: RunEvidence, observations: readonly Observ
   ];
 }
 
-/** One run in depth. Paths are named; nothing large is printed. */
-export function renderShow(detail: RunDetail, observations: readonly Observation[]): string {
-  const { row, evidence } = detail;
+/** The opening's identity: its commit, digest, the pull request it was launched from and its slots. */
+function openingLines(evidence: RunEvidence, branchHead: (branch: string) => string | null): string[] {
   const opening = evidence.opening;
+  return [
+    "Opening",
+    `  source ${opening?.commit ?? "unknown"}${opening?.dirty === true ? " (dirty)" : ""}`,
+    `  sourceDigest ${opening?.sourceDigest ?? "unknown"}`,
+    `  launched from ${opening?.sourceRef ? describeSourceRef(opening.sourceRef, branchHead) : "no recorded pull request"}`,
+    `  epoch ${opening?.epochKey ?? "unknown"}`,
+    ...slotLines(evidence),
+  ];
+}
+
+/** One run in depth. Paths are named; nothing large is printed. `branchHead` answers a pull
+ *  request branch's head at origin as last fetched, so the launch source says whether it moved. */
+export function renderShow(
+  detail: RunDetail,
+  observations: readonly Observation[],
+  branchHead: (branch: string) => string | null = () => null,
+): string {
+  const { row, evidence } = detail;
   const lines = [
     `${row.runId}  ${row.liveness.state}  ${row.liveness.detail}`,
     `  project ${row.slug}`,
@@ -245,11 +263,7 @@ export function renderShow(detail: RunDetail, observations: readonly Observation
     `  position ${row.position}`,
     `  cases ${cases(row.cases)}, provider turns ${turns(row)}`,
     "",
-    "Opening",
-    `  source ${opening?.commit ?? "unknown"}${opening?.dirty === true ? " (dirty)" : ""}`,
-    `  sourceDigest ${opening?.sourceDigest ?? "unknown"}`,
-    `  epoch ${opening?.epochKey ?? "unknown"}`,
-    ...slotLines(evidence),
+    ...openingLines(evidence, branchHead),
   ];
   if (detail.launch !== null) {
     lines.push("", "Launch receipt");

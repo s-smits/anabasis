@@ -40,7 +40,7 @@ import { serviceManager, type ServiceManager } from "./service.ts";
 import { STOP_RECEIPT_PATH } from "./stop.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { type ExitWith, exitWith, parseOrDie } from "#skills/main/cli.ts";
-import { gitText } from "#skills/main/git.ts";
+import { gitMaybe, gitText } from "#skills/main/git.ts";
 import { openRecordedRun, type RecordedRun } from "#skills/main/run.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import type { JsonObject } from "#src/meta/json-shape.ts";
@@ -48,6 +48,9 @@ import { hasText } from "#src/meta/text.ts";
 import { campaignRoot } from "#src/meta/campaign-root.ts";
 import { CODEX_AUTH_FILE } from "#src/backends/login-state.ts";
 import { OPENING_FILE } from "#src/run/controller-lineage.ts";
+import { describeSourceRef, SOURCE_REF_ENV, type SourceRef, type StackEdge } from "#src/run/source-ref.ts";
+import { runTextSyncOrThrow } from "#src/meta/subprocess.ts";
+import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { WORKTREE_SCRIPT } from "#tools/dependency-identity.ts";
 import { LAUNCH_RECEIPT_PATH } from "#tools/runs/discover.ts";
 
@@ -60,6 +63,14 @@ const STOP_TIMER_FILES = [
   "launch-run/scripts/service.ts",
   "main/cli.ts",
 ] as const;
+/** One open pull request as `gh pr list --json` names it. */
+export interface OpenPullRequest {
+  number: number;
+  headRefName: string;
+  headRefOid: string;
+  baseRefName: string;
+}
+
 type Environment = Record<string, string | undefined>;
 interface CommandOptions {
   cwd?: string;
@@ -81,6 +92,8 @@ interface Credentials {
 }
 interface Context {
   commit: string;
+  /** Recorded in each run's receipt and handed to its controller for the opening. */
+  sourceRef?: SourceRef;
   uid: number;
   sharedRoot: string;
   credentials: Partial<Record<Backend, Credentials>>;
@@ -142,6 +155,63 @@ function resolveSource(source: string): string {
     gitText(REPO, "fetch", "origin", "--quiet");
   }
   return gitText(REPO, "rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`);
+}
+
+/**
+ * The open stack the commit came from: the pull request whose own range holds it — its base's head
+ * does not — then each base down to `main`. A commit reached through a bare `--source <sha>` is
+ * placed exactly as one reached through `pr:<n>`, which is why the lookup is by commit.
+ */
+export function stackOf(
+  commit: string,
+  mainHead: string,
+  open: readonly OpenPullRequest[],
+  contains: (commit: string, head: string) => boolean,
+): Pick<SourceRef, "atHead" | "stack"> {
+  const byBranch = new Map(open.map((pr) => [pr.headRefName, pr]));
+  const baseHead = (pr: OpenPullRequest) =>
+    byBranch.get(pr.baseRefName)?.headRefOid ?? (pr.baseRefName === "main" ? mainHead : null);
+  const holds = (pr: OpenPullRequest) => {
+    const base = baseHead(pr);
+    return contains(commit, pr.headRefOid) && (base === null || !contains(commit, base));
+  };
+  const stack: StackEdge[] = [];
+  for (let pr = open.find((row) => row.headRefOid === commit) ?? open.find(holds); pr !== undefined; ) {
+    if (stack.some((edge) => edge.pr === pr?.number)) break;
+    stack.push({ pr: pr.number, branch: pr.headRefName, head: pr.headRefOid, base: pr.baseRefName });
+    pr = byBranch.get(pr.baseRefName);
+  }
+  return { atHead: stack[0]?.head === commit, stack };
+}
+
+/** Where the launched commit came from, read once before the fork. GitHub unreadable is recorded as
+ *  a null stack, never as "no pull request". */
+function sourceRef(requested: string, commit: string): SourceRef {
+  gitText(REPO, "fetch", "origin", "--quiet");
+  const mainHead = gitText(REPO, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}");
+  const contains = (ancestor: string, head: string) =>
+    gitMaybe(REPO, "merge-base", "--is-ancestor", ancestor, head) !== null;
+  let open: OpenPullRequest[];
+  try {
+    const listed = runTextSyncOrThrow(
+      [
+        "gh",
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--limit",
+        "200",
+        "--json",
+        "number,headRefName,headRefOid,baseRefName",
+      ],
+      { cwd: REPO },
+    );
+    open = parseJsonAs<OpenPullRequest[]>(listed);
+  } catch {
+    return { requested, main: mainHead, atHead: false, stack: null };
+  }
+  return { requested, main: mainHead, ...stackOf(commit, mainHead, open, contains) };
 }
 
 export function readCredentials(
@@ -282,6 +352,7 @@ async function prepare(
   const credentials = context.credentials[CONDITIONS[plan.condition].kind];
   if (!credentials) throw new Error(`${plan.runId}: missing selected credential snapshot`);
   const environment = prepareEnvironment(plan, credentials);
+  if (context.sourceRef !== undefined) environment[SOURCE_REF_ENV] = JSON.stringify(context.sourceRef);
   console.log(
     `${plan.runId}: checking source, request, confined worker and the provider allowance with one minimal turn`,
   );
@@ -296,6 +367,7 @@ async function prepare(
   );
   return Object.assign(plan, {
     environment,
+    sourceRef: context.sourceRef ?? null,
     ...identity,
     argv: fullrunArgs(plan, options, identity.source),
     budget: options.budget,
@@ -593,14 +665,16 @@ export async function main(argv: readonly string[]): Promise<number> {
     credentials[kind] ??= readCredentials({ ...options, condition, conditions: [condition] }, mainRepo);
   }
   const commit = resolveSource(options.source);
+  const ref = sourceRef(options.source, commit);
   console.log(
-    `${plans.length} run(s), ${options.condition}, ${options.budget} provider turns each; source ${commit}`,
+    `${plans.length} run(s), ${options.condition}, ${options.budget} provider turns each; source ${commit} (${describeSourceRef(ref)})`,
   );
   for (const credential of Object.values(credentials)) {
     console.log(`Credential source: ${credential.origin}; captured for this batch`);
   }
   const results = await launchBatch(plans, options, {
     commit,
+    sourceRef: ref,
     credentials,
     sharedRoot: mainRepo,
     uid: process.getuid(),

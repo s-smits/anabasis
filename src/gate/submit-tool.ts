@@ -20,7 +20,7 @@ import {
   authorFindingOverview,
 } from "../builder/author-feedback.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
+import { type ContractFinding, controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 
 /** What the controller read the submitted bytes as: the identity of the two contract roots at the
  *  submitted commit. The execution record compares submissions on this rather than on the commit,

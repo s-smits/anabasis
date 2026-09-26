@@ -26,8 +26,8 @@ import { join } from "../meta/path.ts";
 import { createBundleSnapshot, bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import { HARNESS_CONFIG_FILE, harnessConfigIssue } from "../truth/harness-config.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import { HARNESS_CONFIG_FILE, harnessConfigIssue } from "../correctness-bundle/harness-config.ts";
 import {
   type Brief,
   requiredToolsOf,
@@ -35,18 +35,18 @@ import {
   controllerValidatedFinding,
   controllerValidatedFindings,
   fieldFinding,
-} from "../truth/brief.ts";
+} from "../correctness-bundle/brief.ts";
 import { fileArtifactRootIssue } from "../solve/draft-files.ts";
-import { loadSolvabilityPublicSchema } from "../truth/solvability-artifact-schema.ts";
-import { verifierEnvironmentHashOfTools } from "../truth/verifier-environment.ts";
+import { loadSolvabilityPublicSchema } from "../correctness-bundle/solvability-artifact-schema.ts";
+import { verifierEnvironmentHashOfTools } from "../correctness-bundle/verifier-environment.ts";
 import {
   type ControlCorpus,
   isControlCorpus,
   validateControls,
   validateAcceptControls,
-} from "../truth/controls.ts";
-import { type HiddenExpectation, type TaskBattery, validateTasks } from "../truth/tasks.ts";
-import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../truth/tools-spec.ts";
+} from "../correctness-bundle/controls.ts";
+import { type HiddenExpectation, type TaskBattery, validateTasks } from "../correctness-bundle/tasks.ts";
+import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../correctness-bundle/tools-spec.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";

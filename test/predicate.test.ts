@@ -1,17 +1,17 @@
 import type { ToolRunResult } from "../src/verify/verifier-port.ts";
 import { expect, test } from "bun:test";
-import type { Brief, BriefTruthCheck } from "../src/truth/brief.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import type { EvaluationRequest, CheckRunner } from "../src/truth/correctness-model-contract.ts";
+import type { Brief, BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import type { EvaluationRequest, CheckRunner } from "../src/correctness-bundle/correctness-model-contract.ts";
 import {
   evaluateCheckProgram,
   checkEvaluationRequest,
   checkErrorKind,
 } from "../vendor/correctness-model-bundle/evaluate.ts";
 import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
-import { EvaluatorProcessFailure } from "../src/truth/evaluator-process.ts";
+import { EvaluatorProcessFailure } from "../src/correctness-bundle/evaluator-process.ts";
 import type { CheckRun } from "../src/verify/correctness-model-result.ts";
-import { checkProgramFailureDetails, resolvePredicatePath } from "../src/truth/predicate.ts";
+import { checkProgramFailureDetails, resolvePredicatePath } from "../src/correctness-bundle/predicate.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { double } from "./helpers/doubles.ts";
 import { numbersWithin, multisetMatches } from "../vendor/correctness-model-prims/index.ts";

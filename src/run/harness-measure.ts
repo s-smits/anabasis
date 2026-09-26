@@ -38,11 +38,11 @@ import {
   BatteryVerificationNonResult,
   batteryPath,
   readBatteryJoinSlice,
-} from "../truth/battery-record.ts";
-import type { Toolset } from "../truth/contracts.ts";
-import type { JudgeSession } from "../truth/judge.ts";
-import type { Solver } from "../truth/solve.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+} from "../correctness-bundle/battery-record.ts";
+import type { Toolset } from "../correctness-bundle/contracts.ts";
+import type { JudgeSession } from "../review/judge.ts";
+import type { Solver } from "../correctness-bundle/solve.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { type HostSolveIsolationEvidence, probeHostSolveReadDeny } from "../verify/solve-sandbox.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";

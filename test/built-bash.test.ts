@@ -22,7 +22,7 @@ import { join } from "../src/meta/path.ts";
 import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { BUILT_BASH_TOOL, type BuiltFilePort, createBuiltBashTool } from "../src/solve/built-bash.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { seedSessionHome } from "../src/solve/generated-tool-worker.ts";
 import {
   RUN_DATA_DENY_PATTERNS,

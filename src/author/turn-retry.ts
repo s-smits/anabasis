@@ -27,7 +27,7 @@ import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import type { BuilderExecutionRecorder, TurnRetryRow } from "./builder-execution.ts";
 import { raceAbort } from "./builder-tool-receipts.ts";
-import { allowanceWait } from "../truth/provider-reset.ts";
+import { allowanceWait } from "../correctness-bundle/provider-reset.ts";
 
 /** The whole retry budget for one turn: three further attempts, then the typed non-result. The
  *  waits grow because the causes clear on different clocks — a re-login lands in minutes, a home
@@ -79,7 +79,7 @@ export async function awaitTurnRetry(
   const reason = boundText(joined === "" ? "no error recorded" : joined, REASON_MAX_BYTES).shown;
   // An allowance that names when it clears is a wait; one that names no clock ends the run. Each
   // clock is read from the allowance that named it, so a session limit naming noon cannot speak for
-  // a monthly spend limit beside it, which no wait clears (src/truth/provider-reset.ts).
+  // a monthly spend limit beside it, which no wait clears (src/correctness-bundle/provider-reset.ts).
   const allowance = allowanceWait(errorMessages);
   const resetAt = allowance.at;
   if (allowance.refuse || errorMessages.some((error) => PERMANENT_REFUSAL.test(error))) {

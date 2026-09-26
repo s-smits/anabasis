@@ -1,10 +1,10 @@
 /** Decide readiness from the score claim, conformance, full-task solve and saved evidence. */
 import type { ClaimStatement } from "./claim-evidence.ts";
 import type { ConformanceEvidence } from "./conformance-evidence.ts";
-import { inertToolFindings } from "../truth/grounding-coverage.ts";
+import { inertToolFindings } from "../correctness-bundle/grounding-coverage.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
-import type { SolvabilityStageReceipt } from "../truth/solvability-stages.ts";
-import type { CheckFailureDetail } from "../truth/predicate.ts";
+import type { SolvabilityStageReceipt } from "../correctness-bundle/solvability-stages.ts";
+import type { CheckFailureDetail } from "../correctness-bundle/predicate.ts";
 import type { CheckRun } from "../verify/correctness-model-result.ts";
 
 export type IsolationStrength = "physical" | "contractual";

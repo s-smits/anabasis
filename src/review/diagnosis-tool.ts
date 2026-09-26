@@ -16,7 +16,7 @@ import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundl
 import { mentionsTask } from "../meta/identifier-scan.ts";
 import { type JsonValue, isString } from "../meta/json-shape.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import type { DiagnosisReaderEvidence, IssueOffer } from "./diagnosis-reader.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 

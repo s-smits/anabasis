@@ -24,7 +24,7 @@ import { experimentOperation } from "../src/gate/experiment-admission.ts";
 import { loadValidatedBundle } from "../src/author/candidate-check.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
-import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
+import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const TASKS_JSON = "correctness-model/tasks.json";

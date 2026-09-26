@@ -83,7 +83,7 @@ climb:
 # Declared values equal the code fallbacks in src/critic/policy.ts. Authoring requires at least
 # this many accept and reject controls. The Judge-only calibration floors were removed with the
 # control census on 2026-09-14; the same day the minimum fell from 20 to 5. What a corpus must
-# cover is R2's (src/truth/decisions/controls.ts): every reject fails the check it names, and every
+# cover is R2's (src/correctness-bundle/decisions/controls.ts): every reject fails the check it names, and every
 # check is named by a reject. Five rejects that all fail prove a check can say no, not how often,
 # which bounds its miss rate only below 45%, so this floor is control presence, not calibration.
 evaluatorCalibration:

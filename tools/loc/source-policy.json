@@ -2,7 +2,7 @@
   "copiedFileLimits": {
     "src/builder/tools.ts": 403,
     "src/solve/final-submission.ts": 394,
-    "src/truth/probes.ts": 436,
+    "src/correctness-bundle/probes.ts": 436,
     "src/verify/host.ts": 1149,
     "vendor/pi-agent-session/agent-session.ts": 915,
     "vendor/pi-claude-bridge/provider.ts": 728

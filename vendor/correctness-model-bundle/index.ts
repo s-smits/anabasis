@@ -6,10 +6,10 @@
  * the checks. A name is exported from here once a generated consumer imports it and not before.
  *
  * The runtime half of this contract lives beside the barrel rather than under `src/`. The Builder
- * runs its own `bun test` under a wall that opens this directory whole and closes `src/truth`,
+ * runs its own `bun test` under a wall that opens this directory whole and closes `src/correctness-bundle`,
  * and Bun lists a module's directory before it opens the file, so a barrel re-exporting
- * `../../src/truth/truth-checks.ts` fails there with "Cannot find module" while the file itself is
- * granted -- and the Builder then writes a stand-in for the whole package.
+ * `../../src/correctness-bundle/truth-checks.ts` fails there with "Cannot find module" while the file itself
+ * is granted -- and the Builder then writes a stand-in for the whole package.
  * Shared JSON shape primitives remain under the already-public `src/meta` authoring interface.
  */
 export type {
@@ -18,8 +18,8 @@ export type {
   CheckFn,
   CheckRunner,
   CheckRuntime,
-} from "../../src/truth/correctness-model-contract.ts";
-export type { PublicTask } from "../../src/truth/task-split.ts";
+} from "../../src/correctness-bundle/correctness-model-contract.ts";
+export type { PublicTask } from "../../src/correctness-bundle/task-split.ts";
 // The editable evaluator seed uses the same declared input view as measured evaluation.
 export { evaluationPublicTask } from "./evaluation-public-task.ts";
 export { observedBlockingCheckIds } from "./control-results.ts";

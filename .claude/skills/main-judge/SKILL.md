@@ -73,7 +73,7 @@ claim; they change no score, readiness, adoption or statement.
 
 Give the Judge the exact operator request, the bound public task, the submitted artifact, the
 public artifact schema, the projected Builder tool contract, declared runtime facts and an explicit
-output schema (`JudgePublicDomain` in `src/truth/judge-contract.ts`). It receives no solve trace,
+output schema (`JudgePublicDomain` in `src/review/judge-contract.ts`). It receives no solve trace,
 no Built system prompt and no verifier output. The tool contract is load-bearing: run 69's
 `distrust-verifier` hold was manufactured because the binding conventions lived only in
 `agent/tools.ts` text the Judge never saw. Never give hidden expectations, control literals,

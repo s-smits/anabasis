@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { join, relative } from "../meta/path.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
-import { batteryPath } from "../truth/battery-record.ts";
+import { batteryPath } from "../correctness-bundle/battery-record.ts";
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import type { AnalysisFinding, IterationAnalysis } from "./iteration-analysis.ts";
 

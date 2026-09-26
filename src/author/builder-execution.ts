@@ -26,7 +26,7 @@ import type { ExperimentSubmission } from "./experiment-plan.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
-import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
+import { type ContractFinding, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
 import { type AuthorCheckStage, codeDelta } from "../builder/author-feedback.ts";
 import {
   CUSTOM_TOOL_NAMES,

@@ -30,7 +30,7 @@ import type { BuilderCampaignDeps } from "../src/run/builder-campaign.ts";
 import { readExecutionEvidence } from "../tools/outcome/builder-execution-facts.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 
 const ADVICE = "Public review advice.";

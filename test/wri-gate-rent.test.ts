@@ -178,7 +178,9 @@ describe("gate-ledger against the source", () => {
       "src/builder/author-feedback.ts",
       "src/run/census-gate.ts",
     ]);
-    const gateFiles = sources.filter(({ rel }) => /^src\/(truth|gate)\//.test(rel) || owners.has(rel));
+    const gateFiles = sources.filter(
+      ({ rel }) => /^src\/(correctness-bundle|gate)\//.test(rel) || owners.has(rel),
+    );
     const known = new Set([
       ...LEDGER.flatMap((entry) => entry.codes),
       ...QUALIFIERS.keys(),

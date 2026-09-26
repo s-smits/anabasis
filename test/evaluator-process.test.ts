@@ -2,14 +2,14 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { join } from "../src/meta/path.ts";
-import { bundleEvaluator } from "../src/truth/evaluator-process-bundle.ts";
+import { bundleEvaluator } from "../src/correctness-bundle/evaluator-process-bundle.ts";
 import {
   EVALUATOR_WALL_MS,
   evaluateIsolated,
   probeEvaluatorProcess,
-} from "../src/truth/evaluator-process.ts";
+} from "../src/correctness-bundle/evaluator-process.ts";
 import { TOOL_TIMEOUT_CEILING_MS, createVerifierHost } from "../src/verify/host.ts";
-import { loadCorrectnessModel } from "../src/truth/contracts.ts";
+import { loadCorrectnessModel } from "../src/correctness-bundle/contracts.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-evaluator-process-"));

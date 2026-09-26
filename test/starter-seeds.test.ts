@@ -40,11 +40,12 @@ import { osIsolationSupport } from "../src/verify/os-isolation.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { brief as workedBrief, fence } from "./helpers/starter-contracts.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 
 // Realpath'd and under the repository root on purpose: @ana/* resolve by walking up to the true
 // root node_modules, so a workspace outside the tree, or behind a symlinked path to it, cannot load
-// the bundles at all (src/truth/solvability.ts makes the same choice for the reference-solve scratch).
+// the bundles at all (src/correctness-bundle/solvability.ts makes the same choice for the reference-solve
+// scratch).
 const REPO_ROOT = realpathSync.native(join(import.meta.dir, ".."));
 const STARTER_ROOT = join(REPO_ROOT, "starters", "pi-built-harness");
 const SEED_FILES = ["correctness-model/harness.test.ts", "correctness-model/evaluator.test.ts"];

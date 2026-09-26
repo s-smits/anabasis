@@ -346,11 +346,12 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     expect(reads(join(homedir(), ".ssh", "id_ed25519")).status).not.toBe(0);
   });
 
-  it("opens the correctness barrel's directory whole and keeps src/truth closed entirely", () => {
+  it("opens the correctness barrel's directory whole and keeps src/correctness-bundle closed entirely", () => {
     // The contract's runtime half sits beside its barrel under vendor/ (2026-09-02), so the grant
-    // is one directory the Builder's `bun test` can list and load from, and src/truth carries no
-    // granted file that would need its listing opened. Both halves executed here: the barrel
-    // directory lists its runtime file, and a src/truth file is neither listable nor readable.
+    // is one directory the Builder's `bun test` can list and load from, and src/correctness-bundle
+    // carries no granted file that would need its listing opened. Both halves executed here: the
+    // barrel directory lists its runtime file, and a file under src/correctness-bundle or under
+    // src/review, which holds the Judge's source, is neither listable nor readable.
     const contractFile = policy.allow.read.find(
       (rule) =>
         rule.id === "bundle-contract" &&
@@ -358,22 +359,26 @@ describe.if(DARWIN)("executed OS enforcement", () => {
     )?.path;
     if (contractFile === undefined) throw new Error("fixture has no correctness-model-bundle runtime file");
     const parent = dirname(contractFile);
-    const protectedDir = join(repoRoot, "src", "truth");
-    mkdirSync(protectedDir, { recursive: true });
-    const protectedFile = join(protectedDir, "protected-truth-source.ts");
-    writeFileSync(protectedFile, "PROTECTED-BYTES");
+    const protectedDirs = ["correctness-bundle", "review"].map((dir) => join(repoRoot, "src", dir));
+    const protectedFiles = protectedDirs.map((dir) => join(dir, "protected-source.ts"));
+    for (const file of protectedFiles) {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, "PROTECTED-BYTES");
+    }
     try {
       const { profile } = candidateIsolationProfile(policy, "exec", ["/bin/ls", "/bin/cat"]);
       const run = (argv: string[]) => sandboxed(profile, ...argv);
       const listed = run(["/bin/ls", parent]);
       expect(listed.status).toBe(0);
       expect(listed.stdout).toContain("truth-checks.ts");
-      expect(run(["/bin/ls", protectedDir]).status).not.toBe(0);
-      const read = run(["/bin/cat", protectedFile]);
-      expect(read.status).not.toBe(0);
-      expect(read.stdout).not.toContain("PROTECTED-BYTES");
+      for (const [index, dir] of protectedDirs.entries()) {
+        expect(run(["/bin/ls", dir]).status).not.toBe(0);
+        const read = run(["/bin/cat", protectedFiles[index] ?? dir]);
+        expect(read.status).not.toBe(0);
+        expect(read.stdout).not.toContain("PROTECTED-BYTES");
+      }
     } finally {
-      rmSync(protectedFile, { force: true });
+      for (const file of protectedFiles) rmSync(file, { force: true });
     }
   });
 

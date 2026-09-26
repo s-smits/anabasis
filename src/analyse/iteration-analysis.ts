@@ -34,8 +34,8 @@ import {
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { claimsDirFor, executedBundleSnapshotFact } from "../run/claim-write.ts";
 import { type RunSummary, assertRunIdSafe, summarizeRun } from "../run/run-driver.ts";
-import { controllerValidatedFindings } from "../truth/brief.ts";
-import { type BundleSnapshotFact, batteryPath } from "../truth/battery-record.ts";
+import { controllerValidatedFindings } from "../correctness-bundle/brief.ts";
+import { type BundleSnapshotFact, batteryPath } from "../correctness-bundle/battery-record.ts";
 import { isNumber, isRecord, isString } from "../meta/json-shape.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 

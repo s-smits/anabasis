@@ -20,10 +20,10 @@ import { BUILT_SOLVE_MAX_CONCURRENCY } from "../src/run/session-pool.ts";
 import {
   BATTERY_PROVIDER_STOP_CONSECUTIVE,
   solveBatteryWithProviderStop,
-} from "../src/truth/battery-provider-stop.ts";
-import { type SolveOutcome, type Solver, nonResultOutcome } from "../src/truth/solve.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import { commitPublicTask } from "../src/truth/task-split.ts";
+} from "../src/correctness-bundle/battery-provider-stop.ts";
+import { type SolveOutcome, type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   SCRATCH_ROOT,

@@ -31,8 +31,8 @@ import { SUBMIT_DESCRIPTION } from "../src/gate/submit-tool.ts";
 import { renderBatteryContract } from "../src/run/climb-readout.ts";
 import { directKickoff } from "../src/run/direct-input.ts";
 import { DCG_RULES } from "../src/solve/dcg-rules.ts";
-import { DEFAULT_HARNESS_SETTINGS } from "../src/truth/harness-config.ts";
-import { CENSUS_LANES } from "../src/truth/run-controls.ts";
+import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
+import { CENSUS_LANES } from "../src/correctness-bundle/run-controls.ts";
 
 const flat = (text: string) => text.replace(/\s+/g, " ");
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;

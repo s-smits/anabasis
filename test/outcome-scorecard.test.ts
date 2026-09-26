@@ -7,7 +7,7 @@ import {
 } from "../src/run/difficulty-decision.ts";
 import { type RunEnd, climbRunEnd, provenanceRunEnd, runEndAtClose } from "../src/run/run-end.ts";
 import type { ClimbReadout } from "../src/run/climb-readout.ts";
-import type { ToolCheckCoverage } from "../src/truth/grounding-coverage.ts";
+import type { ToolCheckCoverage } from "../src/correctness-bundle/grounding-coverage.ts";
 import type { ControllerEvidence } from "../src/run/controller-evidence.ts";
 import { sharedPackRunEnd } from "../tools/outcome/shared-pack.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";

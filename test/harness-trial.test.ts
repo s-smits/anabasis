@@ -14,8 +14,8 @@
  * and by freezing what does cross so that a field added upstream fails here rather than arriving in
  * a prompt. So the cases below do two things a per-function test cannot. They hand the projection a
  * verifier result dense with every protected class — including the check-naming sentences
- * `acceptedOutcome` in `src/truth/solve-case.ts` composes today and `rehearseCase` happens to drop
- * — and assert the crossing key set rather than a list of strings someone thought of. And they take
+ * `acceptedOutcome` in `src/correctness-bundle/solve-case.ts` composes today and `rehearseCase` happens to
+ * drop — and assert the crossing key set rather than a list of strings someone thought of. And they take
  * a census of every key path in the model-visible result of a real rehearsal, so that a new field
  * anywhere fails by default.
  *
@@ -44,7 +44,7 @@ import { RehearsalTraces } from "../src/builder/context-tool.ts";
 import type { RehearsalRow } from "../src/author/experiment-plan.ts";
 import { createBuiltStarter } from "../src/solve/built-starter.ts";
 import { defineDraftTool } from "../src/solve/draft-tool.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import {
   MATCHING_BRIEF,

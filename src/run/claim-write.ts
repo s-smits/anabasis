@@ -33,27 +33,27 @@ import {
 } from "../claim/readiness.ts";
 import { recordedEvidence, verifyRunDir } from "../claim/evidence-log.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import type { Brief, ContractFinding } from "../truth/brief.ts";
-import type { GroundingDeclaration } from "../truth/grounding.ts";
-import { controllerValidatedFinding } from "../truth/brief.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import type { Brief, ContractFinding } from "../correctness-bundle/brief.ts";
+import type { GroundingDeclaration } from "../correctness-bundle/grounding.ts";
+import { controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 import {
   type CaseRecord,
   type BundleSnapshotFact,
   batteryPath,
   CASE_JUDGE_FILE,
   readRecordedBatteryRecord,
-} from "../truth/battery-record.ts";
-import { applicableCheckIds } from "../truth/run-controls.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
-import { isControlCorpus } from "../truth/controls.ts";
-import { type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
-import type { BuildDeps } from "../truth/build-deps.ts";
+} from "../correctness-bundle/battery-record.ts";
+import { applicableCheckIds } from "../correctness-bundle/run-controls.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
+import { isControlCorpus } from "../correctness-bundle/controls.ts";
+import { type SolvabilityProbeOptions, makeProbeSolvability } from "../correctness-bundle/solvability.ts";
+import type { BuildDeps } from "../correctness-bundle/build-deps.ts";
 import {
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
   toolRetryDelay,
-} from "../truth/verifier-nonresult.ts";
+} from "../correctness-bundle/verifier-nonresult.ts";
 import { toolNonResultCode } from "../author/tool-non-result.ts";
 import { toolRunFailureDetail } from "./census-gate.ts";
 import { assertRunIdSafe, loadRecordedTasks } from "./run-driver.ts";

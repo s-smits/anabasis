@@ -13,12 +13,12 @@ import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
 import { sha256OfFile } from "../src/meta/digest.ts";
-import type { Brief } from "../src/truth/brief.ts";
-import type { EvaluationRequest } from "../src/truth/correctness-model-contract.ts";
-import type { EvaluatorFn } from "../src/truth/contracts.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
-import { discriminationDisclosure } from "../src/truth/discrimination-author-detail.ts";
-import { runControls } from "../src/truth/run-controls.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
+import type { EvaluationRequest } from "../src/correctness-bundle/correctness-model-contract.ts";
+import type { EvaluatorFn } from "../src/correctness-bundle/contracts.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
+import { discriminationDisclosure } from "../src/correctness-bundle/discrimination-author-detail.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
 import {
   VERIFIER_CONTRACT_HINTS,
   VerifierContractError,

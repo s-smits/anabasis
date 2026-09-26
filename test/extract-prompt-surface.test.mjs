@@ -127,8 +127,8 @@ describe("prompt-surface audiences", () => {
   const audiences = (result) => result.surfaces.map((surface) => surface.audience);
 
   it("claims a file by its stem, so a key needs no directory of that name", () => {
-    // The Judge's files are `src/truth/judge.ts` and `judge-*.ts`; a key that only matched a
-    // directory left every one of them to the wider `src/truth` label.
+    // The Judge's files are `src/review/judge.ts` and `judge-*.ts`; a key that only matched a
+    // directory left every one of them to the wider `src/correctness-bundle` label.
     const result = census("prompt-surface-stem-", source, {
       audiences: { src: "wide", "src/surface": "narrow" },
     });

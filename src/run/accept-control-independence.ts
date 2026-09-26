@@ -27,7 +27,7 @@ import { join } from "../meta/path.ts";
 import { compareCodeUnits, sameJsonValue } from "../meta/stable-json.ts";
 import type { CampaignFeedback } from "../author/campaign-types.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../claim/calibration.ts";
-import { controllerValidatedFinding } from "../truth/brief.ts";
+import { controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 import type { Witness } from "./representation-census.ts";
 import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";

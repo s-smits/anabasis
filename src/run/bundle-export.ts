@@ -23,7 +23,7 @@ import { containsPath } from "../meta/path-containment.ts";
 import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import { OPERATOR_BACKENDS_DIR } from "../backends/operator-selection.ts";
 import { bundleSlug, loadContract } from "./bundle-entry.ts";
-import { externalChecksOf } from "../truth/brief.ts";
+import { externalChecksOf } from "../correctness-bundle/brief.ts";
 import { relocateToolLauncher } from "../author/toolchain-relocation.ts";
 import { readJsonFile, writeJsonFile } from "../meta/completed-json.ts";
 

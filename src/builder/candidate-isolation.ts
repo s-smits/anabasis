@@ -247,7 +247,7 @@ const WORKSPACE_SHADOW_ROOTS: readonly string[] = [
  * only the already-public `src/meta` shape primitives. Keeping the lists apart is what lets
  * `admit` refuse a correctness barrel that re-exported, say, `src/verify/host.ts`, so protected
  * engine source cannot enter through the barrel that sits nearest to it. That runtime lives under
- * `vendor/` rather than as a granted file inside the otherwise denied `src/truth/`, because Bun
+ * `vendor/` rather than as a granted file inside the otherwise denied `src/correctness-bundle/`, because Bun
  * lists a directory before it opens a file in it, so the Builder's own `bun test` could not load
  * such a barrel at all. The public type declarations named below are still exact-file exceptions
  * of that kind, which is why `follow` admits them without queueing them: read, never loaded.
@@ -258,7 +258,7 @@ const AUTHORING_BARRELS: ReadonlyArray<{
   /** Admit the barrel's type edges as well as its runtime closure. Only `agent-bundle` carries
    *  this, because the Builder writes `agent/tools.ts` against those declarations. Extending it to
    *  the correctness barrels would admit their type edges into controller internals —
-   *  `src/truth/contracts.ts` among them — that no workspace execution ever opens. */
+   *  `src/correctness-bundle/contracts.ts` among them — that no workspace execution ever opens. */
   readTypeEdges?: true;
   /** Exact public declarations an author must read; their own type imports stay closed. */
   typeDeclarations?: readonly string[];
@@ -267,7 +267,7 @@ const AUTHORING_BARRELS: ReadonlyArray<{
   {
     name: "correctness-model-bundle",
     prefixes: ["src/meta/", "vendor/"],
-    typeDeclarations: ["../../src/truth/correctness-model-contract.ts"],
+    typeDeclarations: ["../../src/correctness-bundle/correctness-model-contract.ts"],
   },
   {
     name: "correctness-model-prims",
@@ -279,7 +279,7 @@ const AUTHORING_BARRELS: ReadonlyArray<{
 /** The `src/` directories of the agent-bundle barrel, granted whole. The Builder writes
  *  `agent/tools.ts` against these declarations and the barrel above already admits both
  *  directories to it, so they are its authoring interface rather than protected material; the
- *  protected `src/truth/` and `src/verify/` trees keep exact-file exceptions for their public
+ *  protected `src/correctness-bundle/` and `src/verify/` trees keep exact-file exceptions for their public
  *  declarations instead. Derived from the barrel rather than repeated, so the two lists cannot
  *  drift apart. `vendor/` is filtered out because each barrel already carries its own narrower
  *  `vendor-bundle` grant, and the vendor root as a whole is not the Builder's interface. */
@@ -317,7 +317,7 @@ type GuardDecision =
  * workspace code can execute against them under the bash sandbox — the starter seeds
  * `correctness-model/*.test.ts` files the Builder runs with `bun test`, and those load the whole
  * runtime closure. Only the named public type declarations are added on top; other type edges
- * erase at load and stay closed, controller internals such as `src/truth/contracts.ts` included.
+ * erase at load and stay closed, controller internals such as `src/correctness-bundle/contracts.ts` included.
  * External package imports are left out entirely, because the root lockfile already owns which
  * version of them a bundle gets.
  */
@@ -339,7 +339,7 @@ export function deriveBundleContract(repoRoot: string): string[] {
     /**
      * One declared edge, admitted into the contract and queued for following when it still runs at
      * load. A type-only edge erases at load, and below the barrel it is therefore neither admitted
-     * nor followed: `src/solve/built-starter.ts` declares against `src/truth/task-split.ts`, a
+     * nor followed: `src/solve/built-starter.ts` declares against `src/correctness-bundle/task-split.ts`, a
      * file no workspace execution ever opens, so following it would make `admit` refuse a contract
      * that is already correct.
      */

@@ -10,7 +10,7 @@ import { join } from "../src/meta/path.ts";
 import { isString } from "../src/meta/json-shape.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
-import { SOLVABILITY_POLICY, makeProbeSolvability } from "../src/truth/solvability.ts";
+import { SOLVABILITY_POLICY, makeProbeSolvability } from "../src/correctness-bundle/solvability.ts";
 import { VerifierOperationalStop } from "../src/verify/verifier-lifetime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import {

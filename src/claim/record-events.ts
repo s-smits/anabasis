@@ -47,8 +47,8 @@ export const ENVIRONMENT_OWNED_NONRESULT_KINDS: ReadonlySet<NonResultKind> = new
 /**
  * The opening of the terminal reason a `provider-stopped` battery records, written by
  * `batteryTerminalReason` and read back by the claim gate's denominator clauses. The disposition
- * itself belongs to `BATTERY_DISPOSITIONS` in src/truth/battery-record.ts. Keeping the prefix here
- * lets the writer and the reader share one spelling without the claim tree depending on the truth
+ * itself belongs to `BATTERY_DISPOSITIONS` in src/correctness-bundle/battery-record.ts. Keeping the prefix
+ * here lets the writer and the reader share one spelling without the claim tree depending on the truth
  * tree at runtime. The claim reads this recorded stop reason rather than inferring an outage from
  * the non-result ratio, because a ratio says how many cases failed and never who owns them.
  */

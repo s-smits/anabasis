@@ -33,11 +33,15 @@ import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { assertPathSegment } from "../meta/path-segment.ts";
 import { hashJsonBytes, parseJsonAs } from "../meta/json-runtime.ts";
 import { sameJsonValue } from "../meta/stable-json.ts";
-import type { VerificationReport } from "../truth/build-deps.ts";
-import { type BuiltPresetId, isBuiltPresetId, presetToolNames } from "../truth/built-presets.ts";
-import { type CaseRecord, batteryPath, readRecordedBatteryRecord } from "../truth/battery-record.ts";
-import { type VerificationRunnerOptions, makeVerify } from "../truth/verification-runner.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+import type { VerificationReport } from "../correctness-bundle/build-deps.ts";
+import { type BuiltPresetId, isBuiltPresetId, presetToolNames } from "../correctness-bundle/built-presets.ts";
+import {
+  type CaseRecord,
+  batteryPath,
+  readRecordedBatteryRecord,
+} from "../correctness-bundle/battery-record.ts";
+import { type VerificationRunnerOptions, makeVerify } from "../correctness-bundle/verification-runner.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { isRecord, isString } from "../meta/json-shape.ts";
 import { TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";

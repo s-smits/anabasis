@@ -45,7 +45,7 @@ import { isString } from "#src/meta/json-shape.ts";
 import type { ContestedCase } from "#src/analyse/judge-contested.ts";
 import { absoluteOption, type ExitWith, exitWith, parseOrDie, requiredOption } from "#skills/main/cli.ts";
 import { CASE_RECORD_FILE } from "#src/claim/case-record.ts";
-import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/truth/declared-projection.ts";
+import { JUDGE_PUBLIC_CONTEXT_FILE } from "#src/correctness-bundle/declared-projection.ts";
 
 const fail: ExitWith = exitWith("review-settle");
 

@@ -37,9 +37,9 @@ import { existsSync, mkdirSync, readFileSync } from "../meta/filesystem.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
-import { type Brief, applicableTruthChecks } from "../truth/brief.ts";
-import { publishedMargins } from "../truth/numeric-boundary.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+import { type Brief, applicableTruthChecks } from "../correctness-bundle/brief.ts";
+import { publishedMargins } from "../correctness-bundle/numeric-boundary.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { type PublishedMargin, readMargins } from "../solve/published-margin.ts";
 
 export const LIMIT_MARGIN_SCHEMA = "limit-margin/v2";

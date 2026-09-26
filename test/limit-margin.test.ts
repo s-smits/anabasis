@@ -12,8 +12,8 @@ import { join, relative } from "../src/meta/path.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../src/claim/readiness.ts";
 import { limitMargin, readLimitMargin, writeLimitMargin } from "../src/run/limit-margin.ts";
-import type { Brief, BriefTruthCheck } from "../src/truth/brief.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
+import type { Brief, BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

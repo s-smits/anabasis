@@ -3,7 +3,7 @@ import type { AgentSession, AgentTurnEvent, AgentTurnResult, TurnUsage } from ".
 import { POLICY } from "../critic/policy.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { observeBuilderTurn } from "../observe/model-turn-observer.ts";
-import type { ContractFinding } from "../truth/brief.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import type { CandidateCheckOutcome } from "./candidate-check.ts";
 import { BuildAgentTurnNonResult, runModelAttempt } from "./build-agent.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";

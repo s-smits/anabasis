@@ -7,7 +7,7 @@ import {
 } from "../../../../src/claim/case-record.ts";
 import { campaignTraceRoots } from "../../../../src/claim/trace-read.ts";
 import { verifyTree } from "../../../../src/claim/bundle-snapshot-verify.ts";
-import { readPublicResources } from "../../../../src/truth/public-resources.ts";
+import { readPublicResources } from "../../../../src/correctness-bundle/public-resources.ts";
 import type { CaseSummary } from "../models.js";
 import { object, objectArray, text } from "./json.js";
 import { TASKS_FILE } from "../../../../src/meta/bundle-layout.ts";

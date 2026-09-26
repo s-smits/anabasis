@@ -1,7 +1,7 @@
 import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { required, text } from "./helpers/doubles.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
-import { loadSolvabilityPublicSchema } from "../src/truth/solvability-artifact-schema.ts";
+import { loadSolvabilityPublicSchema } from "../src/correctness-bundle/solvability-artifact-schema.ts";
 import { EXPERIMENT_FILE } from "../src/author/builder-memory.ts";
 import {
   existsSync,
@@ -50,9 +50,13 @@ import {
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
-import { type Brief, controllerValidatedFinding, controllerValidatedFindings } from "../src/truth/brief.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import type { ControlCorpus } from "../src/truth/controls.ts";
+import {
+  type Brief,
+  controllerValidatedFinding,
+  controllerValidatedFindings,
+} from "../src/correctness-bundle/brief.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

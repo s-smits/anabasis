@@ -27,7 +27,7 @@ import { fingerprintSlug } from "#src/claim/fingerprint.ts";
 import { bundleSnapshotIdOf } from "#src/claim/bundle-snapshot.ts";
 import { campaignDir as campaignDirOf, defaultProductDir } from "#src/meta/campaign-root.ts";
 import { caseVerdictDefect, classifyCaseOutcome, outcomeTally } from "#src/claim/case-record.ts";
-import { readRecordedBatteryRecord } from "#src/truth/battery-record.ts";
+import { readRecordedBatteryRecord } from "#src/correctness-bundle/battery-record.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import { savedProductFacts } from "./harness-saved-versions.mjs";
 import { checkpointFacts } from "./harness-version-shape.mjs";

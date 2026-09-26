@@ -1,13 +1,13 @@
 import type { NonResultKind } from "./record-events.ts";
-import type { BatteryRecord } from "../truth/battery-record.ts";
+import type { BatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { runtimeIdentityCensus, scoredCases } from "./battery-facts.ts";
 import type { ClaimEvidence, RunStatusEvidence, ScoredCase, StalenessEvidence } from "./claim-evidence.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
 import {
   checkReceiptSet,
   controlReceiptInvalidFinding,
   totalsMatchRecorded,
-} from "../truth/control-receipts.ts";
+} from "../correctness-bundle/control-receipts.ts";
 import { isString } from "../meta/json-shape.ts";
 
 interface BatteryEvidenceCase {

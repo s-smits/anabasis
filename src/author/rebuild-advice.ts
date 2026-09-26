@@ -49,7 +49,7 @@ import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { BRIEF_FILE, GENERATED_TOOLS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
-import { HARNESS_CONFIG_FILE } from "../truth/harness-config.ts";
+import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import { type BundleFile, isBundleFile } from "./feedback-routing.ts";
 import {
   type BatteryCondition,

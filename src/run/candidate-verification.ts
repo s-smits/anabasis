@@ -35,7 +35,7 @@ import type { HarnessMeasureResult } from "./harness-measure.ts";
 import { recordMeasurement } from "./claim-stages.ts";
 import type { NextMove } from "./next-move.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import type { BundleSnapshotFact } from "../truth/battery-record.ts";
+import type { BundleSnapshotFact } from "../correctness-bundle/battery-record.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";

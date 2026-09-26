@@ -39,8 +39,8 @@ import { MATCHING_ACCEPTS, MATCHING_REJECTS, padToCalibrationFloor } from "./hel
 import { double, required, scriptedSession, toolDouble } from "./helpers/doubles.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
+import { VerifierExecutionNonResult } from "../src/correctness-bundle/verifier-nonresult.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import type { VerifierHostHandle } from "../src/verify/verifier-port.ts";
 import { makeCensusGate } from "../src/run/census-gate.ts";

@@ -41,7 +41,11 @@ import { isControllerBatteryRunId } from "#src/run/controller-battery-record-pol
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
 import { type LoopTerminalCode, loopTerminalCode } from "#src/run/loop-terminal.ts";
-import { DEFAULT_HARNESS_SETTINGS, HarnessConfigError, harnessSettings } from "#src/truth/harness-config.ts";
+import {
+  DEFAULT_HARNESS_SETTINGS,
+  HarnessConfigError,
+  harnessSettings,
+} from "#src/correctness-bundle/harness-config.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { findRun } from "#tools/runs/discover.ts";
 import {

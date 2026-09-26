@@ -5,19 +5,19 @@ import { sha256, sha256OfFile } from "../src/meta/digest.ts";
 import { canonicalJson } from "../src/meta/stable-json.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
-import { loadCorrectnessModel } from "../src/truth/contracts.ts";
+import { loadCorrectnessModel } from "../src/correctness-bundle/contracts.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
 import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
-import { externalChecksOf, type BriefTruthCheck } from "../src/truth/brief.ts";
-import { runControls } from "../src/truth/run-controls.ts";
-import { discriminationDisclosure } from "../src/truth/discrimination-author-detail.ts";
+import { externalChecksOf, type BriefTruthCheck } from "../src/correctness-bundle/brief.ts";
+import { runControls } from "../src/correctness-bundle/run-controls.ts";
+import { discriminationDisclosure } from "../src/correctness-bundle/discrimination-author-detail.ts";
 import {
   type SettledControl,
   TOOL_REFUSED_CODE,
   checkCostRows,
   unexecutedGroundingFindings,
-} from "../src/truth/grounding-coverage.ts";
+} from "../src/correctness-bundle/grounding-coverage.ts";
 
 const ROOT = mkdtempSync(join(import.meta.dir, ".ana-scratch-check-tool-boundary-"));
 const lifetime = createVerifierLifetime({ root: join(ROOT, "receipts") });

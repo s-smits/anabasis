@@ -15,7 +15,7 @@
  * commit for a worker crash it did not cause strikes the same tree twice.
  */
 import { POLICY } from "../critic/policy.ts";
-import { type ContractFinding, controllerValidatedFinding } from "../truth/brief.ts";
+import { type ContractFinding, controllerValidatedFinding } from "../correctness-bundle/brief.ts";
 import { createValidationMemory } from "./validation-pipeline.ts";
 
 /** The session memory a resumed campaign restores from its recorded iterations. */

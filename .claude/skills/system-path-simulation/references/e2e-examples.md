@@ -385,7 +385,7 @@ implies — here a real firmware toolchain, not a fixture:
 | the instruction's words | the acquisition clause in the Builder start prompt | yes |
 | the submitted declaration | `correctness-model/engines.json` in the candidate tree | yes |
 | the rebuild | `parseCandidateEngineRegistry`, `src/verify/candidate-engine-registry.ts` | **no** |
-| admission | `admitEngine`, `src/truth/engine-admission.ts` | no |
+| admission | `admitEngine`, `src/correctness-bundle/engine-admission.ts` | no |
 | the OS wall | `prepareVerifierReads` / `seatbeltProfile`, `src/verify/darwin-seatbelt.ts` | **no** |
 | the evidence record | the case record writer | no |
 

@@ -9,7 +9,7 @@ import {
   HARNESS_CONFIG_FILE,
   harnessConfigIssue,
   harnessSettings,
-} from "../src/truth/harness-config.ts";
+} from "../src/correctness-bundle/harness-config.ts";
 
 const STARTER = join(import.meta.dir, "../starters/pi-built-harness");
 const roots: string[] = [];

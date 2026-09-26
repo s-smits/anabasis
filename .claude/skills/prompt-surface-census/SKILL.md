@@ -54,7 +54,7 @@ Start with counts, audience summary, conditional index, known composers and mode
 tool descriptions, `Not claimed by the vocabulary`, and the JSON's largest holder groups.
 Classify related holders together as model-visible, operator-only, structural syntax, diagnostic
 output or uncertain. Audience labels are longest-prefix path guesses, where a key matches a
-directory or a file stem (`src/truth/judge` claims `judge.ts` and `judge-census.ts`); verify
+directory or a file stem (`src/review/judge` claims `judge.ts` and `judge-census.ts`); verify
 important claims at the model request, tool result, hook or receipt boundary.
 
 Tune from observed rows:

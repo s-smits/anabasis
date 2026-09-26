@@ -7,7 +7,7 @@
  * to actually run over a bundle on disk wants `solvability-specimen.ts` instead.
  */
 import type { SolvabilityFailure } from "../../src/claim/readiness.ts";
-import type { BuildDeps } from "../../src/truth/build-deps.ts";
+import type { BuildDeps } from "../../src/correctness-bundle/build-deps.ts";
 import { double } from "./doubles.ts";
 
 export interface CaseSpec {

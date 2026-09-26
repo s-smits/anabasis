@@ -12,12 +12,12 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { OPUS_SANDBOX, TRUSS_CRASH, blockingRow } from "./helpers/builder-campaign.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
 import { makeCensusGate } from "../src/run/census-gate.ts";
 import type { VerifierExecutionEvidence } from "../src/verify/verifier-port.ts";
 import type { BuiltHarness, CampaignFeedback } from "../src/author/campaign-types.ts";
-import { TOOL_REFUSED_CODE } from "../src/truth/grounding-coverage.ts";
-import { VerifierExecutionNonResult } from "../src/truth/verifier-nonresult.ts";
+import { TOOL_REFUSED_CODE } from "../src/correctness-bundle/grounding-coverage.ts";
+import { VerifierExecutionNonResult } from "../src/correctness-bundle/verifier-nonresult.ts";
 
 afterAll(cleanupScratch);
 

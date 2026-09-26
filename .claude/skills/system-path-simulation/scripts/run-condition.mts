@@ -35,7 +35,7 @@ import { runtimeProcess } from "#src/meta/process.ts";
 import type { RunObserver } from "#src/observe/run-observer.ts";
 import type { HostSession } from "#src/backends/pi-session.ts";
 import type { SessionProfileEvidence } from "#src/backends/session-isolation.ts";
-import type { Solver } from "#src/truth/solve.ts";
+import type { Solver } from "#src/correctness-bundle/solve.ts";
 import {
   HOST_SOLVE_ISOLATION_FIXTURE,
   HOST_SOLVE_ISOLATION_PROFILE_ID,

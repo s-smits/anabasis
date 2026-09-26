@@ -4,8 +4,8 @@
  * Re-grade one recorded battery's accepted artifacts through THIS tree's verifier and diff the
  * verdicts against the recorded ones. The candidate bytes are fixed: the recorded bundle snapshot
  * (brief, evaluator, tasks, tool tree) and each case's recorded final submission. The source tree
- * is the checkout this command runs in — its `src/truth` and `src/verify` decide tool attestation,
- * walls and tool resolution — so comparing two trees is two invocations and a diff of their
+ * is the checkout this command runs in — its `src/correctness-bundle` and `src/verify` decide tool
+ * attestation, walls and tool resolution — so comparing two trees is two invocations and a diff of their
  * reports. No model is called: each case runs `gradeCase`, the same entry the measured battery
  * used. The report is one JSON document on stdout, and also in the `--out` file when one is named;
  * it names the commit of the tree that graded it, and each replayed row carries the check rows its
@@ -43,17 +43,17 @@ import {
   type BundleSnapshotFact,
   type CaseRecord,
   readRecordedBatteryRecord,
-} from "../../src/truth/battery-record.ts";
-import { type Brief, externalChecksOf } from "../../src/truth/brief.ts";
-import { validateBrief } from "../../src/truth/brief-validator.ts";
-import { loadCorrectnessModel } from "../../src/truth/contracts.ts";
-import { type GradeCaseDeps, gradeCase } from "../../src/truth/solve-case.ts";
-import { evaluateCheckProgram } from "../../src/truth/predicate.ts";
-import { applicableCheckIds } from "../../src/truth/run-controls.ts";
-import { commitPublicTask } from "../../src/truth/task-split.ts";
-import { type BuildTask, type TaskBattery, validateTasks } from "../../src/truth/tasks.ts";
-import { blockingFailedCheckIds, publicTaskVerdict } from "../../src/truth/verdict-binding.ts";
-import { resolveVerifier } from "../../src/truth/verification-registry.ts";
+} from "../../src/correctness-bundle/battery-record.ts";
+import { type Brief, externalChecksOf } from "../../src/correctness-bundle/brief.ts";
+import { validateBrief } from "../../src/correctness-bundle/brief-validator.ts";
+import { loadCorrectnessModel } from "../../src/correctness-bundle/contracts.ts";
+import { type GradeCaseDeps, gradeCase } from "../../src/correctness-bundle/solve-case.ts";
+import { evaluateCheckProgram } from "../../src/correctness-bundle/predicate.ts";
+import { applicableCheckIds } from "../../src/correctness-bundle/run-controls.ts";
+import { commitPublicTask } from "../../src/correctness-bundle/task-split.ts";
+import { type BuildTask, type TaskBattery, validateTasks } from "../../src/correctness-bundle/tasks.ts";
+import { blockingFailedCheckIds, publicTaskVerdict } from "../../src/correctness-bundle/verdict-binding.ts";
+import { resolveVerifier } from "../../src/correctness-bundle/verification-registry.ts";
 import type { CheckRun, CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
 import { SOURCE_IDENTITY } from "../../src/run/source-identity.ts";
 import { writeJsonFile } from "../../src/meta/completed-json.ts";

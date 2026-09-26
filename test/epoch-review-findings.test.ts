@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { double } from "./helpers/doubles.ts";
-import type { Brief } from "../src/truth/brief.ts";
+import type { Brief } from "../src/correctness-bundle/brief.ts";
 import {
   BEAMS,
   CITATIONS,

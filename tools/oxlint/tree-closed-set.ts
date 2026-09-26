@@ -15,7 +15,7 @@
  * produced by the record head (0.76; 18 removed, 1 given a producer), six of the sixteen the
  * members of two difficulty vocabularies that left together. A simplify commit itself removed 3
  * of 20 per visit and 3 of the 8 sites in a file it touched, all three members of one `kind`
- * vocabulary in src/truth/brief.ts that one commit took at once; the base removal rate of a
+ * vocabulary in src/correctness-bundle/brief.ts that one commit took at once; the base removal rate of a
  * produced member in a touched file is 0.05 for a union and 0.08 for a property. The scan is
  * admitted on the eventual rate and on what it found standing at 25fb05f74: three
  * `SessionBuildStage` members no file produces, a lineage reason AGENTS.md rule 7 still names and

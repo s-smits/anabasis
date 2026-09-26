@@ -12,9 +12,9 @@ import { describe, expect, it } from "bun:test";
 import { Claim } from "../src/claim/claim.ts";
 import type { ClaimEvidence, ScoredCase } from "../src/claim/claim-evidence.ts";
 import type { JudgeEvidence } from "../src/claim/judge.ts";
-import { NEVER_ATTEMPTED_PREFIX } from "../src/truth/battery-provider-stop.ts";
-import { batteryTerminalReason } from "../src/truth/battery-record.ts";
-import { NO_EXTERNAL_EXECUTION } from "../src/truth/grounding.ts";
+import { NEVER_ATTEMPTED_PREFIX } from "../src/correctness-bundle/battery-provider-stop.ts";
+import { batteryTerminalReason } from "../src/correctness-bundle/battery-record.ts";
+import { NO_EXTERNAL_EXECUTION } from "../src/correctness-bundle/grounding.ts";
 import {
   AUTHORED_C1,
   AUTHORED_C2,

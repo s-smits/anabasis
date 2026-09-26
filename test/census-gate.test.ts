@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/
 import { join } from "../src/meta/path.ts";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
 import { makeCensusGate } from "../src/run/census-gate.ts";
-import type { ContractFinding } from "../src/truth/brief.ts";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
+import type { ContractFinding } from "../src/correctness-bundle/brief.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
 import { double } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

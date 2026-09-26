@@ -1,9 +1,9 @@
 /** The controller contracts that apply to a fresh build alone, kept together so a continuation
  *  round cannot be measured against a rule written for a first one. */
 import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { Brief, ContractFinding } from "../truth/brief.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
-import type { TaskValidationContext } from "../truth/tasks.ts";
+import type { Brief, ContractFinding } from "../correctness-bundle/brief.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
+import type { TaskValidationContext } from "../correctness-bundle/tasks.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 export function freshTaskValidationContext(exactTasks?: number): TaskValidationContext {

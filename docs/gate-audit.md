@@ -2,7 +2,7 @@
 
 This file records one pass over every component that can refuse a Builder's candidate or hold a
 measured battery back from a claim: the submit and preview gate (`src/gate/validation-pipeline.ts`
-and what it calls), the battery pre-case in `src/truth/verification-runner.ts`, and claim
+and what it calls), the battery pre-case in `src/correctness-bundle/verification-runner.ts`, and claim
 readiness (`src/claim/readiness.ts`, `src/claim/claim.ts`). Each component was put to one question:
 are we at least 98% sure it refuses something that is actually wrong? The operator set that bar so
 that a gate the evidence cannot defend gives the Builder room rather than a refusal.
@@ -24,9 +24,9 @@ this pass took out or archived.
 This file is the index of what survived. Each entry below names a refusal by the kebab id its
 ledger card uses, says what it refuses and why that is at least 98% likely to be a real defect, and
 where it has moved to a readout or advice, says what the Builder or the reviewer now reads instead.
-The rewritten decisions live with the code that applies them: R1 in `src/truth/tool-runs.ts`, R2
+The rewritten decisions live with the code that applies them: R1 in `src/correctness-bundle/tool-runs.ts`, R2
 beside the control receipts the census writes and the claim reads, R3 in
-`src/truth/rule-decisions.ts`, and R4 in `heldCountsAgainstAuthor` (`src/run/full-run-round.ts`).
+`src/correctness-bundle/rule-decisions.ts`, and R4 in `heldCountsAgainstAuthor` (`src/run/full-run-round.ts`).
 `test/gate-decisions.test.ts` holds STARTER.md's Gates section to the source: every code it names is
 one some source file still emits.
 
@@ -43,14 +43,14 @@ actually wrong with it, and the refusal names what to repair.
 ### bundle-shape
 
 Refuses a brief, task or control row that does not parse into its declared shape
-(`shape-mismatch`, `fieldFinding` in `src/truth/brief.ts`). Nothing downstream can read a malformed
+(`shape-mismatch`, `fieldFinding` in `src/correctness-bundle/brief.ts`). Nothing downstream can read a malformed
 row, so the refusal names the field instead of letting a later stage crash on it.
 
 ### task-shape
 
 Refuses a `tasks.json` that is not a bare array, a task id that is duplicated or unsafe as a
 directory name, a missing hidden operand, a declared public path absent from every applicable task,
-and a task no check applies to (`tasks-shape`, `tasks-no-applicable-checks`; `src/truth/tasks.ts`,
+and a task no check applies to (`tasks-shape`, `tasks-no-applicable-checks`; `src/correctness-bundle/tasks.ts`,
 `src/author/candidate-check.ts`). Every later stage indexes by these, so a violation fails the
 round at the first case rather than here. A check scoped to families the battery lacks
 (`tasks-check-family-unbound`) no longer refuses, since 2026-09-26: a task probe that keeps
@@ -60,7 +60,7 @@ run this battery, which the claim's `firedByCheck` records as 0.
 ### task-count
 
 Refuses a battery whose size differs from the one the run asked for (`tasks-exact-census`,
-`src/truth/tasks.ts`). Size is a measurement condition code owns, and it is refused rather than
+`src/correctness-bundle/tasks.ts`). Size is a measurement condition code owns, and it is refused rather than
 clamped because a silently changed size is a silently changed condition.
 
 ### harness-config
@@ -73,20 +73,20 @@ carry the artifact, otherwise fails as a non-result in a paid battery.
 ### tools-spec-structure
 
 Refuses tool rows with bad keys, kinds or duplicate names, starter tools left in, and leftover
-data-reader state (`tools-data-reader-state` and the structural codes of `src/truth/tools-spec.ts`).
+data-reader state (`tools-data-reader-state` and the structural codes of `src/correctness-bundle/tools-spec.ts`).
 Conformance registers exactly this roster, so it has to parse into one stable worker contract.
 
 ### accept-schema
 
 Refuses an accept control the public artifact schema cannot compile, or one off the declared
 top-level schema (`controls-accept-public-schema-inconsistent`, `controls-accept-off-schema`;
-`src/author/fresh-candidate-contract.ts`, `src/truth/controls.ts`). That is a contradiction inside
+`src/author/fresh-candidate-contract.ts`, `src/correctness-bundle/controls.ts`). That is a contradiction inside
 the Builder's own bytes, and the solver is told the same schema.
 
 ### expected-check-inapplicable
 
 Refuses a reject control whose named check does not apply to its task's family
-(`controls-expected-check-inapplicable`, `src/truth/controls.ts`). Such a reject can never fail on
+(`controls-expected-check-inapplicable`, `src/correctness-bundle/controls.ts`). Such a reject can never fail on
 that check, so it calibrates nothing.
 
 ### tool-identity
@@ -111,7 +111,7 @@ feeds prediction scoring and the reviewer's orientation, which read only its one
 
 Refuses a candidate whose reference solve is rejected by its own checks, with
 `SOLVABILITY_CENSUS_BLOCKED` and `SOLVABILITY_FAILURE_CONCENTRATION` beside it
-(`src/truth/solvability.ts`, `src/run/solvability-gate.ts`). A reference the checks reject shows,
+(`src/correctness-bundle/solvability.ts`, `src/run/solvability-gate.ts`). A reference the checks reject shows,
 before any paid solve, that no pass is reachable through the declared path. This is the answer-key
 check the benchmark literature says to keep.
 
@@ -128,13 +128,13 @@ that writes `""` there is graded by the checks.
 ### accept-control-rejected
 
 Refuses a candidate, and at claim time a battery, when a known-valid accept control fails a check
-(`DISCRIMINATION_ACCEPT_REJECTED`; `src/truth/run-controls.ts`, `src/truth/control-receipts.ts`).
+(`DISCRIMINATION_ACCEPT_REJECTED`; `src/correctness-bundle/run-controls.ts`, `src/correctness-bundle/control-receipts.ts`).
 When the checks reject an answer the Builder vouches for, no measured pass can be read through them.
 
 ### controls-no-verdict
 
 Refuses a control whose check threw or reached no verdict because its tool runs timed out or
-crashed (`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/truth/run-controls.ts`). It
+crashed (`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/correctness-bundle/run-controls.ts`). It
 witnesses nothing about the checks. A tool the host refused twice, for `sandbox` or
 `verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
 which `tool-environment` below settles as the environment's.
@@ -142,7 +142,7 @@ which `tool-environment` below settles as the environment's.
 ### external-result-unbound
 
 Refuses a check that returns while its tool runs are still running (`EXTERNAL_RESULT_UNBOUND`,
-`src/truth/run-controls.ts`). Its verdict grounds on nothing it waited for.
+`src/correctness-bundle/run-controls.ts`). Its verdict grounds on nothing it waited for.
 
 ### tool-environment
 
@@ -164,7 +164,7 @@ was an evaluator row; both now carry the `environment` owner.
 
 Refuses a verifier condition that drifted, a worker whose contract differs across tasks, and a
 generated toolset that did not terminate (`verifier-condition-drift`, `task-worker-binding-drift`,
-`generated-toolset-termination`; `src/run/census-gate.ts`, `src/truth/probe-tool-surface.ts`).
+`generated-toolset-termination`; `src/run/census-gate.ts`, `src/correctness-bundle/probe-tool-surface.ts`).
 Measurement refuses the same, so the gate refuses it first. Verifier drift is the host's and
 refuses as `environment`: a check of the same bytes runs again, and a submit that meets it ends the
 session as `environment-blocked`. The other two are the candidate's.
@@ -272,7 +272,7 @@ keeps a copy of its own.
 ### grounded-verdict (R1)
 
 Replaces `f2-witness-relay`, `census-grounding-owed` and the per-case half of `measure-grounding`
-(`src/truth/tool-runs.ts`). A pass is ungrounded when an applicable check that declares required
+(`src/correctness-bundle/tool-runs.ts`). A pass is ungrounded when an applicable check that declares required
 tools, authored or external, has no completed run of one of them on that same subject. A fail is
 never refused for a missing run: a skipped run could only have withheld a pass, and refusing one
 mislabelled correct prechecks and every census reject that passed its check. One code,
@@ -298,7 +298,7 @@ clauses are deleted as the same fact read a second time.
 
 ### declared-means-graded (R3)
 
-Replaces `brief-artifact-root-unread` and `published-rules` (`src/truth/rule-decisions.ts`),
+Replaces `brief-artifact-root-unread` and `published-rules` (`src/correctness-bundle/rule-decisions.ts`),
 restored as two refusals in `validateBrief`, so a fresh build and a continuation meet them alike.
 An artifact root no check lists in its `artifactPaths`, with no check reading `$`, is refused
 (`brief-artifact-root-unread`), and so is a check citing an undeclared rule row or only private

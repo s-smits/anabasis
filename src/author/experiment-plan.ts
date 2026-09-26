@@ -39,11 +39,15 @@ import { join } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { effortPhrase, type SolveEffort } from "../builder/solver-trace-text.ts";
-import { type ContractFinding, controllerValidatedFinding, requiredToolsOf } from "../truth/brief.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
+import {
+  type ContractFinding,
+  controllerValidatedFinding,
+  requiredToolsOf,
+} from "../correctness-bundle/brief.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
-import type { BuildTask } from "../truth/tasks.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { loadRecordedTasks } from "../run/run-driver.ts";
 import { aimCounts } from "../claim/battery-difficulty.ts";
 import { POLICY } from "../critic/policy.ts";

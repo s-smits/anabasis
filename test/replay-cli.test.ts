@@ -22,7 +22,7 @@ import {
 } from "./helpers/matching-fixture.ts";
 import { createSubmissionAuthority } from "../src/solve/final-submission.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
-import { commitPublicTask } from "../src/truth/task-split.ts";
+import { commitPublicTask } from "../src/correctness-bundle/task-split.ts";
 import { capturedJsonParse } from "../src/meta/json-runtime.ts";
 
 /** The battery selector most cases replay. */

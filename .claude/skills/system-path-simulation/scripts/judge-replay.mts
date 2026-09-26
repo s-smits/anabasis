@@ -24,17 +24,20 @@
  */
 import { mkdirSync, writeFileSync } from "#src/meta/filesystem.ts";
 import { join, relative } from "#src/meta/path.ts";
-import { CASE_ARTIFACT_FILE, CASE_JUDGE_FILE } from "#src/truth/battery-record.ts";
+import { CASE_ARTIFACT_FILE, CASE_JUDGE_FILE } from "#src/correctness-bundle/battery-record.ts";
 import { loadRepoEnv } from "#src/backends/env.ts";
 import { resolveSlots } from "#src/backends/resolve.ts";
 import { judgeSessionFor } from "#src/review/review-session.ts";
-import { judgeSubject } from "#src/truth/judge.ts";
-import { judgeBatterySubject } from "#src/truth/judge-phase.ts";
-import { judgePublicTaskOf, readValidatedBrief } from "#src/truth/public-resources.ts";
+import { judgeSubject } from "#src/review/judge.ts";
+import { judgeBatterySubject } from "#src/review/judge-phase.ts";
+import { judgePublicTaskOf, readValidatedBrief } from "#src/correctness-bundle/public-resources.ts";
 import { campaignDir } from "#src/meta/campaign-root.ts";
 import { type JsonObject, isBoolean, isRecord } from "#src/meta/json-shape.ts";
-import { JUDGE_PUBLIC_CONTEXT_FILE, JUDGE_PUBLIC_CONTEXT_SCHEMA } from "#src/truth/declared-projection.ts";
-import type { JudgePublicDomain } from "#src/truth/judge-contract.ts";
+import {
+  JUDGE_PUBLIC_CONTEXT_FILE,
+  JUDGE_PUBLIC_CONTEXT_SCHEMA,
+} from "#src/correctness-bundle/declared-projection.ts";
+import type { JudgePublicDomain } from "#src/review/judge-contract.ts";
 import { type ContestedCase, contestedCases, isVetoed } from "#src/analyse/judge-contested.ts";
 import { type CommandArgs, type ExitWith, runCommand } from "#skills/main/cli.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";

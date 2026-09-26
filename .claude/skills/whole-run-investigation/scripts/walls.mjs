@@ -25,7 +25,11 @@ import { basename, dirname, join } from "#src/meta/path.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import { measuredProductDir } from "#src/run/product-versions.ts";
 import { classifyCaseOutcome, readCaseRecord } from "#src/claim/case-record.ts";
-import { DEFAULT_HARNESS_SETTINGS, HARNESS_CONFIG_FILE, harnessSettings } from "#src/truth/harness-config.ts";
+import {
+  DEFAULT_HARNESS_SETTINGS,
+  HARNESS_CONFIG_FILE,
+  harnessSettings,
+} from "#src/correctness-bundle/harness-config.ts";
 import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 

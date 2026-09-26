@@ -22,14 +22,14 @@ import type {
   PriorEvidence,
 } from "../author/campaign-types.ts";
 import { makeAgentToolsProbes } from "../author/agent-tools-session.ts";
-import type { ProbeControlsOptions } from "../truth/probes.ts";
+import type { ProbeControlsOptions } from "../correctness-bundle/probes.ts";
 import { loadRepoEnv } from "../backends/env.ts";
 import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { PreparedUserContext } from "../builder/user-context.ts";
 import type { HarnessAuthoring } from "../critic/types.ts";
 import { type RunObserver, createRunObserver } from "../observe/run-observer.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
-import { makeProbeControls } from "../truth/probes.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
+import { makeProbeControls } from "../correctness-bundle/probes.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import type { AuthoringAdvice, ReviewAuthoring } from "./authoring-review.ts";

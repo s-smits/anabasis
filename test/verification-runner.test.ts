@@ -16,9 +16,9 @@ import { createBundleSnapshot } from "../src/claim/bundle-snapshot.ts";
 import { CONFORMANCE_PROBE_POLICY, type ConformanceEvidence } from "../src/claim/conformance-evidence.ts";
 import type { BackendStartupEvidence } from "../src/run/model-preflight.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { loadBuiltControllerInterface } from "../src/truth/contracts.ts";
-import { type Solver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import { loadBuiltControllerInterface } from "../src/correctness-bundle/contracts.ts";
+import { type Solver, withSolverBuiltStarterFactory } from "../src/correctness-bundle/solve.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import {
   BRIEF,

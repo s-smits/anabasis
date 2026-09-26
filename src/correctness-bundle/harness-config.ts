@@ -3,8 +3,8 @@
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
  *  The Builder is told the file exists, not what it holds, and the host maximums live only here
- *  under `src/truth/`, which the Builder cannot read. Each maximum is ten times its default, which
- *  leaves a harness room to ask for what its domain needs without being able to declare a wall
+ *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its default,
+ * which  leaves a harness room to ask for what its domain needs without being able to declare a wall
  *  that never cuts. */
 
 import { existsSync, readFileSync } from "../meta/filesystem.ts";

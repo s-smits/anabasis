@@ -51,12 +51,12 @@ import type { RunObserver } from "../observe/run-observer.ts";
 import { readDiagnoses } from "../review/diagnosis-reader.ts";
 import { runEpochReview } from "../review/epoch-reviewer.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
-import { readValidatedBrief } from "../truth/public-resources.ts";
+import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { type ExperimentSubmission, parseExperimentSubmission } from "../author/experiment-plan.ts";
-import { readRecordedBatteryRecord } from "../truth/battery-record.ts";
+import { readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
 
 export interface AnalyseStepResult {
   judges: JudgeReviewsResult;

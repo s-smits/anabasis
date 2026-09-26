@@ -47,7 +47,7 @@ import {
   toolTreeSearchDirs,
 } from "../verify/solve-command-isolation.ts";
 import type { SolveIsolationPolicy } from "../verify/solve-sandbox.ts";
-import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../truth/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, type HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { BUILT_SHELL_RULES } from "./dcg-rules.ts";
 import { ARTIFACT_JSON_MAX_BYTES } from "./draft-store.ts";
 import { FILE_MAP_MAX_ENTRIES, pathProblem } from "./file-map.ts";

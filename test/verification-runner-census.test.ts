@@ -10,9 +10,9 @@ import { join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import { judgeDecision } from "../src/claim/judge.ts";
 import { verifyRunDir } from "../src/claim/evidence-log.ts";
-import type { Judge, JudgeAttempt } from "../src/truth/judge-contract.ts";
-import type { Solver } from "../src/truth/solve.ts";
-import type { VerificationRunnerOptions } from "../src/truth/verification-runner.ts";
+import type { Judge, JudgeAttempt } from "../src/review/judge-contract.ts";
+import type { Solver } from "../src/correctness-bundle/solve.ts";
+import type { VerificationRunnerOptions } from "../src/correctness-bundle/verification-runner.ts";
 import { double, required } from "./helpers/doubles.ts";
 import {
   ACCEPTS,

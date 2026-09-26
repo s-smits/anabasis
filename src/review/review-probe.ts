@@ -40,15 +40,15 @@
 import { readFileSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import { type Brief, externalChecksOf } from "../truth/brief.ts";
-import { validateBrief } from "../truth/brief-validator.ts";
-import type { ControlCorpus } from "../truth/controls.ts";
-import { type EvaluatorFn, loadCorrectnessModel } from "../truth/contracts.ts";
-import { evaluateCheckProgram } from "../truth/predicate.ts";
-import { runControls } from "../truth/run-controls.ts";
-import type { BuildTask } from "../truth/tasks.ts";
-import type { ControlReceipt, ControlReceiptOutcome } from "../truth/battery-record.ts";
-import { resolveVerifier } from "../truth/verification-registry.ts";
+import { type Brief, externalChecksOf } from "../correctness-bundle/brief.ts";
+import { validateBrief } from "../correctness-bundle/brief-validator.ts";
+import type { ControlCorpus } from "../correctness-bundle/controls.ts";
+import { type EvaluatorFn, loadCorrectnessModel } from "../correctness-bundle/contracts.ts";
+import { evaluateCheckProgram } from "../correctness-bundle/predicate.ts";
+import { runControls } from "../correctness-bundle/run-controls.ts";
+import type { BuildTask } from "../correctness-bundle/tasks.ts";
+import type { ControlReceipt, ControlReceiptOutcome } from "../correctness-bundle/battery-record.ts";
+import { resolveVerifier } from "../correctness-bundle/verification-registry.ts";
 import { loadRecordedTasks } from "../run/run-driver.ts";
 import {
   type VerifierLifetime,

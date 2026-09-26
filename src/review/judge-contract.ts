@@ -2,7 +2,7 @@
  * defines the shared types so writers and readers use the same context and evidence fields. */
 import type { RunCondition } from "../claim/case-record.ts";
 import type { NonResultKind } from "../claim/record-events.ts";
-import type { PublicBriefResource } from "./public-resources.ts";
+import type { PublicBriefResource } from "../correctness-bundle/public-resources.ts";
 
 export interface JudgePublicTask {
   taskId: string;

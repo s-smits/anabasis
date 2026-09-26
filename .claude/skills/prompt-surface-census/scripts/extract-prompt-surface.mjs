@@ -93,8 +93,8 @@ const DEFAULT_AUDIENCES = {
   "src/analyse": "judge review and feedback routing",
   "src/review": "reviewers (Judge, diagnosis reader, Epoch Reviewer)",
   "src/gate": "builder (check and submit results)",
-  "src/truth/judge": "judge",
-  "src/truth": "shared contracts",
+  "src/review/judge": "judge",
+  "src/correctness-bundle": "shared contracts",
   "src/backends": "transport (all audiences)",
   "src/observe": "telemetry (verify: may reach no model)",
   "src/run": "orchestration",
@@ -315,8 +315,8 @@ const isDenied = (name) => {
 };
 
 const AUDIENCES = config.audiences ? { ...DEFAULT_AUDIENCES, ...config.audiences } : DEFAULT_AUDIENCES;
-/** Longest matching prefix wins, so `src/truth/judge` beats `src/truth`. A prefix matches a
- *  directory or a file stem, so `src/truth/judge` also claims `judge.ts` and `judge-census.ts`. */
+/** Longest matching prefix wins, so `src/review/judge` beats `src/correctness-bundle`. A prefix matches a
+ *  directory or a file stem, so `src/review/judge` also claims `judge.ts` and `judge-census.ts`. */
 function audienceOf(relFile) {
   let best = { prefix: "", name: "unclassified" };
   for (const [prefix, name] of Object.entries(AUDIENCES)) {

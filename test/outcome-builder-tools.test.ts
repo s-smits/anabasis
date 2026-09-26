@@ -14,7 +14,7 @@ import { join } from "../src/meta/path.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { type BuilderSubmitAttempt, semanticFindingsIdentity } from "../src/author/builder-execution.ts";
 import { builderExecutionEvidenceWriter } from "../src/author/builder-execution-writer.ts";
-import { controllerValidatedFinding } from "../src/truth/brief.ts";
+import { controllerValidatedFinding } from "../src/correctness-bundle/brief.ts";
 import { builderToolFindings, builderToolsReport } from "../tools/outcome/builder-tools.ts";
 import { scorecardFromReports } from "../tools/outcome/scorecard.ts";
 import {

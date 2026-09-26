@@ -37,7 +37,9 @@ describe("controller primitive capture", () => {
     );
 
     const repoRoot = resolve(import.meta.dirname, "..");
-    const solvabilityUrl = Bun.pathToFileURL(join(repoRoot, "src/truth/reference-solve.ts")).href;
+    const solvabilityUrl = Bun.pathToFileURL(
+      join(repoRoot, "src/correctness-bundle/reference-solve.ts"),
+    ).href;
     const subprocessUrl = Bun.pathToFileURL(join(repoRoot, "src/meta/subprocess.ts")).href;
     const lifetimeUrl = Bun.pathToFileURL(join(repoRoot, "src/verify/verifier-lifetime.ts")).href;
     const script = `

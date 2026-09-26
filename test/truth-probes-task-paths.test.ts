@@ -5,9 +5,9 @@
  * code and must pass. Both halves run the real worker over a written slug.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { projectFindingForAuthor } from "../src/truth/brief.ts";
-import type { BuildTask } from "../src/truth/tasks.ts";
-import type { ToolsSpec } from "../src/truth/tools-spec.ts";
+import { projectFindingForAuthor } from "../src/correctness-bundle/brief.ts";
+import type { BuildTask } from "../src/correctness-bundle/tasks.ts";
+import type { ToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { TASK, probeSlugs } from "./helpers/probe-slug.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 

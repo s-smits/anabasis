@@ -15,7 +15,7 @@ import { join } from "../../src/meta/path.ts";
 import { scratchDir } from "./scratch.ts";
 import { fingerprintSlug } from "../../src/claim/fingerprint.ts";
 import { makeAgentToolsProbes } from "../../src/author/agent-tools-session.ts";
-import { makeProbeControls } from "../../src/truth/probes.ts";
+import { makeProbeControls } from "../../src/correctness-bundle/probes.ts";
 import { makeSolvabilityCensusGate } from "../../src/run/solvability-gate.ts";
 import { publishProductVersion } from "../../src/run/product-versions.ts";
 import { makeCensusGate } from "../../src/run/census-gate.ts";

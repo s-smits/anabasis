@@ -26,7 +26,7 @@ import { required, scriptedSession } from "./helpers/doubles.ts";
 import { MATCHING_OPERATING_GUIDE } from "./helpers/matching-fixture.ts";
 import { POLICY } from "../src/critic/policy.ts";
 import { hashJsonValue } from "../src/meta/stable-json.ts";
-import { generatedExecutionFinding } from "../src/truth/brief.ts";
+import { generatedExecutionFinding } from "../src/correctness-bundle/brief.ts";
 import { runBuilderCampaign } from "../src/run/builder-campaign.ts";
 import type { BuilderCampaignDeps } from "../src/run/builder-campaign.ts";
 import { submitProjection } from "../src/author/builder-execution.ts";

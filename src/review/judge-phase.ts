@@ -12,15 +12,26 @@ import { hashJsonValue, requireJsonValue } from "../meta/stable-json.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { isBoolean } from "../meta/json-shape.ts";
 import { TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
-import { CASE_JUDGE_FILE, SUBMIT_MAX_ATTEMPTS } from "./battery-record.ts";
-import { type Brief, throwIfInvalid } from "./brief.ts";
+import { CASE_JUDGE_FILE, SUBMIT_MAX_ATTEMPTS } from "../correctness-bundle/battery-record.ts";
+import { type Brief, throwIfInvalid } from "../correctness-bundle/brief.ts";
 import type { JudgePublicDomain } from "./judge-contract.ts";
 import { JudgeCensus, type JudgeCensusSubject } from "./judge-census.ts";
 import type { JudgeObservation, JudgeSession } from "./judge.ts";
-import { briefPublicResources, judgePublicDomainOf, judgePublicTaskOf } from "./public-resources.ts";
-import { sanitizeForEvaluator } from "./sanitize.ts";
-import { type ToolsSpec, expectedBuiltToolNames, validateToolsSpec } from "./tools-spec.ts";
-import { JUDGE_PUBLIC_CONTEXT_FILE, JUDGE_PUBLIC_CONTEXT_SCHEMA } from "./declared-projection.ts";
+import {
+  briefPublicResources,
+  judgePublicDomainOf,
+  judgePublicTaskOf,
+} from "../correctness-bundle/public-resources.ts";
+import { sanitizeForEvaluator } from "../correctness-bundle/sanitize.ts";
+import {
+  type ToolsSpec,
+  expectedBuiltToolNames,
+  validateToolsSpec,
+} from "../correctness-bundle/tools-spec.ts";
+import {
+  JUDGE_PUBLIC_CONTEXT_FILE,
+  JUDGE_PUBLIC_CONTEXT_SCHEMA,
+} from "../correctness-bundle/declared-projection.ts";
 
 /** The Judge's public context card for this run, and the one builder of the domain card every
  *  review model receives: the brief's public projection, the Builder-declared tools and the

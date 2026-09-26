@@ -22,7 +22,10 @@ import type {
   RuntimeModelIdentity,
 } from "../../src/claim/runtime-model-identity.ts";
 import type { JudgeEvidence } from "../../src/claim/judge.ts";
-import { NO_EXTERNAL_EXECUTION, type VerifierExecutionEvidence } from "../../src/truth/grounding.ts";
+import {
+  NO_EXTERNAL_EXECUTION,
+  type VerifierExecutionEvidence,
+} from "../../src/correctness-bundle/grounding.ts";
 
 /** Four verified case identities, three passing — matching `greenEvidence()`'s `verified: 4`. Every
  *  case exercises the declared authored check c1; per-case tool coverage applies only to required

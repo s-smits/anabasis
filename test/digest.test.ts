@@ -963,7 +963,7 @@ describe("digest", () => {
     expect(quiet).toContain("run-1: judge on · census battery 2 · disagreements 0/2 · exit completed");
     expect(quiet).toContain("lane 16: no census recorded a Judge/verifier disagreement");
     // The census carries no controls by construction, so neither a controls column nor an alarm
-    // about their absence tells a reader anything: src/truth/judge.ts writes a constant zero.
+    // about their absence tells a reader anything: src/review/judge.ts writes a constant zero.
     expect(quiet).not.toContain("JUDGE CENSUS WITHOUT CONTROLS");
     expect(quiet).not.toContain("controlValidity");
 

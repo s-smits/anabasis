@@ -12,7 +12,7 @@ import {
 } from "../src/review/review-sources.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { sha256 } from "../src/meta/digest.ts";
 import { type EpochReviewInput, runEpochReview } from "../src/review/epoch-reviewer.ts";
 import { publicEpochReview } from "../src/review/epoch-review-public.ts";

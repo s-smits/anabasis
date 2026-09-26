@@ -26,7 +26,7 @@ import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } fr
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { selectedProductDir } from "../src/run/product-versions.ts";
-import { readRecordedBatteryRecord } from "../src/truth/battery-record.ts";
+import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { type ScriptedTurn, scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";

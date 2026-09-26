@@ -17,7 +17,10 @@ import { verifyRunDir } from "../src/claim/evidence-log.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
 import { createGeneratedToolStarter } from "../src/solve/generated-tool-worker.ts";
-import { builtStarterFactoryForSolver, withSolverBuiltStarterFactory } from "../src/truth/solve.ts";
+import {
+  builtStarterFactoryForSolver,
+  withSolverBuiltStarterFactory,
+} from "../src/correctness-bundle/solve.ts";
 import type { CheckRun } from "../src/verify/correctness-model-result.ts";
 import { checksReport } from "../tools/outcome/checks.ts";
 import { required } from "./helpers/doubles.ts";

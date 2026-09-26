@@ -46,14 +46,14 @@ import { type Toolset, loadBuiltStarterFactory, loadCorrectnessModel } from "./c
 import type { ControlCorpus } from "./controls.ts";
 import { executionEvidence } from "./tool-runs.ts";
 import { blockingFailedCheckIds } from "./verdict-binding.ts";
-import type { JudgePublicDomain } from "./judge-contract.ts";
+import type { JudgePublicDomain } from "../review/judge-contract.ts";
 import {
   judgeBatterySubject,
   judgeDomainForRun,
   runJudgePhase,
   writeJudgePublicContext,
-} from "./judge-phase.ts";
-import { type JudgeObservation, type JudgeSession, summarizeJudge } from "./judge.ts";
+} from "../review/judge-phase.ts";
+import { type JudgeObservation, type JudgeSession, summarizeJudge } from "../review/judge.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import {
   withVerifierLifetime,
@@ -64,7 +64,7 @@ import {
 import { judgePublicTaskOf } from "./public-resources.ts";
 import { applicableCheckIds, runControls } from "./run-controls.ts";
 import { gradeCase, solveCase, type GradedCase, type SolveCaseEvidence } from "./solve-case.ts";
-import type { JudgeCensusSubject } from "./judge-census.ts";
+import type { JudgeCensusSubject } from "../review/judge-census.ts";
 import { type Solver, builtStarterFactoryForSolver } from "./solve.ts";
 import { SAFE_TASK_ID } from "./tasks.ts";
 import { resolveVerifier } from "./verification-registry.ts";

@@ -24,7 +24,7 @@ import { isNumber, isString } from "#src/meta/json-shape.ts";
 import { readControllerEvidence } from "#src/run/controller-evidence.ts";
 import { campaignEpochs } from "#src/author/campaign-epoch.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
-import { PROVIDER_ALLOWANCE } from "#src/truth/runtime-blocker.ts";
+import { PROVIDER_ALLOWANCE } from "#src/correctness-bundle/runtime-blocker.ts";
 
 export const TIMELINE_SCHEMA = "wri-run-timeline/v1";
 const STALLS = 5;

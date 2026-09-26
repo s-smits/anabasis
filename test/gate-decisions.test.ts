@@ -11,12 +11,12 @@ import {
   DISCRIMINATION_CHECK_UNREJECTED,
   DISCRIMINATION_REJECT_PASSED,
   timedOutControls,
-} from "../src/truth/control-receipts.ts";
-import { EXTERNAL_VERDICT_UNGROUNDED } from "../src/truth/tool-runs.ts";
-import { validateBrief } from "../src/truth/brief-validator.ts";
+} from "../src/correctness-bundle/control-receipts.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED } from "../src/correctness-bundle/tool-runs.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { required } from "./helpers/doubles.ts";
-import type { ControlReceipt } from "../src/truth/battery-record.ts";
+import type { ControlReceipt } from "../src/correctness-bundle/battery-record.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const STARTER = readFileSync(new URL("../starters/pi-built-harness/STARTER.md", import.meta.url), "utf8");

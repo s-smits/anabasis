@@ -2,7 +2,7 @@
  * Finding codes from control execution, coverage checks and verification-runner checks that
  * tool results determine verdicts. These executed checks decide whether the evidence supports a claim.
  */
-import type { FindingDisclosure } from "../truth/brief.ts";
+import type { FindingDisclosure } from "../correctness-bundle/brief.ts";
 
 type DiscriminationClaimabilityCode =
   // NOT_PROVEN means evaluation could not finish; ACCEPT_REJECTED selects the needed repair.
@@ -32,6 +32,7 @@ export type DiscriminationClaimabilityFinding = {
   message: string;
   /** The control id the message quotes, carried to `ContractFinding.subject`. */
   subject?: string;
-  /** What the author may read of `message` (truth/discrimination-author-detail.ts); absent rows stay withheld. */
+  /** What the author may read of `message` (correctness-bundle/discrimination-author-detail.ts); absent rows
+   * stay withheld. */
   disclosure?: FindingDisclosure;
 };

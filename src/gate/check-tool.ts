@@ -29,7 +29,7 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { defineTool } from "../solve/define-tool.ts";
-import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
+import { type ContractFinding, projectFindingForAuthor } from "../correctness-bundle/brief.ts";
 import { type GateReport, stagesOf } from "./validation-pipeline.ts";
 import { SOLVABILITY_EVIDENCE_FILE } from "../run/solvability-gate.ts";
 import { CENSUS_FILE } from "../run/census-gate.ts";

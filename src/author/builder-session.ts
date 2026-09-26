@@ -24,7 +24,7 @@ import { BuilderAuthorFeedback } from "../builder/author-feedback.ts";
 import { authoringIdentity, PRIMARY_AUTHOR_PATHS } from "./author-first.ts";
 import type { FingerprintEvidence } from "../claim/fingerprint.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
-import type { ContractFinding } from "../truth/brief.ts";
+import type { ContractFinding } from "../correctness-bundle/brief.ts";
 import { BuildAgentTurnNonResult, openBuildSession } from "./build-agent.ts";
 import { CampaignBudgetExhausted } from "../run/controller-ledger.ts";
 import type { ModelAttemptGate } from "../run/campaign-budget.ts";

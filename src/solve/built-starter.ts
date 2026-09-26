@@ -4,9 +4,9 @@ import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJsonCopy as trustedJson } from "../meta/stable-json.ts";
-import type { PublicTask } from "../truth/task-split.ts";
-import type { ToolKind } from "../truth/tools-spec.ts";
-import type { HarnessSettings } from "../truth/harness-config.ts";
+import type { PublicTask } from "../correctness-bundle/task-split.ts";
+import type { ToolKind } from "../correctness-bundle/tools-spec.ts";
+import type { HarnessSettings } from "../correctness-bundle/harness-config.ts";
 import { defineTool, evidenceResult } from "./define-tool.ts";
 import { withDraftLease } from "./draft-authority.ts";
 import {
@@ -33,7 +33,7 @@ import type { GeneratedTaskAccess } from "./task-access-trace.ts";
 import { keyIfDefined, keysIf } from "../meta/optional-key.ts";
 import { isRecord, type JsonValue } from "../meta/json-shape.ts";
 
-/** The same name `PUBLIC_RESOURCES_TOOL` carries in src/truth/public-resources.ts, spelled again
+/** The same name `PUBLIC_RESOURCES_TOOL` carries in src/correctness-bundle/public-resources.ts, spelled again
  *  here so the solve module graph does not have to import the brief reader that name sits behind.
  *  Its only reader is the roster line below, deciding whether to mention the tool at all, so a
  *  drift between the two spellings costs the solver one sentence rather than a call. */

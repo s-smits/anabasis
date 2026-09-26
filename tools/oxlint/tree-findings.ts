@@ -248,7 +248,7 @@ function declared(files: ReadonlyMap<string, string>): Map<string, Declaration |
  *
  * Room is the reader's own ceiling in `tools/loc/source-policy.ts`, because reporting a move the
  * gate then refuses asks for a change nobody can make: a file in `copiedFileLimits` is frozen at
- * the size it had, and `src/truth/probes.ts` sits on 436 of 436, so nothing can move into it at
+ * the size it had, and `src/correctness-bundle/probes.ts` sits on 436 of 436, so nothing can move into it at
  * all. `ana/no-single-caller-helper` makes the same arithmetic for the same reason, after six
  * sites in one pass turned out to be exactly that. Five of 66 here.
  *
@@ -338,7 +338,8 @@ function movesIntoReader(
   if (occupied + moving > Math.min(copiedFileLimits[reader] ?? NEW_FILE_CEILING, READER_ROOM)) return false;
   // Different directories are different areas of this tree, and the move carries the module
   // across whatever that boundary holds. Here it holds the Builder's file wall:
-  // `published-rules.ts` is a `src/truth` contract read from `src/author`, and `src/truth` is
+  // `published-rules.ts` is a `src/correctness-bundle` contract read from `src/author`, and
+  // `src/correctness-bundle` is
   // closed to a Builder session while `src/author` is open, so the move would publish a
   // correctness check to the sessions it judges. Inside one directory the move is a merge.
   if (where.path.slice(0, where.path.lastIndexOf("/")) !== reader.slice(0, reader.lastIndexOf("/"))) {

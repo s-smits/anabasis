@@ -19,8 +19,8 @@ import {
   resolveToolTimeoutMs,
 } from "../src/verify/host.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
-import { executionEvidence } from "../src/truth/tool-runs.ts";
-import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
+import { executionEvidence } from "../src/correctness-bundle/tool-runs.ts";
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";

@@ -2,8 +2,8 @@
  *  observation read over the failed ones. */
 import { plainRecord } from "../meta/json-evidence.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
-import { type ContractFinding, finding } from "../truth/brief.ts";
-import { REFERENCE_SOLVE_ENTRY_SOLVE } from "../truth/evaluator-process-bundle.ts";
+import { type ContractFinding, finding } from "../correctness-bundle/brief.ts";
+import { REFERENCE_SOLVE_ENTRY_SOLVE } from "../correctness-bundle/evaluator-process-bundle.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 
 /** One reference witness paired with the public task the agent solving it would have seen. */

@@ -47,8 +47,8 @@ import {
   workspaceStatus,
 } from "../src/author/domain-repo.ts";
 import { MEMORY_FILE, builderMemoryBlock } from "../src/author/builder-memory.ts";
-import { BUILT_PRESET_IDS, presetToolNames } from "../src/truth/built-presets.ts";
-import { loadBuiltStarterFactory } from "../src/truth/contracts.ts";
+import { BUILT_PRESET_IDS, presetToolNames } from "../src/correctness-bundle/built-presets.ts";
+import { loadBuiltStarterFactory } from "../src/correctness-bundle/contracts.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { SAFEGUARDS_LOG_FILE, createSafeguardContext } from "../src/meta/safeguard.ts";
 import { runtimeProcess } from "../src/meta/process.ts";

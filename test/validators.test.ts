@@ -1,9 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { validateBrief } from "../src/truth/brief-validator.ts";
-import { type Brief, applicableTruthChecks, projectFindingForAuthor } from "../src/truth/brief.ts";
-import { loadFailureFinding } from "../src/truth/load-fault.ts";
-import { normalizeToolsSpec, validateToolsSpec } from "../src/truth/tools-spec.ts";
-import { validateTasks } from "../src/truth/tasks.ts";
+import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
+import {
+  type Brief,
+  applicableTruthChecks,
+  projectFindingForAuthor,
+} from "../src/correctness-bundle/brief.ts";
+import { loadFailureFinding } from "../src/correctness-bundle/load-fault.ts";
+import { normalizeToolsSpec, validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
+import { validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { resolveJsonPath } from "../src/meta/json-evidence.ts";
 import { checkPublicInputs } from "../vendor/correctness-model-bundle/evaluation-public-task.ts";

@@ -25,18 +25,25 @@ import type { BuiltHarness, CampaignFeedback } from "../author/campaign-types.ts
 import type { SolvabilityCaseEvidence, SolvabilityEvidence } from "../claim/readiness.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
-import type { BuildDeps } from "../truth/build-deps.ts";
-import { CASE_CODE, type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
-import { referenceSolveTimedOut } from "../truth/reference-solve.ts";
-import { EXTERNAL_VERDICT_UNGROUNDED } from "../truth/tool-runs.ts";
-import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
+import { type ContractFinding, controllerValidatedFindings } from "../correctness-bundle/brief.ts";
+import type { BuildDeps } from "../correctness-bundle/build-deps.ts";
+import {
+  CASE_CODE,
+  type SolvabilityProbeOptions,
+  makeProbeSolvability,
+} from "../correctness-bundle/solvability.ts";
+import { referenceSolveTimedOut } from "../correctness-bundle/reference-solve.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED } from "../correctness-bundle/tool-runs.ts";
+import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { acceptControlIndependence, acceptIndependenceFeedback } from "./accept-control-independence.ts";
 import { type Witness, inputInsensitivity } from "./representation-census.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
-import { REFERENCE_SOLVE_ENTRY, REFERENCE_SOLVE_ENTRY_SOLVE } from "../truth/evaluator-process-bundle.ts";
+import {
+  REFERENCE_SOLVE_ENTRY,
+  REFERENCE_SOLVE_ENTRY_SOLVE,
+} from "../correctness-bundle/evaluator-process-bundle.ts";
 
 /** The iteration-relative census evidence; the gate writes it and `check-tool` reads it. */
 export const SOLVABILITY_EVIDENCE_FILE = "solvability.json";

@@ -27,7 +27,7 @@ import type { JsonValue } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
 import type { BuildDeps } from "../truth/build-deps.ts";
-import { type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
+import { CASE_CODE, type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
 import { referenceSolveTimedOut } from "../truth/reference-solve.ts";
 import { EXTERNAL_VERDICT_UNGROUNDED } from "../truth/tool-runs.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
@@ -288,14 +288,27 @@ function censusFeedback(
     (row) =>
       row.status === "failed" && row.failure !== "representation-defect" && row.failure !== "ungrounded",
   ).length;
-  const nonResults = cases.filter((row) => row.status === "non-result").length;
+  const nonResults = cases.flatMap((row) => (row.status === "non-result" ? [row.nonResultKind] : []));
   const feedback: CampaignFeedback[] = [];
-  if (nonResults > 0) {
+  if (nonResults.length > 0) {
+    // One finding per host kind, so the Builder reads which host step broke rather than a gate that
+    // named nothing; the task ids and the host's own text stay in the protected record.
+    const kinds = [...new Set(nonResults)].sort(compareCodeUnits);
     feedback.push({
       owner: "environment",
       severity: "blocking",
-      claim: `solvability census: ${nonResults} of ${cases.length} reference solves ended as environment non-results`,
+      claim: `solvability census: ${nonResults.length} of ${cases.length} reference solves ended as environment non-results`,
       evidence: PROTECTED_EVIDENCE,
+      findings: controllerValidatedFindings(
+        kinds.map((kind) => {
+          const count = nonResults.filter((found) => found === kind).length;
+          return {
+            code: CASE_CODE[kind],
+            path: "environment",
+            detail: `${count} of ${cases.length} reference solves ended as a ${kind} non-result, which the host owns; a check of the same bytes runs the census again`,
+          };
+        }),
+      ),
     });
   }
   if (representationDefects > 0) {

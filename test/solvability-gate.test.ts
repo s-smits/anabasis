@@ -15,6 +15,7 @@
  * `solvability-*.test.ts` beside this one, and constant reference output across inputs is measured
  * in `representation-census.test.ts`.
  */
+import { gateFeedbackFindings } from "../src/builder/author-feedback.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
@@ -141,6 +142,11 @@ describe("the census projects counts and keeps locations host-side", () => {
     );
     expect(feedback).toMatchObject([{ owner: "environment", severity: "blocking" }]);
     expect(authorVisible).not.toContain("engine host died");
+    expect(authorVisible).not.toContain("t2");
+    // The Builder reads which host step broke, not a gate that produced no finding.
+    const codes = gateFeedbackFindings(feedback).map((found) => found.code);
+    expect(codes).toEqual(["solvability-reference-solve-host-non-result"]);
+    expect(JSON.stringify(gateFeedbackFindings(feedback))).toContain("1 of 2 reference solves");
   });
 });
 

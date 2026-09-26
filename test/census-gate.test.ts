@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
+import { gateFeedbackFindings } from "../src/builder/author-feedback.ts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
@@ -182,6 +183,7 @@ describe("the census gate", () => {
       }),
     ]);
     expect(feedback.some((row) => row.owner === "correctness-model/evaluator.ts")).toBe(false);
+    expect(gateFeedbackFindings(feedback).map((found) => found.code)).toEqual(["verifier-tool-refused"]);
     expect(JSON.parse(readFileSync(join(iterationDir, "environment-non-result.json"), "utf8"))).toMatchObject(
       { kind: "verifier-tool-refused", detail },
     );

@@ -33,10 +33,14 @@ export type SolvabilityStageMemory<T> = Map<string, Remembered<T>>;
 /** Session-owned memory, one map per stage; the stage modules own the value shapes. */
 export interface SolvabilityStageCache {
   referenceSolves: SolvabilityStageMemory<ReferenceSolveOutcome>;
+  /** The installed-tool conditions each reference answer passed under, keyed over the correctness
+   *  model, the full task and the answer bytes. The F2 gate reads it to tell a reference the checks
+   *  reject from tools that moved under the same bytes (src/run/solvability-gate.ts). */
+  passedReferences: Map<string, Set<string>>;
 }
 
 export function createSolvabilityStageCache(): SolvabilityStageCache {
-  return { referenceSolves: new Map() };
+  return { referenceSolves: new Map(), passedReferences: new Map() };
 }
 
 /** Reuse the result recorded under `key`, or execute and remember it when the stage settled. Values

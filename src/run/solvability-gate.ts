@@ -33,6 +33,7 @@ import {
   makeProbeSolvability,
 } from "../correctness-bundle/solvability.ts";
 import { referenceSolveTimedOut } from "../correctness-bundle/reference-solve.ts";
+import { applicableCheckIds } from "../correctness-bundle/run-controls.ts";
 import { EXTERNAL_VERDICT_UNGROUNDED } from "../correctness-bundle/tool-runs.ts";
 import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { acceptControlIndependence, acceptIndependenceFeedback } from "./accept-control-independence.ts";
@@ -40,6 +41,7 @@ import { type Witness, inputInsensitivity } from "./representation-census.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
+import { WORKSPACE_TOOL_TREE } from "../verify/wall-policy.ts";
 import {
   REFERENCE_SOLVE_ENTRY,
   REFERENCE_SOLVE_ENTRY_SOLVE,
@@ -104,8 +106,9 @@ export function makeSolvabilityCensusGate(
     // failure and nothing else is reported beside it.
     if (evidence === null && toolRefusals.length > 0) return toolRefusals;
     const insensitivity = inputInsensitivity(witnessesOf(evidence, slugDir, "failed"));
+    const suspect = evidence === null ? null : toolsSuspect(evidence, harness, stages);
     return [
-      ...censusFeedback(evidence, insensitivity, probedFindings),
+      ...censusFeedback(evidence, insensitivity, probedFindings, suspect),
       ...acceptIndependenceFeedback(independence),
       ...toolRefusals,
     ];
@@ -252,6 +255,126 @@ function ungroundedFeedback(cases: readonly SolvabilityCaseEvidence[]): Campaign
   ];
 }
 
+/** The rows the census counts as the reference being rejected: failed, but not on the carry path
+ *  or on an ungrounded pass, which have owners of their own. */
+function rejected(row: SolvabilityCaseEvidence): boolean {
+  return row.status === "failed" && row.failure !== "representation-defect" && row.failure !== "ungrounded";
+}
+
+/** A reference answer's identity apart from the installed tools: the correctness model, the full
+ *  task and the answer bytes. Null when the answer never reached bytes. */
+function referenceKey(evidence: SolvabilityEvidence, row: SolvabilityCaseEvidence): string | null {
+  if (row.artifactDigest === null) return null;
+  return `${evidence.correctnessModelHash}:${row.fullTaskDigest}:${row.artifactDigest}`;
+}
+
+/** Rejected reference answers whose exact bytes passed, over the same correctness model and task,
+ *  under a different installed-tool condition earlier in this session. The session then remembers
+ *  this census's passes under its own condition. */
+function passedUnderOtherTools(evidence: SolvabilityEvidence, memory: Map<string, Set<string>>): number {
+  const tools = evidence.verifierEnvironmentHash;
+  if (tools === null) return 0;
+  let count = 0;
+  for (const row of evidence.cases) {
+    const key = referenceKey(evidence, row);
+    if (key === null) continue;
+    const seen = memory.get(key) ?? new Set<string>();
+    if (rejected(row) && [...seen].some((condition) => condition !== tools)) count += 1;
+    if (row.status === "passed") memory.set(key, seen.add(tools));
+  }
+  return count;
+}
+
+/** The declared truth-checks each battery task is held to. A brief whose contract this reader
+ *  cannot resolve yields none, which leaves the every-check reading off rather than guessing. */
+function applicableByTask(harness: BuiltHarness): Map<string, string[]> {
+  try {
+    return new Map(
+      harness.battery.tasks.map((task) => [task.taskId, applicableCheckIds(harness.brief, task)]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+/** Whether every applicable check rejected every reference answer while none passed. Checks that
+ *  share nothing but the installed tools rarely all reject answers the Builder wrote on purpose,
+ *  while a wrapper or interpreter that cannot run inside the verifier wall fails each of them. A
+ *  task held to one check says nothing either way, so it keeps the reading off. */
+function everyCheckRejected(cases: readonly SolvabilityCaseEvidence[], applicable: Map<string, string[]>) {
+  const failed = cases.filter(rejected);
+  if (failed.length === 0 || cases.some((row) => row.status === "passed")) return false;
+  return failed.every((row) => {
+    const checks = applicable.get(row.taskId) ?? [];
+    return checks.length > 1 && checks.every((id) => row.failedCheckIds.includes(id));
+  });
+}
+
+/**
+ * Why the installed tools, rather than the reference solve, are the likelier owner of a rejected
+ * census, or null when nothing separates them. Of 15 recorded f2-reference-verdict firings, 3 were
+ * the candidate's own `.toolchain` that could not run inside the cell (truss-8, -9 and -10, 42
+ * minutes): every check rejected every task, the reference bytes were identical before and after,
+ * and only the tool condition moved. The row still refuses, since nothing could be verified; it
+ * names the owner that can fix it.
+ */
+function toolsSuspect(
+  evidence: SolvabilityEvidence,
+  harness: BuiltHarness,
+  stages: SolvabilityStageCache | undefined,
+): string | null {
+  const moved = stages === undefined ? 0 : passedUnderOtherTools(evidence, stages.passedReferences);
+  if (moved > 0) {
+    return `${moved} rejected reference answer(s) are byte-identical to answers that passed under a different installed-tool condition in this session, over the same correctness model and tasks, so the tools moved and the reference did not`;
+  }
+  if (everyCheckRejected(evidence.cases, applicableByTask(harness))) {
+    return "every declared truth-check that applies rejected every reference answer and none passed, which is how tools that cannot run inside the verifier wall read; run each check's tool under the wall before changing the reference solve";
+  }
+  return null;
+}
+
+/** The rejection row: the reference solve owns it, unless the installed tools are the suspect. The
+ *  count, the wall share and the concentration are the same either way. */
+function rejectionFeedback(
+  cases: readonly SolvabilityCaseEvidence[],
+  insensitivity: ContractFinding[],
+  suspect: string | null,
+): CampaignFeedback {
+  const failed = cases.filter(rejected).length;
+  // How many of the failed solves the per-task wall stopped, stated separately so a slow search
+  // is not repaired as a wrong one.
+  const timedOut = cases.filter((row) => row.status === "failed" && referenceSolveTimedOut(row)).length;
+  const wall =
+    timedOut === 0
+      ? ""
+      : `, and ${timedOut} of those stopped at the per-task reference solve wall before returning an artifact`;
+  const blocked = {
+    code: "SOLVABILITY_CENSUS_BLOCKED",
+    path: REFERENCE_SOLVE_ENTRY_SOLVE,
+    detail: `${failed} of ${cases.length} reference solves failed under the installed tools${wall}; task identities and tool run rows stay in the protected host evidence`,
+  };
+  const findings = [blocked, ...checkConcentration(cases), ...insensitivity];
+  if (suspect === null) {
+    return {
+      owner: REFERENCE_SOLVE_ENTRY,
+      severity: "blocking",
+      claim: `solvability census: ${failed} of ${cases.length} authored tasks rejected the candidate's own reference solve`,
+      evidence: PROTECTED_EVIDENCE,
+      findings: controllerValidatedFindings(findings),
+    };
+  }
+  return {
+    owner: EVALUATOR_FILE,
+    severity: "blocking",
+    claim: `installed tools: ${failed} of ${cases.length} reference solves failed, and the evidence points at the tools the checks run rather than the reference solve`,
+    evidence: PROTECTED_EVIDENCE,
+    findings: controllerValidatedFindings([
+      { code: "SOLVABILITY_INSTALLED_TOOLS_SUSPECT", path: WORKSPACE_TOOL_TREE, detail: suspect },
+      ...findings,
+    ]),
+  };
+}
+
 /**
  * A census with no evidence is the candidate's to answer for, whatever stopped it. Every cause that
  * leaves the evidence null — an unbound task set, a snapshot that fails its integrity check or drifts
@@ -265,6 +388,7 @@ function censusFeedback(
   evidence: Pick<SolvabilityEvidence, "cases"> | null,
   insensitivity: ContractFinding[],
   probed: readonly ContractFinding[],
+  suspect: string | null,
 ): CampaignFeedback[] {
   if (evidence === null) {
     // The finding that stopped it is the last one the probe returned: a load refusal stands alone, and
@@ -290,10 +414,6 @@ function censusFeedback(
   const { cases } = evidence;
   const representationDefects = cases.filter(
     (row) => row.status === "failed" && row.failure === "representation-defect",
-  ).length;
-  const failed = cases.filter(
-    (row) =>
-      row.status === "failed" && row.failure !== "representation-defect" && row.failure !== "ungrounded",
   ).length;
   const nonResults = cases.flatMap((row) => (row.status === "non-result" ? [row.nonResultKind] : []));
   const feedback: CampaignFeedback[] = [];
@@ -322,29 +442,6 @@ function censusFeedback(
     feedback.push(representationDefectFeedback(cases, representationDefects));
   }
   feedback.push(...ungroundedFeedback(cases));
-  if (failed > 0) {
-    // How many of the failed solves the per-task wall stopped, stated separately so a slow search
-    // is not repaired as a wrong one.
-    const timedOut = cases.filter((row) => row.status === "failed" && referenceSolveTimedOut(row)).length;
-    const wall =
-      timedOut === 0
-        ? ""
-        : `, and ${timedOut} of those stopped at the per-task reference solve wall before returning an artifact`;
-    feedback.push({
-      owner: REFERENCE_SOLVE_ENTRY,
-      severity: "blocking",
-      claim: `solvability census: ${failed} of ${cases.length} authored tasks rejected the candidate's own reference solve`,
-      evidence: PROTECTED_EVIDENCE,
-      findings: controllerValidatedFindings([
-        {
-          code: "SOLVABILITY_CENSUS_BLOCKED",
-          path: REFERENCE_SOLVE_ENTRY_SOLVE,
-          detail: `${failed} of ${cases.length} reference solves failed under the installed tools${wall}; task identities and tool run rows stay in the protected host evidence`,
-        },
-        ...checkConcentration(cases),
-        ...insensitivity,
-      ]),
-    });
-  }
+  if (cases.some(rejected)) feedback.push(rejectionFeedback(cases, insensitivity, suspect));
   return feedback;
 }

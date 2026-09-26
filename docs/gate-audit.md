@@ -113,7 +113,16 @@ Refuses a candidate whose reference solve is rejected by its own checks, with
 `SOLVABILITY_CENSUS_BLOCKED` and `SOLVABILITY_FAILURE_CONCENTRATION` beside it
 (`src/correctness-bundle/solvability.ts`, `src/run/solvability-gate.ts`). A reference the checks reject shows,
 before any paid solve, that no pass is reachable through the declared path. This is the answer-key
-check the benchmark literature says to keep.
+check the benchmark literature says to keep. Of its 15 recorded episodes to 2026-09-25, 8 caught a
+real defect, 3 were the candidate's own `.toolchain` that could not run inside the cell (truss-8,
+-9 and -10: every check rejected every task, the reference bytes were identical before and after,
+and only the tool condition moved) and 4 were host limits. Since 2026-09-27 the row names the
+installed tools as the suspect, owned by the evaluator with `SOLVABILITY_INSTALLED_TOOLS_SUSPECT` at
+`.toolchain`, when every applicable check rejected every task and none passed on a task held to at
+least two checks, or when a rejected answer passed with the same bytes over the same correctness
+model under a different tool condition earlier in the session. It still refuses. Of the host
+limits, a tool stdout over the 1 MiB cap and a 126/127 exit were already tool non-results at the
+head; the QEMU wall (firmware-10, never repaired) and host load (firmware-5) remain unseparated.
 
 ### f2-representation-defect
 

@@ -25,7 +25,12 @@ import { join } from "../src/meta/path.ts";
 import type { AcceptIndependence } from "../src/run/accept-control-independence.ts";
 import { makeSolvabilityCensusGate } from "../src/run/solvability-gate.ts";
 import { double } from "./helpers/doubles.ts";
-import { probeReturning } from "./helpers/solvability-probe.ts";
+import { type CaseSpec, probeReturning, solvabilityCase } from "./helpers/solvability-probe.ts";
+import type { BuildDeps } from "../src/correctness-bundle/build-deps.ts";
+import {
+  type SolvabilityStageCache,
+  createSolvabilityStageCache,
+} from "../src/correctness-bundle/solvability-stages.ts";
 
 type Accept = { id: string; taskId: string; artifact: unknown };
 type ToolRefusal = [code: string, owner: string, detail: string];
@@ -42,10 +47,17 @@ const INDEPENDENT_ARTIFACT = {
 afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 
 /** Run the gate over `probe` in a fresh iteration directory, with `slugDir` as its slug. */
-async function census(name: string, probe: ReturnType<typeof probeReturning>, slugDir?: string) {
+async function census(
+  name: string,
+  probe: ReturnType<typeof probeReturning>,
+  slugDir?: string,
+  harness = HARNESS,
+  stages?: SolvabilityStageCache,
+) {
   const dir = join(SCRATCH, name);
   mkdirSync(dir, { recursive: true });
-  const feedback = await makeSolvabilityCensusGate({}, probe)(HARNESS, dir, slugDir ?? join(dir, "slug"));
+  const slug = slugDir ?? join(dir, "slug");
+  const feedback = await makeSolvabilityCensusGate({}, probe)(harness, dir, slug, () => false, stages);
   const recorded = () => Bun.file(join(dir, "solvability.json")).text();
   return { dir, feedback, authorVisible: JSON.stringify(feedback), recorded };
 }
@@ -214,6 +226,141 @@ describe("a refused declaration reaches the owner who can change it", () => {
     );
     expect(authorVisible).toContain("2 of 11 reference artifacts: writer omits the notes root");
     expect(authorVisible).toContain("2 further distinct defect(s)");
+  });
+});
+
+/** A harness whose brief holds two checks over the wide family and one over the solo family. */
+const CHECKED = double<BuiltHarness>({
+  fingerprint: { taskSetHash: "tsh-1" },
+  brief: {
+    correctnessContract: "check-program/v1",
+    truthChecks: [
+      { id: "tc-a", execution: { families: ["wide"] } },
+      { id: "tc-b", execution: { families: ["wide"] } },
+      { id: "tc-solo", execution: { families: ["solo"] } },
+    ],
+  },
+  battery: {
+    tasks: [
+      { taskId: "t1", family: "wide", hidden: [] },
+      { taskId: "t2", family: "wide", hidden: [] },
+      { taskId: "t3", family: "solo", hidden: [] },
+    ],
+  },
+});
+
+/** A probe whose evidence names the correctness model and the installed-tool condition it ran under. */
+function probeUnder(tools: string, model: string, specs: CaseSpec[]): BuildDeps["probeSolvability"] {
+  const evidence = {
+    schema: "solvability/v10",
+    correctnessModelHash: model,
+    verifierEnvironmentHash: tools,
+    cases: specs.map(solvabilityCase),
+  };
+  return () =>
+    Promise.resolve(double<Awaited<ReturnType<BuildDeps["probeSolvability"]>>>({ evidence, findings: [] }));
+}
+
+const ownerAndCodes = (feedback: Awaited<ReturnType<typeof census>>["feedback"]) => ({
+  owners: feedback.map((row) => row.owner),
+  codes: gateFeedbackFindings(feedback).map((found) => found.code),
+});
+
+// Of 15 recorded f2-reference-verdict firings, 3 were the candidate's own `.toolchain` that could not
+// run inside the cell, told to the Builder as its reference solve failing (truss-8, -9 and -10).
+describe("a rejection the installed tools explain goes to the tools", () => {
+  it("names .toolchain when every applicable check rejected every task and none passed", async () => {
+    const { feedback } = await census(
+      "tools-every-check",
+      probeReturning([
+        { taskId: "t1", status: "failed", failedCheckIds: ["tc-a", "tc-b"] },
+        { taskId: "t2", status: "failed", failedCheckIds: ["tc-b", "tc-a"] },
+      ]),
+      undefined,
+      CHECKED,
+    );
+    expect(ownerAndCodes(feedback)).toEqual({
+      owners: ["correctness-model/evaluator.ts"],
+      codes: [
+        "SOLVABILITY_INSTALLED_TOOLS_SUSPECT",
+        "SOLVABILITY_CENSUS_BLOCKED",
+        "SOLVABILITY_FAILURE_CONCENTRATION",
+      ],
+    });
+    expect(gateFeedbackFindings(feedback)[0]).toMatchObject({ path: ".toolchain" });
+  });
+
+  it.each<[string, CaseSpec[]]>([
+    [
+      "one check still passed on a task",
+      [
+        { taskId: "t1", status: "failed", failedCheckIds: ["tc-a", "tc-b"] },
+        { taskId: "t2", status: "failed", failedCheckIds: ["tc-a"] },
+      ],
+    ],
+    [
+      "another task's reference passed",
+      [
+        { taskId: "t1", status: "passed" },
+        { taskId: "t2", status: "failed", failedCheckIds: ["tc-a", "tc-b"] },
+      ],
+    ],
+    ["the task is held to one check", [{ taskId: "t3", status: "failed", failedCheckIds: ["tc-solo"] }]],
+    ["the rejection names no check", [{ taskId: "t1", status: "failed" }]],
+  ])("leaves the reference solve its owner when %s", async (name, specs) => {
+    const { feedback } = await census(`tools-hostile-${name}`, probeReturning(specs), undefined, CHECKED);
+    expect(ownerAndCodes(feedback).owners).toEqual(["correctness-model/reference/index.ts"]);
+    expect(ownerAndCodes(feedback).codes).not.toContain("SOLVABILITY_INSTALLED_TOOLS_SUSPECT");
+  });
+
+  it("names .toolchain when the same reference bytes passed under other tools in this session", async () => {
+    const stages = createSolvabilityStageCache();
+    const answered = { artifact: { answer: "A" } };
+    await census(
+      "tools-before",
+      probeUnder("tools-1", "model-1", [{ taskId: "t1", status: "passed", ...answered }]),
+      undefined,
+      CHECKED,
+      stages,
+    );
+    const { feedback } = await census(
+      "tools-after",
+      probeUnder("tools-2", "model-1", [
+        { taskId: "t1", status: "failed", failedCheckIds: ["tc-a"], ...answered },
+        { taskId: "t2", status: "passed" },
+      ]),
+      undefined,
+      CHECKED,
+      stages,
+    );
+    expect(ownerAndCodes(feedback).owners).toEqual(["correctness-model/evaluator.ts"]);
+    expect(JSON.stringify(feedback)).toContain("passed under a different installed-tool condition");
+  });
+
+  it.each([
+    ["under the same tools", "tools-1", "model-1"],
+    ["over a changed correctness model", "tools-2", "model-2"],
+  ])("leaves the reference solve its owner when the bytes passed before %s", async (name, tools, model) => {
+    const stages = createSolvabilityStageCache();
+    const answered = { artifact: { answer: "A" } };
+    await census(
+      `tools-memory-before-${name}`,
+      probeUnder("tools-1", "model-1", [{ taskId: "t1", status: "passed", ...answered }]),
+      undefined,
+      CHECKED,
+      stages,
+    );
+    const { feedback } = await census(
+      `tools-memory-after-${name}`,
+      probeUnder(tools, model, [
+        { taskId: "t1", status: "failed", failedCheckIds: ["tc-a"], ...answered },
+        { taskId: "t2", status: "passed" },
+      ]),
+      undefined,
+      CHECKED,
+      stages,
+    );
+    expect(ownerAndCodes(feedback).owners).toEqual(["correctness-model/reference/index.ts"]);
   });
 });
 

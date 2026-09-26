@@ -87,6 +87,10 @@ at a time, each within a per-task wall.
   search by a fixed iteration count, since a clock budget changes the answer between runs. A
   longer search, however long it runs, records its best artifact per task in a module under
   `reference/` for `solve` to return, so the wall bounds only the replay.
+- `SOLVABILITY_INSTALLED_TOOLS_SUSPECT`: the same refusal, pointed at `.toolchain`. It comes when
+  every check that applies rejected every task and none passed, or when an answer the checks now
+  reject passed with the same bytes under other installed tools. Run each check's tool inside the
+  verifier wall and repair that before changing `reference/`.
 
 ```ts
 import type { CheckFn } from "@ana/correctness-model-bundle";

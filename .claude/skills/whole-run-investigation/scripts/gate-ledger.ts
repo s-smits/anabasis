@@ -187,16 +187,19 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
   ),
   // F2: reference solve
   row(
-    ["F2-1", "f2-reference-verdict", "kept"],
-    [0.97, 0.03],
+    ["F2-1", "f2-reference-verdict", "narrowed"],
+    [0.85, 0.1],
     [
       "SOLVABILITY_CENSUS_BLOCKED",
+      "SOLVABILITY_INSTALLED_TOOLS_SUSPECT",
       "SOLVABILITY_FAILURE_CONCENTRATION",
       "solvability-failed",
       "solvability-witness-failed",
       "no-solvability-witness",
     ],
-    "about 35 recorded firings, each repaired within one or two checks",
+    "15 episodes to 2026-09-25: 8 true, 3 the candidate's own .toolchain told as the reference " +
+      "(now named as the tools), 4 host limits (stdout cap and 126/127 now tool non-results; " +
+      "QEMU wall and host load remain); firmware-10 was never repaired",
   ),
   row(
     ["F2-2", "f2-representation-defect", "narrowed"],

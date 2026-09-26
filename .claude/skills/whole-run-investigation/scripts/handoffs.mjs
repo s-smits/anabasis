@@ -28,6 +28,7 @@ import { hashJsonValue } from "#src/meta/stable-json.ts";
 import { isNumber, isRecord, isString } from "#src/meta/json-shape.ts";
 import { campaignTraceRoots } from "#src/claim/trace-read.ts";
 import { adviceIssueId, issueStatusWord } from "#src/author/rebuild-advice.ts";
+import { ownerSide } from "#src/author/feedback-routing.ts";
 
 export const HANDOFFS_SCHEMA = "wri-handoffs/v1";
 
@@ -38,16 +39,6 @@ const PREVIEW = "correctness_check";
 /** The operation each triaged side's repair is attributed as, from the accepted bytes
  *  (`experiment-admission.ts`): a task probe repairs neither side, a new baseline moved several. */
 const REPAIR_OPERATION = { harness: "harness-intervention", evaluation: "evaluation-correction" };
-
-/** Owners whose repair is on the evaluation side; any other diagnosed owner is the harness's. */
-const EVALUATION_OWNERS = new Set([
-  "tests",
-  "accept-controls",
-  "controls",
-  "correctness-model",
-  "fingerprint",
-  "judge",
-]);
 
 /**
  * The channels a round can hand the next. `marker` is a sentence the current source renders into
@@ -407,8 +398,8 @@ function calibration(rounds, rows) {
         rehearsals: trials.filter((c) => c.at !== null && c.at < mark).length,
         traceReads: pathHits(round, "read", READ_PATHS.traces, mark),
       },
-      // EXPERIMENT.json declares one battery-wide target and nothing per task (experiment-proposal.ts).
-      perTaskPredictions: null,
+      // The decision row scores the plan's per-task pass probabilities against the verdicts.
+      predictions: isRecord(row?.calibration) ? row.calibration : null,
     };
   });
   const placed = [...rows.values()].filter((row) => isString(row.zone));
@@ -420,15 +411,14 @@ function calibration(rounds, rows) {
   };
 }
 
+/** A diagnosis names a bundle file or `solver` (`DIAGNOSIS_OWNERS`), and a file's own prefix is the
+ *  side its repair reopens, so `correctness-model/brief.json` is the evaluation's. */
 function diagnosisOf(value) {
-  if (!isRecord(value)) return null;
-  if (isString(value.owner)) {
-    return { side: "harness", owner: value.owner, confidence: value.confidence ?? null };
-  }
-  const owner = value.interventionClass ?? null;
+  if (!isRecord(value) || !isString(value.owner)) return null;
+  const evaluation = value.owner !== "solver" && ownerSide(value.owner) === "correctness-model";
   return {
-    side: EVALUATION_OWNERS.has(owner) ? "evaluation" : "harness",
-    owner,
+    side: evaluation ? "evaluation" : "harness",
+    owner: value.owner,
     confidence: value.confidence ?? null,
   };
 }
@@ -647,12 +637,10 @@ function renderCalibration({ calibration: c }) {
     const target = r.target === null ? "no target" : `${r.target.comparator} ${r.target.verifiedPasses}`;
     const b = r.beforeAuthoring;
     lines.push(
-      `  r${r.round} ${short(r.battery)}: rehearsals ${r.rehearsals} [${r.rehearsalVerdicts.join(",")}]; ${target} -> ${shown(r.passed)}/${shown(r.verified)} (error ${shown(r.error)}, target ${shown(r.result)}); zone ${shown(r.zone)}; before authoring: history ${b.history}, rehearsals ${b.rehearsals}, trace reads ${b.traceReads}`,
+      `  r${r.round} ${short(r.battery)}: rehearsals ${r.rehearsals} [${r.rehearsalVerdicts.join(",")}]; ${target} -> ${shown(r.passed)}/${shown(r.verified)} (error ${shown(r.error)}, target ${shown(r.result)}); zone ${shown(r.zone)}; predictions ${r.predictions === null ? "unrecorded" : `expected ${r.predictions.expected} observed ${r.predictions.observed} brier ${r.predictions.brier} over ${r.predictions.scored}`}; before authoring: history ${b.history}, rehearsals ${b.rehearsals}, trace reads ${b.traceReads}`,
     );
   }
-  lines.push(
-    `  error trend ${c.errorTrend}; on-aim ${c.onAim} of ${c.placed} placed batteries; per-task predictions unobservable on this source`,
-  );
+  lines.push(`  error trend ${c.errorTrend}; on-aim ${c.onAim} of ${c.placed} placed batteries`);
   return lines;
 }
 

@@ -529,7 +529,7 @@ opportunity was missing.
 **20. Task movement and attribution.**
 
 Starts from block 3c's `REPEATED CONDITION (lane 20)` and from the `climb` lane's edge labels
-(`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated`).
+(`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated`, `replaced`).
 
 The question is what changed between rounds, whether the accepted bytes match the declared
 `EXPERIMENT.json` scope, and whether the numbers moved without changing what a solver must reason

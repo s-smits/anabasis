@@ -301,8 +301,10 @@ bun .claude/skills/whole-run-investigation/scripts/wri.mjs climb <campaign dir> 
 ```
 
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
-`restated`, `adjusted`, `narrowed`, `widened`, `eased` or `escalated`. Only `escalated` changes what
-the solver has to reason about. Run it whenever a new `versions/<battery>/` directory appears, and
+`restated`, `adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`. Only `escalated`
+changes what the solver has to reason about, and `replaced` is no reading at all: fewer than half
+the task ids carried over, so the published numbers could not be joined, and the task bytes need
+reading by hand. Run it whenever a new `versions/<battery>/` directory appears, and
 at every read step on a campaign that has landed off its aim twice. It is read-only, it costs
 nothing, and it is the only reader that answers "did anything get harder" before the battery it
 describes is paid for.

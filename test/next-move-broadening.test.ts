@@ -359,5 +359,5 @@ it("carries accepted intent and the host-derived changed subset out of the build
   expect(result.experimentAuthoring?.changedTaskIds).toEqual(tasks("new").map((task) => task.taskId));
   const fingerprint = fingerprintSlug(baseline);
   if (!fingerprint.ok || fingerprint.taskSetHash === null) throw new Error("fixture baseline refused");
-  expect(result.experimentAuthoring?.baseline.taskSetHash).toBe(fingerprint.taskSetHash);
+  expect(result.experimentAuthoring?.baseline?.taskSetHash).toBe(fingerprint.taskSetHash);
 });

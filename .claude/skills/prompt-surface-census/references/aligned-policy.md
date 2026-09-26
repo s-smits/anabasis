@@ -11,15 +11,18 @@ thing to correct.
 
 | Number a surface may state | Owner in source | Today |
 | --- | --- | --- |
-| pass counts: first battery, aim, no-limit-found | `bandLandmarks` (`src/claim/battery-difficulty.ts`) on `POLICY.climb.band` | band [0.2, 0.5]; 25 tasks → about 3 first, 5 to 12 aim, 18 and up too easy |
+| pass counts: first battery, aim, no-limit-found | `bandLandmarks` (`src/claim/battery-difficulty.ts`) over the band the controller passes, `climbThresholds(...).band` (`src/run/climb-history.ts`), which reads the manifest row `climb.band` and falls back to `POLICY.climb.band` (`src/critic/policy.ts`) | band [0.2, 0.5]; 25 tasks → about 3 first, 5 to 12 aim, 18 and up too easy |
 | which side of the band a battery landed | `placeOnBand` (`src/claim/battery-difficulty.ts`), Wilson at `REPORTING_Z` (`src/claim/estimation.ts`) | interval decides too easy or too hard; point count decides under, on, over |
-| battery size | `BATTERY_SIZE` (`src/run/battery-sizing.ts`) | floor 5, default 25, ceiling 60; probe 5 to 10 until one battery passes some but not all |
-| solver turns, shell walls | `SETTINGS.solver` (`src/truth/harness-config.ts`) | 24 turns, shell 300 s, 900 s at most; `agent/config.yaml` may raise each up to ten times |
-| verifier walls | `SETTINGS.gate`, read by `src/verify/host.ts`, `src/truth/evaluator-process.ts`, `src/run/census-gate.ts` | tool run 300 s, check with its runs 600 s, census 30 min |
+| battery size | `POLICY.battery` (`src/critic/policy.ts`), re-exported as `BATTERY_SIZE` by `src/run/battery-sizing.ts`, which owns the decisions taken from it | floor 5, default 25, ceiling 60; probe 5 to 10 until one battery passes some but not all |
+| solver walls | `SETTINGS.solver` (`src/truth/harness-config.ts`) | solve 120 min, 24 turns, shell 300 s, 900 s at most; `agent/config.yaml` may raise each up to ten times |
+| verifier and gate walls | `SETTINGS.gate`, read by `src/verify/host.ts`, `src/truth/evaluator-process.ts`, `src/run/census-gate.ts` | reference solve 120 s, tool run 300 s, check with its runs 600 s, census 30 min |
+| battery solve concurrency | `SETTINGS.battery` (`src/truth/harness-config.ts`), read by `src/truth/verification-runner.ts` | 3 solves at once |
 | Builder bash | `ISOLATED_TIMEOUT_MS` (`src/builder/candidate-isolation-runtime.ts`), `BASH_TIMEOUT_MAX_MS` (`src/builder/bash-install-env.ts`) | 10 min default, 2 h at most, for builds |
-| trial bounds | the provider budget (`src/run/builder-campaign.ts`, `createHarnessTrialTool`) | no count of its own; each rehearsal is one measured case, graded under the battery's own `check_seconds` and `tool_run_seconds` |
-| control calibration | `EVALUATOR_CALIBRATION_POLICY` (`src/claim/calibration.ts`) | at least 5 accepts and 5 rejects, told as an authoring requirement and measured by no gate |
+| trial bounds | the provider budget (`src/run/builder-campaign.ts`, `createHarnessTrialTool` in `src/builder/harness-trial.ts`) | no count of its own; each rehearsal is one measured case, graded under the battery's own `check_seconds` and `tool_run_seconds` |
+| control calibration | manifest row `evaluatorCalibration` (`thresholds.frozen.yaml`), read by `EVALUATOR_CALIBRATION_POLICY` (`src/claim/calibration.ts`) | at least 5 accepts and 5 rejects, told as an authoring requirement and measured by no gate |
 | session and round strikes | `POLICY.loop` (`src/critic/policy.ts`) | `unchangedCandidateStrikes` 3, `noopSubmitStrikes` 3 |
+| review clock and hold | `REVIEW_INTERVAL_MS` (`src/gate/review-clock.ts`), `READER_DEADLINE_MS` (`src/review/review-reader.ts`) | a review after 40 min without one; a held submit waits at most 1 h |
+| Epoch Reviewer probes | `PROBE_BUDGET`, `VALUE_MAX_CHARS` (`src/review/review-probe.ts`) | 8 probes per review, replacement values up to 4,000 characters |
 
 The model-visible difficulty surface is `renderBatteryContract` (`src/run/climb-readout.ts`),
 whose every sentence is a line of `FRAME` (`src/run/climb-readout-frame.ts`). It derives the first
@@ -42,15 +45,20 @@ from.
 - A preview ceiling, a probe budget or a no-submit strike.
 - `judgeBackendFor`, `--judge-backend`, `HARNESS_JUDGE_BACKEND`, and any Judge control census,
   bait corpus or review standing.
-- The duplicate Wilson implementation. `wilsonZ` is still declared at `thresholds.frozen.yaml:70`
-  with no source consumer; the one quantile is `REPORTING_Z` in `src/claim/estimation.ts`.
-  `minLevelN` went with it, and this list said otherwise until 2026-09-23. It claimed the name was
-  still the battery-size floor in `src/run/battery-sizing.ts`; that file declares no such symbol,
-  and the floor there is `POLICY.battery.floor`, which is 5. Nothing under `src` produces
-  `minLevelN` today — `climbThresholds` (`src/run/climb-history.ts`) is a `policyRow` whose schema
-  is `{band}`, and `policyRow` fills its record from the schema's own keys, so a yaml row cannot
-  add one. What went with the name is the placement discard; the readout
-  (`src/run/climb-readout.ts`) places every admitted row it can size.
+- The duplicate Wilson implementation, `wilsonZ` and `minLevelN`. Neither is a row any more:
+  `thresholds.frozen.yaml` names both only in comments recording their removal on 2026-09-18, and
+  nothing under `src` produces either. The one quantile is `REPORTING_Z` in
+  `src/claim/estimation.ts`, and the battery-size floor is `POLICY.battery.floor`, which is 5.
+  `climbThresholds` (`src/run/climb-history.ts`) is a `policyRow` whose schema is `{band}`, and
+  `policyRow` fills its record from the schema's own keys, so a yaml row cannot add one back. What
+  went with `minLevelN` is the placement discard; the readout (`src/run/climb-readout.ts`) places
+  every admitted row it can size.
+- Any refusal the gate audit of 2026-09-25 commented out, stated to a model as a rule. A
+  commented-out refusal is not enforced, so a surface describing it teaches a constraint nothing
+  holds. `docs/gate-audit.md` lists them under "Commented out (unsure)"; in `POLICY` that covers
+  `offAimStreakRounds`, `stalledFindingsRepeats` and `toolNonResultRefusals`, and the rest are
+  validators such as `reject-discrimination`, `task-variation` and `published-rules`. Search the
+  census for the behaviour, not only the name, because a prompt states the rule in prose.
 
 ## Three findings that are not copies of a constant
 

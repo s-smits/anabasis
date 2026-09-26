@@ -62,6 +62,7 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 // retired-tool scan used these.
 // import { fileRevisions } from "./domain-repo.ts";
 // import { isRecord } from "../meta/json-shape.ts";
+import { EXPERIMENT_FILE } from "./builder-memory.ts";
 import { type ExperimentSubmission, captureExperimentSubmission } from "./experiment-plan.ts";
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
@@ -79,7 +80,9 @@ export interface CandidateCheckContext {
   /** Whether this round must capture an `EXPERIMENT.json`. The controller sets it, never a draft
    *  carried in the workspace, because the decision is whether a continuation from an adopted
    *  product is being made at all, and a Builder that could answer that for itself could declare
-   *  its way out of the record. */
+   *  its way out of the record. A fresh build is not required to write one, but one it did write is
+   *  captured and read like any other: the first battery's predictions are the ones most often
+   *  wrong, and a free-form plan left them unscored. */
   experimentProposalRequired?: boolean;
 }
 
@@ -596,7 +599,9 @@ export function checkCandidate(
 ): CandidateCheckOutcome {
   const change = commitAll(workspace, commitMessage);
   const proposal =
-    context.experimentProposalRequired === true ? captureExperimentSubmission(workspace) : undefined;
+    context.experimentProposalRequired === true || existsSync(join(workspace, EXPERIMENT_FILE))
+      ? captureExperimentSubmission(workspace)
+      : undefined;
   const proposalKeys = {
     ...keyIfDefined("experimentProposal", proposal?.ok === true ? proposal.experiment : undefined),
     ...keyIfDefined("proposalFindings", proposal?.ok === false ? proposal.findings : undefined),

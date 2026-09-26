@@ -16,6 +16,7 @@
 // the measured outcome when there is one. Per edge between consecutive batteries:
 //
 //   restated      the prose did not move and neither did the structure
+//   replaced      no task id carried over, so the published numbers could not be compared at all
 //   adjusted      the same checks at the same tier, with the published numbers moved
 //   narrowed      fewer checks, fewer coupled inputs or fewer scenarios, at the same tier
 //   widened       more checks, more coupled inputs or more scenarios, at the same tier
@@ -206,22 +207,26 @@ function noveltyOf(before, after) {
 /** How far the published numbers moved between two batteries, over the public inputs that the same
  *  task carries in both. Direction is deliberately absent: a boundary states which way is tighter
  *  and most do not declare one, so this answers "did the numbers move" and the check-tier histogram
- *  answers whether anything new has to be reasoned about. */
+ *  answers whether anything new has to be reasoned about. `joined` counts the later tasks whose id
+ *  the earlier battery also held: a Builder that renames every task leaves nothing to compare, and
+ *  zero moved over zero joined is no evidence that the numbers stood still. */
 export function numericDriftOf(before, after) {
   const earlier = new Map(before.rows.map((row) => [row.taskId, row]));
   const changes = [];
+  let joined = 0;
   for (const row of after.rows) {
     const previous = earlier.get(row.taskId);
     if (previous === undefined) continue;
+    joined += 1;
     for (const [path, value] of Object.entries(row.numerics)) {
       const was = previous.numerics[path];
       if (!isNumber(was) || was === 0 || value === was) continue;
       changes.push(Math.abs(value - was) / Math.abs(was));
     }
   }
-  if (changes.length === 0) return { median: 0, moved: 0 };
+  if (changes.length === 0) return { median: 0, moved: 0, joined };
   changes.sort((a, b) => a - b);
-  return { median: changes[Math.floor(changes.length / 2)], moved: changes.length };
+  return { median: changes[Math.floor(changes.length / 2)], moved: changes.length, joined };
 }
 
 /** The rank of the highest tier a battery's checks reach. Adding or dropping checks at tiers it
@@ -244,6 +249,7 @@ export function verdictOf(before, after, novelty, delta, drift) {
   if (was !== null && now !== null && now !== was) return now > was ? "escalated" : "eased";
   if (delta.checks > 0 || delta.coupled > 0 || delta.scenarios > 0) return "widened";
   if (delta.checks < 0 || delta.coupled < 0 || delta.scenarios < 0) return "narrowed";
+  if (drift.joined === 0) return "replaced";
   const restatedProse = novelty === null || novelty.mean <= 1 - RESTATED_COSINE;
   if (restatedProse && drift.moved === 0 && STRUCTURE_KEYS.every((key) => delta[key] === 0)) {
     return "restated";
@@ -414,7 +420,7 @@ export function render(report, band) {
   for (const edge of report.edges) {
     lines.push(`  ${edge.from} -> ${edge.to}: ${edge.verdict}`);
     lines.push(
-      `      novelty ${edge.novelty === null ? "n/a" : edge.novelty.mean.toFixed(4)}   numbers moved ${edge.drift.moved} by ${(edge.drift.median * 100).toFixed(2)}% median`,
+      `      novelty ${edge.novelty === null ? "n/a" : edge.novelty.mean.toFixed(4)}   numbers moved ${edge.drift.moved} by ${(edge.drift.median * 100).toFixed(2)}% median over ${edge.drift.joined} tasks joined by id`,
     );
     lines.push(
       `      delta ${STRUCTURE_KEYS.map((key) => `${key} ${edge.delta[key] >= 0 ? "+" : ""}${edge.delta[key]}`).join("  ")}`,

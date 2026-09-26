@@ -142,6 +142,7 @@ function campaign(options: { toolCalls?: boolean } = {}): string {
           unaccepted: 0,
           zone: "too-easy",
           target: { result: "missed", missedBy: 2 },
+          calibration: { scored: 3, brier: 0.3, expected: 1.2, observed: 3 },
           operation: "evaluation-correction",
         },
       ],
@@ -219,8 +220,9 @@ describe("round hand-offs", () => {
       result: "missed",
       // The history call and both trials precede the proposal write twenty minutes into the round.
       beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 0 },
-      perTaskPredictions: null,
+      predictions: { scored: 3, brier: 0.3, expected: 1.2, observed: 3 },
     });
+    expect(calibration.rounds[0].predictions).toBeNull();
     expect(calibration).toMatchObject({ errorTrend: "insufficient", onAim: 1, placed: 2 });
   });
 

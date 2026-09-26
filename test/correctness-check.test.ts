@@ -876,6 +876,20 @@ describe("correctness_check", () => {
     expect(memory.previews.has(text(body.snapshotId))).toBe(true);
   });
 
+  // A fresh build is not required to plan, but a plan it wrote is read: the first battery's
+  // free-form plans went unscored in every recorded run, and the first battery is the one whose
+  // predictions miss the most.
+  it("reads a fresh build's own plan and refuses it when it does not parse", async () => {
+    const dir = workspace("fresh-plan");
+    writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));
+    const { check } = session(dir, { gate: async () => [] });
+    expect((await check()).status).toBe("clear");
+    writeFileSync(join(dir, EXPERIMENT_FILE), "{}");
+    const refused = await check();
+    expect(refused.status).toBe("findings");
+    expect(refused.stage).toBe("validation");
+  });
+
   it("a cached refusal still returns repeated instead of re-running its stages", async () => {
     const dir = workspace("refused-memo");
     writeBoundRepresentation(dir, undefined, readFileSync(join(dir, "agent/tools-spec.json"), "utf8"));

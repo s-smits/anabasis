@@ -91,8 +91,9 @@ lane suffix it carries, so the brief can say which lanes have something to read.
 ## The campaign lanes
 
 `climb` runs `climb-velocity.mjs` over consecutive versions and labels every edge `restated`,
-`adjusted`, `narrowed`, `widened`, `eased` or `escalated`; `adjusted` deliberately states no
-direction, and every label starts lanes 10 and 20.
+`adjusted`, `narrowed`, `widened`, `eased`, `escalated` or `replaced`; `adjusted` deliberately
+states no direction, `replaced` means no task id carried over so no number could be compared, and
+every label starts lanes 10 and 20.
 
 `yield` runs `review-yield.mjs` and gives each review component a status per finding —
 `consumed`, `unobservable`, `advisory-only` or `not-consumed`. The `epoch-reviewer` component is

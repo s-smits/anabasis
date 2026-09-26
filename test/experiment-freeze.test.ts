@@ -144,6 +144,23 @@ it("records only changed public inputs and refuses drifted attribution", () => {
   );
 });
 
+it("binds a fresh build's plan with no baseline, and still refuses a missing one for a climb", () => {
+  // A fresh build has no adopted product, so its first battery's plan is recorded to be scored
+  // with a null baseline rather than aborting the run.
+  const { candidate } = pair();
+  const absent = join(scratchDir("ana-no-adopted-"), "domain");
+  const captured = proposalOf("tasks", 1, "Author the first battery.");
+  const fresh = { operation: "new-baseline" as const, moved: [], unproven: "no adopted baseline" };
+  expect(candidateExperimentAuthoring(captured, fresh, "build", absent, candidate)).toMatchObject({
+    actual: "build",
+    baseline: null,
+    changedTaskIds: null,
+  });
+  expect(() => candidateExperimentAuthoring(captured, fresh, "climb", absent, candidate)).toThrow(
+    "positively fingerprinted",
+  );
+});
+
 it("reads a base conformance record without its verifier identity as no fixed product", () => {
   const { base, candidate } = pair();
   bindBaselineRepresentation(base);

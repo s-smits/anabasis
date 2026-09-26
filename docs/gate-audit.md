@@ -21,29 +21,24 @@ solves (Bae et al., EACL 2026; Zotos et al., 2025), which is the case against a 
 decides from the task text alone whether a battery is demanding enough. Those rules are the ones
 this pass took out or archived.
 
-Every component still in the tree carries one comment line naming this file and its id:
+This file is the index of what survived. Each entry below names a refusal by the kebab id its
+ledger card uses, says what it refuses and why that is at least 98% likely to be a real defect, and
+where it has moved to a readout or advice, says what the Builder or the reviewer now reads instead.
+The rewritten decisions live with the code that applies them: R1 in `src/truth/tool-runs.ts`, R2
+beside the control receipts the census writes and the claim reads, R3 in
+`src/truth/rule-decisions.ts`, and R4 in `heldCountsAgainstAuthor` (`src/run/full-run-round.ts`).
+`test/gate-decisions.test.ts` holds STARTER.md's Gates section to the source: every code it names is
+one some source file still emits.
 
-```text
-// Gate audit 2026-09-25 (docs/gate-audit.md, <id>): kept: <why>
-// Gate audit 2026-09-25 (docs/gate-audit.md, <id>): commented out (unsure): <why>
-```
-
-A commented-out component is left in place, line for line, with its call sites and its tests, so
-restoring it is uncommenting the blocks that carry its id and the prose lines named in its entry.
-Its finding code is no longer produced, and the model-visible text that described it has been
-taken out, since a rule the Builder is told about and nothing enforces is worse than no rule.
-
-The blocks were archived in commit 3be43b8 and have not moved since, while the code around them has.
-The consolidation that followed renamed what several of them read. A finding's owner, for one, is
-now the bundle file at fault, such as `correctness-model/evaluator.ts`, rather than a word such as
-`correctness-model`. So a restore starts from 3be43b8 and translates each uncommented line into the
-current vocabulary before it can compile.
+The first pass marked each component with a `Gate audit 2026-09-25` comment line and archived the
+unsure ones as commented-out blocks. The second pass, on 2026-09-26, deleted every archived block it
+found no reason to restore and removed the markers, since an index in one file does not go stale in
+fifty-two places at once. The archived bytes remain at commit 3be43b8.
 
 ## Kept
 
 Each kept component refuses a candidate, holds a battery or bounds a loop because something is
-actually wrong with it, and the refusal names what to repair. Behaviour is unchanged; only the
-comment line above the producer is new.
+actually wrong with it, and the refusal names what to repair.
 
 ### bundle-shape
 
@@ -271,36 +266,39 @@ no recorded campaign ever tripped the rule. The rest of `bundle-walls` is unchan
 ## Rewritten, 2026-09-26
 
 Components the second audit judged right in intent and wrong in shape, because each was a patch at
-one stage. Each is now one decision in `src/truth/decisions/` whose stage table is typed over every
-stage, so a stage cannot silently go without it.
+one stage. Each is now one decision with one owner that every stage applying it calls, so no stage
+keeps a copy of its own.
 
 ### grounded-verdict (R1)
 
 Replaces `f2-witness-relay`, `census-grounding-owed` and the per-case half of `measure-grounding`
-(`src/truth/decisions/grounding.ts`). A verdict an external check decided needs a completed run of
-that check's declared tool on that same subject: a pass is ungrounded when any applicable external
-check has none, and a fail only when every check that blocked it has none, since a skipped run
-could only have withheld a pass. One code, `EXTERNAL_VERDICT_UNGROUNDED`. The F2 witness fails,
-a census control is refused, and a battery or rehearsal case is a `verifier` non-result. Timeouts
-and crashes stay with `DISCRIMINATION_PROBE_NO_VERDICT`, and `generated-correctness-model-relay` is
-gone as a classification. The claim's `external-grounding-case-uncovered` clause is deleted, since
-no verified pass can now lack its run.
+(`src/truth/tool-runs.ts`). A pass is ungrounded when an applicable check that declares required
+tools, authored or external, has no completed run of one of them on that same subject. A fail is
+never refused for a missing run: a skipped run could only have withheld a pass, and refusing one
+mislabelled correct prechecks and every census reject that passed its check. One code,
+`EXTERNAL_VERDICT_UNGROUNDED`. The F2 witness fails, a census control is refused, and a battery or
+rehearsal case is a `verifier` non-result. Timeouts and crashes stay with
+`DISCRIMINATION_PROBE_NO_VERDICT`, and `generated-correctness-model-relay` is gone as a
+classification. The claim's `external-grounding-case-uncovered` clause is deleted, since no verified
+pass can now lack its run.
 
 ### every-check-rejects (R2)
 
-Replaces `reject-discrimination` and `public-rule-control-coverage`
-(`src/truth/decisions/controls.ts`). Two decisions over the settled control receipts, which the
-census writes and the claim reads back through `checkReceiptSet`, so the two cannot disagree: a
-reject whose `expectedCheckId` did not fail on it (`DISCRIMINATION_REJECT_PASSED`), and a check some
-bound task declares that no reject names (`DISCRIMINATION_CHECK_UNREJECTED`). A reject that reached
-no verdict is `DISCRIMINATION_PROBE_NO_VERDICT`'s and counts for neither. The per-family reject and
-the per-cell accept requirements are gone: mutation analysis asks that every check be seen to kill a
-mutant, not that every family supply one, and the claim's `intrinsic-` and
-`external-grounding-uncovered` clauses are deleted as the same fact read a second time.
+Replaces `reject-discrimination` and `public-rule-control-coverage`. Two decisions over the settled
+control receipts, which the census writes and the claim reads back through `checkReceiptSet`, so the
+two cannot disagree: a reject whose `expectedCheckId` did not fail on it
+(`DISCRIMINATION_REJECT_PASSED`), and a check some bound task declares that no reject names
+(`DISCRIMINATION_CHECK_UNREJECTED`). A reject whose tool run crashed is
+`DISCRIMINATION_PROBE_NO_VERDICT`'s, and one that timed out refuses nothing and is listed in the
+advisory `controls-tool-timeout` row. Neither is a miss, and unless the environment refused it,
+neither names its check, so a check whose only reject reached no verdict is still unrejected. The per-family reject and the per-cell
+accept requirements are gone: mutation analysis asks that every check be seen to kill a mutant, not
+that every family supply one, and the claim's `intrinsic-` and `external-grounding-uncovered`
+clauses are deleted as the same fact read a second time.
 
 ### declared-means-graded (R3)
 
-Replaces `brief-artifact-root-unread` and `published-rules` (`src/truth/decisions/brief.ts`),
+Replaces `brief-artifact-root-unread` and `published-rules` (`src/truth/rule-decisions.ts`),
 restored as two refusals in `validateBrief`, so a fresh build and a continuation meet them alike.
 An artifact root no check lists in its `artifactPaths`, with no check reading `$`, is refused
 (`brief-artifact-root-unread`), and so is a check citing an undeclared rule row or only private
@@ -328,7 +326,7 @@ which an unchanged candidate is not.
 ## Deleted, 2026-09-26
 
 The second audit (54 components read against their recorded firings and their stated reason) found
-no decision these twelve changed correctly, so their commented-out code, markers and tests are gone
+no decision these fourteen changed correctly, so their commented-out code, markers and tests are gone
 rather than waiting to be restored: `tool-program-argument`, `tool-self-authored`, `repeated-public-
 condition`, `product-repair-required`, `operating-guide-retired-tool`, `task-variation`, `brief-
 constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeated-findings-stall`,

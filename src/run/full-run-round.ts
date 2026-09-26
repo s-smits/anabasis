@@ -296,7 +296,6 @@ function batteryDelivered(measure: NonNullable<CandidateEvaluation["measure"]>):
   return measure.claim !== null && (measure.claim.created || measure.disposition !== "provider-stopped");
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, environment-blocked-ceiling): kept: batteries of typed non-results create no evidence, so remeasuring the same environment buys nothing (rule 15)
 function loopGuardTerminal(loop: LoopState): string | null {
   if (loop.budget.status() === "budget_limited") {
     return "budget-limited: the campaign model-call budget is spent (--iteration-budget raises it)";
@@ -329,7 +328,6 @@ export function terminalEvidenceFor(
  *  when `CLAUSE_ENDINGS` gives its clause no ending of its own; without the retry a campaign dies
  *  on its first failed round. The retry is bounded by the shared unresolved-authoring allowance
  *  rather than being free. */
-// Gate audit 2026-09-25 (docs/gate-audit.md, build-failed-ceiling): kept: a round that admits no candidate measures nothing, so its retries share one bounded allowance
 function buildFailedTerminal(result: IterationResult, loop: LoopState): string | null {
   if (result.nextDecision?.move === "stop") return `stopped: ${result.nextDecision.reason}`;
   const retryMove = result.nextDecision?.move;

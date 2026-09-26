@@ -18,9 +18,23 @@ import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { required } from "./helpers/doubles.ts";
 import type { ControlReceipt } from "../src/truth/battery-record.ts";
 
+const ROOT = new URL("..", import.meta.url).pathname;
 const STARTER = readFileSync(new URL("../starters/pi-built-harness/STARTER.md", import.meta.url), "utf8");
 
 describe("gate decisions", () => {
+  // A code the Builder is told about and no source emits sends it looking for a refusal that no
+  // longer exists, which is the told half of the registry drifting from the refusing half.
+  it("names under Gates only codes some source file still emits", () => {
+    const gates = STARTER.slice(STARTER.indexOf("## Gates"));
+    const told = [...gates.matchAll(/^- `([\w-]+)`/gm)].map((match) => required(match[1], "told code"));
+    const source = new Bun.Glob("src/**/*.ts");
+    const emitted = [...source.scanSync({ cwd: ROOT })]
+      .map((path) => readFileSync(`${ROOT}/${path}`, "utf8"))
+      .join("\n");
+    expect(told.length).toBeGreaterThan(10);
+    expect(told.filter((code) => !emitted.includes(`"${code}"`))).toEqual([]);
+  });
+
   it.each([
     EXTERNAL_VERDICT_UNGROUNDED,
     DISCRIMINATION_REJECT_PASSED,

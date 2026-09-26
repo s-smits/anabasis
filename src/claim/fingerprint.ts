@@ -121,8 +121,6 @@ export function fingerprintSlug(
   // verifier's content address, which is the one place a reader looks to say what ran.
   let agent: ReturnType<typeof hashBundle>;
   let correctnessModel: ReturnType<typeof hashBundle>;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, bundle-walls): kept: an entry the content hash cannot cover
-  // would leave measured bytes outside the product identity.
   try {
     agent = hashBundle(agentDir);
     correctnessModel = hashBundle(correctnessModelDir, { excludeTop: [...BATTERY_FILES] });
@@ -139,8 +137,6 @@ export function fingerprintSlug(
       })),
     };
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, bundle-walls): kept: process execution and the ambient
-  // environment belong to the verifier host, never to authored correctness-model source.
   // Brief-marked generated source may not spawn processes or forward the ambient environment.
   // `scannableBundleSource` leaves test files out, since they are not part of what the verifier
   // executes.

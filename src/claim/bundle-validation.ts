@@ -160,9 +160,6 @@ function importFindings(path: string, abs: string, agentDir: string): BundleVali
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, bundle-walls): kept: agent code may not import the correctness
-// model, unvetted packages or built-ins, nor ship key material or unhashable entries, which is the isolation
-// of hidden data from the solver.
 export function validateAgentBundle(agentDir: string): BundleValidationResult {
   const findings: BundleValidationFinding[] = [];
   let files: ReturnType<typeof hashBundle>["files"];

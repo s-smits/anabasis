@@ -56,6 +56,8 @@ call.
   `reference/` and the public `@ana` packages. The evaluator may import `reference/` helpers.
 - `tools-description-drift`: `agent/tools.ts` serves the exact description `tools-spec.json`
   declares.
+- `task-worker-binding-drift`: the generated tools expose the same registration and tool schema
+  for every task, because one solver serves the whole battery.
 
 **4. Control census.** Runs every applicable check on each accept and only `expectedCheckId` on
 each reject, four examples at a time with the installed tools, on a host that may be busy. Each
@@ -65,11 +67,16 @@ tool call gets a fresh empty home. This stage and F2 share one wall.
   the battery.
 - `DISCRIMINATION_REJECT_PASSED`: a reject did not fail the check its `expectedCheckId` names.
   Change the example so that check fails, or fix the check.
-- `DISCRIMINATION_CHECK_UNREJECTED`: a declared check is no reject's `expectedCheckId`. Add a reject
-  that fails it.
-- `EXTERNAL_VERDICT_UNGROUNDED`: a verdict an external check decided needs a completed run of that
-  check's declared tool on that same artifact. A pass, or a fail only such checks decided, with no
-  completed run is refused here, fails the F2 witness, and is a non-result in the battery.
+- `DISCRIMINATION_CHECK_UNREJECTED`: a check some task applies to is no reject's `expectedCheckId`.
+  Add a reject that fails it.
+- `DISCRIMINATION_PROBE_NO_VERDICT`: a check's tool run crashed on an example, so that example
+  proves nothing. A tool the host itself could not start is the environment's, not yours. A run
+  that timed out refuses nothing and is listed in the advisory `controls-tool-timeout` row, but that
+  example still counts as no reject of its check.
+- `EXTERNAL_RESULT_UNBOUND`: a check returned before its tool runs finished. Await every run.
+- `EXTERNAL_VERDICT_UNGROUNDED`: a check that declares required tools passed without a completed
+  run of one of them (`starter-pack/contract.md`); refused here, failed in F2, a non-result in the
+  battery.
 
 **5. F2 reference solve.** Resolves required tools, then builds every task's artifact with
 `reference/index.ts` through the public submission path and runs the checks over it, four tasks

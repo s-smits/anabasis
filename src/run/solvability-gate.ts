@@ -160,7 +160,6 @@ function witnessesOf(
   return witnesses;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: it names which declared checks reject the reference solve, counts over public identities that say where to repair
 /** Aggregate failing-check concentration: which of the brief's own declared truth-checks reject
  *  the reference solve, and how often. The check names are Builder-authored, so aggregate counts
  *  can identify the affected checks while the per-task results stay protected. The Builder
@@ -184,7 +183,6 @@ function checkConcentration(cases: readonly SolvabilityCaseEvidence[]): Contract
   ];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-representation-defect): kept: a reference answer the writer, DraftStore or submit path cannot carry is a representation defect every solve would meet
 /** Every representation-defect detail comes off the submission path before verification and is
  *  classified generated-toolset-contract, because it describes the public authoring interface —
  *  writer schema, DraftStore, submit — which may be reported to the Builder. A bare count is not
@@ -292,7 +290,6 @@ function censusFeedback(
   ).length;
   const nonResults = cases.filter((row) => row.status === "non-result").length;
   const feedback: CampaignFeedback[] = [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a reference solve the host could not run is an environment non-result, never a verdict on the candidate
   if (nonResults > 0) {
     feedback.push({
       owner: "environment",
@@ -304,7 +301,6 @@ function censusFeedback(
   if (representationDefects > 0) {
     feedback.push(representationDefectFeedback(cases, representationDefects));
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a battery the candidate's own reference solve cannot pass would measure the checks rather than the solver
   feedback.push(...ungroundedFeedback(cases));
   if (failed > 0) {
     // How many of the failed solves the per-task wall stopped, stated separately so a slow search

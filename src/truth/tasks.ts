@@ -70,8 +70,6 @@ interface TaskRow {
   applicable: ReturnType<typeof applicableTruthChecks>;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: every task rule reads these fields without
-// checking them again.
 /** The fields every rule below reads without checking again: a battery of tasks, each with a string
  *  id, a string family, a public input and an array of hidden rows naming a check. */
 function fieldFindings(value: unknown): ContractFinding[] {
@@ -106,8 +104,6 @@ function fieldFindings(value: unknown): ContractFinding[] {
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-count): kept: the battery holds the task count the run
-// asked for, which the measured denominator is sized on.
 /** Battery-level shape no task walk can decide: the requested census. */
 function censusFindings(battery: TaskBattery, context: TaskValidationContext): ContractFinding[] {
   const findings: ContractFinding[] = [];
@@ -134,8 +130,6 @@ function censusFindings(battery: TaskBattery, context: TaskValidationContext): C
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: task ids name case paths and disclosure
-// scans, so they must be unique and safe to spell.
 /** Each task's own identity: unique, and spelled so a disclosure scan can recognise it. */
 function identityFindings(rows: readonly TaskRow[]): ContractFinding[] {
   const seen = new Set<string>();
@@ -160,8 +154,6 @@ function identityFindings(rows: readonly TaskRow[]): ContractFinding[] {
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a check without its hidden operand cannot
-// run, and an operand for a check that does not apply is misbound.
 /** Hidden operands, both directions: a row for a check that wants none, and a missing row for a
  *  check that requires one — absence cannot silently skip a check. */
 function hiddenOperandFindings(row: TaskRow, declared: ReadonlySet<string>): ContractFinding[] {
@@ -206,8 +198,6 @@ function hiddenOperandFindings(row: TaskRow, declared: ReadonlySet<string>): Con
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a task no check applies to is never verified
-// by anything.
 /** A task no check applies to is never verified by anything. */
 function applicabilityFindings(rows: readonly TaskRow[], declared: ReadonlySet<string>): ContractFinding[] {
   return rows.flatMap((row) => [
@@ -224,8 +214,6 @@ function applicabilityFindings(rows: readonly TaskRow[], declared: ReadonlySet<s
   ]);
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a declared public path no task provides is a
-// misnamed input that a check would read as absent.
 /** A declared public input path no applicable task provides anywhere is a misnamed input. An
  *  optional one (wind, keep-out zones) is absent from some tasks by design and the projection hands
  *  the check what is there, so one provider is enough. */

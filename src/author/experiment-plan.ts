@@ -163,8 +163,6 @@ function planTextRefusal(plan: ExperimentPlan): string | null {
   return null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is read only in its one
-// schema, so its target and predictions are scored against what the Builder actually declared.
 /** The one reading of a plan. A plan without this schema is refused by name rather than read as
  *  whatever fields it still has: the shape before it carried no families and no predictions, and
  *  reading it would score a battery against a plan that declared neither. */
@@ -230,8 +228,6 @@ function capturedPlanBytes(workspace: string): string {
   }
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, experiment-plan-schema): kept: the plan is captured once from a
-// bounded regular file, so it is fixed before the round that tests it.
 /** Capture the plan once, independently of candidate identity, so it is fixed before the round
  *  that tests it and cannot be tuned to the result. Rewording it produces a new digest and nothing
  *  else: it establishes membership in a new experiment, not a harder one. */

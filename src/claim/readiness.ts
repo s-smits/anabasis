@@ -132,7 +132,6 @@ export function assessReadiness(input: ReadinessInput): ReadinessVerdict {
     });
   }
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a scored external check with no tool run on any verified case leaves the score without tool evidence
   // An external check with no tool runs on applicable verified cases has no tool evidence for
   // the score. Report the check ids so the missing execution can be investigated.
   for (const finding of inertToolFindings(

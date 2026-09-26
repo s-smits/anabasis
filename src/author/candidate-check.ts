@@ -212,8 +212,6 @@ function validatedBrief(raw: unknown, findings: ContractFinding[]): Brief | null
     : null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: tasks.json must be an array of task objects
-// before any task rule, control binding or case path can read it.
 /** correctness-model/tasks.json holds the bare task array, and `{tasks: [...]}` is the validator's
  *  shape, which this check supplies. A file that carries the wrapper itself would otherwise be
  *  validated as a battery whose single "task" is that object, and the diagnostic would quote back
@@ -267,8 +265,6 @@ function guideFindings(workspace: string): ContractFinding[] {
     : [controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail })];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tools-spec-structure): kept: the tool contract must parse and
-// name a preparer before the worker registers one stable roster.
 /** Mirrors `validatedBrief` for the tools contract: validate one bundle file, push its findings and
  *  return the parsed value only when it is clean. */
 function validatedToolsSpec(raw: unknown, findings: ContractFinding[]): ToolsSpec | null {
@@ -281,8 +277,6 @@ function validatedToolsSpec(raw: unknown, findings: ContractFinding[]): ToolsSpe
     : null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, harness-config): kept: a files preset that cannot carry the
-// artifact schema otherwise fails at worker start, as a non-result in a paid battery.
 /** Refuses a `files` preset whose artifact schema that preset cannot carry, at submit rather than
  *  at worker start, where the same mismatch surfaces as a non-result an hour into a paid battery
  *  that then measures nothing. The rule and its message live with their owner,
@@ -355,8 +349,6 @@ export function loadValidatedBundle(
     readJson(workspace, f, findings),
   );
   const specRaw = readJson(workspace, TOOLS_SPEC_FILE, findings);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, harness-config): kept: config.yaml owns the runtime walls, and
-  // a wall the host would refuse at run time is refused here, where the Builder can still repair it.
   const configIssue = harnessConfigIssue(workspace);
   if (configIssue !== null) {
     findings.push(
@@ -425,9 +417,6 @@ export function loadValidatedBundle(
   return { findings, advisories, brief, battery, corpus, toolsSpec };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-identity): kept: a check naming a tool id that is malformed
-// or resolves to no installed executable cannot run, and the resolved digests are the tool identity every run
-// records.
 /**
  * Whether the tools the brief names are installed where the host will look, appending any authoring
  * finding that earns.

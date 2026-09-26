@@ -22,9 +22,10 @@ task bytes and says whether a battery got harder or only different.
 
 ## The deterministic read comes first, and it chooses the rest
 
-Eleven local readers cost nothing but compute, and between them they already name the run's size,
+Twelve local readers cost nothing but compute, and between them they already name the run's size,
 its three denominators, what moved between batteries, which of its own walls bound it, what each
-slot was doing while the clock ran and what the digest flagged. A paid lane opened before that read
+slot was doing while the clock ran, which gate components refused and what that cost, and what the
+digest flagged. A paid lane opened before that read
 spends on a question the read would have answered for free, or would at least have sharpened into
 a trigger; and a paid lane opened without a trigger is a lane spent on inventory. So the read runs
 first, always, and its triggers are what choose the semantic lanes.
@@ -41,17 +42,17 @@ looks up in the main checkout's campaign tree. `scope` sizes the run from its ow
 and `read` with no `--lanes` reads what that size earns. Every lane's output is captured to
 `<review>/<lane>.txt`, the read is recorded in `<review>/wri-review.json`, and the command prints
 one bounded brief instead of the captures: the run's size and terminal, each lane quoted whole or
-pointed at, then the digest triggers and scan findings the snapshot lane raised. **Read the brief,
+pointed at, then the triggers and scan findings the deterministic lanes raised. **Read the brief,
 not the lane files** — the whole read is the size of a paid lane's context — and open a lane file
 only once the brief has made that lane the question. `wri.mjs brief --out <review>` re-renders it.
 
 | tier | the run | lanes read | semantic lanes to start from |
 | --- | --- | --- | --- |
-| `probe` | under two hours, or no case has scored yet | the six that read campaign bytes alone: `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff` | 4 |
-| `standard` | a scored battery, under twelve hours and under three epochs | all eleven | 8 |
-| `deep` | twelve hours or more, three epochs or more, or three batteries | all eleven | 14 |
+| `probe` | under two hours, or no case has scored yet | the seven that read campaign bytes alone: `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`, `gates` | 4 |
+| `standard` | a scored battery, under twelve hours and under three epochs | all twelve | 8 |
+| `deep` | twelve hours or more, three epochs or more, or three batteries | all twelve | 14 |
 
-Twenty-six is the ceiling, because there are twenty-six lanes. The triggers choose the lanes, and
+Twenty-eight is the ceiling, because there are twenty-eight lanes. The triggers choose the lanes, and
 the isolated two open only on a trigger; where no trigger picks, the brief falls back to a default
 set — `probe` opens lanes 5, 8, 12 and 25, `standard` adds 1, 9, 14 and 24, and `deep` adds 2, 6,
 10, 11, 13 and 22. The tier is a default and not a gate: `--lanes` and `--all` still select
@@ -128,6 +129,8 @@ could change.
 | a `timeline` stall or gap over thirty minutes; 4c `REVIEW TURNS EXCEED SOLVER TURNS`, `EXPLICIT ALLOWANCE WAIT` or `DECISION ON CENSORED BATTERY` | 24 |
 | any unaccepted case; any non-result; a terminal other than `completed`; submit strikes | 25 |
 | a `posture` stretch `adrift` or `unreadable`; 4e `MEMORY OVER READ CAP` | 26 |
+| `gates` `GATE STALL`, `GATE CLEARED WITHOUT EDIT`, `BELOW-BAR GATE FIRED`, `UNLEDGERED REFUSAL CODE`, `REVIEW HOLD CHAIN` or `CEILING ENDED RUN`; a defect a battery or a probe found that a gate owns | 27 |
+| `gates` `EVALUATION CORRECTION REPLAY CANDIDATE`; an issue left `unmeasured` across a correction | 28 |
 | verified cases, with lane 5 or 6 reading slack | 7 |
 
 A missing trigger does not settle the semantic question: it says the arithmetic found nothing,
@@ -138,11 +141,11 @@ questions for a lane. Lanes 3, 4, 8, 13 and 19 have no digest trigger of their o
 what the primary reads in rows C, D and H and in the earlier notes, which is why the default sets
 above carry some of them.
 
-## The twenty-six lanes
+## The twenty-eight lanes
 
-The catalogue is exactly twenty-six semantic lanes, in one file after the rows, each a contiguous
+The catalogue is exactly twenty-eight semantic lanes, in one file after the rows, each a contiguous
 `**N. Title.**` heading that `scripts/catalogue-shape.mjs` counts as `ANGLE_COUNT`. Each asks one
-sharp question, and they fall into six groups. One independent `gpt-5.6-luna` session at `max`
+sharp question, and they fall into seven groups. One independent `gpt-5.6-luna` session at `max`
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.
@@ -221,13 +224,22 @@ Solver, time and failure:
 26. **Builder memory and posture.** Memory carry-forward and read-back, the read cap, whether the
     prose capture is readable.
 
+The gate:
+
+27. **Gate rent and confidence.** Each fired gate component's ledger prior (`gate-ledger.mjs`)
+    against what its episodes did — repaired, repaired by a tool change, cleared under an unchanged
+    condition, stalled — and the component that missed a defect the battery later showed.
+28. **Evaluation-correction regrade.** The earlier battery's accepted artifacts graded under the
+    corrected evaluator through `replay --under`, for each replay candidate the `gates` lane
+    names; the flips, and the issue states they could settle, which nothing in the controller reads.
+
 Lanes 7 and 23 are isolated, and `ISOLATED_ANGLES` in `catalogue-shape.mjs` is what enforces it:
 lane 23 alone receives the private packet `scripts/trace-challenge.ts` writes, and lane 7 freezes
 its public-only corpus before it reads verifier internals or any other lane's report.
 `MIN_AUTO_SESSIONS` is therefore three — the two isolated seats plus one — and the manifest
 refuses a grouping that crosses either boundary. Sessions are contiguous runs of the catalogue,
 so when both isolated lanes have fired, `--auto` needs five sessions: lanes 1 to 6, lane 7,
-lanes 8 to 22, lane 23 and lanes 24 to 26. An isolated lane whose trigger did not fire is dropped
+lanes 8 to 22, lane 23 and lanes 24 to 28. An isolated lane whose trigger did not fire is dropped
 from an auto grouping with a line on stderr, and refused outright when named under `--sessions`. Shared orientation and context stay free of case
 verdicts, verifier-derived selection hints and other lanes' conclusions, because a lane told what
 to find finds it. Every other lane may be grouped under an explicit override; grouping is never
@@ -447,4 +459,4 @@ curation, the `climb`, `hold-limit` and `ease` verbs and the saturation ledger. 
 now, and none of it is a lane. The twelve former angles that kept a direct successor are renumbered
 and their evidence rewritten against the current source; a finding an older note gives under any
 other retired number is still a finding, and its mechanism is what to carry forward, under
-whichever of the twenty-six lanes owns the question today.
+whichever of the twenty-eight lanes owns the question today.

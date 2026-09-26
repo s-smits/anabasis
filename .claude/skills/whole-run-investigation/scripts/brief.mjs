@@ -25,9 +25,9 @@ export const LANE_LINES = 60;
 
 /** The lanes that read recorded campaign bytes alone. The other five open the measured checkout or
  *  an archive, which is work worth doing once a battery has scored something. */
-export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls", "handoff"];
+export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls", "handoff", "gates"];
 
-/** How many semantic lanes each tier starts with, out of the 26 the catalogue declares. */
+/** How many semantic lanes each tier starts with, out of the 28 the catalogue declares. */
 export const SEMANTIC_LANES = { probe: 4, standard: 8, deep: 14 };
 
 /** The lanes a tier launches when no digest trigger picks any. Each tier keeps the set below it
@@ -69,6 +69,13 @@ export const LANE_FOR_TRIGGER = new Map([
   ["EXPLICIT ALLOWANCE WAIT (lane 24)", [24]],
   ["DECISION ON CENSORED BATTERY (lane 24)", [24]],
   ["MEMORY OVER READ CAP (lane 26)", [26]],
+  ["GATE STALL (lane 27)", [27]],
+  ["GATE CLEARED WITHOUT EDIT (lane 27)", [27]],
+  ["BELOW-BAR GATE FIRED (lane 27)", [27]],
+  ["UNLEDGERED REFUSAL CODE (lane 27)", [27]],
+  ["REVIEW HOLD CHAIN (lane 27)", [27]],
+  ["CEILING ENDED RUN (lane 27)", [27]],
+  ["EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)", [28]],
 ]);
 
 /** The lanes a grouped trigger starts, empty when the catalogue starts none from it. */
@@ -211,20 +218,31 @@ export function laneSuggestions(triggers, tier) {
   };
 }
 
-/** The digest's own capitalised trigger rows and the scan findings, by name and count, then the
- *  lanes those triggers start. All are leads the snapshot lane already produced; the brief repeats
- *  none of its reasoning. */
-function pressing(reviewDir, tier) {
+/** The digest's own capitalised trigger rows, the in-process lanes' trigger rows and the scan
+ *  findings, by name and count, then the lanes those triggers start. All are leads a deterministic
+ *  lane already produced; the brief repeats none of its reasoning. */
+function pressing(reviewDir, tier, steps) {
   const overview = readJsonFileOrNull(join(reviewDir, "overview.json"));
-  if (overview === null) return [];
-  const triggers = Array.isArray(overview.digestTriggers) ? overview.digestTriggers : [];
-  const findings = Array.isArray(overview.scanFindings) ? overview.scanFindings : [];
+  // The trigger rows the in-process lanes wrote beside their captures (`<lane>.triggers.json`), in
+  // lane order, so a lead a campaign-only read raises reaches the brief without a snapshot. A lane
+  // that failed this read contributes none, whatever an earlier read left beside it.
+  const fromLanes = steps.flatMap((step) => {
+    if (step.ok !== true) return [];
+    const rows = readJsonFileOrNull(join(reviewDir, `${step.label}.triggers.json`));
+    return Array.isArray(rows) ? rows : [];
+  });
+  if (overview === null && fromLanes.length === 0) return [];
+  const triggers = [
+    ...(Array.isArray(overview?.digestTriggers) ? overview.digestTriggers : []),
+    ...fromLanes,
+  ];
+  const findings = Array.isArray(overview?.scanFindings) ? overview.scanFindings : [];
   const rules = new Map();
   for (const finding of findings) rules.set(finding.rule, (rules.get(finding.rule) ?? 0) + 1);
   const suggested = laneSuggestions(triggers, tier);
   return [
     [
-      "== flagged by the snapshot lane",
+      "== flagged by the deterministic lanes",
       ...triggers.map(
         (row) =>
           `  digest ${row.name} x${row.rows}${row.examples[0] === undefined ? "" : `: ${row.examples[0]}`}`,
@@ -279,6 +297,6 @@ export function renderBrief(reviewDir) {
     "",
     ...laneBlocks(reviewDir, state.steps ?? []),
     "",
-    ...pressing(reviewDir, scope.tier),
+    ...pressing(reviewDir, scope.tier, state.steps ?? []),
   ].join("\n\n");
 }

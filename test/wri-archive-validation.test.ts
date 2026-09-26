@@ -564,7 +564,7 @@ describe("WRI four-file archive contract", () => {
       [
         "deterministicRows must contain A-I exactly once and in order",
         "digestVerdicts must contain the 10 canonical verdicts in order",
-        "angleStates must contain angles 1-26 exactly once and in order",
+        "angleStates must contain angles 1-28 exactly once and in order",
       ],
     ],
     [

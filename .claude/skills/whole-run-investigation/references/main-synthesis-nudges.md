@@ -33,7 +33,7 @@ Use subagents only when authorised and when a bounded unresolved judgement benef
 Do the deterministic joins once in the primary session with the owning readers.
 Keep the two sides of an independent challenge separate until both return.
 If a lane is missing, name the missing work; replace only coverage that still affects the decision.
-The catalogue is rows A to I and twenty-six lanes; an older note that names an angle by a retired
+The catalogue is rows A to I and twenty-eight lanes; an older note that names an angle by a retired
 number is carrying a mechanism, so translate the mechanism to the lane that owns it today.
 WRI's skill and archive validator own the required shape; this reference does not invent another one.
 

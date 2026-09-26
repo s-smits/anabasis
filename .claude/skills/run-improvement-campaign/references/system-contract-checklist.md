@@ -106,7 +106,7 @@ below apply only to a source that descends from their exact composed commits.
 Each legacy ID appears exactly once. `Current home` names the maintained campaign row or
 preparation record. `Lane` names the current whole-run review lane that can inspect the
 corresponding run evidence; `—` means it is not a run-evidence decision. Current deterministic
-rows are `A–I` and the current semantic lanes are the twenty-six in
+rows are `A–I` and the current semantic lanes are the twenty-eight in
 `whole-run-investigation/references/review-angles.md`. There is no number map back to the retired
 angle numbers: the twelve former angles that kept a direct successor were renumbered when the
 catalogue was rewritten, the rest are carried by mechanism under whichever lane owns the question

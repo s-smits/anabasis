@@ -11,7 +11,7 @@
 //   bun wri.mjs collect <target> --out <abs review dir>
 //   bun wri.mjs launch  --out <abs review dir> [--lanes <count> | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
 //   bun wri.mjs finish  --out <abs review dir>
-//   bun wri.mjs delta | climb | yield | timeline | walls | handoff  <target> [--run <runId>] [--json] [--out <abs file>]
+//   bun wri.mjs delta | climb | yield | timeline | walls | handoff | gates  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
 //              walls [--battery <runId>]
 //
@@ -19,11 +19,12 @@
 // by rank or by name, and with none named it sizes the run first and reads what that size earns
 // (brief.mjs owns both the sizing and the digest). Every lane's output is captured to
 // `<review>/<lane>.txt` and the command prints one bounded brief instead, because the whole read is
-// the size of a paid lane's context. The six lanes that read in-process are also subcommands of
+// the size of a paid lane's context. A lane whose report carries `triggers` also writes them to
+// `<review>/<lane>.triggers.json`, where the brief reads them beside the snapshot's own. The seven lanes that read in-process are also subcommands of
 // their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
 // `review` reads every lane, prints the brief and then launches the semantic lanes the run's tier
 // names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
-// each a number from the 26-lane catalogue. `brief` re-renders that digest from a finished review
+// each a number from the 28-lane catalogue. `brief` re-renders that digest from a finished review
 // directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
 // them. `finish` validates the lane reports, scaffolds the archive from recorded bytes and
 // `verdicts.json`, then runs the archive validator; the investigation itself ends in one adjudicated
@@ -178,6 +179,14 @@ export const LANES = [
     },
   },
   {
+    name: "gates",
+    label: "gate rent",
+    read: async (c) => {
+      const { buildGateRent, renderGateRent } = await import("./gate-rent.mjs");
+      return shown(buildGateRent({ campaign: c.campaign, runId: c.runId }), renderGateRent);
+    },
+  },
+  {
     name: "archive",
     label: "archive validity",
     needs: (c) =>
@@ -306,10 +315,11 @@ function step(state, label, cmd, { fatal = true, cwd = CHECKOUT, capture = null 
  *  error as its capture and fails alone, as a spawned lane's non-zero exit does. */
 async function readLane(lane, ctx) {
   try {
-    return { ok: true, text: (await lane.read(ctx)).text };
+    const { report, text } = await lane.read(ctx);
+    return { ok: true, text, triggers: Array.isArray(report?.triggers) ? report.triggers : [] };
   } catch (error) {
     console.log(`   (${lane.name} failed; recorded, continuing)`);
-    return { ok: false, text: `${lane.name} failed: ${errorMessage(error)}` };
+    return { ok: false, text: `${lane.name} failed: ${errorMessage(error)}`, triggers: [] };
   }
 }
 
@@ -329,8 +339,11 @@ async function runLane(state, lane, ctx) {
     return record(state, { label: lane.name, ok: true, exitCode: 0, wrote: lane.write(ctx) });
   }
   if (lane.read !== undefined) {
-    const { ok, text } = await readLane(lane, ctx);
+    const { ok, text, triggers } = await readLane(lane, ctx);
     writeFileSync(join(ctx.reviewDir, `${lane.name}.txt`), text.endsWith("\n") ? text : `${text}\n`);
+    // Written on every execution, empty included, so a rerun into the same review never shows the
+    // triggers an earlier execution of this lane raised.
+    writeJsonFile(join(ctx.reviewDir, `${lane.name}.triggers.json`), triggers);
     return record(state, { label: lane.name, ok, exitCode: ok ? 0 : 1 });
   }
   step(state, lane.name, lane.cmd(ctx), {

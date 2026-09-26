@@ -1,5 +1,5 @@
 /**
- * `bun run replay -- <campaign>/<runId> > /private/tmp/.../replay.json`
+ * `bun run replay -- <campaign>/<runId> [--out /private/tmp/.../replay.json]`
  *
  * Re-grade one recorded battery's accepted artifacts through THIS tree's verifier and diff the
  * verdicts against the recorded ones. The candidate bytes are fixed: the recorded bundle snapshot
@@ -7,7 +7,9 @@
  * is the checkout this command runs in — its `src/truth` and `src/verify` decide tool attestation,
  * walls and tool resolution — so comparing two trees is two invocations and a diff of their
  * reports. No model is called: each case runs `gradeCase`, the same entry the measured battery
- * used. The report is one JSON document on stdout; process cleanup receipts stay in the campaign.
+ * used. The report is one JSON document on stdout, and also in the `--out` file when one is named;
+ * it names the commit of the tree that graded it, and each replayed row carries the check rows its
+ * grading reached. Process cleanup receipts stay in the campaign.
  */
 import { campaignRoot } from "../../src/meta/campaign-root.ts";
 import {
@@ -42,11 +44,13 @@ import { commitPublicTask } from "../../src/truth/task-split.ts";
 import { type BuildTask, type TaskBattery, validateTasks } from "../../src/truth/tasks.ts";
 import { blockingFailedCheckIds, publicTaskVerdict } from "../../src/truth/verdict-binding.ts";
 import { resolveVerifier } from "../../src/truth/verification-registry.ts";
-import type { CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
+import type { CheckRun, CorrectnessModelResult } from "../../src/verify/correctness-model-result.ts";
+import { SOURCE_IDENTITY } from "../../src/run/source-identity.ts";
+import { writeJsonFile } from "../../src/meta/completed-json.ts";
 import { VerifierOperationalStop, type VerifierCleanup } from "../../src/verify/verifier-lifetime.ts";
 
 export const USAGE = [
-  "usage: replay <campaignDir>/<runId>",
+  "usage: replay <campaignDir>/<runId> [--out <report.json>]",
   "",
   "<campaignDir> is a path, or a name under ./campaigns. The recorded battery is searched under",
   "the campaign, its domains/ sibling and its candidates/, contest/ and promotions/ children.",
@@ -65,7 +69,7 @@ export interface VerdictSide {
 
 /** One replayed verdict row. `nonResultKind` names a host or verifier non-result, or one of the
  *  replay-owned refusals `task-missing`, `public-task-drift` and `not-replayed`. */
-type ReplayVerdict = VerdictSide & { taskId: string };
+type ReplayVerdict = VerdictSide & { taskId: string; checkRuns?: CheckRun[] };
 
 interface RecordedCandidate {
   campaignDir: string;
@@ -116,6 +120,8 @@ export interface ReplayRow {
   recorded: VerdictSide;
   replayed: VerdictSide;
   same: boolean;
+  /** The check rows the replayed grading reached, in order; empty when it graded nothing. */
+  checkRuns: CheckRun[];
 }
 
 interface ReplaySummary {
@@ -278,6 +284,7 @@ async function replayOne(
   return {
     ...publicTaskVerdict(task.taskId, graded.record, graded.verdict),
     nonResult: graded.record.runtimeNonResult,
+    checkRuns: graded.checkRuns,
   };
 }
 
@@ -333,6 +340,19 @@ function sameSide(a: VerdictSide, b: VerdictSide): boolean {
   );
 }
 
+/** The compared side of a replayed row: its verdict fields, without the check rows beside them. */
+function replayedSideOf(verdict: ReplayVerdict): VerdictSide & { taskId: string } {
+  const { taskId, truthOk, pass, nonResultKind, nonResult } = verdict;
+  return {
+    taskId,
+    truthOk,
+    pass,
+    nonResultKind,
+    nonResult,
+    failedCheckIds: [...verdict.failedCheckIds].sort(),
+  };
+}
+
 export function diffVerdicts(
   recorded: ReadonlyMap<string, VerdictSide>,
   replayed: readonly ReplayVerdict[],
@@ -350,8 +370,9 @@ export function diffVerdicts(
             nonResult: "no replayed row for this task",
             failedCheckIds: [],
           }
-        : { ...verdict, failedCheckIds: [...verdict.failedCheckIds].sort() };
-    rows.push({ taskId, recorded: side, replayed: replayedSide, same: sameSide(side, replayedSide) });
+        : replayedSideOf(verdict);
+    const same = sameSide(side, replayedSide);
+    rows.push({ taskId, recorded: side, replayed: replayedSide, same, checkRuns: verdict?.checkRuns ?? [] });
   }
   const same = rows.filter((row) => row.same).length;
   return {
@@ -369,8 +390,15 @@ export function diffVerdicts(
 // --- Entry ---------------------------------------------------------------------------------------
 
 export async function main(argv: readonly string[], cwd: string): Promise<string> {
-  if (argv.length !== 1 || argv[0] === undefined) throw new Error(USAGE);
-  const recorded = resolveRecordedCandidate(argv[0], cwd);
+  const [candidate, flag, out, ...rest] = argv;
+  if (
+    candidate === undefined ||
+    rest.length > 0 ||
+    (flag !== undefined && (flag !== "--out" || out === undefined))
+  ) {
+    throw new Error(USAGE);
+  }
+  const recorded = resolveRecordedCandidate(candidate, cwd);
   const { sides, cases, skippedUnaccepted } = recordedCases(recorded);
   const replayed = await replayCases(recorded, cases);
   const report = {
@@ -378,12 +406,15 @@ export async function main(argv: readonly string[], cwd: string): Promise<string
     slugDir: recorded.slugDir,
     candidateDir: recorded.candidateDir,
     bundleSnapshot: recorded.bundleSnapshot,
-    source: cwd,
+    // The tree that graded, by commit rather than by path: a checkout path names whatever is
+    // checked out there later.
+    gradedUnder: SOURCE_IDENTITY,
     missingTools: replayed.missingTools,
     tools: replayed.tools,
     cleanup: replayed.cleanup,
     ...diffVerdicts(sides, replayed.rows, skippedUnaccepted.length),
   };
+  if (out !== undefined) writeJsonFile(resolve(cwd, out), report);
   return JSON.stringify(report, null, 2);
 }
 

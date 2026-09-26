@@ -84,6 +84,7 @@ export type ProbeControlsResult = {
   toolCheckCoverage?: ToolCheckCoverage[];
   /** What each check cost the census, dearest first. Absent when the census never ran a check. */
   checkCost?: CheckCost[];
+  checkRuns?: import("../verify/correctness-model-result.ts").SubjectCheckRun[];
 };
 
 export type ProbeControls = (
@@ -179,6 +180,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
       }
       // Controls bind taskId against the caller-supplied census tasks.
       const settled = new Map<string, SettledControl>();
+      const checkRuns: NonNullable<ProbeControlsResult["checkRuns"]> = [];
       const execution = await runControls(
         evaluate,
         corpus,
@@ -188,6 +190,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
           brief,
           ...keyIfDefined("verifierLifetime", options.verifierLifetime),
           ...keyIfDefined("stopped", stopped),
+          onCheckRun: (subjectId, attempt, row) => checkRuns.push({ ...row, subjectId, attempt }),
         },
         verifier,
       );
@@ -227,6 +230,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         controlReceipts: execution.controlReceipts,
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),
+        checkRuns,
         executionEvidence: hostEvidence,
         // The declared tool set as resolved above, which is the identity submit hashed: `externalChecksOf`
         // lists every required tool of every check. Hashing only the tools some control happened to

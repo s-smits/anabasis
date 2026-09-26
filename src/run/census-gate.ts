@@ -30,6 +30,7 @@ import {
   toolRetryDelay,
 } from "../truth/verifier-nonresult.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
+import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
@@ -82,6 +83,8 @@ type CensusEvidence = {
    *  `correctness_check`, the only point where a check's price is visible with session left to
    *  cut it. */
   checkCost?: CheckCost[];
+  /** One row per check per control attempt, host evidence that no author projection reads. */
+  checkRuns?: SubjectCheckRun[];
   /** Every blocking row behind a `fail`, by owner and finding codes. `findings` above holds only
    *  the executed control census, and most fails come from the battery count, reject coverage or
    *  F2 rows while `findings` stays empty, so without this field the record would give no reason
@@ -228,6 +231,7 @@ function persistCensus(
     ...keyIfDefined("controlReceipts", probe?.controlReceipts),
     ...keyIfDefined("toolCheckCoverage", probe?.toolCheckCoverage),
     ...keyIfDefined("checkCost", probe?.checkCost),
+    ...keyIfDefined("checkRuns", probe?.checkRuns),
     ...keyIfDefined("executionEvidence", probe?.executionEvidence),
     blocking: feedback
       .values()

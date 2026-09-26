@@ -364,7 +364,12 @@ async function recordSolvedCase(
   if (graded.submittedArtifact !== null) {
     ctx.evidence.write(`cases/${task.taskId}/${CASE_ARTIFACT_FILE}`, graded.submittedArtifact);
   }
-  if (graded.verdict !== null) ctx.evidence.write(`cases/${task.taskId}/verifier.json`, graded.verdict);
+  // The check rows sit beside the verdict in the case's own file, so a battery killed mid-run keeps
+  // them for every case it finished. A throw leaves no verdict and still has rows worth keeping.
+  if (graded.verdict !== null || graded.checkRuns.length > 0) {
+    const verdict = graded.verdict ?? { ok: null, issues: [], checkReceipts: [] };
+    ctx.evidence.write(`cases/${task.taskId}/verifier.json`, { ...verdict, checkRuns: graded.checkRuns });
+  }
   ctx.evidence.write(`cases/${task.taskId}/case-result.json`, graded.record);
   gradedCases.push(graded);
   return verifierStillUsable(ctx);

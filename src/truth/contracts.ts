@@ -24,7 +24,7 @@ import { createDraftFileTools } from "../solve/draft-files.ts";
 import { typecheckGeneratedModule } from "./generated-module-typecheck.ts";
 import type { SubmissionPort } from "../solve/final-submission.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRunObserver, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierRuntime } from "../verify/verifier-port.ts";
 import { type Brief, type ContractFinding, controllerValidatedFindings, throwIfInvalid } from "./brief.ts";
 import { loadFailureFinding } from "./load-fault.ts";
@@ -86,6 +86,8 @@ export type EvaluatorFn = (
   runtime?: VerifierRuntime,
   /** A reject control's declared check, run alone; measured cases never pass it. */
   onlyCheckId?: string,
+  /** Receives one row per check the evaluation reached; see `CheckRun`. */
+  observe?: CheckRunObserver,
 ) => CorrectnessModelResult | Promise<CorrectnessModelResult>;
 
 /** Bound on loading one generated module. Converts a load that never settles (an unresolved

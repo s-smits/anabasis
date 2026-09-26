@@ -40,3 +40,21 @@ export type CorrectnessModelResult = {
     publicTaskInputDigest: string;
   }>;
 };
+
+/** One row per applicable check an evaluation reached, in the order the loop took them. A check
+ *  that threw carries the closed kind of its failure and never the message, because the message of
+ *  a generated check can hold the answer; the checks after it are `not-run`. Rows are host evidence
+ *  for readers of the run directory, and no model-visible surface reads them. */
+export type CheckRun = {
+  seq: number;
+  checkId: string;
+  outcome: "pass" | "fail" | "threw" | "not-run";
+  errorKind: string | null;
+  startedAt: string | null;
+  durationMs: number | null;
+};
+
+export type CheckRunObserver = (run: CheckRun) => void;
+
+/** A row bound to the subject it graded, for records that hold many subjects in one file. */
+export type SubjectCheckRun = CheckRun & { subjectId: string; attempt: number };

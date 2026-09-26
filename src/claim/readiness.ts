@@ -5,6 +5,7 @@ import { inertToolFindings } from "../truth/grounding-coverage.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import type { SolvabilityStageReceipt } from "../truth/solvability-stages.ts";
 import type { CheckFailureDetail } from "../truth/predicate.ts";
+import type { CheckRun } from "../verify/correctness-model-result.ts";
 
 export type IsolationStrength = "physical" | "contractual";
 
@@ -53,6 +54,8 @@ export type SolvabilityCaseEvidence = {
   /** Private check failures recalculated by the controller. They remain under `.build/` or `runs/`
    * and never enter the agent bundle or public task. */
   predicateFailures: CheckFailureDetail[];
+  /** One row per check the reference's evaluation reached; absent when it never reached one. */
+  checkRuns?: CheckRun[];
 } & (
   | {
       status: "passed";

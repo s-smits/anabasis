@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -85,11 +86,22 @@ it.each([true, false])("replays accepted bytes through the real verifier: pass=%
     publicTaskDigest: commitPublicTask(MATCHING_TASKS[0]!).publicTaskDigest,
   });
   log.record();
-  expect(JSON.parse(await main(["slug/run-1"], root))).toMatchObject({
+  const printed = await main(["slug/run-1", "--out", "report.json"], root);
+  const report = JSON.parse(printed);
+  expect(report).toMatchObject({
     missingTools: [],
     cleanup: { state: "complete" },
     rows: [{ taskId: "t1", replayed: { truthOk: pass, pass, nonResultKind: null } }],
   });
+  // The grading tree by commit, never by the path it happened to sit at, and the rows it reached.
+  expect(report.gradedUnder.commit).toMatch(/^[0-9a-f]{40}$/);
+  expect(report.source).toBeUndefined();
+  expect(report.rows[0].checkRuns.map((row: { outcome: string }) => row.outcome)).toContain(
+    pass ? "pass" : "fail",
+  );
+  expect(report.rows[0].replayed.checkRuns).toBeUndefined();
+  expect(JSON.parse(readFileSync(join(root, "report.json"), "utf8"))).toEqual(report);
+  await expect(main(["slug/run-1", "--out"], root)).rejects.toThrow("usage: replay");
 });
 
 describe("resolveRecordedCandidate", () => {

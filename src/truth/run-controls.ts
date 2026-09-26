@@ -9,7 +9,7 @@ import {
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { EvaluationScopeHandle, VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { ControlReceiptSide, DiscriminationExecution } from "./battery-record.ts";
 import { type Brief, applicableTruthChecks, externalChecksOf } from "./brief.ts";
@@ -51,6 +51,8 @@ interface RunControlsOptions {
   onSettled?: (controlId: string, settled: SettledControl) => void;
   /** True once the census wall has cut the run: start no further control. */
   stopped?: () => boolean;
+  /** Receives each check row of each control attempt as it settles; lanes interleave them. */
+  onCheckRun?: (controlId: string, attempt: number, row: CheckRun) => void;
 }
 
 /** Controls evaluated side by side, each in its own scope and cells. A compiler-bound census run
@@ -196,6 +198,7 @@ async function evaluateControl(
       capturedStructuredClone({ publicTask: evaluateTask, artifact, hidden }),
       scope === undefined ? undefined : { tools: scope.port },
       only,
+      (row) => run.options.onCheckRun?.(controlId, attempt, row),
     );
   } catch (error) {
     failure = error;

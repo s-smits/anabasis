@@ -174,6 +174,16 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       expect(unbacked.map((row: { runtimeNonResultKind: string }) => row.runtimeNonResultKind)).toEqual(
         Array(TASKS.tasks.length - verified.length).fill("verifier-throw"),
       );
+      // No verdict, and still the case's own record of which check threw and by what kind.
+      for (const row of unbacked) {
+        const recorded = JSON.parse(
+          readFileSync(join(slugDir, "runs", runId, "cases", row.taskId, "verifier.json"), "utf8"),
+        );
+        expect(recorded).toMatchObject({ ok: null, issues: [], checkReceipts: [] });
+        expect(
+          recorded.checkRuns.filter((run: { outcome: string }) => run.outcome === "threw"),
+        ).toMatchObject([{ checkId: "parts-assigned", errorKind: "generated" }]);
+      }
     },
     60_000,
   );

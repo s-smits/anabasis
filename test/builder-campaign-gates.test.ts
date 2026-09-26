@@ -697,7 +697,7 @@ describe("a check that names an installed tool", () => {
     expect(outcome).toMatchObject({ buildAdmissible: true });
   });
 
-  it.concurrent("accepts a candidate whose named tool is installed, freezes it once, and ignores a stale tasks proposal", async () => {
+  it.concurrent("accepts a candidate whose named tool is installed, freezes it once, and records a fresh build's plan without opening its scope", async () => {
     const campaignDir = scratchDir("ana-primary-provenance-declaration-");
     const workspace = join(campaignDir, "workspace");
     const replies: string[] = [];
@@ -708,7 +708,7 @@ describe("a check that names an installed tool", () => {
         open: async (tools) =>
           scriptedSession(async () => {
             completeBundle(workspace);
-            // A stale draft cannot open an adopted or fixed scope on a fresh build.
+            // A fresh build's plan is recorded and scored, but cannot open an adopted or fixed scope.
             proposeExperiment(workspace, "tasks");
             requireExternalVerifier(workspace);
             installTool(workspace, "field-engine");
@@ -722,8 +722,8 @@ describe("a check that names an installed tool", () => {
     );
     expect(replies[0]).toContain("Accepted");
     expect(replies[1]).toContain("Nothing was submitted a second time");
-    expect(outcome.experimentProposal).toBeUndefined();
-    expect(readExecutionEvidence(campaignDir)[0]?.submits[0]?.experimentProposal).toBeUndefined();
+    expect(outcome.experimentProposal?.scope).toBe("tasks");
+    expect(outcome).not.toHaveProperty("experimentScope");
   });
 
   it.concurrent("keeps the bundle's own findings beside the missing-tool finding", async () => {

@@ -57,10 +57,15 @@ export type ExperimentOperation = Static<typeof ExperimentOperationSchema>;
 const experimentAuthoringFields = {
   proposal: ExperimentSubmissionSchema,
   operation: ExperimentOperationSchema,
-  baseline: Type.Object(
-    { agentHash: Type.String(), correctnessModelHash: Type.String(), taskSetHash: Type.String() },
-    { additionalProperties: false },
-  ),
+  /** Null only for a build with no adopted product: a fresh build's plan is scored, and a build
+   *  attributes no task, so nothing reads a baseline it does not have. */
+  baseline: Type.Union([
+    Type.Object(
+      { agentHash: Type.String(), correctnessModelHash: Type.String(), taskSetHash: Type.String() },
+      { additionalProperties: false },
+    ),
+    Type.Null(),
+  ]),
 };
 /** A changed product/evaluation condition carries no task-only difficulty attribution. */
 export const ExperimentAuthoringSchema = Type.Union([
@@ -156,6 +161,9 @@ export function candidateExperimentAuthoring(
 ): ExperimentAuthoring {
   const base = fingerprintSlug(baseDir);
   const candidate = fingerprintSlug(candidateDir);
+  if (!base.ok && actual === "build" && operation.operation === "new-baseline") {
+    return { proposal, operation, actual, baseline: null, changedTaskIds: null };
+  }
   if (!base.ok || !candidate.ok || base.taskSetHash === null || candidate.taskSetHash === null) {
     throw new Error(
       "experiment authoring requires positively fingerprinted baseline and candidate batteries",

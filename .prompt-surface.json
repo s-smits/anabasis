@@ -3,7 +3,10 @@
   "doc": [
     "starters",
     "starters/pi-built-harness/correctness-model/evaluator.test.ts",
-    "starters/pi-built-harness/correctness-model/harness.test.ts"
+    "starters/pi-built-harness/correctness-model/harness.test.ts",
+    "starters/pi-built-harness/correctness-model/evaluator.ts",
+    "starters/pi-built-harness/correctness-model/reference/index.ts",
+    "starters/pi-built-harness/agent/tools.ts"
   ],
   "deny": [
     "safeguardTriggered",
@@ -19,8 +22,8 @@
     "src/builder": "builder",
     "src/critic": "controller policy (reaches no model)",
     "src/gate": "builder (check and submit results)",
-    "src/analyse": "judge census plus findings routed to the author",
-    "src/review": "judge census",
+    "src/analyse": "judge review plus findings routed to the author",
+    "src/review": "reviewers (Judge, diagnosis reader, Epoch Reviewer)",
     "src/truth/judge": "judge",
     "src/truth": "shared contracts",
     "src/backends": "transport (all audiences)",
@@ -34,6 +37,7 @@
     "starters": "builder",
     "vendor/pi-claude-bridge": "transport (all audiences)",
     "vendor/pi-built": "transport (all audiences)",
+    "vendor/pi-agent-session": "transport (all audiences)",
     "vendor": "shared contracts"
   },
   "vocab": [

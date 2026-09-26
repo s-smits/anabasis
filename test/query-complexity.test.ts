@@ -40,6 +40,7 @@ interface TruthCheck {
     artifactPaths: string[];
     publicInputPaths: string[];
     requiredToolIds?: string[];
+    evidence?: { kind: "authored" } | { kind: "external"; requiredToolIds: string[] };
   };
   numericBoundaries?: { publicInputPath: string; constantName: string }[];
 }
@@ -148,6 +149,26 @@ describe("query complexity", () => {
       tooled: 0,
       roots: 1,
     });
+  });
+
+  it.concurrent("counts an external check's instrument as tooled, and an authored one without a tool as not", () => {
+    const external = check("states", "the nonlinear states hold", {
+      execution: {
+        families: "all",
+        artifactPaths: ["$.design"],
+        publicInputPaths: [],
+        evidence: { kind: "external", requiredToolIds: ["truss-python"] },
+      },
+    });
+    const authored = check("mass", "the mass stays under its cap", {
+      execution: {
+        families: "all",
+        artifactPaths: ["$.design"],
+        publicInputPaths: [],
+        evidence: { kind: "authored" },
+      },
+    });
+    expect(structureOf(light, { ...brief, truthChecks: [external, authored] }).tooled).toBe(1);
   });
 
   it.concurrent("reports every structural key it declares", () => {

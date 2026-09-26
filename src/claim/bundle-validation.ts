@@ -49,10 +49,12 @@ const CODE_EXT = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
  * Detect possible answer keys by filename. A name cannot prove what a file contains, and the
  * public projection and the sandbox are what restrict the data actually available to the agent.
  * Every leaked answer key observed so far had a recognisable filename, so this inexpensive check
- * catches the known mistakes without pretending to be the wall.
+ * catches the known mistakes without pretending to be the wall. It matches only names that can mean
+ * nothing but an answer: a solver-side `reference-solver.ts` or a tool tabulating `expected-outputs`
+ * of a public input is legitimate agent code, and a name cannot tell it from a leak.
  */
 const KEY_MATERIAL_RE =
-  /(answer[-_]?keys?|answers?\.(json|ts|js|mjs|sql|csv)$|hidden[-_]?(expectations?|answers?)|expected[-_]?(outputs?|answers?)|reference[-_]?(solver|solution))/i;
+  /(answer[-_]?keys?|answers?\.(json|ts|js|mjs|sql|csv)$|hidden[-_]?(expectations?|answers?))/i;
 
 /** Parse once for the import and ambient-capability checks over the same source bytes. */
 export function parseGeneratedSource(source: string, filePath: string): ts.SourceFile {

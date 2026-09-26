@@ -157,9 +157,16 @@ describe("bundle isolation checks", () => {
     const dir = slugDir();
     write(dir, AGENT_TOOLS_TS, ONE_EXPORT);
     write(dir, "agent/answers.json", "[7]");
+    write(dir, "agent/hidden-expectations.ts", "export const expected = 7;\n");
     write(dir, "agent/reference-solver.ts", "export const solve = () => 7;\n");
+    write(dir, "agent/expected-outputs.ts", "export const tabulate = () => [];\n");
     const result = validateAgentBundle(join(dir, "agent"));
-    expect(result.findings.filter((f) => f.code === "key-material-file")).toHaveLength(2);
+    expect(
+      result.findings
+        .filter((f) => f.code === "key-material-file")
+        .map((f) => f.file)
+        .sort(),
+    ).toEqual(["answers.json", "hidden-expectations.ts"]);
   });
 
   it("scans every generated correctnessModel code module for capability escapes, leaving casts and the Builder's tests free", () => {

@@ -180,7 +180,6 @@ describe("the controls probe", () => {
       "tool-check-launched",
       [...ACCEPTS, ...REJECTS].map((control) => launched(control.id)),
     );
-    expect(result.findings.filter((f) => f.code === "external-check-tool-unlaunched")).toEqual([]);
     const coverage = result.toolCheckCoverage ?? [];
     expect(coverage).toHaveLength(1);
     expect(coverage[0]?.checkId).toBe("expected-binding");
@@ -189,19 +188,8 @@ describe("the controls probe", () => {
     expect(coverage[0]?.rejects).toBeGreaterThan(0);
   }, 30_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-  // it.concurrent("refuses a check whose declared tool the host never ran, naming the check and the tool", async () => {
   it.concurrent("records no launch for a check whose declared tool the host never ran", async () => {
     const result = await toolBackedSlug("tool-check-unlaunched", []);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-    // const inert = result.findings.filter((f) => f.code === "external-check-tool-unlaunched");
-    // expect(inert).toHaveLength(1);
-    // expect(inert[0]?.path).toBe("correctness-model/evaluator.ts");
-    // expect(inert[0]?.detail).toContain('"expected-binding"');
-    // expect(inert[0]?.detail).toContain('"checker"');
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-    // // Public authoring identities only, so the detail survives the author boundary.
-    // expect(inert[0]?.disclosure).toMatchObject({ class: "authored" });
     expect(result.toolCheckCoverage?.[0]?.attestedLaunches).toBe(0);
   }, 30_000);
 

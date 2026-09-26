@@ -47,9 +47,9 @@ interface CensusGateOptions {
   /** Required battery size; the census must cover the complete task set. */
   expectedTasks: number;
   /** F2 reference solve of every task, run beside the control census. The same slot carries the
-   *  representation census and the accept-control independence reading, which raise findings of
-   *  their own against `brief` and `accept-controls`; all three need F2's witnesses, which exist
-   *  only while F2 is running. */
+   *  input-insensitivity observation and the accept-control independence reading, which raise
+   *  advisory findings against `brief` and `accept-controls`; all three need F2's witnesses, which
+   *  exist only while F2 is running. */
   solvability?: SolvabilityCensusGate;
   /** Wait before the one retry an environment-owned refusal earns; tests pass 0. */
   toolRetryWaitMs?: number;
@@ -686,7 +686,7 @@ async function runCensus(
   }
   const feedback = completed.rows;
   // A row's presence alone does not fail the census: an advisory finding is a reading, not a
-  // refusal, and the representation census and accept-control independence check both report
+  // refusal, and the input-insensitivity observation and accept-control independence check both report
   // things only the Builder can weigh. So the verdict counts blocking rows and the advisory ones
   // stay in the iteration record for `correctness_check`; `solvability-gate.ts` groups the same way.
   const verdict = feedback.some((row) => row.severity === "blocking") ? "fail" : "pass";

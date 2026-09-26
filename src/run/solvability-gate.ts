@@ -17,15 +17,7 @@
  * while every one of those failures may sit inside two or three declared checks. The concentration
  * is what makes the number actionable. Environment non-results belong to the environment and are
  * not counted as product failures.
- *
  */
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the representation census no longer refuses adoption
-//  * The representation census reuses these same witnesses without a second execution, looking for
-//  * copied public inputs and repeated absence spellings. Those are two bounded checks, not a general
-//  * proof that the tasks require domain skill, and their findings describe authored structures
-//  * without quoting protected verifier evidence. BLOCKING_CODES in that module decides which of them
-//  * refuse adoption, from its own recorded calibration; this gate only routes them at the severity
-//  * they declare.
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -41,8 +33,6 @@ import { EXTERNAL_VERDICT_UNGROUNDED } from "../truth/tool-runs.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { acceptControlIndependence, acceptIndependenceFeedback } from "./accept-control-independence.ts";
 import { type Witness, inputInsensitivity } from "./representation-census.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census and its severity set
-// import { BLOCKING_CODES, censusRepresentation } from "./representation-census.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
@@ -87,10 +77,6 @@ export function makeSolvabilityCensusGate(
     if (stopped()) return [];
     const { evidence, findings: probedFindings } = probed;
     const passed = witnessesOf(evidence, slugDir, "passed");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census over the passed witnesses
-    // // The compiled public artifact schema goes to the census so its absence rule can tell a
-    // // declared closed state ("none" among a field's allowedValues) from an invented sentinel.
-    // const representation = censusRepresentation(passed, harness.publicArtifactSchema);
     const independence = acceptControlIndependence(slugDir, passed);
     await Bun.write(
       join(iterationDir, SOLVABILITY_EVIDENCE_FILE),
@@ -98,8 +84,6 @@ export function makeSolvabilityCensusGate(
         {
           evidence,
           findings: probedFindings,
-          // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's recorded observations
-          // representation: representation.observations,
           acceptIndependence: independence,
           source: SOURCE_IDENTITY,
         },
@@ -115,45 +99,11 @@ export function makeSolvabilityCensusGate(
     const insensitivity = inputInsensitivity(witnessesOf(evidence, slugDir, "failed"));
     return [
       ...censusFeedback(evidence, insensitivity),
-      // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's refusal row
-      // ...representationFeedback(representation.findings),
       ...acceptIndependenceFeedback(independence),
       ...toolRefusals,
     ];
   };
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's refusal row, blocking or advisory by BLOCKING_CODES
-// /**
-//  * The Builder authors the artifactSchema and the public structures the census compares, so these
-//  * findings may describe those observations without quoting protected verifier evidence. They are
-//  * grouped by severity so that an advisory finding cannot inherit a blocking row's effect; the
-//  * census defines which codes block and this function only applies that classification.
-//  *
-//  * A blocking finding refuses adoption and returns to the Builder for repair through the submit
-//  * path, while advisory findings stay recorded without causing a refusal. Neither is the measured
-//  * admission packet that later controller decisions read — that has its own evidence and projection
-//  * rules.
-//  */
-// function representationFeedback(findings: ContractFinding[]): CampaignFeedback[] {
-//   const severities = [
-//     { severity: "blocking", rows: findings.filter((f) => BLOCKING_CODES.has(f.code)) },
-//     { severity: "advisory", rows: findings.filter((f) => !BLOCKING_CODES.has(f.code)) },
-//   ] as const;
-//   return severities
-//     .values()
-//     .filter(({ rows }) => rows.length > 0)
-//     .map(
-//       ({ severity, rows }): CampaignFeedback => ({
-//         owner: "brief",
-//         severity,
-//         claim: `representation census: ${rows.length} artifact schema finding(s) that hold on every authored task`,
-//         evidence: "pre-adoption representation census over the F2 reference witnesses",
-//         findings: controllerValidatedFindings(rows),
-//       }),
-//     )
-//     .toArray();
-// }
 
 /**
  * One blocking row for a tool that resolves nowhere, naming Builder-authored identities only — the

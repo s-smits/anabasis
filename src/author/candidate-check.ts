@@ -25,9 +25,6 @@ import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
 import { createBundleSnapshot, bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { type FingerprintEvidence, fingerprintSlug } from "../claim/fingerprint.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): only the
-// task-identifier rule used it.
-// import { namesTask } from "../meta/identifier-scan.ts";
 import { BUILT_AGENTS_FILE } from "../solve/built-starter.ts";
 import { validateBrief } from "../truth/brief-validator.ts";
 import { HARNESS_CONFIG_FILE, harnessConfigIssue } from "../truth/harness-config.ts";
@@ -142,14 +139,6 @@ type BatteryFindings = {
   readonly advisories: ContractFinding[];
 };
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the guide size
-// limit is part of the guide policy.
-// /** The guide is prepended to every case's system prompt, so the battery pays for its length once
-//  *  per task and a long guide is a tax on every solve. The starter contract states this number to
-//  *  the Builder, and `test/starter-pack.test.ts` asserts the starter's sentence against this
-//  *  constant so the two cannot drift apart. */
-// export const MAX_GUIDE_BYTES = 8_192;
-
 /** Candidate bytes and the installed verifier bytes jointly identify a submission condition, and
  *  this is the key of every remembered gate result, refusal and no-op strike. Both halves are
  *  needed: the same snapshot over different tools is a different condition, so keying on the
@@ -261,54 +250,21 @@ function validatedBattery(
     : null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): an empty,
-// oversized, placeholder or task-naming guide is refused by static rule; unsure those shapes earn a refusal,
-// so only a missing guide is still refused.
-// /** Refuses an empty, oversized or placeholder guide, or one that names an individual task. Each of
-//  *  those is decidable from the bytes. Whether guidance reveals an answer is not — neither tool
-//  *  names nor Markdown formatting settle it — so that judgement stays with semantic review. */
-// function operatingGuideFindings(text: string, battery: TaskBattery | null): ContractFinding[] {
-//   const guideFinding = (detail: string): ContractFinding[] => [
-//     controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail }),
-//   ];
-//   if (text.trim() === "") {
-//     return guideFinding(
-//       `${BUILT_AGENTS_FILE} is empty — state how this harness's tools compose and what must hold before submission, or the agent reads per-tool descriptions and nothing else`,
-//     );
-//   }
-//   const bytes = new TextEncoder().encode(text).byteLength;
-//   if (bytes > MAX_GUIDE_BYTES) {
-//     return guideFinding(
-//       `${BUILT_AGENTS_FILE} is ${bytes} bytes and the limit is ${MAX_GUIDE_BYTES} — it is prepended to every case's prompt, so state the harness policy and leave per-tool detail to agent/tools-spec.json`,
-//     );
-//   }
-//   if (text.includes("starter-placeholder:")) {
-//     return guideFinding(
-//       `${BUILT_AGENTS_FILE} still carries the starter placeholder marker — replace the seeded rules with this domain's operating policy and delete the marker comment`,
-//     );
-//   }
-//   const named = (battery?.tasks ?? []).map(({ taskId }) => taskId).filter((id) => namesTask(text, id));
-//   if (named.length > 0) {
-//     return [
-//       controllerValidatedFinding({
-//         code: "operating-guide-task-identifier",
-//         path: BUILT_AGENTS_FILE,
-//         detail: `${BUILT_AGENTS_FILE} names ${named.join(", ")} — the guide states policy holding for every task, never advice about one`,
-//       }),
-//     ];
-//   }
-//   return [];
-// }
-
-/** Present guide bytes are validated on every path, and an absent guide is a bundle defect rather
- *  than an empty case: the agent reads this file before every task, so a harness without one ships
- *  a solver that has only its per-tool descriptions to work from. */
+/** An absent, empty or still-seeded guide is a bundle defect: the agent reads this file before
+ *  every task, so a harness without a written one ships a solver that has only its per-tool
+ *  descriptions to work from. Whether the guidance is any good, or says too much, is review's. */
 function guideFindings(workspace: string): ContractFinding[] {
   const guide = readBundleFile(workspace, BUILT_AGENTS_FILE);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): restoring the
-  // rule above takes back the `battery` parameter both callers passed.
-  // return guide === null ? [missingBundleFile(BUILT_AGENTS_FILE)] : operatingGuideFindings(guide, battery);
-  return guide === null ? [missingBundleFile(BUILT_AGENTS_FILE)] : [];
+  if (guide === null) return [missingBundleFile(BUILT_AGENTS_FILE)];
+  const detail =
+    guide.trim() === ""
+      ? `${BUILT_AGENTS_FILE} is empty — state how this harness's tools compose and what must hold before submission, or the agent reads per-tool descriptions and nothing else`
+      : guide.includes("starter-placeholder:")
+        ? `${BUILT_AGENTS_FILE} still carries the starter placeholder marker — replace the seeded rules with this domain's operating policy and delete the marker comment`
+        : null;
+  return detail === null
+    ? []
+    : [controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail })];
 }
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, tools-spec-structure): kept: the tool contract must parse and

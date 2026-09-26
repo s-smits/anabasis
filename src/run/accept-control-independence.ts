@@ -16,8 +16,8 @@
  * up against each other; `solvability-gate.ts` is its single caller, and it runs there because that
  * is where the F2 witnesses exist.
  *
- * `acceptControlIndependence` records the reading into `solvability.json` beside the representation
- * observations, and `acceptIndependenceFeedback` turns it into at most one advisory row. It refuses
+ * `acceptControlIndependence` records the reading into `solvability.json` beside the
+ * input-insensitivity observations, and `acceptIndependenceFeedback` turns it into at most one advisory row. It refuses
  * nothing, and the reason it stops at advice is in that function's own comment.
  */
 import { existsSync } from "../meta/filesystem.ts";

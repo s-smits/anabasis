@@ -233,7 +233,7 @@ export function runSync(cmd: readonly string[], options: RunSyncOptions = {}): R
  * developer tool to its absolute path: every git refusal would otherwise open with the Xcode
  * developer directory before saying anything about what went wrong.
  */
-export function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
+function runSyncOrThrow(cmd: readonly string[], options: RunSyncOptions = {}): Uint8Array {
   const result = runSync(cmd, options);
   if (result.cappedAt !== null || result.exitCode !== 0) {
     const exited = result.exitCode === null ? "could not start" : `exited ${result.exitCode}`;

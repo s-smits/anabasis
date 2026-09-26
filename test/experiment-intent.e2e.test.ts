@@ -48,19 +48,6 @@ const ROWS: Array<[string, IntentRow]> = [
       admitted: "build",
     },
   ],
-  // Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): a battery
-  // change may not pass over a blocking finding the adopted product owes; unsure the owner routing names a
-  // repair the battery cannot serve.
-  // [
-  //   "a battery change cannot evade an owed product repair by declaring product scope",
-  //   {
-  //     tool: false,
-  //     scope: "product",
-  //     redesign: true,
-  //     owner: "brief",
-  //     refused: "experiment-product-repair-required",
-  //   },
-  // ],
 ];
 
 afterAll(cleanupScratch);

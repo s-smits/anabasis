@@ -30,8 +30,6 @@ import { join } from "../meta/path.ts";
 import type { ExperimentOperation } from "../run/experiment-freeze.ts";
 import { defineTool } from "../solve/define-tool.ts";
 import { type ContractFinding, projectFindingForAuthor } from "../truth/brief.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-// import { type GateReport, PREVIEW_ATTEMPT_SPENT } from "./validation-pipeline.ts";
 import type { GateReport } from "./validation-pipeline.ts";
 import { SOLVABILITY_EVIDENCE_FILE } from "../run/solvability-gate.ts";
 import { CENSUS_FILE } from "../run/census-gate.ts";
@@ -79,8 +77,6 @@ const INCOMPLETE_NAVIGATION =
  *  and rule 14 gives each duty one owner. */
 const DESCRIPTION =
   "Run every gate submit runs, on the same immutable snapshot submit would adopt, without adopting: the static bundle and installed tools, candidate validation (which reads EXPERIMENT.json), generated-tool conformance, the control census and the F2 solvability census. It returns every blocking row a submit would refuse with, the advisory rows, a receipt per stage and a coverage summary. " +
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // "No arguments. Unchanged bytes return the remembered rows, or preview-attempt-spent when that run ended without a verdict; changed bytes run again as often as you like. " +
   "No arguments. Unchanged bytes return the remembered rows once a run reached a verdict and run again otherwise; changed bytes run again as often as you like. " +
   "It freezes a copy of the workspace when it starts and runs for minutes, so keep editing while it runs; the result describes the frozen copy. " +
   "It accepts nothing and returns no correctness verdict: a clear result covers the authored checks and controls, not omitted public obligations, and submit remains the only acceptance path.";
@@ -246,8 +242,6 @@ function resultOf(binding: CorrectnessCheckBinding, report: GateReport) {
       stage,
       rows,
       report.snapshotId,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-      // report.blocked === null && report.attemptSpent !== true ? "complete" : "incomplete",
       report.blocked === null ? "complete" : "incomplete",
     ),
     stages: report.receipts,
@@ -269,10 +263,6 @@ function resultOf(binding: CorrectnessCheckBinding, report: GateReport) {
 function receiptReason(body: ReturnType<typeof resultOf>): string {
   if (body.status === "blocked") return "blocked";
   if (body.repeated !== undefined) return "remembered";
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // if (body.findings.groups.some((group) => group.code.text === PREVIEW_ATTEMPT_SPENT.code)) {
-  //   return "preview-attempt-spent";
-  // }
   return body.status === "clear" ? "clear" : `refused-${body.stage}`;
 }
 

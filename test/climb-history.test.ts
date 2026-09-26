@@ -25,11 +25,6 @@ import {
   type ClimbBatteriesRead,
   climbThresholds,
   excludedSummary,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): only the
-  // fingerprint cases below read these.
-  // priorPublicFingerprints,
-  // productConditionFingerprint,
-  // publicBatteryFingerprint,
   readClimbBatteries,
 } from "../src/run/climb-history.ts";
 // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
@@ -576,82 +571,3 @@ describe("the off-aim allowance, read from recorded batteries", () => {
     expect(seen.rows[0]).toMatchObject({ zone: "on-aim", aim: [3, 4] });
   });
 });
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): these cases
-// pin the admitted-history fingerprints the repeated-condition refusal compared against.
-// describe("the prior public fingerprints the repeated-condition refusal compares against", () => {
-//   /** One battery's recorded public projection, written the way the run records it. */
-//   function writeProjection(tree: string, runId: string, inputs: readonly JsonValue[]): void {
-//     const evidence = new EvidenceLog(join(tree, "runs", runId));
-//     inputs.forEach((publicInput, i) =>
-//       evidence.write(`cases/t${String(i)}/public-task.json`, {
-//         taskId: `t${String(i)}`,
-//         publicTask: { publicInput },
-//       }),
-//     );
-//     evidence.record();
-//   }
-//
-//   function measured(runId: string, count: number, harnessId: string | null = "product-a") {
-//     return {
-//       harnessId,
-//       battery: {
-//         runId,
-//         batterySha256: `sha-${runId}`,
-//         n: count,
-//         passed: count,
-//         unaccepted: 0,
-//         measured: { items: [] },
-//       },
-//       authoring: {
-//         taskSetHash: `set-${runId}`,
-//         caseIds: Array.from({ length: count }, (_, i) => `t${String(i)}`),
-//         familySummary: [],
-//         effort: null,
-//         familyEffort: [],
-//         calibration: null,
-//         passedTaskIds: [],
-//         solveWallMinutes: 120,
-//       },
-//     };
-//   }
-//
-//   const print = (inputs: readonly JsonValue[]) =>
-//     publicBatteryFingerprint(inputs.map((publicInput) => ({ publicInput })));
-//
-//   it("binds each measured exam to the product that measured it, so another product may measure it", () => {
-//     // A shared pack is how a harness intervention is compared: B on A's exam is B's first reading.
-//     const tree = tmp();
-//     const examX = [{ span: 1 }, { span: 2 }];
-//     writeProjection(tree, "a-on-x", examX);
-//     writeProjection(tree, "b-on-y", [{ span: 3 }, { span: 4 }]);
-//     const prints = priorPublicFingerprints(tree, [measured("a-on-x", 2), measured("b-on-y", 2, "product-b")]);
-//     expect(prints).toContain(productConditionFingerprint("product-a", print(examX)));
-//     expect(prints).not.toContain(productConditionFingerprint("product-b", print(examX)));
-//     // A battery without a recorded product is attributed to none.
-//     expect(priorPublicFingerprints(tree, [measured("a-on-x", 2, null)])).toEqual([]);
-//   });
-//
-//   it("prints an exam by its public inputs, so a controls or expectations edit does not reset it", () => {
-//     const tree = tmp();
-//     const exam = Array.from({ length: 6 }, (_, span) => ({ span }));
-//     writeProjection(tree, "first", exam);
-//     writeProjection(tree, "repaired", exam);
-//     const prints = priorPublicFingerprints(tree, [measured("first", 6), measured("repaired", 6)]);
-//     expect(prints).toContain(productConditionFingerprint("product-a", print(exam)));
-//     expect(new Set(prints).size).toBe(1);
-//   });
-//
-//   it("yields no fingerprint for a battery whose projection cannot be read, rather than a partial one", () => {
-//     // Hashing an absent field would collapse distinct batteries onto one sentinel print and refuse
-//     // honest fresh sets.
-//     const tree = tmp();
-//     mkdirSync(join(tree, "runs", "drifted", "cases", "t0"), { recursive: true });
-//     writeFileSync(
-//       join(tree, "runs", "drifted", "cases", "t0", "public-task.json"),
-//       JSON.stringify({ taskId: "t0", publicTask: {} }),
-//     );
-//     expect(priorPublicFingerprints(tree, [measured("drifted", 1)])).toEqual([]);
-//     expect(priorPublicFingerprints(tree, [measured("absent", 1)])).toEqual([]);
-//   });
-// });

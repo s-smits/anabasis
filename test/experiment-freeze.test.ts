@@ -11,11 +11,6 @@ import { afterAll, expect, it } from "bun:test";
 import { double, required } from "./helpers/doubles.ts";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): only the
-// repeated-public-condition case below reads these.
-// import { recordedVerifierEnvironmentHash } from "../src/claim/conformance-evidence.ts";
-// import { productConditionFingerprint, publicBatteryFingerprint } from "../src/run/climb-history.ts";
-// import { harnessBundleIdentity } from "../src/run/climb-battery-admission.ts";
 import { readBoundConformance } from "../src/claim/conformance-evidence.ts";
 import {
   candidateExperimentAuthoring,
@@ -25,10 +20,6 @@ import {
 import { hashJsonValue } from "../src/meta/stable-json.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import type { CandidateSnapshot } from "../src/author/candidate-check.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): only the admission refusal cases below read these.
-// import type { FeedbackOwner } from "../src/author/campaign-types.ts";
-// import { type AdmissionInput, admissionFindings } from "../src/gate/experiment-admission.ts";
 import { experimentOperation } from "../src/gate/experiment-admission.ts";
 import { loadValidatedBundle } from "../src/author/candidate-check.ts";
 import { MATCHING_BRIEF, MATCHING_TASKS, writeMatchingBuildFixture } from "./helpers/matching-fixture.ts";
@@ -118,11 +109,6 @@ function snapshotOf(
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): only the admission refusal cases below read it.
-// const codesOf = (snapshot: CandidateSnapshot, input: AdmissionInput) =>
-//   admissionFindings(snapshot, input).map((finding) => finding.code);
-
 it("records only changed public inputs and refuses drifted attribution", () => {
   const { base, candidate } = pair();
   const tasks = structuredClone(MATCHING_TASKS);
@@ -175,45 +161,6 @@ it("reads a base conformance record without its verifier identity as no fixed pr
     clauses: [expect.stringContaining("submission-schema-unverifiable")],
   });
 });
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): a fixed
-// product may not re-measure public inputs its admitted history already measured; unsure a byte-identical
-// repeat is never a legitimate replication.
-// /** The product identity a recorded battery of this tree would carry. */
-// function productOf(dir: string): string {
-//   const fingerprint = fingerprintSlug(dir);
-//   if (!fingerprint.ok) throw new Error("fixture does not fingerprint");
-//   return required(
-//     harnessBundleIdentity(fingerprint, recordedVerifierEnvironmentHash(dir)),
-//     "product identity",
-//   );
-// }
-//
-// it("refuses a fixed-product return to older public inputs but admits a product repair", () => {
-//   const { base, candidate } = pair();
-//   const measured = publicBatteryFingerprint(MATCHING_TASKS);
-//   writeTasks(base, movedBattery());
-//   bindBaselineRepresentation(base);
-//   // Another product's reading of the same exam leaves it open to this one.
-//   const otherProduct = {
-//     adoptedDir: base,
-//     priorPublicTaskFingerprints: [productConditionFingerprint("other", measured)],
-//   };
-//   const input = {
-//     adoptedDir: base,
-//     priorPublicTaskFingerprints: [productConditionFingerprint(productOf(base), measured)],
-//   };
-//   expect(codesOf(snapshotOf(candidate), otherProduct)).toEqual([]);
-//   const repeat = admissionFindings(snapshotOf(candidate), input);
-//   expect(repeat.map((finding) => finding.code)).toEqual(["climb-battery-repeats-history"]);
-//   // The refusal names the comparison it made. `publicBatteryFingerprint` hashes the public inputs,
-//   // so a claim about batteries that moved only their published magnitudes would describe a reading
-//   // this check cannot take.
-//   expect(repeat[0]?.detail).toContain("byte-identical to a battery in the admitted history");
-//   expect(repeat[0]?.detail).not.toContain("magnitudes");
-//   writeFileSync(join(candidate, GUIDE), "A changed solving method.");
-//   expect(codesOf(snapshotOf(candidate), input)).toEqual([]);
-// });
 
 it.each(["helper", "hidden", "controls"] as const)(
   "retains evaluation attribution for a %s repair with unchanged public tasks, agent and schemas",
@@ -328,38 +275,6 @@ it("derives the operation from the dimensions the bytes moved", () => {
   // Harness and tasks both moved: a new baseline, which claims no attributable improvement.
   expect(derived()).toEqual({ operation: "new-baseline", moved: ["harness", "tasks"] });
 });
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): a battery
-// change may not pass over a blocking finding the adopted product owes; unsure the owner routing names a
-// repair the battery cannot serve.
-// // A product finding owed by the adopted product cannot be answered by a new battery, whatever scope
-// // the proposal declares; findings a battery serves, and an evaluation correction answering an
-// // evaluation finding, owe nothing more.
-// it.each<[string, "tasks" | "product", FeedbackOwner, "battery" | "controls", string[]]>([
-//   [
-//     "a tasks-scope battery change under an evaluation finding",
-//     "tasks",
-//     "correctness-model",
-//     "battery",
-//     ["experiment-product-repair-required"],
-//   ],
-//   [
-//     "a product-scope battery change under a brief finding",
-//     "product",
-//     "brief",
-//     "battery",
-//     ["experiment-product-repair-required"],
-//   ],
-//   ["a battery change under a finding the battery serves", "tasks", "tests", "battery", []],
-//   ["a controls correction under an evaluation finding", "product", "correctness-model", "controls", []],
-// ])("asks for an owed product repair: %s", (_title, scope, owner, moved, expected) => {
-//   const { base, candidate } = pair();
-//   bindBaselineRepresentation(base);
-//   if (moved === "battery") writeTasks(candidate, movedBattery());
-//   else touchControls(candidate);
-//   const feedback = [{ owner, severity: "blocking" as const, claim: "Repair it.", evidence: "admitted.json" }];
-//   expect(codesOf(snapshotOf(candidate, 0, scope), { adoptedDir: base, feedback })).toEqual(expected);
-// });
 
 // The scoring program is the brief and the evaluator with everything it imports, not every byte
 // under correctness-model/. Reading the whole directory as scoring would mean a battery whose

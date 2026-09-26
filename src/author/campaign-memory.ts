@@ -9,8 +9,6 @@ import { join } from "../meta/path.ts";
 import { ITERATION_FILE, iterationOrdinal, listIterationDirs } from "../builder/campaign-iterations.ts";
 import { type CampaignEpochEvidence, writeCompleted } from "./campaign-epoch.ts";
 import type { CampaignClause, CampaignFeedback, IterationEvidence } from "./campaign-types.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-// import { type ToolNonResultCounts, chargedTrialRunDirs, replayNonResultRefusals } from "./tool-non-result.ts";
 import { parseJsonAs } from "../meta/json-runtime.ts";
 import { isString } from "../meta/json-shape.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -24,18 +22,6 @@ export interface CampaignMemory {
    *  refusal stays session-local by design. */
   lastBlockedCandidateId: string | null;
   lastBlockedCandidateStrikes: number;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-  // /** The unbroken trailing run of gates-blocked findings hashes, oldest first. The stall detector
-  //  *  counts repeats over it, which is how a loop that keeps churning the tree without moving the
-  //  *  findings is stopped: every fingerprint differs while the findingsHash does not, so the
-  //  *  fingerprint cannot detect it. Any other outcome resets the run. */
-  // trailingBlockedFindingsHashes: string[];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // /** Refused control censuses this campaign has already charged to each Builder-declared engine
-  //  *  id, read from the census gate's own records. Restoring the per-engine count is what makes a
-  //  *  restarted invocation continue it instead of receiving a fresh allowance, since a campaign can
-  //  *  spread its refusals over several invocations and exhaust none of them. */
-  // toolNonResultRefusals: ToolNonResultCounts;
   /** How often each workspace commit has been recorded as an unchanged candidate: a settled
    *  iteration whose child tree equals its own round entry. The round then refuses it as
    *  `candidate-unchanged` without measuring it, so the strike costs one whole authoring session
@@ -52,18 +38,6 @@ export interface CampaignMemory {
 export function nextOrdinal(campaignDir: string): number {
   return Math.max(0, ...listIterationDirs(campaignDir).map((name) => iterationOrdinal(name) ?? 0)) + 1;
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-// /** The trailing gates-blocked findings run, extended by a blocked iteration and reset by a
-//  *  fingerprinted one. One rule serves the disk replay and the in-session extension, so the two
-//  *  cannot disagree. */
-// export const extendTrailingBlockedFindings = (
-//   trail: readonly string[],
-//   evidence: IterationEvidence,
-// ): string[] =>
-//   evidence.outcome === "gates-blocked" && evidence.findingsHash !== null
-//     ? [...trail, evidence.findingsHash]
-//     : [];
 
 /** The one reading of "this settled iteration changed nothing": a completed gate settlement whose
  *  fingerprinted child tree is its own round entry, with no path added and none deleted. The
@@ -147,28 +121,17 @@ function emptyMemory(clause: CampaignClause | null): CampaignMemory {
     workspaceCommit: null,
     lastBlockedCandidateId: null,
     lastBlockedCandidateStrikes: 0,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // trailingBlockedFindingsHashes: [],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // toolNonResultRefusals: {},
     unchangedCandidateCommits: {},
     carried: [],
   };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-// function replay(dirs: string[], chargedTrialRuns: readonly string[] = []): CampaignMemory {
 function replay(dirs: string[]): CampaignMemory {
   const memory = emptyMemory(null);
   for (const dir of dirs) {
     const evidence = readIteration(join(dir, ITERATION_FILE));
     memory.carried = settleUnresolved(evidence);
     memory.workspaceCommit = evidence.workspaceChange?.commit ?? null;
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // memory.trailingBlockedFindingsHashes = extendTrailingBlockedFindings(
-    //   memory.trailingBlockedFindingsHashes,
-    //   evidence,
-    // );
     memory.unchangedCandidateCommits = countUnchanged(memory.unchangedCandidateCommits, evidence);
     // Only a blocked pass moves the blocked-candidate streak; a fingerprinted one leaves it be.
     if (evidence.outcome !== "gates-blocked") continue;
@@ -179,10 +142,6 @@ function replay(dirs: string[]): CampaignMemory {
         : 0;
     memory.lastBlockedCandidateId = candidateId;
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // // Read the engine id from the census gate's record rather than extracting it from feedback text.
-  // // A counter that can end a campaign must use the host's recorded fields.
-  // memory.toolNonResultRefusals = replayNonResultRefusals([...dirs, ...chargedTrialRuns]);
   return memory;
 }
 
@@ -218,8 +177,6 @@ export function resumeCampaignMemory(campaignDir: string, slug: string, kickoffH
     return emptyMemory("campaign-binding-mismatch");
   }
   try {
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // return replay(completedIterationDirs(campaignDir), chargedTrialRunDirs(campaignDir));
     return replay(completedIterationDirs(campaignDir));
   } catch {
     return emptyMemory("improvement-memory-missing");

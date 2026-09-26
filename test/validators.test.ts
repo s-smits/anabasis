@@ -251,14 +251,6 @@ describe("brief and task contract", () => {
     ...overrides,
   });
   it.each<[string, Partial<Brief>, { code?: string; path?: string }]>([
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
-    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
-    // right.
-    // [
-    //   "an uncited constant",
-    //   { designRuleConstants: [constant("x", 1, "")] },
-    //   { code: "brief-constant-uncited" },
-    // ],
     [
       "a duplicate constant name",
       { designRuleConstants: [constant("cap", 1), constant("cap", 2, "section 2")] },
@@ -269,10 +261,6 @@ describe("brief and task contract", () => {
       { designRuleConstants: [constant(" ", 1)] },
       { code: "brief-design-rule-constant-name-empty" },
     ],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
-    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
-    // declared class.
-    // ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
     [
       "a duplicate join id",
       { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },

@@ -13,8 +13,6 @@ import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
 // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): only the guide
 // size assertion below read it.
 // import { MAX_GUIDE_BYTES } from "../src/author/candidate-check.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// import { PROGRAM_ARGUMENT_MAX_BYTES } from "../src/verify/self-grounding.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
@@ -114,14 +112,6 @@ const workedBrief = () => brief("## The worked domain");
 describe("pi starter pack brief vocabulary", () => {
   // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the guide
   // size cap is commented out with the guide policy.
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-  // // Two numbers the Builder is told hold in prose while a refusal decides them in code. Nothing
-  // // templates a Markdown file, so this is what keeps the copy and its owner from drifting apart.
-  // it.concurrent("the numbers the starter states are the numbers the refusals use", () => {
-  //   const flat = `${STARTER_ENTRY}\n${STARTER_DOC}`.replace(/\n\s*/g, " ");
-  //   expect(flat).toContain(`it stays under ${MAX_GUIDE_BYTES.toLocaleString("en-US")} bytes`);
-  //   expect(flat).toContain(`none over ${PROGRAM_ARGUMENT_MAX_BYTES} bytes`);
-  // });
 
   // Gate audit 2026-09-25 (docs/gate-audit.md, operating-guide-policy): commented out (unsure): the candidate
   // check no longer refuses the placeholder marker or a guide over the cap.

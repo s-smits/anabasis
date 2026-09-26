@@ -28,8 +28,6 @@ const settle = (feedback: CampaignFeedback[]) =>
     attempts: {},
     ordinal: 1,
     dir: "01-test",
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // priorBlockedFindingsHashes: [],
   });
 
 describe("the complete repair agenda", () => {

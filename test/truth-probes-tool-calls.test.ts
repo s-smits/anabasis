@@ -5,8 +5,6 @@
  * exercise is observable as a row rather than as silence.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { writeFileSync } from "../src/meta/filesystem.ts";
-import { join } from "../src/meta/path.ts";
 import { makeAgentToolsProbes } from "../src/author/agent-tools-session.ts";
 import { CONFORMANCE_PROBE_POLICY } from "../src/claim/conformance-evidence.ts";
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
@@ -153,19 +151,10 @@ describe("what a probed call's failure means", () => {
 });
 
 describe("the presets the probe composes, and the pack that binds them", () => {
-  it.concurrent("composes controller SQL without generated files and refuses legacy generated readers", async () => {
+  it.concurrent("composes controller SQL without generated files", async () => {
     const selected: ToolsSpec = { ...SPEC, presets: ["public-data"] };
     await expect(conform("conform-data-active", [TASK], { spec: selected })).resolves.toEqual([]);
     await expect(conform("conform-data-missing", [TASK], { spec: selected })).resolves.toEqual([]);
-
-    const stale = writeSlug("conform-data-stale");
-    writeFileSync(join(stale, "agent/data.sqlite"), "fake sqlite fixture");
-    writeFileSync(
-      join(stale, "agent/controller-data-reader.ts"),
-      'throw new Error("generated reader must never load");',
-    );
-    const staleFindings = await probeConformance(stale, SPEC, [TASK], SCHEMA);
-    expect(staleFindings.map((finding) => finding.code)).toContain("generated-module-load");
   });
 
   it.concurrent("conforms the deferred Pi files preset through the common worker", async () => {

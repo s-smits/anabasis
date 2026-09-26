@@ -238,7 +238,7 @@ function evaluationExamHash(dir: string): string {
 /** Check unchanged fields before probing and at final validation. Conformance later proves the
  * compiled schema identity; a changed declared representation can already be refused here.
  * `base` and `candidate` are identities the caller read; null marks an unreadable one. */
-export function evaluationInvariantClauses(
+function evaluationInvariantClauses(
   baseDir: string,
   candidateDir: string,
   base: FreezeFingerprint | null,
@@ -314,7 +314,7 @@ export function readableFingerprint(dir: string): FingerprintEvidence | null {
 /** Authored evaluation bytes: the scoring program and the battery pair. Installed tools have a
  *  separate recorded identity, and a reference solve or test the evaluator never imports scores
  *  nothing, so neither counts. */
-export function evaluationFilesUnmoved(
+function evaluationFilesUnmoved(
   baseDir: string,
   candidateDir: string,
   baseScoringHash: string,

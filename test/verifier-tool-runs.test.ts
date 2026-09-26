@@ -2,8 +2,8 @@
  * The readers in `src/truth/tool-runs.ts`, over rows a real host recorded.
  *
  * The verification runner never reads the host's evidence array directly: it asks which runs
- * belong to one evaluation, whether that evaluation hit a non-result, which external checks no
- * completed tool covered, and what the environment identity is. Each of those is keyed by phase,
+ * belong to one evaluation, whether that evaluation hit a non-result, which checks passed without
+ * a completed run of their required tools, and what the environment identity is. Each of those is keyed by phase,
  * subject and attempt, so a retry and a second subject stay apart.
  */
 import { afterAll, describe, expect, it } from "bun:test";
@@ -15,8 +15,10 @@ import {
   executionEvidence,
   hostNonResult,
   subjectRuns,
-  uncoveredExternalCheckIds,
+  ungroundedPassChecks,
+  ungroundedSentence,
 } from "../src/truth/tool-runs.ts";
+import type { CorrectnessModelResult } from "../src/verify/correctness-model-result.ts";
 import { verifierEnvironmentHashOfTools } from "../src/truth/verifier-environment.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch } from "./helpers/scratch.ts";
@@ -52,25 +54,38 @@ describe("reading the host's rows", () => {
       { checkId: "c-ran", adapterId: "good-tool" },
       { checkId: "c-blocked", adapterId: "drift-tool" },
       { checkId: "c-absent", adapterId: "good-tool" },
+      { checkId: "c-two", adapterId: "good-tool" },
+      { checkId: "c-two", adapterId: "drift-tool" },
     ];
-    // A check whose tool never completed is uncovered, whether it was refused or never asked for.
-    expect(
-      uncoveredExternalCheckIds(
-        ["c-ran", "c-blocked", "c-absent"],
-        external,
-        fx.host.executedBindings(),
-        key,
-      ),
-    ).toEqual(["c-absent", "c-blocked"]);
-    // A check applicable to nothing here is not this subject's problem.
-    expect(uncoveredExternalCheckIds(["c-ran"], external, fx.host.executedBindings(), key)).toEqual([]);
+    const pass: CorrectnessModelResult = { ok: true, issues: [], checkReceipts: [] };
+    const failedBy = (...checkIds: string[]): CorrectnessModelResult => ({
+      ok: false,
+      issues: checkIds.map((checkId) => ({ checkId, message: "" })),
+      checkReceipts: [],
+    });
+    const ungrounded = (verdict: CorrectnessModelResult, deciding: string[], at = key) =>
+      ungroundedPassChecks(verdict, deciding, external, fx.host.executedBindings(), at);
+    // A pass rests on every check that decided it, so any whose tool never completed, refused or
+    // never asked for, voids it, and each names the tools it skipped.
+    expect(ungrounded(pass, ["c-ran", "c-blocked", "c-absent"])).toEqual([
+      { checkId: "c-absent", toolIds: ["good-tool"] },
+      { checkId: "c-blocked", toolIds: ["drift-tool"] },
+    ]);
+    // A check that did not decide this verdict is not this subject's problem.
+    expect(ungrounded(pass, ["c-ran"])).toEqual([]);
     // And the same bindings do not cover a different subject.
-    expect(
-      uncoveredExternalCheckIds(["c-ran"], external, fx.host.executedBindings(), {
-        ...key,
-        subjectId: "case-other",
-      }),
-    ).toEqual(["c-ran"]);
+    expect(ungrounded(pass, ["c-ran"], { ...key, subjectId: "case-other" })).toEqual([
+      { checkId: "c-ran", toolIds: ["good-tool"] },
+    ]);
+    // A fail stands whichever checks went without their tools: a check may reject on a
+    // precondition before it reaches its tool.
+    expect(ungrounded(failedBy("c-absent"), ["c-ran", "c-absent"])).toEqual([]);
+    expect(ungrounded(failedBy("c-ran"), ["c-ran", "c-absent"])).toEqual([]);
+
+    // One clause per check, each naming its missing tools in the right number.
+    expect(ungroundedSentence(ungrounded(pass, ["c-blocked", "c-two"], { ...key, attempt: 4 }))).toBe(
+      'EXTERNAL_VERDICT_UNGROUNDED: check "c-blocked" passed without a completed run of its required tool "drift-tool"; check "c-two" passed without a completed run of its required tools "drift-tool", "good-tool"',
+    );
 
     const evidence = executionEvidence(fx.host);
     expect(evidence.executed).toEqual([

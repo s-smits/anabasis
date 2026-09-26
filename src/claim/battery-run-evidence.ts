@@ -75,8 +75,10 @@ export function batteryClaimInput(
       checkIds: [...checkIds],
     };
   });
+  // The census recorded its own R2 findings with these receipts; the read-back checks only that the
+  // rows are whole and still add up to the recorded totals.
   const receiptCheck = checkReceiptSet(corpus, battery.discrimination.controlReceipts);
-  const receiptFindings = [...receiptCheck.findings];
+  const receiptFindings = receiptCheck.findings;
   const calculatedTotals = receiptCheck.totals;
   if (calculatedTotals !== null && !totalsMatchRecorded(battery.discrimination, calculatedTotals)) {
     receiptFindings.push(

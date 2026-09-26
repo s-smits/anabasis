@@ -3,7 +3,14 @@ import { expect, test } from "bun:test";
 import type { Brief, BriefTruthCheck } from "../src/truth/brief.ts";
 import { validateBrief } from "../src/truth/brief-validator.ts";
 import type { EvaluationRequest, CheckRunner } from "../src/truth/correctness-model-contract.ts";
-import { evaluateCheckProgram, checkEvaluationRequest } from "../vendor/correctness-model-bundle/evaluate.ts";
+import {
+  evaluateCheckProgram,
+  checkEvaluationRequest,
+  checkErrorKind,
+} from "../vendor/correctness-model-bundle/evaluate.ts";
+import { VerifierContractError } from "../vendor/correctness-model-bundle/contract-error.ts";
+import { EvaluatorProcessFailure } from "../src/truth/evaluator-process.ts";
+import type { CheckRun } from "../src/verify/correctness-model-result.ts";
 import { checkProgramFailureDetails, resolvePredicatePath } from "../src/truth/predicate.ts";
 import { MATCHING_BRIEF } from "./helpers/matching-fixture.ts";
 import { double } from "./helpers/doubles.ts";
@@ -351,4 +358,49 @@ test("rooted path lookup refuses malformed text instead of reading a different v
   ]) {
     expect(resolvePredicatePath(input, path).found).toBe(false);
   }
+});
+
+test("each check reached leaves one ordered row with its own outcome and time", async () => {
+  const rows: CheckRun[] = [];
+  const result = await evaluateCheckProgram(brief([check("a"), check("b")]), (id) => id === "a")(
+    request,
+    undefined,
+    undefined,
+    (row) => rows.push(row),
+  );
+  expect(result.ok).toBe(false);
+  expect(rows.map(({ seq, checkId, outcome, errorKind }) => ({ seq, checkId, outcome, errorKind }))).toEqual([
+    { seq: 0, checkId: "a", outcome: "pass", errorKind: null },
+    { seq: 1, checkId: "b", outcome: "fail", errorKind: null },
+  ]);
+  for (const row of rows) {
+    expect(row.durationMs).toBeGreaterThanOrEqual(0);
+    expect(Date.parse(row.startedAt ?? "")).not.toBeNaN();
+  }
+});
+
+test("a throw is recorded under the check that raised it, by kind only, and rethrown unchanged", async () => {
+  const rows: CheckRun[] = [];
+  const timeout = new EvaluatorProcessFailure("timeout", "exceeded 5ms with the answer 42 in scope");
+  const evaluate = evaluateCheckProgram(brief([check("a"), check("b"), check("c")]), (id) => {
+    if (id === "b") throw timeout;
+    return true;
+  });
+  const thrown = await evaluate(request, undefined, undefined, (row) => rows.push(row)).catch(
+    (error) => error,
+  );
+  expect(thrown).toBe(timeout);
+  expect(rows.map(({ checkId, outcome, errorKind }) => [checkId, outcome, errorKind])).toEqual([
+    ["a", "pass", null],
+    ["b", "threw", "timeout"],
+    ["c", "not-run", null],
+  ]);
+  expect(rows[2]).toMatchObject({ startedAt: null, durationMs: null });
+  expect(JSON.stringify(rows)).not.toContain("42");
+  const kinds = [
+    new VerifierContractError("verifier-tool-input", "detail"),
+    new Error("check-result-not-boolean: a"),
+    new Error("the generated check's own words"),
+  ].map(checkErrorKind);
+  expect(kinds).toEqual(["verifier-tool-input", "check-result-not-boolean", "unclassified"]);
 });

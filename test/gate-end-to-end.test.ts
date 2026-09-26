@@ -124,20 +124,7 @@ describe("the submit gate end to end", () => {
     expect(rows(outcome)).toEqual([["task-public-path-absent"]]);
   }, 120_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // it.concurrent("refuses a reject that passes its named check at the control census", async () => {
-  //   const outcome = await preview("reject-passes", (dir) =>
-  //     edit(dir, "correctness-model/controls.json", (text) => {
-  //       const controls = JSON.parse(text);
-  //       controls.reject[0].artifact = { answer: "A" };
-  //       return JSON.stringify(controls);
-  //     }),
-  //   );
-  //   expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "refused" });
-  //   expect(rows(outcome)).toEqual([["DISCRIMINATION_REJECT_PASSED"]]);
-  // }, 120_000);
-
-  it.concurrent("admits a reject that passes its named check at the control census", async () => {
+  it.concurrent("refuses a reject that passes its named check at the control census", async () => {
     const outcome = await preview("reject-passes", (dir) =>
       edit(dir, "correctness-model/controls.json", (text) => {
         const controls = JSON.parse(text);
@@ -145,16 +132,16 @@ describe("the submit gate end to end", () => {
         return JSON.stringify(controls);
       }),
     );
-    expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "passed" });
-    expect(rows(outcome)).toEqual([]);
+    expect(status(outcome)).toMatchObject({ conformance: "passed", gates: "refused" });
+    expect(rows(outcome)).toEqual([["DISCRIMINATION_REJECT_PASSED"]]);
   }, 120_000);
 
-  it.concurrent("keeps the claim open with one no-verdict row when the host cannot run the rejects to a verdict", async () => {
+  it.concurrent("reads timed-out rejects beside the verdict and refuses the check they leave unwitnessed", async () => {
     // The installed tool loops on the rejects' empty answer and exits on every other one, and only
     // the rejects get the 400 ms wall. An answer that exits gets a minute, because on a loaded host
     // its launch alone can outlast 400 ms, and an accept that times out adds a solvability row this
-    // test is not about. The rejects reach no verdict, so the census keeps the
-    // DISCRIMINATION_PROBE_NO_VERDICT row runControls records for them.
+    // test is not about. The timeouts themselves refuse nothing and ride as one advisory row; what
+    // refuses is R2, because no reject that reached a verdict names the check.
     const outcome = await preview(
       "no-verdict",
       (dir) => {
@@ -171,10 +158,8 @@ describe("the submit gate end to end", () => {
       },
       true,
     );
-    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "blocking" }] });
-    // Gate audit 2026-09-25 (docs/gate-audit.md, census-grounding-owed): commented out (unsure): an example whose check made no completed tool run, with no host refusal, no longer refuses adoption at the census
-    // expect(rows(outcome)).toEqual([["generated-external-grounding-unexecuted"]]);
-    expect(rows(outcome)).toEqual([["DISCRIMINATION_PROBE_NO_VERDICT"]]);
+    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "blocking" }, { severity: "advisory" }] });
+    expect(rows(outcome)).toEqual([["DISCRIMINATION_CHECK_UNREJECTED"], ["controls-tool-timeout"]]);
   }, 120_000);
 
   it.concurrent("refuses a reference solve that fails one task at F2", async () => {

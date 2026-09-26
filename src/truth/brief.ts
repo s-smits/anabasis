@@ -151,7 +151,6 @@ export type GeneratedExecutionClassification =
   | "generated-toolset-load"
   | "generated-toolset-contract"
   | "generated-correctness-model-pending"
-  | "generated-correctness-model-relay"
   | "reference-solve-host"
   | "submission-path-host";
 
@@ -309,9 +308,6 @@ export function recordView(value: unknown): Record<string, JsonValue> | null {
   return isRecord(value) ? value : null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, bundle-shape): kept: a bundle file that does not parse into its
-// declared shape cannot be read by anything downstream, so the refusal names the field instead of crashing a
-// reader.
 /** A shape finding that names what is wrong before what was expected, because the author reads a
  *  bounded detail and the tail is what gets cut. Leading with the expected shape spends that budget
  *  on a long schema and leaves "got object" as all that survives, which names neither the missing

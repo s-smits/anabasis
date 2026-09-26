@@ -49,7 +49,7 @@ import {
   submitStages,
 } from "../src/gate/validation-pipeline.ts";
 import { checkCandidate, conditionKey } from "../src/author/candidate-check.ts";
-import { type Brief, controllerValidatedFinding } from "../src/truth/brief.ts";
+import { type Brief, controllerValidatedFinding, controllerValidatedFindings } from "../src/truth/brief.ts";
 import type { BuildTask } from "../src/truth/tasks.ts";
 import type { ControlCorpus } from "../src/truth/controls.ts";
 import { writeBoundRepresentation } from "./helpers/bound-representation.ts";
@@ -183,7 +183,7 @@ const GATE_FEEDBACK: CampaignFeedback[] = [
     owner: "correctness-model/brief.json",
     severity: "advisory",
     claim: "advisory only",
-    evidence: "representation census",
+    evidence: "F2 observation",
   },
   {
     owner: "correctness-model/controls.json",
@@ -559,18 +559,46 @@ describe("correctness_check", () => {
     const first = await check();
     expect(first.status).toBe("findings");
     expect(codesOf(first)).toEqual(["gate-unvalidated"]);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // // The reserved attempt still stands, exactly as it does for a blocked outcome, so the same
-    // // tree cannot buy the paid validation sequence again; it is refused instead of answered from memory.
-    // const second = await check();
-    // expect(gateCalls).toBe(1);
-    // expect(second.repeated).toBeUndefined();
-    // expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
-    // A host outage is no verdict on these bytes, so the same tree runs again rather than reading it back.
     const second = await check();
     expect(gateCalls).toBe(2);
     expect(second.repeated).toBeUndefined();
     expect(codesOf(second)).toEqual(["gate-unvalidated"]);
+  });
+
+  /** A census refusal whose one finding carries `code`, owned by the evaluator as every tool
+   *  non-result is: the author still owns it, and only memory treats a timeout differently. */
+  const toolRefusal = (code: string): CampaignFeedback[] => [
+    {
+      owner: "correctness-model/evaluator.ts",
+      severity: "blocking",
+      claim: "control census: a declared check's tool run ended without a verdict",
+      evidence: "protected host evidence",
+      findings: controllerValidatedFindings([
+        { code, path: "correctness-model/evaluator.ts", detail: "tool run" },
+      ]),
+    },
+  ];
+
+  it.each([
+    ["tool-timeout", 2, false],
+    ["census-wall-exceeded", 2, false],
+    ["tool-crash", 1, true],
+  ])("remembers a %s refusal only when it is a verdict on the bytes", async (code, calls, remembered) => {
+    // A timeout mostly measures the host's load, so the same bytes may finish next time; a crash
+    // is a verdict on those bytes and repeats for free.
+    const dir = workspace(`timeout-${code}`);
+    let gateCalls = 0;
+    const { check } = session(dir, {
+      gate: async () => {
+        gateCalls += 1;
+        return toolRefusal(code);
+      },
+    });
+    expect((await check()).status).toBe("findings");
+    const second = await check();
+    expect(gateCalls).toBe(calls);
+    expect(second.repeated !== undefined).toBe(remembered);
+    expect(codesOf(second)).toEqual([code]);
   });
 
   it("previews every distinct candidate and answers unchanged bytes from memory", async () => {
@@ -671,8 +699,6 @@ describe("correctness_check", () => {
     });
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("keeps the stored rows when a check is blocked or spent, so no code reads as resolved", async () => {
   it("keeps the stored rows when a check is blocked, however often, so no code reads as resolved", async () => {
     // A blocked call used to record zero rows in the store and report every earlier code resolved,
     // though nothing had judged the changed tree.
@@ -690,9 +716,6 @@ describe("correctness_check", () => {
     expect(nested(blocked, "findings").sinceLast).toBeUndefined();
     expect(nested(blocked, "findings").navigation).toContain("replaced nothing");
     expect(receipt()).not.toHaveProperty("resolved");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // const spent = await check();
-    // expect(codesOf(spent)).toEqual(["preview-attempt-spent"]);
     expect((await check()).status).toBe("blocked");
     expect(receipt()).not.toHaveProperty("resolved");
     expect(feedback.page()).toMatchObject({ available: true, source: "correctness_check", totalFindings: 2 });
@@ -788,44 +811,6 @@ describe("correctness_check", () => {
     expect(joined.status).toBe("blocked");
     expect(rowsOf(joined)).toEqual(rowsOf(body));
   });
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("a blocked outcome spends the snapshot's attempt: the same tree cannot buy the validation sequence again", async () => {
-  //   // The uncached paths — a thrown conformance load, a thrown gate, a typed generated-runtime
-  //   // non-result — never enter `previews`, so before attempt reservation each repeat re-ran the
-  //   // paid validation sequence without reaching any ceiling. The slot is now reserved before the first stage.
-  //   const dir = workspace("blocked-repeat");
-  //   let gateCalls = 0;
-  //   const { check } = session(dir, {
-  //     gate: async () => {
-  //       gateCalls += 1;
-  //       throw new Error("verifier host refused");
-  //     },
-  //   });
-  //   const first = await check();
-  //   expect(first.status).toBe("blocked");
-  //   const second = await check();
-  //   expect(gateCalls).toBe(1);
-  //   expect(second.status).toBe("findings");
-  //   expect(codesOf(second)).toEqual(["preview-attempt-spent"]);
-  //   expect(JSON.stringify(second)).toContain("already spent their preview attempt");
-  // });
-  //
-  // it("distinct blocked snapshots each run once and stay unremembered", async () => {
-  //   const dir = workspace("blocked-distinct");
-  //   let gateCalls = 0;
-  //   const { check } = session(dir, {
-  //     gate: async () => {
-  //       gateCalls += 1;
-  //       throw new Error("verifier host refused");
-  //     },
-  //   });
-  //   expect((await check()).status).toBe("blocked");
-  //   expect(codesOf(await check())).toEqual(["preview-attempt-spent"]);
-  //   writeFileSync(join(dir, "correctness-model", "guide.md"), "# changed once\n");
-  //   expect((await check()).status).toBe("blocked");
-  //   expect(gateCalls).toBe(2);
-  // });
 
   it("a blocked outcome is no verdict: the same tree runs the validation sequence again", async () => {
     const dir = workspace("blocked-repeat");

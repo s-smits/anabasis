@@ -227,11 +227,15 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
       class: "withheld",
       classification: "generated-bundleSnapshot-drift",
     });
+    // Drift under the census cannot be told apart from what the candidate's generated code did to
+    // the snapshot, so it costs the Builder a strike rather than ending the session as the host's.
     const feedback = await gate(fixture, result);
     expect(feedback).toContainEqual(
       expect.objectContaining({ owner: "correctness-model/evaluator.ts", severity: "blocking" }),
     );
+    expect(JSON.stringify(feedback)).toContain("solvability-bundleSnapshot-drift");
     expect(JSON.stringify(feedback)).not.toContain("test-writer-schema.json");
+    expect(JSON.stringify(feedback)).not.toContain("tasks.json#");
     expect(readFileSync(join(fixture.dir, "solvability.json"), "utf8")).toContain(
       "solvability-bundleSnapshot-drift",
     );
@@ -256,6 +260,10 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
 
     expect(result.findings).toEqual([]);
     expect(result.evidence?.cases.map((row) => row.artifact)).toEqual([{ answer: "A" }, { answer: "B" }]);
+    // Each reference evaluation keeps its own check rows beside its verdict.
+    expect(
+      result.evidence?.cases.map((row) => row.checkRuns?.map((run) => [run.checkId, run.outcome])),
+    ).toEqual([[["answer", "pass"]], [["answer", "pass"]]]);
   });
 });
 

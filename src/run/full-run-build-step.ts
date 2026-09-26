@@ -15,9 +15,6 @@ import {
   climbThresholds,
   readClimbBatteries,
 } from "./climb-history.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-// admitted-history public battery prints only the repeated-condition refusal read.
-// import { priorPublicFingerprints } from "./climb-history.ts";
 import { readoutHistoryDocuments, renderProbeSizing, renderReadout } from "./climb-readout.ts";
 import { measuredSolverTraces } from "./solver-traces.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
@@ -156,7 +153,6 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
  *  `unchangedCandidateSubmissions` is the durable per-commit tally counting this record, so
  *  reaching the ceiling turns the retryable `candidate-unchanged` into `authoring-stalled`, with a
  *  sentence naming the commit and the count. */
-// Gate audit 2026-09-25 (docs/gate-audit.md, unchanged-candidate-strike): kept: a round that settles on its own entry tree has nothing new to measure
 function unchangedCandidateClause(
   outcome: BuildOutcome,
   unchangedCommit: string,
@@ -260,9 +256,6 @@ function composeAuthoringMemory(
     advisoryNote,
     measured,
     band: climbThresholds(manifestPath).band,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-    // admitted-history public battery prints only the repeated-condition refusal read.
-    // priorPublicTaskFingerprints: rebuild ? priorPublicFingerprints(domainDir, read.admitted) : [],
   };
 }
 
@@ -279,9 +272,6 @@ export async function runBuildStep(
   const domainDir = selectedProductDir(repoRoot, manifest.slug);
   const memory = composeAuthoringMemory(input, decision, domainDir, difficulty);
   const { advice, band } = memory;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-  // admitted-history public battery prints only the repeated-condition refusal read.
-  // const { priorPublicTaskFingerprints } = memory;
   const tasks = batterySizingGate(
     manifest.expectedTasks,
     adoptedTaskCount(domainDir),
@@ -330,9 +320,6 @@ export async function runBuildStep(
         experiment: "build",
         productVersionId: input.runId,
         band,
-        // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-        // admitted-history public battery prints only the repeated-condition refusal read.
-        // priorPublicTaskFingerprints,
         ...keyIfDefined("measured", memory.measured),
         // Reopen on the exact evidence identity. The round starts from adopted bytes, and a
         // redesign is the Builder's harness_reset call. Reusing this epoch preserves in-flight

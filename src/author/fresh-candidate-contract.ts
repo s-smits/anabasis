@@ -4,20 +4,12 @@ import { compilePublicArtifactSchema } from "../solve/public-artifact-schema.ts"
 import type { Brief, ContractFinding } from "../truth/brief.ts";
 import type { ControlCorpus } from "../truth/controls.ts";
 import type { TaskValidationContext } from "../truth/tasks.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): the archived
-// producer sits commented at the end of rule-decisions.ts.
-// import { publishedRuleFindings } from "../truth/rule-decisions.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 
 export function freshTaskValidationContext(exactTasks?: number): TaskValidationContext {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): the variation rule
-  // this switched on is commented out.
-  // return { exactTasks: exactTasks ?? null, authoring: true };
   return { exactTasks: exactTasks ?? null };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, accept-schema): kept: an accept control that the public artifact
-// schema cannot compile is a contradiction in the Builder's own bytes, and the solver is told that schema.
 function representationFindings(brief: Brief, corpus: ControlCorpus): ContractFinding[] {
   const findings: ContractFinding[] = [];
   try {
@@ -52,14 +44,6 @@ export function freshCandidateFindings(loaded: {
   corpus: ControlCorpus | null;
 }): ContractFinding[] {
   const findings: ContractFinding[] = [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): every truth check
-  // must cite a published rule decision; unsure the citation earns a refusal, since it cannot show the cited
-  // prose states what the check enforces.
-  // if (loaded.brief !== null) {
-  //   // Withholding is a property of everything the agent can read, so a check may not enforce a
-  //   // rule the public projection does not carry (published-rules.ts).
-  //   findings.push(...publishedRuleFindings(loaded.brief));
-  // }
   if (loaded.brief !== null && loaded.corpus !== null) {
     findings.push(...representationFindings(loaded.brief, loaded.corpus));
   }

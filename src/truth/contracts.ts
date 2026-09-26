@@ -24,12 +24,11 @@ import { createDraftFileTools } from "../solve/draft-files.ts";
 import { typecheckGeneratedModule } from "./generated-module-typecheck.ts";
 import type { SubmissionPort } from "../solve/final-submission.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRunObserver, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierRuntime } from "../verify/verifier-port.ts";
 import { type Brief, type ContractFinding, controllerValidatedFindings, throwIfInvalid } from "./brief.ts";
 import { loadFailureFinding } from "./load-fault.ts";
 import type { BuiltPresetId } from "./built-presets.ts";
-import { DATA_FILE, DATA_READER_MODULE } from "./data-session.ts";
 import type { CheckRunner, EvaluationRequest } from "./correctness-model-contract.ts";
 import { dataTool } from "./data-tool.ts";
 import { briefPublicResources, publicResourcesTool, readValidatedBrief } from "./public-resources.ts";
@@ -87,6 +86,8 @@ export type EvaluatorFn = (
   runtime?: VerifierRuntime,
   /** A reject control's declared check, run alone; measured cases never pass it. */
   onlyCheckId?: string,
+  /** Receives one row per check the evaluation reached; see `CheckRun`. */
+  observe?: CheckRunObserver,
 ) => CorrectnessModelResult | Promise<CorrectnessModelResult>;
 
 /** Bound on loading one generated module. Converts a load that never settles (an unresolved
@@ -115,11 +116,6 @@ export async function loadBuiltControllerInterface(slugDir: string): Promise<Bui
   const guideFile = join(slugDir, BUILT_AGENTS_FILE);
   if (!existsSync(guideFile)) throw new Error(`${guideFile} is missing`);
   const operatingGuide = readFileSync(guideFile, "utf8");
-  if ([DATA_FILE, DATA_READER_MODULE].some((name) => existsSync(join(slugDir, "agent", name)))) {
-    throw new Error(
-      "legacy generated data files are unsupported; query_public_data reads committed public task and resource snapshots",
-    );
-  }
   const brief = readValidatedBrief(slugDir);
   const resources = brief === null ? [] : briefPublicResources(brief);
   const publicTool = publicResourcesTool(resources);

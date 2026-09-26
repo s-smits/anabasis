@@ -269,16 +269,55 @@ describe("the shared unresolved-authoring allowance", () => {
     expect(loopTerminal(rounds.at(-1)!, { ...quiet, authoringStall: stall })).toStartWith(ending);
   });
 
-  it("leaves a zero-verified hold out of the allowance", () => {
-    const nonzero = heldOn(undefined);
-    const zeroVerified: IterationResult = {
-      ...nonzero,
-      steps: { ...nonzero.steps, promotion: double({ decision: "held", battery: { verified: 0 } }) },
+  const heldAfter = (
+    claim: { created: boolean; clauses?: string[]; nonResults?: Record<string, number> } | null,
+    disposition = "completed",
+  ) => {
+    const round = heldOn(undefined);
+    const measure = {
+      disposition,
+      claim: claim && {
+        created: claim.created,
+        clauses: (claim.clauses ?? []).map((clause) => ({ clause })),
+        nonResults: claim.nonResults ?? {},
+      },
     };
-    const stall = nextUnresolvedAuthoringStall(null, nonzero);
-    expect(nextUnresolvedAuthoringStall(stall, zeroVerified)).toBe(stall);
-    expect(nextUnresolvedAuthoringStall(null, zeroVerified)).toBeNull();
+    return double<IterationResult>({ ...round, steps: { ...round.steps, measure } });
+  };
+
+  it("counts a held candidate whose delivered battery verified nothing", () => {
+    expect(
+      nextUnresolvedAuthoringStall(null, heldAfter({ created: false, clauses: ["zero-verified"] }))?.rounds,
+    ).toBe(1);
+    expect(nextUnresolvedAuthoringStall(null, heldAfter({ created: true }))?.rounds).toBe(1);
   });
+
+  it("leaves a hold the environment owns out of the allowance", () => {
+    const environmentOnly = heldAfter({
+      created: false,
+      clauses: ["non-result-ratio-excessive"],
+      nonResults: { provider: 3, sandbox: 1 },
+    });
+    const undelivered = heldAfter({ created: false }, "provider-stopped");
+    const unmeasured = heldAfter(null);
+    const stall = nextUnresolvedAuthoringStall(null, heldOn(undefined));
+    for (const round of [environmentOnly, undelivered, unmeasured]) {
+      expect(nextUnresolvedAuthoringStall(null, round)).toBeNull();
+      expect(nextUnresolvedAuthoringStall(stall, round)).toBe(stall);
+    }
+  });
+
+  it.each([
+    ["crash", { crash: 3, provider: 1 }],
+    ["protocol", { protocol: 2 }],
+    ["verifier-throw", { "verifier-throw": 2 }],
+  ])(
+    "counts a non-result-ratio hold whose non-results include %s against the author",
+    (_kind, nonResults) => {
+      const round = heldAfter({ created: false, clauses: ["non-result-ratio-excessive"], nonResults });
+      expect(nextUnresolvedAuthoringStall(null, round)?.rounds).toBe(1);
+    },
+  );
 
   it("opens a new stall each round the consumed basis advances", () => {
     let stall: UnresolvedAuthoringStall | null = null;

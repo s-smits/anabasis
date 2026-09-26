@@ -35,6 +35,7 @@ import {
   type AdviceIssue,
   type RebuildAdvicePacket,
   adviceTotals,
+  blockingLine,
   diagnosisLine,
 } from "../author/rebuild-advice.ts";
 import type { ExperimentSubmission, RehearsalRow } from "../author/experiment-plan.ts";
@@ -209,7 +210,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v7",
+      policy: "review-probing-findings/v8",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -460,14 +461,17 @@ function aimLine(
  * This review is where they become separable, because `probe_check` runs the declared checks here
  * and the Builder never sees a verifier verdict at all. The probe runs in the opposite direction on
  * the two sides: above the aim it looks for a check that does not move on a field the request
- * constrains, below it for one that moves on a field the brief leaves free. That instruction is
- * the reviewer's own, which is why it is not the author's ladder pointer from `FRAME`.
+ * constrains, below it for one that moves on a field the brief leaves free. Below the aim the
+ * first probe goes to the check the orientation lists first under verified failures, the one that
+ * blocked the most: a check reading narrower than its published rule fails valid work and reads
+ * exactly like difficulty from the counts. That instruction is the reviewer's own, which is why it
+ * is not the author's ladder pointer from `FRAME`.
  */
 function lead(toAim: number): string {
   if (toAim === 0) return "";
   return toAim < 0
     ? " A placement above the aim is a lead, not a finding on its own: the finding is the obligation of the request those tasks do not demand."
-    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.";
+    : " A placement below the aim is a lead, not a finding on its own, and hardness is the last of its readings rather than the first. A rule the checks apply that the brief does not publish fails every task: probe an accept control at a field the public contract leaves free, and a check that moves on it is that rule, owned by `correctness-model/brief.json`. Where the verified failures are listed by declared check, start from the first one listed: probe at a path it reads, with a value a practitioner of the request would accept and the published rules allow, and say whether it reads narrower than its rule, wider, or as stated. An answer a correct solver cannot write through the tools it was given fails every task too, owned by `agent/tools-spec.json`; the accept controls are the shapes the writer is known to produce. Record an observation of hardness, owned by correctness-model/tasks.json, once you have read the brief and the writer schema against the artifact and neither holds.";
 }
 
 /** The standing issues the review may dispute, each with the diagnosis reader's reading of it. The
@@ -503,6 +507,12 @@ function orientation(
       : [
           `Battery: ${analysis.battery.summary.passed} of ${analysis.battery.summary.verified} verified cases passed; ${analysis.battery.summary.unaccepted} unaccepted at submission; ${analysis.battery.summary.nonResults} runtime non-results.`,
           `Per family (passed/verified): ${familyLine(analysis)}.`,
+          blockingLine(
+            analysis.battery.blockingByCheck,
+            analysis.battery.applicableByCheck,
+            analysis.battery.summary.verified,
+            analysis.battery.summary.passed,
+          ),
           aimLine(input, () => join(input.repoRoot, input.treeRoot), {
             runId: input.runId,
             pin: analysis.identities.backendPin,
@@ -521,7 +531,9 @@ function orientation(
     ...Object.entries(verifier.tools).map(
       ([alias, tool]) => `${alias}: ${tool.kind}, ${tool.source}, ${tool.path}, sha256 ${tool.digest}`,
     ),
-  ].join("\n");
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 }
 
 /** Resume a reader that stopped while pages remain, and count the resumption. It resumes only

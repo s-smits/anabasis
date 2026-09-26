@@ -197,9 +197,6 @@ function reservedName(
   return null;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tools-spec-structure): kept: the structural rules (fields,
-// presets, reserved and repeated names) are what let the worker register one stable roster across the
-// battery.
 export function validateToolsSpec(value: unknown): ValidationResult {
   const fieldFindings = toolsFieldFindings(value);
   if (fieldFindings.length > 0) return { ok: false, findings: fieldFindings };

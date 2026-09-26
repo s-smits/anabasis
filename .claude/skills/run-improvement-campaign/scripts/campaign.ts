@@ -25,7 +25,6 @@ import { readJsonFileOrNull, writeJsonFile } from "#src/meta/completed-json.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { parseJsonAs } from "#src/meta/json-runtime.ts";
 import { parseSafeguardLog, safeguardLogFile } from "#src/meta/safeguard.ts";
-import { FROZEN_MANIFEST_PATH } from "#src/critic/manifest.ts";
 import { bareCustomToolName } from "#src/author/builder-custom-tool-call.ts";
 import { isCandidateSubmit } from "#src/author/builder-execution.ts";
 import { readEpochRecord } from "#src/author/campaign-epoch.ts";
@@ -38,16 +37,10 @@ import {
   readCaseRecord,
 } from "#src/claim/case-record.ts";
 import { batteryRunDirs } from "#src/claim/trace-read.ts";
-import { claimsDirFor } from "#src/run/claim-write.ts";
-import { readClimbBatteries } from "#src/run/climb-history.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// import { readClimbReadout } from "#src/run/climb-readout.ts";
-// import { allowanceStop } from "#src/run/next-move.ts";
 import { isControllerBatteryRunId } from "#src/run/controller-battery-record-policy.ts";
 import type { ControllerAbortClause } from "#src/run/controller-stop-evidence.ts";
 import type { Denominator } from "#src/run/controller-denominator.ts";
 import { type LoopTerminalCode, loopTerminalCode } from "#src/run/loop-terminal.ts";
-import { selectedProductDir } from "#src/run/product-versions.ts";
 import { DEFAULT_HARNESS_SETTINGS, HarnessConfigError, harnessSettings } from "#src/truth/harness-config.ts";
 import { readExecutionEvidenceDetails } from "#tools/outcome/builder-execution-facts.ts";
 import { findRun } from "#tools/runs/discover.ts";
@@ -183,7 +176,6 @@ export interface RunStatus {
   bundle: Bundle | null;
   authoring: Authoring | null;
   difficulty: DifficultyDecisions;
-  climb: { stop: string | null } | { error: string } | null;
   claims: { total: number; ok: number; refusedClauses: string[] };
   promotions: { total: number; held: number; heldClauses: string[] };
   epochs: number;
@@ -501,7 +493,6 @@ export function readStatus(
     bundle: readBundle(campaign, location.slug, runId, epoch),
     authoring: epoch === null ? null : readAuthoring(campaign, epoch),
     difficulty: readDifficultyDecisions(location),
-    climb: null,
     claims: {
       total: claims.length,
       ok: claims.filter((claim) => claim.ok === true).length,
@@ -823,8 +814,7 @@ function decisionMove(row: DifficultyDecisions["rows"][number]): Move | null {
   return row.placement.zone === "too-hard" ? "reserved" : null;
 }
 
-/** Climb decisions as each lands; a first pass reads the newest alone. Then the controller's own
- *  off-aim stop, in its own words, once per sentence. */
+/** Climb decisions as each lands; a first pass reads the newest alone. */
 function climbRows(previous: RunStatus | null, current: RunStatus, add: Add): void {
   const refused = current.difficulty.refused.length;
   if (refused > 0 && refused !== (previous?.difficulty.refused.length ?? 0)) {
@@ -836,17 +826,6 @@ function climbRows(previous: RunStatus | null, current: RunStatus, add: Add): vo
   )) {
     const move = decisionMove(row);
     add(move === null ? "info" : "stop", decisionText(row), move);
-  }
-  const [was, climb] = [previous?.climb ?? null, current.climb];
-  if (climb !== null && "error" in climb && (was === null || !("error" in was))) {
-    add("stop", `climb readout unreadable: ${climb.error}`, "reserved");
-  } else if (
-    climb !== null &&
-    "stop" in climb &&
-    climb.stop !== null &&
-    climb.stop !== (was !== null && "stop" in was ? was.stop : null)
-  ) {
-    add("stop", climb.stop, "overhaul");
   }
 }
 
@@ -977,29 +956,6 @@ export function watchPass(
   return { rows: fire ? rows : [], allClosed: closed === runs.size };
 }
 
-/** The controller's off-aim stop for one campaign, read at the newest battery's pin the way the
- *  Epoch Reviewer reads it; an unreadable history is a row for the reader, not a failed watch. */
-function climbOf(repoRoot: string, slug: string): RunStatus["climb"] {
-  try {
-    const domainDir = selectedProductDir(repoRoot, slug);
-    const claims = claimsDirFor(repoRoot, slug);
-    const manifest = join(repoRoot, FROZEN_MANIFEST_PATH);
-    const newest = readClimbBatteries(domainDir, null, claims, manifest).history.at(-1);
-    if (newest === undefined) {
-      return { stop: null };
-    }
-    const pin = newest.condition.backendPin;
-    if (pin === null) {
-      return { error: `newest battery (${newest.createdAt}) records no backend pin` };
-    }
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // return { stop: allowanceStop(readClimbReadout(domainDir, pin, claims, manifest)) };
-    return { stop: null };
-  } catch (error) {
-    return { error: errorMessage(error) };
-  }
-}
-
 function readState(path: string): WatchState {
   const fresh: WatchState = { runs: {}, pending: [], diskLow: false };
   // This command is the state file's only writer, and a file it cannot parse starts fresh.
@@ -1021,12 +977,10 @@ function freeGib(path: string): number | null {
   }
 }
 
-/** A watched run with its climb stop, or the reason it could not be read; a completion-only pass
- *  skips the climb readout, which opens the product ledger. */
-function reading(repoRoot: string, runId: string, completionOnly: boolean): Reading {
+/** A watched run, or the reason it could not be read. */
+function reading(repoRoot: string, runId: string): Reading {
   try {
-    const status = readStatus(repoRoot, runId);
-    return completionOnly ? status : { ...status, climb: climbOf(repoRoot, status.slug) };
+    return readStatus(repoRoot, runId);
   } catch (error) {
     return { refused: errorMessage(error) };
   }
@@ -1045,7 +999,7 @@ async function watch(
   const campaigns = campaignRoot(repoRoot);
   for (;;) {
     const state = readState(statePath);
-    const runs = new Map(runIds.map((runId) => [runId, reading(repoRoot, runId, completionOnly)]));
+    const runs = new Map(runIds.map((runId) => [runId, reading(repoRoot, runId)]));
     const pass = watchPass(runs, state, {
       attended: every === null,
       completionOnly,
@@ -1098,7 +1052,7 @@ if (import.meta.main) {
     (args) => {
       const campaigns = args.required("campaigns");
       const repoRoot = dirname(campaigns);
-      // The climb readout reads the product tree beside the campaigns tree, so the root must be the
+      // Every reader resolves the campaigns tree from the repository root, so the root must be the
       // one `campaignRoot` names for its repository.
       if (campaignRoot(repoRoot) !== campaigns) {
         args.die("--campaigns must be <repository>/campaigns");

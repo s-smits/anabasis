@@ -9,9 +9,6 @@ import { basename, join } from "../meta/path.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { sha256 } from "../meta/digest.ts";
 import { type BundleFile, IrregularBundleEntryError, hashBundle } from "./bundle-hash.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, agent-deciding-computation): commented out (unsure): the
-// agent-side copy scan's import.
-// import { agentCarriesDecidingComputation } from "./correctness-model-hygiene.ts";
 import {
   generatedCorrectnessModelCapabilityEscapes,
   scannableBundleSource,
@@ -124,8 +121,6 @@ export function fingerprintSlug(
   // verifier's content address, which is the one place a reader looks to say what ran.
   let agent: ReturnType<typeof hashBundle>;
   let correctnessModel: ReturnType<typeof hashBundle>;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, bundle-walls): kept: an entry the content hash cannot cover
-  // would leave measured bytes outside the product identity.
   try {
     agent = hashBundle(agentDir);
     correctnessModel = hashBundle(correctnessModelDir, { excludeTop: [...BATTERY_FILES] });
@@ -142,8 +137,6 @@ export function fingerprintSlug(
       })),
     };
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, bundle-walls): kept: process execution and the ambient
-  // environment belong to the verifier host, never to authored correctness-model source.
   // Brief-marked generated source may not spawn processes or forward the ambient environment.
   // `scannableBundleSource` leaves test files out, since they are not part of what the verifier
   // executes.
@@ -164,24 +157,6 @@ export function fingerprintSlug(
         }));
       })
     : [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, agent-deciding-computation): commented out (unsure): an agent
-  // module exporting two or more computations structurally identical to the correctness model's is refused;
-  // unsure the match separates a copied verifier from legitimate candidate analysis.
-  // // The import checks above close the route where agent code imports the verifier's modules, but
-  // // a copy leaves no import behind, and the solver's roster would then answer the question the
-  // // battery asks. This check reads the agent's own source for that copy.
-  // const decidingInAgent: BundleValidationFinding[] = generated
-  //   ? agentCarriesDecidingComputation(agentDir, agent.files, correctnessModelDir, correctnessModel.files).map(
-  //       (copy) => ({
-  //         code: "agent-carries-deciding-computation" as const,
-  //         file: `agent/${copy.agentFile}`,
-  //         detail: `agent/${copy.agentFile} exports ${copy.shared.length} of the computations correctness-model/${copy.correctnessModelFile} decides with (${copy.shared.join(", ")}); the solver may analyse its own candidate against published rules, but shipping the deciding computation in its tool roster measures the verifier against itself — keep that computation in correctness-model/ only`,
-  //       }),
-  //     )
-  //   : [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, agent-deciding-computation): commented out (unsure): the
-  // agent-side copy scan joined the source findings here.
-  // const sourceFindings = [...correctnessModelSourceFindings, ...decidingInAgent];
   const sourceFindings = correctnessModelSourceFindings;
   if (sourceFindings.length > 0) return { ok: false, slug, findings: sourceFindings };
   const taskSetHash = batteryHash(correctnessModelDir);

@@ -15,6 +15,7 @@
  * `solvability-*.test.ts` beside this one, and constant reference output across inputs is measured
  * in `representation-census.test.ts`.
  */
+import { gateFeedbackFindings } from "../src/builder/author-feedback.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { BuiltHarness } from "../src/author/campaign-types.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
@@ -107,11 +108,28 @@ describe("the census projects counts and keeps locations host-side", () => {
     expect(await Bun.file(join(dir, "solvability.json")).exists()).toBe(false);
   });
 
-  it("blocks a census that could not execute, keeping its failure record protected", async () => {
+  it("returns a census with no evidence to the evaluator, naming its cause code and keeping the detail protected", async () => {
     const { feedback, authorVisible, recorded } = await census("unavailable", probeReturning(null));
     expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
+    expect(authorVisible).toContain("solvability-bundleSnapshot-integrity");
     expect(authorVisible).not.toContain("bundleSnapshot digest drifted");
     expect(await recorded()).toContain("bundleSnapshot digest drifted");
+  });
+
+  it.each([
+    ["solvability-correctnessModel-load", "correctness-model/evaluator.ts"],
+    ["solvability-public-schema-invalid", "correctness-model/controls.json"],
+    ["solvability-some-future-cause", "correctness-model/tasks.json"],
+  ])("never gives null evidence stopped on %s the environment owner", async (code, path) => {
+    const stopped = double<Awaited<ReturnType<ReturnType<typeof probeReturning>>>>({
+      evidence: null,
+      findings: [{ code, path, detail: "protected detail" }],
+    });
+    const { feedback, authorVisible } = await census(code, () => Promise.resolve(stopped));
+    expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
+    expect(authorVisible).toContain(code);
+    expect(authorVisible).toContain(path);
+    expect(authorVisible).not.toContain("protected detail");
   });
 
   it("routes a census non-result to the environment owner without its text", async () => {
@@ -124,6 +142,11 @@ describe("the census projects counts and keeps locations host-side", () => {
     );
     expect(feedback).toMatchObject([{ owner: "environment", severity: "blocking" }]);
     expect(authorVisible).not.toContain("engine host died");
+    expect(authorVisible).not.toContain("t2");
+    // The Builder reads which host step broke, not a gate that produced no finding.
+    const codes = gateFeedbackFindings(feedback).map((found) => found.code);
+    expect(codes).toEqual(["solvability-reference-solve-host-non-result"]);
+    expect(JSON.stringify(gateFeedbackFindings(feedback))).toContain("1 of 2 reference solves");
   });
 });
 
@@ -136,18 +159,6 @@ describe("a refused declaration reaches the owner who can change it", () => {
       "correctness-model/evaluator.ts",
       'check "tc-builds" names adapterId "cargo", which resolves under neither .toolchain nor the host path',
     ],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-    // [
-    //   "solvability-tool-self-authored",
-    //   "brief",
-    //   "check(s) structural-performance (truss-verify) are grounded only by a script under the candidate's own .toolchain",
-    // ],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-    // [
-    //   "solvability-tool-program-argument",
-    //   "brief",
-    //   "check(s) structural-performance (python3, 1808-byte argument) declare external evidence but pass program text",
-    // ],
   ])("%s goes to %s as its own blocking row", async (code, owner, detail) => {
     const { feedback, authorVisible } = await census(
       code,

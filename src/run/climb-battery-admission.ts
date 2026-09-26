@@ -119,6 +119,12 @@ export type BatteryAdmission =
     }
   | { ok: false; excluded: ExcludedBattery };
 
+/** A refused claim whose every clause is the environment's, the one reading both the climb and
+ *  the authoring allowance take of a refusal. */
+export function refusedForEnvironmentOnly(names: readonly string[]): boolean {
+  return names.length > 0 && names.every((name) => ENVIRONMENT_CLAUSES.has(name));
+}
+
 export function currentThresholdDigest(manifestPath?: string): ThresholdIdentity {
   if (manifestPath === undefined) return { kind: "unstated" };
   try {
@@ -196,7 +202,7 @@ function claimFacts(claimsDir: string, runId: string): ClaimFacts {
       // climb simply stops being its second reader. The shorter sample is then read honestly,
       // because `placeOnBand` owns whether the cases that did run are enough to place at all, and
       // refuses a placement rather than misplacing one.
-      if (createdAt !== null && names.length > 0 && names.every((name) => ENVIRONMENT_CLAUSES.has(name))) {
+      if (createdAt !== null && refusedForEnvironmentOnly(names)) {
         return { refusal: null, createdAt };
       }
       return {

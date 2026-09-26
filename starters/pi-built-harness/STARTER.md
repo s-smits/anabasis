@@ -42,6 +42,10 @@ unsettled stage stops the rest, and F2 runs beside the census unless conformance
 - `shape-mismatch`: a row misses a field. A constant is
   `{"name": "maxShiftHours", "value": 8, "unit": "h", "authority": "Staff policy", "citation": "Section 2.1"}`.
 - `tasks-exact-census`: the battery holds the number of tasks the round asks for.
+- `brief-artifact-root-unread`: every `artifactSchema` root is under some check's `artifactPaths`,
+  or a check reads `$`. A root no check reads measures nothing.
+- `brief-cited-decision-withheld`: every id in a check's `citedDecisionIds` is a declared
+  `ruleDecisions` row, and at least one of them has `visibility: public`.
 
 **3. Conformance.** Typechecks and loads `agent/` and `correctness-model/`, opens every task
 through the generated tools and runs each tool once. Walls: 30 s per module import and per tool
@@ -52,6 +56,8 @@ call.
   `reference/` and the public `@ana` packages. The evaluator may import `reference/` helpers.
 - `tools-description-drift`: `agent/tools.ts` serves the exact description `tools-spec.json`
   declares.
+- `task-worker-binding-drift`: the generated tools expose the same registration and tool schema
+  for every task, because one solver serves the whole battery.
 
 **4. Control census.** Runs every applicable check on each accept and only `expectedCheckId` on
 each reject, four examples at a time with the installed tools, on a host that may be busy. Each
@@ -59,6 +65,18 @@ tool call gets a fresh empty home. This stage and F2 share one wall.
 - `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief.
 - `DISCRIMINATION_NOT_PROVEN`: a check threw on an example, or an example names a task outside
   the battery.
+- `DISCRIMINATION_REJECT_PASSED`: a reject did not fail the check its `expectedCheckId` names.
+  Change the example so that check fails, or fix the check.
+- `DISCRIMINATION_CHECK_UNREJECTED`: a check some task applies to is no reject's `expectedCheckId`.
+  Add a reject that fails it.
+- `DISCRIMINATION_PROBE_NO_VERDICT`: a check's tool run crashed on an example, so that example
+  proves nothing. A tool the host itself could not start is the environment's, not yours. A run
+  that timed out refuses nothing and is listed in the advisory `controls-tool-timeout` row, but that
+  example still counts as no reject of its check.
+- `EXTERNAL_RESULT_UNBOUND`: a check returned before its tool runs finished. Await every run.
+- `EXTERNAL_VERDICT_UNGROUNDED`: a check that declares required tools passed without a completed
+  run of one of them (`starter-pack/contract.md`); refused here, failed in F2, a non-result in the
+  battery.
 
 **5. F2 reference solve.** Resolves required tools, then builds every task's artifact with
 `reference/index.ts` through the public submission path and runs the checks over it, four tasks

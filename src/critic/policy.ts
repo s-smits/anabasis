@@ -28,15 +28,6 @@ export const POLICY = {
      *  placement while the Builder's prompt still quotes these counts and the sizing gate still
      *  holds the code-owned ceiling. */
     band: CLIMB_BAND,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // /** Consecutive rounds that read one side of the aim before the campaign stops. A round counts
-    //  *  when it placed off the aim on that side, and a round whose claim was refused counts with it,
-    //  *  because measuring nothing is the same repetition with nothing to place. Three is where the
-    //  *  operator has stopped a campaign by hand, so the number matches an observed stopping point
-    //  *  rather than being derived. Counted in batteries and not in solves, so a six-task probe
-    //  *  campaign stops at the same point as a 25-task one. Counted by `allowance` in
-    //  *  src/run/climb-readout.ts and read by src/run/next-move.ts. */
-    // offAimStreakRounds: 3,
   },
   loop: {
     /** Consecutive batteries that recorded only typed non-results and created no claim before the
@@ -49,12 +40,6 @@ export const POLICY = {
      *  src/run/full-run-round.ts as `AUTHORING_STALL_LIMIT`, which explains there why a held
      *  candidate is counted against the same allowance. */
     buildFailedRounds: 3,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-findings-stall): commented out (unsure): one refusal repeated over changed bytes is repair in progress, not a proven stall
-    // /** Consecutive gate refusals carrying one findings hash before the authoring loop terminates,
-    //  *  counting the current attempt. Eight sits strictly between the deepest observed convergent
-    //  *  streak — one hash repeated six times before the gates cleared — and the observed
-    //  *  non-convergent one, which repeated a hash fourteen times. Read by src/gate/settlement.ts. */
-    // stalledFindingsRepeats: 8,
     /** Consecutive byte-identical resubmits of a refused authoring identity before the session ends
      *  as authoring-stalled. One repeat used to end it outright, which stopped sessions that had a
      *  changed next move already in the transcript; each strike below the ceiling now returns a
@@ -69,13 +54,11 @@ export const POLICY = {
      *  so the in-session counter starts at zero again. Keyed by commit, so a Builder that writes
      *  anything starts a new key. Read by src/run/full-run-build-step.ts. */
     unchangedCandidateStrikes: 3,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-    // /** Refused control censuses attributed to one tool id across a campaign before it ends as
-    //  *  `verifier-required`. Counted by tool id rather than candidate identity because each repair
-    //  *  changes the tree while the unsuccessful tool run does not, so the no-op strike counter sees
-    //  *  a different tree every time. Three matches `noopSubmitStrikes`: report the defect, allow the
-    //  *  repair, end the repetition. Read by src/author/tool-non-result.ts. */
-    // toolNonResultRefusals: 3,
+    /** Consecutive turns without one successful tool call that end the round as `no-progress`. Codex
+     *  blocks a goal after three automatic turns without a tool call, or three whose commands all
+     *  failed (codex-rs/ext/goal/src/accounting.rs); one count covers both cases here. Read by
+     *  src/author/builder-turn-loop.ts. */
+    stalledTurns: 3,
   },
   battery: {
     /** The accepted range for a requested battery size. An out-of-range request fails rather than

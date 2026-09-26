@@ -4,14 +4,6 @@
  * beside the executed stages instead of before them.
  */
 import type { CandidateSnapshot } from "../author/candidate-check.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): the admitted-history and admitted-feedback refusals below; restore these imports
-// with them.
-// import type { CampaignFeedback } from "../author/campaign-types.ts";
-// import { EXPERIMENT_FILE } from "../author/builder-memory.ts";
-// import { BATTERY_SERVED, EVALUATION_SERVED } from "../author/feedback-routing.ts";
-// import type { FingerprintEvidence } from "../claim/fingerprint.ts";
-// import { recordedVerifierEnvironmentHash } from "../claim/conformance-evidence.ts";
 import { readBoundConformance } from "../claim/conformance-evidence.ts";
 import { readFileSync } from "../meta/filesystem.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
@@ -19,13 +11,6 @@ import { parseJsonAs } from "../meta/json-runtime.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { join } from "../meta/path.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): the admitted-history and admitted-feedback refusals below; restore these imports
-// with them.
-// import { harnessBundleIdentity } from "../run/climb-battery-admission.ts";
-// import { productConditionFingerprint } from "../run/climb-history.ts";
-// import { evaluationFilesUnmoved, evaluationInvariantClauses } from "../run/experiment-freeze.ts";
-// import { controllerValidatedFinding } from "../truth/brief.ts";
 import { publicBatteryFingerprint } from "../run/climb-history.ts";
 import {
   type ExperimentDimension,
@@ -41,30 +26,7 @@ import { CONTROLS_FILE } from "../meta/bundle-layout.ts";
 export interface AdmissionInput {
   /** The adopted tree a continuation moves away from; absent on an initial build. */
   adoptedDir?: string;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): a task-only
-  // round may not pass over a blocking product finding.
-  // /** Admitted findings about the adopted product, not findings on an earlier candidate. */
-  // feedback?: readonly CampaignFeedback[];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): a fixed
-  // product may not re-measure public inputs it already measured.
-  // /** Admitted-history public battery fingerprints for the task-only A→B→A refusal. */
-  // priorPublicTaskFingerprints?: readonly string[];
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): a fixed
-// product re-measuring public inputs it already measured may be a legitimate replication, so the refusal is
-// held back until a recorded run shows a repeat that bought nothing.
-// /** What this refusal observed is a byte comparison: `publicBatteryFingerprint` hashes the sorted
-//  *  public inputs, so ids, families and levels are outside the identity and a moved number is inside
-//  *  it. The text states that comparison and no other. Read wider, it would name a battery that only
-//  *  moved its published magnitudes as though this check had caught it; it has not, and that
-//  *  obligation is the authoring prompt's, where a rule no check enforces has its one owner. */
-// const REPEATED_CONDITION =
-//   "This fixed product already measured these public inputs: every task's public input is byte-identical to a battery in the admitted history, whatever its ids, families or levels are now called. A new experiment changes what the tasks require of the solver, or changes the product.";
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): only the refusals below read it.
-// type Baseline = ReturnType<typeof adoptedBaseline>;
 
 /** Whether the candidate keeps the adopted installed verifier and compiled submission schema.
  *  Unproven is neither preserved nor moved, and the three answers stay apart because a missing
@@ -173,103 +135,8 @@ export function experimentOperation(
   };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): only the refusals below read it.
-// /** The readable adopted baseline and whether the candidate keeps its agent, scoring program,
-//  *  installed verifier and compiled submission schema: the fixed condition a tasks-scope experiment needs. */
-// function adoptedBaseline(
-//   adoptedDir: string | undefined,
-//   candidate: CandidateSnapshot,
-// ): { dir: string; adopted: FingerprintEvidence; fixed: boolean } | null {
-//   const adopted = adoptedDir === undefined ? null : readableFingerprint(adoptedDir);
-//   if (adoptedDir === undefined || adopted === null) return null;
-//   const fixed =
-//     adopted.agentHash === candidate.fingerprint.agentHash &&
-//     adopted.scoringHash === candidate.fingerprint.scoringHash &&
-//     submissionCondition(adoptedDir, candidate) === "preserved";
-//   return { dir: adoptedDir, adopted, fixed };
-// }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): only the refusals below build it.
-// const refuse = (code: string, detail: string): ContractFinding =>
-//   controllerValidatedFinding({ code, path: EXPERIMENT_FILE, detail });
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, product-repair-required): commented out (unsure): it holds a
-// task-only round until blocking product findings are repaired; the operator was unsure it earns a refusal
-// rather than advice.
-// /** Whether the admitted blocking feedback still needs a product repair this candidate did not make. */
-// function productRepairOwed(
-//   candidate: CandidateSnapshot,
-//   baseline: NonNullable<ReturnType<typeof adoptedBaseline>>,
-//   blocking: readonly CampaignFeedback[],
-// ): boolean {
-//   if (blocking.every((row) => BATTERY_SERVED.has(row.owner))) return false;
-//   // Controls and private expectations can repair an evaluator without changing its source hash.
-//   return !(
-//     blocking.every((row) => EVALUATION_SERVED.has(row.owner)) &&
-//     evaluationInvariantClauses(baseline.dir, candidate.snapshotDir, baseline.adopted, candidate.fingerprint)
-//       .length === 0 &&
-//     !evaluationFilesUnmoved(
-//       baseline.dir,
-//       candidate.snapshotDir,
-//       baseline.adopted.scoringHash,
-//       candidate.fingerprint.scoringHash,
-//     )
-//   );
-// }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-// commented out (unsure): the two refusals read the adopted product's history and admitted feedback.
-// /** Every refusal of the declared experiment. Revising the proposal can resolve them without new
-//  *  bytes, so each is reported at once rather than one per check. */
-// function candidateProposalRefusals(candidate: CandidateSnapshot, input: AdmissionInput): ContractFinding[] {
-//   if (candidate.experimentProposal === undefined) return [];
-//   return conditionRefusals(candidate, input, adoptedBaseline(input.adoptedDir, candidate));
-// }
-//
-// /** What the adopted product's history and admitted feedback forbid this experiment to measure. */
-// function conditionRefusals(
-//   candidate: CandidateSnapshot,
-//   input: AdmissionInput,
-//   baseline: Baseline,
-// ): ContractFinding[] {
-//   const findings: ContractFinding[] = [];
-//   const rows = publicTaskRows(candidate.snapshotDir);
-//   const prints = input.priorPublicTaskFingerprints ?? [];
-//   const print = publicBatteryFingerprint(rows);
-//   // The repeat is this product's own earlier reading: another product measuring the exam leaves it
-//   // open here. A tree whose identity cannot be resolved matches no recorded reading.
-//   const product =
-//     baseline === null
-//       ? null
-//       : harnessBundleIdentity(baseline.adopted, recordedVerifierEnvironmentHash(baseline.dir));
-//   if (
-//     baseline?.fixed === true &&
-//     product !== null &&
-//     prints.includes(productConditionFingerprint(product, print)) &&
-//     evaluationInvariantClauses(baseline.dir, candidate.snapshotDir, baseline.adopted, candidate.fingerprint)
-//       .length > 0
-//   ) {
-//     findings.push(refuse("climb-battery-repeats-history", REPEATED_CONDITION));
-//   }
-//   const blocking = (input.feedback ?? []).filter((row) => row.severity === "blocking");
-//   if (baseline?.fixed === true && productRepairOwed(candidate, baseline, blocking)) {
-//     findings.push(
-//       refuse(
-//         "experiment-product-repair-required",
-//         `The admitted blocking feedback still requires product repair (${[...new Set(blocking.map((row) => row.owner))].join(", ")}). Changing the task battery or its declared scope cannot resolve those product findings; repair the adopted product before measuring another task-only condition.`,
-//       ),
-//     );
-//   }
-//   return findings;
-// }
-
 /** Every admission finding on this candidate: an EXPERIMENT.json that could not be captured. It is
  *  reported beside the executed stages, never in place of them. */
 export function admissionFindings(candidate: CandidateSnapshot): ContractFinding[] {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition, product-repair-required):
-  // commented out (unsure): restoring the refusals above takes back `input: AdmissionInput` here.
-  // return [...(candidate.proposalFindings ?? []), ...candidateProposalRefusals(candidate, input)];
   return candidate.proposalFindings ?? [];
 }

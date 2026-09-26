@@ -5,6 +5,7 @@ import { inertToolFindings } from "../truth/grounding-coverage.ts";
 import type { JsonValue } from "../meta/json-shape.ts";
 import type { SolvabilityStageReceipt } from "../truth/solvability-stages.ts";
 import type { CheckFailureDetail } from "../truth/predicate.ts";
+import type { CheckRun } from "../verify/correctness-model-result.ts";
 
 export type IsolationStrength = "physical" | "contractual";
 
@@ -27,8 +28,9 @@ export interface SolvabilitySubmissionPathEvidence {
 }
 
 /** Why a reference solve failed: a valid answer the writer cannot carry, a solve that broke the
- *  isolation wall, or an answer the checks rejected or never received. */
-export type SolvabilityFailure = "representation-defect" | "isolation" | "witness";
+ *  isolation wall, an answer the checks rejected or never received, or a pass a check decided
+ *  without a completed run of its required tools. */
+export type SolvabilityFailure = "representation-defect" | "isolation" | "witness" | "ungrounded";
 /** Why a reference solve earned no verdict. A host failure before the child is ready is a
  *  non-result; after solving starts, crashes, timeouts and protocol errors are product failures. */
 export type SolvabilityNonResult = "reference-solve-host" | "submission-path-host" | "sandbox";
@@ -52,6 +54,8 @@ export type SolvabilityCaseEvidence = {
   /** Private check failures recalculated by the controller. They remain under `.build/` or `runs/`
    * and never enter the agent bundle or public task. */
   predicateFailures: CheckFailureDetail[];
+  /** One row per check the reference's evaluation reached; absent when it never reached one. */
+  checkRuns?: CheckRun[];
 } & (
   | {
       status: "passed";
@@ -131,7 +135,6 @@ export function assessReadiness(input: ReadinessInput): ReadinessVerdict {
     });
   }
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a scored external check with no tool run on any verified case leaves the score without tool evidence
   // An external check with no tool runs on applicable verified cases has no tool evidence for
   // the score. Report the check ids so the missing execution can be investigated.
   for (const finding of inertToolFindings(

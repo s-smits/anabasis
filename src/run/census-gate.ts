@@ -30,6 +30,7 @@ import {
   toolRetryDelay,
 } from "../truth/verifier-nonresult.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
+import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
 import { harnessSettings } from "../truth/harness-config.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
@@ -47,9 +48,9 @@ interface CensusGateOptions {
   /** Required battery size; the census must cover the complete task set. */
   expectedTasks: number;
   /** F2 reference solve of every task, run beside the control census. The same slot carries the
-   *  representation census and the accept-control independence reading, which raise findings of
-   *  their own against `brief` and `accept-controls`; all three need F2's witnesses, which exist
-   *  only while F2 is running. */
+   *  input-insensitivity observation and the accept-control independence reading, which raise
+   *  advisory findings against `brief` and `accept-controls`; all three need F2's witnesses, which
+   *  exist only while F2 is running. */
   solvability?: SolvabilityCensusGate;
   /** Wait before the one retry an environment-owned refusal earns; tests pass 0. */
   toolRetryWaitMs?: number;
@@ -82,6 +83,8 @@ type CensusEvidence = {
    *  `correctness_check`, the only point where a check's price is visible with session left to
    *  cut it. */
   checkCost?: CheckCost[];
+  /** One row per check per control attempt, host evidence that no author projection reads. */
+  checkRuns?: SubjectCheckRun[];
   /** Every blocking row behind a `fail`, by owner and finding codes. `findings` above holds only
    *  the executed control census, and most fails come from the battery count, reject coverage or
    *  F2 rows while `findings` stays empty, so without this field the record would give no reason
@@ -228,6 +231,7 @@ function persistCensus(
     ...keyIfDefined("controlReceipts", probe?.controlReceipts),
     ...keyIfDefined("toolCheckCoverage", probe?.toolCheckCoverage),
     ...keyIfDefined("checkCost", probe?.checkCost),
+    ...keyIfDefined("checkRuns", probe?.checkRuns),
     ...keyIfDefined("executionEvidence", probe?.executionEvidence),
     blocking: feedback
       .values()
@@ -260,7 +264,6 @@ function persistFailure(
   return feedback;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the host environment refused settles as a typed non-result, never as a verdict on the candidate
 /**
  * One settlement for a census the host environment refused: the recorded evidence behind a digest
  * pointer, and a single environment-owned refusal row.
@@ -281,7 +284,23 @@ function settleEnvironment(
   writeCompleted(join(context.iterationDir, file), payload);
   return persistFailure(
     context,
-    [{ owner: "environment", severity: "blocking", claim, evidence }],
+    [
+      {
+        owner: "environment",
+        severity: "blocking",
+        claim,
+        evidence,
+        // The claim is composed from public identities alone (a declared tool, a control id, a vendor
+        // package), so it crosses as the finding's detail under the code naming what the host could not do.
+        findings: controllerValidatedFindings([
+          {
+            code: "kind" in payload ? payload.kind : toolNonResultCode(payload),
+            path: "environment",
+            detail: claim,
+          },
+        ]),
+      },
+    ],
     completed,
     { kind: "non-result", evidence: tracePointer(context.iterationDir, file) },
   );
@@ -429,7 +448,6 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
 const censusName = (error: VerifierExecutionNonResult): string =>
   error.evidence.phase === "solvability" ? "solvability census" : "control census";
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: the host's own outcome kind decides whether a tool non-result is the author's or the environment's, and neither is a verdict
 /**
  * A tool run that started and then failed is the Builder's defect, not the environment's, and the
  * distinction decides whether a campaign continues. A declared `node checker.js` in a cell where
@@ -476,7 +494,6 @@ function settleNonResult(
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a tool the host could not run twice is the environment's outage, not the candidate's defect
 function settleToolUnavailable(
   context: CensusContext,
   error: VerifierExecutionNonResult,
@@ -491,7 +508,6 @@ function settleToolUnavailable(
   );
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the wall cut reached no verdict, and its time is the candidate's own bytes to cut
 /** A census the wall cut settles like a tool run that timed out: the checks and the reference
  *  solve are the candidate's own bytes, so the time they take is the Builder's to cut. Treating it
  *  as an environment non-result instead ends the session at its first submit over a candidate with
@@ -579,23 +595,40 @@ function settleFailure(
   return attempt === "first" ? "retry" : settleToolUnavailable(context, failure, completed);
 }
 
-/** The control census's one row: every finding it returned refuses the candidate. */
-function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
-  if (findings.length === 0) return [];
+/** The control census's rows: every finding it returned refuses the candidate, and the timed-out
+ *  controls ride beside them as one advisory row that refuses nothing. */
+function controlsRows(findings: ContractFinding[], advisory: ContractFinding[] = []): CampaignFeedback[] {
+  const row = (
+    severity: CampaignFeedback["severity"],
+    rows: ContractFinding[],
+    claim: string,
+  ): CampaignFeedback[] =>
+    rows.length === 0
+      ? []
+      : [
+          {
+            owner: EVALUATOR_FILE,
+            severity,
+            claim,
+            evidence: "census gate: executed discrimination evidence (census.json)",
+            findings: controllerValidatedFindings(rows),
+          },
+        ];
   return [
-    {
-      owner: EVALUATOR_FILE,
-      severity: "blocking",
-      claim: `control census against the installed tools returned ${findings.length} finding(s)`,
-      evidence: "census gate: executed discrimination evidence (census.json)",
-      findings: controllerValidatedFindings(findings),
-    },
+    ...row(
+      "blocking",
+      findings,
+      `control census against the installed tools returned ${findings.length} finding${findings.length === 1 ? "" : "s"}`,
+    ),
+    ...row("advisory", advisory, "control census examples whose tool run timed out, which refuses nothing"),
   ];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: a census that did not run under the verifier identity captured at submit graded a different condition from the one measured
-/** The control findings, with the drift the census observed against the identity captured at submit. */
-function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): ContractFinding[] {
+/** The drift the census observed against the identity captured at submit. The installed tools
+ *  moved under the gate, which says nothing about the candidate's bytes, so the row is the
+ *  environment's: a preview is not remembered, and a submit that meets it ends the session as
+ *  environment-blocked (`gateTerminalClause`) rather than striking the candidate. */
+function driftRows(harness: BuiltHarness, probe: ProbeControlsResult): CampaignFeedback[] {
   const captured = harness.conformance?.verifierEnvironmentHash;
   // A census stopped before its controls ran — an evaluator that would not load, say — establishes
   // no identity at all, so an absent hash on either side is silence rather than disagreement.
@@ -604,18 +637,23 @@ function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): Con
     probe.verifierEnvironmentHash === undefined ||
     probe.verifierEnvironmentHash === captured
   ) {
-    return probe.findings;
+    return [];
   }
   return [
-    ...probe.findings,
-    ...controllerValidatedFindings([
-      {
-        code: "verifier-condition-drift",
-        path: ".toolchain",
-        detail:
-          "The control census did not establish the installed verifier identity captured at submit; submit again under the current tool condition.",
-      },
-    ]),
+    {
+      owner: "environment",
+      severity: "blocking",
+      claim: "the control census ran under a verifier identity other than the one captured at submit",
+      evidence: "census gate: executed discrimination evidence (census.json)",
+      findings: controllerValidatedFindings([
+        {
+          code: "verifier-condition-drift",
+          path: ".toolchain",
+          detail:
+            "The installed verifier identity moved between the capture at submit and the control census, so the host's tool condition changed under the gate. A check of the same bytes runs the census again; a submit that ends on this row ends the session as environment-blocked.",
+        },
+      ]),
+    },
   ];
 }
 
@@ -638,7 +676,7 @@ async function runCensus(
       : wall.under("reference solve", solvability(harness, iterationDir, slugDir, wall.stopped, stages)),
   ]);
   const probe = controls.status === "fulfilled" ? controls.value : undefined;
-  const findings = probe === undefined ? [] : controlFindings(harness, probe);
+  const findings = probe?.findings ?? [];
   // A check that called its tool and met a sandbox or unreadable-tool refusal twice is the
   // environment's non-result under rule 15, not a correctness-model finding: there is nothing in
   // the candidate's bytes to repair. It is pulled out of `findings` here and settled below.
@@ -646,7 +684,14 @@ async function runCensus(
   const referenceRows = reference.status === "fulfilled" ? reference.value : [];
   const completed: Completed = {
     ...keyIfDefined("probe", probe),
-    rows: [...controlsRows(findings.filter((finding) => finding !== refusal)), ...referenceRows],
+    rows: [
+      ...controlsRows(
+        findings.filter((finding) => finding.code !== TOOL_REFUSED_CODE),
+        probe?.advisory,
+      ),
+      ...(probe === undefined ? [] : driftRows(harness, probe)),
+      ...referenceRows,
+    ],
   };
   // The controls are checked first, so the reported failure is the earlier stage's and the
   // reference solve's completed rows ride beside it rather than replacing it.
@@ -665,7 +710,7 @@ async function runCensus(
   }
   const feedback = completed.rows;
   // A row's presence alone does not fail the census: an advisory finding is a reading, not a
-  // refusal, and the representation census and accept-control independence check both report
+  // refusal, and the input-insensitivity observation and accept-control independence check both report
   // things only the Builder can weigh. So the verdict counts blocking rows and the advisory ones
   // stay in the iteration record for `correctness_check`; `solvability-gate.ts` groups the same way.
   const verdict = feedback.some((row) => row.severity === "blocking") ? "fail" : "pass";

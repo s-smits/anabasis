@@ -22,9 +22,6 @@ import {
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
 import { resolvePredicatePath } from "./predicate.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): only the variation rule
-// read it.
-// import { canonicalJson } from "../meta/stable-json.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
@@ -63,11 +60,6 @@ export interface TaskValidationContext {
   /** The smallest accepted size when the round leaves the count to the Builder; absent when the ask
    *  states one size. */
   minTasks?: number | null;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): only the variation
-  // rule read it.
-  // /** True for new authoring, which enforces public variation; a fingerprinted tree keeps its
-  //  *  recorded policy. */
-  // authoring?: boolean;
 }
 
 /** One task bound to its index and to the checks that apply to it, so no rule resolves either
@@ -78,8 +70,6 @@ interface TaskRow {
   applicable: ReturnType<typeof applicableTruthChecks>;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: every task rule reads these fields without
-// checking them again.
 /** The fields every rule below reads without checking again: a battery of tasks, each with a string
  *  id, a string family, a public input and an array of hidden rows naming a check. */
 function fieldFindings(value: unknown): ContractFinding[] {
@@ -114,20 +104,9 @@ function fieldFindings(value: unknown): ContractFinding[] {
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-count): kept: the battery holds the task count the run
-// asked for, which the measured denominator is sized on.
-/** Battery-level shape no task walk can decide: the retired label and the requested census. */
+/** Battery-level shape no task walk can decide: the requested census. */
 function censusFindings(battery: TaskBattery, context: TaskValidationContext): ContractFinding[] {
   const findings: ContractFinding[] = [];
-  // A battery-wide difficulty (or the retired rung) labels nothing the controller reads.
-  if (Object.hasOwn(battery, "difficulty") || Object.hasOwn(battery, "rung")) {
-    findings.push({
-      code: "tasks-difficulty-unrequested",
-      path: "difficulty",
-      detail:
-        "remove the top-level difficulty field; the controller reads difficulty from measured results, not from a label",
-    });
-  }
   if (battery.tasks.length === 0) {
     findings.push({
       code: "tasks-empty",
@@ -151,8 +130,6 @@ function censusFindings(battery: TaskBattery, context: TaskValidationContext): C
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: task ids name case paths and disclosure
-// scans, so they must be unique and safe to spell.
 /** Each task's own identity: unique, and spelled so a disclosure scan can recognise it. */
 function identityFindings(rows: readonly TaskRow[]): ContractFinding[] {
   const seen = new Set<string>();
@@ -177,8 +154,6 @@ function identityFindings(rows: readonly TaskRow[]): ContractFinding[] {
   });
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a check without its hidden operand cannot
-// run, and an operand for a check that does not apply is misbound.
 /** Hidden operands, both directions: a row for a check that wants none, and a missing row for a
  *  check that requires one — absence cannot silently skip a check. */
 function hiddenOperandFindings(row: TaskRow, declared: ReadonlySet<string>): ContractFinding[] {
@@ -223,8 +198,6 @@ function hiddenOperandFindings(row: TaskRow, declared: ReadonlySet<string>): Con
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a task no check applies to is never verified
-// by anything.
 /** A task no check applies to is never verified by anything. */
 function applicabilityFindings(rows: readonly TaskRow[], declared: ReadonlySet<string>): ContractFinding[] {
   return rows.flatMap((row) => [
@@ -241,8 +214,6 @@ function applicabilityFindings(rows: readonly TaskRow[], declared: ReadonlySet<s
   ]);
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a declared public path no task provides is a
-// misnamed input that a check would read as absent.
 /** A declared public input path no applicable task provides anywhere is a misnamed input. An
  *  optional one (wind, keep-out zones) is absent from some tasks by design and the projection hands
  *  the check what is there, so one provider is enough. */
@@ -266,70 +237,6 @@ function declaredPathFindings(rows: readonly TaskRow[]): ContractFinding[] {
   }));
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a check bound to a family that has no task
-// never runs.
-/** What the battery as a whole must cover once its families are known. */
-function coverageFindings(
-  brief: Brief,
-  battery: TaskBattery,
-  families: ReadonlySet<string>,
-): ContractFinding[] {
-  const findings: ContractFinding[] = [];
-  if (battery.tasks.length > 0) {
-    // A check scoped to families the battery lacks applies to no task, so nothing ever runs it:
-    // the census, F2 and the verifier all read applicability from the tasks that exist.
-    for (const check of brief.truthChecks) {
-      const scope = check.execution.families;
-      if (scope !== "all" && !scope.some((family) => families.has(family))) {
-        findings.push({
-          code: "tasks-check-family-unbound",
-          path: "tasks",
-          detail: `truth check "${check.id}" applies only to ${scope.map((family) => `"${family}"`).join(", ")}, and no task has that family, so no task, control or reference solve ever runs it; add a task of that family or scope the check to a family the battery has`,
-        });
-      }
-    }
-  }
-  return findings;
-}
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): a family must vary one
-// declared public input; unsure whether that shape rule measures anything a battery would not show.
-// /** A family must vary a shared declared verifier input. The comparison is per declared path, so a
-//  *  check that declares a coarse path is satisfied by any change inside it; this proves declared
-//  *  coverage, not semantic dependence or harder decisions, and measurement owns those claims. */
-// function variationFindings(rows: readonly TaskRow[]): ContractFinding[] {
-//   const findings: ContractFinding[] = [];
-//   for (const family of new Set(rows.map(({ task }) => task.family))) {
-//     const members = rows.filter(({ task }) => task.family === family);
-//     const values = members.map(
-//       ({ task, applicable }) =>
-//         new Map(
-//           applicable
-//             .flatMap((check) => check.execution.publicInputPaths)
-//             .flatMap((path) => {
-//               const resolved = resolvePredicatePath(task.publicInput, path);
-//               return resolved.found ? [[path, canonicalJson(resolved.value)] as const] : [];
-//             }),
-//         ),
-//     );
-//     // A path the whole family provides, holding two values somewhere in it. The first member's
-//     // paths are the only candidates: one it lacks is not shared.
-//     const varied = [...(values[0]?.keys() ?? [])].some(
-//       (path) =>
-//         values.every((member) => member.has(path)) &&
-//         new Set(values.map((member) => member.get(path))).size >= 2,
-//     );
-//     if (!varied) {
-//       findings.push({
-//         code: "tasks-structural-variation-shortfall",
-//         path: "tasks",
-//         detail: `family "${family}" needs at least two distinct values at one shared publicInput path declared by its applicable truth checks. Vary a condition the verifier uses; labels and undeclared metadata do not qualify. Declared coverage does not prove semantic difficulty`,
-//       });
-//     }
-//   }
-//   return findings;
-// }
-
 export function validateTasks(
   brief: Brief,
   value: unknown,
@@ -350,10 +257,6 @@ export function validateTasks(
     ...identityFindings(rows),
     ...applicabilityFindings(rows, declared),
     ...declaredPathFindings(rows),
-    ...coverageFindings(brief, battery, new Set(rows.map(({ task }) => task.family))),
-    // Gate audit 2026-09-25 (docs/gate-audit.md, task-variation): commented out (unsure): the variation rule
-    // above is commented out.
-    // ...(context.authoring === true ? variationFindings(rows) : []),
   ];
   return { ok: findings.length === 0, findings: controllerValidatedFindings(findings) };
 }

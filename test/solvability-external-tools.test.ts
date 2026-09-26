@@ -4,8 +4,9 @@
  * count, and a host outage under it stays the host's.
  *
  * Which owner each refusal reaches is the census gate's projection, pinned once in
- * `solvability-gate.test.ts`; the one gate call kept here proves the refusal that skips F2 reaches
- * the author alone.
+ * `solvability-gate.test.ts`; the two gate calls kept here prove that the refusal that skips F2
+ * reaches the author alone, and that a pass its tool never produced reaches the evaluator rather
+ * than the reference solve.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { cleanupScratch } from "./helpers/scratch.ts";
@@ -18,14 +19,9 @@ import { createVerifierHost } from "../src/verify/host.ts";
 import { required } from "./helpers/doubles.ts";
 import {
   ACCEPTING_TOOL,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-  // BASE_TASKS,
   COMPARING_TOOL,
   type SpecimenSpec,
   codes,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-  // countingHost,
-  // evaluateLog,
   failure,
   gate,
   installUnderCandidate,
@@ -68,53 +64,6 @@ describe("the tools an external check is allowed to name", () => {
     ]);
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-  // it.concurrent("refuses a self-authored tool before constructing a verifier or running F2 witnesses", async () => {
-  //   const written = specimen(externalSpec("authored-tool"));
-  //   writeFileSync(join(written.dir, "agent", "authored-tool.sh"), ACCEPTING_TOOL);
-  //   const fixture = installUnderCandidate(written, "authored-tool", ACCEPTING_TOOL);
-  //   let verifierCreations = 0;
-  //   const log = evaluateLog();
-  //   const result = await witness(fixture, {
-  //     createVerifier: () => {
-  //       verifierCreations += 1;
-  //       return countingHost(log);
-  //     },
-  //   });
-  //
-  //   expect(codes(result)).toEqual(["solvability-tool-self-authored"]);
-  //   expect(verifierCreations).toBe(0);
-  //   expect(log.calls).toBe(0);
-  //   expect(result.evidence).toBeNull();
-  // });
-
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-  //   it.concurrent("refuses an external check that hands its program to the interpreter as an argument, after the witnesses ran", async () => {
-  //     const written = specimen({
-  //       ...externalSpec(
-  //         "interp",
-  //         `
-  // export function solve(task) { return { answer: task.publicInput.expected }; }
-  // // CHECKS
-  // export const checks = { answer: async ({ artifact, publicTask }, runtime) => {
-  //   const program = ["import sys", "a = open(sys.argv[1]).read()", "b = open(sys.argv[2]).read()", "sys.exit(0 if a == b else 1)"].join("\\n");
-  //   const result = await runtime.tools.run({ toolId: "interp", args: ["-c", program, "actual", "expected"],
-  //     files: { actual: artifact.answer, expected: publicTask.publicInput.expected } });
-  //   return result.exitCode === 0;
-  // } };
-  // `,
-  //       ),
-  //     });
-  //     // This stub has no matching source in the candidate, so the known-authored-byte check does not
-  //     // flag it. Its recorded arguments are what the program-argument refusal reads.
-  //     const fixture = installUnderCandidate(written, "interp", ACCEPTING_TOOL);
-  //     const result = await witness(fixture);
-  //
-  //     expect(codes(result)).toEqual(["solvability-tool-program-argument"]);
-  //     expect(result.findings[0]?.detail).toContain("answer (interp, ");
-  //     expect(result.evidence?.toolRuns).toBe(BASE_TASKS.length);
-  //   });
-
   it.concurrent("runs a declared authored tool through the real F2 input and verifier path", async () => {
     const written = specimen(
       externalSpec(
@@ -146,23 +95,48 @@ export const checks = { answer: async ({ artifact, publicTask }, runtime) => {
     expect(result.evidence?.verifierEnvironmentHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, f2-witness-relay): commented out (unsure): a reference solve whose externally grounded check ran no completed tool no longer fails its F2 witness
-  // it.concurrent("fails a witness whose applicable external check ran no completed tool", async () => {
-  //   // The tool resolves, so the census runs; the evaluator simply never asks the host to run it.
-  //   const result = await witness(specimen(externalSpec("answer-tool")), {
-  //     createVerifier: () =>
-  //       createVerifierHost({
-  //         inventory: { "answer-tool": installedTool("answer-tool", ACCEPTING_TOOL) },
-  //         requireOsSandbox: false,
-  //         lifetime: testLifetime(),
-  //       }),
-  //   });
-  //
-  //   expect(codes(result)).toContain("solvability-witness-failed");
-  //   expect(failure(result)).toContain(
-  //     "externally grounded check(s) [answer] ran no completed tool for this witness",
-  //   );
-  // });
+  it.concurrent("fails a witness whose external check passed with no completed run of its tool", async () => {
+    // The tool resolves, so the census runs; the evaluator simply never asks the host to run it (R1).
+    const fixture = specimen(externalSpec("answer-tool"));
+    const result = await witness(fixture, {
+      createVerifier: () =>
+        createVerifierHost({
+          inventory: { "answer-tool": installedTool("answer-tool", ACCEPTING_TOOL) },
+          requireOsSandbox: false,
+          lifetime: testLifetime(),
+        }),
+    });
+
+    // The evaluator returned a pass its tool never produced, so the evaluator owns the failure and
+    // the sentence, naming only check and tool ids, reaches the author whole.
+    const sentence =
+      'EXTERNAL_VERDICT_UNGROUNDED: check "answer" passed without a completed run of its required tool "answer-tool"';
+    expect(failure(result)).toBe(sentence);
+    expect(result.evidence?.cases[0]).toMatchObject({ status: "failed", failure: "ungrounded" });
+    expect(result.findings[0]).toMatchObject({
+      code: "EXTERNAL_VERDICT_UNGROUNDED",
+      path: "correctness-model/evaluator.ts",
+      detail: sentence,
+      disclosure: { class: "authored" },
+    });
+
+    // Through the gate the candidate is refused to the evaluator, never to the reference solve it
+    // would otherwise send the Builder to rewrite, and the author reads check and tool ids and
+    // counts, with no task identity.
+    const cases = required(result.evidence, "census evidence").cases;
+    const feedback = await gate(fixture, result);
+    expect(feedback).toEqual([
+      expect.objectContaining({
+        owner: "correctness-model/evaluator.ts",
+        severity: "blocking",
+        claim: `solvability census: ${cases.length} of ${cases.length} reference solves passed a check that never ran its required tools`,
+        findings: [expect.objectContaining({ code: "EXTERNAL_VERDICT_UNGROUNDED", detail: sentence })],
+      }),
+    ]);
+    const authorVisible = JSON.stringify(feedback);
+    expect(authorVisible).not.toContain("SOLVABILITY_CENSUS_BLOCKED");
+    for (const row of cases) expect(authorVisible).not.toContain(`"${row.taskId}"`);
+  });
 
   it.each(["return true;", 'throw new Error("tool output unavailable");'])(
     "preserves the host outage through isolated evaluation: %s",

@@ -97,10 +97,13 @@ describe("which task a control is evaluated against", () => {
       {
         brief: {
           ...BRIEF,
-          truthChecks: BRIEF.truthChecks.map((check) => ({
-            ...check,
-            execution: { ...check.execution, publicInputPaths: ["$"] },
-          })),
+          // Only the check the reject names, so every declared check has its reject.
+          truthChecks: BRIEF.truthChecks
+            .filter((check) => check.id === "parts-assigned")
+            .map((check) => ({
+              ...check,
+              execution: { ...check.execution, publicInputPaths: ["$"] },
+            })),
         },
       },
     );
@@ -252,7 +255,7 @@ describe("a control the census could not decide", () => {
     const disclosure = discriminationDisclosure(finding);
     expect(disclosure).toMatchObject({ class: "withheld", classification: "generated-evaluate-throw" });
     const authorDetail = disclosure.class === "withheld" ? disclosure.note : undefined;
-    expect(authorDetail).toContain('1 example(s) in the host\'s confined check cell: "a1"');
+    expect(authorDetail).toContain('1 example in the host\'s confined check cell: "a1"');
     expect(authorDetail).toContain("correctness-model/evaluator.test.ts");
     expect(authorDetail).not.toContain("entities is not iterable");
     // One throwing control does not poison the rest of the corpus.
@@ -288,7 +291,7 @@ describe("a control the census could not decide", () => {
     const disclosure = discriminationDisclosure(finding);
     expect(disclosure).toMatchObject({ class: "withheld", classification: "verifier-tool-input" });
     const authorDetail = disclosure.class === "withheld" ? disclosure.note : undefined;
-    expect(authorDetail).toContain("refused the tool run of 2 example(s)");
+    expect(authorDetail).toContain("refused the tool run of 2 examples");
     expect(authorDetail).toContain('Examples: "a1", "a2"');
     expect(authorDetail).toContain("stdin is not a string leaf of the artifact or public task");
     expect(authorDetail).toContain(VERIFIER_CONTRACT_HINTS["verifier-tool-input"]);

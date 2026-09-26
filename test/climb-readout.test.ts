@@ -358,6 +358,22 @@ describe("rendering", () => {
     expect(render(readoutOf(row("r1", 0, { passed: 2, n: 5 })))).not.toContain(marker);
   });
 
+  it("bounds the reading by every non-result counted as a fail and as a pass only when the bounds straddle the aim", () => {
+    const straddling = render(readoutOf(row("r1", 0, { passed: 2, n: 10, slots: 20 })));
+    expect(straddling).toContain("10 cases reached no verdict");
+    expect(straddling).toContain("(2 of 20)");
+    expect(straddling).toContain("(12 of 20)");
+    expect(straddling).toContain("rests on which way the environment's losses would have gone");
+    expect(render(readoutOf(row("r1", 0, { passed: 4, n: 24, slots: 25 })))).toContain(
+      "1 case reached no verdict",
+    );
+    // Both bounds on one side of the aim: the losses could not have moved the reading, so no line.
+    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 20, slots: 21 })))).not.toContain(
+      "reached no verdict",
+    );
+    expect(render(readoutOf(row("r1", 0, { passed: 2, n: 10 })))).not.toContain("reached no verdict");
+  });
+
   it("says a battery passing every verified case found no limit and asks for a new move", () => {
     const allPass = render(readoutOf(row("r1", 0, { passed: 5, n: 5 })));
     expect(allPass).toContain(

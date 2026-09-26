@@ -268,15 +268,12 @@ describe("a gate run two callers may share", () => {
     expect(resumeCampaignMemory(campaignDir, "matching", KICKOFF_HASH).clause).toBeNull();
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-  // it("publishes submit's run before its first await, so a preview started meanwhile joins it and spends its attempt", async () => {
   it("publishes submit's run before its first await, so a preview started meanwhile joins it", async () => {
     const campaignDir = scratchDir("ana-submit-publishes-");
     const workspace = join(campaignDir, "workspace");
     let probeLoads = 0;
     const loading = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    let joined = "";
     await runBuilderCampaign(
       { campaignDir, ...FRESH_BUILD, maxTurns: 2 },
       {
@@ -307,13 +304,7 @@ describe("a gate run two callers may share", () => {
             release.resolve();
             await Promise.all([submitting, joining]);
             expect(probeLoads).toBe(1);
-            // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-            // joined = await replyText(check(tools), "check-2");
-            // expect(probeLoads).toBe(1);
-            // await submitTool(tools).execute("submit-2", {});
-            // expect(probeLoads).toBe(2);
-            // A runtime non-result is no verdict on the bytes, so a later call on them runs again.
-            joined = await replyText(check(tools), "check-2");
+            await replyText(check(tools), "check-2");
             expect(probeLoads).toBe(2);
             await submitTool(tools).execute("submit-2", {});
             expect(probeLoads).toBe(3);
@@ -321,9 +312,6 @@ describe("a gate run two callers may share", () => {
           }),
       },
     );
-    // Gate audit 2026-09-25 (docs/gate-audit.md, preview-attempt-spent): commented out (unsure): a runtime non-result is no verdict on the bytes, so a retry on them should run
-    // expect(joined).toContain("preview-attempt-spent");
-    expect(joined).not.toContain("preview-attempt-spent");
   });
 
   it.concurrent("keeps one session across a post-record gate refusal and admits only the clean resubmission", async () => {
@@ -438,6 +426,16 @@ describe("the receipts a gate run records", () => {
     expect(lines[0]).toContain("submit refused at stage");
     expect(lines[0]).toContain("with generated-load-crash");
     expect(lines[0]).not.toContain("handshake");
+    // The submit's own receipt names the refusal's codes, as a correctness_check receipt does; a
+    // clear check names none.
+    const calls = readExecutionEvidence(campaignDir)[0]?.customCalls ?? [];
+    const semantic = (tool: string) => calls.find((call) => call.tool === tool)?.semantic;
+    expect(semantic("submit")).toMatchObject({
+      outcome: "refused",
+      findingCodes: ["generated-load-crash", "submit-bound"],
+    });
+    expect(semantic("correctness_check")).toMatchObject({ outcome: "clear" });
+    expect(semantic("correctness_check")).not.toHaveProperty("findingCodes");
   });
 
   it("runs the gates beside an admission refusal without writing an iteration or a parity safeguard", async () => {
@@ -668,7 +666,7 @@ describe("a check that names an installed tool", () => {
     // The first refusal is the recovery surface: the guidance must survive the wall projection
     // instead of laundering to the generic unclassified label. The script already knows the tool;
     // this proves the words reach the consumer, not that a model would act on them.
-    const campaignDir = scratchDir("ana-verifier-required-e2e-");
+    const campaignDir = scratchDir("ana-tool-missing-e2e-");
     const workspace = join(campaignDir, "workspace");
     const session = submittingSession(() => {
       completeBundle(workspace);
@@ -729,7 +727,7 @@ describe("a check that names an installed tool", () => {
   it.concurrent("keeps the bundle's own findings beside the missing-tool finding", async () => {
     // Substituting one reason for the other leaves the second defect unnamed, so it never gets
     // repaired. The battery holds 4 tasks and the ask states 5, so the count refuses in the same submit.
-    const campaignDir = scratchDir("ana-primary-verifier-required-census-");
+    const campaignDir = scratchDir("ana-tool-missing-beside-bundle-");
     const workspace = join(campaignDir, "workspace");
     let opening = "";
     let reply = "";
@@ -844,6 +842,8 @@ describe("a check that names an installed tool", () => {
     expect(iteration.feedback).toEqual([
       expect.objectContaining({ owner: "environment", severity: "blocking" }),
     ]);
-    expect(iteration.feedback[0].findings ?? []).toHaveLength(0);
+    expect(iteration.feedback[0].findings).toEqual([
+      expect.objectContaining({ code: "tool-unavailable", path: "environment" }),
+    ]);
   });
 });

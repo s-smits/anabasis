@@ -507,39 +507,3 @@ export function publicSchemaPrint(
     valueSchema(projection.tasks.map((task) => (isRecord(task) ? task.publicInput : null))),
   );
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, repeated-public-condition): commented out (unsure): the
-// product-condition prints feed only the repeated-condition refusal, which is commented out with them.
-// /** One product's reading of one exam: the identity the fixed-product repeat refusal compares. The
-//  *  product is `harnessBundleIdentity` — agent, correctness model and recorded verifier bytes —
-//  *  which is both what a recorded battery names and what the adopted tree resolves to at admission.
-//  *  An exam saturated under one evaluator is not thereby answered under another, so there is no
-//  *  product-free print: a product-free "answered" sentinel would refuse a rebuilt product its first
-//  *  reading of an exam an earlier product had already saturated. */
-// export function productConditionFingerprint(harnessId: string, publicFingerprint: string): string {
-//   return sha256(`product\n${harnessId}\n${publicFingerprint}`);
-// }
-//
-// /** The product-condition prints of the admitted history, which is the repeat refusal's comparison
-//  *  set. Every admitted battery counts rather than a trailing window, because whether a product has
-//  *  already measured an exam does not depend on what its bytes did afterwards. An excluded battery
-//  *  — another pin, another condition, an environment failure — is not in the set, and a row whose
-//  *  projection cannot be digest-verified, or that states a task without `publicInput`, yields no
-//  *  print rather than a partial one that would collapse distinct batteries onto one sentinel. */
-// export function priorPublicFingerprints(
-//   domainDir: string,
-//   admitted: ReadonlyArray<Pick<AdmittedClimbRow, "battery" | "authoring" | "harnessId">>,
-// ): string[] {
-//   const fingerprints = new Set<string>();
-//   for (const row of admitted) {
-//     if (row.harnessId === null) continue;
-//     const projection = publicTaskProjection(domainDir, row.battery.runId, row.authoring.caseIds);
-//     if (!("tasks" in projection)) continue;
-//     const tasks = projection.tasks.filter(
-//       (task): task is { publicInput: unknown } => task instanceof Object && "publicInput" in task,
-//     );
-//     if (tasks.length !== projection.tasks.length) continue;
-//     fingerprints.add(productConditionFingerprint(row.harnessId, publicBatteryFingerprint(tasks)));
-//   }
-//   return [...fingerprints];
-// }

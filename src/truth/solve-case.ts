@@ -52,15 +52,20 @@ import { isString, type JsonValue } from "../meta/json-shape.ts";
 import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-claimability.ts";
 import type { NonResultKind } from "../claim/record-events.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
-import type { VerifierHostHandle } from "../verify/verifier-port.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { VerifierExecutionEvidence, VerifierHostHandle } from "../verify/verifier-port.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { CaseRecord } from "./battery-record.ts";
 import { type Brief, applicableTruthChecks, externalChecksOf, requiredToolsOf } from "./brief.ts";
-import { hostNonResult, uncoveredExternalCheckIds } from "./tool-runs.ts";
+import {
+  hostNonResult,
+  type UngroundedCheck,
+  ungroundedPassChecks,
+  ungroundedSentence,
+} from "./tool-runs.ts";
 import { solverNonResultReason } from "./runtime-blocker.ts";
-import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
+import { blockingTruthFailure } from "./verdict-binding.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import { EvaluatorProcessFailure } from "./evaluator-process.ts";
 import { resolveVerifier } from "./verification-registry.ts";
@@ -143,11 +148,19 @@ export interface GradedCase {
   unboundFindings: DiscriminationClaimabilityFinding[];
   /** Solver-side non-results have different censoring rules from verifier-side failures. */
   solverOrigin: boolean;
+  /** One row per check grading reached, empty when nothing was graded. */
+  checkRuns: CheckRun[];
 }
 
 /** What the case records as its final-submission evidence: the controller-written fact itself,
  *  or, when that fact does not serialize, the note recording why nothing else could be written in
  *  its place — an absent field would read as "no submission", which is a different event. */
+/** The caller's abort, and where the host's own rows for this grading go; neither reaches a model. */
+type RehearsalWatch = {
+  signal?: AbortSignal | undefined;
+  record?: (checkRuns: CheckRun[], toolRuns: VerifierExecutionEvidence[]) => void;
+};
+
 type FinalSubmissionEvidence = FinalSubmission | null | { falsifiedFact: true; note: string };
 
 /** What grading decided about one case beyond the solver's own telemetry. Exactly one arm holds,
@@ -170,6 +183,7 @@ interface GradedOutcome {
   unbound: string[];
   verdict: CorrectnessModelResult | null;
   solverOrigin: boolean;
+  checkRuns?: CheckRun[];
 }
 
 const nonResult = (reason: string, nonResultKind: NonResultKind): CaseOutcome => ({
@@ -299,6 +313,7 @@ async function runCaseScope(
   failure: Error | null;
   pendingInvocations: number;
   cleanupPending: boolean;
+  checkRuns: CheckRun[];
 }> {
   const { task, committed } = solved;
   // One projection serves all three evaluate-side consumers: the host subject, the generated
@@ -325,6 +340,7 @@ async function runCaseScope(
   let failure: Error | null = null;
   let cleanupPending = false;
   let closedScope: Awaited<ReturnType<typeof scope.close>>;
+  const checkRuns: CheckRun[] = [];
   const abort = () => {
     void scope.close().catch(() => {});
   };
@@ -343,6 +359,8 @@ async function runCaseScope(
         hidden: task.hidden,
       }),
       { tools: scope.port },
+      undefined,
+      (run) => checkRuns.push(run),
     );
   } catch (error) {
     cleanupPending = error instanceof VerifierOperationalStop;
@@ -358,6 +376,7 @@ async function runCaseScope(
     failure,
     pendingInvocations: closedScope.pendingInvocations,
     cleanupPending: cleanupPending || lifetimeStopped || closedScope.cleanup?.state === "pending",
+    checkRuns,
   };
 }
 
@@ -399,8 +418,9 @@ export async function rehearseCase(
   brief: Brief,
   solved: Pick<SolvedCase, "task" | "committed" | "final">,
   lifetime?: VerifierLifetime,
-  callerSignal?: AbortSignal,
+  watch: RehearsalWatch = {},
 ) {
+  const { signal: callerSignal, record } = watch;
   const { final, task } = solved;
   if (final?.accepted !== true || final.kind !== "artifact" || final.artifactJson === null) {
     return { status: "not-run" };
@@ -428,6 +448,7 @@ export async function rehearseCase(
       final.artifactJson,
       callerSignal,
     );
+    record?.(scoped.checkRuns, verifier.evidence());
     if (scoped.cleanupPending) return { status: "non-result", kind: "cleanup-pending" };
     if (scoped.failure !== null) throw scoped.failure;
     callerSignal?.throwIfAborted();
@@ -437,7 +458,8 @@ export async function rehearseCase(
     const outcome = acceptedOutcome(
       scoped,
       hostNonResult(verifier, subject),
-      uncoveredExternalCheckIds(
+      ungroundedPassChecks(
+        scoped.verdict,
         checks.map((check) => check.id),
         externalChecksOf(brief),
         verifier.executedBindings(),
@@ -460,7 +482,7 @@ export async function rehearseCase(
 function acceptedOutcome(
   scoped: Awaited<ReturnType<typeof runCaseScope>>,
   hostFailure: ReturnType<typeof hostNonResult>,
-  missingExternalVerdicts: readonly string[],
+  ungrounded: readonly UngroundedCheck[],
 ): CaseOutcome {
   if (scoped.cleanupPending) {
     return nonResult("verifier-cleanup-pending: host process cleanup is incomplete", "sandbox");
@@ -477,18 +499,9 @@ function acceptedOutcome(
       hostFailure.outcome,
     );
   }
-  // A blocking fail on a check whose evidence is complete decides the case, because a tool run
-  // that was skipped could only ever have withheld a pass, never created one. A case that failed
-  // to compile is filed here rather than as a non-result.
-  const failed = [...blockingFailedCheckIds(scoped.verdict)];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a verified case whose externally grounded check ran no tool has no tool evidence behind its verdict
-  if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
-    // The unattributed verifier kind belongs to generated behaviour, not the environment.
-    return nonResult(
-      `externally grounded check(s) ${missingExternalVerdicts.map((id) => `"${id}"`).join(", ")} ran no tool for this case`,
-      "verifier",
-    );
-  }
+  // R1 (`ungroundedPassChecks`). The unattributed verifier kind belongs to generated behaviour,
+  // not the environment. A case that failed to compile is filed here rather than as a non-result.
+  if (ungrounded.length > 0) return nonResult(ungroundedSentence(ungrounded), "verifier");
   return { kind: "truth", truthOk: !blockingTruthFailure(scoped.verdict) };
 }
 
@@ -509,15 +522,15 @@ async function gradeAcceptedArtifact(
   const scoped = await runCaseScope(deps, solved, artifactJson);
   const subject = { phase: "battery" as const, subjectId: taskId, attempt: 1 };
   // Coverage is required only after accepted bytes reached a real correctness-model verdict.
-  const missingExternalVerdicts =
-    solved.acceptedSubmit && scoped.verdict !== null
-      ? uncoveredExternalCheckIds(
-          deps.applicableIds,
-          deps.externalChecks,
-          deps.verifier.executedBindings(),
-          subject,
-        )
-      : [];
+  const ungrounded = solved.acceptedSubmit
+    ? ungroundedPassChecks(
+        scoped.verdict,
+        deps.applicableIds,
+        deps.externalChecks,
+        deps.verifier.executedBindings(),
+        subject,
+      )
+    : [];
   const unbound =
     scoped.pendingInvocations > 0
       ? [
@@ -525,11 +538,12 @@ async function gradeAcceptedArtifact(
         ]
       : [];
   return {
-    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), missingExternalVerdicts),
+    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), ungrounded),
     // A verdict the cleanup failure may have corrupted is not published as this case's verdict.
     verdict: scoped.cleanupPending ? null : scoped.verdict,
     unbound,
     solverOrigin: false,
+    checkRuns: scoped.checkRuns,
   };
 }
 
@@ -640,5 +654,6 @@ export async function gradeCase(deps: GradeCaseDeps, solvedCase: SolvedCase): Pr
         : null,
     unboundFindings: graded.unbound.map((message) => ({ code: "EXTERNAL_RESULT_UNBOUND", message })),
     solverOrigin: graded.solverOrigin,
+    checkRuns: graded.checkRuns ?? [],
   };
 }

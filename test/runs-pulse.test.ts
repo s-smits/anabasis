@@ -100,8 +100,6 @@ describe("runs pulse", () => {
     expect(texts(first, { ...first, now: first.now + MINUTE })).toEqual([]);
   });
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-  // it("names a recorded battery with its placement and the streak that would stop the campaign", () => {
   it("names a recorded battery with its placement and its off-aim streak", () => {
     const before = reading(60, { batteries: [battery(6, 6, "too-easy")] });
     const claim = transition(61, "claim", "completed", {

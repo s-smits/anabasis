@@ -33,8 +33,6 @@ import {
   type GroundingFinding,
   type SettledControl,
   checkCostRows,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-  // inertToolFindings,
   rejectsBlockedBy,
   toolCheckCoverage,
   unexecutedGroundingFindings,
@@ -64,6 +62,7 @@ import type { ControlCorpus } from "./controls.ts";
 import { boundedDraftSummary } from "./draft-summary.ts";
 import { SUBMIT_MAX_ATTEMPTS, type ControlReceipt } from "./battery-record.ts";
 import { runControls } from "./run-controls.ts";
+import { timedOutControls } from "./control-receipts.ts";
 import { discriminationDisclosure } from "./discrimination-author-detail.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -79,11 +78,13 @@ export type ProbeControlsResult = {
   verifierEnvironmentHash?: string | null;
   executionEvidence?: import("../verify/verifier-port.ts").VerifierExecutionEvidence[];
   findings: ContractFinding[];
+  advisory?: ContractFinding[]; // timed-out controls, read beside the verdict; refuses nothing
   controlReceipts?: ControlReceipt[];
   /** Host tool runs and rejects blocked per declared check, recorded with the census. */
   toolCheckCoverage?: ToolCheckCoverage[];
   /** What each check cost the census, dearest first. Absent when the census never ran a check. */
   checkCost?: CheckCost[];
+  checkRuns?: import("../verify/correctness-model-result.ts").SubjectCheckRun[];
 };
 
 export type ProbeControls = (
@@ -179,6 +180,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
       }
       // Controls bind taskId against the caller-supplied census tasks.
       const settled = new Map<string, SettledControl>();
+      const checkRuns: NonNullable<ProbeControlsResult["checkRuns"]> = [];
       const execution = await runControls(
         evaluate,
         corpus,
@@ -186,9 +188,9 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         {
           onSettled: (controlId, observation) => settled.set(controlId, observation),
           brief,
-          externalChecks,
           ...keyIfDefined("verifierLifetime", options.verifierLifetime),
           ...keyIfDefined("stopped", stopped),
+          onCheckRun: (subjectId, attempt, row) => checkRuns.push({ ...row, subjectId, attempt }),
         },
         verifier,
       );
@@ -219,16 +221,16 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
             evidence: hostEvidence,
             path: EVALUATOR_FILE,
           }),
-          // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): a declared tool the census never launched no longer refuses adoption; readiness still names it
-          // inertToolFindings(coverage),
           [...settled].flatMap(([id, row]) => (row.hostNonResult === null ? [] : [id])),
         );
       }
       return {
         findings,
+        advisory: timedOutControls(settled, hostEvidence, EVALUATOR_FILE),
         controlReceipts: execution.controlReceipts,
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),
+        checkRuns,
         executionEvidence: hostEvidence,
         // The declared tool set as resolved above, which is the identity submit hashed: `externalChecksOf`
         // lists every required tool of every check. Hashing only the tools some control happened to
@@ -265,8 +267,6 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
 export function withGroundingFindings(
   findings: ContractFinding[],
   grounding: GroundingFinding[],
-  // Gate audit 2026-09-25 (docs/gate-audit.md, census-inert-tool): commented out (unsure): the census no longer joins a never-launched tool's row (`...inert`) to the grounding rows below
-  // inert: ContractFinding[],
   noVerdictIds: readonly string[],
 ): ContractFinding[] {
   const covered = new Set(grounding.flatMap((row) => row.controlIds));

@@ -29,7 +29,7 @@ import {
   applicableTruthChecks,
 } from "./brief.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
-import type { BriefRuleDecision } from "./rule-decisions.ts";
+import { type BriefRuleDecision, isPublicRule } from "./rule-decisions.ts";
 import type { JudgePublicDomain, JudgePublicTask } from "./judge.ts";
 import type { GeneratedTask } from "./task-split.ts";
 import { BRIEF_FILE } from "../meta/bundle-layout.ts";
@@ -118,14 +118,9 @@ function publicArtifactSchemaRows(brief: Brief): ArtifactField[] {
   return brief.artifactSchema.map(publicArtifactField);
 }
 
-/** The one owner of "which rule decisions leave the brief". Both the projection below and the
- *  publish-or-refuse rule in published-rules.ts read this, so a candidate cannot be refused for
- *  withholding a statement the solver would in fact have received, or accepted for publishing one
- *  it would not. */
+/** The public rows, as `isPublicRule` (rule-decisions.ts) selects them for the citation rule too. */
 export function publicRuleDecisions(brief: Brief): BriefRuleDecision[] {
-  return (brief.ruleDecisions ?? [])
-    .filter((decision) => decision.visibility === "public")
-    .map(publicRuleDecisionRow);
+  return (brief.ruleDecisions ?? []).filter(isPublicRule).map(publicRuleDecisionRow);
 }
 
 export function briefPublicResources(brief: Brief): PublicBriefResource[] {

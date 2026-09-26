@@ -18,9 +18,6 @@
  *    public submission path and the ordinary evaluation, which always run on this snapshot;
  * 4. snapshot drift, then evidence.
  */
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// Stage 2 also read the candidate's authored digests, and a stage between the cases and the drift
-// check read the tool rows the case evaluations recorded for program arguments.
 
 import { capturedJsonParse, capturedJsonStringify } from "../meta/json-runtime.ts";
 import { readFileSync } from "../meta/filesystem.ts";
@@ -46,21 +43,23 @@ import type { BuiltStarter } from "../solve/built-starter.ts";
 import type { GeneratedToolStarterOptions } from "../solve/generated-tool-worker.ts";
 import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import { createVerifierHost } from "../verify/host.ts";
-import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
+import type { CheckRun, CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// import { programArgumentChecks, programArgumentRemedy } from "../verify/self-grounding.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-// import { selfGroundedChecks, selfGroundedRemedy } from "../verify/self-grounding.ts";
 import { validateBrief } from "./brief-validator.ts";
-import { type Brief, type ContractFinding, externalChecksOf, generatedExecutionFinding } from "./brief.ts";
+import {
+  type Brief,
+  type ContractFinding,
+  controllerValidatedFinding,
+  externalChecksOf,
+  generatedExecutionFinding,
+} from "./brief.ts";
 import { loadFailureFinding } from "./load-fault.ts";
 import type { BuildDeps } from "./build-deps.ts";
 import { loadCorrectnessModel } from "./contracts.ts";
 import type { CheckRunner } from "./correctness-model-contract.ts";
 import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
-import { executionEvidence } from "./tool-runs.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED, executionEvidence } from "./tool-runs.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadSolvabilityPublicSchema } from "./solvability-artifact-schema.ts";
 import { evaluateWitness, type WitnessCensus } from "./solvability-witness.ts";
@@ -136,10 +135,11 @@ type ReferenceSubmissionAttempt = SolvabilitySubmissionOutcome & {
 
 /** The finding code each unpassed case routes to. A host stop that interrupts the census is
  *  admitted once as `verifier-cleanup-pending`, however many cases it left without a verdict. */
-const CASE_CODE = {
+export const CASE_CODE = {
   "representation-defect": "solvability-representation-defect",
   isolation: "solvability-reference-solve-isolation",
   witness: "solvability-witness-failed",
+  ungrounded: EXTERNAL_VERDICT_UNGROUNDED,
   "reference-solve-host": "solvability-reference-solve-host-non-result",
   "submission-path-host": "solvability-submission-path-host-non-result",
   sandbox: "verifier-cleanup-pending",
@@ -289,45 +289,14 @@ function bundleSnapshotDriftFinding(
 /** Stage 2: resolve tools exactly as measurement will. A missing tool refuses before any witness
  *  runs, because otherwise a whole battery of product failures is charged to a verifier that never
  *  started. */
-function admitTools(
-  contract: SolvabilityContract,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-  // fingerprint: FingerprintEvidence,
-  options: SolvabilityProbeOptions,
-) {
+function admitTools(contract: SolvabilityContract, options: SolvabilityProbeOptions) {
   const { brief, bundleSnapshot } = contract;
   const externalChecks = externalChecksOf(brief);
   const resolved = resolveToolInventory({
     toolIds: externalChecks.map((check) => check.adapterId),
     toolTree: bundleSnapshot.toolTree,
   });
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-  // // An external check whose executable digest matches candidate-authored source is refused as
-  // // well: a different digest or a different installation directory still does not make the
-  // // instrument independent of the author. The external-check id set is read only here and by the
-  // // archived program-argument rule.
-  // const externalIds = new Set(
-  //   brief.truthChecks
-  //     .filter((check) => check.execution.evidence.kind === "external")
-  //     .map((check) => check.id),
-  // );
   const findings: ContractFinding[] = [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-  // const authored = new Set(
-  //   [...fingerprint.agentFiles, ...fingerprint.correctnessModelFiles].map((file) => file.sha256),
-  // );
-  // const selfGrounded = selfGroundedChecks(
-  //   externalChecks.filter((check) => externalIds.has(check.checkId)),
-  //   resolved.inventory,
-  //   authored,
-  // );
-  // if (selfGrounded.length > 0) {
-  //   findings.push({
-  //     code: "solvability-tool-self-authored",
-  //     path: BRIEF_FILE,
-  //     detail: selfGroundedRemedy(selfGrounded),
-  //   });
-  // }
   const unresolved = [...resolved.missing, ...resolved.invalid];
   if (options.createVerifier === undefined && unresolved.length > 0) {
     findings.push({
@@ -336,8 +305,6 @@ function admitTools(
       detail: `external-verifier check(s) name tool(s) [${unresolved.join(", ")}] that resolve neither under .toolchain nor on the host PATH; install the tool or ground the check differently`,
     });
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-  // return { inventory: resolved.inventory, externalIds, findings };
   return { inventory: resolved.inventory, findings };
 }
 
@@ -423,13 +390,14 @@ async function runSolvabilityCase(
 ): Promise<SolvabilityCaseOutcome> {
   const attempt = await attemptReferenceSubmission(session, committed);
   const accepted = attempt.artifactJson;
-  let { error, authorClassification } = attempt;
+  let { error, authorClassification, attribution } = attempt;
   let result: CorrectnessModelResult | null = null;
   let predicateFailures: CheckFailureDetail[] = [];
+  let checkRuns: CheckRun[] | undefined;
   if (accepted !== null && error === null) {
     const verified = await evaluateWitness(session.census, fullTaskJson, accepted, `self:${task.taskId}`);
-    ({ result, error, authorClassification, predicateFailures } = verified);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a reference solve its own checks reject shows before any paid solve that no pass is reachable through the declared path
+    ({ result, error, authorClassification, predicateFailures, checkRuns } = verified);
+    if (verified.ungrounded.length > 0) attribution = { failure: "ungrounded" };
     if (result !== null && blockingFailure(result)) {
       const blocked = failedCheckIds(result);
       error = `reference artifact was rejected${blocked.length > 0 ? ` on [${blocked.join(", ")}]` : " without an attributed check"}`;
@@ -446,9 +414,22 @@ async function runSolvabilityCase(
     referenceSolve: attempt.referenceSolve,
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
-    ...caseVerdict(attempt, passed, error),
+    ...keyIfDefined("checkRuns", checkRuns),
+    ...caseVerdict({ ...attempt, attribution }, passed, error),
   };
   if (row.status === "passed") return { row, finding: null };
+  // The sentence names check and tool ids only, so it crosses to the author whole, owned by the
+  // evaluator that returned a pass its tools never produced.
+  if (row.status === "failed" && row.failure === "ungrounded") {
+    return {
+      row,
+      finding: controllerValidatedFinding({
+        code: CASE_CODE.ungrounded,
+        path: EVALUATOR_FILE,
+        detail: row.error,
+      }),
+    };
+  }
   const finding = {
     code: CASE_CODE[row.status === "failed" ? row.failure : row.nonResultKind],
     path: `correctness-model/tasks.json#${task.taskId}`,
@@ -537,27 +518,6 @@ async function solveInLanes(
   return { cases, findings };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// /** Stage 4: external checks whose arguments match the program-text rule. Program text passed as an
-//  *  argument makes an attested interpreter execute candidate-authored logic, which is authored
-//  *  computation wearing an installed tool's digest, and it is the ordinary way an authored check
-//  *  reaches for an interpreter rather than a corner case. The rule detects some such cases and
-//  *  proves no provenance, so it refuses the shape rather than claiming to establish independence. */
-// function programArgumentFindings(
-//   verifier: VerifierHostHandle,
-//   externalIds: ReadonlySet<string>,
-// ): ContractFinding[] {
-//   const checks = programArgumentChecks(verifier.evidence(), externalIds);
-//   if (checks.length === 0) return [];
-//   return [
-//     {
-//       code: "solvability-tool-program-argument",
-//       path: BRIEF_FILE,
-//       detail: programArgumentRemedy(checks),
-//     },
-//   ];
-// }
-
 /** One policy-owned implementation for the mandatory BuildDeps solvability probe, so adoption and
  *  readiness cannot diverge on what F2 means. */
 export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): BuildDeps["probeSolvability"] {
@@ -566,8 +526,6 @@ export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): Bui
     if (!loaded.ok) return { evidence: null, findings: [loaded.finding] };
     const contract = loaded.value;
     const { bundleSnapshot, evaluator, brief } = contract;
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-    // const tools = admitTools(contract, fingerprint, options);
     const tools = admitTools(contract, options);
     // A known admission refusal cannot earn an F2 witness, so keep the findings and open neither
     // the verifier nor the reference solver for a candidate that already cannot be adopted.
@@ -598,8 +556,6 @@ export function makeProbeSolvability(options: SolvabilityProbeOptions = {}): Bui
     };
     const solved = await solveInLanes(session, contract.tasks, cut);
     if (cut()) return { evidence: null, findings: [] };
-    // Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-    // const findings = [...solved.findings, ...programArgumentFindings(verifier, tools.externalIds)];
     const findings = [...solved.findings];
     // A cut census reports no evidence.
     if (cut()) return { evidence: null, findings };

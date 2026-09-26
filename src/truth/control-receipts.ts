@@ -22,7 +22,32 @@ import type {
   DiscriminationExecution,
 } from "./battery-record.ts";
 import type { ControlCorpus } from "./controls.ts";
+import { identityComposedFinding } from "./discrimination-author-detail.ts";
+import { type ContractFinding, controllerValidatedFinding } from "./brief.ts";
+import { namedExamples, type SettledControl } from "./grounding-coverage.ts";
+import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
+import { environmentOwnedToolNonResult } from "./verifier-nonresult.ts";
 import { observedBlockingCheckIds } from "../../vendor/correctness-model-bundle/control-results.ts";
+
+/**
+ * R2, every check can say no. A pass rate means something only if each declared check has been
+ * shown to reject a wrong answer it should reject, so the census asks two things of its own
+ * receipts: (a) every reject failed on the check it names, and (b) every declared check is named by
+ * some reject. A reject that failed only elsewhere proves another check, and a check no reject
+ * names has never been seen to refuse anything. Both read the receipts alone and are recorded with
+ * them, and the claim reads that record rather than deciding again. A reject that reached no
+ * verdict is not a miss, and unless the environment refused it, it names no check either, so a
+ * check whose only reject timed out is refused under (b) rather than passing on a reject nothing saw
+ * fail.
+ */
+export const DISCRIMINATION_REJECT_PASSED = "DISCRIMINATION_REJECT_PASSED";
+export const DISCRIMINATION_CHECK_UNREJECTED = "DISCRIMINATION_CHECK_UNREJECTED";
+const CONTROL_TOOL_TIMEOUT = "controls-tool-timeout";
+
+type TimeoutRow = Pick<
+  VerifierExecutionEvidence,
+  "phase" | "subjectId" | "attempt" | "toolId" | "durationMs" | "outcome"
+>;
 
 export type ControlEvaluation =
   | CorrectnessModelResult
@@ -92,32 +117,6 @@ export function controlReceiptInvalidFinding(
   return { code: "DISCRIMINATION_CONTROL_RECEIPT_INVALID", message, ...keyIfDefined("subject", subject) };
 }
 
-/** The one attribution rule: an accept passes with no blocking check, and a reject is attributed
- *  when its expected check is among the checks that blocked it. Other checks may fail on that reject
- *  as well — what proves nothing is a reject that fails somewhere else but not on its named check.
- *  Requiring the blocking set to be exactly the expected check is the rule that was tried and
- *  dropped: it spends most of a session's refusals on cascades, and pushes an authored evaluator
- *  into growing checks that pass on a broken declaration just to keep the cascade from firing. */
-export function sideMatchesExpected(
-  side: ControlReceiptSide,
-  expectedOutcome: "pass" | "fail",
-  expectedCheckId: string | null,
-): boolean {
-  if (side.outcome !== expectedOutcome) return false;
-  if (expectedOutcome === "pass") return side.blockingCheckIds.length === 0;
-  return expectedCheckId !== null && side.blockingCheckIds.includes(expectedCheckId);
-}
-
-/** The receipt's observed outcome as the side the runner recorded first. */
-export function primarySide(receipt: ControlReceipt): ControlReceiptSide {
-  return {
-    attempt: 1,
-    outcome: receipt.observedOutcome,
-    blockingCheckIds: receipt.observedBlockingCheckIds,
-    nonResultKind: receipt.nonResultKind,
-  };
-}
-
 // --- Recording one run's observations ---------------------------------------------------------
 
 function receiptSide(attempt: number, evaluation: ControlEvaluation): ControlReceiptSide {
@@ -173,13 +172,22 @@ function controlReceiptFor(
   };
 }
 
-/** One receipt per declared control in corpus order, plus the totals calculated from them. */
-export function settleControlReceipts(run: ReceiptSession, corpus: ControlCorpus): ReceiptSettlement {
+/** One receipt per declared control in corpus order, the R2 findings over them, and the totals
+ *  calculated from them. `checkIds` are the checks some bound task declares. */
+export function settleControlReceipts(
+  run: ReceiptSession,
+  corpus: ControlCorpus,
+  checkIds: readonly string[],
+): ReceiptSettlement {
   const controlReceipts = [
     ...corpus.accept.map((control) => controlReceiptFor(run, control, "accept")),
     ...corpus.reject.map((control) => controlReceiptFor(run, control, "reject")),
   ];
-  return { controlReceipts, findings: [], totals: receiptTotals(corpus, controlReceipts) };
+  return {
+    controlReceipts,
+    findings: controlDecisionFindings(checkIds, controlReceipts),
+    totals: receiptTotals(corpus, controlReceipts),
+  };
 }
 
 // --- Reading receipts back --------------------------------------------------------------------
@@ -250,12 +258,6 @@ function receiptForControlFindings(
       ),
     );
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // if (
-  //   receipt.observedOutcome !== "non-result" &&
-  //   !sideMatchesExpected(primarySide(receipt), receipt.expectedOutcome, expectedCheckId)
-  // ) {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, accept-control-rejected): kept: a recorded accept the checks rejected means the claim would rest on checks that refuse a known-valid answer
   if (
     declared.kind === "accept" &&
     receipt.observedOutcome !== "non-result" &&
@@ -360,6 +362,9 @@ function receiptTotals(corpus: ControlCorpus, receipts: readonly ControlReceipt[
   return { acceptsPassed, rejectsFailed, rejectsAttributed, attributedCheckIds };
 }
 
+/** The receipts checked against the corpus, and the totals calculated from them. R2 is the census's
+ *  own finding over these rows and is recorded with them, so the read-back does not decide it again:
+ *  a row edited after the census moves the totals, which `totalsMatchRecorded` catches. */
 export function checkReceiptSet(corpus: ControlCorpus, receipts: unknown): ReceiptSetCheck {
   if (!Array.isArray(receipts)) {
     return {
@@ -371,10 +376,10 @@ export function checkReceiptSet(corpus: ControlCorpus, receipts: unknown): Recei
       totals: null,
     };
   }
-  const findings = validateControlReceipts(corpus, receipts);
-  if (findings.length > 0) return { findings, totals: null };
+  const invalid = validateControlReceipts(corpus, receipts);
+  if (invalid.length > 0) return { findings: invalid, totals: null };
   const rows = receipts.map(readReceipt).filter((receipt) => receipt !== null);
-  return { findings, totals: receiptTotals(corpus, rows) };
+  return { findings: [], totals: receiptTotals(corpus, rows) };
 }
 
 /** A non-negative whole count, or null. */
@@ -416,4 +421,120 @@ function comparableTotals(totals: ReceiptTotals): string {
 export function totalsMatchRecorded(stored: unknown, derived: ReceiptTotals): boolean {
   const recorded = recordedTotals(stored);
   return recorded !== null && comparableTotals(recorded) === comparableTotals(derived);
+}
+
+/** The one attribution rule: an accept passes with no blocking check, and a reject is attributed
+ *  when its expected check is among the checks that blocked it. Other checks may fail on that reject
+ *  as well — what proves nothing is a reject that fails somewhere else but not on its named check.
+ *  Requiring the blocking set to be exactly the expected check is the rule that was tried and
+ *  dropped: it spends most of a session's refusals on cascades, and pushes an authored evaluator
+ *  into growing checks that pass on a broken declaration just to keep the cascade from firing. */
+export function sideMatchesExpected(
+  side: ControlReceiptSide,
+  expectedOutcome: "pass" | "fail",
+  expectedCheckId: string | null,
+): boolean {
+  if (side.outcome !== expectedOutcome) return false;
+  if (expectedOutcome === "pass") return side.blockingCheckIds.length === 0;
+  return expectedCheckId !== null && side.blockingCheckIds.includes(expectedCheckId);
+}
+
+/** The receipt's observed outcome as the side the runner recorded first. */
+export function primarySide(receipt: ControlReceipt): ControlReceiptSide {
+  return {
+    attempt: 1,
+    outcome: receipt.observedOutcome,
+    blockingCheckIds: receipt.observedBlockingCheckIds,
+    nonResultKind: receipt.nonResultKind,
+  };
+}
+
+/** Whether a reject counts towards (b). One that reached a verdict does; so does one the host
+ *  refused to run, because the environment owns that refusal and its own row already holds the claim
+ *  open, so naming the check unwitnessed as well would add an author row to an outage. */
+function witnesses(receipt: ControlReceipt): boolean {
+  return (
+    receipt.observedOutcome !== "non-result" ||
+    (receipt.nonResultKind !== null && environmentOwnedToolNonResult(receipt.nonResultKind))
+  );
+}
+
+/** (a) and (b) over one receipt set, with public authoring identities only. */
+export function controlDecisionFindings(
+  checkIds: readonly string[],
+  receipts: readonly ControlReceipt[],
+): DiscriminationClaimabilityFinding[] {
+  const rejects = receipts.filter((receipt) => receipt.kind === "reject");
+  const missed = rejects.flatMap((receipt) =>
+    receipt.observedOutcome !== "non-result" &&
+    !sideMatchesExpected(primarySide(receipt), "fail", receipt.expectedCheckId)
+      ? [receipt.controlId]
+      : [],
+  );
+  const named = new Set(rejects.flatMap((receipt) => (witnesses(receipt) ? [receipt.expectedCheckId] : [])));
+  const unrejected = checkIds.filter((checkId) => !named.has(checkId));
+  const findings: DiscriminationClaimabilityFinding[] = [];
+  if (missed.length > 0) {
+    const examples = missed.length === 1 ? "1 invalid example" : `${missed.length} invalid examples`;
+    const detail = `${examples} did not fail the check ${missed.length === 1 ? "its" : "their"} expectedCheckId names: ${namedExamples(missed)}`;
+    findings.push(
+      identityComposedFinding(
+        { code: DISCRIMINATION_REJECT_PASSED, message: detail },
+        `${detail}. Change ${missed.length === 1 ? "the example" : "each example"} so that check fails on it, or fix the check`,
+      ),
+    );
+  }
+  if (unrejected.length > 0) {
+    const checks = `${unrejected.length === 1 ? "check" : "checks"} ${namedExamples(unrejected)}`;
+    const detail = `no reject that reached a verdict names ${checks} as its expectedCheckId`;
+    findings.push(
+      identityComposedFinding(
+        { code: DISCRIMINATION_CHECK_UNREJECTED, message: detail },
+        `${detail}. Add a reject built from an accept with one fact changed so that ${unrejected.length === 1 ? "check fails" : "each check fails on one"}`,
+      ),
+    );
+  }
+  return findings;
+}
+
+/** A control whose tool run hit its time limit, read beside the verdict and refusing nothing. The
+ *  same request often completes on a less busy host, so a timeout says more about the machine than
+ *  about the candidate; a check whose only rejects timed out is still refused, under (b). What the
+ *  Builder can act on is which tool ran out of time on which example and after how long, so it can
+ *  shorten the run or give the tool a longer wall. One row per tool, from the host's own rows at the
+ *  attempt the runner settled. */
+export function timedOutControls(
+  settled: ReadonlyMap<string, SettledControl>,
+  evidence: readonly TimeoutRow[],
+  path: string,
+): ContractFinding[] {
+  // Keyed by the tool as the row names it, so one row per tool.
+  const byTool = new Map<string, { ids: string[]; notes: string[] }>();
+  for (const [controlId, { attempt, hostNonResult }] of settled) {
+    if (hostNonResult !== "timeout") continue;
+    const row = evidence.find(
+      (run) =>
+        run.phase === "discrimination" &&
+        run.subjectId === controlId &&
+        run.attempt === attempt &&
+        run.outcome === "timeout",
+    );
+    const tool = row === undefined ? "a tool the host did not record" : `tool "${row.toolId}"`;
+    const group = byTool.get(tool) ?? { ids: [], notes: [] };
+    group.ids.push(controlId);
+    group.notes.push(
+      `"${controlId}"${row === undefined ? "" : ` after ${(row.durationMs / 1000).toFixed(1)} s`}`,
+    );
+    byTool.set(tool, group);
+  }
+  return [...byTool].map(([tool, { ids, notes }]) =>
+    controllerValidatedFinding({
+      code: CONTROL_TOOL_TIMEOUT,
+      path,
+      detail:
+        `${tool} hit its time limit on ${ids.length === 1 ? "1 example" : `${ids.length} examples`}: ${notes.join(", ")}. ` +
+        `${ids.length === 1 ? "That example reached" : "Those examples reached"} no verdict, which refuses nothing here; ` +
+        "if the tool needs longer, raise the run's timeoutMs or the tool-run wall in agent/config.yaml",
+    }),
+  );
 }

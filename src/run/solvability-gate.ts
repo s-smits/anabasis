@@ -17,15 +17,7 @@
  * while every one of those failures may sit inside two or three declared checks. The concentration
  * is what makes the number actionable. Environment non-results belong to the environment and are
  * not counted as product failures.
- *
  */
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the representation census no longer refuses adoption
-//  * The representation census reuses these same witnesses without a second execution, looking for
-//  * copied public inputs and repeated absence spellings. Those are two bounded checks, not a general
-//  * proof that the tasks require domain skill, and their findings describe authored structures
-//  * without quoting protected verifier evidence. BLOCKING_CODES in that module decides which of them
-//  * refuse adoption, from its own recorded calibration; this gate only routes them at the severity
-//  * they declare.
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import { join } from "../meta/path.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -35,13 +27,12 @@ import type { JsonValue } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import { type ContractFinding, controllerValidatedFindings } from "../truth/brief.ts";
 import type { BuildDeps } from "../truth/build-deps.ts";
-import { type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
+import { CASE_CODE, type SolvabilityProbeOptions, makeProbeSolvability } from "../truth/solvability.ts";
 import { referenceSolveTimedOut } from "../truth/reference-solve.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED } from "../truth/tool-runs.ts";
 import type { SolvabilityStageCache } from "../truth/solvability-stages.ts";
 import { acceptControlIndependence, acceptIndependenceFeedback } from "./accept-control-independence.ts";
 import { type Witness, inputInsensitivity } from "./representation-census.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census and its severity set
-// import { BLOCKING_CODES, censusRepresentation } from "./representation-census.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 import { SOURCE_IDENTITY } from "./source-identity.ts";
 import { BRIEF_FILE, EVALUATOR_FILE, GENERATED_TOOLS_FILE } from "../meta/bundle-layout.ts";
@@ -86,10 +77,6 @@ export function makeSolvabilityCensusGate(
     if (stopped()) return [];
     const { evidence, findings: probedFindings } = probed;
     const passed = witnessesOf(evidence, slugDir, "passed");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census over the passed witnesses
-    // // The compiled public artifact schema goes to the census so its absence rule can tell a
-    // // declared closed state ("none" among a field's allowedValues) from an invented sentinel.
-    // const representation = censusRepresentation(passed, harness.publicArtifactSchema);
     const independence = acceptControlIndependence(slugDir, passed);
     await Bun.write(
       join(iterationDir, SOLVABILITY_EVIDENCE_FILE),
@@ -97,8 +84,6 @@ export function makeSolvabilityCensusGate(
         {
           evidence,
           findings: probedFindings,
-          // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's recorded observations
-          // representation: representation.observations,
           acceptIndependence: independence,
           source: SOURCE_IDENTITY,
         },
@@ -113,46 +98,12 @@ export function makeSolvabilityCensusGate(
     if (evidence === null && toolRefusals.length > 0) return toolRefusals;
     const insensitivity = inputInsensitivity(witnessesOf(evidence, slugDir, "failed"));
     return [
-      ...censusFeedback(evidence, insensitivity),
-      // Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's refusal row
-      // ...representationFeedback(representation.findings),
+      ...censusFeedback(evidence, insensitivity, probedFindings),
       ...acceptIndependenceFeedback(independence),
       ...toolRefusals,
     ];
   };
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, representation-blocking): commented out (unsure): the census's refusal row, blocking or advisory by BLOCKING_CODES
-// /**
-//  * The Builder authors the artifactSchema and the public structures the census compares, so these
-//  * findings may describe those observations without quoting protected verifier evidence. They are
-//  * grouped by severity so that an advisory finding cannot inherit a blocking row's effect; the
-//  * census defines which codes block and this function only applies that classification.
-//  *
-//  * A blocking finding refuses adoption and returns to the Builder for repair through the submit
-//  * path, while advisory findings stay recorded without causing a refusal. Neither is the measured
-//  * admission packet that later controller decisions read — that has its own evidence and projection
-//  * rules.
-//  */
-// function representationFeedback(findings: ContractFinding[]): CampaignFeedback[] {
-//   const severities = [
-//     { severity: "blocking", rows: findings.filter((f) => BLOCKING_CODES.has(f.code)) },
-//     { severity: "advisory", rows: findings.filter((f) => !BLOCKING_CODES.has(f.code)) },
-//   ] as const;
-//   return severities
-//     .values()
-//     .filter(({ rows }) => rows.length > 0)
-//     .map(
-//       ({ severity, rows }): CampaignFeedback => ({
-//         owner: "brief",
-//         severity,
-//         claim: `representation census: ${rows.length} artifact schema finding(s) that hold on every authored task`,
-//         evidence: "pre-adoption representation census over the F2 reference witnesses",
-//         findings: controllerValidatedFindings(rows),
-//       }),
-//     )
-//     .toArray();
-// }
 
 /**
  * One blocking row for a tool that resolves nowhere, naming Builder-authored identities only — the
@@ -175,25 +126,6 @@ function missingToolFeedback(findings: readonly ContractFinding[]): CampaignFeed
     },
   ];
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-self-authored): commented out (unsure): an external check whose tool bytes equal candidate-authored files no longer refuses adoption
-// // A check grounded only by a script the author wrote into `.toolchain` measures agreement with
-// // that script and nothing else, so a battery that passes every task under one has measured the
-// // author against itself. This row and the one below sat beside the missing-tool row in a
-// // code-to-owner table; restoring either restores that table.
-// [
-//   "solvability-tool-self-authored",
-//   "brief",
-//   () =>
-//     "installed tools: an external check is grounded only by a script under the candidate's own tool tree, so a battery would measure that script's agreement with itself",
-// ],
-// Gate audit 2026-09-25 (docs/gate-audit.md, tool-program-argument): commented out (unsure): an external check passing program text as an argument no longer refuses adoption
-// [
-//   "solvability-tool-program-argument",
-//   "brief",
-//   () =>
-//     "installed tools: an external check hands its program to the tool as an argument, so the attested tool is only an interpreter and a battery would measure the candidate's own checker",
-// ],
 
 /**
  * The F2 witnesses paired with the public input the agent would have been given, filtered to one
@@ -228,7 +160,6 @@ function witnessesOf(
   return witnesses;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: it names which declared checks reject the reference solve, counts over public identities that say where to repair
 /** Aggregate failing-check concentration: which of the brief's own declared truth-checks reject
  *  the reference solve, and how often. The check names are Builder-authored, so aggregate counts
  *  can identify the affected checks while the per-task results stay protected. The Builder
@@ -252,7 +183,6 @@ function checkConcentration(cases: readonly SolvabilityCaseEvidence[]): Contract
   ];
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, f2-representation-defect): kept: a reference answer the writer, DraftStore or submit path cannot carry is a representation defect every solve would meet
 /** Every representation-defect detail comes off the submission path before verification and is
  *  classified generated-toolset-contract, because it describes the public authoring interface —
  *  writer schema, DraftStore, submit — which may be reported to the Builder. A bare count is not
@@ -293,12 +223,47 @@ function representationDefectFeedback(
   };
 }
 
+/** R1 in the reference solve: a pass a check decided without running its required tools is the
+ *  evaluator's defect, not the reference's. Each case's sentence names check and tool ids only, so
+ *  the distinct sentences cross whole and the task identities stay in the host evidence. */
+function ungroundedFeedback(cases: readonly SolvabilityCaseEvidence[]): CampaignFeedback[] {
+  const rows = cases.flatMap((row) =>
+    row.status === "failed" && row.failure === "ungrounded" ? [row.error] : [],
+  );
+  if (rows.length === 0) return [];
+  const sentences = [...new Set(rows)].sort(compareCodeUnits);
+  return [
+    {
+      owner: EVALUATOR_FILE,
+      severity: "blocking",
+      claim: `solvability census: ${rows.length} of ${cases.length} reference solves passed a check that never ran its required tools`,
+      evidence: PROTECTED_EVIDENCE,
+      findings: controllerValidatedFindings(
+        sentences.map((detail) => ({ code: EXTERNAL_VERDICT_UNGROUNDED, path: EVALUATOR_FILE, detail })),
+      ),
+    },
+  ];
+}
+
+/**
+ * A census with no evidence is the candidate's to answer for, whatever stopped it. Every cause that
+ * leaves the evidence null — an unbound task set, a snapshot that fails its integrity check or drifts
+ * under the census, an evaluator that will not load, a brief and battery that will not parse, an
+ * accept corpus whose schema will not compile — either is the candidate's own bytes or cannot be told
+ * apart from what its generated code did to the snapshot. Owned by the environment, such a row would
+ * end the campaign at submit; owned by the evaluator it costs a strike the Builder answers by
+ * changing bytes. The host's own failures surface as per-case non-results below, not as null evidence.
+ */
 function censusFeedback(
   evidence: Pick<SolvabilityEvidence, "cases"> | null,
   insensitivity: ContractFinding[],
+  probed: readonly ContractFinding[],
 ): CampaignFeedback[] {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the host could not execute is an environment non-result, never a verdict on the candidate
   if (evidence === null) {
+    // The finding that stopped it is the last one the probe returned: a load refusal stands alone, and
+    // drift follows the per-case findings, whose paths name tasks and so never cross. Its code and
+    // path name the requirement that failed; its detail stays protected.
+    const cause = probed.at(-1);
     return [
       {
         owner: EVALUATOR_FILE,
@@ -308,9 +273,8 @@ function censusFeedback(
         findings: controllerValidatedFindings([
           {
             code: "SOLVABILITY_CENSUS_UNAVAILABLE",
-            path: EVALUATOR_FILE,
-            detail:
-              "the pre-adoption census produced no evidence; the failure record is host-side and protected",
+            path: cause?.path ?? EVALUATOR_FILE,
+            detail: `the pre-adoption census produced no evidence${cause === undefined ? "" : ` (${cause.code})`}; the failure record is host-side and protected`,
           },
         ]),
       },
@@ -321,23 +285,36 @@ function censusFeedback(
     (row) => row.status === "failed" && row.failure === "representation-defect",
   ).length;
   const failed = cases.filter(
-    (row) => row.status === "failed" && row.failure !== "representation-defect",
+    (row) =>
+      row.status === "failed" && row.failure !== "representation-defect" && row.failure !== "ungrounded",
   ).length;
-  const nonResults = cases.filter((row) => row.status === "non-result").length;
+  const nonResults = cases.flatMap((row) => (row.status === "non-result" ? [row.nonResultKind] : []));
   const feedback: CampaignFeedback[] = [];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a reference solve the host could not run is an environment non-result, never a verdict on the candidate
-  if (nonResults > 0) {
+  if (nonResults.length > 0) {
+    // One finding per host kind, so the Builder reads which host step broke rather than a gate that
+    // named nothing; the task ids and the host's own text stay in the protected record.
+    const kinds = [...new Set(nonResults)].sort(compareCodeUnits);
     feedback.push({
       owner: "environment",
       severity: "blocking",
-      claim: `solvability census: ${nonResults} of ${cases.length} reference solves ended as environment non-results`,
+      claim: `solvability census: ${nonResults.length} of ${cases.length} reference solves ended as environment non-results`,
       evidence: PROTECTED_EVIDENCE,
+      findings: controllerValidatedFindings(
+        kinds.map((kind) => {
+          const count = nonResults.filter((found) => found === kind).length;
+          return {
+            code: CASE_CODE[kind],
+            path: "environment",
+            detail: `${count} of ${cases.length} reference solves ended as a ${kind} non-result, which the host owns; a check of the same bytes runs the census again`,
+          };
+        }),
+      ),
     });
   }
   if (representationDefects > 0) {
     feedback.push(representationDefectFeedback(cases, representationDefects));
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a battery the candidate's own reference solve cannot pass would measure the checks rather than the solver
+  feedback.push(...ungroundedFeedback(cases));
   if (failed > 0) {
     // How many of the failed solves the per-task wall stopped, stated separately so a slow search
     // is not repaired as a wrong one.

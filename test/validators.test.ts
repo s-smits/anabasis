@@ -80,17 +80,13 @@ describe("brief and task contract", () => {
     const noFamily = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "uncovered", hidden: [] }],
     });
-    expect(codes(noFamily)).toEqual(
-      expect.arrayContaining(["tasks-no-applicable-checks", "tasks-check-family-unbound"]),
-    );
-    // "slot-binding" is scoped to family "b"; a battery whose tasks are all "a" never runs it.
+    expect(codes(noFamily)).toContain("tasks-no-applicable-checks");
+    // "slot-binding" is scoped to family "b"; a task probe whose tasks are all "a" does not run it
+    // this battery, which the claim's firing counts record, and nothing is wrong with the candidate.
     const unbound = validateTasks(brief, {
       tasks: [tasks[0], { ...tasks[1], family: "a", hidden: [{ checkId: "ghost-ref", expectation: true }] }],
     });
-    expect(codes(unbound)).toContain("tasks-check-family-unbound");
-    expect(unbound.findings.find((f) => f.code === "tasks-check-family-unbound")?.detail).toContain(
-      '"slot-binding"',
-    );
+    expect(unbound.ok).toBe(true);
   });
   it("admits safe task identities and refuses path-like and duplicate ones", () => {
     const brief = greenBrief();
@@ -174,11 +170,8 @@ describe("brief and task contract", () => {
     check.execution.artifactPaths = ["$.missing"];
     expect(codes(validateBrief(brief))).toContain("brief-check-artifact-root-undeclared");
     check.execution.artifactPaths = ["$.good"];
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): an
-    // artifact root no check declares it reads is refused by static rule; unsure a declared path proves a
-    // root is measured, or its absence that it is not.
-    // brief.artifactSchema.push({ name: "unused", "shape": "string" });
-    // expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
+    brief.artifactSchema.push({ name: "unused", "shape": "string" });
+    expect(codes(validateBrief(brief))).toContain("brief-artifact-root-unread");
     check.joinIds = ["unknown"];
     expect(codes(validateBrief(brief))).toEqual(
       expect.arrayContaining(["brief-check-join-undeclared", "brief-join-check-ownership-invalid"]),
@@ -251,14 +244,6 @@ describe("brief and task contract", () => {
     ...overrides,
   });
   it.each<[string, Partial<Brief>, { code?: string; path?: string }]>([
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-constant-uncited): commented out (unsure): a
-    // design-rule constant must name an authority and citation; unsure a non-empty string proves the value is
-    // right.
-    // [
-    //   "an uncited constant",
-    //   { designRuleConstants: [constant("x", 1, "")] },
-    //   { code: "brief-constant-uncited" },
-    // ],
     [
       "a duplicate constant name",
       { designRuleConstants: [constant("cap", 1), constant("cap", 2, "section 2")] },
@@ -269,10 +254,6 @@ describe("brief and task contract", () => {
       { designRuleConstants: [constant(" ", 1)] },
       { code: "brief-design-rule-constant-name-empty" },
     ],
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-join-no-decoys): commented out (unsure): a join must
-    // declare at least one decoy class; unsure it earns a refusal, since no rule asks for a control of any
-    // declared class.
-    // ["a join without decoys", { joins: [join("j", [])] }, { code: "brief-join-no-decoys" }],
     [
       "a duplicate join id",
       { joins: [...greenBrief().joins, join("parts-to-slots", ["other"])] },
@@ -313,9 +294,7 @@ describe("brief and task contract", () => {
   it("leaves the zero-truth-checks case to brief-no-truth-checks instead of firing per root", () => {
     const found = codes(validateBrief(greenBrief({ truthChecks: [] })));
     expect(found).toContain("brief-no-truth-checks");
-    // Gate audit 2026-09-25 (docs/gate-audit.md, brief-artifact-root-unread): commented out (unsure): the
-    // unread-root rule this assertion keeps quiet is commented out.
-    // expect(found).not.toContain("brief-artifact-root-unread");
+    expect(found).not.toContain("brief-artifact-root-unread");
   });
   it("a brief in a foreign shape yields shape-mismatch findings naming the fields", () => {
     // Parseable JSON without the required Brief fields.

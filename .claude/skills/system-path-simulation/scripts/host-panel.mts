@@ -283,13 +283,7 @@ let control: Awaited<ReturnType<typeof runControls>> | null = null;
 try {
   const evaluate = evaluateCheckProgram(brief, await loadCorrectnessModel(candidate, lifetime));
   if (corpus.accept.length + corpus.reject.length > 0) {
-    control = await runControls(
-      evaluate,
-      corpus,
-      [task],
-      { brief, externalChecks, verifierLifetime: lifetime },
-      host,
-    );
+    control = await runControls(evaluate, corpus, [task], { brief, verifierLifetime: lifetime }, host);
     receipts = control.controlReceipts;
   }
 } catch (cause) {

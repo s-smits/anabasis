@@ -84,10 +84,8 @@ export type CampaignClause =
   | "improvement-memory-missing"
   | "environment-blocked"
   | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-non-result-ceiling): commented out (unsure): a tool that cannot run is an environment fact each run records, not a Builder stall
-  // | "verifier-required"
   | "iterations-exhausted"
-  | "no-progress" // a Builder round went STALLED_TURNS turns without a successful tool call; the run may retry the build on the same conversation
+  | "no-progress" // a Builder round went POLICY.loop.stalledTurns turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
 
 export type CampaignOutcome = (
@@ -109,6 +107,3 @@ export type CampaignOutcome = (
     }
   | { buildAdmissible: false; clause: CampaignClause; iterations: IterationEvidence[] }
 ) & { experimentProposal?: ExperimentSubmission };
-
-/** Author-safe finding with its recorded routing severity. */
-export type AuthorRepairFinding = ContractFinding & { severity?: CampaignFeedback["severity"] };

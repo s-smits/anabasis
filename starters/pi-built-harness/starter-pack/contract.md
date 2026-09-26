@@ -13,7 +13,8 @@ TypeScript function returning a Boolean or Promise<Boolean>. The controller runs
 check in a fresh confined process and builds the verdict itself.
 A false check never stops the others: every applicable check runs.
 
-Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
+Each truth check declares `id`, a decidable `assertion`, optionally the public `ruleDecisions` ids
+it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is refused), and:
 
 ```json
 {
@@ -78,7 +79,8 @@ it. The host runs every reference answer through the same checks as controls and
   controls: an object admits only the key sets those accepts show. A record keyed by task data,
   such as `{partId: address}`, lists its dotted path in `openMapPaths` (`"$"` for the root) so
   any key is admitted while each value keeps its shape; a declared path no accept reaches is
-  refused.
+  refused. Where an accept writes `null` for "does not apply", say so in the brief: a solver left
+  to choose may write `""` there instead, and a check reading `null` then fails it.
 - `allowedValues` names the only scalars a field takes; submission refuses any other before
   verification. `designRuleConstants` rows are `{name, value, unit?, authority, citation}`, and
   optional `designRuleSets` rows `{name, values, unit?, authority, citation}` publish a permitted
@@ -106,8 +108,11 @@ against published limits — write that capability in the agent's own code, and 
 through an installed domain tool wherever the field has one.
 
 A check calls `runtime.tools.run({toolId, args, files, stdin, timeoutMs})` and never spawns a
-process itself. The host supplies the check id, refuses undeclared tool ids, requires a
-completed run of every required tool, and owns sandbox, timeout and cleanup: each run gets a
+process itself. The host supplies the check id, refuses undeclared tool ids, and owns sandbox,
+timeout and cleanup. A check that declares required tools, authored or external, passes only after
+a completed run of every one of them on that same artifact; a pass without one is
+`EXTERNAL_VERDICT_UNGROUNDED`, refused at the gate and a non-result in the battery. A fail stands as
+returned, so a check may reject on a precondition before it reaches its tool. Each run gets a
 private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`. TMPDIR is
 the run's working directory. `/tmp` is private on Linux and closed on macOS, even though your shell
 can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR. The one
@@ -140,8 +145,8 @@ Optional `numbersWithin`, `multisetMatches` and `relationalJoin` helpers come fr
 ## Task battery and controls
 
 `tasks.json` is an array of `{taskId, family, publicInput, hidden}` with unique task ids that are
-safe directory names. Every check applies to at least one task, every declared public input path
-exists on each applicable task, and every required hidden row is `{checkId, expectation}`; tool
+safe directory names. Every task has at least one applicable check, every declared public input
+path exists on at least one task it applies to, and every required hidden row is `{checkId, expectation}`; tool
 checks need no synthetic hidden marker.
 
 `controls.json` is `{accept: [...], reject: [...]}` with at least 5 known-correct and 5
@@ -149,8 +154,8 @@ deliberately incorrect rows, each meaningfully different. Every row has `id`, `t
 `artifact`; a reject adds `mutationClass` and `expectedCheckId`, and may override hidden
 expectations by check id. Accepts pass under their task's own hidden rows. Build each reject from
 the same task's accept with one fact changed so that its expected check fails, choosing the
-mutations a careless or dishonest solver would produce in this field. Give every check a reject
-and every family a reject; one reject may serve both. A join reject carries `targetsJoin` plus
+mutations a careless or dishonest solver would produce in this field. Give every check at least
+one such reject, so that each check is seen to say no. A join reject carries `targetsJoin` plus
 `decoyClass`; a boundary reject carries `targetsBoundary: {publicInputPath, constantName}`. The
 census reruns every control against the submitted tasks and evaluator, so settle limits and checks
 first.

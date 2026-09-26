@@ -269,7 +269,6 @@ function addToGroup(
   run.groups.set(key, group);
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, controls-no-verdict): kept: a control whose check threw reached no verdict, so it witnesses nothing about the checks
 /** A thrown check program groups by its public diagnosis. The thrown message itself is withheld
  *  evidence, so the note names only the examples that threw and where to reproduce them. A
  *  verifier-contract refusal also carries the public tool-request violation — a leaf, binding or
@@ -336,14 +335,12 @@ function admitObservation(
     attempt,
     hostNonResult: "hostNonResult" in evaluation ? evaluation.hostNonResult : null,
   });
-  // Gate audit 2026-09-25 (docs/gate-audit.md, external-result-unbound): kept: a check that returns before its tool runs finish grounds its verdict on nothing it waited for
   if (unboundRuns > 0) {
     addToGroup(run, "unbound-runs", control.id, `"${control.id}" (${unboundRuns})`, (_ids, notes) => ({
       code: "EXTERNAL_RESULT_UNBOUND",
       message: `the correctnessModel returned while tool runs were still running for control ${notes.join(", ")}; await every run before returning, because a result the run did not wait for grounds nothing`,
     }));
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, controls-no-verdict): kept: a control the host could not run to a verdict witnesses no check, so the claim stays open
   // A control the host could not run to a verdict witnesses no cell, so the claim stays open.
   // Without this finding only the executed isolation floor notices, which lets a battery whose
   // rejects all met a vanished tool start solving. The non-result kind is host structure and may
@@ -490,7 +487,6 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
   }
   if (issues.length === 0) return;
   const groups = [...idsByChecks].map(([checks, ids]) => `on ${checks}: ${namedExamples(ids)}`);
-  // Gate audit 2026-09-25 (docs/gate-audit.md, accept-control-rejected): kept: a known-valid answer the checks reject means the checks are wrong, and no measured pass can be read through them
   run.findings.push(
     identityComposedFinding(
       {

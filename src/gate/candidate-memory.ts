@@ -31,7 +31,6 @@ type Refusal = { terminal?: boolean; findings: ContractFinding[] };
  * tree is repair, not a kept refusal. A seed key and count restore strikes already spent before
  * this invocation, so a resumed session continues the count instead of restarting it.
  */
-// Gate audit 2026-09-25 (docs/gate-audit.md, noop-submit-strike): kept: a byte-identical resubmit of a refused candidate cannot earn a different verdict
 class NoopStrikes {
   constructor(
     private key: string | null,

@@ -9,7 +9,6 @@ const Params = Type.Object({
   scope: Type.Union([Type.Literal("agent"), Type.Literal("correctness-model"), Type.Literal("all")]),
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, harness-reset-scope): kept: a fresh build has no seed to return to, and the per-scope marker keeps a resumed round from wiping its own work
 export function createHarnessResetTool(binding: {
   workspace: string;
   resetKey?: string;

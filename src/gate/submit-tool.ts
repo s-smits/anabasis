@@ -257,7 +257,6 @@ export function makeSubmitTool(binding: SubmitToolBinding): AgentTool<typeof Sub
       inFlight = true;
       try {
         const held = binding.hold === undefined ? null : await binding.hold();
-        // Gate audit 2026-09-25 (docs/gate-audit.md, review-unread-hold): kept: the Builder reads the review's findings before a submit ends the round they apply to
         if (held !== null) return text(held, { outcome: "blocked", reason: "review-unread" });
         state.attempts += 1;
         return await settleSubmit(binding);

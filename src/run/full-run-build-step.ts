@@ -153,7 +153,6 @@ function remeasuredAuthoring(input: IterationInput): Pick<BuildStepResult, "expe
  *  `unchangedCandidateSubmissions` is the durable per-commit tally counting this record, so
  *  reaching the ceiling turns the retryable `candidate-unchanged` into `authoring-stalled`, with a
  *  sentence naming the commit and the count. */
-// Gate audit 2026-09-25 (docs/gate-audit.md, unchanged-candidate-strike): kept: a round that settles on its own entry tree has nothing new to measure
 function unchangedCandidateClause(
   outcome: BuildOutcome,
   unchangedCommit: string,

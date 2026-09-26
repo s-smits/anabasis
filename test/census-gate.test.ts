@@ -407,8 +407,8 @@ describe("the census gate", () => {
         {
           owner: "correctness-model/brief.json",
           severity: "advisory",
-          claim: "the representation census recorded an observation",
-          evidence: "public representation census",
+          claim: "the reference solve recorded an observation",
+          evidence: "public F2 observation",
         },
       ],
     });

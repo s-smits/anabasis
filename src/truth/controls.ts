@@ -258,8 +258,6 @@ function hiddenFieldFindings(value: JsonValue, path: string): ContractFinding[] 
   return findings;
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, accept-schema): kept: an accept off the declared top-level
-// fields is rejected by representation before any check runs, so it calibrates nothing.
 /**
  * An accept must carry exactly the declared top-level fields, as a real submission does. Otherwise a
  * representation error keeps it from exercising the correctness checks it was written for: an
@@ -335,8 +333,6 @@ const validated = (findings: ContractFinding[]): ValidationResult => ({
   findings: controllerValidatedFindings(findings),
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, expected-check-inapplicable): kept: a reject naming a check that
-// does not apply to its task's family can never fail on that check, so it calibrates nothing.
 /** A reject names the check it must fail, and one that does not apply to its task's family is never
  *  run on that task, so it can never fail there. */
 function inapplicableRejectFindings(

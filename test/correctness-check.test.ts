@@ -183,7 +183,7 @@ const GATE_FEEDBACK: CampaignFeedback[] = [
     owner: "correctness-model/brief.json",
     severity: "advisory",
     claim: "advisory only",
-    evidence: "representation census",
+    evidence: "F2 observation",
   },
   {
     owner: "correctness-model/controls.json",

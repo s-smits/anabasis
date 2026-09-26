@@ -10,8 +10,6 @@ export function freshTaskValidationContext(exactTasks?: number): TaskValidationC
   return { exactTasks: exactTasks ?? null };
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, accept-schema): kept: an accept control that the public artifact
-// schema cannot compile is a contradiction in the Builder's own bytes, and the solver is told that schema.
 function representationFindings(brief: Brief, corpus: ControlCorpus): ContractFinding[] {
   const findings: ContractFinding[] = [];
   try {

@@ -53,12 +53,14 @@ from.
   `policyRow` fills its record from the schema's own keys, so a yaml row cannot add one back. What
   went with `minLevelN` is the placement discard; the readout (`src/run/climb-readout.ts`) places
   every admitted row it can size.
-- Any refusal the gate audit of 2026-09-25 commented out, stated to a model as a rule. A
-  commented-out refusal is not enforced, so a surface describing it teaches a constraint nothing
-  holds. `docs/gate-audit.md` lists them under "Commented out (unsure)"; in `POLICY` that covers
-  `offAimStreakRounds`, `stalledFindingsRepeats` and `toolNonResultRefusals`, and the rest are
-  validators such as `reject-discrimination`, `task-variation` and `published-rules`. Search the
-  census for the behaviour, not only the name, because a prompt states the rule in prose.
+- Any refusal the gate audits deleted, stated to a model as a rule. A deleted refusal is not
+  enforced, so a surface describing it teaches a constraint nothing holds. `docs/gate-audit.md`
+  lists them under "Deleted"; in `POLICY` that covered `offAimStreakRounds`,
+  `stalledFindingsRepeats` and `toolNonResultRefusals`, and the rest are validators such as
+  `task-variation` and `representation-blocking`. The reverse holds
+  too: every code STARTER.md's Gates section names is one some source still emits, which
+  `test/gate-decisions.test.ts` checks. Search the census for the behaviour, not only the name,
+  because a prompt states the rule in prose.
 
 ## Three findings that are not copies of a constant
 

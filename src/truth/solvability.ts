@@ -396,7 +396,6 @@ async function runSolvabilityCase(
   if (accepted !== null && error === null) {
     const verified = await evaluateWitness(session.census, fullTaskJson, accepted, `self:${task.taskId}`);
     ({ result, error, authorClassification, predicateFailures } = verified);
-    // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a reference solve its own checks reject shows before any paid solve that no pass is reachable through the declared path
     if (verified.ungrounded.length > 0) attribution = { failure: "ungrounded" };
     if (result !== null && blockingFailure(result)) {
       const blocked = failedCheckIds(result);

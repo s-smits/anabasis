@@ -258,7 +258,6 @@ function receiptForControlFindings(
       ),
     );
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, accept-control-rejected): kept: a recorded accept the checks rejected means the claim would rest on checks that refuse a known-valid answer
   if (
     declared.kind === "accept" &&
     receipt.observedOutcome !== "non-result" &&

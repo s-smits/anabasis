@@ -1347,12 +1347,12 @@ discipline rather than a gate — worth saying plainly, because a rule this file
 consumer for is one a reader should know is unenforced.
 
 **Skill and helper scripts are not in the documentation set**, for publication or for checks.
-A `.ts`, `.mjs` or `.py` under `.claude/` needs focused checks and source
+A `.ts`, `.mts` or `.py` under `.claude/` needs focused checks and source
 delivery, and how much of the composed gate reaches one depends on the script. `ROOTS` in
 `tools/runtime/lint.ts` is `src tools vendor starters test packages .claude`, so oxlint reads every
 one of them. The suite reaches a script only through a test that imports it: `bun run test`
-discovers a flat tree under `test/` and never walks `.claude/`, but 47 of those discovered files
-import a skill module by relative path, which pulls 52 of the 105 scripts across nine skills into
+discovers a flat tree under `test/` and never walks `.claude/`, but 46 of those discovered files
+import a skill module by relative path, which pulls 44 of the 93 scripts across eleven skills into
 the run, and a few more transitively through those. So a script a test imports is gated like any
 other source, and the remaining half is held by the lint alone — its behaviour is checked by
 nothing until you check it, with `bun test` from the script's own directory. Before assuming

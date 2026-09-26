@@ -794,7 +794,9 @@ live evidence.
     `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300` and
     `shell_timeout_max_seconds 900`; and for the gate, `reference_solve_seconds 120`,
     `census_minutes 30`, `check_seconds 600` and `tool_run_seconds 300`. A harness may raise any of
-    them to **ten times** its default, and above that the host refuses. The Built Harness prompt
+    them to **ten times** its default, and above that the host refuses; a solver wall may also fall
+    no lower than a tenth of its default, because below that the solver never sees a command return
+    and the battery grades whatever draft the wall's own submit sent. The Built Harness prompt
     derives and names its exact closed tool roster. It asks the solver to spend remaining time
     widening the worst margin only where a requirement is a numeric limit. A requirement that is
     simply met or not is finished once a run has shown it met, because the unconditional version of
@@ -805,8 +807,10 @@ live evidence.
     since `files` already carries the shell. That is the operator decision of 2026-09-14, taken
     after truss epochs kept declining `files`, whose draft files become the answer. Read a measured
     battery's roster before attributing its failures to it. A Built turn is bounded by silence, one
-    model call plus one command at its ceiling; a solve the whole-solve wall stops after it had
-    called a tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
+    model call plus one command at its ceiling. When the whole-solve wall stops a solve, the host
+    submits whatever draft it holds through the solver's own `submit` (`submitAtWall`,
+    `src/backends/pi-built.ts`): an accepted one is graded, and otherwise a solve that had called a
+    tool is an unaccepted attempt carrying its traced tool calls, not a non-result.
 
     For generated tools, `text` is the whole model-visible result and `details` is host and trace
     evidence, so every promised value belongs in `text`. A Builder tool result that drops bytes

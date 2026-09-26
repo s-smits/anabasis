@@ -3,9 +3,11 @@
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
  *  The Builder is told the file exists, not what it holds, and the host maximums live only here
- *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its default,
- * which  leaves a harness room to ask for what its domain needs without being able to declare a wall
- *  that never cuts. */
+ *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its
+ *  default, which leaves a harness room to ask for what its domain needs without being able to
+ *  declare a wall that never cuts. The solver's walls also stop at a tenth of their defaults: below
+ *  that the solver never sees a command return, and the wall's own submit of its first draft is what
+ *  the battery grades. The gate's walls have no floor, since a short one costs only the Builder. */
 
 import { existsSync, readFileSync } from "../meta/filesystem.ts";
 import { isNumber, isRecord } from "../meta/json-shape.ts";
@@ -61,9 +63,11 @@ function checkedValue(section: Section, key: string, value: unknown, fallback: n
   if (!isNumber(value) || !Number.isInteger(value) || value <= 0) {
     throw new HarnessConfigError(`${section}.${key} must be a positive whole number`);
   }
-  if (value > fallback * HOST_MAXIMUM_FACTOR) {
+  const tooLow = section === "solver" && value * HOST_MAXIMUM_FACTOR < fallback;
+  const side = value > fallback * HOST_MAXIMUM_FACTOR ? "above" : tooLow ? "below" : null;
+  if (side !== null) {
     throw new HarnessConfigError(
-      `${section}.${key} ${String(value)} is above what this host allows; choose a value closer to the seeded one`,
+      `${section}.${key} ${String(value)} is ${side} what this host allows; choose a value closer to the seeded one`,
     );
   }
   return value;

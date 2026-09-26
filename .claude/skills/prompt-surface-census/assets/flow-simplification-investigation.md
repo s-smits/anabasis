@@ -11,17 +11,19 @@ Read every attached census file first, including the unclaimed-string sections.
 4. Use the JSON to group by audience, holder, file, guard chain and repeated digest.
 5. A `document` surface is a whole file the AST never parsed; its guard is the copy or prepend in
    source, so verify that before reasoning about when a model reads it.
-6. Prefer `bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts` for the
-   Builder system surface and `seed-kickoff.mts` beside it for the kickoff: they assemble them the
-   way production does. Steering
-   requires round-specific inputs; inspect its production composition. This helper has no printer
-   for the Built Harness or Judge surfaces.
+6. Prefer `bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts` with
+   `--surface system` or `--surface built` for the Builder and Built Harness surfaces, and
+   `seed-kickoff.mts` beside it for the kickoff: they assemble them the way production does.
+   Steering, the round prompt and the three reviewer prompts require round-specific inputs;
+   inspect their production composition.
 
 ## Scope
 Trace the complete flow for:
-- Builder system prompt, workspace cards, follow-ups, findings and submit responses.
+- Builder system prompt, round prompt, workspace cards, continuations, findings and submit
+  responses, and the `harness_trial`, `context` and `harness_inspect` results.
 - Built Harness prompt, operating guide, first turn, tools and submission path.
-- Judge framing, calibration, the Judge exit and disclosed agent surfaces.
+- The review slot: Main Judge framing and the Judge exit, the diagnosis reader, and the Epoch
+  Reviewer's orientation, `probe_check` results and the findings it projects to the Builder.
 - The rebuild advice packet: its derivation, its rendered projection and prompt digests.
 - Claude, Codex and OpenRouter framing and transport adapters.
 - Tool descriptions, tool errors, public feedback and candidate-wall refusals.

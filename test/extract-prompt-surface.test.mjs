@@ -121,3 +121,24 @@ describe("prompt-surface classification tiers", () => {
     expect(names(result)).toEqual(["fileLine"]);
   });
 });
+
+describe("prompt-surface audiences", () => {
+  const source = 'export const systemPrompt = "You are the reviewer; read the battery before you answer.";\n';
+  const audiences = (result) => result.surfaces.map((surface) => surface.audience);
+
+  it("claims a file by its stem, so a key needs no directory of that name", () => {
+    // The Judge's files are `src/truth/judge.ts` and `judge-*.ts`; a key that only matched a
+    // directory left every one of them to the wider `src/truth` label.
+    const result = census("prompt-surface-stem-", source, {
+      audiences: { src: "wide", "src/surface": "narrow" },
+    });
+    expect(audiences(result)).toEqual(["narrow"]);
+  });
+
+  it("does not claim a file whose name merely starts with the key", () => {
+    const result = census("prompt-surface-partial-", source, {
+      audiences: { src: "wide", "src/surf": "narrow" },
+    });
+    expect(audiences(result)).toEqual(["wide"]);
+  });
+});

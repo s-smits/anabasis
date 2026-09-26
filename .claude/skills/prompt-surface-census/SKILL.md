@@ -14,7 +14,10 @@ proof of delivery or relevance.
 Resolve the exact repository and revision. Enumerate its top-level directories and inspect what
 the workspace copier, prompt composers and tool loaders deliver. Include seed trees and whole
 documents, not only compiled source. A copied test file is model-readable even when the source
-walker excludes `.test.` files. Name such files explicitly in `--doc`.
+walker excludes `.test.` files, and a copied seed `.ts` is read whole, comments included, while the
+AST reports only its string literals. Name such files explicitly in `--doc`. In Anabasis the copier
+is `src/author/domain-repo.ts`, which copies all of `starters/pi-built-harness` into a fresh
+workspace and refreshes only `STARTER_REFERENCES` on a resumed one.
 
 Run the extractor through Bun from a prepared Anabasis checkout: it imports that
 repository's filesystem, path and process modules. `--root` may name another target repository,
@@ -23,14 +26,14 @@ which must supply `typescript`, `typescript5`, or the compiler API named by `--t
 ```sh
 bun <skill-dir>/scripts/extract-prompt-surface.mjs --help
 bun <skill-dir>/scripts/extract-prompt-surface.mjs \
-  --root /absolute/repository --dir src,starters,vendor \
-  --doc starters,starters/pi-built-harness/correctness-model/harness.test.ts \
   --out /absolute/output/prompt-surface.md \
   --json /absolute/output/prompt-surface.json
 ```
 
-Prefer the target's reviewed `.prompt-surface.json` when present; explicit flags override it.
-Check its `dirs` and `doc` against current delivery before relying on a bare `--root` invocation.
+Run from the repository root, the extractor reads its reviewed `.prompt-surface.json`, which
+names the directories, the whole documents and the audiences; on another repository add `--root`
+and the `--dir` and `--doc` it needs. Explicit flags override the config. Check its `dirs` and
+`doc` against current delivery before relying on it. The run takes under a second.
 `--doc` accepts comma-separated paths. Directories include `.md/.txt/.json/.yaml/.py/.sh`; an
 explicit file is included regardless of extension. Each whole-file surface says
 `delivered whole (verify)` until its copy or prepend is checked.
@@ -50,8 +53,9 @@ the shape worth reporting even when it is currently right.
 Start with counts, audience summary, conditional index, known composers and model-call sites,
 tool descriptions, `Not claimed by the vocabulary`, and the JSON's largest holder groups.
 Classify related holders together as model-visible, operator-only, structural syntax, diagnostic
-output or uncertain. Audience labels are longest-prefix path guesses; verify important claims
-at the model request, tool result, hook or receipt boundary.
+output or uncertain. Audience labels are longest-prefix path guesses, where a key matches a
+directory or a file stem (`src/truth/judge` claims `judge.ts` and `judge-census.ts`); verify
+important claims at the model request, tool result, hook or receipt boundary.
 
 Tune from observed rows:
 
@@ -109,7 +113,7 @@ Save earned tuning in `.prompt-surface.json` only within repository-edit authori
 {
   "dirs": ["src", "starters", "vendor"],
   "doc": ["starters", "starters/pi-built-harness/correctness-model/harness.test.ts"],
-  "audiences": { "src/author": "builder", "src/review": "reviewer" },
+  "audiences": { "src/author": "builder", "src/review": "reviewers" },
   "vocab": ["feedback"],
   "strong": ["SYSTEM_CARD"],
   "deny": ["operatorReceipt"]
@@ -135,13 +139,18 @@ generated text, files loaded at runtime, database rows, environment values or in
 Use an existing production prompt printer when available. Anabasis provides:
 
 ```text
-bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface system
+bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface system [--web-search]
+bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface built
+bun .claude/skills/system-path-simulation/scripts/show-prompt-surfaces.mts --surface system --grep '<term>'
 bun .claude/skills/system-path-simulation/scripts/seed-kickoff.mts --prompt "<one-liner>"
 ```
 
-These import the run tree's `builderSystemPrompt` and `directKickoff`. Steering depends on the
-round and has no argument-free printer; inspect its production composition. State which surfaces
-were rendered and which were traced only in source.
+These import the run tree's `builderSystemPrompt`, the Built Harness prompt and `directKickoff`;
+`--grep` prints only the lines carrying a term, which answers which surface carries a sentence.
+Steering, the round prompt and the reviewer prompts depend on the round and have no argument-free
+printer; inspect their production composition (`src/run/builder-campaign.ts`,
+`src/author/builder-session.ts`, `src/review/`). State which surfaces were rendered and which were
+traced only in source.
 
 An eight-character census content digest covers one holder. It cannot be compared directly with
 an assembled `promptDigest`, `systemPromptDigest`, `toolSchemaDigest`, `contextDigest` or

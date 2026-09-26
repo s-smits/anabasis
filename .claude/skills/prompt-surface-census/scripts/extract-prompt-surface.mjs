@@ -91,6 +91,8 @@ const DEFAULT_AUDIENCES = {
   "src/builder": "builder",
   "src/critic": "policy and thresholds (verify: may reach no model)",
   "src/analyse": "judge review and feedback routing",
+  "src/review": "reviewers (Judge, diagnosis reader, Epoch Reviewer)",
+  "src/gate": "builder (check and submit results)",
   "src/truth/judge": "judge",
   "src/truth": "shared contracts",
   "src/backends": "transport (all audiences)",
@@ -118,7 +120,7 @@ Options:
   --root DIR          repository root (default: current directory)
   --dir DIRS          comma-separated source directories (default: src). Name every directory a
                       model can read, not only the compiler's source root.
-  --doc PATHS         comma-separated non-code files or directories (.md/.txt/.json/.yaml/.py)
+  --doc PATHS         comma-separated non-code files or directories (.md/.txt/.json/.yaml/.py/.sh)
                       reported whole, one surface per file
   --out FILE          Markdown output, relative to root (default: artifacts/prompt-surface.md)
   --json FILE         optional JSON output
@@ -313,11 +315,14 @@ const isDenied = (name) => {
 };
 
 const AUDIENCES = config.audiences ? { ...DEFAULT_AUDIENCES, ...config.audiences } : DEFAULT_AUDIENCES;
-/** Longest matching prefix wins, so `src/truth/judge` beats `src/truth`. */
+/** Longest matching prefix wins, so `src/truth/judge` beats `src/truth`. A prefix matches a
+ *  directory or a file stem, so `src/truth/judge` also claims `judge.ts` and `judge-census.ts`. */
 function audienceOf(relFile) {
   let best = { prefix: "", name: "unclassified" };
   for (const [prefix, name] of Object.entries(AUDIENCES)) {
-    if ((relFile === prefix || relFile.startsWith(`${prefix}/`)) && prefix.length > best.prefix.length) {
+    const boundary = relFile.startsWith(prefix) ? relFile[prefix.length] : null;
+    const matches = relFile === prefix || boundary === "/" || boundary === "-" || boundary === ".";
+    if (matches && prefix.length > best.prefix.length) {
       best = { prefix, name };
     }
   }

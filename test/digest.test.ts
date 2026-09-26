@@ -101,10 +101,8 @@ function fixture(): DigestFixture {
       ok: false,
       issues: [
         {
-          // Historical verdict shape: severity "error" with the optional `blocking` field
-          // omitted. The digest reader treats that omission as blocking, so this fixture
-          // contributes one measured rejection for beta-check.
-          severity: "error",
+          // The evaluator's issue shape: `{checkId, message}`, every one blocking, so this
+          // fixture contributes one measured rejection for beta-check.
           checkId: "beta-check",
           message: "secret-verifier-detail-7731: main.c:81 missing token",
         },
@@ -331,21 +329,16 @@ describe("digest", () => {
     expect(digest).not.toContain("missing token");
   });
 
-  it("counts an omitted blocking field but not an explicit false or a warning", () => {
+  it("counts every issue naming a check, as the verdict binding blocks on each", () => {
     const paths = fixture();
     const verdict = join(paths.domainsRoot, "demo-slug", "runs", "run-1", "cases", "t1", "verifier.json");
     const bothInert =
       "UNTRIPPED IN SHIPPING (rejCtl>0, shipRej=0 over 2 graded rows): alpha-check, beta-check";
-    // The fixture row omits `blocking`, so beta-check has a shipping rejection and stays out.
+    // The fixture's issue carries no severity, which is the shape the evaluator writes.
     expect(digestOf(paths)).not.toContain(bothInert);
-    for (const issue of [
-      { severity: "error", blocking: false, checkId: "beta-check", message: "soft, ships disclosed" },
-      { severity: "warning", checkId: "beta-check", message: "advisory only" },
-    ]) {
-      writeFileSync(verdict, JSON.stringify({ ok: false, issues: [issue] }));
-      recordDigestBattery(join(paths.domainsRoot, "demo-slug"), ["run-1"]);
-      expect(digestOf(paths)).toContain(bothInert);
-    }
+    writeFileSync(verdict, JSON.stringify({ ok: false, issues: [{ message: "names no check" }] }));
+    recordDigestBattery(join(paths.domainsRoot, "demo-slug"), ["run-1"]);
+    expect(digestOf(paths)).toContain(bothInert);
   });
 
   it("counts a contested verified case by the checks its judge-reviews row names", () => {

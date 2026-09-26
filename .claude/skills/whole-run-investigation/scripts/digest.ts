@@ -266,14 +266,12 @@ function shippingEvidence(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRo
       continue;
     }
     gradedOracleFiles += 1;
-    // A measured rejection follows the shared blocking-failure rule:
-    // `src/correctness-bundle/verdict-binding.ts` (`blockingTruthFailure`) reads
-    // `issue.severity === "error" && issue.blocking !== false`, so an OMITTED `blocking` blocks.
-    // The field is optional in `CorrectnessModelIssue`, so a `blocking === true` test counts no
-    // rejection from an evaluator that omits it and calls its live checks inert.
+    // A measured rejection follows the shared blocking-failure rule, `blockingTruthFailure` in
+    // `src/correctness-bundle/verdict-binding.ts`: every issue blocks. The evaluator writes an issue
+    // as `{checkId, message}` alone, so a filter on a severity or blocking field counts nothing.
     for (const entry of Array.isArray(oracle.issues) ? oracle.issues : []) {
       const issue = asRecord(entry);
-      if (issue?.severity !== "error" || issue.blocking === false || !isString(issue.checkId)) continue;
+      if (!isString(issue?.checkId)) continue;
       const bucket = perCheck.get(issue.checkId) ?? { rejections: 0, classes: new Set<string>() };
       bucket.rejections += 1;
       bucket.classes.add(failureClass(issue.message ?? ""));

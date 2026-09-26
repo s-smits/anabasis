@@ -1,4 +1,14 @@
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "../src/meta/filesystem.ts";
+import {
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+} from "../src/meta/filesystem.ts";
+import { sha256 } from "../src/meta/digest.ts";
+import { recordDigestBattery } from "./helpers/digest-battery.ts";
+import { caseRecordRow } from "./helpers/case-record-row.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type {
@@ -26,12 +36,25 @@ import {
   buildGateRent,
   renderGateRent,
 } from "../.claude/skills/whole-run-investigation/scripts/gate-rent.ts";
+import {
+  buildGateCensus,
+  renderGateCensus,
+} from "../.claude/skills/whole-run-investigation/scripts/gate-census.ts";
+
+/** An older run's terminal: the schema it was written under and the closed code it names. */
+interface OlderTerminal {
+  schema: string;
+  outcome?: string;
+  abortClause?: string;
+}
 
 type Call = Partial<BuilderCustomToolCall>;
 /** What a gate receipt records beyond its outcome. `codes` are `<stage>:<code>`; `condition` is the
  *  full submission condition, and `stagesRun` the stages the check ran. */
 type Receipt = { candidate?: string; condition?: string; codes?: string[]; stagesRun?: string[] };
 type Report = ReturnType<typeof buildGateRent>;
+
+type MeasuredCase = { taskId: string; checks: Record<string, boolean>; nonResult?: boolean };
 
 const LEDGER = GATE_LEDGER;
 const FULL = ["bundle", "validation", "conformance", "gates"];
@@ -685,5 +708,183 @@ describe("gate-rent corrections", () => {
     ]);
     expect(triggerNames(report)).not.toContain("EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
     expect(renderGateRent(report)).toContain("after an unresolved baseline");
+  });
+});
+
+/** A run the controller opened in `dir`, ending in `terminal` when one is given. */
+function openRun(dir: string, runId: string, terminal: OlderTerminal | null): void {
+  const controller = join(dir, "controller", runId);
+  mkdirSync(controller, { recursive: true });
+  writeFileSync(join(controller, "opening.json"), "{}");
+  if (terminal !== null) writeFileSync(join(controller, "terminal.json"), JSON.stringify(terminal));
+}
+
+/**
+ * One battery measured under `tree` of campaign `dir` (`versions/<run>`, `candidates/<x>`,
+ * `promotions/<x>`), recorded the way the runner leaves it: a verdict with a receipt per check, a
+ * digest-bound trace, the run manifest, and a case-ledger row per case. A non-result keeps the
+ * evaluator's raw verdict beside a row whose `truthOk` is null, as a tool timeout leaves it.
+ */
+function measured(dir: string, tree: string, runId: string, cases: MeasuredCase[]): void {
+  const root = join(dir, tree);
+  for (const part of ["agent", "correctness-model"]) mkdirSync(join(root, part), { recursive: true });
+  const rows = cases.map(({ taskId, checks, nonResult = false }) => {
+    const caseDir = join(root, "runs", runId, "cases", taskId);
+    mkdirSync(caseDir, { recursive: true });
+    const checkReceipts = Object.entries(checks).map(([checkId, passed]) => ({ checkId, passed }));
+    const issues = checkReceipts
+      .filter((row) => !row.passed)
+      .map(({ checkId }) => ({ checkId, message: "" }));
+    writeFileSync(
+      join(caseDir, "verifier.json"),
+      JSON.stringify({ ok: issues.length === 0, issues, checkReceipts }),
+    );
+    const trace = JSON.stringify({
+      schema: "case-trace/v4",
+      turns: [],
+      toolCalls: [],
+      truncated: false,
+      droppedRawEvents: 0,
+    });
+    writeFileSync(join(caseDir, "trace.json"), trace);
+    const traces = [{ path: `runs/${runId}/cases/${taskId}/trace.json`, sha256: sha256(trace) }];
+    const ok = issues.length === 0;
+    return caseRecordRow(taskId, "fam", {
+      runId,
+      traces,
+      ...(nonResult
+        ? { truthOk: null, pass: null, runtimeNonResult: "tool timed out", runtimeNonResultKind: "verifier" }
+        : { truthOk: ok, pass: ok }),
+    });
+  });
+  recordDigestBattery(root, [runId]);
+  const ledger = join(dir, "case-record.jsonl");
+  const seq = existsSync(ledger) ? readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0;
+  appendFileSync(
+    ledger,
+    rows.map((row, index) => `${JSON.stringify({ seq: seq + index + 1, row })}\n`).join(""),
+  );
+}
+
+describe("gate-rent terminal", () => {
+  it("reads the closed code of a terminal the controller reader refuses", () => {
+    const dir = campaign([[refusal("c1", "gates:solvability-failed"), clear("c2")]]);
+    openRun(dir, "run-a", {
+      schema: "campaign-terminal/v2",
+      outcome: "aborted",
+      abortClause: "environment-blocked",
+    });
+    const { terminal } = buildGateRent({ campaign: dir, runId: "run-a" });
+    expect(terminal.state).toBe("refused");
+    expect(terminal.reason).toBe("environment-blocked");
+    expect(terminal.component?.code).toBe("LP-2");
+    expect(terminal.refusal).toEqual(expect.any(String));
+  });
+
+  it("keeps the refusal as the reason when the terminal names no code", () => {
+    const dir = campaign([[clear("c1")]]);
+    openRun(dir, "run-a", { schema: "campaign-terminal/v2" });
+    const { terminal } = buildGateRent({ campaign: dir, runId: "run-a" });
+    expect(terminal.component).toBeNull();
+    expect(terminal.reason).toBe(terminal.refusal ?? "");
+  });
+});
+
+describe("gate-census", () => {
+  it("sums one component's episodes over campaigns and prices them per round", () => {
+    const first = campaign([
+      [refusal("c1", "gates:solvability-failed"), edit(), check({ candidate: "c2", condition: "c2-e1" }, 30)],
+    ]);
+    const second = join(dirname(first), "other");
+    mkdirSync(join(second, "epoch-aaaaaaaaaaaa"), { recursive: true });
+    const epoch = join(second, "epoch-aaaaaaaaaaaa");
+    builderExecutionEvidenceWriter(epoch)(
+      executionRecord({
+        customCalls: [
+          check(
+            { candidate: "d1", condition: "d1-e1", codes: ["gates:solvability-failed"], stagesRun: FULL },
+            0,
+          ),
+          check({ candidate: "d2", condition: "d2-e1" }, 10),
+        ],
+      }),
+    );
+    builderExecutionEvidenceWriter(epoch)(executionRecord({ customCalls: [clear("d3")] }));
+    openRun(first, "run-a", null);
+    openRun(second, "run-b", null);
+    measured(second, "versions/run-b", "run-b", [
+      { taskId: "t1", checks: { wiring: false, compiles: true } },
+      { taskId: "t2", checks: { wiring: true, compiles: true } },
+    ]);
+
+    const report = buildGateCensus({ root: dirname(first) });
+    expect(report.campaigns).toBe(2);
+    expect(report.sessions).toBe(3);
+    expect(report.components).toEqual([
+      expect.objectContaining({ component: "F2-1", episodes: 2, runs: 2, sessions: 2, totalMinutes: 40 }),
+    ]);
+    expect(report.components[0]?.minutesPerRound).toBeCloseTo(40 / 3);
+    expect(report.shipping).toEqual([{ campaign: "other", checkId: "wiring", ran: 2, failed: ["run-b/t1"] }]);
+    expect(renderGateCensus(report)).toContain("other wiring: 1 of 2");
+    expect(report.coverage).toEqual([]);
+  });
+
+  it("never counts a non-result's raw verdict as a shipping failure", () => {
+    const dir = campaign([[clear("c1")]]);
+    openRun(dir, "run-a", null);
+    measured(dir, "versions/run-a", "run-a", [
+      { taskId: "t1", checks: { wiring: false }, nonResult: true },
+      { taskId: "t2", checks: { wiring: false } },
+    ]);
+    expect(buildGateCensus({ root: dirname(dir) }).shipping).toEqual([
+      expect.objectContaining({ checkId: "wiring", ran: 1, failed: ["run-a/t2"] }),
+    ]);
+  });
+
+  it.each(["candidates/run-a", "promotions/run-a", "versions/run-a"])(
+    "reads a battery kept under %s",
+    (tree) => {
+      const dir = campaign([[clear("c1")]]);
+      openRun(dir, "run-a", null);
+      measured(dir, tree, "run-a", [{ taskId: "t1", checks: { wiring: false } }]);
+      expect(buildGateCensus({ root: dirname(dir) }).shipping).toEqual([
+        expect.objectContaining({ checkId: "wiring", ran: 1, failed: ["run-a/t1"] }),
+      ]);
+    },
+  );
+
+  it("counts a battery retained under two trees once, from its ledger row", () => {
+    const dir = campaign([[clear("c1")]]);
+    openRun(dir, "run-a", null);
+    measured(dir, "versions/run-a", "run-a", [{ taskId: "t1", checks: { wiring: false } }]);
+    measured(dir, "candidates/run-a", "run-a", [{ taskId: "t1", checks: { wiring: false } }]);
+    expect(buildGateCensus({ root: dirname(dir) }).shipping).toEqual([
+      expect.objectContaining({ ran: 1, failed: ["run-a/t1"] }),
+    ]);
+  });
+
+  it("names an unreadable campaign instead of reading it as no firing", () => {
+    const readable = campaign([[clear("c1")]]);
+    openRun(readable, "run-a", null);
+    const unread = join(dirname(readable), "unread");
+    mkdirSync(join(unread, "epoch-aaaaaaaaaaaa"), { recursive: true });
+    writeFileSync(join(unread, "epoch-aaaaaaaaaaaa", "builder-execution.json"), "{ not json");
+    openRun(unread, "run-b", null);
+    const report = buildGateCensus({ root: dirname(readable) });
+    expect(report.coverage).toEqual([
+      { campaign: "unread", gaps: expect.arrayContaining([expect.any(String)]) },
+    ]);
+    const text = renderGateCensus(report);
+    expect(text).toContain("coverage: PARTIAL, 1 of 2 campaigns not read whole");
+    expect(text).toContain("no gate component fired in the readable part of the tree");
+  });
+
+  it("skips a folder the controller never opened", () => {
+    const dir = campaign([[refusal("c1", "gates:solvability-failed"), clear("c2")]]);
+    expect(buildGateCensus({ root: dirname(dir) })).toMatchObject({
+      campaigns: 0,
+      sessions: 0,
+      components: [],
+    });
   });
 });

@@ -248,9 +248,12 @@ function claimGroundings(claims: readonly JsonValue[]): ClaimGroundings {
   return { groundingByCheck, groundingSources };
 }
 
-function shippingEvidence(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRoots): ShippingEvidence {
-  const perCheck = new Map<string, CheckBucket>();
-  let gradedOracleFiles = 0;
+/** The recorded verdict of every verified case, read under the root its first digest-bound pointer
+ *  names. A typed non-result is left out even when its evaluator returned a verdict, because the
+ *  host overrode that verdict; so is a verdict missing, unverified or disagreeing with its row,
+ *  which is named as a gap rather than counted. */
+export function verifiedVerdicts(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRoots) {
+  const verdicts: Array<{ row: CaseRecordRow; oracle: JsonObject }> = [];
   const gaps: string[] = [];
   for (const row of caseRows) {
     const outcome = classifyCaseOutcome(row);
@@ -265,7 +268,15 @@ function shippingEvidence(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRo
       gaps.push(`${row.runId}/${row.taskId}: verdict missing, unverified or conflicting`);
       continue;
     }
-    gradedOracleFiles += 1;
+    verdicts.push({ row, oracle });
+  }
+  return { verdicts, gaps };
+}
+
+function shippingEvidence(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRoots): ShippingEvidence {
+  const perCheck = new Map<string, CheckBucket>();
+  const { verdicts, gaps } = verifiedVerdicts(caseRows, caseRootOf);
+  for (const { oracle } of verdicts) {
     // A measured rejection follows the shared blocking-failure rule, `blockingTruthFailure` in
     // `src/correctness-bundle/verdict-binding.ts`: every issue blocks. The evaluator writes an issue
     // as `{checkId, message}` alone, so a filter on a severity or blocking field counts nothing.
@@ -279,7 +290,7 @@ function shippingEvidence(caseRows: readonly CaseRecordRow[], caseRootOf: CaseRo
     }
   }
 
-  return { perCheck, gradedOracleFiles, gaps };
+  return { perCheck, gradedOracleFiles: verdicts.length, gaps };
 }
 
 /**
@@ -780,7 +791,9 @@ function productLines({
   return { lines, batteryOf: (runId) => bindings.get(runId)?.battery ?? null };
 }
 
-export function buildDigest({ campaign: campaignPath, domainsRoot, runIds = [] }: DigestInput): string {
+/** A campaign's epochs, its domain tree, its selected case rows and every root a verdict can sit
+ *  under: the campaign, the domain tree and each retained, candidate or promoted tree. */
+export function campaignCases({ campaign: campaignPath, domainsRoot, runIds = [] }: DigestInput) {
   const campaign = resolve(campaignPath);
   const campaignName = basename(campaign);
   // Resolve the domain from the last readable epoch slug in recorded epoch order, falling back to
@@ -794,10 +807,15 @@ export function buildDigest({ campaign: campaignPath, domainsRoot, runIds = [] }
       .map((dir) => resolve(dir))
       .find((dir) => existsSync(dir)) ?? null;
   const selection = selectedCaseRows(campaign, runIds);
-  const caseRows = selection.rows;
   const traceRoots = [
     ...new Set([campaign, ...(domainDir === null ? [] : [domainDir]), ...campaignTraceRoots(campaign)]),
   ];
+  return { campaign, campaignName, epochDirs, domainDir, selection, traceRoots };
+}
+
+export function buildDigest(input: DigestInput): string {
+  const { campaign, campaignName, epochDirs, domainDir, selection, traceRoots } = campaignCases(input);
+  const caseRows = selection.rows;
   const tallies = batteryTallies(caseRows);
   const difficulty = readDifficultyDecisions(campaign);
   const decisions = difficulty.rows;

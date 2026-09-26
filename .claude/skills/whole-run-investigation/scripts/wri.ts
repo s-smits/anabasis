@@ -11,6 +11,7 @@
 //   bun wri.ts collect <target> --out <abs review dir>
 //   bun wri.ts launch  --out <abs review dir> [--lanes <count> | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
 //   bun wri.ts finish  --out <abs review dir>
+//   bun wri.ts census  [--root <campaign tree>] [--json] [--out <abs file>]
 //   bun wri.ts delta | climb | yield | timeline | walls | handoff | gates  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
 //              walls [--battery <runId>]
@@ -50,6 +51,7 @@ import { writeJsonFile } from "#src/meta/completed-json.ts";
 import { isRecord } from "#src/meta/json-shape.ts";
 import { emitReport } from "#skills/main/output.ts";
 import { findRun, mainCheckout, resolveRunSelector, type RunSelection } from "#tools/runs/discover.ts";
+import { campaignRoot } from "#src/meta/campaign-root.ts";
 
 const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
 const CHECKOUT = resolve(SCRIPT_DIR, "../../../..");
@@ -283,6 +285,7 @@ const COMMANDS: Record<
   collect: { values: TARGET, positionals: [0, 1] },
   launch: { values: LAUNCH, flags: ["live"] },
   finish: { values: ["out"] },
+  census: { values: ["root", "out"], flags: ["json"] },
   scope: { values: ["campaign", "run"], flags: ["json"], positionals: [0, 1] },
   ...Object.fromEntries(
     LANES.flatMap((lane) =>
@@ -696,6 +699,16 @@ async function main(): Promise<void> {
       return launch(args);
     case "finish":
       return finish(args);
+    case "census": {
+      const { buildGateCensus, renderGateCensus } = await import("./gate-census.ts");
+      const root = args.value("root") ?? campaignRoot(mainCheckout(CHECKOUT));
+      const out = args.value("out");
+      return emitReport(buildGateCensus({ root }), {
+        json: args.flag("json"),
+        out,
+        render: renderGateCensus,
+      });
+    }
   }
 }
 

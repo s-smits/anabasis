@@ -79,6 +79,7 @@ import {
   holdComponent,
   terminalComponent,
   type LedgerForm,
+  type LoopLedgerEntry,
 } from "./gate-ledger.ts";
 
 export type GateRentReport = ReturnType<typeof buildGateRent>;
@@ -190,23 +191,32 @@ export interface ComponentRow {
   answers: Partial<Record<EpisodeAnswer, number>>;
   stalls: number;
   medianMinutes: number | null;
+  /** The episode key the row groups, so a cross-run reader can join its own counts to it. */
+  key: string;
+  sessions: number;
+  totalMinutes: number;
 }
 
-type ComponentAccum = Omit<ComponentRow, "codes" | "medianMinutes"> & {
+type ComponentAccum = Omit<ComponentRow, "codes" | "medianMinutes" | "sessions" | "totalMinutes"> & {
   codes: Set<string>;
   minutes: number[];
+  where: Set<string>;
 };
+
+interface TerminalComponent {
+  code: string;
+  id: string;
+  form: LedgerForm;
+  pRight: number | null;
+  pStall: number | null;
+}
 
 export interface TerminalReading {
   state: string;
   reason: string | null;
-  component: {
-    code: string;
-    id: string;
-    form: LedgerForm;
-    pRight: number | null;
-    pStall: number | null;
-  } | null;
+  /** Why the controller reader refused the terminal, when it did. */
+  refusal?: string;
+  component: TerminalComponent | null;
 }
 
 export interface Trigger {
@@ -479,8 +489,9 @@ function sessionsOf(campaign: string): SessionsRead {
 }
 
 /** One row per component that fired, with the audit's prior beside what its episodes did. A row's
- *  `receipts` counts refused receipts that named it, each once however many of its codes it carried. */
-function componentRows(episodes: readonly Episode[]): ComponentRow[] {
+ *  `receipts` counts refused receipts that named it, each once however many of its codes it carried,
+ *  and `sessions` the Builder sessions it fired in, which `gate-census.ts` reads as rounds. */
+export function componentRows(episodes: readonly Episode[]): ComponentRow[] {
   const byKey = new Map<string, ComponentAccum>();
   for (const episode of episodes) {
     // Every episode carries at least one code: it opened on a receipt that named it.
@@ -488,6 +499,7 @@ function componentRows(episodes: readonly Episode[]): ComponentRow[] {
     const entry = componentOf(firstCode);
     const unscored = entry === null ? (DELIBERATELY_UNLEDGERED.get(firstCode) ?? null) : null;
     const row: ComponentAccum = byKey.get(episode.component) ?? {
+      key: episode.component,
       component: entry?.code ?? null,
       id: entry?.id ?? null,
       form: entry?.form ?? (unscored === null ? null : "unscored"),
@@ -501,8 +513,10 @@ function componentRows(episodes: readonly Episode[]): ComponentRow[] {
       answers: {},
       stalls: 0,
       minutes: [],
+      where: new Set<string>(),
     };
     for (const code of episode.codes) row.codes.add(code);
+    row.where.add(episode.where);
     row.episodes += 1;
     row.receipts += episode.carried;
     row.answers[episode.answer] = (row.answers[episode.answer] ?? 0) + 1;
@@ -511,9 +525,11 @@ function componentRows(episodes: readonly Episode[]): ComponentRow[] {
     byKey.set(episode.component, row);
   }
   return [...byKey.values()]
-    .map(({ codes, minutes: spent, ...row }) => ({
+    .map(({ codes, minutes: spent, where, ...row }) => ({
       ...row,
       codes: [...codes].sort(compareCodeUnits),
+      sessions: where.size,
+      totalMinutes: Math.round(spent.reduce((sum, value) => sum + value, 0)),
       medianMinutes:
         spent.length === 0 ? null : (spent.toSorted((a, b) => a - b)[Math.floor(spent.length / 2)] ?? null),
     }))
@@ -526,6 +542,12 @@ function isStall(episode: Episode): boolean {
   return episode.carried >= STALL_RECEIPTS || (episode.answer === "unanswered" && !episode.sessionAccepted);
 }
 
+function summary(entry: LoopLedgerEntry | null): TerminalComponent | null {
+  return entry === null
+    ? null
+    : { code: entry.code, id: entry.id, form: entry.form, pRight: entry.pRight, pStall: entry.pStall };
+}
+
 /** The loop component the run's own terminal names, if any. */
 function terminalOf(campaign: string, runId: string | null): TerminalReading {
   if (runId === null) return { state: "unselected", reason: null, component: null };
@@ -536,13 +558,20 @@ function terminalOf(campaign: string, runId: string | null): TerminalReading {
     return {
       state: "recorded",
       reason: controller.terminalReason,
-      component:
-        entry === null
-          ? null
-          : { code: entry.code, id: entry.id, form: entry.form, pRight: entry.pRight, pStall: entry.pStall },
+      component: summary(entry),
     };
   } catch (error) {
-    return { state: "refused", reason: errorMessage(error), component: null };
+    // The controller reader takes the current terminal shape alone, and an older run's terminal
+    // still names its closed code in `abortClause`, or in `outcome` when it completed.
+    const raw = readJsonFileOrNull(join(campaign, "controller", runId, "terminal.json"));
+    const code = isRecord(raw) ? [raw.abortClause, raw.outcome].find(isString) : undefined;
+    const entry = code === undefined ? null : terminalComponent(code);
+    return {
+      state: "refused",
+      reason: code ?? errorMessage(error),
+      refusal: errorMessage(error),
+      component: summary(entry),
+    };
   }
 }
 

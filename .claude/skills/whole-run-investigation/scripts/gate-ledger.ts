@@ -260,6 +260,13 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     "became R2; the per-cell accept requirement was deleted",
     ["controls-public-rule-negative-missing", "controls-public-rule-positive-missing"],
   ),
+  row(
+    ["CT-6", "controls-boundary-witness", "deleted"],
+    [null, null],
+    [],
+    "2 firings, both a misspelt targetsBoundary that nothing downstream read; removed 2026-09-27",
+    ["controls-boundary-check-mismatch", "controls-boundary-join-witness-overloaded"],
+  ),
   // GR: grounding and tool evidence
   row(
     ["GR-1", "external-result-unbound", "kept"],
@@ -445,8 +452,6 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
   ].map((code): [string, string] => [code, BRIEF]),
   ...[
     "controls-accept-duplicate-id",
-    "controls-boundary-check-mismatch",
-    "controls-boundary-join-witness-overloaded",
     "controls-duplicate-id",
     "controls-hidden-duplicate-check",
     "controls-hidden-on-nonhidden-check",

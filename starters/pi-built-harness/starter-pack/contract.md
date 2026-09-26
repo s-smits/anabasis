@@ -164,9 +164,8 @@ expectations by check id. Accepts pass under their task's own hidden rows. Build
 the same task's accept with one fact changed so that its expected check fails, choosing the
 mutations a careless or dishonest solver would produce in this field. Give every check at least
 one such reject, so that each check is seen to say no. A join reject carries `targetsJoin` plus
-`decoyClass`; a boundary reject carries `targetsBoundary: {publicInputPath, constantName}`. The
-census reruns every control against the submitted tasks and evaluator, so settle limits and checks
-first.
+`decoyClass`. The census reruns every control against the submitted tasks and evaluator, so settle
+limits and checks first.
 
 ## Harness tests
 

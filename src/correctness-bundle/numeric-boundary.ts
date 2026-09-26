@@ -21,11 +21,6 @@ export type NumericBoundaryDeclaration = {
   direction?: MarginDirection;
 };
 
-type NumericBoundaryObligation = NumericBoundaryDeclaration & {
-  checkId: string;
-  value: number;
-};
-
 function completeBoundary(
   boundary: NumericBoundaryDeclaration,
 ): boundary is NumericBoundaryDeclaration &
@@ -127,19 +122,4 @@ export function numericBoundaryFindings(
     }
   }
   return findings;
-}
-
-/** Validated numeric boundary declarations projected onto their cited numeric value. */
-export function numericBoundaryObligations(brief: Brief): NumericBoundaryObligation[] {
-  const constants = new Map(
-    brief.designRuleConstants.flatMap((constant) =>
-      isNumber(constant.value) ? [[constant.name, constant.value] as const] : [],
-    ),
-  );
-  return brief.truthChecks.flatMap((check) =>
-    (check.numericBoundaries ?? []).flatMap((boundary) => {
-      const value = constants.get(boundary.constantName);
-      return value === undefined ? [] : [{ checkId: check.id, ...boundary, value }];
-    }),
-  );
 }

@@ -376,3 +376,21 @@ constant-uncited`, `brief-join-no-decoys`, `agent-deciding-computation`, `repeat
 probe and the reviewer's most-failed-check probe now ask by measurement) and `census-inert-tool`
 (readiness's `inertToolFindings` already bounds the claim on the same fact). Two live refusals with no producer left to
 refuse went with them: `tasks-difficulty-unrequested` and `tools-data-reader-state`.
+
+## Correctness-check triage, 2026-09-27
+
+A third pass read every firing of the census components across 28 recorded runs, per firing and
+from the receipts, and changed what those firings showed was wrong.
+
+### controls-boundary-witness (deleted)
+
+Refused a reject whose `targetsBoundary: {publicInputPath, constantName}` together with its
+`expectedCheckId` was not a triple some check's `numericBoundaries` declared
+(`controls-boundary-check-mismatch`), or that claimed a join decoy beside the boundary
+(`controls-boundary-join-witness-overloaded`). It fired twice, both times on a real misspelling,
+and both times on a field nothing read: the census proves a reject by running its
+`expectedCheckId` alone, and no census, claim or reader consumed the annotation. The Builder
+answered the first firing by deleting the annotation. The field, both codes and
+`numericBoundaryObligations`, whose only caller this was, are gone; a recorded `controls.json` that
+still carries the field is admitted, since the row parse ignores keys it does not name.
+`numericBoundaries` on a check stays, because `publishedMargins` reads it.

@@ -33,7 +33,6 @@ import {
   fieldFinding,
 } from "./brief.ts";
 import type { HiddenExpectation } from "./hidden-expectation.ts";
-import { numericBoundaryObligations } from "./numeric-boundary.ts";
 import type { PublicTask } from "./task-split.ts";
 import { asRecord, isRecord, isString, type JsonValue } from "../meta/json-shape.ts";
 
@@ -60,11 +59,6 @@ export type RejectControl = {
   /** When the control targets a declared join's decoy class, name both. */
   targetsJoin?: string;
   decoyClass?: string;
-  /** The numeric boundary this reject changes. Boundary and join witnesses are separate rows. */
-  targetsBoundary?: {
-    publicInputPath: string;
-    constantName: string;
-  };
   /**
    * The brief truth-check id this mutation must fail, applicable to the reject's task. The host
    * census (`runControls`) runs this check alone on the reject, so an unrelated schema or
@@ -107,7 +101,6 @@ function corpusRowFindings(corpus: ControlCorpus): ContractFinding[] {
   });
   corpus.reject.forEach((control, i) => {
     const row = recordView(control);
-    const boundary = row?.targetsBoundary === undefined ? null : recordView(row.targetsBoundary);
     if (
       row === null ||
       !isString(row.id) ||
@@ -116,14 +109,12 @@ function corpusRowFindings(corpus: ControlCorpus): ContractFinding[] {
       !isString(row.expectedCheckId) ||
       !optionalString(row.mutationClass) ||
       !optionalString(row.targetsJoin) ||
-      !optionalString(row.decoyClass) ||
-      (row.targetsBoundary !== undefined &&
-        (boundary === null || !isString(boundary.publicInputPath) || !isString(boundary.constantName)))
+      !optionalString(row.decoyClass)
     ) {
       findings.push(
         fieldFinding(
           `reject[${i}]`,
-          '{"id", "taskId", "artifact", "expectedCheckId"} with optional "mutationClass", "targetsJoin", "decoyClass", "targetsBoundary", "hidden"',
+          '{"id", "taskId", "artifact", "expectedCheckId"} with optional "mutationClass", "targetsJoin", "decoyClass", "hidden"',
           control,
         ),
       );
@@ -158,8 +149,8 @@ function bindingFindings(
   return findings;
 }
 
-/** One reject's references resolve against the brief: a declared check, at most one of a join or
- *  a numeric boundary, the join's owning check, and hidden overrides only for hidden checks. */
+/** One reject's references resolve against the brief: a declared check, a declared join owned by
+ *  that check, and hidden overrides only for hidden checks. */
 function rejectReferenceFindings(
   brief: Brief,
   control: RejectControl,
@@ -190,31 +181,6 @@ function rejectReferenceFindings(
         code: "controls-join-check-mismatch",
         path: `reject[${i}].expectedCheckId`,
         detail: `incorrect example "${control.id}" targets join "${control.targetsJoin}", whose check is "${owner?.id ?? "missing"}", but expectedCheckId is "${control.expectedCheckId}"`,
-      });
-    }
-  }
-  if (control.targetsBoundary !== undefined) {
-    const { publicInputPath, constantName } = control.targetsBoundary;
-    const declared = numericBoundaryObligations(brief);
-    if (control.targetsJoin !== undefined || control.decoyClass !== undefined) {
-      findings.push({
-        code: "controls-boundary-join-witness-overloaded",
-        path: `reject[${i}].targetsBoundary`,
-        detail: `incorrect example "${control.id}" cannot prove a numeric boundary and a join decoy at once; use separate rejects`,
-      });
-    }
-    if (
-      !declared.some(
-        (row) =>
-          row.checkId === control.expectedCheckId &&
-          row.publicInputPath === publicInputPath &&
-          row.constantName === constantName,
-      )
-    ) {
-      findings.push({
-        code: "controls-boundary-check-mismatch",
-        path: `reject[${i}].targetsBoundary`,
-        detail: `incorrect example "${control.id}" names the boundary ("${control.expectedCheckId}", "${publicInputPath}", "${constantName}"), which is not a declared (expectedCheckId, publicInputPath, constantName) triple; declared: ${declared.map((row) => `("${row.checkId}", "${row.publicInputPath}", "${row.constantName}")`).join(", ") || "none"}`,
       });
     }
   }

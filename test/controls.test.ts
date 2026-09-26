@@ -13,12 +13,9 @@
  *
  * The last group is about external checks, where a reject has to fail on the check it names and
  * not merely somewhere. A decoy that names a different check than the one it targets is a
- * mismatch; a boundary reject may not also claim a join decoy, because one artifact cannot be the
- * witness for two obligations at once. Ownership is keyed on the whole check-path-constant
- * triple, and the case for that is the one where two checks declare the same `$.limit` and
- * `public-limit`: naming either check is still unambiguous, so the reject is admitted, and only a
- * triple no check declares is refused — with every declared triple listed back, so the author can
- * see what to match.
+ * mismatch. A reject that still carries the removed `targetsBoundary` annotation is admitted
+ * whatever it says, because nothing read the annotation: the census proves a reject by running its
+ * `expectedCheckId`, and a boundary the annotation named proved nothing further.
  */
 import { describe, expect, it } from "bun:test";
 import type { Brief, ValidationResult } from "../src/correctness-bundle/brief.ts";
@@ -211,67 +208,31 @@ describe("public semantic obligations on external checks", () => {
     );
   });
 
-  it("refuses a boundary reject that also claims a join decoy", () => {
+  it("admits a reject still carrying the removed targetsBoundary, and still refuses its unknown check", () => {
     const boundaryReject: RejectControl = {
       id: "threshold-edge",
       taskId: "edge-25",
       artifact: { files: { "src/main.c": "incorrect" } },
       mutationClass: "strict-vs-inclusive-boundary",
-      targetsBoundary: { publicInputPath: "$.limit", constantName: "public-limit" },
       expectedCheckId: "source-behaviour",
     };
-    expect(
-      codes(validateControls(brief, { accept: accepts, reject: [boundaryReject] }, tasks)),
-    ).not.toContain("controls-boundary-join-witness-overloaded");
+    // Recorded controls.json files carry the annotation, a mismatched triple and a join decoy beside
+    // it included; neither refused anything a census run would not.
+    const recorded = {
+      ...boundaryReject,
+      targetsBoundary: { publicInputPath: "$.limit", constantName: "other-limit" },
+      targetsJoin: "cases-to-source",
+      decoyClass: "lookalike-case",
+    };
+    expect(validateControls(brief, { accept: accepts, reject: [recorded] }, tasks).findings).toEqual([]);
     expect(
       codes(
         validateControls(
           brief,
-          {
-            accept: accepts,
-            reject: [{ ...boundaryReject, targetsJoin: "cases-to-source", decoyClass: "lookalike-case" }],
-          },
+          { accept: accepts, reject: [{ ...recorded, expectedCheckId: "no-such-check" }] },
           tasks,
         ),
       ),
-    ).toContain("controls-boundary-join-witness-overloaded");
-  });
-
-  it("keeps boundary ownership on the full check, path, and constant triple", () => {
-    const sharedTarget: Brief = {
-      ...brief,
-      truthChecks: brief.truthChecks.map((check) =>
-        check.id === "another-check"
-          ? { ...check, numericBoundaries: [{ publicInputPath: "$.limit", constantName: "public-limit" }] }
-          : check,
-      ),
-    };
-    const rejectOnFirstCheck: RejectControl = {
-      id: "threshold-edge",
-      taskId: "edge-25",
-      artifact: { files: { "src/main.c": "incorrect" } },
-      mutationClass: "strict-vs-inclusive-boundary",
-      targetsBoundary: { publicInputPath: "$.limit", constantName: "public-limit" },
-      expectedCheckId: "source-behaviour",
-    };
-    expect(
-      codes(validateControls(sharedTarget, { accept: accepts, reject: [rejectOnFirstCheck] }, tasks)),
-    ).not.toContain("controls-boundary-check-mismatch");
-    // A triple no check declares names itself and every declared triple, so the author can match one.
-    const undeclared = validateControls(
-      sharedTarget,
-      {
-        accept: accepts,
-        reject: [
-          {
-            ...rejectOnFirstCheck,
-            targetsBoundary: { publicInputPath: "$.limit", constantName: "other-limit" },
-          },
-        ],
-      },
-      tasks,
-    ).findings.find((f) => f.code === "controls-boundary-check-mismatch");
-    expect(undeclared?.detail).toContain('names the boundary ("source-behaviour", "$.limit", "other-limit")');
-    expect(undeclared?.detail).toContain('("another-check", "$.limit", "public-limit")');
+    ).toContain("controls-reject-unknown-check");
   });
 });

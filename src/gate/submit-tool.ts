@@ -209,6 +209,12 @@ async function settleSubmit(binding: SubmitToolBinding) {
       outcome: "refused",
       stage: outcome.stage,
       findings: outcome.findings.length,
+      ...keyIfDefined(
+        "findingCodes",
+        outcome.findings.length === 0
+          ? undefined
+          : [...new Set(outcome.findings.map((finding) => finding.code))].sort(),
+      ),
       ...keyIfDefined("reason", state.terminal ? "terminal-refusal" : undefined),
     }),
     terminate: state.terminal,

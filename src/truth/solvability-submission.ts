@@ -68,10 +68,6 @@ export const UNATTRIBUTED: SolvabilitySubmissionOutcome = {
   attribution: null,
 };
 
-/** No writer types this marker object where a reference answer writes null, so a schema that
- *  accepts it at a null position has not declared that position at all. */
-const UNDECLARED_POSITION_PROBE: JsonValue = { "ana-absence-spelling-probe": true };
-
 interface SolvabilitySubmissionRequest {
   slugDir: string;
   task: PublicTask<unknown>;
@@ -117,99 +113,12 @@ function schemaAccepts(tool: AgentTool<never>, artifact: Record<string, JsonValu
 }
 
 /** The declared domain artifact-writers whose own parameter schema accepts this artifact. A writer
- *  whose schema refuses the payload can never carry F2, so the spellings it would permit are not
- *  this artifact's problem. */
+ *  whose schema refuses the payload can never carry F2. */
 function acceptingWriters(starter: BuiltStarter, artifact: Record<string, JsonValue>): AgentTool<never>[] {
   return starter.registration.tools
     .filter(({ owner, authority }) => owner === "domain" && authority === "artifact-writer")
     .map(({ name }) => starter.tools.find((tool) => tool.name === name))
     .filter((tool): tool is AgentTool<never> => tool !== undefined && schemaAccepts(tool, artifact));
-}
-
-/**
- * The first position where the writer accepts `""` although the reference answer writes null — the
- * second spelling of absence. Where the reference answer writes null, null is how the contract says
- * "does not apply", so a writer schema that also accepts the empty string there gives one meaning
- * two spellings and leaves the agent to pick. Run w6 is why this is checked: its writer declared
- * `Type.Union([Type.String(), Type.Null()])`, the agent wrote `""` on the rows the answer leaves
- * absent, and eight of twenty-five cases failed on that alone with every other field correct.
- *
- * Only the empty string counts here, not a wider absence vocabulary: this reads what a writer
- * permits the agent to write, where "n/a" or "none" can be legitimate free text. The narrow rule is
- * the empty string standing beside a reference null.
- *
- * The comparison uses the writer schema and the reference artifact without running the verifier, and
- * its findings still travel the protected submission-result feedback path.
- *
- * One traversal finds each null and probes a copy of the artifact with `""` at that position. The
- * copy is built from shallow copies along the walked path, so nothing shared is mutated. Array
- * indices collapse to `[]` in the reported path alone: deduplication is on the exact position,
- * because a tuple types its positions separately and collapsing them would let the first element
- * decide for a later one the writer types differently.
- */
-export function absenceSpellingAdmitted(
-  tool: AgentTool<never>,
-  artifact: Record<string, JsonValue>,
-): { path: string } | null {
-  const probed = new Set<string>();
-  const probe = (
-    value: JsonValue,
-    path: string,
-    exact: string,
-    build: (replacement: JsonValue) => Record<string, JsonValue>,
-  ): { path: string } | null => {
-    if (value === null) {
-      if (probed.has(exact)) return null;
-      probed.add(exact);
-      if (!schemaAccepts(tool, build(""))) return null;
-      // A non-strict Check ignores undeclared positions, so accepting "" proves nothing on its own:
-      // a subset writer paired with the whole artifact "admits" every null root it never typed, which
-      // cost run w12 eight blind iterations. The position belongs to this writer only when the writer
-      // can also reject something there.
-      return schemaAccepts(tool, build(UNDECLARED_POSITION_PROBE)) ? null : { path };
-    }
-    if (Array.isArray(value)) {
-      for (const [index, item] of value.entries()) {
-        const hit = probe(item, `${path}[]`, `${exact}[${String(index)}]`, (replacement) =>
-          build(value.map((sibling, at) => (at === index ? replacement : sibling))),
-        );
-        if (hit) return hit;
-      }
-    } else if (isRecord(value)) {
-      for (const [key, child] of Object.entries(value)) {
-        const hit = probe(child, `${path}.${key}`, `${exact}.${key}`, (replacement) =>
-          build({ ...value, [key]: replacement }),
-        );
-        if (hit) return hit;
-      }
-    }
-    return null;
-  };
-  for (const [key, child] of Object.entries(artifact)) {
-    const hit = probe(child, key, key, (replacement) => ({ ...artifact, [key]: replacement }));
-    if (hit) return hit;
-  }
-  return null;
-}
-
-/** Check each compatible domain writer for a second spelling of absence before a submission path is
- *  selected. Whole-artifact writers and the `files` preset are alternatives to one another, so a
- *  check placed inside only one of them could be bypassed by taking the other; an earlier
- *  trace-replay alternative carried the same risk. This reads tool schemas and the reference artifact
- *  without executing a writer, and so reports the same ambiguity whichever path will carry F2. */
-function absenceSpellingRefusal(starter: BuiltStarter, artifact: Record<string, JsonValue>): string | null {
-  for (const tool of acceptingWriters(starter, artifact)) {
-    const ambiguous = absenceSpellingAdmitted(tool, artifact);
-    if (ambiguous !== null) {
-      return (
-        `writer "${tool.name}" accepts the empty string at ${ambiguous.path}, where the ` +
-        "reference answer writes null — one meaning with two spellings, and the agent chooses which. " +
-        "Narrow the writer's parameter schema at that path so null is the only way to state absence, " +
-        "for example Type.String({ minLength: 1 }) beside Type.Null()"
-      );
-    }
-  }
-  return null;
 }
 
 /**
@@ -442,10 +351,6 @@ async function traverseReferenceArtifact(options: Traversal): Promise<Solvabilit
   const opened = await openReadyStarter(openStarter);
   if ("status" in opened) return opened;
   const { artifact } = options;
-  const ambiguous = absenceSpellingRefusal(opened.starter, artifact);
-  if (ambiguous !== null) {
-    return (await closeFailure(opened.starter)) ?? { status: "representation-defect", detail: ambiguous };
-  }
   if (!controller.presets.includes("files")) {
     return await structuredWriterPath(opened, artifact, openStarter);
   }

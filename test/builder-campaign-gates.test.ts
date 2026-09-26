@@ -426,6 +426,16 @@ describe("the receipts a gate run records", () => {
     expect(lines[0]).toContain("submit refused at stage");
     expect(lines[0]).toContain("with generated-load-crash");
     expect(lines[0]).not.toContain("handshake");
+    // The submit's own receipt names the refusal's codes, as a correctness_check receipt does; a
+    // clear check names none.
+    const calls = readExecutionEvidence(campaignDir)[0]?.customCalls ?? [];
+    const semantic = (tool: string) => calls.find((call) => call.tool === tool)?.semantic;
+    expect(semantic("submit")).toMatchObject({
+      outcome: "refused",
+      findingCodes: ["generated-load-crash", "submit-bound"],
+    });
+    expect(semantic("correctness_check")).toMatchObject({ outcome: "clear" });
+    expect(semantic("correctness_check")).not.toHaveProperty("findingCodes");
   });
 
   it("runs the gates beside an admission refusal without writing an iteration or a parity safeguard", async () => {

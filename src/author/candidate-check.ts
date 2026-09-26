@@ -333,6 +333,13 @@ function bindableTaskViews(
     }));
 }
 
+/** A candidate the fingerprint refused, as the findings preview and rehearsal both show. */
+export function fingerprintRefusal(
+  findings: readonly { code: string; file: string; detail: string }[],
+): ContractFinding[] {
+  return findings.map((f) => controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail }));
+}
+
 /** Bundle loading and validation shared by `checkCandidate` and `loadHarnessSnapshot`. Candidate
  *  admission needs the findings and the declared tools; loading an adopted harness needs the parsed
  *  values instead. Each returned value is non-null only when its own file passed validation, which
@@ -490,10 +497,13 @@ export function checkCandidate(
   };
   const fingerprint = fingerprintSlug(workspace, { slug: context.slug });
   if (!fingerprint.ok) {
-    const findings = fingerprint.findings.map((f) =>
-      controllerValidatedFinding({ code: f.code, path: f.file, detail: f.detail }),
-    );
-    return { ok: false, stage: "bundle", findings, commit: change.commit, ...proposalKeys };
+    return {
+      ok: false,
+      stage: "bundle",
+      findings: fingerprintRefusal(fingerprint.findings),
+      commit: change.commit,
+      ...proposalKeys,
+    };
   }
   const snapshot = createBundleSnapshot(workspace, fingerprint);
   const loaded = loadValidatedBundle(snapshot.dir, context);

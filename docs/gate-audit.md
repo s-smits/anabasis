@@ -54,10 +54,13 @@ row, so the refusal names the field instead of letting a later stage crash on it
 ### task-shape
 
 Refuses a `tasks.json` that is not a bare array, a task id that is duplicated or unsafe as a
-directory name, a missing hidden operand, a declared public path absent from an applicable task,
-and a check that applies to no task (`tasks-shape`, `tasks-check-family-unbound`,
-`tasks-no-applicable-checks`; `src/truth/tasks.ts`, `src/author/candidate-check.ts`). Every later
-stage indexes by these, so a violation fails the round at the first case rather than here.
+directory name, a missing hidden operand, a declared public path absent from every applicable task,
+and a task no check applies to (`tasks-shape`, `tasks-no-applicable-checks`; `src/truth/tasks.ts`,
+`src/author/candidate-check.ts`). Every later stage indexes by these, so a violation fails the
+round at the first case rather than here. A check scoped to families the battery lacks
+(`tasks-check-family-unbound`) no longer refuses, since 2026-09-26: a task probe that keeps
+`brief.json` fixed may narrow the battery below a check's families, and that check simply does not
+run this battery, which the claim's `firedByCheck` records as 0.
 
 ### task-count
 
@@ -120,7 +123,12 @@ check the benchmark literature says to keep.
 ### f2-representation-defect
 
 Refuses a reference answer the writer, the DraftStore or the submit path cannot carry
-(`src/run/solvability-gate.ts`). Every solve would meet the same defect.
+(`src/run/solvability-gate.ts`). Every solve would meet the same defect. Until 2026-09-26 it also
+refused a writer that accepted `""` where the reference answer wrote null. The writer's parameters
+are the compiled public schema, so that was a statement about a legitimately nullable string field
+rather than a carry defect, and its only recorded firing cost a forty-call repair loop. The branch
+is deleted; `contract.md` now tells the Builder to publish null as the absence value, and a solver
+that writes `""` there is graded by the checks.
 
 ### accept-control-rejected
 

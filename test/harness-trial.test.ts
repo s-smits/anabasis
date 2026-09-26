@@ -28,7 +28,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { Type } from "typebox";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import { keyIfNotNull, keysIf } from "../src/meta/optional-key.ts";
 import { asRecord, isString, type JsonObject } from "../src/meta/json-shape.ts";
@@ -569,6 +569,15 @@ describe("what one round of rehearsals costs", () => {
     expect(tool.description).not.toMatch(/At most \d+ rehearsals/);
     expect(tool.description).toContain("the same per-check wall your agent/config.yaml sets for the battery");
   }, 120_000);
+
+  it("names why a candidate the fingerprint refuses cannot be rehearsed", async () => {
+    const dir = workspace();
+    const { tool } = round(dir, assigningSolver(RIGHT_SLOT, true));
+    rmSync(join(dir, "correctness-model"), { recursive: true });
+    const body = modelVisible(await rehearse(tool));
+    expect(body).toMatchObject({ status: "blocked", stage: "candidate", findings: { totalFindings: 1 } });
+    expect(JSON.stringify(body)).toContain("missing-bundle");
+  });
 
   it("solves nothing and takes no ordinal for a call that never reached a solve", async () => {
     const dir = workspace();

@@ -249,32 +249,6 @@ function declaredPathFindings(rows: readonly TaskRow[]): ContractFinding[] {
   }));
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, task-shape): kept: a check bound to a family that has no task
-// never runs.
-/** What the battery as a whole must cover once its families are known. */
-function coverageFindings(
-  brief: Brief,
-  battery: TaskBattery,
-  families: ReadonlySet<string>,
-): ContractFinding[] {
-  const findings: ContractFinding[] = [];
-  if (battery.tasks.length > 0) {
-    // A check scoped to families the battery lacks applies to no task, so nothing ever runs it:
-    // the census, F2 and the verifier all read applicability from the tasks that exist.
-    for (const check of brief.truthChecks) {
-      const scope = check.execution.families;
-      if (scope !== "all" && !scope.some((family) => families.has(family))) {
-        findings.push({
-          code: "tasks-check-family-unbound",
-          path: "tasks",
-          detail: `truth check "${check.id}" applies only to ${scope.map((family) => `"${family}"`).join(", ")}, and no task has that family, so no task, control or reference solve ever runs it; add a task of that family or scope the check to a family the battery has`,
-        });
-      }
-    }
-  }
-  return findings;
-}
-
 export function validateTasks(
   brief: Brief,
   value: unknown,
@@ -295,7 +269,6 @@ export function validateTasks(
     ...identityFindings(rows),
     ...applicabilityFindings(rows, declared),
     ...declaredPathFindings(rows),
-    ...coverageFindings(brief, battery, new Set(rows.map(({ task }) => task.family))),
   ];
   return { ok: findings.length === 0, findings: controllerValidatedFindings(findings) };
 }

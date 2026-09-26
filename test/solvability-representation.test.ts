@@ -85,36 +85,6 @@ describe("the representation the submission path must express", () => {
     expect(failure(result)).toContain("$.design");
   });
 
-  it.concurrent("types a public-valid nullable branch omitted by the writer schema as a representation defect", async () => {
-    const fixture = specimen({
-      verifier: GOOD_VERIFIER,
-      schema: [{ name: "answer", "shape": "string or null" }],
-      answers: [null, "B"],
-      acceptArtifacts: [{ answer: null }, { answer: "B" }],
-      writerKinds: { answer: "string" },
-    });
-    const result = await witness(fixture);
-
-    expect(result.evidence?.cases).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          taskId: "ta",
-          artifact: { answer: null },
-          status: "failed",
-          failure: "representation-defect",
-          submissionPath: null,
-        }),
-        expect.objectContaining({ taskId: "tb", status: "passed" }),
-      ]),
-    );
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({
-        code: "solvability-representation-defect",
-        disclosure: expect.objectContaining({ classification: "generated-toolset-contract" }),
-      }),
-    );
-  });
-
   const HOST_NON_RESULT = {
     status: "non-result" as const,
     row: { nonResultKind: "submission-path-host" },

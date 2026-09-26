@@ -18,7 +18,11 @@
 import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { type CandidateCheckContext, loadValidatedBundle } from "../author/candidate-check.ts";
+import {
+  type CandidateCheckContext,
+  fingerprintRefusal,
+  loadValidatedBundle,
+} from "../author/candidate-check.ts";
 import type { BuilderCustomToolSemantic } from "../author/builder-execution.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { bundleSnapshotIdOf, ensureBundleSnapshot } from "../claim/bundle-snapshot.ts";
@@ -305,7 +309,13 @@ async function runTrial(
   let wallMinutes: number;
   try {
     const fingerprint = fingerprintSlug(binding.workspace, { slug: binding.context.slug });
-    if (!fingerprint.ok) return { status: "blocked", stage: "candidate" };
+    if (!fingerprint.ok) {
+      return {
+        status: "blocked",
+        stage: "candidate",
+        findings: authorFindingOverview(fingerprintRefusal(fingerprint.findings)),
+      };
+    }
     binding = { ...binding, workspace: ensureBundleSnapshot(binding.workspace, fingerprint).dir };
     loaded = loadTrialCandidate(binding, taskId);
     wallMinutes = harnessSettings(binding.workspace).solveMs / 60_000;

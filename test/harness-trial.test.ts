@@ -76,7 +76,7 @@ const DENSE_VERIFIER_RESULT = {
   kind: "verifier",
   truthOk: false,
   reason: `tool "z3-marker" for check "${FAILING_CHECK}" reached no completed run (timeout)`,
-  nonResultKind: `externally grounded check(s) "${PASSING_CHECK}" ran no tool for this case`,
+  nonResultKind: `EXTERNAL_VERDICT_UNGROUNDED: check "${PASSING_CHECK}" passed without a completed run of its required tool "z3-marker"`,
   failedCheckIds: [FAILING_CHECK],
   checkResults: { [PASSING_CHECK]: true, [FAILING_CHECK]: false },
   stdout: `stdout-marker: slot ${RIGHT_SLOT} expected, ${WRONG_SLOT} given`,

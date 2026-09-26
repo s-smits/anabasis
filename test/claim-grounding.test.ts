@@ -29,10 +29,8 @@ import {
   statementOf,
 } from "./helpers/claim-evidence.ts";
 
-type Uncovered = { evidence: Partial<ClaimEvidence>; score: ScoredCase[]; gaps: string[] };
 type Coverage = { evidence: Partial<ClaimEvidence>; score: ScoredCase[]; rows: ToolCheckCoverage[] };
 
-const CASE_UNCOVERED = "external-grounding-case-uncovered";
 const ALL = ["t1", "t2", "t3", "t4"];
 
 const resonanceEverywhere: ScoredCase[] = GREEN_SCORE.map((row) => ({ ...row, checkIds: ["resonance"] }));
@@ -110,19 +108,6 @@ function twoTools(): Partial<ClaimEvidence> & { grounding: { execution: Verifier
   };
 }
 
-/** Two's statevector-audit run on t2 dropped (`null`) or recorded under another adapter. */
-function twoToolsWithT2Audit(replacement: string | null): Partial<ClaimEvidence> {
-  const evidence = twoTools();
-  const executed = evidence.grounding.execution.executed.flatMap((row) => {
-    if (row.subjectId !== "t2" || row.adapterId !== "statevector-audit") return [row];
-    return replacement === null ? [] : [{ ...row, adapterId: replacement }];
-  });
-  return {
-    ...evidence,
-    grounding: { ...evidence.grounding, execution: { ...evidence.grounding.execution, executed } },
-  };
-}
-
 /** An authored check that requires qiskit-adapter as its interpreter, run on the given cases. */
 function authoredWithTool(subjectIds: readonly string[]): Partial<ClaimEvidence> {
   const execution = qiskitExecution(subjectIds);
@@ -159,49 +144,6 @@ const resonanceRow = (toolId: string, attestedLaunches: number): ToolCheckCovera
 //     expect(clauseNames(createClaim(greenEvidence(external(executed))))).toEqual([]);
 //   });
 // });
-
-const UNCOVERED_CASES = {
-  "a run on one case vouches for no other": {
-    evidence: external(qiskitExecution(["t1"])),
-    score: resonanceEverywhere,
-    // t4 failed on a check with complete evidence, so a run it skipped could only have withheld a pass.
-    gaps: ['case "t2"', 'case "t3"'],
-  },
-  "a run over a control grounds no verified case": {
-    evidence: external(qiskitExecution(["reject-7"])),
-    score: resonanceEverywhere,
-    gaps: ['case "t1"', 'case "t2"', 'case "t3"'],
-  },
-  "a run of the right check under a neighbouring adapter": {
-    evidence: external(runOnT1("resonance", "some-other-adapter")),
-    score: resonanceOnT1,
-    gaps: ['case "t1"'],
-  },
-  "a second declared tool dropped on one case": {
-    evidence: twoToolsWithT2Audit(null),
-    score: resonanceEverywhere,
-    gaps: ['case "t2" and check "resonance"; run adapter "statevector-audit"'],
-  },
-  "a second declared tool relabelled on one case": {
-    evidence: twoToolsWithT2Audit("foreign-adapter"),
-    score: resonanceEverywhere,
-    gaps: ['case "t2" and check "resonance"; run adapter "statevector-audit"'],
-  },
-  "an authored check's required tool missing on one case": {
-    evidence: authoredWithTool(["t1", "t3", "t4"]),
-    score: GREEN_SCORE,
-    gaps: ['case "t2" and check "c1"'],
-  },
-} satisfies Record<string, Uncovered>;
-
-describe("a tool run binds to one case, one check and one adapter", () => {
-  it.each(Object.entries<Uncovered>(UNCOVERED_CASES))("refuses %s", (_, { evidence, score, gaps }) => {
-    const result = createClaim(greenEvidence(evidence), score);
-    expect(clauseNames(result)).toEqual(gaps.map(() => CASE_UNCOVERED));
-    const details = result.ok ? [] : result.clauses.map((clause) => clause.detail);
-    gaps.forEach((gap, index) => expect(details[index]).toContain(gap));
-  });
-});
 
 const COVERAGE = {
   "one run per verified case": {

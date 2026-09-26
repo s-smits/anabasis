@@ -12,7 +12,7 @@ import { errorMessage } from "../meta/runtime-values.ts";
 import type { CorrectnessModelResult } from "../verify/correctness-model-result.ts";
 import type { EvaluationScopeHandle, VerifierHostHandle } from "../verify/verifier-port.ts";
 import type { ControlReceiptSide, DiscriminationExecution } from "./battery-record.ts";
-import { type Brief, applicableTruthChecks } from "./brief.ts";
+import { type Brief, applicableTruthChecks, externalChecksOf } from "./brief.ts";
 import type { EvaluatorFn } from "./contracts.ts";
 import type { ControlCorpus } from "./controls.ts";
 import { identityComposedFinding, withheldDiscrimination } from "./discrimination-author-detail.ts";
@@ -28,14 +28,18 @@ import {
 } from "./control-receipts.ts";
 import { blockingFailedCheckIds, blockingIssueSummary } from "./verdict-binding.ts";
 import { namedExamples, type SettledControl } from "./grounding-coverage.ts";
-import { hostNonResult, subjectRuns } from "./tool-runs.ts";
+import {
+  EXTERNAL_VERDICT_UNGROUNDED,
+  hostNonResult,
+  subjectRuns,
+  ungroundedPassChecks,
+  ungroundedSentence,
+} from "./tool-runs.ts";
 import { environmentOwnedToolNonResult, toolRetryDelay } from "./verifier-nonresult.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 
 interface RunControlsOptions {
   verifierLifetime?: VerifierLifetime;
-  /** The brief's external-verifier checks: each adapterId is the tool id that grounds the check. */
-  externalChecks?: readonly { checkId: string; adapterId: string }[];
   /** The checked brief defines the public rules for both authoring checks and live measurement. */
   brief: Brief;
   /** Added to correctness-model requests during a live run; absent during authoring checks. */
@@ -388,6 +392,32 @@ function admitObservation(
       });
     }
     run.cleanupReported = true;
+    return null;
+  }
+  // R1: a pass a check decided without a completed run of its required tool witnesses nothing
+  // about that check, so the control is refused as the battery would refuse the case. A reject ran
+  // its named check alone, so that check is the only one its pass can rest on.
+  const task = run.boundTaskById.get(control.taskId)?.task;
+  const deciding =
+    "expectedCheckId" in control
+      ? [control.expectedCheckId]
+      : task === undefined
+        ? []
+        : applicableTruthChecks(run.options.brief, task).map((check) => check.id);
+  const ungrounded = ungroundedPassChecks(
+    evaluation,
+    deciding,
+    externalChecksOf(run.options.brief),
+    run.verifier?.executedBindings() ?? [],
+    { phase: "discrimination", subjectId: control.id, attempt },
+  );
+  if (ungrounded.length > 0) {
+    addToGroup(run, "ungrounded", control.id, `"${control.id}"`, (ids) =>
+      identityComposedFinding(
+        { code: EXTERNAL_VERDICT_UNGROUNDED, message: ungroundedSentence(ungrounded) },
+        `${ids.length} example${ids.length === 1 ? "" : "s"} passed a check that declares required tools without a completed run of them: ${namedExamples(ids)}. Run every required tool on every example the check passes`,
+      ),
+    );
     return null;
   }
   return { side, result: evaluation };

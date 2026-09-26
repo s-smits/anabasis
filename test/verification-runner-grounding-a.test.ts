@@ -319,9 +319,18 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     "  if (runtime) {",
     '  if (runtime && request.publicTask.taskId !== "t3") {',
   );
+  /** The tool check rejects t3 on a precondition before it reaches its tool. */
+  const PRECHECK_FAIL_SOURCE = VERIFIER_EVALUATOR_SOURCE.replace(
+    "  if (runtime) {",
+    '  if (request.publicTask.taskId === "t3") return false;\n    if (runtime) {',
+  );
   /** One battery whose evaluator never runs the tool for t3; returns the scored ids and t3's row. */
-  async function runSelectiveSkip(runId: string, flubTaskIds?: ReadonlySet<string>) {
-    const slugDir = externalSlug(SELECTIVE_SKIP_SOURCE, {
+  async function runSelectiveSkip(
+    runId: string,
+    flubTaskIds?: ReadonlySet<string>,
+    source = SELECTIVE_SKIP_SOURCE,
+  ) {
+    const slugDir = externalSlug(source, {
       accept: ACCEPTS,
       reject: [...REJECTS, ...TOOL_REJECTS],
     });
@@ -354,7 +363,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
       runtimeNonResultKind: "verifier",
     });
     expect(skipped.runtimeNonResult).toContain('"ghost-ref"');
-    expect(skipped.runtimeNonResult).toContain("ran no tool for this case");
+    expect(skipped.runtimeNonResult).toContain("EXTERNAL_VERDICT_UNGROUNDED");
   }, 60_000);
 
   it.concurrent("a case that fails a check with complete evidence grades as a truth fail even when a tool run was skipped", async () => {
@@ -362,6 +371,19 @@ describe("makeVerify external-verifier grounding (C3)", () => {
     // filing those cases as verifier non-results loses a real fail. A skipped run can only
     // withhold a pass, so the failing authored check decides t3.
     const { scored, t3: failed } = await runSelectiveSkip("run-c3-silent-skip-failed", new Set(["t3"]));
+    expect(scored).toEqual(["t1", "t2", "t3"]);
+    expect(failed).toMatchObject({ truthOk: false, pass: false });
+    expect(failed.runtimeNonResult ?? null).toBeNull();
+  }, 60_000);
+
+  it.concurrent("a tool check that rejects on a precondition before running its tool grades as a truth fail", async () => {
+    // The only blocking check is the one that declares the tool, and it never ran it. A missing
+    // run can withhold a pass but cannot manufacture a fail, so the fail is the case's verdict.
+    const { scored, t3: failed } = await runSelectiveSkip(
+      "run-c3-precheck-fail",
+      undefined,
+      PRECHECK_FAIL_SOURCE,
+    );
     expect(scored).toEqual(["t1", "t2", "t3"]);
     expect(failed).toMatchObject({ truthOk: false, pass: false });
     expect(failed.runtimeNonResult ?? null).toBeNull();

@@ -27,8 +27,9 @@ export interface SolvabilitySubmissionPathEvidence {
 }
 
 /** Why a reference solve failed: a valid answer the writer cannot carry, a solve that broke the
- *  isolation wall, or an answer the checks rejected or never received. */
-export type SolvabilityFailure = "representation-defect" | "isolation" | "witness";
+ *  isolation wall, an answer the checks rejected or never received, or a pass a check decided
+ *  without a completed run of its required tools. */
+export type SolvabilityFailure = "representation-defect" | "isolation" | "witness" | "ungrounded";
 /** Why a reference solve earned no verdict. A host failure before the child is ready is a
  *  non-result; after solving starts, crashes, timeouts and protocol errors are product failures. */
 export type SolvabilityNonResult = "reference-solve-host" | "submission-path-host" | "sandbox";

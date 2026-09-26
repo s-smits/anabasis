@@ -47,13 +47,19 @@ import type { CorrectnessModelResult } from "../verify/correctness-model-result.
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import { resolveToolInventory } from "../verify/tool-inventory.ts";
 import { validateBrief } from "./brief-validator.ts";
-import { type Brief, type ContractFinding, externalChecksOf, generatedExecutionFinding } from "./brief.ts";
+import {
+  type Brief,
+  type ContractFinding,
+  controllerValidatedFinding,
+  externalChecksOf,
+  generatedExecutionFinding,
+} from "./brief.ts";
 import { loadFailureFinding } from "./load-fault.ts";
 import type { BuildDeps } from "./build-deps.ts";
 import { loadCorrectnessModel } from "./contracts.ts";
 import type { CheckRunner } from "./correctness-model-contract.ts";
 import { evaluateCheckProgram } from "../../vendor/correctness-model-bundle/evaluate.ts";
-import { executionEvidence } from "./tool-runs.ts";
+import { EXTERNAL_VERDICT_UNGROUNDED, executionEvidence } from "./tool-runs.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { loadSolvabilityPublicSchema } from "./solvability-artifact-schema.ts";
 import { evaluateWitness, type WitnessCensus } from "./solvability-witness.ts";
@@ -133,6 +139,7 @@ const CASE_CODE = {
   "representation-defect": "solvability-representation-defect",
   isolation: "solvability-reference-solve-isolation",
   witness: "solvability-witness-failed",
+  ungrounded: EXTERNAL_VERDICT_UNGROUNDED,
   "reference-solve-host": "solvability-reference-solve-host-non-result",
   "submission-path-host": "solvability-submission-path-host-non-result",
   sandbox: "verifier-cleanup-pending",
@@ -383,13 +390,14 @@ async function runSolvabilityCase(
 ): Promise<SolvabilityCaseOutcome> {
   const attempt = await attemptReferenceSubmission(session, committed);
   const accepted = attempt.artifactJson;
-  let { error, authorClassification } = attempt;
+  let { error, authorClassification, attribution } = attempt;
   let result: CorrectnessModelResult | null = null;
   let predicateFailures: CheckFailureDetail[] = [];
   if (accepted !== null && error === null) {
     const verified = await evaluateWitness(session.census, fullTaskJson, accepted, `self:${task.taskId}`);
     ({ result, error, authorClassification, predicateFailures } = verified);
     // Gate audit 2026-09-25 (docs/gate-audit.md, f2-reference-verdict): kept: a reference solve its own checks reject shows before any paid solve that no pass is reachable through the declared path
+    if (verified.ungrounded.length > 0) attribution = { failure: "ungrounded" };
     if (result !== null && blockingFailure(result)) {
       const blocked = failedCheckIds(result);
       error = `reference artifact was rejected${blocked.length > 0 ? ` on [${blocked.join(", ")}]` : " without an attributed check"}`;
@@ -406,9 +414,21 @@ async function runSolvabilityCase(
     referenceSolve: attempt.referenceSolve,
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
-    ...caseVerdict(attempt, passed, error),
+    ...caseVerdict({ ...attempt, attribution }, passed, error),
   };
   if (row.status === "passed") return { row, finding: null };
+  // The sentence names check and tool ids only, so it crosses to the author whole, owned by the
+  // evaluator that returned a pass its tools never produced.
+  if (row.status === "failed" && row.failure === "ungrounded") {
+    return {
+      row,
+      finding: controllerValidatedFinding({
+        code: CASE_CODE.ungrounded,
+        path: EVALUATOR_FILE,
+        detail: row.error,
+      }),
+    };
+  }
   const finding = {
     code: CASE_CODE[row.status === "failed" ? row.failure : row.nonResultKind],
     path: `correctness-model/tasks.json#${task.taskId}`,

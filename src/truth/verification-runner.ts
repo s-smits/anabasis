@@ -616,7 +616,6 @@ async function runVerification(options: VerificationRunnerOptions, input: Verify
       {
         brief: ctx.brief,
         runId: options.runId,
-        externalChecks: ctx.externalChecks,
         ...keyIfDefined("verifierLifetime", options.verifierLifetime),
         ...keyIfDefined("toolRetryWaitMs", options.toolRetryWaitMs),
       },

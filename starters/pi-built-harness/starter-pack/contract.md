@@ -106,8 +106,11 @@ against published limits — write that capability in the agent's own code, and 
 through an installed domain tool wherever the field has one.
 
 A check calls `runtime.tools.run({toolId, args, files, stdin, timeoutMs})` and never spawns a
-process itself. The host supplies the check id, refuses undeclared tool ids, requires a
-completed run of every required tool, and owns sandbox, timeout and cleanup: each run gets a
+process itself. The host supplies the check id, refuses undeclared tool ids, and owns sandbox,
+timeout and cleanup. A check that declares required tools, authored or external, passes only after
+a completed run of every one of them on that same artifact; a pass without one is
+`EXTERNAL_VERDICT_UNGROUNDED`, refused at the gate and a non-result in the battery. A fail stands as
+returned, so a check may reject on a precondition before it reaches its tool. Each run gets a
 private HOME and TMPDIR and no network, and its wall comes from `agent/config.yaml`. TMPDIR is
 the run's working directory. `/tmp` is private on Linux and closed on macOS, even though your shell
 can write it there, so point the scratch files of a tool that spells `/tmp` at TMPDIR. The one

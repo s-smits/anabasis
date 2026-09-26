@@ -153,10 +153,9 @@ Measurement refuses the same, so the gate refuses it first.
 
 ### measure-grounding
 
-Makes a verified case whose externally grounded check ran no tool a typed non-result, and names at
-readiness and in the claim an external check with no tool run on its verified cases
-(`src/truth/solve-case.ts`, `src/claim/readiness.ts`, `src/claim/claim.ts`). Without the run there
-is no tool evidence behind the verdict.
+Names at readiness an external check with no tool run on any verified case (`inertToolFindings`,
+`src/claim/readiness.ts`). The per-case half is R1 (`grounded-verdict` below), which the claim now
+reads from the battery's non-result rows rather than deriving again.
 
 ### build-failed-ceiling
 
@@ -249,19 +248,6 @@ Refused adoption when the census never launched a declared external tool
 (`external-check-tool-unlaunched` at the census, `src/truth/probes.ts`). Readiness still names the
 same fact through `inertToolFindings`, where it bounds a claim rather than an authoring round.
 
-### census-grounding-owed
-
-Refused adoption when an example's external check made no completed tool run and no host refusal
-explained it (`generated-external-grounding-unexecuted`, `src/truth/grounding-coverage.ts`). The
-refused bucket, a host that refused the tool, stays an environment non-result. Restore the
-STARTER.md Grounding section with it.
-
-### f2-witness-relay
-
-Marked a reference solve that relayed the correctness model as a
-`generated-correctness-model-relay` finding (`src/truth/solvability-witness.ts`).
-`uncoveredExternalCheckIds`, which measurement reads, stays live.
-
 ### reject-discrimination
 
 Refused a candidate, and at claim time a battery, when a reject control passed its named check
@@ -314,6 +300,24 @@ stays a readout fact. Restore the AGENTS.md loop-ceiling entry and the FRAME sto
 Counted `candidate-zero-verified` holds toward the build-failed stall limit
 (`src/run/full-run-round.ts`). A zero-verified battery is the hard battery design prior 10 asks
 for, not an authoring stall.
+
+## Rewritten, 2026-09-26
+
+Components the second audit judged right in intent and wrong in shape, because each was a patch at
+one stage. Each is now one decision in `src/truth/decisions/` whose stage table is typed over every
+stage, so a stage cannot silently go without it.
+
+### grounded-verdict (R1)
+
+Replaces `f2-witness-relay`, `census-grounding-owed` and the per-case half of `measure-grounding`
+(`src/truth/decisions/grounding.ts`). A verdict an external check decided needs a completed run of
+that check's declared tool on that same subject: a pass is ungrounded when any applicable external
+check has none, and a fail only when every check that blocked it has none, since a skipped run
+could only have withheld a pass. One code, `EXTERNAL_VERDICT_UNGROUNDED`. The F2 witness fails,
+a census control is refused, and a battery or rehearsal case is a `verifier` non-result. Timeouts
+and crashes stay with `DISCRIMINATION_PROBE_NO_VERDICT`, and `generated-correctness-model-relay` is
+gone as a classification. The claim's `external-grounding-case-uncovered` clause is deleted, since
+no verified pass can now lack its run.
 
 ## Deleted, 2026-09-26
 

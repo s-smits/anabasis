@@ -59,6 +59,9 @@ tool call gets a fresh empty home. This stage and F2 share one wall.
 - `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief.
 - `DISCRIMINATION_NOT_PROVEN`: a check threw on an example, or an example names a task outside
   the battery.
+- `EXTERNAL_VERDICT_UNGROUNDED`: a verdict an external check decided needs a completed run of that
+  check's declared tool on that same artifact. A pass, or a fail only such checks decided, with no
+  completed run is refused here, fails the F2 witness, and is a non-result in the battery.
 
 **5. F2 reference solve.** Resolves required tools, then builds every task's artifact with
 `reference/index.ts` through the public submission path and runs the checks over it, four tasks

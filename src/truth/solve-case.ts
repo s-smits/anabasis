@@ -58,9 +58,14 @@ import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifi
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { CaseRecord } from "./battery-record.ts";
 import { type Brief, applicableTruthChecks, externalChecksOf, requiredToolsOf } from "./brief.ts";
-import { hostNonResult, uncoveredExternalCheckIds } from "./tool-runs.ts";
+import {
+  hostNonResult,
+  type UngroundedCheck,
+  ungroundedPassChecks,
+  ungroundedSentence,
+} from "./tool-runs.ts";
 import { solverNonResultReason } from "./runtime-blocker.ts";
-import { blockingFailedCheckIds, blockingTruthFailure } from "./verdict-binding.ts";
+import { blockingTruthFailure } from "./verdict-binding.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import { EvaluatorProcessFailure } from "./evaluator-process.ts";
 import { resolveVerifier } from "./verification-registry.ts";
@@ -437,7 +442,8 @@ export async function rehearseCase(
     const outcome = acceptedOutcome(
       scoped,
       hostNonResult(verifier, subject),
-      uncoveredExternalCheckIds(
+      ungroundedPassChecks(
+        scoped.verdict,
         checks.map((check) => check.id),
         externalChecksOf(brief),
         verifier.executedBindings(),
@@ -460,7 +466,7 @@ export async function rehearseCase(
 function acceptedOutcome(
   scoped: Awaited<ReturnType<typeof runCaseScope>>,
   hostFailure: ReturnType<typeof hostNonResult>,
-  missingExternalVerdicts: readonly string[],
+  ungrounded: readonly UngroundedCheck[],
 ): CaseOutcome {
   if (scoped.cleanupPending) {
     return nonResult("verifier-cleanup-pending: host process cleanup is incomplete", "sandbox");
@@ -477,18 +483,9 @@ function acceptedOutcome(
       hostFailure.outcome,
     );
   }
-  // A blocking fail on a check whose evidence is complete decides the case, because a tool run
-  // that was skipped could only ever have withheld a pass, never created one. A case that failed
-  // to compile is filed here rather than as a non-result.
-  const failed = [...blockingFailedCheckIds(scoped.verdict)];
-  // Gate audit 2026-09-25 (docs/gate-audit.md, measure-grounding): kept: a verified case whose externally grounded check ran no tool has no tool evidence behind its verdict
-  if (missingExternalVerdicts.length > 0 && failed.every((id) => missingExternalVerdicts.includes(id))) {
-    // The unattributed verifier kind belongs to generated behaviour, not the environment.
-    return nonResult(
-      `externally grounded check(s) ${missingExternalVerdicts.map((id) => `"${id}"`).join(", ")} ran no tool for this case`,
-      "verifier",
-    );
-  }
+  // R1 (`ungroundedPassChecks`). The unattributed verifier kind belongs to generated behaviour,
+  // not the environment. A case that failed to compile is filed here rather than as a non-result.
+  if (ungrounded.length > 0) return nonResult(ungroundedSentence(ungrounded), "verifier");
   return { kind: "truth", truthOk: !blockingTruthFailure(scoped.verdict) };
 }
 
@@ -509,15 +506,15 @@ async function gradeAcceptedArtifact(
   const scoped = await runCaseScope(deps, solved, artifactJson);
   const subject = { phase: "battery" as const, subjectId: taskId, attempt: 1 };
   // Coverage is required only after accepted bytes reached a real correctness-model verdict.
-  const missingExternalVerdicts =
-    solved.acceptedSubmit && scoped.verdict !== null
-      ? uncoveredExternalCheckIds(
-          deps.applicableIds,
-          deps.externalChecks,
-          deps.verifier.executedBindings(),
-          subject,
-        )
-      : [];
+  const ungrounded = solved.acceptedSubmit
+    ? ungroundedPassChecks(
+        scoped.verdict,
+        deps.applicableIds,
+        deps.externalChecks,
+        deps.verifier.executedBindings(),
+        subject,
+      )
+    : [];
   const unbound =
     scoped.pendingInvocations > 0
       ? [
@@ -525,7 +522,7 @@ async function gradeAcceptedArtifact(
         ]
       : [];
   return {
-    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), missingExternalVerdicts),
+    outcome: acceptedOutcome(scoped, hostNonResult(deps.verifier, subject), ungrounded),
     // A verdict the cleanup failure may have corrupted is not published as this case's verdict.
     verdict: scoped.cleanupPending ? null : scoped.verdict,
     unbound,

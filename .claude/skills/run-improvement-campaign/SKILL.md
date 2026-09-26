@@ -174,7 +174,15 @@ call costs nothing but time.
 
 ## 5. Watch quietly
 
-One watcher covers all live runs:
+Two watchers exist, and who is reading decides between them. **When a reader is attending, the
+watch is `bun run runs pulse --once`** (`tools/runs/pulse.ts`, documented in
+[launch-run](../launch-run/SKILL.md#see-what-is-running)), run from main as the last action of each
+reply so the next look lands about 270 s later. It finds every open run itself and prints what moved
+since the previous look: a round opened, a preview or rehearsal, a battery, a quiet Builder, a
+non-result, the Builder's latest checkpoint line, the plan's target against the aim. Nobody has to
+name a run, and a run launched since the last look simply appears.
+
+When nobody is reading, one detached watcher covers all live runs and speaks only on a stop row:
 
 ```sh
 bun .claude/skills/run-improvement-campaign/scripts/campaign.ts \
@@ -188,10 +196,10 @@ Start it detached (Python `subprocess.Popen` with `start_new_session=True`, stdo
 watch under thirty minutes, bounded polling every 290 s is cheaper than holding a monitor open.
 Add `--completion-only` when the operator wants nothing until a terminal exists.
 
-**When a reader is attending, drop `--every` and run one pass per reply**, started as the last
-action of each message so the next tick lands about 270 s later — inside the 300 s prompt cache, and
-longer whenever the reading itself takes longer, which is the intended cost. A single pass is an
-attended tick: each watched run's status, then every row it holds, info included, and exit 0.
+Dropping `--every` makes this command an attended tick too — each watched run's status, then every
+row it holds, info included, and exit 0 — and that is the look to take when the question is which
+move a row implies rather than what moved. It needs every run named, and a named run with no opening
+yet reads as a `stop [reserved]` row, so start it after the openings exist.
 Without `--state` the same command is the status report alone, with the per-file table when it
 names one run and `--json` for the whole reading. The detached `--every` watcher stays deviation-only and holds info rows for the next
 stop row, because nobody is reading it.

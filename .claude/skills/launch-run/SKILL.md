@@ -98,6 +98,11 @@ of its stage, then one line per event: `◆` a stage worth reading, `⚠` someth
 from, so it prints the status lines alone. A file written in a schema this tree no longer reads is
 named as unread rather than shown as empty.
 
+`pulse --once` is the watch after a launch. Run it from main as the last action of each reply, so
+the next look lands about 270 s later and opens on what moved. For a watch nobody is reading, the
+detached, stop-row-only watcher is `campaign.ts` in
+[run-improvement-campaign](../run-improvement-campaign/SKILL.md#5-watch-quietly).
+
 `stop` and `resume` print their plan and do nothing without `--yes`. A run whose process is gone
 but which recorded no terminal reads `orphaned`, never `live`. A live run's provider-turn counter
 lives in the ledger its owner holds open, so the listing reports it unknown rather than zero.

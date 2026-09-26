@@ -1227,6 +1227,11 @@ Foreground waits are at most 60 seconds. For longer work, start one background m
 on the real condition and poll in bounded intervals, rather than stacking sleep-and-tail calls.
 When the watch is under 30 minutes, checking every 290 s is cheaper than holding a monitor open.
 
+Watch a paid run with `bun run runs pulse --once` from main, as the last action of each reply: it
+finds every open run and prints what moved since the previous look, each with the file that holds
+it. Nobody reading? Start `run-improvement-campaign`'s `campaign.ts --state <file> --every 290`
+detached instead; it speaks only when a stop row names a move.
+
 **Simplify.** Use ponytail while authoring, and run `bun run lint -- --strict` and
 `bun run simplify` — the deterministic census in `tools/oxlint/simplify-census.ts` — during the
 work rather than only at the end; then `/simplify` on the finished diff. A rewrite that removes a

@@ -207,9 +207,6 @@ function decisionsOf(root: string): Record<string, string> {
   );
 }
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-// describe("the climb: one product, four batteries, one fixed competence", () => {
-//   it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and stops on the streak", async () => {
 describe("the climb: one product, five batteries, one fixed competence", () => {
   it("measures a falling pass rate from the tasks alone, attributes each round to its bytes, and runs on through the streak", async () => {
     const root = scratchRepo();
@@ -246,24 +243,6 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
       analyse: analyseStep,
     });
 
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // One authored product, three rounds that reopen and keep it, then a round that reads the
-    // // streak and stops before it opens a session, carrying its reason as the round's clause.
-    // expect(outcome.rounds.map((round) => [round.move, round.build, round.promotion, round.measured])).toEqual(
-    //   [
-    //     ["build", "adopted", null, true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["rebuild", "candidate", "promoted", true],
-    //     ["stop", "stopped", null, false],
-    //   ],
-    // );
-    // expect(outcome.rounds.slice(0, 4).map((round) => round.buildClause)).toEqual([null, null, null, null]);
-    // expect(outcome.terminal).toContain(
-    //   "3 consecutive rounds ended below the aim",
-    // );
-    // const batteries = outcome.rounds.slice(0, 4).map((round) => round.runId);
-    // expect(batteries).toEqual(["climb", "climb-i02", "climb-i03", "climb-i04"]);
     // One authored product, then four rounds that reopen and keep it: the fifth reads a streak of
     // three batteries below the aim and still opens its session, because the route is the Builder's.
     expect(outcome.rounds.map((round) => [round.move, round.build, round.promotion, round.measured])).toEqual(
@@ -289,22 +268,6 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
       expect(passes).toEqual(required(BATTERIES[index], runId).map((input) => input.length <= CEILING));
     }
 
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // Accepted bytes, not the loop's name for the round, decide the attribution: the agent and
-    // // correctness-model halves of the candidate identity hold across all four, so every later round
-    // // is a task-only experiment however it was labelled.
-    // expect(submits.map((receipt) => receipt.outcome)).toEqual([
-    //   "accepted",
-    //   "accepted",
-    //   "accepted",
-    //   "accepted",
-    // ]);
-    // const product = submits.map((receipt) => receipt.candidateId.split("-").slice(0, 2).join("-"));
-    // expect(new Set(product).size).toBe(1);
-    // expect(new Set(submits.map((receipt) => receipt.candidateId)).size).toBe(4);
-    //
-    // // Every round that read a placement wrote it down, the stopping round included: its file is
-    // // the only durable evidence that the reading which ended the run happened.
     // Accepted bytes, not the loop's name for the round, decide the attribution: the agent and
     // correctness-model halves of the candidate identity hold across all five, so every later round
     // is a task-only experiment however it was labelled.
@@ -334,31 +297,6 @@ describe("the climb: one product, five batteries, one fixed competence", () => {
     // outcome and a duration for each beginning. The census is exact except `grade deferred`, one
     // row per solve that finished while an earlier case was still solving — the pool's scheduling,
     // not the run's shape. `judge` and `measure-on` are absent because the Judge is off and the
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // // solver scripted. Four rounds build and measure; the stopping round records its build as failed
-    // // before any session opens, and only the first round adopts a tree.
-    // const { census, unsettled } = phases(root);
-    // expect(unsettled).toEqual([]);
-    // const { "grade deferred": heldForTheirTurn = 0, ...exact } = census;
-    // expect(heldForTheirTurn).toBeLessThanOrEqual(24);
-    // expect(exact).toEqual({
-    //   "admission completed": 4,
-    //   "adopt completed": 1,
-    //   "analyse completed": 4,
-    //   "analyse started": 4,
-    //   "build completed": 4,
-    //   "build failed": 1,
-    //   "build started": 4,
-    //   "claim completed": 4,
-    //   "controls completed": 4,
-    //   "controls started": 4,
-    //   "grade completed": 4,
-    //   "grade started": 4,
-    //   "input completed": 1,
-    //   "next completed": 3,
-    //   "solve completed": 4,
-    //   "solve started": 4,
-    // });
     // solver scripted. All five rounds build and measure, and only the first adopts a tree.
     const { census, unsettled } = phases(root);
     expect(unsettled).toEqual([]);

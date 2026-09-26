@@ -1,11 +1,10 @@
 /**
  * The climb readout: one reading of the recorded batteries, rendered once.
  *
- * Every row is read once here, over the sample that decides it, and the kickoff, the stop rule and
- * the context tool's history source all read those rows. Spread across separate readers — a selector
+ * Every row is read once here, over the sample that decides it, and the kickoff and the context
+ * tool's history source both read those rows. Spread across separate readers — a selector
  * deciding the round, a measurement note wording the decision, a ledger note tabling task sets with
- * its own interval, a history tool placing every row a third way, a stop rule counting its streak
- * in a fifth place — they disagree, and one battery reads as a near-perfect score in one paragraph
+ * its own interval, a history tool placing every row a third way — they disagree, and one battery reads as a near-perfect score in one paragraph
  * and a failure in the next. The words belong to `climb-readout-frame.ts`; this module only counts.
  *
  * A battery whose every attempt was refused at submission is placed nowhere, because it would
@@ -518,8 +517,6 @@ function allowanceLines(readout: ClimbReadout): string[] {
   return [
     fill(FRAME.readout.allowance, {
       rounds,
-      // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-      // limit: POLICY.climb.offAimStreakRounds,
       side,
       placed,
       refused,

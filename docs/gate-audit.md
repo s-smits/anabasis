@@ -171,8 +171,9 @@ non-results (`src/run/full-run-round.ts`). Remeasuring the same dead environment
 ### noop-submit-strike
 
 Counts a byte-identical resubmit of a refused candidate as a strike, and ends the session as
-`authoring-stalled` at `noopSubmitStrikes` (`src/gate/candidate-memory.ts`). The same bytes cannot
-earn a different verdict.
+`authoring-stalled` at `noopSubmitStrikes` (`src/gate/candidate-memory.ts`), which ends the campaign
+as `build-failed`; the strike and final messages now say the campaign ends rather than the round.
+The same bytes cannot earn a different verdict.
 
 ### unchanged-candidate-strike
 
@@ -181,8 +182,8 @@ Counts a round that settles on its own entry tree, up to `unchangedCandidateStri
 
 ### no-progress
 
-Ends a round as the retryable `no-progress` clause after three turns in a row without a successful
-tool call (`src/author/builder-turn-loop.ts`). Those turns change nothing, and the clause resumes
+Ends a round as the retryable `no-progress` clause after `stalledTurns` turns in a row without a
+successful tool call (`POLICY.loop`, read by `src/author/builder-turn-loop.ts`). Those turns change nothing, and the clause resumes
 the same conversation.
 
 ### battery-sizing
@@ -256,19 +257,6 @@ Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming opera
 refusal rather than review was unclear. Restore the contract.md and STARTER.md guide-size sentences
 with it.
 
-### off-aim-allowance-stop
-
-Stopped a campaign after `climb.offAimStreakRounds` consecutive rounds on one side of the aim
-(`allowanceStop` in `src/run/next-move.ts`, `src/critic/policy.ts`, FRAME `readout.allowance`,
-`tools/runs/pulse.ts`). The route after an off-aim streak belongs to the Builder, and the streak
-stays a readout fact. Restore the AGENTS.md loop-ceiling entry and the FRAME stop wording with it.
-
-### held-candidate-ceiling
-
-Counted `candidate-zero-verified` holds toward the build-failed stall limit
-(`src/run/full-run-round.ts`). A zero-verified battery is the hard battery design prior 10 asks
-for, not an authoring stall.
-
 ## Rewritten, 2026-09-26
 
 Components the second audit judged right in intent and wrong in shape, because each was a patch at
@@ -311,6 +299,20 @@ passes, which was the one recorded snapshot the stricter form would have refused
 check enforces. A declared path proves the value reaches a check and not that any verdict depends
 on it, so the Epoch Reviewer's probe paragraph now asks for a probe of a root no public rule plainly
 governs (`review-probing-findings/v8`).
+
+### held-rounds (R4)
+
+Replaces `held-candidate-ceiling` (`heldCountsAgainstAuthor`, `src/run/full-run-round.ts`). A held
+candidate now counts against the unresolved-authoring allowance unless the environment owns the
+hold: its battery was not delivered (no claim, or a provider stop that created none, which
+`environment-blocked-ceiling` already counts), or its claim was refused only for the environment
+clauses the climb already sets aside (`refusedForEnvironmentOnly`,
+`src/run/climb-battery-admission.ts`, one owner for both). A zero-verified battery the environment
+carried is the author's: prior 10 asks for a hard battery, and a battery nothing passed is one the
+author cannot yet read. The archived off-aim stop (`off-aim-allowance-stop`) is deleted rather than
+restored as a flag, because `--iteration-budget` already bounds a campaign and the streak stays a
+readout fact. A resumed round no longer tells the Builder its accepted candidate was taken forward,
+which an unchanged candidate is not.
 
 ## Deleted, 2026-09-26
 

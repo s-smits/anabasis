@@ -50,7 +50,7 @@ function authoringStalledFinding(strikes: number) {
   return controllerValidatedFinding({
     code: "authoring-stalled",
     path: "submit",
-    detail: `the same candidate and verifier condition was refused ${strikes + 1} times in a row; proposal or memory edits do not change that condition. The refusal above is final and the round ends here`,
+    detail: `the same candidate and verifier condition was refused ${strikes + 1} times in a row; proposal or memory edits do not change that condition. The refusal above is final, and the campaign ends here as build-failed`,
   });
 }
 
@@ -59,7 +59,7 @@ function noopSubmitFinding(strike: number) {
   return controllerValidatedFinding({
     code: "authoring-noop-submit",
     path: "submit",
-    detail: `unchanged candidate and verifier condition — attempt ${strike} of ${POLICY.loop.noopSubmitStrikes}. EXPERIMENT.json and memory edits do not change that condition. Repair the candidate files or installed verifier named by the refusal; the round ends at ${POLICY.loop.noopSubmitStrikes}`,
+    detail: `unchanged candidate and verifier condition — attempt ${strike} of ${POLICY.loop.noopSubmitStrikes}. EXPERIMENT.json and memory edits do not change that condition. Repair the candidate files or installed verifier named by the refusal; at ${POLICY.loop.noopSubmitStrikes} the campaign ends as build-failed`,
   });
 }
 

@@ -22,6 +22,9 @@ import type { FullRunDeps, FullRunOutcome } from "./full-run.ts";
 import { type BuildClause, CLAUSE_ENDINGS } from "./loop-terminal.ts";
 import { type NextMove, epochPassOf, selectNextMoveFromDisk } from "./next-move.ts";
 import { recordDifficultyDecision } from "./difficulty-decision.ts";
+import { refusedForEnvironmentOnly } from "./climb-battery-admission.ts";
+import type { WrittenRunClaim } from "./claim-write.ts";
+import { ENVIRONMENT_OWNED_NONRESULT_KINDS, isNonResultKind } from "../claim/record-events.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
@@ -281,14 +284,16 @@ export async function runIteration(input: IterationInput): Promise<IterationResu
 export function nextBlockedRounds(prev: number, result: IterationResult): number {
   const { measure } = result.steps;
   if (measure === null) return prev;
-  // Whether the environment carried this battery far enough to say anything. A written claim
-  // normally proves it completed turns, with one exception: the provider-stop rule ends scheduling
-  // after five consecutive provider non-results and records the battery `provider-stopped`, and
-  // the claim it then writes is a refusal for that same dead provider rather than evidence that
-  // the provider worked.
-  const delivered =
-    measure.claim !== null && (measure.claim.created || measure.disposition !== "provider-stopped");
-  return delivered ? 0 : prev + 1;
+  return batteryDelivered(measure) ? 0 : prev + 1;
+}
+
+/** Whether the environment carried this battery far enough to say anything. A written claim
+ *  normally proves it completed turns, with one exception: the provider-stop rule ends scheduling
+ *  after five consecutive provider non-results and records the battery `provider-stopped`, and the
+ *  claim it then writes is a refusal for that same dead provider rather than evidence that the
+ *  provider worked. */
+function batteryDelivered(measure: NonNullable<CandidateEvaluation["measure"]>): boolean {
+  return measure.claim !== null && (measure.claim.created || measure.disposition !== "provider-stopped");
 }
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, environment-blocked-ceiling): kept: batteries of typed non-results create no evidence, so remeasuring the same environment buys nothing (rule 15)
@@ -343,7 +348,7 @@ function buildFailedTerminal(result: IterationResult, loop: LoopState): string |
   return `${ending ?? "build-failed"}: the final iteration produced no build-admissible candidate${clause}; earlier recorded iterations keep their own evidence`;
 }
 
-/** A held candidate keeps its packet and, once its battery verified a case, shares the
+/** A held candidate keeps its packet and, unless the environment owns the hold, shares the
  *  unresolved-authoring allowance with a failed build, so an authoring round may continue into a further measure or rebuild. What decides
  *  whether the next round is a new experiment is the active admission and decision key, not the
  *  wording of the clauses: clause prose alone cannot reset an allowance. */
@@ -385,7 +390,7 @@ export function loopTerminal(result: IterationResult, loop: LoopState): string |
 /**
  * Counts unresolved authoring rounds under one active admission and decision basis.
  *
- * A failed build and a held candidate whose battery verified a case are the same unresolved
+ * A failed build and a held candidate the environment does not own are the same unresolved
  * authoring problem as far as this guard is concerned, so they share one state. That is what makes `held -> failed -> held` reach
  * the same finite allowance as three failed builds, instead of resetting one counter every time
  * the outcome changes shape.
@@ -418,16 +423,38 @@ export function nextUnresolvedAuthoringStall(
   return adopted ? null : prev;
 }
 
+/**
+ * Whether a held candidate is the author's to answer for. A hold is the author's unless the
+ * environment owns it: a battery the environment blocked or the provider stopped, which
+ * `nextBlockedRounds` already counts, or a claim refused only for environment clauses. A
+ * zero-verified battery the environment carried is the author's, because every case ran and none
+ * reached an accepted answer — that is a harness that cannot submit, not the hard battery design
+ * prior 10 asks for, which is a few verified passes rather than none verified.
+ */
+function heldCountsAgainstAuthor(result: IterationResult): boolean {
+  if (result.build !== "candidate" || result.steps.promotion?.decision !== "held") return false;
+  const { measure } = result.steps;
+  if (measure === null) return true;
+  if (measure.claim === null || !batteryDelivered(measure)) return false;
+  return measure.claim.created || !environmentOwnsRefusal(measure.claim);
+}
+
+/** A refusal the environment owns: every clause is an environment clause, and when the non-result
+ *  ratio is among them, every non-result it counted is of a kind the environment may own. The ratio
+ *  counts every kind, so a checker that crashes or breaks protocol on a quarter of its cases would
+ *  otherwise read as a dead provider and hold round after round without touching either ceiling. */
+function environmentOwnsRefusal(claim: Pick<WrittenRunClaim, "clauses" | "nonResults">): boolean {
+  const names = claim.clauses.map((row) => row.clause);
+  if (!refusedForEnvironmentOnly(names)) return false;
+  if (!names.includes("non-result-ratio-excessive")) return true;
+  return Object.entries(claim.nonResults).every(
+    ([kind, count]) => count === 0 || (isNonResultKind(kind) && ENVIRONMENT_OWNED_NONRESULT_KINDS.has(kind)),
+  );
+}
+
 /** Identity of one unresolved authoring round, or null for a round that authored no unresolved candidate. */
 function unresolvedAuthoringKey(result: IterationResult): string | null {
-  const { promotion } = result.steps;
-  // Gate audit 2026-09-25 (docs/gate-audit.md, held-candidate-ceiling): commented out (unsure): a zero-verified battery is the hard battery prior 10 asks for, not an authoring stall
-  // const unresolved =
-  //   result.build === "build-failed" || (result.build === "candidate" && promotion?.decision === "held");
-  const unresolved =
-    result.build === "build-failed" ||
-    (result.build === "candidate" && promotion?.decision === "held" && promotion.battery?.verified !== 0);
-  if (!unresolved) return null;
+  if (result.build !== "build-failed" && !heldCountsAgainstAuthor(result)) return null;
   // Key the round by what it consumed. A produced digest is new for every analysed round by
   // construction, so preferring it gives each unresolved round its own key and the declared
   // allowance never accumulates: round after round holds under one unchanged basis and the limit is

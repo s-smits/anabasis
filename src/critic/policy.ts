@@ -28,15 +28,6 @@ export const POLICY = {
      *  placement while the Builder's prompt still quotes these counts and the sizing gate still
      *  holds the code-owned ceiling. */
     band: CLIMB_BAND,
-    // Gate audit 2026-09-25 (docs/gate-audit.md, off-aim-allowance-stop): commented out (unsure): the Builder owns the route after an off-aim streak, which stays a readout fact
-    // /** Consecutive rounds that read one side of the aim before the campaign stops. A round counts
-    //  *  when it placed off the aim on that side, and a round whose claim was refused counts with it,
-    //  *  because measuring nothing is the same repetition with nothing to place. Three is where the
-    //  *  operator has stopped a campaign by hand, so the number matches an observed stopping point
-    //  *  rather than being derived. Counted in batteries and not in solves, so a six-task probe
-    //  *  campaign stops at the same point as a 25-task one. Counted by `allowance` in
-    //  *  src/run/climb-readout.ts and read by src/run/next-move.ts. */
-    // offAimStreakRounds: 3,
   },
   loop: {
     /** Consecutive batteries that recorded only typed non-results and created no claim before the
@@ -63,6 +54,11 @@ export const POLICY = {
      *  so the in-session counter starts at zero again. Keyed by commit, so a Builder that writes
      *  anything starts a new key. Read by src/run/full-run-build-step.ts. */
     unchangedCandidateStrikes: 3,
+    /** Consecutive turns without one successful tool call that end the round as `no-progress`. Codex
+     *  blocks a goal after three automatic turns without a tool call, or three whose commands all
+     *  failed (codex-rs/ext/goal/src/accounting.rs); one count covers both cases here. Read by
+     *  src/author/builder-turn-loop.ts. */
+    stalledTurns: 3,
   },
   battery: {
     /** The accepted range for a requested battery size. An out-of-range request fails rather than

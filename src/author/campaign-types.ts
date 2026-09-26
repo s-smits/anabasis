@@ -85,7 +85,7 @@ export type CampaignClause =
   | "environment-blocked"
   | "authoring-stalled" // a no-op identity resubmitted to POLICY.loop.noopSubmitStrikes, or one commit recorded unchanged to unchangedCandidateStrikes
   | "iterations-exhausted"
-  | "no-progress" // a Builder round went STALLED_TURNS turns without a successful tool call; the run may retry the build on the same conversation
+  | "no-progress" // a Builder round went POLICY.loop.stalledTurns turns without a successful tool call; the run may retry the build on the same conversation
   | "budget-limited";
 
 export type CampaignOutcome = (

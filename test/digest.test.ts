@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.mjs";
+import { buildDigest } from "../.claude/skills/whole-run-investigation/scripts/digest.ts";
 import {
   cpSync,
   mkdirSync,
@@ -606,7 +606,7 @@ describe("digest", () => {
     expect(damaged).not.toContain("epoch-aa: workshop 2 actions");
   });
 
-  // The ledgers digest-ledgers.mjs reads. Each case writes the recorded shape a real
+  // The ledgers digest-ledgers.ts reads. Each case writes the recorded shape a real
   // campaign carries and checks the trigger row a lane is admitted on, plus its nearest quiet shape.
   it("classifies provider-typed non-results as censoring and reads the Builder's allowance waits", () => {
     const paths = fixture();

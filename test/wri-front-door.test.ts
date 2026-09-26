@@ -8,16 +8,22 @@ import {
   buildOverview,
   digestTriggers,
   readOverview,
-} from "../.claude/skills/whole-run-investigation/scripts/run-overview.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/run-overview.ts";
 import {
   buildSharedInstructions,
   renderSharedInstructions,
-} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.mjs";
-import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
-import { LANES, renderLanes, selectLanes } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
-import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
-import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
-import { required } from "./helpers/doubles.ts";
+} from "../.claude/skills/whole-run-investigation/scripts/shared-instructions.ts";
+import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.ts";
+import {
+  LANES,
+  type Lane,
+  type LaneContext,
+  renderLanes,
+  selectLanes,
+} from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
+import { ANGLE_COUNT } from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
+import { ARCHIVE_SCHEMA } from "../.claude/skills/whole-run-investigation/scripts/archive-shape.ts";
+import { double, required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -348,7 +354,7 @@ describe("archive scaffold", () => {
     expect(built.schema).toBe(ARCHIVE_SCHEMA);
     expect(built.identity).toMatchObject({ runId: RUN, sourceRevision: COMMIT, bundle: "bundle-1" });
     expect(built.terminalAccounting.denominator).toMatchObject({ total: 75, nonResult: 3 });
-    // The states are the ones validate-archive.mjs accepts: not-triggered/unknown, and never the status names.
+    // The states are the ones validate-archive.ts accepts: not-triggered/unknown, and never the status names.
     expect(
       built.predictions.map((row) => [
         row.id,
@@ -461,18 +467,12 @@ describe("archive scaffold", () => {
 });
 
 describe("deterministic lane catalogue", () => {
-  interface Lane {
-    name: string;
-    label: string;
-    collect?: boolean;
-    needs?: (context: { campaign: string }) => string | null;
-  }
-  const lanes: Lane[] = LANES;
+  const lanes: readonly Lane[] = LANES;
   const args = (values: Record<string, string>, flags: string[] = []) => ({
     flag: (name: string) => flags.includes(name),
     value: (name: string, fallback: string | null = null) => values[name] ?? fallback,
   });
-  const select = (values: Record<string, string>, flags: string[] = []): Lane[] | null =>
+  const select = (values: Record<string, string>, flags: string[] = []): readonly Lane[] | null =>
     selectLanes(args(values, flags));
 
   it("gives every lane a unique name and a label of at most three words", () => {
@@ -500,9 +500,9 @@ describe("deterministic lane catalogue", () => {
   it("skips the climb lane until the campaign has adopted a version", () => {
     const campaign = scratchDir("wri-climb-");
     const climb = lanes.find((lane) => lane.name === "climb");
-    expect(climb?.needs?.({ campaign })).toBe("no adopted version, so no battery yet");
+    expect(climb?.needs?.(double<LaneContext>({ campaign }))).toBe("no adopted version, so no battery yet");
     mkdirSync(join(campaign, "versions"));
-    expect(climb?.needs?.({ campaign })).toBeNull();
+    expect(climb?.needs?.(double<LaneContext>({ campaign }))).toBeNull();
   });
 
   it("prints one row per lane under its rank and marks exactly the lanes collect also runs", () => {

@@ -53,7 +53,7 @@ Check, in order:
    missing trigger instead of treating absent output as an absent fix.
 
 For F2, run
-`bun --no-env-file .claude/skills/attribution-and-proof/scripts/inspect-solvability.mjs <campaign root>`
+`bun --no-env-file .claude/skills/attribution-and-proof/scripts/inspect-solvability.ts <campaign root>`
 or append `<run tree> <slug>`. It reports aggregates only. Keep raw solvability evidence out of every
 Builder-visible channel. Intent comes from the active operator plan and commit message. Bind intent
 to the run using the sha in its evidence.

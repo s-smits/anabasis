@@ -4,6 +4,7 @@ import { join } from "../src/meta/path.ts";
 import { afterEach, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
+import { double } from "./helpers/doubles.ts";
 import {
   ANCHOR_SHA256,
   STRUCTURE_KEYS,
@@ -15,8 +16,9 @@ import {
   readBattery,
   structureOf,
   unitsOf,
-} from "../.claude/skills/whole-run-investigation/classifier/query-complexity.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/query-complexity.ts";
 import {
+  type ClimbReport,
   VELOCITY_SCHEMA,
   numericDriftOf,
   outcomesOf,
@@ -27,7 +29,7 @@ import {
   velocityOf,
   placementOf,
   verdictOf,
-} from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/climb-velocity.ts";
 
 /** The bundle fields these fixtures write. The module reads a bundle as parsed JSON, so the test
  *  names the shape it authors rather than borrowing one from the reader. */
@@ -279,7 +281,7 @@ describe("climb velocity", () => {
     const flat = { checks: 0, limits: 0, coupled: 0, tooled: 0, rules: 0, roots: 0, inputs: 0, scenarios: 0 };
     const tiers = { checkTiers: { easy: 0, medium: 2, hard: 0, frontier: 0 } };
     const rows = (ids: string[]) => ({
-      rows: ids.map((taskId: string) => ({ taskId, numerics: { "limits.mass": 100 } })),
+      rows: ids.map((taskId) => ({ taskId, numerics: { "limits.mass": 100 } })),
     });
     const ids = Array.from({ length: 25 }, (_, at) => `truss-${at}`);
     const renumbered = numericDriftOf(
@@ -326,7 +328,8 @@ describe("climb velocity", () => {
   it.concurrent("refuses a rate change it cannot draw from two verified batteries", () => {
     const one = { batteries: [{ counts: { verified: 25 }, placement: placementOf(counts(24, 25)) }] };
     expect(velocityOf(one)).toMatchObject({ reason: "one verified battery: a rate change needs two" });
-    expect(velocityOf({ batteries: [{ counts: { verified: 0 }, placement: null }] })).toMatchObject({
+    const none = { batteries: [{ counts: { verified: 0 }, placement: null }] };
+    expect(velocityOf(none)).toMatchObject({
       reason: "no battery verified a case",
     });
   });
@@ -366,25 +369,26 @@ describe("climb velocity", () => {
       placement: null,
       recorded: null,
     });
-    const report = (verdict: ReturnType<typeof verdictOf>) => ({
-      schema: VELOCITY_SCHEMA,
-      campaign: "/c",
-      model: {},
-      batteries: [battery("i03"), battery("i04")],
-      // `source` is required on an Edge, and null is its own reading: the two bundles were not read.
-      edges: [
-        {
-          from: "i03",
-          to: "i04",
-          verdict,
-          novelty: null,
-          drift: { median: 0, moved: 0 },
-          delta: zeros,
-          source: null,
-          outcome: "unobservable",
-        },
-      ],
-    });
+    const report = (verdict: ReturnType<typeof verdictOf>) =>
+      double<ClimbReport>({
+        schema: VELOCITY_SCHEMA,
+        campaign: "/c",
+        model: {},
+        batteries: [battery("i03"), battery("i04")],
+        // `source` is required on an Edge, and null is its own reading: the two bundles were not read.
+        edges: [
+          {
+            from: "i03",
+            to: "i04",
+            verdict,
+            novelty: null,
+            drift: { median: 0, moved: 0 },
+            delta: zeros,
+            source: null,
+            outcome: "unobservable",
+          },
+        ],
+      });
 
     expect(render(report("escalated"))).toContain(
       "latest edge: i03 -> i04 escalated — the checks reached a higher tier, so this battery can find a limit the last one missed",

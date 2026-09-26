@@ -28,7 +28,7 @@
     "login": "bun tools/login/cli.ts",
     "harness": "bun tools/harness/cli.ts",
     "outcome": "bun tools/outcome/cli.ts",
-    "review:collect": "bun --no-env-file .claude/skills/whole-run-investigation/scripts/trace-review.mjs",
+    "review:collect": "bun --no-env-file .claude/skills/whole-run-investigation/scripts/trace-review.ts",
     "ui:dev": "cd packages/ui && bun run dev",
     "ui:build": "cd packages/ui && bun run build",
     "ui:deps": "bun install --frozen-lockfile --cwd packages/ui",

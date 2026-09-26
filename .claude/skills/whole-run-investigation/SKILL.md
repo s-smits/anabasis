@@ -31,20 +31,20 @@ a trigger; and a paid lane opened without a trigger is a lane spent on inventory
 first, always, and its triggers are what choose the semantic lanes.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs lanes
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs scope <runId | campaign dir>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs read <runId | campaign dir> \
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts lanes
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts scope <runId | campaign dir>
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts read <runId | campaign dir> \
   --out <absolute review dir> [--all | --lanes 5,yield] [--run <runId>] [--repo <abs>]
 ```
 
-A target is a campaign folder, its `controller/<runId>` folder or a bare run id, which `wri.mjs`
+A target is a campaign folder, its `controller/<runId>` folder or a bare run id, which `wri.ts`
 looks up in the main checkout's campaign tree. `scope` sizes the run from its own recorded bytes,
 and `read` with no `--lanes` reads what that size earns. Every lane's output is captured to
 `<review>/<lane>.txt`, the read is recorded in `<review>/wri-review.json`, and the command prints
 one bounded brief instead of the captures: the run's size and terminal, each lane quoted whole or
 pointed at, then the triggers and scan findings the deterministic lanes raised. **Read the brief,
 not the lane files** — the whole read is the size of a paid lane's context — and open a lane file
-only once the brief has made that lane the question. `wri.mjs brief --out <review>` re-renders it.
+only once the brief has made that lane the question. `wri.ts brief --out <review>` re-renders it.
 
 | tier | the run | lanes read | semantic lanes to start from |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@ reader's attention and neither brief gets used.
 
 Nine deterministic rows are the primary's own bindings and never a subagent's. Their bodies are the
 first section of [the catalogue](references/review-angles.md), and their titles are the
-`DETERMINISTIC_ROW_TITLES` of `scripts/catalogue-shape.mjs`, so the manifest and the archive
+`DETERMINISTIC_ROW_TITLES` of `scripts/catalogue-shape.ts`, so the manifest and the archive
 validator read the same nine names this file does:
 
 | row | binds |
@@ -144,7 +144,7 @@ above carry some of them.
 ## The twenty-eight lanes
 
 The catalogue is exactly twenty-eight semantic lanes, in one file after the rows, each a contiguous
-`**N. Title.**` heading that `scripts/catalogue-shape.mjs` counts as `ANGLE_COUNT`. Each asks one
+`**N. Title.**` heading that `scripts/catalogue-shape.ts` counts as `ANGLE_COUNT`. Each asks one
 sharp question, and they fall into seven groups. One independent `gpt-5.6-luna` session at `max`
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
@@ -226,14 +226,14 @@ Solver, time and failure:
 
 The gate:
 
-27. **Gate rent and confidence.** Each fired gate component's ledger prior (`gate-ledger.mjs`)
+27. **Gate rent and confidence.** Each fired gate component's ledger prior (`gate-ledger.ts`)
     against what its episodes did — repaired, repaired by a tool change, cleared under an unchanged
     condition, stalled — and the component that missed a defect the battery later showed.
 28. **Evaluation-correction regrade.** The earlier battery's accepted artifacts graded under the
     corrected evaluator through `replay --under`, for each replay candidate the `gates` lane
     names; the flips, and the issue states they could settle, which nothing in the controller reads.
 
-Lanes 7 and 23 are isolated, and `ISOLATED_ANGLES` in `catalogue-shape.mjs` is what enforces it:
+Lanes 7 and 23 are isolated, and `ISOLATED_ANGLES` in `catalogue-shape.ts` is what enforces it:
 lane 23 alone receives the private packet `scripts/trace-challenge.ts` writes, and lane 7 freezes
 its public-only corpus before it reads verifier internals or any other lane's report.
 `MIN_AUTO_SESSIONS` is therefore three — the two isolated seats plus one — and the manifest
@@ -252,11 +252,11 @@ the default.
 direction; `review` is the "all" path, for a run the operator asked to sweep whole.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs collect <target> --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs launch \
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts collect <target> --out <review>
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts launch \
   --out <review> --sessions 5,11,25 --effort max --title <t> [--notes <f>] [--context <f>]
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs finish --out <review>
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs review <target> \
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts finish --out <review>
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts review <target> \
   --out <review> --repo <measured-source checkout> [launch options]
 ```
 
@@ -268,26 +268,26 @@ budget, versions, task set, grouped digest triggers, scan findings) and
 template as `## Run overview`. Edit any value, add a value and its token, reorder or drop template
 lines, and fill the two authored values `orientation` and `movedVariable` before `launch`; a token
 without a value refuses the launch, and a line whose value is empty is dropped. The snapshot lane
-is `trace-review.mjs`, also reachable as `bun run review:collect`; it makes no model calls, reports
+is `trace-review.ts`, also reachable as `bun run review:collect`; it makes no model calls, reports
 a missing view inside `snapshot-status.json` rather than failing, and a new deterministic question
 belongs there as another view rather than in a further collection script. Require `complete: true`
 in that status before treating the snapshot as complete.
 
 `launch` opens exactly the named lanes and nothing else. `--sessions 5,11,25` names lanes; `--lanes N`
-asks `build-manifest.mjs --auto N` to group every lane into N sessions without crossing an isolated
+asks `build-manifest.ts --auto N` to group every lane into N sessions without crossing an isolated
 seat; `--effort`, `--title`, `--notes` and `--context` pass through. The manifest writes the shared
 instructions, the WRI `tasks.json` and the transport `luna-tasks.json`, and each leaf receives its
 exact lane body inline — never the whole catalogue, never a scope expansion, never authority to
 change controller output. Watch `<review>/lanes/luna-output/summary.json`; each lane's report
 lands beside it as `<name>.md` as it finishes.
 
-`finish` runs `validate-reports.mjs` over `tasks.json` and that summary, requiring one terminal
+`finish` runs `validate-reports.ts` over `tasks.json` and that summary, requiring one terminal
 result per task and matching prompt, report and heading identities. Under each owed `## lane_NN`
 heading the report carries `### Started from`, `### Evidence read`, `### Findings` and
 `### Not established`, each once, in that order and non-empty, and every finding names an
 `owner:` from the `FeedbackOwner` values — the bundle file at fault, such as
 `correctness-model/evaluator.ts`, or `environment` — plus `controller-source` and `judge`
-(`FINDING_OWNERS` in `manifest-reporting.mjs`, which the leaf prompt spells out). A report that
+(`FINDING_OWNERS` in `manifest-reporting.ts`, which the leaf prompt spells out). A report that
 breaks that shape is refused with the exact section named; a failed or absent report is
 missing work, and one retry is permitted within the authorised cap. It then scaffolds
 `<review>/archive/` from recorded bytes: `luna_syntheses.md` and `digest.md` from the reports and
@@ -304,7 +304,7 @@ Six lanes run in-process and are subcommands of their own, printing the view, it
 `--json`, and recording the JSON at `--out`:
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs \
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts \
   delta | climb | yield | timeline | walls | handoff  <target> [--run <runId>] [--json] [--out <abs file>]
 ```
 
@@ -322,7 +322,7 @@ reason about. `replaced` says fewer than half the task ids carried over, so the 
 An edge label is read first by lane 20 for what moved, and by lane 10 beside the placement it
 produced. [The climb reference](references/climb.md) owns what to do when that reading and the recorded
 difficulty decision disagree, which they do whenever a battery scores well on tasks that did not
-move. `classifier/query-complexity.mjs` is the same reader over an exported query pack.
+move. `classifier/query-complexity.ts` is the same reader over an exported query pack.
 
 **`walls`** reads `agent/config.yaml`, the one file the Builder writes that nothing inspects again
 after the gate, and classes each case `time-bound`, `turn-bound`, `unstarted`, `submitted` or
@@ -357,7 +357,7 @@ Reviewer and the advice packet said per failing family and which side the succes
 served marker is a sentence the current source renders, so an absent marker reads `not found`,
 never `not served`.
 
-**`posture`** is `classifier/prose-classify.mjs`, the pinned local embedding labelling every
+**`posture`** is `classifier/prose-classify.ts`, the pinned local embedding labelling every
 captured Builder and solver prose row with the nearest of thirteen anchored postures under
 `run-prose-posture/v5`. It verifies the execution and sidecar joins before labelling anything and
 returns `integrity-failure` rather than a posture when they disagree. Sessions the controller
@@ -442,7 +442,7 @@ adjudications: WRI can propose a refutation or an experiment, but creates no cam
 promotion or closure.
 
 ```text
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/validate-archive.mjs \
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/validate-archive.ts \
   --archive <absolute archive dir>
 ```
 

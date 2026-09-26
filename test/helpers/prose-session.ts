@@ -1,7 +1,7 @@
 import { writeFileSync } from "../../src/meta/filesystem.ts";
 import { join } from "../../src/meta/path.ts";
 import { BUILDER_EXECUTION_SCHEMA } from "../../src/author/builder-execution.ts";
-import { CLASSES } from "../../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
+import { CLASSES } from "../../.claude/skills/whole-run-investigation/classifier/prose-classify.ts";
 
 export interface ProseRow {
   turn: number;

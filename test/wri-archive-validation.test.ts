@@ -6,16 +6,16 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   ARCHIVE_SCHEMA,
   predictionFrozenHash,
-} from "../.claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/archive-shape.ts";
 import {
   ANGLE_COUNT,
   DETERMINISTIC_ROWS,
   DIGEST_VERDICTS,
-} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
 import {
   ArchiveValidationError,
   validateArchiveDirectory,
-} from "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/validate-archive.ts";
 
 type Mutate = (value: any) => void;
 
@@ -42,7 +42,7 @@ const digestText =
   "# Deterministic digest\n\n## snapshot\n\n## manifest\n\n## safeguards-log\n\n## safeguards-t0\n\n## review\n";
 const validator = resolve(
   import.meta.dirname,
-  "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs",
+  "../.claude/skills/whole-run-investigation/scripts/validate-archive.ts",
 );
 
 function runValidator(...args: string[]) {

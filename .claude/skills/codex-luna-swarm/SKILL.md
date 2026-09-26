@@ -32,7 +32,7 @@ work. Do not search earlier tasks or substitute a similar file.
 
 When the user supplies a Markdown file containing session prompts, treat that file as the
 authoritative task source. Inspect its heading hierarchy before preparing sessions, then parse the
-repeated task sections with `scripts/parse-markdown-tasks.mjs`. Do not copy headings by line range,
+repeated task sections with `scripts/parse-markdown-tasks.ts`. Do not copy headings by line range,
 flatten Markdown into prose, or replace complete sections with summaries.
 
 Use two passes:
@@ -46,11 +46,11 @@ Use two passes:
    meaningful task content.
 
 ```sh
-bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.mjs \
+bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
   --input /absolute/prompts.md \
   --inspect
 
-bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.mjs \
+bun --no-env-file /absolute/path/to/codex-luna-swarm/scripts/parse-markdown-tasks.ts \
   --input /absolute/prompts.md \
   --output /absolute/luna-tasks.json \
   --expected-count 20
@@ -130,16 +130,16 @@ Batch policy when the operator names no model and effort (operator decision 2026
 | 1-5 | `gpt-5.6-sol` | `medium` |
 | 6 or more | `gpt-5.6-luna` | `xhigh` |
 
-Start every session of a batch together. `scripts/codex-sessions.mjs` applies the policy, writes
+Start every session of a batch together. `scripts/codex-sessions.ts` applies the policy, writes
 one prompt file per session and detaches one companion per task, so the Bash tool's 600 s timeout
 (exit 144) cannot end them:
 
 ```sh
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs launch \
+bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts launch \
   --tasks-file /private/tmp/<session>/tasks.json --out-dir /private/tmp/<session>/codex \
   --workdir /absolute/worktree [--model gpt-5.6-luna --effort xhigh] [--write] [--plan-only]
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs status --out-dir /private/tmp/<session>/codex
-bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.mjs drain  --out-dir /private/tmp/<session>/codex
+bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts status --out-dir /private/tmp/<session>/codex
+bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts drain  --out-dir /private/tmp/<session>/codex
 ```
 
 `tasks.json` is an array of `{ "name", "task", "model"?, "effort"?, "write"? }`; names match
@@ -224,7 +224,7 @@ that session to finish. For launch-only work, return the accepted task IDs and s
 
 ## Use the fallback launcher
 
-Resolve `scripts/luna-sessions.mjs` relative to this `SKILL.md`. Do not read, copy, or reimplement it in
+Resolve `scripts/luna-sessions.ts` relative to this `SKILL.md`. Do not read, copy, or reimplement it in
 the main session. It starts one independent `codex exec` process per session, pins `gpt-5.6-luna`, the
 selected `high`, `xhigh`, or `max` reasoning effort, and priority service, sends prompts over stdin
 without a shell, and writes per-session evidence. Do not substitute a global or previously copied
@@ -252,7 +252,7 @@ For a read-only investigation, write a compact JSON task file:
 For a launch-only request, add `--launch-only`:
 
 ```sh
-bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs \
+bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts \
   --tasks-file /absolute/luna-tasks.json \
   --workdir /absolute/worktree \
   --instructions-file /absolute/shared-instructions.md \
@@ -313,7 +313,7 @@ Each completion prints one compact `luna_session.finished` event. Print every ne
 once with:
 
 ```sh
-bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs --drain /absolute/outputDir
+bun .claude/skills/codex-luna-swarm/scripts/luna-sessions.ts --drain /absolute/outputDir
 ```
 
 Call `--drain` again after `luna_sessions.completed`. Then read `summary.json`, require one result per

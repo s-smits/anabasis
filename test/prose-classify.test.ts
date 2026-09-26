@@ -18,6 +18,8 @@ import {
 import {
   EVIDENCE_FLOOR,
   TRANSFORMERS_VERSION,
+  type ClassifiedPosture,
+  type PostureResult,
   classifyTarget,
   excerptOf,
   gradeEvidence,
@@ -27,11 +29,11 @@ import {
   solvePosture,
   submitPosture,
   summarise,
-} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/prose-classify.ts";
 import {
   censusSolves,
   hasCaseRecord,
-} from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/prose-input.ts";
 
 const dirs: string[] = [];
 
@@ -65,6 +67,11 @@ function fakeEmbed(rows: Map<string, number[]>): (texts: string[]) => Promise<nu
       if (fixture === undefined) throw new Error(`no fixture vector for: ${text}`);
       return fixture;
     });
+}
+
+function classified(result: PostureResult): ClassifiedPosture {
+  if (result.state !== "classified") throw new Error(`expected a classified posture, got ${result.state}`);
+  return result;
 }
 
 function writeEpoch(rows: ProseRow[], submits: SessionSubmit[], extra: SessionExecution = {}): string {
@@ -107,8 +114,7 @@ describe("prose posture classifier", () => {
 
   it("labels rows by their last segment, keeps text out of rows and joins labels, reactions and excerpts to each submit", async () => {
     const epochDir = writeEpoch(ROWS, SUBMITS);
-    const result = await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), window: 2 });
-    expect(result.state).toBe("classified");
+    const result = classified(await classifyTarget(epochDir, { embed: fakeEmbed(VECTORS), window: 2 }));
     expect(result.model?.embed).toBe("injected");
     expect(result.submits[0]).not.toHaveProperty("prior");
     expect(
@@ -124,28 +130,19 @@ describe("prose posture classifier", () => {
       ["workaround", false, 2],
       ["reporting-status", false, 1],
     ]);
-    expect(result.rows[3].segmentClasses).toEqual(["running-checks", "workaround"]);
-    expect(result.rows.every((row: { text?: string }) => row.text === undefined)).toBe(true);
+    expect(result.rows[3]?.segmentClasses).toEqual(["running-checks", "workaround"]);
+    expect(result.rows.every((row) => !("text" in row))).toBe(true);
     expect("rows" in result.input).toBe(false);
     // The controller-terminal row is not a submit; the second candidate sees only rows since the first.
     expect(
-      result.submits.map(
-        (submit: {
-          outcome: string;
-          rowsSincePrevious: number;
-          dominant: string;
-          recent: Array<{ class: string; excerpt: string }>;
-          after: { rows: number; dominant: string | null };
-          repeatsRefusedPosture: boolean;
-        }) => [
-          submit.outcome,
-          submit.rowsSincePrevious,
-          submit.dominant,
-          submit.recent.map((row) => row.class),
-          submit.after,
-          submit.repeatsRefusedPosture,
-        ],
-      ),
+      result.submits.map((submit) => [
+        submit.outcome,
+        submit.rowsSincePrevious,
+        submit.dominant,
+        submit.recent.map((row) => row.class),
+        submit.after,
+        submit.repeatsRefusedPosture,
+      ]),
     ).toEqual([
       [
         "refused",
@@ -157,7 +154,7 @@ describe("prose posture classifier", () => {
       ],
       ["accepted", 1, "workaround", ["workaround"], { rows: 1, dominant: "reporting-status" }, false],
     ]);
-    expect(result.submits[1].recent[0].excerpt).toBe("Running tests Removing the advisor");
+    expect(result.submits[1]?.recent[0]?.excerpt).toBe("Running tests Removing the advisor");
     expect(result.summary?.find((row: { class: string }) => row.class === "disputing-verifier")).toEqual({
       class: "disputing-verifier",
       count: 1,
@@ -305,9 +302,9 @@ describe("prose posture classifier", () => {
       otherRunSessions: 1,
       unattributedSessions: 0,
     });
-    const b = await classifyTarget(campaign, { embed: fakeEmbed(vectors), runId: "run-b" });
+    const b = classified(await classifyTarget(campaign, { embed: fakeEmbed(vectors), runId: "run-b" }));
     expect(b.rows.map((row: { class: string }) => row.class)).toEqual(["workaround"]);
-    expect(b.submits.map((submit: { outcome: string }) => submit.outcome)).toEqual(["accepted"]);
+    expect(b.submits.map((submit) => submit.outcome)).toEqual(["accepted"]);
     const whole = await classifyTarget(campaign, { embed: fakeEmbed(vectors) });
     expect(whole.input.scope).toEqual({ kind: "campaign" });
     expect(whole.rows).toHaveLength(2);

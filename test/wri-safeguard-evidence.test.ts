@@ -16,11 +16,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.t
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
 import { join, resolve } from "../src/meta/path.ts";
-import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.mjs";
+import { scaffoldArchive } from "../.claude/skills/whole-run-investigation/scripts/archive-scaffold.ts";
 import {
   ArchiveValidationError,
   validateArchiveDirectory,
-} from "../.claude/skills/whole-run-investigation/scripts/validate-archive.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/validate-archive.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const RUN = "review-evidence-fixture";

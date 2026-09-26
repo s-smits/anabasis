@@ -17,8 +17,8 @@ import {
   renderBrief,
   runScope,
   tierOf,
-} from "../.claude/skills/whole-run-investigation/scripts/brief.mjs";
-import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/brief.ts";
+import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const START = "2026-09-19T00:00:00.000Z";
@@ -104,7 +104,7 @@ describe("how big is this run", () => {
     [{ hours: 13 }, "deep"],
     [{ hours: 6, epochs: 3 }, "deep"],
     [{ hours: 6, batteries: 3 }, "deep"],
-  ])("reads a scored run of %o as %s", (size, tier) => {
+  ] as const)("reads a scored run of %o as %s", (size, tier) => {
     expect(tierOf({ epochs: 1, batteries: 1, scored: true, ...size }).tier).toBe(tier);
   });
 

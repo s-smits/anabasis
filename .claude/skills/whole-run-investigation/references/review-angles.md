@@ -3,8 +3,8 @@
 This file is the whole catalogue: nine deterministic rows the primary reviewer settles itself, and
 twenty-eight semantic lanes a paid session can be given, one question each. A lane is started by a
 deterministic trigger, which is the capitalised text before the first colon of a line that
-`digest.mjs`, `source-delta.mjs`, `walls.mjs`, `timeline.mjs`, `climb-velocity.mjs`,
-`handoffs.mjs` or `gate-rent.mjs` prints, grouped by `run-overview.mjs` and rendered by `brief.mjs`. The trigger says
+`digest.ts`, `source-delta.ts`, `walls.ts`, `timeline.ts`, `climb-velocity.ts`,
+`handoffs.ts` or `gate-rent.ts` prints, grouped by `run-overview.ts` and rendered by `brief.ts`. The trigger says
 a lane has something to read; it does not say what the answer is, and a lane that contradicts its
 trigger with evidence is a useful result. Nothing here changes a score. The verifier owns every
 pass, and a lane's product is one finding with one owner, the exact evidence it cites and the
@@ -553,7 +553,7 @@ CHANGED (lane 21)`.
 
 The question is whether the source that changed between the previous run and this one actually
 executed, which decides whether a fix is live-exercised on this run or only present in source.
-Read `source-delta.mjs` output — changed files by top directory, the `safeguardTriggered("id")`
+Read `source-delta.ts` output — changed files by top directory, the `safeguardTriggered("id")`
 calls in changed files joined to `campaigns/<slug>/safeguards/<runId>/SAFEGUARDS_LOG.txt`, and
 the model-visible text changes — against this opening's `source.commit` and the previous run's.
 For each unreached changed path decide: no opportunity on this run, opportunity present but the
@@ -578,7 +578,7 @@ failure, and a solve the whole-solve wall stopped after a tool call is an unacce
 carrying its traced calls, not a non-result. Read each case's `built-runtime.json` and
 `final-submission.json`, `trace-telemetry.json` from the `challenge` lane (turn and call spread,
 tool census, distinct ordered sequences per battery and per family, so one expensive family cannot
-disappear in the aggregate), and the wall shares `walls.mjs` prints. A public candidate analysis
+disappear in the aggregate), and the wall shares `walls.ts` prints. A public candidate analysis
 or a check of a published limit is legitimate solving support, and a tool is an answer shortcut
 only when it supplies the remaining decision the solver was meant to make, which lane 23 settles
 alone. Do not open the private packet. The decision it changes is whether a wall-bound case enters
@@ -669,7 +669,7 @@ Builder's own file reads in `builder-path-record.jsonl` for an actual read and s
 memory was written but never consumed, and do not credit memory with continuity a persistent
 session already supplied. Follow two or three specific claims across consecutive revisions and
 report each as held, altered or lost. Then the posture: `builder-prose.jsonl` is written by
-`src/author/builder-prose.ts` and read by `classifier/prose-classify.mjs`, and a row the reader
+`src/author/builder-prose.ts` and read by `classifier/prose-classify.ts`, and a row the reader
 refuses — untrimmed, over its capture bound or under another schema — leaves the posture
 `unreadable`, which is a statement about the writer or the reader's bound and not about the
 Builder. The decision it changes is whether a continuity gap is charged to the Builder; it routes
@@ -685,7 +685,7 @@ Reviewer probe found that a gate component exists to catch.
 The question is whether each gate component that acted on this run earned its place, which is the
 question the gate audit of 2026-09-25 put to every refusal: is it at least 98% sure it refuses
 something actually wrong, and does it ever hold a round up that could have advanced?
-`scripts/gate-ledger.mjs` carries the audit's answer for every component as priors — `pRight`, the
+`scripts/gate-ledger.ts` carries the audit's answer for every component as priors — `pRight`, the
 chance a firing refuses a real defect, and `pStall`, the chance it blocks a legitimate advance — and
 the `gates` lane prints them beside what this run's firings did. Those priors are judgements over a
 few recorded campaigns, and this lane is what turns them into evidence. For each fired component,
@@ -715,7 +715,7 @@ complied with it, and do not propose a new refusal without the evidence the bar 
 unledgered code is a gap in the ledger: name its producer in `src/` and the row it belongs to. The
 decision it changes is a component's form — kept, narrowed into advice, rewritten or deleted — and
 its ledger row; it routes to `controller-source`, naming the producer file of the component and
-`gate-ledger.mjs` for the prior.
+`gate-ledger.ts` for the prior.
 
 **28. Evaluation-correction regrade.**
 

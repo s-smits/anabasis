@@ -1,5 +1,5 @@
 /**
- * What `validate-reports.mjs` binds and what it rejects. A report is joined to its task by name,
+ * What `validate-reports.ts` binds and what it rejects. A report is joined to its task by name,
  * to its launch by prompt digest, and to its assigned lanes by heading; under each lane heading it
  * owes the four report sections, and every finding names one owner from the closed set.
  */
@@ -10,16 +10,16 @@ import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
   ANGLE_COUNT,
   ISOLATED_ANGLES,
-} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
 import {
   FINDING_OWNERS,
   REPORT_SECTIONS,
-} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 
 const root = resolve(import.meta.dirname, "..");
-const script = join(root, ".claude/skills/whole-run-investigation/scripts/validate-reports.mjs");
-const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.mjs");
+const script = join(root, ".claude/skills/whole-run-investigation/scripts/validate-reports.ts");
+const launcher = join(root, ".claude/skills/codex-luna-swarm/scripts/luna-sessions.ts");
 
 const LANE = "lane_05";
 const TRIGGER = "Starts from block 1's product validity chain.";

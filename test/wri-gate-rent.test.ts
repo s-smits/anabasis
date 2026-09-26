@@ -10,6 +10,7 @@ import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import { executionRecord } from "./helpers/session-execution-record.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { required } from "./helpers/doubles.ts";
 import {
   DELIBERATELY_UNLEDGERED,
   GATE_LEDGER,
@@ -20,27 +21,19 @@ import {
   componentOf,
   holdComponent,
   terminalComponent,
-} from "../.claude/skills/whole-run-investigation/scripts/gate-ledger.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/gate-ledger.ts";
 import {
   buildGateRent,
   renderGateRent,
-} from "../.claude/skills/whole-run-investigation/scripts/gate-rent.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/gate-rent.ts";
 
 type Call = Partial<BuilderCustomToolCall>;
-type LedgerRow = {
-  code: string;
-  form: string;
-  pRight: number | null;
-  pStall: number | null;
-  codes: string[];
-  retired: string[];
-};
 /** What a gate receipt records beyond its outcome. `codes` are `<stage>:<code>`; `condition` is the
  *  full submission condition, and `stagesRun` the stages the check ran. */
 type Receipt = { candidate?: string; condition?: string; codes?: string[]; stagesRun?: string[] };
 type Report = ReturnType<typeof buildGateRent>;
 
-const LEDGER: LedgerRow[] = GATE_LEDGER;
+const LEDGER = GATE_LEDGER;
 const FULL = ["bundle", "validation", "conformance", "gates"];
 
 afterAll(cleanupScratch);
@@ -135,9 +128,13 @@ describe("gate-ledger", () => {
 
   it("reads a component's bar from its prior, and gives an unpriored one no verdict", () => {
     expect(REFUSAL_BAR).toBe(0.98);
-    expect(clearsBar(componentOf("EXTERNAL_VERDICT_UNGROUNDED"))).toBe(true);
-    expect(clearsBar(componentOf("tool-timeout"))).toBe(false);
-    expect(clearsBar(componentOf("experiment-change-unmoved"))).toBeNull();
+    expect(
+      clearsBar(required(componentOf("EXTERNAL_VERDICT_UNGROUNDED"), "EXTERNAL_VERDICT_UNGROUNDED")),
+    ).toBe(true);
+    expect(clearsBar(required(componentOf("tool-timeout"), "tool-timeout"))).toBe(false);
+    expect(
+      clearsBar(required(componentOf("experiment-change-unmoved"), "experiment-change-unmoved")),
+    ).toBeNull();
     expect(componentOf("no-such-code")).toBeNull();
   });
 
@@ -257,7 +254,7 @@ describe("gate-rent episodes", () => {
       ]),
     });
     expect(beside.episodes.map((row: { component: string }) => row.component)).toEqual(["F2-1"]);
-    expect(beside.episodes[0].codes).toEqual(["solvability-failed"]);
+    expect(beside.episodes[0]?.codes).toEqual(["solvability-failed"]);
 
     // Beside a plan code it details nothing, so it is still the F2 census refusing.
     const elsewhere = buildGateRent({
@@ -413,7 +410,7 @@ describe("gate-rent episodes", () => {
   });
 
   it("names a code no row carries as unledgered, an unscored validator as unscored, and a codeless refusal by its stage", () => {
-    const unscoredCode = [...DELIBERATELY_UNLEDGERED.keys()][0];
+    const unscoredCode = required([...DELIBERATELY_UNLEDGERED.keys()][0], "an unledgered code");
     const report = buildGateRent({
       campaign: campaign([
         [oldCheck("c1", ["brand-new-refusal", unscoredCode], "validation"), oldCheck("c2", [], "gates")],
@@ -581,7 +578,7 @@ describe("gate-rent corrections", () => {
     });
     const report = buildGateRent({ campaign: dir });
     expect(report.corrections[0]).toMatchObject({ runId: "run-b", regrade: null });
-    expect(report.corrections[0].note).toContain("correctness-model/controls.json");
+    expect(report.corrections[0]?.note).toContain("correctness-model/controls.json");
     expect(triggerNames(report)).not.toContain("EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
   });
 

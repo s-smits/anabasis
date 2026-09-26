@@ -1,5 +1,5 @@
 /**
- * What `build-manifest.mjs` composes from a frozen snapshot, and what it refuses to launch.
+ * What `build-manifest.ts` composes from a frozen snapshot, and what it refuses to launch.
  *
  * The builder is a command, so every rule here spawns it. What each test varies is one argument or
  * one field of the snapshot; the rest is the same launch every time. So one `snapshot()` writes the
@@ -29,8 +29,8 @@ import {
   READ_ONLY_AUTHORITY,
   PUBLIC_ONLY_LANE,
   TRACE_CHALLENGE_LANE,
-} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.mjs";
-import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/catalogue-shape.ts";
+import { REPORT_SECTIONS } from "../.claude/skills/whole-run-investigation/scripts/manifest-reporting.ts";
 
 type View = { label: string; file: string; status: string; required: boolean; bytes: number; sha256: string };
 type Status = {
@@ -68,7 +68,7 @@ type Edit = (text: string) => string;
 
 const REPO = resolve(import.meta.dirname, "..");
 const SKILL = join(REPO, ".claude/skills/whole-run-investigation");
-const SCRIPT = join(SKILL, "scripts/build-manifest.mjs");
+const SCRIPT = join(SKILL, "scripts/build-manifest.ts");
 const OPEN_LANES = ANGLE_COUNT - ISOLATED_ANGLES.size;
 const SCAN_VIEW = JSON.stringify({
   findings: [{ rule: "telemetry-constant", battery: "run-1-on", statement: "turns is 1." }],
@@ -675,7 +675,7 @@ describe("what a launch composes", () => {
         true,
       );
     }
-    expect(result.stdout).toContain("codex-sessions.mjs launch --tasks-file");
+    expect(result.stdout).toContain("codex-sessions.ts launch --tasks-file");
     expect(result.stdout).toContain("--model gpt-5.6-luna --effort max");
   });
 

@@ -9,7 +9,7 @@ import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const reviewScript = join(repoRoot, ".claude/skills/whole-run-investigation/scripts/trace-review.mjs");
+const reviewScript = join(repoRoot, ".claude/skills/whole-run-investigation/scripts/trace-review.ts");
 const bunExecutable = required(Bun.argv[0], "Bun executable");
 afterAll(cleanupScratch);
 
@@ -79,7 +79,7 @@ else console.log(JSON.stringify({ taskId: "task-1" }));
           label: "review-yield",
           status: "ok",
           runner: "in-process",
-          args: ["review-yield.mjs:buildReviewYield"],
+          args: ["review-yield.ts:buildReviewYield"],
           required: true,
         }),
         expect.objectContaining({ label: "44-default", status: "failed" }),

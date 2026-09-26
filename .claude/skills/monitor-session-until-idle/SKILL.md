@@ -18,10 +18,10 @@ Read the target from its first user request. Create one `monitor-watch-contract/
 Create and check the contract with the deterministic helpers:
 
 ```bash
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs history snapshot.json --all --json
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs summary snapshot.json --last 20 --json
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.mjs init -
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.mjs check - watch-contract.json
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts history snapshot.json --all --json
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.ts init -
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 20 --json | bun .claude/skills/monitor-session-until-idle/scripts/watch-contract.ts check - watch-contract.json
 ```
 
 Persist the initial JSON with the normal edit tool, replace every placeholder, and add the exact user objective before checking it. The checker validates declared state; it does not infer domain truth from prose.
@@ -33,13 +33,13 @@ Look for deferred thread tools before saying they are unavailable. Read the task
 Useful views of an exported task:
 
 ```bash
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs history snapshot.json --all
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs summary snapshot.json --last 12
-bun .claude/skills/monitor-session-until-idle/scripts/thread-state.mjs diff before.json after.json --last 12
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts history snapshot.json --all
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts summary snapshot.json --last 12
+bun .claude/skills/monitor-session-until-idle/scripts/thread-state.ts diff before.json after.json --last 12
 ```
 
-`thread-state.mjs` orders the supplied turns and summarises their items, truncating each item's
-text to 1,200 characters. `watch-contract.mjs` checks the declared closure state. Inspect the cited
+`thread-state.ts` orders the supplied turns and summarises their items, truncating each item's
+text to 1,200 characters. `watch-contract.ts` checks the declared closure state. Inspect the cited
 original items before changing any ledger status; the summaries are not complete transcripts.
 
 Monitoring does not authorise a launch, merge, source edit, or repair of controller-owned output.
@@ -110,7 +110,7 @@ foreground wait stays at or under 60 seconds.
 1. Read status and new items in chronological order.
 2. Add or update closure, claim and intervention rows from raw evidence.
 3. Check identity and liveness without treating silence as failure.
-4. Run `watch-contract.mjs check`.
+4. Run `watch-contract.ts check`.
 5. Execute only its bounded action; send no duplicate intervention.
 6. On the next poll, verify the response and update the intervention row.
 7. Repeat until the checker returns `STOP_ELIGIBLE`, then perform the final audit.

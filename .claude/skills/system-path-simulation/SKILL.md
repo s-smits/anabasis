@@ -323,7 +323,7 @@ For a changed simulation script, use the repository's prepared-worktree runner a
 `test/`. From that prepared tree:
 
 ```sh
-bun run test -- test/sps-*.test.mjs test/system-path-simulation-segment-loop.test.js test/system-path-simulation-workspace-changes.test.js test/full-run-scripted-loop.test.ts
+bun run test -- test/sps-*.test.mjs test/system-path-simulation-segment-loop.test.ts test/system-path-simulation-workspace-changes.test.ts test/full-run-scripted-loop.test.ts
 ```
 
 One `test/sps-<helper>.test.mjs` per helper: select only the ones owning the change. Bun never

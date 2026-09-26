@@ -13,7 +13,7 @@ export const STARTER_ENTRY = readFileSync(
 );
 
 /** The graded corpus the entry links to. Its four tiers are the scale
- *  `.claude/skills/whole-run-investigation/classifier/query-complexity.mjs` later classifies a
+ *  `.claude/skills/whole-run-investigation/classifier/query-complexity.ts` later classifies a
  *  measured battery against, so the Builder authors against the scale its own tasks are read on. */
 export const STARTER_LADDER = readFileSync(
   new URL("../../starters/pi-built-harness/starter-pack/difficulty-ladder.md", import.meta.url),

@@ -8,39 +8,13 @@ import { bindProductMeasurement, publishProductVersion } from "../src/run/produc
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import type { NonResultKind } from "../src/claim/record-events.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
-import { buildWalls, renderWalls } from "../.claude/skills/whole-run-investigation/scripts/walls.mjs";
-
-interface Case {
-  taskId: string;
-  outcome: string;
-  bound: string;
-  elapsedMinutes: number | null;
-  timeShare: number | null;
-  turns: number | null;
-  turnShare: number | null;
-  toolCalls: number | null;
-  errors: string[];
-}
-interface Battery {
-  runId: string;
-  cases: number;
-  walls: {
-    source: string;
-    settings: { solveMs: number; maxTurns: number };
-    moved: { key: string; declared: number; seeded: number }[];
-  };
-  bounds: Record<string, number>;
-  outcomes: Record<string, number>;
-  time: { median: number | null; max: number | null };
-  toolCalls: { median: number | null; max: number | null };
-  boundedWithoutPass: string[];
-  rows: Case[];
-}
-interface Report {
-  state: string;
-  reason: string | null;
-  batteries: Battery[];
-}
+import {
+  type WallBattery as Battery,
+  type WallsReport as Report,
+  buildWalls,
+  renderWalls,
+} from "../.claude/skills/whole-run-investigation/scripts/walls.ts";
+import { required } from "./helpers/doubles.ts";
 
 const SLUG = "walls";
 const RUN = "run-20260919T000000000Z-aaaaaa";
@@ -159,7 +133,7 @@ describe("solve budget against the declared walls", () => {
   it("classes each case by the budget it reached and names the walls the bundle moved", () => {
     const dir = campaign([{ runId: RUN, config: CONFIG, cases: PRESSED }]);
     const report: Report = buildWalls({ campaign: dir });
-    const battery = report.batteries[0]!;
+    const battery = required(report.batteries[0], "the battery");
     expect(battery.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
     expect(battery.walls.moved.map((row) => row.key).sort()).toEqual(["maxTurns", "solveMs"]);
     // A case short of every wall is reported by what it did — `submitted` or `no-submit` — because
@@ -209,10 +183,10 @@ describe("solve budget against the declared walls", () => {
       { runId: RUN, config: null, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
     ]);
     const report: Report = buildWalls({ campaign: dir });
-    const battery = report.batteries[0]!;
+    const battery = required(report.batteries[0], "the battery");
     expect(battery.walls.moved).toEqual([]);
     expect(battery.walls.source).toContain("binds this battery to no retained product");
-    expect(battery.rows[0]!.turnShare).toBe(0.042);
+    expect(battery.rows[0]?.turnShare).toBe(0.042);
     expect(renderWalls(report)).toContain("no case reached a declared wall");
   });
 
@@ -221,7 +195,10 @@ describe("solve budget against the declared walls", () => {
       { runId: RUN, config: CONFIG, cases: [{ taskId: "quick", minutes: 6, turns: 1, pass: true }] },
       { runId: OTHER, config: null, product: RUN, cases: [{ taskId: "probe", minutes: 30, turns: 4 }] },
     ]);
-    const probe: Battery = buildWalls({ campaign: dir, runId: OTHER }).batteries[0]!;
+    const probe: Battery = required(
+      buildWalls({ campaign: dir, runId: OTHER }).batteries[0],
+      "the probe battery",
+    );
     expect(probe.walls.settings).toMatchObject({ solveMs: 3_600_000, maxTurns: 4 });
     expect(probe.walls.source).toBe("the measured product's agent/config.yaml");
     expect(probe.rows.map((row) => [row.taskId, row.bound, row.turns])).toEqual([["probe", "turn-bound", 4]]);

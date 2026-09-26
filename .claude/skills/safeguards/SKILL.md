@@ -28,8 +28,8 @@ That is the whole authority. A line is a lead. It cannot classify a case, change
 route, author a claim or gate a run, and no separate ledger, archive or review component reads it.
 
 It is also the only kind. This section once distinguished runtime safeguards from "campaign
-sentinels S1-S5", and the WRI archive carried five of them: `archive-scaffold.mjs` pushed `S1` to
-`S5` with every field a constant, and `validate-archive.mjs` refused an archive that lacked them.
+sentinels S1-S5", and the WRI archive carried five of them: `archive-scaffold.ts` pushed `S1` to
+`S5` with every field a constant, and `validate-archive.ts` refused an archive that lacked them.
 Nothing else in the repository ever defined one, so the five rows were identical in every archive,
 told no reader anything, and could fail only if someone hand-edited them out. Both sides went on
 2026-09-18. Treat a review that names a sentinel as naming nothing, and reconcile firings against

@@ -4,10 +4,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { campaignDir } from "../src/meta/campaign-root.ts";
 import { recordedController } from "./helpers/recorded-controller.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
-import {
-  buildTimeline,
-  renderTimeline,
-} from "../.claude/skills/whole-run-investigation/scripts/timeline.mjs";
+import { buildTimeline, renderTimeline } from "../.claude/skills/whole-run-investigation/scripts/timeline.ts";
 
 const RUN = "run-20260919T000000000Z-aaaaaa";
 /** The second round's own run id, which is the only battery that round may bind. */

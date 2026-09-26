@@ -4,7 +4,7 @@
  * The fixture is the defect as it was found on 2026-09-20 and every neighbour of it that is a
  * real read. Two of the admitted cases carry the rule's whole precision: a name shadowed inside
  * a nested scope is a different variable, which is why the rule was silent on the commit before
- * the rename that broke `archive-shape.mjs`; and a module that assigns to a property of its own
+ * the rename that broke `archive-shape.ts`; and a module that assigns to a property of its own
  * function is using it as a namespace, so every read of that one is deliberate.
  */
 import { describe, expect, it } from "bun:test";
@@ -75,7 +75,7 @@ describe("ana/no-property-read-on-function", () => {
   });
 
   it("reads untyped skill scripts, which is the file kind the defect was found in", async () => {
-    const at = ".claude/skills/whole-run-investigation/scripts/archive-shape.mjs";
+    const at = ".claude/skills/whole-run-investigation/scripts/archive-shape.ts";
     expect(await reportedLines("ana", "no-property-read-on-function", SCRIPT, at)).toStrictEqual(
       expectedLines(SCRIPT),
     );

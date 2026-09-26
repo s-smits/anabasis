@@ -80,7 +80,7 @@ bun .claude/skills/intelligent-rebase/scripts/coupling.mts --a <base>...<A> --b 
 `/simplify` owns the per-diff instruments — the gate's own complexity count, `scope.sh` and
 `measure.py` — and their budgets. The one this skill adds beside them reads what a model can
 actually see, resolved through the composers rather than guessed:
-`.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.mjs`.
+`.claude/skills/prompt-surface-census/scripts/extract-prompt-surface.ts`.
 
 ## Reading prose as complexity
 

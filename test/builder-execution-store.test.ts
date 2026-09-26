@@ -37,7 +37,7 @@ import {
 import {
   censusProse,
   publicCensus,
-} from "../.claude/skills/whole-run-investigation/classifier/prose-input.mjs";
+} from "../.claude/skills/whole-run-investigation/classifier/prose-input.ts";
 import { double } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { executionRecord, submitRow } from "./helpers/session-execution-record.ts";
@@ -273,7 +273,7 @@ describe("the prose sidecar", () => {
     writeFileSync(executionPath, JSON.stringify(execution));
     const refused = publicCensus(censusProse(root));
     expect(refused.ok).toBe(false);
-    expect(refused.captures[1].state).toBe("receipt-mismatch");
+    expect(refused.captures[1]?.state).toBe("receipt-mismatch");
     expect(refused.issues).toContain(
       "builder-execution-02.json and builder-prose-02.jsonl: capture receipts disagree",
     );
@@ -283,7 +283,7 @@ describe("the prose sidecar", () => {
     const prosePath = join(epochDir, "builder-prose-02.jsonl");
     writeFileSync(prosePath, readFileSync(prosePath, "utf8").split("\n").slice(1).join("\n"));
     const unbound = publicCensus(censusProse(root));
-    expect(unbound.captures[1].state).toBe("receipt-mismatch");
+    expect(unbound.captures[1]?.state).toBe("receipt-mismatch");
     expect(unbound.issues).toContain(
       "builder-execution-02.json and builder-prose-02.jsonl: a capture receipt is missing",
     );

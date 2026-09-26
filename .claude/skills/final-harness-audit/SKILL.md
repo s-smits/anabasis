@@ -41,10 +41,10 @@ An epoch is one fixed campaign generation. A changed binding creates a successor
 ## Commands
 
 ```bash
-bun .claude/skills/final-harness-audit/scripts/harness-versions.mjs <slug>
-bun .claude/skills/final-harness-audit/scripts/harness-versions.mjs <slug> --json [--campaign <path>]
-bun .claude/skills/final-harness-audit/scripts/harness-versions.mjs <slug> --diff <ordinal|commit>
-bun .claude/skills/final-harness-audit/scripts/harness-versions.mjs <slug> --files <ordinal|commit>
+bun .claude/skills/final-harness-audit/scripts/harness-versions.ts <slug>
+bun .claude/skills/final-harness-audit/scripts/harness-versions.ts <slug> --json [--campaign <path>]
+bun .claude/skills/final-harness-audit/scripts/harness-versions.ts <slug> --diff <ordinal|commit>
+bun .claude/skills/final-harness-audit/scripts/harness-versions.ts <slug> --files <ordinal|commit>
 ```
 
 Run the helper through a prepared checkout's `scripts/worktree.sh run`, using the

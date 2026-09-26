@@ -28,7 +28,7 @@ import { builderToolsReport } from "#tools/outcome/builder-tools.ts";
 import { type OutcomeReport, outcomeReport } from "#tools/outcome/metrics.ts";
 import { scorecardFromReports } from "#tools/outcome/scorecard.ts";
 import { mainCheckout, openedAt, recordedRuns } from "#tools/runs/discover.ts";
-import { ARCHIVE_SCHEMA } from "#skills/whole-run-investigation/scripts/archive-shape.mjs";
+import { ARCHIVE_SCHEMA } from "#skills/whole-run-investigation/scripts/archive-shape.ts";
 
 export const WEEKLY_SELECTION_SCHEMA = "weekly-best-run-selection/v2";
 

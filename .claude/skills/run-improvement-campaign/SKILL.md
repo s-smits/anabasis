@@ -293,11 +293,11 @@ asks for more, and only a run of them says whether asking worked.
   nowhere is `overhaul`. Otherwise it moves by its zone: `too-hard` is `reserved`, and the other
   four zones are the band reading its own score, printed as `info`.
 
-The decision reads the score. `wri.mjs climb` reads the other side of the same question — the
+The decision reads the score. `wri.ts climb` reads the other side of the same question — the
 task bytes — and unlike the decision it works on a battery that has not scored yet:
 
 ```text
-bun .claude/skills/whole-run-investigation/scripts/wri.mjs climb <campaign dir> [--json]
+bun .claude/skills/whole-run-investigation/scripts/wri.ts climb <campaign dir> [--json]
 ```
 
 Per battery it prints the check-tier histogram and a median structural row; per edge, one of
@@ -344,7 +344,7 @@ again, since the page was never delivered.
 | you want to know | read | not |
 | --- | --- | --- |
 | whether the next battery will be asked for more | `difficulty-decisions/`, the placement the watch prints | the score |
-| whether the tasks actually got harder | `wri.mjs climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
+| whether the tasks actually got harder | `wri.ts climb` edge verdicts and the tier histogram | the level label, new task ids, or a longer description |
 | whether a page could have steered the Builder at all | `git show <opening source.commit>:<path>` | the working tree or the stack head |
 | whether the Builder read a starter file | the authored `EXPERIMENT.json` and the bundle bytes | read counts in `builder-path-record.jsonl`; the Builder reads through bash, so zero proves nothing |
 | whether a battery is hard or merely unsolvable | `artifact.json` beside `public-task.json` in the settled cases | a reviewer finding, a published limit, or a zero score |
@@ -398,7 +398,7 @@ On 18 September those fixture lines read as a provider outage on a run that was 
 
 ### Read the edge before you pay for the battery
 
-`wri.mjs climb` reads its tier histogram and its structural row from the authored bytes under
+`wri.ts climb` reads its tier histogram and its structural row from the authored bytes under
 `versions/<battery>/`. Neither needs a case. So the newest edge verdict exists the moment a
 candidate is adopted, hours before the battery it describes has been measured, and the reader says
 so: on 18 September it read the still-unmeasured i04 as `undated, unclaimed, no verified case` and
@@ -522,7 +522,7 @@ than waiting for a suspicion, because neither shows up in a denominator.
 
 The `gates` lane walks every Builder session's `correctness_check` and submit receipts, groups
 consecutive refusals of one code into episodes, and prints each fired component's ledger prior from
-`gate-ledger.mjs` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
+`gate-ledger.ts` (P(right), P(stall), P(move), keyed by finding code) beside what its episodes
 actually did: repaired by a byte change, cleared with no edit at all, or left unanswered. A refusal
 that clears on unchanged bytes was not refusing something wrong, so a component that keeps doing it
 is spending the Builder's rounds against the prior the audit gave it, and a code the ledger does not
@@ -531,7 +531,7 @@ the gate audit, which decides whether the component goes, and read a stalled epi
 to the gate rather than to the domain.
 
 ```sh
-bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.mjs gates <campaign dir> [--json]
+bun --no-env-file .claude/skills/whole-run-investigation/scripts/wri.ts gates <campaign dir> [--json]
 bun run replay -- <campaign>/<earlier runId> --under <campaign>/<corrected runId>
 ```
 
@@ -575,7 +575,7 @@ a response to this one misreads both.
 
 So on the second one: stop opening pull requests against any authoring surface, and write the
 operator one message holding both batteries' verified counts, each case's turn count and margin to
-its governing limit, what the Builder changed between them as `wri.mjs climb` reads it, and one
+its governing limit, what the Builder changed between them as `wri.ts climb` reads it, and one
 named next experiment. Then wait. Work on an authoring surface after that point is work for the next
 launch, and it should be scheduled as such rather than presented as a response to this one.
 
@@ -617,7 +617,7 @@ recorded as `not triggered`, so a skipped skill is a decision rather than an omi
 
 | step | strict, every round | judgement, with its trigger |
 | --- | --- | --- |
-| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.mjs climb` once the campaign has two edges, then `wri.mjs gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
+| read | `whole-run-investigation` rows A to I, then the safeguard census, then a diff of the campaign's adopted versions, then `wri.ts climb` once the campaign has two edges, then `wri.ts gates` and a `replay --under` for every correction it lists | its semantic lanes, the number the tier allows, when a recorded row stays unexplained; `whole-run-investigation`'s [climb reference](../whole-run-investigation/references/climb.md) on any climb row the watch printed, and whenever a transition needs attribution |
 | adjudicate | `prediction.ts adjudicate` for every row, ledger kept in the local `notes/predictions/` | `attribution-and-proof` before any sentence claims improvement |
 | patch | fix on the owning PR; `simplify` on each diff; record the `system-path-simulation` proof choice and its result | `safeguards` when a fix adds a decision no record observes; a fresh replay when existing evidence does not cover the changed consumer |
 | compose | merge in the compose tree, prove every head an ancestor; let `launch-run` own its one gate | `stack-hop` and `intelligent-rebase` when PR order changes or two fixes touch one file |

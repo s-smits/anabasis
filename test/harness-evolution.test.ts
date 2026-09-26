@@ -11,13 +11,13 @@ import {
 import { tmpdir } from "../src/meta/os.ts";
 import { join, resolve } from "../src/meta/path.ts";
 import { spawnTextSync as spawnSync } from "./helpers/bun-spawn-sync.ts";
-import { taskSetFacts } from "../.claude/skills/final-harness-audit/scripts/harness-task-facts.mjs";
+import { taskSetFacts } from "../.claude/skills/final-harness-audit/scripts/harness-task-facts.ts";
 import { fingerprintSlug } from "../src/claim/fingerprint.ts";
 import { publishProductVersion, selectInitialProduct } from "../src/run/product-versions.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const script = join(repoRoot, ".claude/skills/final-harness-audit/scripts/harness-versions.mjs");
+const script = join(repoRoot, ".claude/skills/final-harness-audit/scripts/harness-versions.ts");
 const bunExecutable = Bun.argv[0];
 const temporaryDirectories: string[] = [];
 type FixtureJson = null | boolean | number | string | FixtureJson[] | { [key: string]: FixtureJson };

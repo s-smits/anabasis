@@ -33,14 +33,14 @@ describe("skill script arguments", () => {
   });
 
   it("extract-prompt-surface refuses a misspelled option instead of scanning with defaults", () => {
-    const result = run("prompt-surface-census/scripts/extract-prompt-surface.mjs", "--jsno", "out.json");
+    const result = run("prompt-surface-census/scripts/extract-prompt-surface.ts", "--jsno", "out.json");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain('extract-prompt-surface: unknown option "--jsno"');
     expect(result.written).toStrictEqual([]);
   });
 
   it("impact-rank refuses a misspelled threshold instead of ranking at the default", () => {
-    const result = run("test-impact-and-consolidation/scripts/impact-rank.mjs", "--contanment", "0.5");
+    const result = run("test-impact-and-consolidation/scripts/impact-rank.ts", "--contanment", "0.5");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain('impact-rank: unknown option "--contanment"');
   });

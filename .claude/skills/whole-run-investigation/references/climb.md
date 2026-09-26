@@ -49,7 +49,7 @@ replay them over every campaign on disk before theorising about what a round was
 
 | situation | first read | what it usually is |
 |---|---|---|
-| score stays high, task ids and hashes keep changing | `wri.mjs climb` edges | `adjusted` or `widened`: numbers moved, demand did not |
+| score stays high, task ids and hashes keep changing | `wri.ts climb` edges | `adjusted` or `widened`: numbers moved, demand did not |
 | score high but an edge already reads `escalated` | that edge's delta checks, limits and tier histogram | a real move whose cases have not landed; wait for them |
 | every case failed | accepted artifacts beside their public tasks | an unpublished rule or unusable submission path; `no-difficulty-evidence`, rebuild |
 | the Builder ignored a page you wrote | `git show <opening source.commit>:<path>` | the page was not in the measured tree |

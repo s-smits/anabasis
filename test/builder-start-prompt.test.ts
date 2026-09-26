@@ -313,7 +313,7 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  /** The ladder is the Builder-visible face of the tier scale `query-complexity.mjs` classifies a
+  /** The ladder is the Builder-visible face of the tier scale `query-complexity.ts` classifies a
    *  measured battery against, so one vocabulary covers authoring and review. Every worked domain
    *  carries all four tiers and a reporting duty, no measured domain appears, and both sides of the
    *  aim have a section: with only the above-the-aim one, a battery that passes almost nothing is

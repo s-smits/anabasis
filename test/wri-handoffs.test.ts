@@ -9,7 +9,7 @@ import {
   buildHandoffs,
   classifyFamily,
   renderHandoffs,
-} from "../.claude/skills/whole-run-investigation/scripts/handoffs.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/handoffs.ts";
 
 const RUN = "run-20260919T000000000Z-aaaaaa";
 const SECOND = `${RUN}-i02`;
@@ -185,7 +185,7 @@ it.each([
   [["a"], ["c"], "name-only"],
   [[], ["c"], "absent-before"],
   [["a"], [], "absent-after"],
-])("joins a family's tasks %p before and %p after as %s", (before, after, kind) => {
+] as const)("joins a family's tasks %p before and %p after as %s", (before, after, kind) => {
   expect(classifyFamily(before, after)).toBe(kind);
 });
 
@@ -194,7 +194,8 @@ describe("round hand-offs", () => {
 
   it("counts a channel served but never read, and one read back through the path record", () => {
     expect(report.state).toBe("read");
-    const second = report.census[1];
+    const census = required(report.census, "census");
+    const second = required(census[1], "second round");
     const cell = (name: string) => second.channels.find((c: { name: string }) => c.name === name);
     expect(cell("rebuild-advice")).toMatchObject({ present: true, served: true, read: null });
     expect(cell("ladder")).toMatchObject({ served: true, read: 1 });
@@ -203,9 +204,7 @@ describe("round hand-offs", () => {
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).toContain("rebuild-advice");
     expect(second.servedNotRead.map((u: { name: string }) => u.name)).not.toContain("ladder");
     // The first round's prompt carries no readout, and its memory note was written, not handed on.
-    expect(report.census[0].channels.find((c: { name: string }) => c.name === "climb-readout").served).toBe(
-      false,
-    );
+    expect(census[0]?.channels.find((c: { name: string }) => c.name === "climb-readout")?.served).toBe(false);
     expect(second.bashCalls).toBe(6);
   });
 
@@ -222,7 +221,7 @@ describe("round hand-offs", () => {
       beforeAuthoring: { history: 1, rehearsals: 2, traceReads: 0 },
       predictions: { scored: 3, brier: 0.3, expected: 1.2, observed: 3 },
     });
-    expect(calibration.rounds[0].predictions).toBeNull();
+    expect(calibration.rounds[0]?.predictions).toBeNull();
     expect(calibration).toMatchObject({ errorTrend: "insufficient", onAim: 1, placed: 2 });
   });
 
@@ -248,7 +247,7 @@ describe("round hand-offs", () => {
       firstFailingBattery: RUN,
       minutesToFirstReview: 70,
     });
-    const [pair] = sameTask.pairs;
+    const pair = required(sameTask.pairs[0], "first pair");
     expect(pair.families).toEqual([
       { family: "alpha", join: "absent-after" },
       { family: "beta", join: "absent-before" },
@@ -263,7 +262,7 @@ describe("round hand-offs", () => {
 
   it("reads an absent field as unobservable, never as zero", () => {
     const older = buildHandoffs({ campaign: campaign({ toolCalls: false }), runId: RUN });
-    expect(older.census[0].bashCalls).toBeNull();
+    expect(required(older.census, "census")[0]?.bashCalls).toBeNull();
     expect(renderHandoffs(older)).toContain("bash unobservable");
   });
 

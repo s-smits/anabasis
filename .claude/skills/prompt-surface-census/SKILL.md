@@ -24,8 +24,8 @@ repository's filesystem, path and process modules. `--root` may name another tar
 which must supply `typescript`, `typescript5`, or the compiler API named by `--ts`.
 
 ```sh
-bun <skill-dir>/scripts/extract-prompt-surface.mjs --help
-bun <skill-dir>/scripts/extract-prompt-surface.mjs \
+bun <skill-dir>/scripts/extract-prompt-surface.ts --help
+bun <skill-dir>/scripts/extract-prompt-surface.ts \
   --out /absolute/output/prompt-surface.md \
   --json /absolute/output/prompt-surface.json
 ```

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   buildSourceDelta,
   renderSourceDelta,
-} from "../.claude/skills/whole-run-investigation/scripts/source-delta.mjs";
+} from "../.claude/skills/whole-run-investigation/scripts/source-delta.ts";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import { join } from "../src/meta/path.ts";

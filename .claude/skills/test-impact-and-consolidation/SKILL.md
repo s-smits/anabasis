@@ -58,18 +58,18 @@ Run the static case census, then harvest one coverage report per test file and r
 
 ```sh
 REPO="$wt" scripts/worktree.sh run "$wt" bun \
-  .claude/skills/test-impact-and-consolidation/scripts/case-census.mjs
+  .claude/skills/test-impact-and-consolidation/scripts/case-census.ts
 REPO="$wt" scripts/worktree.sh run "$wt" bun \
-  .claude/skills/test-impact-and-consolidation/scripts/coverage-harvest.mjs /abs/out/harvest 4
+  .claude/skills/test-impact-and-consolidation/scripts/coverage-harvest.ts /abs/out/harvest 4
 REPO="$wt" scripts/worktree.sh run "$wt" bun \
-  .claude/skills/test-impact-and-consolidation/scripts/impact-rank.mjs /abs/out/harvest
+  .claude/skills/test-impact-and-consolidation/scripts/impact-rank.ts /abs/out/harvest
 ```
 
-`case-census.mjs` reports import subsets, exact duplicate callbacks, title twins and repeated
-helpers. Its character-exact scanner is checked by `check-fixtures.mjs`; an identical callback
+`case-census.ts` reports import subsets, exact duplicate callbacks, title twins and repeated
+helpers. Its character-exact scanner is checked by `check-fixtures.ts`; an identical callback
 still needs reading because it may close over a different helper.
 
-`impact-rank.mjs` prints the table and an ordered decision funnel. A harvested suite that failed
+`impact-rank.ts` prints the table and an ordered decision funnel. A harvested suite that failed
 or timed out is `invalid-run`: cannot enter a merge queue. The helper still includes its partial coverage in aggregate line
 counts, so rerun a failed harvest before using those counts to support removal. Absorption
 chains collapse to their final survivor. Take only the valid shortlist to mutation, sharded over
@@ -79,7 +79,7 @@ separate mirrors:
 for n in 1 2 3; do
   REPO="$wt" COV=/abs/out/harvest/cov MIRROR=/abs/out/m$n \
     scripts/worktree.sh run "$wt" bun \
-    .claude/skills/test-impact-and-consolidation/scripts/mutation-adjudicate.mjs \
+    .claude/skills/test-impact-and-consolidation/scripts/mutation-adjudicate.ts \
     /abs/out/mut-$n <candidates for this shard> &
 done
 ```
@@ -132,7 +132,7 @@ verifier invocation: the command, its arguments, `allowedEnv` and `attestedFiles
 ## Traps that produce wrong answers
 
 - **Ranking before the harvest finishes.** A half-written `coverage-final.json` parses as
-  nothing and the file looks like it covers nothing. `impact-rank.mjs` refuses to run until
+  nothing and the file looks like it covers nothing. `impact-rank.ts` refuses to run until
   `runs.json` exists, and names every report it could not read.
 - **A narrow first-party filter.** Dropping `vendor/` made `jsonl.test.ts` look empty when
   it covers `vendor/pi-built/jsonl.ts`. Keep `src`, `tools`, `vendor` and `starters`.

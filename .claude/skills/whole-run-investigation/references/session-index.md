@@ -2,7 +2,7 @@
 
 One sentence per row and per lane. Read this file to choose; read the body in
 [review-angles.md](review-angles.md), whose headings this file repeats byte for byte, because
-`build-manifest.mjs` parses both and refuses the manifest when they drift. The nine rows are the
+`build-manifest.ts` parses both and refuses the manifest when they drift. The nine rows are the
 primary reviewer's own work and are never delegated. The twenty-eight lanes are what a paid session
 can be given, and each opens with the deterministic trigger that starts it, so a lane whose trigger
 never fired is not launched, whatever the tier allows.
@@ -130,7 +130,7 @@ baseline, regrade that battery's accepted artifacts under the corrected evaluato
 
 ## Tiers
 
-The tier is the size of the recorded run, decided by `brief.mjs` from the elapsed time, the epoch
+The tier is the size of the recorded run, decided by `brief.ts` from the elapsed time, the epoch
 count and the battery count, and it bounds how many lanes a sweep may be given. Lanes are chosen
 by trigger; the default set applies only when no trigger picks. Twenty-eight is the ceiling, and
 lanes 7 and 23 are never counted in a tier: each is launched alone, and only when its own trigger

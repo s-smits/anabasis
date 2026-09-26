@@ -1,9 +1,15 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { tmpdir } from "../src/meta/os.ts";
+import { join } from "../src/meta/path.ts";
 import type { Observation } from "../tools/runs/evidence.ts";
+import { busyUnder, elapsedMs, loadMemory, parseProcessTable, saveMemory } from "../tools/runs/pulse-host.ts";
 import {
+  isPulseReading,
   offAimStreak,
   pulseEvents,
   pulseLabel,
+  selected,
   statusLine,
   type PulseBattery,
   type PulseReading,
@@ -81,6 +87,7 @@ function reading(minutes: number, extra: Partial<PulseReading> = {}): PulseReadi
     batteries: [],
     safeguards: [],
     terminal: null,
+    busy: null,
     ...extra,
   };
 }
@@ -191,7 +198,13 @@ describe("runs pulse", () => {
     const stillQuiet = { ...quietFrom, now: quietFrom.now + 5 * MINUTE };
     const fresh = reading(46);
     const started = texts(reading(34, { round: round({ checkpointAt: at(15) }) }), quietFrom);
-    expect(started).toEqual(["⚠ no Builder checkpoint for 25m 0s in round 1"]);
+    expect(started).toEqual([
+      "⚠ no Builder checkpoint for 25m 0s in round 1; no command running, so the model turn itself is long",
+    ]);
+    const compiling = { ...quietFrom, busy: { command: "sh -lc pio run", forMs: 12 * MINUTE } };
+    expect(texts(reading(34, { round: round({ checkpointAt: at(15) }) }), compiling)).toEqual([
+      "⚠ no Builder checkpoint for 25m 0s in round 1; running 12m 0s: sh -lc pio run",
+    ]);
     expect(texts(quietFrom, stillQuiet)).toEqual([]);
     expect(texts(stillQuiet, fresh)).toEqual(["· Builder checkpoints again"]);
   });
@@ -243,5 +256,100 @@ describe("runs pulse", () => {
     expect(line).toContain("r1 build 44m 0s · previews 2 (1 clear) · rehearsals 1/1 pass");
     expect(line).toContain('"Running design 5 rehearsal"');
     expect(line).toContain("not read by this tree: experiment-evidence.json (experiment-evidence/v2)");
+  });
+});
+
+describe("pulse host reads", () => {
+  it("reads ps elapsed times with and without hours and days", () => {
+    expect(elapsedMs("05:07")).toBe((5 * 60 + 7) * 1000);
+    expect(elapsedMs("02:05:07")).toBe(((2 * 60 + 5) * 60 + 7) * 1000);
+    expect(elapsedMs("1-00:00:01")).toBe((24 * 3600 + 1) * 1000);
+  });
+
+  it("names the oldest command under the controller, not Bun, the model CLI or another run", () => {
+    const table = parseProcessTable(
+      [
+        "  100     1 02:00:00 bun src/run/fullrun.ts",
+        "  101   100 01:00:00 node /x/claude-agent-sdk/cli.js",
+        "  102   100    10:00 sh -lc pio run -e esp32",
+        "  103   102    09:59 /home/.platformio/xtensa-gcc main.c",
+        "  104   100    00:30 sh -lc ls",
+        "  105   100 01:30:00 <defunct>",
+        "  200     1 03:00:00 bun src/run/fullrun.ts",
+        "  201   200 02:00:00 sh -lc sleep 9999",
+        "garbage",
+      ].join("\n"),
+    );
+    expect(table).toHaveLength(8);
+    expect(busyUnder(table, 100)).toEqual({ command: "sh -lc pio run -e esp32", forMs: 10 * MINUTE });
+    expect(busyUnder(table, 300)).toBeNull();
+    const piped = parseProcessTable(
+      [
+        "  401   400 05:25 /bin/sh -lc .toolchain/bun gen.ts 2>&1 | tail -3",
+        "  402   401 05:24 .toolchain/bun gen.ts",
+        "  403   401 05:24 tail -3",
+      ].join("\n"),
+    );
+    expect(busyUnder(piped, 400)?.command).toBe("/bin/sh -lc .toolchain/bun gen.ts 2>&1 | tail -3");
+    const reaped = parseProcessTable(
+      String.raw`  101   100 00:40 /bin/sh -c trap 'd(){ for c in $(pgrep -P "$1"); do d "$c"; done; }' EXIT\012(\012python3 - <<'PY'\012print(1)\012PY\012)`,
+    );
+    expect(busyUnder(reaped, 100)?.command).toBe("python3 - <<'PY' ⏎ print(1) ⏎ PY");
+    expect(busyUnder(table, null)).toBeNull();
+  });
+
+  it("keeps readings across looks, and reads a missing or broken file as a first look", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pulse-memory-"));
+    const path = join(dir, "nested", "pulse.json");
+    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
+    expect(saveMemory(path, { freeGiB: 12, readings: { [RUN_ID]: reading(5) } })).toBeNull();
+    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(5));
+    writeFileSync(path, "{");
+    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
+    writeFileSync(path, JSON.stringify({ runs: { A: { seq: 1 } } }));
+    expect(loadMemory(path, isPulseReading)).toEqual({ freeGiB: null, readings: {} });
+    expect(saveMemory(join(path, "under-a-file.json"), { freeGiB: null, readings: {} })).toContain(
+      "could not keep this look",
+    );
+  });
+
+  it("reads a kept reading the delta reader cannot use as no reading, and replaces it", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "pulse-memory-")), "pulse.json");
+    const { round: _round, ...roundless } = reading(5);
+    const broken = { [RUN_ID]: {}, b: roundless, c: { ...reading(5), observations: [null] }, d: reading(5) };
+    writeFileSync(path, JSON.stringify({ freeGiB: 3, readings: broken }));
+    const memory = loadMemory(path, isPulseReading);
+    expect(memory).toEqual({ freeGiB: 3, readings: { d: reading(5) } });
+    // A first look again: status lines and no events, then this look's reading is what is kept.
+    expect(texts(memory.readings[RUN_ID], reading(6))).toEqual([]);
+    memory.readings[RUN_ID] = reading(6);
+    expect(saveMemory(path, memory)).toBeNull();
+    expect(loadMemory(path, isPulseReading).readings[RUN_ID]).toEqual(reading(6));
+  });
+
+  it("reads only the runs a look names, whatever an earlier look kept", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "pulse-memory-")), "pulse.json");
+    const run = (runId: string, state: PulseReading["state"]) => ({ runId, slug: SLUG, liveness: { state } });
+    const first = run("alpha-20260925T042950810Z-aaaaaa", "live");
+    const second = run("beta-20260925T042950810Z-bbbbbb", "live");
+    // `runs pulse aaaaaa --once` keeps alpha's reading; `runs pulse bbbbbb --once` then reads beta alone.
+    expect([first, second].filter((row) => selected(row, ["aaaaaa"], new Set()))).toEqual([first]);
+    saveMemory(path, { freeGiB: null, readings: { [first.runId]: reading(5, { runId: first.runId }) } });
+    const watched = new Set(Object.keys(loadMemory(path, isPulseReading).readings));
+    expect([first, second].filter((row) => selected(row, ["bbbbbb"], watched))).toEqual([second]);
+    // An all-runs look reads both open runs, and a selector after it narrows again.
+    watched.add(second.runId);
+    expect([first, second].filter((row) => selected(row, [], watched))).toEqual([first, second]);
+    expect([first, second].filter((row) => selected(row, ["aaaaaa"], watched))).toEqual([first]);
+  });
+
+  it("says a kept run's ending once in the all-runs look, then stops reading it", () => {
+    const ended = { runId: RUN_ID, slug: SLUG, liveness: { state: "closed" as const } };
+    const before = reading(30);
+    const after = { ...reading(31), state: "closed" as const, terminal: "completed" };
+    expect(selected(ended, [], new Set([RUN_ID]))).toBe(true);
+    expect(texts(before, after)).toEqual(["◆ ended: completed"]);
+    // The look drops an ended run's reading, so the next all-runs look passes over it.
+    expect(selected(ended, [], new Set())).toBe(false);
   });
 });

@@ -16,6 +16,7 @@
  * detaching into the service manager, and `resume --yes` is that same launcher with a run's own
  * recorded arguments. A wrapper in front of it would pay no rent.
  */
+import { join } from "../../src/meta/path.ts";
 import { parseArgs } from "../../src/meta/process.ts";
 import { readObservations } from "./evidence.ts";
 import { renderList, renderShow, shortPath } from "./format.ts";
@@ -31,7 +32,7 @@ const USAGE = `Usage: bun run runs [list] [--closed N]
        bun run runs stop <runId> [--yes] [--grace-ms N]
        bun run runs resume <runId|project> [--yes]
        bun run runs pause
-       bun run runs pulse [<runId|label|project> ...] [--every S] [--once]
+       bun run runs pulse [<runId|label|project> ...] [--every S] [--once] [--state FILE]
 
   list    every run this machine recorded, open ones first (the default with no arguments)
   show    one run: opening identity, authoring, batteries by claim time, terminal, recent evidence
@@ -45,7 +46,8 @@ const USAGE = `Usage: bun run runs [list] [--closed N]
   --closed N  how many closed runs to list (default 8)
   --grace-ms  milliseconds between SIGTERM and removing the service (default 15000)
   --every S   seconds between two looks for pulse (default 290)
-  --once      one pulse look, status lines only, then exit`;
+  --once      one pulse look, then exit; what moved is read against the state file
+  --state F   where pulse keeps its readings between looks (default .scratch/runs-pulse.json)`;
 
 const OPTIONS = {
   yes: { type: "boolean" },
@@ -53,6 +55,7 @@ const OPTIONS = {
   "grace-ms": { type: "string" },
   every: { type: "string" },
   once: { type: "boolean" },
+  state: { type: "string" },
   help: { type: "boolean" },
 } as const;
 
@@ -164,7 +167,8 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === "pulse") {
     const everyMs = values.once === true ? null : count(values.every, 290, "--every") * 1000;
-    return await runPulse(repoRoot, positionals.slice(1), everyMs);
+    const statePath = values.state ?? join(repoRoot, ".scratch", "runs-pulse.json");
+    return await runPulse(repoRoot, positionals.slice(1), everyMs, statePath);
   }
   if (command === "list") {
     process.stdout.write(`${renderList(collectRows(repoRoot, { closedLimit }))}\n`);

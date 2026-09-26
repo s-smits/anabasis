@@ -7,8 +7,9 @@
  * the case record for every run and remembering what each said last time. This keeps one reading
  * per run between looks and prints the difference as events: `◆` a stage worth reading (a round
  * opened, a battery recorded, the run ended), `⚠` something that may be wrong (an error row, a
- * quiet Builder, a non-result, a not-run rehearsal), `·` a smaller fact. The first look prints
- * status lines only, because a difference needs a previous reading.
+ * quiet Builder, a non-result, a not-run rehearsal), `·` a smaller fact. The readings are kept in
+ * a state file between looks, so `--once` prints the difference too; a first look, with no
+ * readings kept, prints status lines only.
  *
  * Read-only, like the rest of `runs`: every value comes from a recorded file through its owner's
  * reader, and a file that cannot be read leaves its part of the reading empty rather than guessed.
@@ -30,6 +31,14 @@ import { climbThresholds } from "../../src/run/climb-history.ts";
 import { DEFAULT_DISK_MIN_GIB } from "../../.claude/skills/launch-run/scripts/options.ts";
 import { readDifficultyDecisions, readObservations, readRunEvidence, type Observation } from "./evidence.ts";
 import { duration, shortPath } from "./format.ts";
+import {
+  busyUnder,
+  loadMemory,
+  readProcessTable,
+  saveMemory,
+  type Busy,
+  type PulseMemory,
+} from "./pulse-host.ts";
 import { collectRows, type RunRow } from "./rows.ts";
 
 /** A Builder checkpoint older than this, in a build, is worth a look. */
@@ -129,6 +138,9 @@ export interface PulseReading {
   safeguards: string[];
   /** The terminal's outcome and reason, once recorded. */
   terminal: string | null;
+  /** What the controller is waiting on at the look, from the process table: a live fact, never
+   *  evidence, and the one that tells a quiet Builder's long command from a stalled session. */
+  busy: Busy | null;
 }
 
 interface PulseEvent {
@@ -374,7 +386,7 @@ function heldEvents(before: PulseReading, after: PulseReading): PulseEvent[] {
     events.push({
       mark: "⚠",
       label,
-      text: `no Builder checkpoint for ${duration(quietMs)} in round ${String(after.round.number)}`,
+      text: `no Builder checkpoint for ${duration(quietMs)} in round ${String(after.round.number)}; ${busyText(after.busy) ?? "no command running, so the model turn itself is long"}`,
       look: [`${after.round.epoch ?? "?"}/builder-prose.jsonl`],
     });
   }
@@ -440,6 +452,10 @@ export function pulseEvents(
   return events;
 }
 
+function busyText(busy: Busy | null): string | null {
+  return busy === null ? null : `running ${duration(busy.forMs)}: ${busy.command.slice(0, 60)}`;
+}
+
 function buildStatus(reading: PulseReading): string {
   const round = reading.round;
   const opened = topLevel(reading.observations).findLast(
@@ -462,6 +478,7 @@ function buildStatus(reading: PulseReading): string {
       ? null
       : `${String(round.toolCalls)} tool calls (${String(round.failedCalls ?? 0)} failed)`,
     checkpoint === null ? null : `checkpoint ${duration(checkpoint)} ago`,
+    busyText(reading.busy),
     round.headline === null || round.headline === "" ? null : `"${round.headline}"`,
     round.unread.length === 0 ? null : `not read by this tree: ${round.unread.join(", ")}`,
   ]
@@ -642,7 +659,7 @@ function readBatteries(row: RunRow, band: readonly [number, number]): PulseBatte
   });
 }
 
-function readPulse(row: RunRow, now: number, band: readonly [number, number]) {
+function readPulse(row: RunRow, now: number, band: readonly [number, number], busy: Busy | null) {
   const { campaignDir } = row.location;
   const observations = readObservations(campaignDir, row.runId);
   const terminal = row.liveness.state === "closed" ? readRunEvidence(row.location).terminal : null;
@@ -669,72 +686,131 @@ function readPulse(row: RunRow, now: number, band: readonly [number, number]) {
         : [terminal.outcome ?? "no outcome", terminal.terminalReason?.slice(0, 160)]
             .filter(Boolean)
             .join(": "),
+    busy,
   } satisfies PulseReading;
 }
 
 // ---------------------------------------------------------------------------------------------
 // The loop.
 
-function selected(row: RunRow, selectors: readonly string[], watched: ReadonlySet<string>): boolean {
-  if (watched.has(row.runId)) return true;
-  if (selectors.length === 0) return row.liveness.state !== "closed";
+/**
+ * Whether a kept reading holds every field `pulseEvents` reads from the earlier side. The fields the
+ * status line alone reads come from the fresh reading, so they are not asked of a kept one.
+ */
+export function isPulseReading(value: unknown): value is PulseReading {
+  return (
+    isRecord(value) &&
+    isString(value.state) &&
+    isNumber(value.now) &&
+    (value.terminal === null || isString(value.terminal)) &&
+    Array.isArray(value.observations) &&
+    value.observations.every(isRecord) &&
+    Array.isArray(value.safeguards) &&
+    Array.isArray(value.batteries) &&
+    value.batteries.every((battery) => isRecord(battery) && isNumber(battery.nonResults)) &&
+    isKeptRound(value.round)
+  );
+}
+
+function isKeptRound(round: unknown): boolean {
+  return (
+    isRecord(round) &&
+    isNumber(round.number) &&
+    (round.epoch === null || isString(round.epoch)) &&
+    (round.checkpointAt === null || isString(round.checkpointAt)) &&
+    (round.failedCalls === null || isNumber(round.failedCalls)) &&
+    isNumber(round.clearPreviews) &&
+    isNumber(round.accepted) &&
+    isNumber(round.refused) &&
+    Array.isArray(round.refusalCodes) &&
+    Array.isArray(round.rehearsals) &&
+    (round.plan === null || isRecord(round.plan))
+  );
+}
+
+/**
+ * Whether one look reads this run. Selectors named on the command line are the whole answer, since
+ * the kept readings are shared by every look and a run read once is not a run asked for again. With
+ * none, every open run is read, and so is a kept run that has closed since, so its ending is said.
+ */
+export function selected(
+  row: Pick<RunRow, "runId" | "slug"> & { liveness: Pick<RunRow["liveness"], "state"> },
+  selectors: readonly string[],
+  watched: ReadonlySet<string>,
+): boolean {
+  if (selectors.length === 0) return row.liveness.state !== "closed" || watched.has(row.runId);
   const label = pulseLabel(row.runId);
   return selectors.some(
     (selector) => row.runId.startsWith(selector) || label.includes(selector) || row.slug === selector,
   );
 }
 
-function hostLine(repoRoot: string): string {
+function hostLine(repoRoot: string, memory: PulseMemory<PulseReading>): string {
   const disk = statfsSync(join(repoRoot, "campaigns"));
   const freeGiB = Math.floor((disk.bavail * disk.bsize) / 1024 ** 3);
   const floor =
     freeGiB < DEFAULT_DISK_MIN_GIB ? `, under the launcher's ${String(DEFAULT_DISK_MIN_GIB)} GiB floor` : "";
-  return `load ${loadavg()[0]?.toFixed(1) ?? "?"} · ${String(freeGiB)} GiB free${floor}`;
+  // Free space swings by tens of GiB as Builders compile and trim, so the move says more than the level.
+  const moved = memory.freeGiB === null ? 0 : freeGiB - memory.freeGiB;
+  const delta = moved === 0 ? "" : ` (${moved > 0 ? "+" : ""}${String(moved)} since the last look)`;
+  memory.freeGiB = freeGiB;
+  return `load ${loadavg()[0]?.toFixed(1) ?? "?"} · ${String(freeGiB)} GiB free${delta}${floor}`;
 }
 
 /** One look at the selected runs: a status line each, then what moved since the previous look. */
 function pulseTick(
   repoRoot: string,
   selectors: readonly string[],
-  previous: Map<string, PulseReading>,
+  memory: PulseMemory<PulseReading>,
+  table: Parameters<typeof busyUnder>[0],
 ): string[] {
   const now = Date.now();
   const band = climbThresholds(join(repoRoot, FROZEN_MANIFEST_PATH)).band;
-  const watched = new Set(previous.keys());
+  const previous = memory.readings;
+  const watched = new Set(Object.keys(previous));
   const rows = collectRows(repoRoot, { closedLimit: Number.MAX_SAFE_INTEGER, now }).filter((row) =>
     selected(row, selectors, watched),
   );
   const stamp = `${new Date(now).toISOString().slice(11, 16)}Z`;
-  const readings = rows.map((row) => ({ row, reading: readPulse(row, now, band) }));
+  const readings = rows.map((row) => ({
+    row,
+    reading: readPulse(row, now, band, busyUnder(table, row.liveness.pid)),
+  }));
   const width = Math.max(0, ...readings.map(({ reading }) => reading.label.length));
   const lines = [
-    `${stamp} ${String(rows.length)} run${rows.length === 1 ? "" : "s"} · ${hostLine(repoRoot)}`,
+    `${stamp} ${String(rows.length)} run${rows.length === 1 ? "" : "s"} · ${hostLine(repoRoot, memory)}`,
   ];
   const events: string[] = [];
   for (const { row, reading } of readings) {
     lines.push(`  ${statusLine(reading, width)}`);
     // The first look says where each run's files are, so the event pointers can stay short.
-    if (!previous.has(row.runId)) lines.push(`  ${" ".repeat(width)} ${shortPath(row.location.campaignDir)}`);
-    for (const event of pulseEvents(previous.get(row.runId), reading, row.slug)) {
+    if (!(row.runId in previous)) lines.push(`  ${" ".repeat(width)} ${shortPath(row.location.campaignDir)}`);
+    for (const event of pulseEvents(previous[row.runId], reading, row.slug)) {
       const look = event.look.length === 0 ? "" : ` → ${event.look.join(", ")}`;
       events.push(`${stamp} ${event.mark} ${event.label} ${event.text}${look}`);
     }
     // A run that ended is said once and then no longer watched.
-    if (reading.terminal === null) previous.set(row.runId, reading);
-    else previous.delete(row.runId);
+    if (reading.terminal === null) previous[row.runId] = reading;
+    else delete previous[row.runId];
   }
   return [...lines, ...events];
 }
 
-/** Look every `everyMs` until interrupted, or once. */
+/**
+ * Look every `everyMs` until interrupted, or once. The readings persist in `statePath` after each
+ * look, so a watcher calling `--once` every few minutes is told what moved, as the loop would be.
+ */
 export async function runPulse(
   repoRoot: string,
   selectors: readonly string[],
   everyMs: number | null,
+  statePath: string,
 ): Promise<number> {
-  const previous = new Map<string, PulseReading>();
+  const memory = loadMemory(statePath, isPulseReading);
   for (;;) {
-    process.stdout.write(`${pulseTick(repoRoot, selectors, previous).join("\n")}\n`);
+    process.stdout.write(`${pulseTick(repoRoot, selectors, memory, await readProcessTable()).join("\n")}\n`);
+    const unsaved = saveMemory(statePath, memory);
+    if (unsaved !== null) process.stderr.write(`${unsaved}\n`);
     if (everyMs === null) return 0;
     await Bun.sleep(everyMs);
   }

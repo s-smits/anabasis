@@ -471,7 +471,7 @@ export function deriveCandidateIsolation(
         ...["package.json", "bun.lock", ".bun-version", "biome.json"].map((file) =>
           lit(repo(file), "toolchain"),
         ),
-        ...["README.md", "AGENTS.md", "CLAUDE.md"].map((file) => lit(repo(file), "docs")),
+        ...["README.md", "AGENTS.md"].map((file) => lit(repo(file), "docs")),
       ]
     : workshop;
   const write = author ? [sub(iterationDir, "iteration-write")] : workshop;

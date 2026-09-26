@@ -1,11 +1,11 @@
 # AGENTS.md
 
 This is the working contract for Claude Code, Codex and their subagents in this repository.
-`CLAUDE.md` is a symlink to it, so both read the same bytes. What belongs here is principle and
-standing operator decision; the forward queue, the current head, the run condition and the open
-questions belong to the operator's plan and to Git history. Where this file and newer evidence
-disagree, the evidence wins. And where a rule here describes a mechanism that has since left the
-source, it is dead text — say so rather than obeying it.
+Claude Code loads it wherever a project has no `CLAUDE.md`, so this repository keeps none. What
+belongs here is principle and standing operator decision; the forward queue, the current head, the
+run condition and the open questions belong to the operator's plan and to Git history. Where this
+file and newer evidence disagree, the evidence wins. And where a rule here describes a mechanism
+that has since left the source, it is dead text — say so rather than obeying it.
 
 Be eager. Given an ambiguity, do the task rather than ask about it. Carry authorised work through
 implementation, checks and delivery; the authorisation survives turns and compaction, and does not

@@ -15,7 +15,6 @@ cd "$root"
 changes_source() {
   ! git diff --quiet "$1" "$2" -- . \
     ':(exclude)AGENTS.md' \
-    ':(exclude)CLAUDE.md' \
     ':(exclude)README.md' \
     ':(exclude)docs/**' \
     ':(exclude).claude/**/*.md'

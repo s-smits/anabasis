@@ -209,7 +209,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v7",
+      policy: "review-probing-findings/v8",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),

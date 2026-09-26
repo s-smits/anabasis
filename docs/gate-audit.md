@@ -256,20 +256,6 @@ Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming opera
 refusal rather than review was unclear. Restore the contract.md and STARTER.md guide-size sentences
 with it.
 
-### brief-artifact-root-unread
-
-Refused an artifact-schema root no check lists in its `artifactPaths`
-(`brief-artifact-root-unread`, `src/truth/brief-validator.ts`). Naming a path does not prove a
-check reads it materially, so the refusal checked a declaration, not decoration.
-
-### published-rules
-
-Required every truth check to cite a public `ruleDecisions` row and no private one
-(`brief-cited-decision-withheld`, `brief-rule-unpublished`). The producer sits commented at the end
-of `src/truth/rule-decisions.ts`, beside the citation shape it read, and its call in
-`src/author/fresh-candidate-contract.ts`. A citation cannot show that the cited prose states what
-the check enforces.
-
 ### off-aim-allowance-stop
 
 Stopped a campaign after `climb.offAimStreakRounds` consecutive rounds on one side of the aim
@@ -312,6 +298,19 @@ no verdict is `DISCRIMINATION_PROBE_NO_VERDICT`'s and counts for neither. The pe
 the per-cell accept requirements are gone: mutation analysis asks that every check be seen to kill a
 mutant, not that every family supply one, and the claim's `intrinsic-` and
 `external-grounding-uncovered` clauses are deleted as the same fact read a second time.
+
+### declared-means-graded (R3)
+
+Replaces `brief-artifact-root-unread` and `published-rules` (`src/truth/decisions/brief.ts`),
+restored as two refusals in `validateBrief`, so a fresh build and a continuation meet them alike.
+An artifact root no check lists in its `artifactPaths`, with no check reading `$`, is refused
+(`brief-artifact-root-unread`), and so is a check citing an undeclared rule row or only private
+ones (`brief-cited-decision-withheld`); a private construction note cited beside a public rule
+passes, which was the one recorded snapshot the stricter form would have refused. The requirement that every check cite some rule
+(`brief-rule-unpublished`) is deleted: a citation cannot show that the cited prose states what the
+check enforces. A declared path proves the value reaches a check and not that any verdict depends
+on it, so the Epoch Reviewer's probe paragraph now asks for a probe of a root no public rule plainly
+governs (`review-probing-findings/v8`).
 
 ## Deleted, 2026-09-26
 

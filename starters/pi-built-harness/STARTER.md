@@ -42,6 +42,10 @@ unsettled stage stops the rest, and F2 runs beside the census unless conformance
 - `shape-mismatch`: a row misses a field. A constant is
   `{"name": "maxShiftHours", "value": 8, "unit": "h", "authority": "Staff policy", "citation": "Section 2.1"}`.
 - `tasks-exact-census`: the battery holds the number of tasks the round asks for.
+- `brief-artifact-root-unread`: every `artifactSchema` root is under some check's `artifactPaths`,
+  or a check reads `$`. A root no check reads measures nothing.
+- `brief-cited-decision-withheld`: every id in a check's `citedDecisionIds` is a declared
+  `ruleDecisions` row, and at least one of them has `visibility: public`.
 
 **3. Conformance.** Typechecks and loads `agent/` and `correctness-model/`, opens every task
 through the generated tools and runs each tool once. Walls: 30 s per module import and per tool

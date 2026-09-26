@@ -13,7 +13,8 @@ TypeScript function returning a Boolean or Promise<Boolean>. The controller runs
 check in a fresh confined process and builds the verdict itself.
 A false check never stops the others: every applicable check runs.
 
-Each truth check declares `id`, a decidable `assertion`, `citedDecisionIds` and:
+Each truth check declares `id`, a decidable `assertion`, optionally the public `ruleDecisions` ids
+it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is refused), and:
 
 ```json
 {

@@ -31,9 +31,6 @@ import {
 } from "../src/author/candidate-check.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { projectFindingForAuthor } from "../src/truth/brief.ts";
-// Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): only the
-// published-rule cases below read it.
-// import type { Brief } from "../src/truth/brief.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { probeGeneratedCorrectnessModelModule } from "../src/truth/contracts.ts";
@@ -294,106 +291,6 @@ describe("what the refusal may tell the author", () => {
     });
   });
 });
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, published-rules): commented out (unsure): these cases pin the
-// published-rule citation refusals and their accepted neighbours.
-// /** run23 stated its panel frame, ordering, threshold and latch rules in `decisions`, which the
-//  *  public projection withholds, and the family scored 0 of 35 against a checker that enforced them.
-//  *  A check may cite the rule it enforces, and the citation must resolve to a row the Built Harness
-//  *  actually receives. */
-// describe("the rules the solver receives", () => {
-//   const findingsFor = (brief: Brief) => freshCandidateFindings({ brief, corpus: corpus() });
-//
-//   const accepted: Array<[string, (brief: Brief) => void]> = [
-//     // truss eaf98f: "model-resolution-rule" governed "design-audit", whose checks cite other rules.
-//     // The reverse family-coverage rule was removed 2026-09-15.
-//     [
-//       "a rule governing a family no citing check applies to",
-//       (brief) => {
-//         required(brief.ruleDecisions?.[0], "public rule").families = ["single-part", "two-part"];
-//         for (const check of brief.truthChecks) check.execution.families = ["single-part"];
-//       },
-//     ],
-//     [
-//       "a rule that lists no family at all",
-//       (brief) => {
-//         delete required(brief.ruleDecisions?.[0], "public rule").families;
-//       },
-//     ],
-//     // Controls decide whether a check reads the rule's inputs; a declared-path match proved nothing
-//     // and refused ancestor paths such as `$.limits` for `$.limits.slenderness` (run 077e56).
-//     [
-//       "a check citing a decision about paths it does not list",
-//       (brief) => {
-//         required(brief.ruleDecisions?.[0], "public rule").publicInputPaths = ["$.usedAreas"];
-//       },
-//     ],
-//   ];
-//   for (const [name, change] of accepted) {
-//     it(`accepts ${name}`, () => {
-//       const brief = structuredClone(MATCHING_BRIEF);
-//       change(brief);
-//       expect(findingsFor(brief)).toEqual([]);
-//     });
-//   }
-//
-//   // Each row names the identity its refusal must carry: an unpublished rule names the check that
-//   // owes one, a dangling citation names the decision id nothing declares.
-//   const refused: Array<[string, string, string, (brief: Brief) => void]> = [
-//     [
-//       "a check that cites no rule",
-//       "brief-rule-unpublished",
-//       'truth check "parts-assigned"',
-//       (brief) => {
-//         required(brief.truthChecks[0], "first check").citedDecisionIds = [];
-//       },
-//     ],
-//     // A check may depend on a hidden operand or an external engine. Its assertion alone does not
-//     // publish the rule the Built Harness has to satisfy.
-//     [
-//       "a hidden-expectation check that publishes no rule at all",
-//       "brief-rule-unpublished",
-//       'truth check "expected-binding"',
-//       (brief) => {
-//         for (const check of brief.truthChecks) delete check.citedDecisionIds;
-//       },
-//     ],
-//     [
-//       "a citation resolving to no declared decision",
-//       "brief-cited-decision-withheld",
-//       '"binding-completeness"',
-//       (brief) => {
-//         brief.ruleDecisions = [];
-//       },
-//     ],
-//   ];
-//   for (const [name, code, identity, change] of refused) {
-//     it(`refuses ${name}`, () => {
-//       const brief = structuredClone(MATCHING_BRIEF);
-//       change(brief);
-//       expect(findingsFor(brief)).toContainEqual(
-//         expect.objectContaining({ code, detail: expect.stringContaining(identity) }),
-//       );
-//     });
-//   }
-//
-//   it("refuses a check citing a decision the projection withholds, naming identities and not the statement", () => {
-//     const brief = structuredClone(MATCHING_BRIEF);
-//     const decision = required(brief.ruleDecisions?.[0], "public rule");
-//     decision.visibility = "private";
-//     const found = findingsFor(brief);
-//     expect(found).toContainEqual(
-//       expect.objectContaining({
-//         code: "brief-cited-decision-withheld",
-//         path: "truthChecks[0].citedDecisionIds",
-//         detail: expect.stringContaining('truth check "parts-assigned"'),
-//       }),
-//     );
-//     const detail = found.find((row) => row.code === "brief-cited-decision-withheld")?.detail ?? "";
-//     expect(detail).toContain('"binding-completeness"');
-//     expect(detail).not.toContain(decision.statement);
-//   });
-// });
 
 describe("the agent the solver gets", () => {
   it("refuses a spec declaring both the files and the shell preset", () => {

@@ -97,10 +97,13 @@ describe("which task a control is evaluated against", () => {
       {
         brief: {
           ...BRIEF,
-          truthChecks: BRIEF.truthChecks.map((check) => ({
-            ...check,
-            execution: { ...check.execution, publicInputPaths: ["$"] },
-          })),
+          // Only the check the reject names, so every declared check has its reject.
+          truthChecks: BRIEF.truthChecks
+            .filter((check) => check.id === "parts-assigned")
+            .map((check) => ({
+              ...check,
+              execution: { ...check.execution, publicInputPaths: ["$"] },
+            })),
         },
       },
     );

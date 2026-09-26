@@ -579,17 +579,32 @@ function settleFailure(
   return attempt === "first" ? "retry" : settleToolUnavailable(context, failure, completed);
 }
 
-/** The control census's one row: every finding it returned refuses the candidate. */
-function controlsRows(findings: ContractFinding[]): CampaignFeedback[] {
-  if (findings.length === 0) return [];
+/** The control census's rows: every finding it returned refuses the candidate, and the timed-out
+ *  controls ride beside them as one advisory row that refuses nothing. */
+function controlsRows(findings: ContractFinding[], advisory: ContractFinding[] = []): CampaignFeedback[] {
+  const row = (
+    severity: CampaignFeedback["severity"],
+    rows: ContractFinding[],
+    claim: string,
+  ): CampaignFeedback[] =>
+    rows.length === 0
+      ? []
+      : [
+          {
+            owner: EVALUATOR_FILE,
+            severity,
+            claim,
+            evidence: "census gate: executed discrimination evidence (census.json)",
+            findings: controllerValidatedFindings(rows),
+          },
+        ];
   return [
-    {
-      owner: EVALUATOR_FILE,
-      severity: "blocking",
-      claim: `control census against the installed tools returned ${findings.length} finding(s)`,
-      evidence: "census gate: executed discrimination evidence (census.json)",
-      findings: controllerValidatedFindings(findings),
-    },
+    ...row(
+      "blocking",
+      findings,
+      `control census against the installed tools returned ${findings.length} finding(s)`,
+    ),
+    ...row("advisory", advisory, "control census examples whose tool run timed out, which refuses nothing"),
   ];
 }
 
@@ -646,7 +661,13 @@ async function runCensus(
   const referenceRows = reference.status === "fulfilled" ? reference.value : [];
   const completed: Completed = {
     ...keyIfDefined("probe", probe),
-    rows: [...controlsRows(findings.filter((finding) => finding !== refusal)), ...referenceRows],
+    rows: [
+      ...controlsRows(
+        findings.filter((finding) => finding.code !== TOOL_REFUSED_CODE),
+        probe?.advisory,
+      ),
+      ...referenceRows,
+    ],
   };
   // The controls are checked first, so the reported failure is the earlier stage's and the
   // reference solve's completed rows ride beside it rather than replacing it.

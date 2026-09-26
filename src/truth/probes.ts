@@ -64,6 +64,7 @@ import type { ControlCorpus } from "./controls.ts";
 import { boundedDraftSummary } from "./draft-summary.ts";
 import { SUBMIT_MAX_ATTEMPTS, type ControlReceipt } from "./battery-record.ts";
 import { runControls } from "./run-controls.ts";
+import { timedOutControls } from "./control-receipts.ts";
 import { discriminationDisclosure } from "./discrimination-author-detail.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -79,6 +80,7 @@ export type ProbeControlsResult = {
   verifierEnvironmentHash?: string | null;
   executionEvidence?: import("../verify/verifier-port.ts").VerifierExecutionEvidence[];
   findings: ContractFinding[];
+  advisory?: ContractFinding[]; // timed-out controls, read beside the verdict; refuses nothing
   controlReceipts?: ControlReceipt[];
   /** Host tool runs and rejects blocked per declared check, recorded with the census. */
   toolCheckCoverage?: ToolCheckCoverage[];
@@ -225,6 +227,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
       }
       return {
         findings,
+        advisory: timedOutControls(settled, hostEvidence, EVALUATOR_FILE),
         controlReceipts: execution.controlReceipts,
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),

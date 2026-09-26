@@ -118,66 +118,6 @@ describe("invalid JSON structure returns a finding (falsifier-claude-001)", () =
   });
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): these
-// cases pin the per-check and per-family reject coverage refusal.
-// // Reject coverage has one owner: the rule-by-family matrix. Nothing in runControls restates these
-// // cells as an executed floor or as per-check uncovered rows, so a missing reject refuses here and
-// // once only, per check and per family.
-// describe("reject coverage is one reject per check and per family", () => {
-//   const tasks = MATCHING_TASKS.map(projectPublic);
-//   const externalBrief: Brief = {
-//     ...MATCHING_CONTROL_BRIEF,
-//     truthChecks: MATCHING_CONTROL_BRIEF.truthChecks.map((check) =>
-//       check.id === "expected-binding"
-//         ? {
-//             ...check,
-//             execution: {
-//               ...check.execution,
-//               evidence: { kind: "external", requiredToolIds: ["slot-engine"] },
-//             },
-//           }
-//         : check,
-//     ),
-//   };
-//   const negative = (result: ValidationResult) =>
-//     result.findings.filter((f) => f.code === "controls-public-rule-negative-missing").map((f) => f.detail);
-//
-//   it("a complete corpus raises nothing, for authored and external checks alike", () => {
-//     for (const brief of [MATCHING_CONTROL_BRIEF, externalBrief]) {
-//       expect(
-//         negative(validateControls(brief, { accept: MATCHING_ACCEPTS, reject: MATCHING_REJECTS }, tasks)),
-//       ).toEqual([]);
-//     }
-//   });
-//
-//   it("a family whose rejects all bind elsewhere is refused once, by family", () => {
-//     const result = validateControls(
-//       MATCHING_CONTROL_BRIEF,
-//       { accept: MATCHING_ACCEPTS, reject: MATCHING_REJECTS.filter((r) => r.taskId !== "t2") },
-//       tasks,
-//     );
-//     expect(negative(result)).toEqual([
-//       expect.stringContaining('family "two-part" has no declared task-bound negative'),
-//     ]);
-//   });
-//
-//   it("an external check no reject names is refused once, by check", () => {
-//     const result = validateControls(
-//       externalBrief,
-//       {
-//         accept: MATCHING_ACCEPTS,
-//         reject: MATCHING_REJECTS.filter((r) => r.expectedCheckId !== "expected-binding"),
-//       },
-//       tasks,
-//     );
-//     expect(negative(result)).toEqual([
-//       expect.stringContaining(
-//         'public rule "expected-binding" has no declared task-bound negative; add one with expectedCheckId "expected-binding"',
-//       ),
-//     ]);
-//   });
-// });
-
 describe("public semantic obligations on external checks", () => {
   const brief: Brief = {
     slug: "source-boundary",

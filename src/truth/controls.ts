@@ -83,14 +83,6 @@ export type ControlCorpus = {
 /** A recorded battery task as the corpus validator sees it: the public view plus hidden rows. */
 type ControlTask = PublicTask<unknown> & { hidden?: HiddenExpectation[] };
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): only the
-// coverage rule below keys its cells with it.
-// /** The key of one check-by-family cell. What fills a cell is a declared control; whether the cell
-//  *  actually holds is the shared census's verdict, and no static path here decides it. */
-// function ruleCell(checkId: string, family: string): string {
-//   return capturedJsonStringify([checkId, family]);
-// }
-
 /** Whether the value carries the two control arrays. This is the shallow admission check alone:
  *  `validateControls` decides whether the rows inside them are usable, and a caller runs both. */
 export function isControlCorpus(value: JsonValue): value is ControlCorpus {
@@ -343,77 +335,6 @@ const validated = (findings: ContractFinding[]): ValidationResult => ({
   findings: controllerValidatedFindings(findings),
 });
 
-// Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): every
-// applicable check-by-family cell needs an accept, and every check and family a reject; unsure a static count
-// of declared controls adds to the census that executes them.
-// /** Public validity is the rule-by-family matrix, derived from the truth checks and the recorded
-//  *  task families; controls declare evidence and never declare applicability. Every applicable cell
-//  *  needs one accept, and each applicable check and each family needs one reject naming it (operator
-//  *  decision, replacing one reject per cell, which asked a six-check, five-family domain for thirty
-//  *  rejects). A check no task exercises has a cell on neither side, since both sides are
-//  *  walked from the recorded tasks. These are declared candidates only: the live census proves their
-//  *  outcomes. An external check needs the same reject as an authored one, because a recorded tool run
-//  *  establishes that the tool executed, not that it can reject anything. */
-// function publicRuleFindings(
-//   brief: Brief,
-//   corpus: ControlCorpus,
-//   tasks: readonly ControlTask[],
-//   taskById: ReadonlyMap<string, ControlTask>,
-// ): ContractFinding[] {
-//   const positive = new Set<string>();
-//   for (const control of corpus.accept) {
-//     const task = taskById.get(control.taskId);
-//     if (task === undefined) continue;
-//     for (const check of applicableTruthChecks(brief, task)) positive.add(ruleCell(check.id, task.family));
-//   }
-//   const findings: ContractFinding[] = [];
-//   const negativeChecks = new Set<string>();
-//   const negativeFamilies = new Set<string>();
-//   for (const control of corpus.reject) {
-//     const task = taskById.get(control.taskId);
-//     const checkId = control.expectedCheckId;
-//     if (task === undefined) continue;
-//     // The inapplicable reject is refused by inapplicableRejectFindings; it counts towards nothing here.
-//     if (!applicableTruthChecks(brief, task).some((check) => check.id === checkId)) continue;
-//     negativeChecks.add(checkId);
-//     negativeFamilies.add(task.family);
-//   }
-//   const required = new Set<string>();
-//   const missingChecks = new Set<string>();
-//   const missingFamilies = new Set<string>();
-//   for (const task of tasks) {
-//     if (!negativeFamilies.has(task.family)) missingFamilies.add(task.family);
-//     for (const { id: checkId } of applicableTruthChecks(brief, task)) {
-//       if (!negativeChecks.has(checkId)) missingChecks.add(checkId);
-//       const cell = ruleCell(checkId, task.family);
-//       if (required.has(cell)) continue;
-//       required.add(cell);
-//       if (!positive.has(cell)) {
-//         findings.push({
-//           code: "controls-public-rule-positive-missing",
-//           path: "accept",
-//           detail: `public rule "${checkId}" has no task-bound accept in family "${task.family}"`,
-//         });
-//       }
-//     }
-//   }
-//   for (const checkId of missingChecks) {
-//     findings.push({
-//       code: "controls-public-rule-negative-missing",
-//       path: "reject",
-//       detail: `public rule "${checkId}" has no declared task-bound negative; add one with expectedCheckId "${checkId}" in any family it applies to, built from a known-correct example with one fact changed`,
-//     });
-//   }
-//   for (const family of missingFamilies) {
-//     findings.push({
-//       code: "controls-public-rule-negative-missing",
-//       path: "reject",
-//       detail: `family "${family}" has no declared task-bound negative; add one bound to a task of that family, built from its known-correct example with one fact changed`,
-//     });
-//   }
-//   return findings;
-// }
-
 // Gate audit 2026-09-25 (docs/gate-audit.md, expected-check-inapplicable): kept: a reject naming a check that
 // does not apply to its task's family can never fail on that check, so it calibrates nothing.
 /** A reject names the check it must fail, and one that does not apply to its task's family is never
@@ -461,8 +382,5 @@ export function validateControls(
     findings.push(...hiddenFindings, ...rejectReferenceFindings(brief, control, i, hiddenRows));
   });
   findings.push(...inapplicableRejectFindings(brief, corpus, taskById));
-  // Gate audit 2026-09-25 (docs/gate-audit.md, public-rule-control-coverage): commented out (unsure): the
-  // coverage rule above is commented out.
-  // findings.push(...publicRuleFindings(brief, corpus, tasks, taskById));
   return validated(findings);
 }

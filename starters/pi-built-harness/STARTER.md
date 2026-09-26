@@ -59,6 +59,10 @@ tool call gets a fresh empty home. This stage and F2 share one wall.
 - `DISCRIMINATION_ACCEPT_REJECTED`: an accept fails a check. Fix the check or the brief.
 - `DISCRIMINATION_NOT_PROVEN`: a check threw on an example, or an example names a task outside
   the battery.
+- `DISCRIMINATION_REJECT_PASSED`: a reject did not fail the check its `expectedCheckId` names.
+  Change the example so that check fails, or fix the check.
+- `DISCRIMINATION_CHECK_UNREJECTED`: a declared check is no reject's `expectedCheckId`. Add a reject
+  that fails it.
 - `EXTERNAL_VERDICT_UNGROUNDED`: a verdict an external check decided needs a completed run of that
   check's declared tool on that same artifact. A pass, or a fail only such checks decided, with no
   completed run is refused here, fails the F2 witness, and is a non-result in the battery.

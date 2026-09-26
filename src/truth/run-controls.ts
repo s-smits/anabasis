@@ -23,8 +23,6 @@ import {
   type ReceiptSession,
   recordObservation,
   settleControlReceipts,
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // sideMatchesExpected,
 } from "./control-receipts.ts";
 import { blockingFailedCheckIds, blockingIssueSummary } from "./verdict-binding.ts";
 import { namedExamples, type SettledControl } from "./grounding-coverage.ts";
@@ -229,8 +227,8 @@ async function evaluateControl(
  *  control. The one exception is a throw the generated check owns, such as its own fire-and-forget
  *  run; the host drains that run and records it too, but the generated-code failure keeps its
  *  attribution. A host non-result is this one control's receipt and not the corpus's, so the other
- *  controls still run and this control's DISCRIMINATION_PROBE_NO_VERDICT row keeps the claim
- *  open. */
+ *  controls still run; a crash keeps the claim open through its DISCRIMINATION_PROBE_NO_VERDICT row,
+ *  and a timeout only through R2. */
 function settleControlOutcome(
   run: ControlSession,
   input: {
@@ -350,6 +348,10 @@ function admitObservation(
   // Without this finding only the executed isolation floor notices, which lets a battery whose
   // rejects all met a vanished tool start solving. The non-result kind is host structure and may
   // cross to the author; tool output may not.
+  // A timeout refuses nothing: the same request often completes on a less busy host. The census
+  // reads it beside the verdict from the host's rows (`timedOutControls`), and R2 still refuses a
+  // check whose only rejects reached no verdict.
+  if ("hostNonResult" in evaluation && evaluation.hostNonResult === "timeout") return null;
   if ("hostNonResult" in evaluation) {
     addToGroup(run, "no-verdict", control.id, `"${control.id}" (${evaluation.hostNonResult})`, (ids, notes) =>
       identityComposedFinding(
@@ -357,7 +359,7 @@ function admitObservation(
           code: "DISCRIMINATION_PROBE_NO_VERDICT",
           message: `the host could not run these examples to a verdict: ${notes.join(", ")}`,
         },
-        `${ids.length} example(s) reached no verdict because the host could not complete their tool runs (${notes.join(", ")}). A timeout or crash is the check's run to repair; a sandbox or unavailable tool belongs to the verifier environment`,
+        `${ids.length} example(s) reached no verdict because the host could not complete their tool runs (${notes.join(", ")}). A crash is the check's run to repair; a sandbox or unavailable tool belongs to the verifier environment`,
       ),
     );
     return null;
@@ -501,37 +503,11 @@ async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<v
     (control) => evaluateInLane(run, control, hiddenOf(control)),
     () => laneStopped(run),
   );
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // // A reject counts only when its declared check fails, and that check is the one the census ran,
-  // // so an unrelated schema or empty-input failure cannot stand in for the intended mutation.
-  // const missed: string[] = [];
   for (const [index, control] of corpus.reject.entries()) {
     const observation = observations[index];
     if (observation === undefined) break;
-    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-    // const observed = admitObservation(run, control, observation);
-    // if (observed === null) continue;
-    // if (!sideMatchesExpected(observed.side, "fail", control.expectedCheckId)) {
-    //   missed.push(
-    //     control.mutationClass === undefined
-    //       ? `"${control.id}"`
-    //       : `"${control.id}" (${control.mutationClass})`,
-    //   );
-    // }
     admitObservation(run, control, observation);
   }
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // if (missed.length > 0) {
-  //   run.findings.push(
-  //     identityComposedFinding(
-  //       {
-  //         code: "DISCRIMINATION_REJECT_PASSED",
-  //         message: `${missed.length} invalid example(s) passed the check that should reject them: ${missed.join(", ")}`,
-  //       },
-  //       `${missed.length} invalid example(s) passed the check that should reject them: ${missed.join(", ")}. Change each example so that check fails on it, or fix the check`,
-  //     ),
-  //   );
-  // }
 }
 
 export async function runControls(
@@ -555,7 +531,12 @@ export async function runControls(
   await runAccepts(run, corpus);
   await runRejects(run, corpus);
   for (const { ids, notes, write } of run.groups.values()) run.findings.push(write(ids, notes));
-  const settled = settleControlReceipts(run, corpus);
+  // R2 reads the settled receipts, the same rows the claim reads back, over every check a bound
+  // task declares.
+  const checkIds = new Set(
+    tasks.flatMap((task) => applicableTruthChecks(options.brief, task).map((check) => check.id)),
+  );
+  const settled = settleControlReceipts(run, corpus, [...checkIds]);
   run.findings.push(...settled.findings);
   return {
     accepts: corpus.accept.length,

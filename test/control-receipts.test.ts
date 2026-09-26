@@ -264,8 +264,7 @@ describe("control receipts", () => {
       [TASK],
       { brief: BRIEF },
     );
-    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-    // expect(wrong.claimable).toBe(false);
+    expect(wrong.claimable).toBe(false);
     expect(wrong.rejectsAttributed).toBe(0);
     expect(wrong.controlReceipts[1]?.observedBlockingCheckIds).toEqual(["other-check"]);
 
@@ -445,7 +444,7 @@ describe("control receipts", () => {
       { brief, runId: "receipt-run" },
       fakeToolHost(),
     );
-    expect(execution.findings.map((finding) => finding.code)).toEqual([]);
+    expect(execution.findings.map((finding) => finding.code)).toEqual(["DISCRIMINATION_REJECT_PASSED"]);
   });
 
   it("lets a host-measured non-result outrank the verdict the evaluator returned", async () => {

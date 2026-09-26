@@ -205,44 +205,6 @@ describe("the controls probe", () => {
     expect(result.toolCheckCoverage?.[0]?.attestedLaunches).toBe(0);
   }, 30_000);
 
-  // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-  // it.concurrent("returns author-classified findings when the corpus stops discriminating", async () => {
-  //   // A "reject" that is actually clean: both named programs accept the bound task's answer.
-  //   const clean = (id: string) => ({
-  //     id,
-  //     taskId: "t1",
-  //     artifact: { assignments: [{ part: "alpha", slot: "s3" }] },
-  //     mutationClass: "no-op",
-  //     expectedCheckId: "parts-assigned",
-  //   });
-  //   const burned = {
-  //     accept: ACCEPTS,
-  //     reject: [...REJECTS, clean("r-actually-clean"), clean("r-also-clean")],
-  //   };
-  //   const slugDir = writeSlug("controls-burned", { corpus: burned });
-  //   const { findings } = await makeProbeControls({ verifierLifetime: LIFETIME })(slugDir, BRIEF, burned, [
-  //     TASK,
-  //     TASK_TWO,
-  //   ]);
-  //   expect(findings).toHaveLength(1);
-  //   expect(findings[0]).toMatchObject({
-  //     code: "DISCRIMINATION_REJECT_PASSED",
-  //     path: "correctness-model/controls.json",
-  //   });
-  //   expect(findings[0]?.detail).toContain("r-actually-clean");
-  //   // The finding is composed from public authoring identities, so it survives projection with
-  //   // its control row id and mutation class and the author knows which row to repair.
-  //   // SAFETY: toHaveLength(1)/toMatchObject above proved findings[0] exists.
-  //   const first = findings[0] as ContractFinding;
-  //   expect(first.disclosure).toMatchObject({ class: "authored" });
-  //   const projected = projectFindingForAuthor(first);
-  //   expect(projected.code).toBe("DISCRIMINATION_REJECT_PASSED");
-  //   // Both passing rejects share one row rather than one sentence each.
-  //   expect(projected.detail).toBe(
-  //     '2 invalid example(s) passed the check that should reject them: "r-actually-clean" (no-op), "r-also-clean" (no-op). Change each example so that check fails on it, or fix the check',
-  //   );
-  // });
-
   it.concurrent("strips correctnessModel issue text from a rejected valid example before the author projection", async () => {
     // Rebind the membership program to public parts, so this rejection comes from a public rule.
     const { brief, firstCheck } = cloneBrief();
@@ -339,8 +301,8 @@ describe("the controls probe", () => {
     // Attribution is only observable once the second check reached a verdict of its own.
     expect(result.checkCost?.map((row) => row.checkId)).toContain("unrelated-limit");
     // The alias reject fails its named check and unrelated-limit together; the named check
-    // rejected it, so the cascade is attributed and the census reports nothing.
-    expect(result.findings.map((finding) => finding.code)).toEqual([]);
+    // rejected it, so the cascade is attributed. No reject names unrelated-limit, so R2 refuses that.
+    expect(result.findings.map((finding) => finding.code)).toEqual(["DISCRIMINATION_CHECK_UNREJECTED"]);
   }, 30_000);
 
   it.concurrent("maps a broken Correctness Model evaluator to typed authoring findings before any verification", async () => {

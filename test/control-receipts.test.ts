@@ -491,10 +491,9 @@ describe("control receipts", () => {
       verifier,
     );
     expect(discrimination.controlReceipts.map((receipt) => receipt.nonResultKind)).toEqual([null, "sandbox"]);
-    // A control with no verdict witnesses no cell: one no-verdict row keeps the claim open.
-    expect(discrimination.findings.map((finding) => finding.code)).toEqual([
-      "DISCRIMINATION_PROBE_NO_VERDICT",
-    ]);
+    // A control with no verdict witnesses no cell, so the claim stays open; a sandbox refusal that
+    // survived its retry is named as the environment's, which the census settles as a non-result.
+    expect(discrimination.findings.map((finding) => finding.code)).toEqual(["verifier-tool-refused"]);
     expect(discrimination.claimable).toBe(false);
     expect(verifier.evidence().map((row) => [row.subjectId, row.attempt])).toEqual([
       ["accept-1", 1],

@@ -235,7 +235,7 @@ describe("the controls probe", () => {
     // Exact stripped sentence: one row for both examples, grouped by the check that blocked them,
     // and nothing from the correctnessModel's issue text.
     expect(projectFindingForAuthor(finding).detail).toBe(
-      '2 valid example(s) were rejected by the correctnessModel, on [parts-assigned]: "a-correctnessModel-rejects", "a-ghost-two". Fix the correctnessModel so declared-valid examples pass',
+      '2 valid examples were rejected by the correctnessModel, on [parts-assigned]: "a-correctnessModel-rejects", "a-ghost-two". Fix the correctnessModel so declared-valid examples pass',
     );
   });
 

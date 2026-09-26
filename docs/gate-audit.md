@@ -130,8 +130,11 @@ When the checks reject an answer the Builder vouches for, no measured pass can b
 
 ### controls-no-verdict
 
-Refuses a control whose check threw or reached no verdict (`DISCRIMINATION_NOT_PROVEN`,
-`PROBE_NO_VERDICT`; `src/truth/run-controls.ts`). It witnesses nothing about the checks.
+Refuses a control whose check threw or reached no verdict because its tool runs timed out or
+crashed (`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/truth/run-controls.ts`). It
+witnesses nothing about the checks. A tool the host refused twice, for `sandbox` or
+`verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
+which `tool-environment` below settles as the environment's.
 
 ### external-result-unbound
 
@@ -141,15 +144,27 @@ Refuses a check that returns while its tool runs are still running (`EXTERNAL_RE
 ### tool-environment
 
 Settles a census or tool run the host could not execute as an environment non-result
-(`census-wall-exceeded`, `CENSUS_UNAVAILABLE`, the settle functions of `src/run/census-gate.ts` and
-`src/run/solvability-gate.ts`). It is never a verdict on the candidate (rule 15).
+(`verifier-tool-refused`, and `settleToolUnavailable` and `settleEnvironment` in
+`src/run/census-gate.ts`), and a reference solve the host broke as a per-case environment
+non-result in `src/run/solvability-gate.ts`. It is never a verdict on the candidate (rule 15). A
+blocking environment row is not remembered as a verdict on the bytes, and a submit that meets one
+ends the session as `environment-blocked` (`gateTerminalClause`), so an environment owner on a
+candidate defect costs the campaign rather than a strike. Two neighbours are therefore the
+author's on purpose: `census-wall-exceeded`, since the checks and the reference solve are the
+candidate's bytes and their time is the Builder's to cut, and `SOLVABILITY_CENSUS_UNAVAILABLE`, a
+census with no evidence, whose every cause is either the candidate's bytes or cannot be told apart
+from what its generated code did to the snapshot; the row names the cause code. Until 2026-09-26 a
+control whose tool the host refused twice was a no-verdict refusal of the check and condition drift
+was an evaluator row; both now carry the `environment` owner.
 
 ### condition-identity
 
 Refuses a verifier condition that drifted, a worker whose contract differs across tasks, and a
 generated toolset that did not terminate (`verifier-condition-drift`, `task-worker-binding-drift`,
 `generated-toolset-termination`; `src/run/census-gate.ts`, `src/truth/probe-tool-surface.ts`).
-Measurement refuses the same, so the gate refuses it first.
+Measurement refuses the same, so the gate refuses it first. Verifier drift is the host's and
+refuses as `environment`: a check of the same bytes runs again, and a submit that meets it ends the
+session as `environment-blocked`. The other two are the candidate's.
 
 ### measure-grounding
 

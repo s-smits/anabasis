@@ -18,9 +18,11 @@ type DiscriminationClaimabilityCode =
   // returns. Generated code may relay host results; it cannot alter or ignore verdicts, or declare
   // an environment failure without host evidence.
   | "EXTERNAL_RESULT_UNBOUND"
-  // From runControls: a control the host could not run to a verdict (crash, sandbox, unavailable
-  // tool); a timeout refuses nothing.
+  // From runControls: a control whose tool run crashed, which the check owns.
   | "DISCRIMINATION_PROBE_NO_VERDICT"
+  // From runControls: a tool the host refused (sandbox, unavailable) after its retry, which the
+  // census settles as the environment's non-result.
+  | "verifier-tool-refused"
   // From runControls: a verdict an external check decided with no completed run of its tool (R1).
   | "EXTERNAL_VERDICT_UNGROUNDED"
   | "DISCRIMINATION_CONTROL_RECEIPT_INVALID";

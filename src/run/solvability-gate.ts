@@ -98,7 +98,7 @@ export function makeSolvabilityCensusGate(
     if (evidence === null && toolRefusals.length > 0) return toolRefusals;
     const insensitivity = inputInsensitivity(witnessesOf(evidence, slugDir, "failed"));
     return [
-      ...censusFeedback(evidence, insensitivity),
+      ...censusFeedback(evidence, insensitivity, probedFindings),
       ...acceptIndependenceFeedback(independence),
       ...toolRefusals,
     ];
@@ -247,12 +247,25 @@ function ungroundedFeedback(cases: readonly SolvabilityCaseEvidence[]): Campaign
   ];
 }
 
+/**
+ * A census with no evidence is the candidate's to answer for, whatever stopped it. Every cause that
+ * leaves the evidence null — an unbound task set, a snapshot that fails its integrity check or drifts
+ * under the census, an evaluator that will not load, a brief and battery that will not parse, an
+ * accept corpus whose schema will not compile — either is the candidate's own bytes or cannot be told
+ * apart from what its generated code did to the snapshot. Owned by the environment, such a row would
+ * end the campaign at submit; owned by the evaluator it costs a strike the Builder answers by
+ * changing bytes. The host's own failures surface as per-case non-results below, not as null evidence.
+ */
 function censusFeedback(
   evidence: Pick<SolvabilityEvidence, "cases"> | null,
   insensitivity: ContractFinding[],
+  probed: readonly ContractFinding[],
 ): CampaignFeedback[] {
-  // Gate audit 2026-09-25 (docs/gate-audit.md, tool-environment): kept: a census the host could not execute is an environment non-result, never a verdict on the candidate
   if (evidence === null) {
+    // The finding that stopped it is the last one the probe returned: a load refusal stands alone, and
+    // drift follows the per-case findings, whose paths name tasks and so never cross. Its code and
+    // path name the requirement that failed; its detail stays protected.
+    const cause = probed.at(-1);
     return [
       {
         owner: EVALUATOR_FILE,
@@ -262,9 +275,8 @@ function censusFeedback(
         findings: controllerValidatedFindings([
           {
             code: "SOLVABILITY_CENSUS_UNAVAILABLE",
-            path: EVALUATOR_FILE,
-            detail:
-              "the pre-adoption census produced no evidence; the failure record is host-side and protected",
+            path: cause?.path ?? EVALUATOR_FILE,
+            detail: `the pre-adoption census produced no evidence${cause === undefined ? "" : ` (${cause.code})`}; the failure record is host-side and protected`,
           },
         ]),
       },

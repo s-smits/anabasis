@@ -45,7 +45,7 @@ Always resolve the latest intended published PR stack at launch time, including 
 launches, unless the user explicitly selects another revision. Fetch current heads and use
 [stack-hop](../stack-hop/SKILL.md) to verify every child contains its latest published parent;
 restack stale edges before launching. Use current `origin/main` only when no intended stack is
-open. Pass the resolved full SHA explicitly through `--source`; the CLI's omitted-source
+open. The launcher records where that commit came from — the pull request carrying it, whether it was that PR's head, and the stack down to main, read from `gh pr list` — as `sourceRef` in `opening.json` and `launch.json`, and `bun run runs show` prints it and says whether the PR has moved since. Pass the resolved full SHA explicitly through `--source`; the CLI's omitted-source
 default remains `origin/main` and does not resolve the stack. Let the launcher fork that commit
 into a fresh isolated run worktree. Keep the source checkout and existing runs untouched.
 

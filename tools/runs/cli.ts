@@ -24,6 +24,7 @@ import { collectDetail, collectRows, type RunDetail } from "./rows.ts";
 import { runPulse } from "./pulse.ts";
 import { PAUSE_FINDING, resumePlan } from "./resume.ts";
 import { stopRun } from "../../.claude/skills/launch-run/scripts/stop.ts";
+import { gitMaybe } from "../../.claude/skills/main/git.ts";
 
 const USAGE = `Usage: bun run runs [list] [--closed N]
        bun run runs show <runId>
@@ -176,7 +177,13 @@ async function main(argv: string[]): Promise<number> {
   const detail = detailOrExit(repoRoot, selector, closedLimit);
   if (command === "show") {
     process.stdout.write(
-      `${renderShow(detail, readObservations(detail.evidence.location.campaignDir, detail.row.runId))}\n`,
+      `${renderShow(
+        detail,
+        readObservations(detail.evidence.location.campaignDir, detail.row.runId),
+        // A branch's head at origin as this checkout last fetched it; no fetch, so the answer is local.
+        (branch) =>
+          gitMaybe(repoRoot, "rev-parse", "--verify", "--quiet", `refs/remotes/origin/${branch}^{commit}`),
+      )}\n`,
     );
     return 0;
   }

@@ -248,24 +248,6 @@ Refused adoption when the census never launched a declared external tool
 (`external-check-tool-unlaunched` at the census, `src/truth/probes.ts`). Readiness still names the
 same fact through `inertToolFindings`, where it bounds a claim rather than an authoring round.
 
-### reject-discrimination
-
-Refused a candidate, and at claim time a battery, when a reject control passed its named check
-(`DISCRIMINATION_REJECT_PASSED` in `src/truth/run-controls.ts`, the reject side of
-`src/truth/control-receipts.ts`, and the external and intrinsic grounding-uncovered clauses of
-`src/claim/claim.ts`). A passing reject can be a loose check or a mis-built reject, and the audit
-could not tell which one the refusal was catching. A candidate whose rejects pass is now measured
-and claimable.
-
-### public-rule-control-coverage
-
-Refused a control corpus missing an accept per check-by-family cell, or a reject per check and per
-family (`controls-public-rule-positive-missing`, `controls-public-rule-negative-missing`;
-`publicRuleFindings` in `src/truth/controls.ts`). The census runs every control the Builder wrote,
-and the audit was unsure that a coverage count refuses a wrong corpus rather than a small one.
-`starter-pack/contract.md` still asks for that coverage as advice; restore AGENTS.md rule 12's
-statement that the gate checks it.
-
 ### operating-guide-policy
 
 Refused an empty, oversized (over 8,192 bytes), placeholder or task-naming operating guide
@@ -318,6 +300,18 @@ a census control is refused, and a battery or rehearsal case is a `verifier` non
 and crashes stay with `DISCRIMINATION_PROBE_NO_VERDICT`, and `generated-correctness-model-relay` is
 gone as a classification. The claim's `external-grounding-case-uncovered` clause is deleted, since
 no verified pass can now lack its run.
+
+### every-check-rejects (R2)
+
+Replaces `reject-discrimination` and `public-rule-control-coverage`
+(`src/truth/decisions/controls.ts`). Two decisions over the settled control receipts, which the
+census writes and the claim reads back through `checkReceiptSet`, so the two cannot disagree: a
+reject whose `expectedCheckId` did not fail on it (`DISCRIMINATION_REJECT_PASSED`), and a check some
+bound task declares that no reject names (`DISCRIMINATION_CHECK_UNREJECTED`). A reject that reached
+no verdict is `DISCRIMINATION_PROBE_NO_VERDICT`'s and counts for neither. The per-family reject and
+the per-cell accept requirements are gone: mutation analysis asks that every check be seen to kill a
+mutant, not that every family supply one, and the claim's `intrinsic-` and
+`external-grounding-uncovered` clauses are deleted as the same fact read a second time.
 
 ## Deleted, 2026-09-26
 

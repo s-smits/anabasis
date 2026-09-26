@@ -284,9 +284,9 @@ describe("a claim written from a recorded battery", () => {
 });
 
 describe("a reject control that passes the check it names", () => {
-  it("is measured, and the battery it records supports a claim", async () => {
-    // r-ghost carries t1's valid answer, so the check it names passes it. The battery start and the
-    // claim read that as a weak control rather than a broken candidate.
+  it("keeps the claim open under R2's code, once", async () => {
+    // r-ghost carries t1's valid answer, so the check it names passes it. The census refuses it and
+    // the claim, reading the same receipts back, names it once.
     const { write } = await recordedBattery("passing-reject", (slugDir) => {
       const reject = MATCHING_REJECTS.map((control) =>
         control.id === "r-ghost"
@@ -299,9 +299,39 @@ describe("a reject control that passes the check it names", () => {
       );
     });
     const created = await write("passing-reject");
-    expect(created.clauses).toEqual([]);
-    expect(created.created).toBe(true);
-    expect(created.statement).toMatchObject({ n: 4, passed: 4 });
+    expect(created.clauses.map((row) => row.clause)).toEqual([
+      "DISCRIMINATION_REJECT_PASSED",
+      "empty-denominator",
+    ]);
+    expect(created.created).toBe(false);
+  }, 60_000);
+
+  // The layer walk: the control replay writes the R2 finding with its receipts, and the claim reads
+  // the recorded battery back without deciding R2 again, so the finding the claim carries is the one
+  // on disk and no second copy joins it.
+  it("carries the finding the replay recorded for a check no reject names, and adds none", async () => {
+    const { slugDir, runId, write } = await recordedBattery("unrejected-check", (dir) => {
+      const reject = MATCHING_REJECTS.filter((control) => control.expectedCheckId !== "expected-binding");
+      writeFileSync(
+        join(dir, "correctness-model/controls.json"),
+        JSON.stringify({ accept: MATCHING_ACCEPTS, reject }),
+      );
+    });
+    const recorded = parseJsonAs<{ discrimination: { findings: { code: string; message: string }[] } }>(
+      readFileSync(join(slugDir, "runs", runId, "battery.json"), "utf8"),
+    ).discrimination.findings;
+    expect(recorded.map((row) => [row.code, row.message])).toEqual([
+      [
+        "DISCRIMINATION_CHECK_UNREJECTED",
+        'no reject that reached a verdict names check "expected-binding" as its expectedCheckId',
+      ],
+    ]);
+    const created = await write("unrejected-check");
+    expect(created.clauses.map((row) => row.clause)).toEqual([
+      "DISCRIMINATION_CHECK_UNREJECTED",
+      "empty-denominator",
+    ]);
+    expect(created.created).toBe(false);
   }, 60_000);
 });
 

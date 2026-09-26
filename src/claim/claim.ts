@@ -404,45 +404,8 @@ function groundingClauses(evidence: ClaimEvidence): ClaimClause[] {
       clause("grounding-missing", "every truth check must name where its evidence comes from", BLOCKING),
     ];
   }
-  return [
-    // Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-    // ...declaredGroundingClauses(grounding, evidence.discrimination.attributedCheckIds),
-    ...executionResolutionClauses(grounding.execution),
-  ];
+  return [...executionResolutionClauses(grounding.execution)];
 }
-
-// Gate audit 2026-09-25 (docs/gate-audit.md, reject-discrimination): commented out (unsure): a reject control that passes its named check no longer refuses the candidate or the claim
-// /** Every check must have a reject control that failed on exactly this check, because a check that
-//  *  ran has demonstrated execution and not discrimination: an adapter can execute completely on
-//  *  every case of a battery while no control has ever made it reject an artifact. A reject that
-//  *  fails only here establishes that the check told an invalid artifact apart; what it does not
-//  *  establish is which primitive inside the check produced the verdict, since source and import
-//  *  validation are authoring checks rather than execution evidence.
-//  *
-//  *  An external check owes the same evidence under its own clause id, and an authored one keeps the
-//  *  `intrinsic-` spelling because clause names reach refusal text, where renaming one is a new
-//  *  condition. Whether an external check's tool actually ran belongs elsewhere: the
-//  *  grounding-coverage rows own it, where admission refuses a never-launched tool before the
-//  *  battery, `caseGroundingClauses` refuses a verified case without its own subject-bound run, and
-//  *  readiness names a check that ran on no verified case. */
-// function declaredGroundingClauses(
-//   grounding: GroundingEvidence,
-//   attributedCheckIds: Record<string, number>,
-// ): ClaimClause[] {
-//   const clauses: ClaimClause[] = [];
-//   for (const { checkId, grounding: g } of grounding.declared) {
-//     if (recordedCount(attributedCheckIds, checkId) === 0) {
-//       clauses.push(
-//         clause(
-//           g.kind === "external-verifier" ? "external-grounding-uncovered" : "intrinsic-grounding-uncovered",
-//           `no invalid example failed check "${checkId}"; add one that fails only because of this check`,
-//           BLOCKING,
-//         ),
-//       );
-//     }
-//   }
-//   return clauses;
-// }
 
 /** A tool that ran is identified by the bytes the host hashed before spawning it, never by what it
  *  reports about itself: a tool can report the same version after its binary changes. */

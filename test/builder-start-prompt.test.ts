@@ -296,8 +296,9 @@ describe("STARTER.md gate map", () => {
     }
   });
 
-  // Every taught code must still be emitted, so the Builder is taught the current contract.
-  it("teaches two or three live refusal codes per stage", () => {
+  // Every taught code must still be emitted, so the Builder is taught the current contract. Which
+  // codes a stage must teach is gate-decisions.test.ts's: every refusing decision is told.
+  it("teaches at least two live refusal codes per stage", () => {
     const gates = STARTER_ENTRY.split("\n## Gates\n")[1] ?? "";
     const sections = gates.split(/\n\*\*\d\. /).slice(1);
     expect(sections).toHaveLength(STAGES.length);
@@ -308,7 +309,6 @@ describe("STARTER.md gate map", () => {
         ),
       );
       expect(codes.length, section.slice(0, 30)).toBeGreaterThanOrEqual(2);
-      expect(codes.length, section.slice(0, 30)).toBeLessThanOrEqual(3);
       for (const code of codes) expect(SOURCE_TEXT.includes(`"${code}"`), code).toBe(true);
     }
   });

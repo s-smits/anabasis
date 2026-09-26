@@ -38,6 +38,7 @@ desired answer or patch.
 Task: determine why <observed fact> occurs.
 Artifacts: <exact paths and revision>.
 Observed facts: <typed codes and counts only>.
+Helpers: <exact read-only commands the lanes share, e.g. `bun run runs …`; rows are leads>.
 Questions:
   1. Which owner can produce this?
   2. What evidence supports or refutes each candidate?

@@ -546,4 +546,62 @@ process.stdin.on("data", (chunk) => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // A worker that reported `done` has finished its solve, so outliving its close timer marks the
+  // termination and settles the solve; the caller decides from the submit, as for a generated worker.
+  it("settles a worker that reported done and then never closed", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "ana-pi-close-")));
+    const source = `
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  input += chunk;
+  const end = input.indexOf("\\n");
+  if (end < 0 || input.startsWith("#")) return;
+  const start = JSON.parse(input.slice(0, end));
+  input = "#";
+  const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+  send({
+    type: "ready",
+    workerInstanceId: start.workerInstanceId,
+    pid: process.pid,
+    promptDigest: start.contract.promptDigest,
+    toolSchemaDigest: start.contract.toolSchemaDigest,
+    modelSelection: { resolvedModel: start.profile.model, effort: start.profile.thinkingLevel, source: "faux-provider" },
+  });
+  send({ type: "done", turns: 1, errors: [], toolCalls: { total: 0, failed: 0, byName: {} } });
+});
+setInterval(() => {}, 1000);
+`;
+    const file = join(dir, "worker.cjs");
+    writeFileSync(file, source);
+    const runtime = runtimeFor([], { fakeResponses: [] });
+    try {
+      const result = await startPiBuiltWorker({
+        runtime,
+        bundle: { dir, file, digest: new Bun.CryptoHasher("sha256").update(source).digest("hex") },
+        start: {
+          type: "start",
+          profile: runtime.profile,
+          credential: await runtime.auth(),
+          contract: builtAgentInterface([], starterRegistration([]), null, DEFAULT_HARNESS_SETTINGS.solveMs),
+          prompt: "",
+          nudge: "",
+          maxTurns: 1,
+          fakeResponses: [],
+        },
+        conditionDigest: "condition",
+        tools: new Map(),
+        onMessage: () => {},
+      });
+      expect(result.done.turns).toBe(1);
+      expect(result.modelWorker.termination).toMatchObject({
+        status: "non-result",
+        message: "Pi Built worker did not close after completion",
+        closeHandshakeTimeout: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

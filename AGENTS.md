@@ -881,10 +881,14 @@ live evidence.
     recovery a declared bounded allowance and then records `environment-blocked`. A provider limit,
     a missing credential, an unsupported catalogue model, a spend limit, a provider timeout or a
     sandbox refusal belongs to the environment owner and never to the task author. In F2, a
-    controller deadline reached before the generated-tool worker is ready or closed is a host
-    non-result, while a worker that answered its handshake and then broke its protocol is a
-    representation defect. A worker's close failure after an accepted submit stays in the worker
-    evidence without voiding the case; without an accepted submit it remains a non-result. At claim
+    controller deadline reached before the generated-tool worker is ready, or before it closes
+    without an accepted submit, is a host non-result, while a worker that answered its handshake
+    and then broke its protocol is a representation defect. One close rule covers the battery's
+    model and generated-tool workers, F2 and the conformance probes: a close-handshake timeout
+    after the host already holds what it needed — an accepted submit, or every probe settled — is
+    cleanup evidence on the termination (`closeHandshakeTimeout`) and voids no case and refuses no
+    candidate. Every other close failure keeps its type, because a crash, a sandbox refusal or a
+    broken protocol while closing is not known to be only cleanup. At claim
     time a solvability-witness tool non-result earns one fresh execution, and only for `sandbox` or
     `verifierUnavailable` — record `timeout` and `crash` on the first attempt. Persistent refusal
     leaves a typed finding and a missing-witness readiness clause beside the recorded score; it
@@ -927,11 +931,12 @@ snapshot, tool identity, cache and retry contract they share. The census, F2 and
 recorded rows and executable bytes, never Judge prose. Refusals route by kind to the owning
 `FeedbackOwner` and return to the same session. A byte-identical resubmit of a refused candidate is
 a counted no-op strike, and three of them end the session as `authoring-stalled`. A typed runtime
-non-result is neither cached as a verdict on those bytes nor counted as a strike. A close-handshake
-timeout after all conformance probes have settled remains cleanup evidence and does not refuse the
-candidate. Provider and credential failures end the session with a typed terminal clause. The gate
-never compares two candidates and never judges quality: it admits a candidate that satisfies its
-own declared contract, and refuses everything else with the exact finding.
+non-result is neither cached as a verdict on those bytes nor counted as a strike. Under rule 15's
+one close rule, a close-handshake timeout after all conformance probes have settled is cleanup
+evidence and does not refuse the candidate. Provider and credential failures end the session with
+a typed terminal clause. The gate never compares two candidates and never judges quality: it
+admits a candidate that satisfies its own declared contract, and refuses everything else with the
+exact finding.
 
 The gate audit of 2026-09-25 put every refusal to one question: are we at least 98% sure it
 refuses something actually wrong? A component that passed carries a `Gate audit 2026-09-25 … kept`

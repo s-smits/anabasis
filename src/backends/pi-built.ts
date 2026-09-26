@@ -326,7 +326,10 @@ function completedOutcome(
   evidence: BuiltCaseEvidence,
 ): SolveOutcome {
   const { checkpoints, identities, trace, submitted, contractCondition } = evidence;
-  const closeFailure = generatedCloseFailure(generatedWorker, submitted);
+  const model = result.modelWorker.termination;
+  const modelCloseFailure =
+    model.status === "non-result" && !submitted ? { kind: model.kind, message: model.message } : null;
+  const closeFailure = generatedCloseFailure(generatedWorker, submitted) ?? modelCloseFailure;
   const providerFailure = submitted ? null : runtimeNonResultReason(result.done.errors);
   return {
     turns: result.done.turns,

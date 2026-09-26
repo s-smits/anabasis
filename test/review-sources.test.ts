@@ -237,7 +237,11 @@ describe("review coverage tied to recorded execution", () => {
                   bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
                   backendPin: "built-pin",
                 },
-                battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
+                battery: {
+                  summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 },
+                  blockingByCheck: {},
+                  applicableByCheck: {},
+                },
               })
             : null,
         readerTurn: async ({ prompt, tools }) => {
@@ -351,7 +355,11 @@ describe("review coverage tied to recorded execution", () => {
           bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
           backendPin: "built-pin",
         },
-        battery: { summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 } },
+        battery: {
+          summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 },
+          blockingByCheck: {},
+          applicableByCheck: {},
+        },
       }),
       vetoed: [
         {
@@ -473,7 +481,11 @@ describe("review coverage tied to recorded execution", () => {
             bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
             backendPin: "built-pin",
           },
-          battery: { summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 } },
+          battery: {
+            summary: { passed: 1, verified: 1, unaccepted: 0, nonResults: 0 },
+            blockingByCheck: {},
+            applicableByCheck: {},
+          },
         }),
         readerTurn: async ({ tools }) => {
           turns += 1;
@@ -657,7 +669,11 @@ describe("review coverage tied to recorded execution", () => {
             bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash },
             backendPin: "built-pin",
           },
-          battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
+          battery: {
+            summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 },
+            blockingByCheck: {},
+            applicableByCheck: {},
+          },
         }),
         review,
         readerTurn: async ({ tools }) => {
@@ -717,7 +733,11 @@ describe("review coverage tied to recorded execution", () => {
         bundleSnapshot: { agentHash: "a", correctnessModelHash: "c", taskSetHash: "t" },
         backendPin: "built-pin",
       },
-      battery: { summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 } },
+      battery: {
+        summary: { passed: 0, verified: 0, unaccepted: 0, nonResults: 0 },
+        blockingByCheck: {},
+        applicableByCheck: {},
+      },
     });
     for (const mode of ["complete", "incomplete", "failed"] as const) {
       const result = await runEpochReview({

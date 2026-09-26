@@ -88,6 +88,8 @@ export const FRAME = {
     reading:
       "Reading: the deciding sample ({population}) passed {passes} of {n} (Wilson interval [{wlo}, {whi}], target range [{blo}, {bhi}], aim {lo} to {hi} of {n}): {zone}.",
     unplaced: "Reading: {rationale}.",
+    nonResultBounds:
+      "{nonResults} reached no verdict, and nothing says how those would have gone: counted all as fails the battery reads {lowZone} ({low} of {slots}), all as passes {highZone} ({high} of {slots}), so the reading above rests on which way the environment's losses would have gone.",
     repeated:
       "The same {cases} cases failed in both of the last two batteries of one recorded task set ({scores}). A failing core that persists between batteries is as often a stuck harness as a difficulty level, and the zone above counts it either way.",
     conflict:

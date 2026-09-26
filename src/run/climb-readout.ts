@@ -507,7 +507,36 @@ function placedLines(readout: ClimbReadout, placement: BandPlacement): string[] 
     latest !== undefined && latest.verified > 0 && latest.passed === latest.verified
       ? [fill(FRAME.readout.allPass, { verified: latest.verified })]
       : [];
-  return [`${reading}${ladder}`, ...allPass];
+  return [`${reading}${ladder}`, ...allPass, ...nonResultBoundLines(latest, placement, band)];
+}
+
+/** The two extremes an unobserved outcome allows, placed like the reading itself: every environment
+ *  non-result a fail, then every one a pass. The line is rendered only when those two fall on
+ *  opposite sides of the aim, because bounds on one side say the losses could not have moved the
+ *  reading, which the reading already says. Only a whole-battery reading has them, because a
+ *  non-result belongs to no changed subset the row records. */
+function nonResultBoundLines(
+  latest: ReadoutRow | undefined,
+  placement: BandPlacement,
+  band: readonly [number, number],
+): string[] {
+  if (latest === undefined || latest.nonResults === 0 || latest.deciding?.population === "changed-subset") {
+    return [];
+  }
+  const slots = placement.n + latest.nonResults;
+  const low = placeOnBand(placement.passes, slots, band);
+  const high = placeOnBand(placement.passes + latest.nonResults, slots, band);
+  if (low === null || high === null || Math.sign(low.toAim) === Math.sign(high.toAim)) return [];
+  return [
+    fill(FRAME.readout.nonResultBounds, {
+      nonResults: latest.nonResults === 1 ? "1 case" : `${String(latest.nonResults)} cases`,
+      low: low.passes,
+      high: high.passes,
+      slots,
+      lowZone: READING[low.zone],
+      highZone: READING[high.zone],
+    }),
+  ];
 }
 
 function allowanceLines(readout: ClimbReadout): string[] {

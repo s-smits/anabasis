@@ -698,7 +698,7 @@ function findingLines(findings: readonly AdviceFinding[]): string[] {
  *  opposite repairs -- raise the rule, or give the battery a task that reaches it. Zero verified
  *  cases prove nothing about any check, so the roster stays silent until a battery has graded
  *  something. */
-function blockingLine(
+export function blockingLine(
   blockingByCheck: Record<string, number>,
   applicableByCheck: Record<string, number>,
   verified: number,
@@ -720,7 +720,7 @@ function blockingLine(
   // The sentence is appended only when one check really does carry every failure; beside a single
   // failed case and six checks it would say nothing.
   const alone = blocked.length === 1 && blocked[0]?.[1] === verified - passed;
-  return [
+  const lines = [
     blocked.length === 0
       ? null
       : `Verified failures by declared check (${verified - passed} failed; a case may block on several): ${blocked.map(([checkId, count]) => `${checkId} ${count}`).join(", ")}.${alone ? " One check carrying every failure asks whether its rule is stated in the public contract before the count reads as solver capability." : ""}`,
@@ -730,9 +730,10 @@ function blockingLine(
     unposed.length === 0
       ? null
       : `Declared checks no verified case posed, so this battery measured nothing about them: ${unposed.join(", ")}.`,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+  ].filter((line): line is string => line !== null);
+  // A check with no applicable count recorded lands in none of the three lists, so a roster of such
+  // checks alone has nothing to say and must not leave an empty line behind.
+  return lines.length === 0 ? null : lines.join("\n");
 }
 
 /** The one model-visible projection of the issue register: kinds and counts, ordered by what the

@@ -36,7 +36,9 @@
  * paragraph reads against that placement rather than against perfection. Placement alone still
  * left "I found nothing" open, and a reviewer at a full pass took it, so at or above the aim the
  * paragraph asks for the finding or for a family-by-family account of what each family demands:
- * the second is cheap when the curriculum is sound and impossible to write when it is not.
+ * the second is cheap when the curriculum is sound and impossible to write when it is not. Where
+ * the first probe goes below the aim belongs to the orientation's placement lead, which is rendered
+ * only on that side, so this static paragraph does not repeat it.
  *
  * The probe paragraph names a closed value set as the replacement to reach for, because that is the
  * shape one probe settles outright: a public input publishing a closed set, a declared check

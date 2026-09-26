@@ -3,7 +3,7 @@
 One sentence per row and per lane. Read this file to choose; read the body in
 [review-angles.md](review-angles.md), whose headings this file repeats byte for byte, because
 `build-manifest.mjs` parses both and refuses the manifest when they drift. The nine rows are the
-primary reviewer's own work and are never delegated. The twenty-six lanes are what a paid session
+primary reviewer's own work and are never delegated. The twenty-eight lanes are what a paid session
 can be given, and each opens with the deterministic trigger that starts it, so a lane whose trigger
 never fired is not launched, whatever the tier allows.
 
@@ -37,7 +37,7 @@ and record each tool run's `source`, `digest` and `kind` under one `verifierEnvi
 **I. served-model attestation.** Read `runtimeIdentities[]` for a provider `resultId` per row,
 and refuse the identity claim, and nothing else, where a completed turn is unattested.
 
-## Semantic lanes 1–26
+## Semantic lanes 1–28
 
 **1. Request-to-verdict chain.** From an `in-process` check or an unread artifact root, say what
 the verdict observes and whether a host double inverts the target's semantics while passing.
@@ -120,11 +120,19 @@ kind is honest.
 **26. Builder memory and posture.** From `MEMORY OVER READ CAP`, a `thin` or `unreadable` posture
 or a second epoch, say whether memory did any work and whether the posture could be read.
 
+**27. Gate rent and confidence.** From a gate stall, a refusal cleared on unchanged bytes, a
+low-prior firing, an unledgered code, a hold chain or a ceiling terminal, set each fired
+component's ledger prior against what its episodes did, and name the gate that missed a demonstrated
+defect.
+
+**28. Evaluation-correction regrade.** From an evaluation correction beside the battery before it,
+regrade that battery's accepted artifacts under the corrected evaluator and read the flips.
+
 ## Tiers
 
 The tier is the size of the recorded run, decided by `brief.mjs` from the elapsed time, the epoch
 count and the battery count, and it bounds how many lanes a sweep may be given. Lanes are chosen
-by trigger; the default set applies only when no trigger picks. Twenty-six is the ceiling, and
+by trigger; the default set applies only when no trigger picks. Twenty-eight is the ceiling, and
 lanes 7 and 23 are never counted in a tier: each is launched alone, and only when its own trigger
 fires.
 

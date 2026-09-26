@@ -1,6 +1,6 @@
 # Deterministic lanes
 
-Eleven readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
+Twelve readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
 paid sweep spends on; this file holds what a local read already answers, so a live run can be
 assessed without one, and it names the trigger string each reader prints beside the semantic lane
 that string starts. Every reader is a lane of `scripts/wri.mjs`, selected by name:
@@ -10,9 +10,10 @@ bun .claude/skills/whole-run-investigation/scripts/wri.mjs <lane> <campaign>/<ru
 ```
 
 The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
-`posture`, `timeline`, `walls` and `handoff`, which read the campaign; and `archive`, which
-writes the record. `brief.mjs` runs the six campaign lanes as `CAMPAIGN_LANES` and renders their
-trigger lines into the sweep brief, so a trigger below is the same bytes whether it was read from
+`posture`, `timeline`, `walls`, `handoff` and `gates`, which read the campaign; and `archive`,
+which writes the record. `brief.mjs` runs the seven campaign lanes as `CAMPAIGN_LANES` and renders
+their trigger lines into the sweep brief, reading an in-process lane's triggers from the
+`<lane>.triggers.json` it writes beside its capture, so a trigger below is the same bytes whether it was read from
 a lane's own output or from the brief.
 
 ## The digest
@@ -116,6 +117,27 @@ at a tiny share of it starts lane 8.
 census per channel (present, served, read, acted) for lane 17, the calibration table for lane 10,
 the triage table for lane 15 and the same-task table for lane 18.
 
+`gates` runs `gate-rent.mjs` over every Builder session's `correctness_check` and `submit` receipts
+and joins each refusal code to its component in `gate-ledger.mjs`, which carries the gate audit's
+priors — `pRight` and `pStall` — for every component, deleted ones included, and names each
+component's retired codes, because a run recorded before the audit still names them. The codes one
+component emits on one receipt are one firing, and a qualifier such as `tool-timeout` counts only
+where it rides beside no code of the component it details. Consecutive refusals carrying one
+component are one episode, and each ends `repaired` (the component went away and the bundle moved),
+`repaired-tool-condition` (the bundle stayed and the installed-tool condition moved),
+`cleared-without-edit` (the whole submission condition stayed), `cleared-plan-unrecorded` (the same
+for a refusal of `EXPERIMENT.json`, which the condition does not cover),
+`bundle-unchanged-condition-unknown` (the bundle stayed and the receipts recorded no tool
+condition), `answered-identity-unrecorded` or `unanswered`. Only a receipt that cleared, or that
+refused having run the stage each of the episode's codes came from, can answer it: a check that
+stopped at conformance never ran the reference solve. It prints `GATE STALL`, `GATE CLEARED WITHOUT
+EDIT`, `BELOW-BAR GATE FIRED` (a kept, narrowed or rewritten component whose `pRight` is under
+`REFUSAL_BAR`), `UNLEDGERED REFUSAL CODE`, `REVIEW HOLD CHAIN` and `CEILING ENDED RUN`, each for
+lane 27. For lane 28 it reads every `evaluation-correction` from the recorded batteries themselves,
+names the bundle files that moved since the battery before it, and prints `EVALUATION CORRECTION
+REPLAY CANDIDATE` with the `replay --under` command only where a grading file moved. A replay
+candidate stays one after the replay is run, because nothing records that it was.
+
 ## The archive
 
 `archive` writes the sweep's record under `wri-archive/v2` from the lanes above and the semantic
@@ -130,5 +152,5 @@ ledger is not.
 trigger first and by the default set only where no trigger picks: probe, which is a run not scored
 or under two hours, launches four lanes, by default 5, 8, 12 and 25; standard launches eight, the
 probe set plus 1, 9, 14 and 24; deep, which is twelve hours, three epochs or three batteries,
-launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Twenty-six is the ceiling. Lanes
+launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Twenty-eight is the ceiling. Lanes
 7 and 23 sit outside every tier and are launched alone, only when their own trigger fired.

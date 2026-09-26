@@ -208,7 +208,7 @@ describe("what the read said", () => {
     expect(brief).toContain("about 8 semantic lanes");
   });
 
-  it("says outright when the snapshot lane flagged nothing, rather than leaving the section empty", () => {
+  it("says outright when the deterministic lanes flagged nothing, rather than leaving the section empty", () => {
     const reviewDir = reviewWith([], {});
     writeFileSync(
       join(reviewDir, "overview.json"),
@@ -217,7 +217,7 @@ describe("what the read said", () => {
     expect(renderBrief(reviewDir)).toContain("no digest trigger or scan finding");
   });
 
-  it("groups the digest triggers and scan findings the snapshot lane recorded", () => {
+  it("groups the digest triggers and scan findings the deterministic lanes recorded", () => {
     const reviewDir = reviewWith([], {});
     writeFileSync(
       join(reviewDir, "overview.json"),
@@ -238,6 +238,41 @@ describe("what the read said", () => {
     // A family row names no lane in the catalogue, so the standard tier's default set is named.
     expect(brief).toContain("no trigger starts a lane; the standard default set is 1,5,8,9,12,14,24,25");
     expect(brief).toContain("launch --sessions 1,5,8,9,12,14,24,25");
+  });
+
+  it("carries an in-process lane's triggers into the brief and the lanes they start", () => {
+    const reviewDir = reviewWith([{ label: "gates", ok: true, exitCode: 0 }], {
+      gates: "1 Builder session(s)\n",
+    });
+    writeFileSync(
+      join(reviewDir, "gates.triggers.json"),
+      json([
+        { name: "GATE STALL (lane 27)", rows: 1, examples: ["tool-timeout at epoch-a session 1"] },
+        {
+          name: "EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)",
+          rows: 1,
+          examples: ["run-b after run-a"],
+        },
+      ]),
+    );
+    const brief = renderBrief(reviewDir);
+    expect(brief).toContain("digest GATE STALL (lane 27) x1: tool-timeout at epoch-a session 1");
+    expect(brief).toContain("lane 28: EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)");
+    expect(brief).toContain("launch --sessions 27,28");
+    // A triggers file beside a lane the read did not run contributes nothing.
+    const unrun = reviewWith([], {});
+    writeFileSync(
+      join(unrun, "gates.triggers.json"),
+      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+    );
+    expect(renderBrief(unrun)).not.toContain("GATE STALL");
+    // Nor does one left beside a lane that failed this read.
+    const failed = reviewWith([{ label: "gates", ok: false, exitCode: 1 }], { gates: "gates failed: x\n" });
+    writeFileSync(
+      join(failed, "gates.triggers.json"),
+      json([{ name: "GATE STALL (lane 27)", rows: 1, examples: [] }]),
+    );
+    expect(renderBrief(failed)).not.toContain("GATE STALL");
   });
 
   it("maps each digest trigger to the lanes the catalogue starts from it, and names the launch spec", () => {

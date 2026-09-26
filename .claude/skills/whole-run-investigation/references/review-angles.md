@@ -1,10 +1,10 @@
 # Whole-run investigation review angles
 
 This file is the whole catalogue: nine deterministic rows the primary reviewer settles itself, and
-twenty-six semantic lanes a paid session can be given, one question each. A lane is started by a
+twenty-eight semantic lanes a paid session can be given, one question each. A lane is started by a
 deterministic trigger, which is the capitalised text before the first colon of a line that
-`digest.mjs`, `source-delta.mjs`, `walls.mjs`, `timeline.mjs`, `climb-velocity.mjs` or
-`handoffs.mjs` prints, grouped by `run-overview.mjs` and rendered by `brief.mjs`. The trigger says
+`digest.mjs`, `source-delta.mjs`, `walls.mjs`, `timeline.mjs`, `climb-velocity.mjs`,
+`handoffs.mjs` or `gate-rent.mjs` prints, grouped by `run-overview.mjs` and rendered by `brief.mjs`. The trigger says
 a lane has something to read; it does not say what the answer is, and a lane that contradicts its
 trigger with evidence is a useful result. Nothing here changes a score. The verifier owns every
 pass, and a lane's product is one finding with one owner, the exact evidence it cites and the
@@ -17,7 +17,7 @@ isolated and never share a session with another lane.
 Each lane body opens with one paragraph beginning `Starts from`, which the manifest carries
 verbatim as the lane's trigger; the rows have none, because nothing starts them. The lanes are
 grouped by the question they share — product validity, difficulty, calibration, the review loop,
-hand-offs and attribution, and the solver's own time and failure — and a lane's neighbours are
+hand-offs and attribution, the solver's own time and failure, and the gate itself — and a lane's neighbours are
 named inside its body where one hands to the next.
 
 ## Deterministic rows A–I
@@ -141,7 +141,7 @@ row under a completed turn is an instrumentation gap: report `unproven identity`
 case's kind, because an unproven served-model identity refuses the identity claim and nothing
 else. Do not read model names out of trace prose.
 
-## Semantic lanes 1–26
+## Semantic lanes 1–28
 
 **1. Request-to-verdict chain.**
 
@@ -674,6 +674,83 @@ refuses — untrimmed, over its capture bound or under another schema — leaves
 `unreadable`, which is a statement about the writer or the reader's bound and not about the
 Builder. The decision it changes is whether a continuity gap is charged to the Builder; it routes
 to `src/author/builder-memory.ts` or `src/author/builder-prose.ts` and selects no `FeedbackOwner`.
+
+**27. Gate rent and confidence.**
+
+Starts from the `gates` lane's `GATE STALL (lane 27)`, `GATE CLEARED WITHOUT EDIT (lane 27)`,
+`BELOW-BAR GATE FIRED (lane 27)`, `UNLEDGERED REFUSAL CODE (lane 27)`, `REVIEW HOLD CHAIN (lane
+27)` and `CEILING ENDED RUN (lane 27)`, and from any defect a battery, a Judge veto or an Epoch
+Reviewer probe found that a gate component exists to catch.
+
+The question is whether each gate component that acted on this run earned its place, which is the
+question the gate audit of 2026-09-25 put to every refusal: is it at least 98% sure it refuses
+something actually wrong, and does it ever hold a round up that could have advanced?
+`scripts/gate-ledger.mjs` carries the audit's answer for every component as priors — `pRight`, the
+chance a firing refuses a real defect, and `pStall`, the chance it blocks a legitimate advance — and
+the `gates` lane prints them beside what this run's firings did. Those priors are judgements over a
+few recorded campaigns, and this lane is what turns them into evidence. For each fired component,
+take its episodes from `gates.txt` and read each against the bytes: the receipt in
+`builder-execution*.json` (`customCalls[].semantic`: outcome, stage, `findingCodes`, `candidateId`,
+`conditionId`, `stagesRun`, `stagedCodes`), the Builder's own reasoning around it in
+`builder-prose.jsonl`, and the workspace commits between the refused candidate and the one that
+cleared. An episode that ended `repaired` is right only if the change repaired the defect the code
+names; a rename, a moved function or a reworded sentence that makes the code go away is the shape
+that took `agent-deciding-computation` out of the gate, and it reads `repaired` here too. One that
+ended `repaired-tool-condition` passed on the same bundle after the installed tools changed, so read
+the tool work between the receipts before crediting either side. One that ended
+`cleared-without-edit` refused a submission condition that then passed unchanged, bundle and tools
+alike, so it refused something other than the candidate — most often a timeout charged to the
+author, which rule 15 gives to the environment. `cleared-plan-unrecorded` and
+`bundle-unchanged-condition-unknown` are that shape with one input unrecorded, the plan or the
+tools, so they need the workspace commits or the tool work before they can be read either way. A
+stall, a hold chain or a ceiling that ended the run is the `pStall` side: say whether the round that
+was stopped had a next move the evidence supported, and what it cost in minutes and rounds. The
+converse matters as much, and no trigger reads it: take each defect this run's batteries, vetoes or
+reviewer probes demonstrated, and name the gate component that should have refused it before
+measurement and why it did not — a component that never fires and misses a defect it owns has no
+rent either. Report, per component, the prior, what was observed with its episode count, and which
+way and by roughly how much the evidence moves `pRight` and `pStall`; one run moves a prior a
+little, and several runs agreeing move it further. Do not score a refusal right because the Builder
+complied with it, and do not propose a new refusal without the evidence the bar asks for. An
+unledgered code is a gap in the ledger: name its producer in `src/` and the row it belongs to. The
+decision it changes is a component's form — kept, narrowed into advice, rewritten or deleted — and
+its ledger row; it routes to `controller-source`, naming the producer file of the component and
+`gate-ledger.mjs` for the prior.
+
+**28. Evaluation-correction regrade.**
+
+Starts from the `gates` lane's `EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)`, and from any
+advice issue left `unmeasured` across an `evaluation-correction` round.
+
+The question is what the corrected evaluator says about the artifacts the old one scored. An
+evaluation correction keeps the agent, the public exam and the bound schema and changes the
+evaluator, the controls or the private expectations, and its next battery is a fresh solve, so
+nothing grades the earlier battery's accepted artifacts under the corrected evaluator; AGENTS.md
+rule 10 says so, and that is why an issue the correction touched stays `unmeasured`. The `gates`
+lane reads every correction from the recorded batteries and prints the battery before it and the
+bundle files that moved between the two; where a grading file moved — the brief, the evaluator or a
+module beside it, or a task's hidden expectations — the row is a replay candidate and carries the
+exact `bun run replay -- <before> --under <correction>` command, which runs `gradeCase` over the
+earlier battery's recorded final submissions under the correction's bundle snapshot and diffs each
+verdict against the recorded one; a task whose public digest moved is refused as `public-task-drift`
+rather than graded. Where only controls, the reference solve or the agent moved, the row says so and
+there is nothing to regrade. Run it from a checkout of the measured source and read the flips; the
+replay keeps its verifier receipts in a private directory of its own, so a live campaign is safe to
+read. A replay candidate stays one after it has been run, because nothing records the replay. A
+recorded fail that now passes is a false rejection the correction removed; a recorded pass that now
+fails is a false acceptance the old evaluator let through, which retroactively changes what that
+battery measured; a set of failed checks that changed with the same verdict is a correction whose
+reach the counts hide. Say whether the flips match what the correction claimed to fix in
+`EXPERIMENT.json` and the Builder's prose, and whether the next battery's movement is explained by
+the correction or by the fresh solve. Keep every per-task verdict private, as rule 4 requires: the
+lane reports counts and check ids, never an artifact, a failure location or verifier output. Nothing
+in the controller reads the replay's report, so the advice still names every touched issue
+`unmeasured` whatever the flips say. The decision it changes is whether the earlier battery's
+placement stands, and whether an issue the correction touched would settle as corrected or regressed
+if the advice read a regrade; it routes to `correctness-model/evaluator.ts` or
+`correctness-model/tasks.json` for a correction that missed, and to `controller-source`
+(`src/author/rebuild-advice.ts`) where the flips show an issue the advice keeps unmeasured that the
+evidence has settled.
 
 ## Retired
 

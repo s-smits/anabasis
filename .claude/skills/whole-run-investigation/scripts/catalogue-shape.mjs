@@ -10,7 +10,7 @@ export const SHA256 = /^[0-9a-f]{64}$/;
 export const GIT_SHA = /^[0-9a-f]{40}$/;
 
 /** Semantic lanes the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
-export const ANGLE_COUNT = 26;
+export const ANGLE_COUNT = 28;
 export const ANGLE_FILES = ["review-angles.md"];
 
 // These two lanes keep their own evidence boundary even under explicit grouping, and launch only

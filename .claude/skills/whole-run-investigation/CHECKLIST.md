@@ -10,7 +10,7 @@ defects.
 
 This file owns the synthesis questions. [SKILL.md](SKILL.md) owns the sequence, the tiers and the
 archive, and the [lane catalogue](references/review-angles.md) owns the deterministic rows A to I
-and the twenty-six semantic lanes. A row here does not create a lane and does not waive one the
+and the twenty-eight semantic lanes. A row here does not create a lane and does not waive one the
 tier authorised. Several rows may share one lane; lanes 7 and 23 stay isolated until their reports
 are frozen, so a row that names them is answered by their reports and never by the primary doing
 the same work first.

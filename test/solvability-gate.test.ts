@@ -107,11 +107,28 @@ describe("the census projects counts and keeps locations host-side", () => {
     expect(await Bun.file(join(dir, "solvability.json")).exists()).toBe(false);
   });
 
-  it("blocks a census that could not execute, keeping its failure record protected", async () => {
+  it("returns a census with no evidence to the evaluator, naming its cause code and keeping the detail protected", async () => {
     const { feedback, authorVisible, recorded } = await census("unavailable", probeReturning(null));
     expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
+    expect(authorVisible).toContain("solvability-bundleSnapshot-integrity");
     expect(authorVisible).not.toContain("bundleSnapshot digest drifted");
     expect(await recorded()).toContain("bundleSnapshot digest drifted");
+  });
+
+  it.each([
+    ["solvability-correctnessModel-load", "correctness-model/evaluator.ts"],
+    ["solvability-public-schema-invalid", "correctness-model/controls.json"],
+    ["solvability-some-future-cause", "correctness-model/tasks.json"],
+  ])("never gives null evidence stopped on %s the environment owner", async (code, path) => {
+    const stopped = double<Awaited<ReturnType<ReturnType<typeof probeReturning>>>>({
+      evidence: null,
+      findings: [{ code, path, detail: "protected detail" }],
+    });
+    const { feedback, authorVisible } = await census(code, () => Promise.resolve(stopped));
+    expect(feedback).toMatchObject([{ owner: "correctness-model/evaluator.ts", severity: "blocking" }]);
+    expect(authorVisible).toContain(code);
+    expect(authorVisible).toContain(path);
+    expect(authorVisible).not.toContain("protected detail");
   });
 
   it("routes a census non-result to the environment owner without its text", async () => {

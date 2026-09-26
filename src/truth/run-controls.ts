@@ -25,7 +25,7 @@ import {
   settleControlReceipts,
 } from "./control-receipts.ts";
 import { blockingFailedCheckIds, blockingIssueSummary } from "./verdict-binding.ts";
-import { namedExamples, type SettledControl } from "./grounding-coverage.ts";
+import { namedExamples, type SettledControl, TOOL_REFUSED_CODE } from "./grounding-coverage.ts";
 import {
   EXTERNAL_VERDICT_UNGROUNDED,
   hostNonResult,
@@ -291,9 +291,9 @@ function addThrown(
       },
       code ?? "generated-evaluate-throw",
       code === undefined
-        ? `the correctnessModel threw while evaluating ${ids.length} example(s) in the host's confined check cell: ${namedExamples(ids)}. ` +
+        ? `the correctnessModel threw while evaluating ${ids.length} example${ids.length === 1 ? "" : "s"} in the host's confined check cell: ${namedExamples(ids)}. ` +
             "Reproduce one through correctness-model/evaluator.test.ts, repair the exception, then rerun the check"
-        : `the host refused the tool run of ${ids.length} example(s) on the tool-request contract: ${violation}. Examples: ${namedExamples(ids)}. ` +
+        : `the host refused the tool run of ${ids.length} example${ids.length === 1 ? "" : "s"} on the tool-request contract: ${violation}. Examples: ${namedExamples(ids)}. ` +
             `${VERIFIER_CONTRACT_HINTS[code]} Reproduce it through correctness-model/evaluator.test.ts with a tools.run runtime, repair the request, then rerun the check`,
     ),
   );
@@ -347,7 +347,22 @@ function admitObservation(
   // A control the host could not run to a verdict witnesses no cell, so the claim stays open.
   // Without this finding only the executed isolation floor notices, which lets a battery whose
   // rejects all met a vanished tool start solving. The non-result kind is host structure and may
-  // cross to the author; tool output may not.
+  // cross to the author; tool output may not. A sandbox or unavailable tool that survived its retry
+  // is the environment's under rule 15 whichever kind of check called it, so it takes the code the
+  // census settles as an environment non-result rather than a verdict on the candidate's bytes.
+  if ("hostNonResult" in evaluation && environmentOwnedToolNonResult(evaluation.hostNonResult)) {
+    addToGroup(
+      run,
+      "tool-refused",
+      control.id,
+      `"${control.id}" (${evaluation.hostNonResult})`,
+      (ids, notes) => ({
+        code: TOOL_REFUSED_CODE,
+        message: `${ids.length} example${ids.length === 1 ? "" : "s"} called a tool the host could not run after its retry: ${notes.join(", ")}; the verifier environment owns this, not the correctness model`,
+      }),
+    );
+    return null;
+  }
   // A timeout refuses nothing: the same request often completes on a less busy host. The census
   // reads it beside the verdict from the host's rows (`timedOutControls`), and R2 still refuses a
   // check whose only rejects reached no verdict.
@@ -359,7 +374,7 @@ function admitObservation(
           code: "DISCRIMINATION_PROBE_NO_VERDICT",
           message: `the host could not run these examples to a verdict: ${notes.join(", ")}`,
         },
-        `${ids.length} example(s) reached no verdict because the host could not complete their tool runs (${notes.join(", ")}). A crash is the check's run to repair; a sandbox or unavailable tool belongs to the verifier environment`,
+        `${ids.length} example${ids.length === 1 ? " reached no verdict because its tool run" : "s reached no verdict because their tool runs"} crashed (${notes.join(", ")}); that is the check's run to repair`,
       ),
     );
     return null;
@@ -376,7 +391,7 @@ function admitObservation(
             code: "DISCRIMINATION_NOT_PROVEN",
             message: `examples name a taskId that is not a task of this battery: ${notes.join(", ")}`,
           },
-          `${ids.length} example(s) name a taskId that is not a task of this battery: ${namedExamples(ids)}. Bind every example to one recorded battery task`,
+          `${ids.length} example${ids.length === 1 ? " names" : "s name"} a taskId that is not a task of this battery: ${namedExamples(ids)}. Bind every example to one recorded battery task`,
         ),
     );
     return null;
@@ -482,7 +497,7 @@ async function runAccepts(run: ControlSession, corpus: ControlCorpus): Promise<v
         code: "DISCRIMINATION_ACCEPT_REJECTED",
         message: `valid examples were rejected. Blocking issues: ${issues.join("; ")}`,
       },
-      `${issues.length} valid example(s) were rejected by the correctnessModel, ${groups.join("; ")}. Fix the correctnessModel so declared-valid examples pass`,
+      `${issues.length} valid example${issues.length === 1 ? " was" : "s were"} rejected by the correctnessModel, ${groups.join("; ")}. Fix the correctnessModel so declared-valid examples pass`,
     ),
   );
 }

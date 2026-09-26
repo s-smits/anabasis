@@ -602,15 +602,18 @@ function controlsRows(findings: ContractFinding[], advisory: ContractFinding[] =
     ...row(
       "blocking",
       findings,
-      `control census against the installed tools returned ${findings.length} finding(s)`,
+      `control census against the installed tools returned ${findings.length} finding${findings.length === 1 ? "" : "s"}`,
     ),
     ...row("advisory", advisory, "control census examples whose tool run timed out, which refuses nothing"),
   ];
 }
 
 // Gate audit 2026-09-25 (docs/gate-audit.md, condition-identity): kept: a census that did not run under the verifier identity captured at submit graded a different condition from the one measured
-/** The control findings, with the drift the census observed against the identity captured at submit. */
-function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): ContractFinding[] {
+/** The drift the census observed against the identity captured at submit. The installed tools
+ *  moved under the gate, which says nothing about the candidate's bytes, so the row is the
+ *  environment's: a preview is not remembered, and a submit that meets it ends the session as
+ *  environment-blocked (`gateTerminalClause`) rather than striking the candidate. */
+function driftRows(harness: BuiltHarness, probe: ProbeControlsResult): CampaignFeedback[] {
   const captured = harness.conformance?.verifierEnvironmentHash;
   // A census stopped before its controls ran — an evaluator that would not load, say — establishes
   // no identity at all, so an absent hash on either side is silence rather than disagreement.
@@ -619,18 +622,23 @@ function controlFindings(harness: BuiltHarness, probe: ProbeControlsResult): Con
     probe.verifierEnvironmentHash === undefined ||
     probe.verifierEnvironmentHash === captured
   ) {
-    return probe.findings;
+    return [];
   }
   return [
-    ...probe.findings,
-    ...controllerValidatedFindings([
-      {
-        code: "verifier-condition-drift",
-        path: ".toolchain",
-        detail:
-          "The control census did not establish the installed verifier identity captured at submit; submit again under the current tool condition.",
-      },
-    ]),
+    {
+      owner: "environment",
+      severity: "blocking",
+      claim: "the control census ran under a verifier identity other than the one captured at submit",
+      evidence: "census gate: executed discrimination evidence (census.json)",
+      findings: controllerValidatedFindings([
+        {
+          code: "verifier-condition-drift",
+          path: ".toolchain",
+          detail:
+            "The installed verifier identity moved between the capture at submit and the control census, so the host's tool condition changed under the gate. A check of the same bytes runs the census again; a submit that ends on this row ends the session as environment-blocked.",
+        },
+      ]),
+    },
   ];
 }
 
@@ -653,7 +661,7 @@ async function runCensus(
       : wall.under("reference solve", solvability(harness, iterationDir, slugDir, wall.stopped, stages)),
   ]);
   const probe = controls.status === "fulfilled" ? controls.value : undefined;
-  const findings = probe === undefined ? [] : controlFindings(harness, probe);
+  const findings = probe?.findings ?? [];
   // A check that called its tool and met a sandbox or unreadable-tool refusal twice is the
   // environment's non-result under rule 15, not a correctness-model finding: there is nothing in
   // the candidate's bytes to repair. It is pulled out of `findings` here and settled below.
@@ -666,6 +674,7 @@ async function runCensus(
         findings.filter((finding) => finding.code !== TOOL_REFUSED_CODE),
         probe?.advisory,
       ),
+      ...(probe === undefined ? [] : driftRows(harness, probe)),
       ...referenceRows,
     ],
   };

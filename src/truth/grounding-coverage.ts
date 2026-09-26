@@ -172,7 +172,7 @@ export function unexecutedGroundingFindings(input: {
     code: TOOL_REFUSED_CODE,
     path,
     controlIds,
-    detail: `${controlIds.length} example(s) called tool "${check.adapterId}" for check "${check.checkId}" and the host could not run it (${kind}) after its retry: ${namedExamples(controlIds)}; the verifier environment owns this, not the correctness model`,
+    detail: `${controlIds.length} example${controlIds.length === 1 ? "" : "s"} called tool "${check.adapterId}" for check "${check.checkId}" and the host could not run it (${kind}) after its retry: ${namedExamples(controlIds)}; the verifier environment owns this, not the correctness model`,
   }));
   return refusals;
 }

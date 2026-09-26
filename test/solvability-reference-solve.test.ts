@@ -227,11 +227,15 @@ export const checks = { answer: (request) => { throw new Error(JSON.stringify(re
       class: "withheld",
       classification: "generated-bundleSnapshot-drift",
     });
+    // Drift under the census cannot be told apart from what the candidate's generated code did to
+    // the snapshot, so it costs the Builder a strike rather than ending the session as the host's.
     const feedback = await gate(fixture, result);
     expect(feedback).toContainEqual(
       expect.objectContaining({ owner: "correctness-model/evaluator.ts", severity: "blocking" }),
     );
+    expect(JSON.stringify(feedback)).toContain("solvability-bundleSnapshot-drift");
     expect(JSON.stringify(feedback)).not.toContain("test-writer-schema.json");
+    expect(JSON.stringify(feedback)).not.toContain("tasks.json#");
     expect(readFileSync(join(fixture.dir, "solvability.json"), "utf8")).toContain(
       "solvability-bundleSnapshot-drift",
     );

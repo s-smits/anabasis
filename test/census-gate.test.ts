@@ -165,7 +165,7 @@ describe("the census gate", () => {
     const slugDir = join(iterationDir, "workspace");
     mkdirSync(join(slugDir, "agent"), { recursive: true });
     const detail =
-      '3 example(s) called tool "cc" for check "bound" and the host could not run it (sandbox) after its retry: "a0", "a1", "a2"; the verifier environment owns this, not the correctness model';
+      '3 examples called tool "cc" for check "bound" and the host could not run it (sandbox) after its retry: "a0", "a1", "a2"; the verifier environment owns this, not the correctness model';
     const gate = makeCensusGate({
       probeControls: async (_dir, _brief, corpus) => ({
         ...cleanProbeResult(corpus),
@@ -355,7 +355,7 @@ describe("the census gate", () => {
         disclosure: { class: "authored" },
       });
     }
-    expect(feedback[0]?.claim).toContain("control census against the installed tools returned 1 finding(s)");
+    expect(feedback[0]?.claim).toContain("control census against the installed tools returned 1 finding");
     const verifierRow = feedback[0];
     expect(verifierRow?.findings).toHaveLength(1);
     const [verifierFinding] = verifierRow?.findings ?? [];
@@ -383,15 +383,18 @@ describe("the census gate", () => {
         iterationDir,
         join(iterationDir, "workspace"),
       );
-      return feedback.flatMap((row) => row.findings ?? []).map((finding) => finding.code);
+      return feedback.flatMap((row) => (row.findings ?? []).map((finding) => `${row.owner} ${finding.code}`));
     };
     // A module that would not load stops the census before any tool ran: its own finding alone.
     const unloaded = {
       findings: [{ code: "generated-module-load", path: "correctness-model/evaluator.ts", detail: "load" }],
     };
-    expect(await codesFor("census-drift-unloaded", unloaded)).toEqual(["generated-module-load"]);
+    expect(await codesFor("census-drift-unloaded", unloaded)).toEqual([
+      "correctness-model/evaluator.ts generated-module-load",
+    ]);
     const changed = { ...cleanProbeResult(harness.corpus), verifierEnvironmentHash: "sha-changed" };
-    expect(await codesFor("census-drift-changed", changed)).toEqual(["verifier-condition-drift"]);
+    // Tools that moved under the gate say nothing about the bytes: the environment owns the drift.
+    expect(await codesFor("census-drift-changed", changed)).toEqual(["environment verifier-condition-drift"]);
   });
 
   it.concurrent("keeps an advisory F2 observation beside a passing admission verdict", async () => {

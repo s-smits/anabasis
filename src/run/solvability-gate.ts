@@ -312,7 +312,7 @@ function censusFeedback(
           return {
             code: CASE_CODE[kind],
             path: "environment",
-            detail: `${count} of ${cases.length} reference solves ended as a ${kind} non-result, which the host owns; a check of the same bytes runs the census again`,
+            detail: `${count} of ${cases.length} reference solves ended as a ${kind} non-result${kind === "sandbox" ? "" : " on both of their attempts"}, which the host owns; a check of the same bytes runs the census again`,
           };
         }),
       ),

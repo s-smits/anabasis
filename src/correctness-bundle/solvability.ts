@@ -351,6 +351,24 @@ async function attemptReferenceSubmission(
   }
 }
 
+/** The attempt a case keeps. A host non-result earns one fresh attempt on the same bytes, because
+ *  every one of the eight recorded (firmware and truss, 2026-09-24/25) cleared on a later check of
+ *  byte-identical candidates, so refusing on the first cost the Builder a check it could not act on.
+ *  The solve memory keeps no host non-result, so the second attempt runs the stage that failed
+ *  again. A product failure is not retried: the same bytes would fail the same way. A second host
+ *  non-result stands, with the first attempt's error kept on the row. */
+async function attemptOnceMoreAfterHost(
+  session: SolvabilityCaseSession,
+  task: CommittedPublicTask<JsonValue>,
+): Promise<{ attempt: ReferenceSubmissionAttempt; rerunAfterNonResult: string | undefined }> {
+  const first = await attemptReferenceSubmission(session, task);
+  if (first.attribution === null || !("nonResultKind" in first.attribution)) {
+    return { attempt: first, rerunAfterNonResult: undefined };
+  }
+  const attempt = await attemptReferenceSubmission(session, task);
+  return { attempt, rerunAfterNonResult: first.error ?? first.attribution.nonResultKind };
+}
+
 /** A host that failed before the solve child was ready owns the case; otherwise a solve that broke
  *  the isolation wall is the candidate's, and any other throw is left for the checks to name. */
 function solveAttribution(
@@ -388,7 +406,7 @@ async function runSolvabilityCase(
   fullTaskJson: string,
   committed: CommittedPublicTask<JsonValue>,
 ): Promise<SolvabilityCaseOutcome> {
-  const attempt = await attemptReferenceSubmission(session, committed);
+  const { attempt, rerunAfterNonResult } = await attemptOnceMoreAfterHost(session, committed);
   const accepted = attempt.artifactJson;
   let { error, authorClassification, attribution } = attempt;
   let result: CorrectnessModelResult | null = null;
@@ -415,6 +433,7 @@ async function runSolvabilityCase(
     failedCheckIds: result === null ? [] : failedCheckIds(result),
     predicateFailures,
     ...keyIfDefined("checkRuns", checkRuns),
+    ...keyIfDefined("rerunAfterNonResult", rerunAfterNonResult),
     ...caseVerdict({ ...attempt, attribution }, passed, error),
   };
   if (row.status === "passed") return { row, finding: null };

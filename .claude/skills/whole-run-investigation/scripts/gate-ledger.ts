@@ -221,6 +221,15 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     "generated-correctness-model-relay",
     "TASK_FAMILY_BINDING_UNPROVEN",
   ]),
+  row(
+    ["F2-5", "f2-host-nonresult", "rewritten"],
+    [0.9, 0.1],
+    ["solvability-submission-path-host-non-result", "solvability-reference-solve-host-non-result"],
+    "8 recorded firings (7 read as gate-unvalidated, 1 as gate-environment), none on the candidate's " +
+      "bytes and each cleared on a later check of the same bytes; since 2026-09-27 a case gets one " +
+      "fresh attempt inside the census before the host's non-result stands",
+    ["gate-environment"],
+  ),
   // CT: controls and census
   row(
     ["CT-1", "expected-check-inapplicable", "kept"],

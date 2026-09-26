@@ -56,6 +56,9 @@ export type SolvabilityCaseEvidence = {
   predicateFailures: CheckFailureDetail[];
   /** One row per check the reference's evaluation reached; absent when it never reached one. */
   checkRuns?: CheckRun[];
+  /** The first attempt's error when the host owned it and the case ran once more on the same bytes;
+   *  absent when the first attempt settled. The status below is the second attempt's. */
+  rerunAfterNonResult?: string;
 } & (
   | {
       status: "passed";

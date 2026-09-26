@@ -38,6 +38,28 @@ function starterClosingWith(termination: GeneratedToolWorkerEvidence["terminatio
   });
 }
 
+/** A starter that closes with the scripted termination on each task's nth attempt, and normally
+ *  once the script runs out, counting the attempts per task. */
+function starterClosingInTurn(script: GeneratedToolWorkerEvidence["termination"][]) {
+  const attempts = new Map<string, number>();
+  const factory: StarterFactory = async (options) => {
+    const seen = attempts.get(options.task.taskId) ?? 0;
+    attempts.set(options.task.taskId, seen + 1);
+    const termination = script[seen];
+    return termination === undefined
+      ? createSolvabilityStarter(options)
+      : starterClosingWith(termination)(options);
+  };
+  return { factory, attempts: () => [...attempts.values()] };
+}
+
+const CLOSE_DEADLINE = {
+  status: "non-result",
+  kind: "runtime",
+  message: "generated-tool worker did not close within 1000ms",
+  deadline: true,
+} as const;
+
 afterAll(cleanupScratch);
 
 describe("the representation the submission path must express", () => {
@@ -174,5 +196,48 @@ describe("the representation the submission path must express", () => {
 
     expect(result.findings).toEqual([]);
     expect(statuses(result)).toEqual(["passed", "passed"]);
+  });
+});
+
+// Every recorded pre-accept close deadline (8 of 8, 2026-09-24/25) cleared on a later check of the
+// same bytes, so the census gives the case one fresh attempt before the host's non-result stands.
+describe("one fresh attempt after a host non-result", () => {
+  it.concurrent("passes a case whose first worker missed its close deadline and whose second closed", async () => {
+    const starter = starterClosingInTurn([CLOSE_DEADLINE]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(statuses(result)).toEqual(["passed", "passed"]);
+    expect(starter.attempts()).toEqual([2, 2]);
+    expect(result.evidence?.cases[0]?.rerunAfterNonResult).toContain("did not close within 1000ms");
+  });
+
+  it.concurrent("keeps the host non-result when the second attempt misses its deadline too", async () => {
+    const starter = starterClosingInTurn([CLOSE_DEADLINE, CLOSE_DEADLINE, CLOSE_DEADLINE]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(statuses(result)).toEqual(["non-result", "non-result"]);
+    expect(starter.attempts()).toEqual([2, 2]);
+    expect(codes(result)).toContain("solvability-submission-path-host-non-result");
+  });
+
+  it.concurrent("does not retry a representation defect, which the same bytes would repeat", async () => {
+    const broken = {
+      status: "non-result",
+      kind: "protocol",
+      message: "generated-tool worker closed with pending requests",
+    } as const;
+    const starter = starterClosingInTurn([broken]);
+    const result = await witness(specimen({ verifier: GOOD_VERIFIER }), {
+      createSolvabilityStarter: starter.factory,
+    });
+
+    expect(statuses(result)).toEqual(["failed", "failed"]);
+    expect(starter.attempts()).toEqual([1, 1]);
+    expect(result.evidence?.cases[0]).not.toHaveProperty("rerunAfterNonResult");
   });
 });

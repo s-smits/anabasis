@@ -128,6 +128,20 @@ stopped waiting for also landed here, because it carried the protocol kind witho
 deadline mark. Both firings recorded on 2026-09-24 were that timeout on a loaded host, 0 of 2 a
 defect in the bytes; the request timer now marks `deadline` and the case is a host non-result.
 
+### f2-host-nonresult
+
+Settles a reference solve or submission path the host broke as a per-case environment non-result
+(`solvability-submission-path-host-non-result`, `solvability-reference-solve-host-non-result`;
+`src/correctness-bundle/solvability.ts`), which ends a submit as `environment-blocked`. It fired
+8 times across the firmware and truss runs of 2026-09-24/25, each a worker that missed its
+1000 ms close deadline before the submit was accepted, 7 read as `gate-unvalidated` and 1 under
+the older spelling `gate-environment`. None was a defect in the bytes: each cleared on a later
+check of byte-identical candidates, and most of those candidates had cleared before. Since
+2026-09-27 the census gives such a case one fresh attempt on the same bytes. The solve memory
+keeps no host non-result, so the stage that failed runs again, and only a second host non-result
+stands; the row keeps the first attempt's error as `rerunAfterNonResult`. A product failure is
+not retried, since the same bytes fail the same way.
+
 ### accept-control-rejected
 
 Refuses a candidate, and at claim time a battery, when a known-valid accept control fails a check

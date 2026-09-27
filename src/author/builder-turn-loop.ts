@@ -10,6 +10,7 @@ import type { ModelAttemptGate } from "../run/campaign-budget.ts";
 import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { continuePrompt, toolFailureNote, unchangedAuthoringNote } from "./builder-continuation.ts";
 import { authoringIdentity } from "./author-first.ts";
+import { memoryOverCapNotice } from "./builder-memory.ts";
 import type { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { awaitTurnRetry, type TurnRetryContext } from "./turn-retry.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -210,6 +211,7 @@ function nextTurnPrompt(input: BuilderTurnInput, result: AgentTurnResult): strin
     continuePrompt(goal),
     toolFailureNote(result.toolCalls),
     unchangedAuthoringNote(owned, authoring.paths),
+    memoryOverCapNotice(authoring.workspace) ?? "",
   ]
     .filter((part) => part !== "")
     .join("\n\n");

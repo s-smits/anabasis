@@ -38,6 +38,7 @@ import {
   WORKSPACE_DIR,
   builderMemoryBlock,
   carryMemoryForward,
+  memoryOverCapNotice,
   noteAtMemoryHead,
 } from "../src/author/builder-memory.ts";
 import { type CampaignEpochEvidence, selectCampaignEpoch } from "../src/author/campaign-epoch.ts";
@@ -118,6 +119,23 @@ describe("the notes block a fresh session opens on", () => {
     expect(block).toContain(newest);
   });
 
+  it("keeps the newest note of a newest-first file over the cap, and the section that closes it", () => {
+    const dir = workspace();
+    const newest = "## 2026-09-27 newest\nthe verifier wants kN, not N";
+    const older = Array.from({ length: 400 }, (_, i) => `## older entry ${String(i)}\nsome lesson\n`).join(
+      "",
+    );
+    writeFileSync(join(dir, MEMORY_FILE), `# Builder memory\n\n${newest}\n${older}## Risk\nfloat rounding\n`);
+    const block = builderMemoryBlock(dir);
+    expect(block).toContain(newest);
+    expect(block).toContain("## Risk\nfloat rounding");
+    expect(block).not.toContain("older entry 200\n");
+    expect(block).toMatch(/memory cut to 8000 bytes: \d+ bytes dropped here/);
+    expect(memoryOverCapNotice(dir)).toContain(`${MEMORY_FILE} is `);
+    writeFileSync(join(dir, MEMORY_FILE), "# Builder memory\n\nshort\n");
+    expect(memoryOverCapNotice(dir)).toBeNull();
+  });
+
   it("keeps one copy of an exact repeated section and drops a heading with nothing under it", () => {
     const dir = workspace();
     writeFileSync(
@@ -194,12 +212,28 @@ describe("the handover between measured rounds", () => {
     );
     expect(existsSync(join(workspaceOf(next), "scratch", "run"))).toBe(false);
     expect(existsSync(join(workspaceOf(next), "scratch", "trace.bin"))).toBe(false);
-    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s helper files`);
+    expect(read(next, MEMORY_FILE)).toContain(`scratch/ holds ${first.key}'s 1 helper files`);
     expect(read(next, MEMORY_FILE)).toContain("gen.ts");
     // A second carry names only its own predecessor's helpers, in one line.
     const third = read(nextPass(PASS_TWO), MEMORY_FILE);
     expect(count(third, "scratch/ holds")).toBe(1);
-    expect(third).toContain(`scratch/ holds ${next.key}'s helper files`);
+    expect(third).toContain(`scratch/ holds ${next.key}'s 1 helper files`);
+  });
+
+  it("names at most five helpers and counts the rest", () => {
+    const { first, nextPass } = campaign("# Builder memory\n\nunits are kN\n");
+    mkdirSync(join(workspaceOf(first), "scratch"), { recursive: true });
+    for (let i = 0; i < 120; i++) {
+      writeFileSync(join(workspaceOf(first), "scratch", `gen-${String(i).padStart(3, "0")}.ts`), "1\n");
+    }
+    const line =
+      read(nextPass(PASS_ONE), MEMORY_FILE)
+        .split("\n")
+        .find((row) => row.includes("scratch/ holds")) ?? "";
+    expect(line).toContain(
+      "120 helper files: gen-000.ts, gen-001.ts, gen-002.ts, gen-003.ts, gen-004.ts and 115 more.",
+    );
+    expect(line).not.toContain("gen-005.ts");
   });
 
   it("names only the immediate predecessor when a carried file is carried again", () => {
@@ -252,30 +286,17 @@ describe("the handover between measured rounds", () => {
     const next = nextPass(PASS_ONE);
     expect(read(next, MEMORY_FILE)).toContain("units are kN");
     expect(read(next, MEMORY_FILE)).not.toContain("controller:");
-    // A carried file over its ceiling opens on a cut's marker. The line goes under it, which is the
-    // only place a later cut still recognises that marker, and stays inside the ceiling.
+    // A carried file over its ceiling keeps its cut's marker where the text went; the line goes on
+    // top, and a later cut folds the marker into its own rather than stacking a second.
     const newest = "units are kN and the verifier rejects bare floats";
     const long = campaign(`${"an early lesson\n".repeat(Math.ceil((MEMORY_CAP_BYTES * 2) / 16))}${newest}\n`);
     const cut = long.nextPass(PASS_ONE);
     noteAtMemoryHead(workspaceOf(cut), seeded);
     const noted = read(cut, MEMORY_FILE);
-    expect(noted.startsWith("<!-- memory cut to")).toBe(true);
-    expect(noted.split("\n")[1]).toBe(`<!-- controller: ${seeded} -->`);
+    expect(noted.startsWith(`<!-- controller: ${seeded} -->\n`)).toBe(true);
     expect(count(noted, "memory cut to")).toBe(1);
     expect(BYTES(noted)).toBeLessThanOrEqual(MEMORY_CAP_BYTES);
     expect(builderMemoryBlock(workspaceOf(cut))).toContain(newest);
-    // A cut file the Builder has since trimmed under its ceiling is carried uncut, so the carry's
-    // own strip is all that stands between the successor and its predecessor's head lines. It has
-    // to take the cut's marker too, or the strip stops at the first line and keeps them all.
-    const trimmed = campaign(
-      `<!-- memory cut to ${String(MEMORY_CAP_BYTES)} bytes: 900 older bytes dropped -->\n# Builder memory\n\nunits are kN\n`,
-    );
-    noteAtMemoryHead(workspaceOf(trimmed.first), seeded);
-    const after = read(trimmed.nextPass(PASS_ONE), MEMORY_FILE);
-    expect(after).toContain("units are kN");
-    expect(after).not.toContain("controller:");
-    expect(after).not.toContain("memory cut to");
-    expect(count(after, "carried forward from")).toBe(1);
   });
 
   it("never overwrites notes an epoch already has, and never fails on a missing predecessor", () => {

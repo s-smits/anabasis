@@ -72,25 +72,27 @@ const FILES: ReadonlyArray<readonly [string, string, number]> = [
   [SCRATCHPAD_FILE, STARTER_SCRATCHPAD, SCRATCHPAD_CAP_BYTES],
 ];
 
-/** The marker a cut leaves at the top of the file, and the pattern that finds an existing one so a
- *  second cut replaces it instead of stacking another line of bookkeeping. */
-const CUT_MARKER_PATTERN = /^<!-- memory cut to \d+ bytes: (\d+) older bytes dropped -->\n/;
+/** The line a cut leaves where it removed text, and the pattern that finds every earlier one, so a
+ *  second cut folds their counts into its own line instead of stacking bookkeeping. */
+const CUT_MARKER_PATTERN = /<!-- memory cut to \d+ bytes: (\d+) bytes dropped here -->\n?/g;
 
 /** Room reserved inside the ceiling for that marker line, which is about 60 bytes. Reserving it is
  *  what keeps a cut file inside the limit it was cut to. */
 const CUT_MARKER_RESERVE_BYTES = 96;
 
-/** The controller lines at the head of a notes file: a cut's marker, the markers
- *  `carryMemoryForward` writes to say where an inherited file came from and which helper files
- *  crossed beside it, and the `controller:` line `noteAtMemoryHead` writes about how this workspace
- *  was seeded. A cut that dropped a carry marker would leave a predecessor's notes reading as this
- *  epoch's own. They sit at the head, which is exactly the end a newest-first cut takes, so the cut
- *  has to keep them explicitly. Every one of them describes the epoch that wrote it, so the next
- *  carry strips them all, a cut's marker included: left in front, it would stop the strip at the
- *  first line and hand the successor its predecessor's lines as notes. A file holding nothing else
- *  ends on the last marker's `-->`, because the read trims it. */
+/** The share of a cut file's budget kept from its head; the rest comes from its tail. */
+const HEAD_SHARE = 2 / 3;
+
+/** The controller lines at the head of a notes file: the markers `carryMemoryForward` writes to
+ *  say where an inherited file came from and which helper files crossed beside it, and the
+ *  `controller:` line `noteAtMemoryHead` writes about how this workspace was seeded. A cut that
+ *  dropped a carry marker would leave a predecessor's notes reading as this epoch's own, so the cut
+ *  keeps them whole ahead of its head share. Every one of them describes the epoch that wrote it,
+ *  so the next carry strips them all. A cut's own marker is not among them: it sits where the text
+ *  went and stays true of the text in any epoch. A file holding nothing else ends on the last
+ *  marker's `-->`, because the read trims it. */
 const HEAD_MARKER_PATTERN =
-  /^(?:<!-- (?:memory cut to|carried forward from|scratch\/ holds|controller:)[^\n]*-->(?:\n+|$))+/;
+  /^(?:<!-- (?:carried forward from|scratch\/ holds|controller:)[^\n]*-->(?:\n+|$))+/;
 
 /** The Builder's own helper scripts — generators, local checks, debug probes — sit at the top of
  *  `scratch/`, and a successor epoch otherwise rebuilds each one from nothing, so they cross. Only
@@ -99,6 +101,11 @@ const HEAD_MARKER_PATTERN =
  *  Scratch is untracked, so nothing that crosses can enter a candidate. */
 export const SCRATCH_DIR = "scratch";
 const SCRATCH_FILE_LIMIT_BYTES = 256 * 1024;
+
+/** How many helper names the carry marker spells out; the rest are counted. A predecessor can leave
+ *  a hundred helpers, and naming each one spent a third of the memory ceiling on a file listing the
+ *  Builder can read with ls. */
+const HELPER_NAMES_SHOWN = 5;
 
 /** The line at the head of a carried file, by what changed between the two epochs. */
 const CARRIED: Record<EpochSuccession, (from: string) => string> = {
@@ -154,32 +161,54 @@ function withoutRepeatedSections(text: string): string {
 }
 
 /**
- * Limit one memory file to its declared size, keeping the newest bytes and cutting at a line
- * boundary. Which end is kept is the whole decision: the file grows by appending, so keeping the
- * start of it drops the notes the last pass just wrote, which are the ones the next session needs.
+ * Limit one memory file to its declared size, keeping both ends and cutting the middle at line
+ * boundaries. Which text survives is the whole decision, and Builders do not agree on where the
+ * newest note goes: most write newest-first or under a title and fixed section headings, so a cut
+ * that kept only the tail dropped exactly the note the last pass wrote, while an append-only writer
+ * puts it at the end. Two thirds of the budget go to the head and the rest to the tail, so either
+ * convention keeps its newest note, and the Risk section the round plan view quotes, which closes
+ * the starter layout, stays too.
  *
- * The marker names how many older bytes went, so a writer sees that its file was cut instead of
- * meeting a shorter file with no explanation, and a file already carrying a marker adds its count
- * to the new one rather than growing a second marker line. A carry-forward marker is kept inside
- * the ceiling wherever the cut falls, so the write path and the read path preserve it by one rule
- * instead of the writer passing it in and the reader losing it.
+ * The marker sits where the text went and names how many bytes went, so a writer sees that its file
+ * was cut instead of meeting a shorter file with no explanation; earlier markers fold into the new
+ * count. The controller lines at the head are kept inside the ceiling wherever the cut falls, so the
+ * write path and the read path preserve them by one rule.
  */
-function cappedToNewest(text: string, bytes: number): string {
+function cappedToEnds(text: string, bytes: number): string {
   const encoder = new TextEncoder();
   if (encoder.encode(text).byteLength <= bytes) return text;
-  const prior = CUT_MARKER_PATTERN.exec(text);
-  const uncut = prior === null ? text : text.slice(prior[0].length);
-  const pinned = HEAD_MARKER_PATTERN.exec(uncut)?.[0] ?? "";
-  const body = encoder.encode(uncut.slice(pinned.length));
+  const pinned = HEAD_MARKER_PATTERN.exec(text)?.[0] ?? "";
+  let earlier = 0;
+  const unmarked = text.slice(pinned.length).replace(CUT_MARKER_PATTERN, (_line, dropped: string) => {
+    earlier += Number.parseInt(dropped, 10);
+    return "";
+  });
+  const body = encoder.encode(unmarked);
   const budget = Math.max(0, bytes - encoder.encode(pinned).byteLength - CUT_MARKER_RESERVE_BYTES);
-  const start = Math.max(0, body.byteLength - budget);
-  const tail = new TextDecoder().decode(body.subarray(start));
-  // Only a slice can open mid-line, so only a slice needs its first partial line dropped; an
-  // untouched body starts where the author started it and keeps its first line.
-  const cut = start === 0 ? -1 : tail.indexOf("\n");
-  const kept = `${(cut >= 0 ? tail.slice(cut + 1) : tail.replace(/^\uFFFD+/, "")).trim()}\n`;
-  const dropped = Number.parseInt(prior?.[1] ?? "0", 10) + body.byteLength - encoder.encode(kept).byteLength;
-  return `<!-- memory cut to ${bytes} bytes: ${dropped} older bytes dropped -->\n${pinned}${kept}`;
+  const decoder = new TextDecoder();
+  const headSlice = decoder.decode(body.subarray(0, Math.floor(budget * HEAD_SHARE)));
+  // Each end is cut back to a whole line, which also drops a character the byte slice split.
+  const head = headSlice.slice(0, headSlice.lastIndexOf("\n") + 1);
+  const headBytes = encoder.encode(head).byteLength;
+  const tailSlice = decoder.decode(
+    body.subarray(Math.max(headBytes, body.byteLength - (budget - headBytes))),
+  );
+  const newline = tailSlice.indexOf("\n");
+  const tail = newline < 0 ? "" : tailSlice.slice(newline + 1);
+  const dropped = earlier + body.byteLength - headBytes - encoder.encode(tail).byteLength;
+  return `${pinned}${head}<!-- memory cut to ${bytes} bytes: ${dropped} bytes dropped here -->\n${tail}`;
+}
+
+/** One line saying a notes file is over the size a fresh session reads whole, or null when it fits.
+ *  The cut happens on the next read, so the line is what lets the Builder shorten the file itself
+ *  before the controller chooses which middle to drop. */
+export function memoryOverCapNotice(workspace: string): string | null {
+  const over = FILES.flatMap(([file, , cap]) => {
+    const size = existsSync(join(workspace, file)) ? Bun.file(join(workspace, file)).size : 0;
+    return size > cap ? [`${file} is ${String(size)} bytes, over its ${String(cap)}-byte limit`] : [];
+  });
+  if (over.length === 0) return null;
+  return `${over.join("; ")}: the next round reads its head and tail and drops the middle, so shorten it now.`;
 }
 
 /**
@@ -198,14 +227,14 @@ function cappedToNewest(text: string, bytes: number): string {
  * The size limit is applied on the read as well as on the carry. `carryMemoryForward` bounds what
  * it stores, but the Builder can grow MEMORY.md afterwards through ordinary file edits, so a read
  * that trusted the stored size would put an unbounded file into a prompt. Both paths use the same
- * rule, keep the newest text and mark what went, rather than choosing separate limits or cutting
- * different ends of the file.
+ * rule, keep both ends and mark what went, rather than choosing separate limits or cutting
+ * different parts of the file.
  */
 export function builderMemoryBlock(workspace: string): string {
   const blocks = FILES.values()
     .map(([file, starter, cap]) => [file, authoredBody(workspace, file, starter), cap] as const)
     .filter(([, body]) => body !== "")
-    .map(([file, body, cap]) => `--- ${file} ---\n${cappedToNewest(withoutRepeatedSections(body), cap)}`)
+    .map(([file, body, cap]) => `--- ${file} ---\n${cappedToEnds(withoutRepeatedSections(body), cap)}`)
     .toArray();
   if (blocks.length === 0) return "";
   return [
@@ -228,10 +257,13 @@ export function builderMemoryBlock(workspace: string): string {
 export function noteAtMemoryHead(workspace: string, line: string): void {
   const file = join(workspace, MEMORY_FILE);
   const text = existsSync(file) ? readFileSync(file, "utf8") : STARTER_MEMORY;
-  // Under a cut's marker, which a cut only recognises as the file's first line.
-  const cut = CUT_MARKER_PATTERN.exec(text)?.[0] ?? "";
-  const noted = `${cut}<!-- controller: ${line} -->\n${text.slice(cut.length)}`;
-  writeFileSync(file, cappedToNewest(noted, MEMORY_CAP_BYTES));
+  writeFileSync(file, cappedToEnds(`<!-- controller: ${line} -->\n${text}`, MEMORY_CAP_BYTES));
+}
+
+function helperMarker(from: string, helpers: readonly string[]): string {
+  const shown = helpers.slice(0, HELPER_NAMES_SHOWN).join(", ");
+  const rest = helpers.length - HELPER_NAMES_SHOWN;
+  return `<!-- scratch/ holds ${from}'s ${String(helpers.length)} helper files: ${shown}${rest > 0 ? ` and ${String(rest)} more` : ""}. -->`;
 }
 
 function carryScratchHelpers(prior: string, next: string): string[] {
@@ -282,8 +314,7 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
     // Helpers are a convenience like the notes themselves: a failed copy leaves the Builder to
     // rewrite them, which costs minutes, while failing the epoch over them would cost the round.
   }
-  const helperLine =
-    helpers.length === 0 ? [] : [`<!-- scratch/ holds ${from}'s helper files: ${helpers.join(", ")}. -->`];
+  const helperLine = helpers.length === 0 ? [] : [helperMarker(from, helpers)];
   for (const [file, starter, cap] of FILES) {
     if (succession === "binding" && file !== MEMORY_FILE) continue;
     const marker = [CARRIED[succession](from), ...(file === MEMORY_FILE ? helperLine : [])].join("\n");
@@ -295,7 +326,7 @@ export function carryMemoryForward(campaignRoot: string, epoch: CampaignEpochEvi
       mkdirSync(next, { recursive: true });
       // The predecessor's file may already be over its ceiling, and the marker adds to it. Cap here
       // so the successor opens on a file the read path passes through whole.
-      writeFileSync(join(next, file), cappedToNewest(`${marker}\n\n${body}\n`, cap));
+      writeFileSync(join(next, file), cappedToEnds(`${marker}\n\n${body}\n`, cap));
     } catch {
       // Inherited notes are a convenience, never a precondition: the epoch starts on the starter
       // instead of failing to open over notes it would have been able to rewrite.

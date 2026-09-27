@@ -23,6 +23,7 @@ import {
 } from "../run/provider-resource-budget.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundle/provider-reset.ts";
 
 export const RATIONALE_MAX = 400;
 const RULE_MAX = 600;
@@ -203,12 +204,16 @@ export function noVerdictAttempt(error: string, errorKind: NonResultKind, turns:
   return { verdict: null, abstained: false, rationale: null, rules: [], error, errorKind, turns };
 }
 
-/** One fresh schema-tool session per subject; any non-schema outcome produces verdict:null. */
+/** One fresh schema-tool session per subject; any non-schema outcome produces verdict:null. A
+ *  session limit naming its reset opens one more fresh session after that reset, so a battery
+ *  reviewed while the review account was spent keeps its verdicts. */
 export function sessionJudge(options: {
   openSession(tool: AgentTool<never>): Promise<AgentSession>;
   turnTimeoutMs?: number;
   observer?: RunObserver;
   providerBudget?: ProviderResourceBudget;
+  /** Test interface for the reset wait's clock and timer. */
+  resetWait?: Omit<ReviewResetWait, "providerBudget">;
 }): Judge {
   return async (input, context) => {
     const output: VerdictCapture = { captured: null, calls: 0 };
@@ -241,6 +246,11 @@ export function sessionJudge(options: {
         };
       },
     } as AgentTool<never>;
-    return runVerdictTurn({ ...options, open: () => options.openSession(tool), input, context, output });
+    return retryAfterNamedReset(
+      "judge",
+      () => runVerdictTurn({ ...options, open: () => options.openSession(tool), input, context, output }),
+      (attempt) => (attempt.verdict === null && !attempt.abstained ? attempt.error : null),
+      { ...options.resetWait, ...keyIfDefined("providerBudget", options.providerBudget) },
+    );
   };
 }

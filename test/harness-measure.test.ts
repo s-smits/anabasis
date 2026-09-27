@@ -156,6 +156,94 @@ describe("measureHarness", () => {
     }
   });
 
+  // A measured battery is reviewed once, so a review a session limit refused would be lost for good.
+  // When the limit names its reset, the step waits for it and reviews once more before it publishes;
+  // a completed review and a refusal naming no reset are each read exactly once.
+  it.concurrent("reviews a measured battery again after the reset a session limit named, and only then", async () => {
+    const repo = scaffoldRepo(join(SCRATCH_ROOT, "analyse-reset"), { toolsSpec: true, conformance: true });
+    const processEnv = { HARNESS_BUILT_BACKEND: "codex", CODEX_BUILT_MODEL: "gpt-5.5" };
+    await measure({
+      runId: "m4-reset",
+      repoRoot: repo,
+      processEnv,
+      solver: scriptedMatchingSolver(new Set(), () => {}),
+      createVerifier: () => fullFakeHost(),
+      isolationProbe: () => probeEvidence(true),
+      sessionProbe: async () => builtSession(),
+    });
+    const measured = join(repo, "domains", "bridge-truss");
+    const resolvedSlots = {
+      ...resolveSlots(repo, "bridge-truss", loadRepoEnv(repo, processEnv)),
+      review: { enabled: false, source: "operator" } as const,
+    };
+    const SESSION_LIMIT =
+      "epoch-reviewer turn failed: You've hit your session limit · resets 12:20pm (Europe/Amsterdam) (status 429)";
+    // 10:00 in Amsterdam (CEST): the reset is 2 h 20 min away, and the wait adds its one-minute margin.
+    const now = () => new Date("2026-09-24T08:00:00Z");
+    const reviewed = async (first: { status: "failed" | "completed"; reason: string }) => {
+      const waits: number[] = [];
+      let calls = 0;
+      const step = await analyseStep(repo, "bridge-truss", "m4-reset", measured, {
+        resolvedSlots,
+        resetWait: {
+          now,
+          wait: async (ms) => {
+            waits.push(ms);
+          },
+        },
+        epochReview: async (input) => {
+          if (input.analysis === null) throw new Error("measured review lost its analysis");
+          calls += 1;
+          const { status, reason } = calls === 1 ? first : { status: "completed" as const, reason: "second" };
+          return {
+            schema: EPOCH_REVIEW_SCHEMA,
+            slug: "bridge-truss",
+            runId: "m4-reset",
+            status,
+            reason,
+            condition: null,
+            reviewerPin: "pin",
+            reviewerEffort: null,
+            requestDigest: "request",
+            obligationsDigest: "obligations",
+            reads: [],
+            contestedReads: [],
+            coverage: { files: 0, opened: 0, chars: 0 },
+            findings: [],
+            disputes: [],
+            report: null,
+          };
+        },
+      });
+      const recorded = JSON.parse(
+        readFileSync(
+          join(repo, "campaigns", "bridge-truss", "analysis", "m4-reset-epoch-review.json"),
+          "utf8",
+        ),
+      );
+      return { calls, waits, absent: step.absent, recorded: recorded.reason };
+    };
+    expect(await reviewed({ status: "failed", reason: SESSION_LIMIT })).toEqual({
+      calls: 2,
+      waits: [(2 * 60 + 20) * 60_000 + 60_000],
+      absent: [],
+      recorded: "second",
+    });
+    expect(await reviewed({ status: "completed", reason: "first" })).toEqual({
+      calls: 1,
+      waits: [],
+      absent: [],
+      recorded: "first",
+    });
+    const generic = "epoch-reviewer turn failed: status 429: Too Many Requests";
+    expect(await reviewed({ status: "failed", reason: generic })).toEqual({
+      calls: 1,
+      waits: [],
+      absent: [`epoch review: failed — ${generic}`],
+      recorded: generic,
+    });
+  });
+
   // The review of a measured battery is shown the plan that battery was measured under, read from
   // the battery's own record rather than from a workspace that may have moved on since. A battery
   // measured with no plan hands the reviewer null, which it states rather than omits.

@@ -63,9 +63,8 @@ export function sessionClock(
 }
 
 /** Wait for `pending` unless `signal` aborts first; an aborted wait resolves so the caller can
- *  refuse dispatch on its own ownership check. `awaitTurnRetry` shares it: its reset wait runs for
- *  hours and ends the same way, by asking its own gates once the race settles. */
-export function raceAbort(pending: Promise<unknown>, signal: AbortSignal | undefined): Promise<void> {
+ *  refuse dispatch on its own ownership check. */
+function raceAbort(pending: Promise<unknown>, signal: AbortSignal | undefined): Promise<void> {
   if (signal === undefined) {
     return pending.then(
       () => undefined,

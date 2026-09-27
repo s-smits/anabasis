@@ -1,7 +1,14 @@
 /** When a provider limit names the time it clears, so a turn can wait for it instead of ending
- *  the run. Its one caller is `awaitTurnRetry`; `PROVIDER_ALLOWANCE` in runtime-blocker.ts decides
- *  which refusals are allowances at all. */
+ *  the run. Two callers read it: `awaitTurnRetry` for a Builder turn, and `retryAfterNamedReset`
+ *  below for a review call. `PROVIDER_ALLOWANCE` in runtime-blocker.ts decides which refusals are
+ *  allowances at all. */
+import { fullrunLine } from "../observe/run-observer.ts";
+import type { ProviderResourceBudget } from "../run/provider-resource-budget.ts";
 import { PROVIDER_ALLOWANCE } from "./runtime-blocker.ts";
+
+/** Wake a little after the provider's stated reset rather than exactly on it, so a clock that is
+ *  a few seconds behind ours does not spend an attempt on the same refusal. */
+export const PROVIDER_RESET_MARGIN_MS = 60_000;
 
 /**
  * When the provider said it will accept work again, or null when it named no usable clock.
@@ -32,6 +39,14 @@ const RESET_DATE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\
 interface AllowanceWait {
   refuse: boolean;
   at: Date | null;
+}
+
+/** What a review wait reads besides the refusal: the paid budget whose stop ends it, and, for
+ *  tests, the clock and the timer. */
+export interface ReviewResetWait {
+  providerBudget?: ProviderResourceBudget;
+  now?: () => Date;
+  wait?: (ms: number) => Promise<void>;
 }
 
 /** How far the named zone's wall clock stands from UTC at that instant. */
@@ -97,4 +112,74 @@ export function allowanceWait(messages: readonly string[], now: Date = new Date(
     refuse: named.length < clocks.length,
     at: named.length === 0 ? null : new Date(Math.max(...named)),
   };
+}
+
+/**
+ * Sleep for `ms`, or until the controller's stop fires, whichever is first.
+ *
+ * A reset wait runs for hours, so it has to end when the controller does: `stopped` is the abort
+ * the run's closure raises on SIGINT, SIGTERM and a provider denial. Clearing the timer is what ends
+ * the wait, not resolving it. A resolved race over a live timer keeps the process alive until that
+ * timer fires, so a run stopped during a wait for a provider-named reset would hold its process open
+ * to that reset with its terminal already written. `wait` is the test interface for the timer.
+ */
+export function sleepUnlessStopped(
+  ms: number,
+  stopped: AbortSignal | undefined,
+  wait?: (ms: number) => Promise<void>,
+): Promise<void> {
+  if (stopped?.aborted === true) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = () => {
+      clearTimeout(timer);
+      stopped?.removeEventListener("abort", done);
+      resolve();
+    };
+    stopped?.addEventListener("abort", done, { once: true });
+    if (wait === undefined) timer = setTimeout(done, ms);
+    else wait(ms).then(done, done);
+  });
+}
+
+/**
+ * Run one review call, and run it once more after the reset the provider named when a session
+ * limit refused it.
+ *
+ * A measured battery is reviewed once, so a review a session limit refused is lost for good: the
+ * record says `failed`, the round moves on, and the next Builder round opens without the reading.
+ * The limit's own text says when it lifts, which makes it a bounded pause rather than exhaustion,
+ * the same reading `awaitTurnRetry` gives a Builder turn. Only an allowance that names a clock
+ * waits. A generic 429, an overload or an allowance naming no clock keeps the first result, since no
+ * wait is known to clear it.
+ *
+ * `errorOf` returns the call's recorded failure text, or null when it produced its reading. That
+ * text joins the transport's messages with "; ", and they are split back apart so that each clock
+ * is read from the allowance that named it. The budget is asked on both sides of the wait, so a
+ * spent budget or a controller stop ends the run instead of sleeping through it.
+ */
+export async function retryAfterNamedReset<T>(
+  role: string,
+  run: () => Promise<T>,
+  errorOf: (result: T) => string | null,
+  context: ReviewResetWait = {},
+): Promise<T> {
+  const first = await run();
+  const error = errorOf(first);
+  if (error === null) return first;
+  const now = context.now?.() ?? new Date();
+  const allowance = allowanceWait(error.split("; "), now);
+  if (allowance.refuse || allowance.at === null) return first;
+  const { providerBudget } = context;
+  providerBudget?.assertAvailable("review");
+  fullrunLine(
+    `review retry (role ${role}): refused by a provider limit; waiting until ${allowance.at.toISOString()}, the reset the provider named`,
+  );
+  await sleepUnlessStopped(
+    Math.max(allowance.at.getTime() - now.getTime(), 0) + PROVIDER_RESET_MARGIN_MS,
+    providerBudget?.cancellationSignal,
+    context.wait,
+  );
+  providerBudget?.assertAvailable("review");
+  return run();
 }

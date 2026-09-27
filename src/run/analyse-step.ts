@@ -50,6 +50,7 @@ import { type ResolvedSlots, resolveSlots } from "../backends/resolve.ts";
 import type { RunObserver } from "../observe/run-observer.ts";
 import { readDiagnoses } from "../review/diagnosis-reader.ts";
 import { runEpochReview } from "../review/epoch-reviewer.ts";
+import type { EpochReviewEvidence } from "../review/epoch-review-findings.ts";
 import { publicEpochReview } from "../review/epoch-review-public.ts";
 import { readValidatedBrief } from "../correctness-bundle/public-resources.ts";
 import { reviewSlotPin } from "../review/review-session.ts";
@@ -57,6 +58,7 @@ import type { ProviderResourceBudget } from "./provider-resource-budget.ts";
 import type { SafeguardContext } from "../meta/safeguard.ts";
 import { type ExperimentSubmission, parseExperimentSubmission } from "../author/experiment-plan.ts";
 import { readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
+import { type ReviewResetWait, retryAfterNamedReset } from "../correctness-bundle/provider-reset.ts";
 
 export interface AnalyseStepResult {
   judges: JudgeReviewsResult;
@@ -87,7 +89,13 @@ interface AnalyseStepOptions {
   publicRequest?: string;
   /** Test interface for the reviewer turn: a reader that dies mid-turn. */
   epochReview?: typeof runEpochReview;
+  /** Test interface for the clock and timer of a wait for a provider-named reset. */
+  resetWait?: Omit<ReviewResetWait, "providerBudget">;
 }
+
+/** A review's failure text, which `retryAfterNamedReset` reads for a reset the provider named. */
+const failedReason = (review: EpochReviewEvidence): string | null =>
+  review.status === "failed" ? review.reason : null;
 
 /** The plan recorded with the battery under review, or null when the battery recorded none. The
  *  analysis above has already read this battery through the same attested reader, so a record it
@@ -161,35 +169,42 @@ export async function analyseStep(
     vetoed: judges.contested.filter(isVetoed),
     disputed: judges.contested.filter(isDisputedFail),
   };
-  const epochReview = await (options.epochReview ?? runEpochReview)({
-    repoRoot,
-    slug,
-    runId,
-    treeRoot: analysis.treeRoot,
-    analysis,
-    priorAdvice: standing ?? null,
-    experiment: recordedPlan(measuredDir, runId),
-    ...contested,
-    review,
-    publicRequest: options.publicRequest ?? null,
-    ...keyIfDefined("safeguardContext", options.safeguardContext),
-    ...keyIfDefined("observer", observer),
-    ...keyIfDefined("providerBudget", providerBudget),
-  });
+  // A measured battery is reviewed once, so a reader a session limit refused runs again after the
+  // reset the provider named, here, before the next Builder round reads what the step publishes.
+  const reset = { ...options.resetWait, ...keyIfDefined("providerBudget", providerBudget) };
+  const reviewEpoch = () =>
+    (options.epochReview ?? runEpochReview)({
+      repoRoot,
+      slug,
+      runId,
+      treeRoot: analysis.treeRoot,
+      analysis,
+      priorAdvice: standing ?? null,
+      experiment: recordedPlan(measuredDir, runId),
+      ...contested,
+      review,
+      publicRequest: options.publicRequest ?? null,
+      ...keyIfDefined("safeguardContext", options.safeguardContext),
+      ...keyIfDefined("observer", observer),
+      ...keyIfDefined("providerBudget", providerBudget),
+    });
+  const epochReview = await retryAfterNamedReset("epoch-reviewer", reviewEpoch, failedReason, reset);
   writeCompleted(join(dir, `${runId}-epoch-review.json`), epochReview);
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
   const publicReview = publicEpochReview(epochReview, { brief, ...contested });
   providerBudget?.throwIfDenied();
   const { admission, derived } = publish(publicReview.findings, publicReview.disputes);
-  const reading = await readDiagnoses({
-    repoRoot,
-    analysis,
-    measuredDir,
-    advice: derived,
-    review,
-    ...keyIfDefined("observer", observer),
-    ...keyIfDefined("providerBudget", providerBudget),
-  });
+  const diagnose = () =>
+    readDiagnoses({
+      repoRoot,
+      analysis,
+      measuredDir,
+      advice: derived,
+      review,
+      ...keyIfDefined("observer", observer),
+      ...keyIfDefined("providerBudget", providerBudget),
+    });
+  const reading = await retryAfterNamedReset("diagnosis-reader", diagnose, (read) => read.error, reset);
   writeCompleted(join(dir, `${runId}-diagnoses.json`), reading);
   const advice = attachIssueReadings(derived, { diagnoses: reading.diagnoses });
   if (advice !== derived) {

@@ -1,3 +1,8 @@
+---
+name: wave-audit
+description: "Audit whether a new wave of Anabasis runs improved on the wave it replaced: pair each run with its baseline condition, prove the source is the one moved variable, date the prediction, read placements, edge verdicts, calibration, gate cost, correction loops and denominators on both sides, tie each movement to a fix that fired, and give a verdict per pair. Use when asked 'is there an improvement at the runs', 'did the fixes work', or 'is this wave better'."
+---
+
 # Wave audit: did the new source improve the runs
 
 Load this when the operator asks whether a new batch of runs is better than the last one — "can you
@@ -5,12 +10,12 @@ see an improvement at the runs", "did the fixes work", "is this wave better". A 
 of runs launched together on one source commit, one run per condition. The audit compares a
 candidate wave with the baseline wave it replaced, and it is only a fair question when the two
 differ in one variable: the source. It reads recorded bytes, launches nothing and changes no score;
-what it concludes goes back to `run-improvement-campaign` as the next move.
+what it concludes goes back to [run-improvement-campaign](../run-improvement-campaign/SKILL.md) as the next move.
 
 The obvious reading is the wrong one. Every wave's Builder authors its own battery, so "6 of 6" in
 the baseline and "4 of 6" in the candidate are two different exams, and the lower score may mean a
 harder battery rather than a worse product. Raw pass rates compare only on a shared pack
-(`model-condition-comparison`'s `compare-conditions.mts` refuses a join whose task-set hashes
+([model-condition-comparison](../model-condition-comparison/SKILL.md)'s `compare-conditions.mts` refuses a join whose task-set hashes
 differ, and `harness-query` solves a fixed pack on each harness). Without one, the audit reads what
 the loop did with its batteries rather than what they scored.
 
@@ -45,7 +50,7 @@ tasks — not which way is bigger.
 | --- | --- | --- |
 | placement per battery, in order; rounds before the first on-band battery; `too-easy` count | `bun run runs show <runId>` (Batteries, CLIMB column); `difficulty-decisions/` | fewer `too-easy` before the band, or any battery on band |
 | what each edge asked of the solver | `wri.ts climb <campaign>` | more `escalated`, fewer `restated`, `adjusted`, `widened` |
-| calibration: target met or missed, prediction score, rehearsals contradicting the target and what the Builder did next | `wri.ts read` `handoff` calibration table; the pulse plan line; lanes 10 and 11 | a target the battery can fail; a contradiction acted on before submit |
+| calibration: target met or missed, prediction score, rehearsals contradicting the target and what the Builder did next | [whole-run-investigation](../whole-run-investigation/SKILL.md) `wri.ts read`, its `handoff` calibration table; the pulse plan line; lanes 10 and 11 | a target the battery can fail; a contradiction acted on before submit |
 | gate cost: episodes cleared with no edit, stalls, rounds lost to the gate | `wri.ts gates <campaign>` | fewer rounds lost, fewer no-edit clears |
 | evaluation-correction loops and what each correction flipped | `wri.ts gates`; `bun run replay -- <before> --under <after>` | fewer corrections, each moving a verdict |
 | denominators and terminal | `runs show` cases and Terminal | no rise in unaccepted or non-results; a typed terminal |
@@ -59,7 +64,7 @@ keeps every level it measured before the cut.
 ## 4. Tie each movement to a mechanism that fired
 
 A measure that moved counts towards a fix only when that fix's branch actually executed in the
-candidate wave. For each fix in the source range, follow `attribution-and-proof`'s "was the
+candidate wave. For each fix in the source range, follow [attribution-and-proof](../attribution-and-proof/SKILL.md)'s "was the
 intended mechanism live": its bytes are in the opening's tree, its trigger condition occurred, and
 its output is recorded — a finding code, an advice line, an evidence field. Lane 21's reach reading
 over the `delta` lane does this for a whole range. A fix whose trigger never occurred is

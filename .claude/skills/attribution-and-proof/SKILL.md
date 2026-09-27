@@ -9,7 +9,9 @@ Ask one question: what may we claim? State the owner first, then the number. Say
 proves, what it does not prove, and the denominator. Do not let a summary outrun its evidence.
 
 `run-improvement-campaign` chooses the next experiment (its decide step). `system-path-simulation` tests a change or uncertain path before
-spend. This skill starts after the run: attribution, evidence strength, and permitted wording.
+spend. This skill starts after the run: attribution, evidence strength, and permitted wording. Whether a
+whole new wave of runs beat the wave it replaced is [wave-audit](../wave-audit/SKILL.md), which
+uses this skill's rules for each movement it reads.
 
 ## Rules
 

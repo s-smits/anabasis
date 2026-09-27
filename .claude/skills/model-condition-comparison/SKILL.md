@@ -8,7 +8,8 @@ description: Use when the operator wants two or more model conditions (Opus 5, F
 A model condition is the exact three-slot tuple in AGENTS.md: Builder, Built Harness and review,
 each with kind, model and effort. Comparing two conditions means moving that tuple and nothing
 else: one source commit, one prompt, one threshold manifest, one wall. Everything below exists to
-keep a difference between two conditions attributable to the tuple.
+keep a difference between two conditions attributable to the tuple. The mirror question —
+the same tuple on two source commits — is [wave-audit](../wave-audit/SKILL.md).
 
 The skill has two halves. The first designs and reads the comparison. The second turns what the
 comparison shows into harness changes that hold under every measured model, because the product

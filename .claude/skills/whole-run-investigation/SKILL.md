@@ -22,7 +22,7 @@ task bytes and says whether a battery got harder or only different. A question a
 refusal or a declared check earns its place starts at [the gate audit](references/gate-audit.md),
 whose `wri.ts census` prices every component and check across all recorded runs at once. And a question
 about whether a new wave of runs is better than the one it replaced starts at
-[the wave audit](references/wave-audit.md), which pairs each run with its baseline on one moved
+[wave-audit](../wave-audit/SKILL.md), which pairs each run with its baseline on one moved
 variable and reads what the loop did with its batteries rather than their incomparable scores.
 
 ## The deterministic read comes first, and it chooses the rest

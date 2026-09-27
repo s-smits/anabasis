@@ -28,6 +28,7 @@ import { basename, dirname, extname, join, relative } from "../meta/path.ts";
 import { containsPath } from "../meta/path-containment.ts";
 import { sha256 } from "../meta/digest.ts";
 import { canonicalJson } from "../meta/stable-json.ts";
+import { isBuiltin } from "../meta/modules.ts";
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 
 /** What a package's program modules reach at run time from their entries. */
@@ -36,6 +37,16 @@ interface RuntimeClosure {
   files: string[];
   /** Whether the walk followed every import it met. */
   complete: boolean;
+  /** Whether an import it did not follow may still run package code it never read: a module it
+   *  could not scan, or a bare specifier naming neither a Node builtin nor a controller package. */
+  opaque: boolean;
+}
+
+/** One import of a program module: the package file it resolves to, or null when the walk does not
+ *  follow it, and whether that unfollowed import may run code the walk never read. */
+interface RuntimeImport {
+  resolved: string | null;
+  opaque: boolean;
 }
 
 /** Controller packages the evaluator may import. The evaluator bundle resolves them from the
@@ -63,20 +74,20 @@ const LOADERS = new Map<string, "ts" | "tsx" | "js" | "jsx">([
 /** The files one program module imports at run time, resolved, with null for each import the walk
  *  does not follow: one that leaves the package, names any other package or does not resolve, all of
  *  which the evaluator bundle refuses too. A module that cannot be scanned is one such import. */
-function runtimeImports(root: string, file: string, source: Uint8Array): Array<string | null> {
+function runtimeImports(root: string, file: string, source: Uint8Array): RuntimeImport[] {
   const loader = LOADERS.get(extname(file));
   if (loader === undefined) return [];
   let imports: Bun.Import[];
   try {
     imports = new Bun.Transpiler({ loader }).scanImports(source);
   } catch {
-    return [null];
+    return [{ resolved: null, opaque: true }];
   }
-  return imports.flatMap(({ path }) =>
-    VERIFIER_PUBLIC_PACKAGES.has(path)
-      ? []
-      : [path.startsWith(".") ? resolvedInside(root, path, dirname(file)) : null],
-  );
+  return imports.flatMap(({ path }): RuntimeImport[] => {
+    if (VERIFIER_PUBLIC_PACKAGES.has(path)) return [];
+    if (path.startsWith(".")) return [{ resolved: resolvedInside(root, path, dirname(file)), opaque: false }];
+    return [{ resolved: null, opaque: !isBuiltin(path) }];
+  });
 }
 
 function resolvedInside(root: string, path: string, from: string): string | null {
@@ -93,17 +104,19 @@ function resolvedInside(root: string, path: string, from: string): string | null
 export function runtimeClosure(root: string, entries: readonly string[]): RuntimeClosure {
   const files = new Set<string>();
   let complete = true;
+  let opaque = false;
   const pending = entries.flatMap((entry) => (existsSync(join(root, entry)) ? [join(root, entry)] : []));
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
     const name = relative(root, file);
     if (files.has(name)) continue;
     files.add(name);
-    for (const imported of runtimeImports(root, file, readFileSync(file))) {
-      if (imported === null) complete = false;
-      else pending.push(imported);
+    for (const { resolved, opaque: unread } of runtimeImports(root, file, readFileSync(file))) {
+      if (resolved === null) complete = false;
+      else pending.push(resolved);
+      opaque ||= unread;
     }
   }
-  return { files: [...files], complete };
+  return { files: [...files], complete, opaque };
 }
 
 /** Null when the closure cannot be read; callers then compare the whole package's bytes. */

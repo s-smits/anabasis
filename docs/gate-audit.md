@@ -107,6 +107,12 @@ run time (`verifierSourceFiles`, over `runtimeClosure` in `src/claim/scoring-clo
 to read every code file but those named `*.test.*`, and its one recorded firing, firmware
 9c0c68b1-10 seq 37, refused a `local-runtime.test-support.ts` only `evaluator.test.ts` imported;
 the Builder moved it to `scratch/`. A file's name now decides nothing either way.
+When an import the walk does not follow may still run package code it never read — a module it
+cannot scan, or a bare specifier naming neither a Node builtin nor a controller package — the
+closure says nothing about what runs, and the scan falls back to every code file in the package
+(`opaque`, `runtimeClosure`). A builtin is a leaf and keeps the closure; none of the 208 recorded
+correctness models under `campaigns/` has an opaque closure, so the fallback changes no recorded
+outcome.
 
 ### experiment-plan-schema
 

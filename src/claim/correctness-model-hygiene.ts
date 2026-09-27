@@ -4,7 +4,7 @@
  * process remains a separate runtime boundary.
  */
 import * as ts from "typescript5";
-import { realpathSync } from "../meta/filesystem.ts";
+import { readdirSync, realpathSync } from "../meta/filesystem.ts";
 import { relative } from "../meta/path.ts";
 import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
@@ -139,14 +139,16 @@ export function generatedCorrectnessModelCapabilityEscapes(
 
 /** The correctness-model code the host runs, relative to the package: the evaluator and the
  *  reference solve with every module each reaches at run time (`runtimeClosure`). A file's name
- *  decides nothing. A helper only a Builder test imports never runs in the verifier, and recorded
- *  firmware 9c0c68b1-10 was refused for exactly such a `local-runtime.test-support.ts`; a test module
- *  the evaluator imports runs with it. */
+ *  decides nothing: a helper only a Builder test imports never runs in the verifier, and a test
+ *  module the evaluator imports runs with it. When an import the walk could not follow may still run
+ *  package code it never read (`opaque`), the closure says nothing about what runs, and every code
+ *  file in the package is scanned instead. */
 export function verifierSourceFiles(correctnessModelDir: string): string[] {
+  const root = realpathSync(correctnessModelDir);
   const entries = [EVALUATOR_FILE, REFERENCE_SOLVE_ENTRY].map((entry) =>
     relative("correctness-model", entry),
   );
-  return runtimeClosure(realpathSync(correctnessModelDir), entries)
-    .files.filter((path) => CODE_EXTENSION.test(path))
-    .sort();
+  const closure = runtimeClosure(root, entries);
+  const files = closure.opaque ? readdirSync(root, { recursive: true, encoding: "utf8" }) : closure.files;
+  return files.filter((path) => CODE_EXTENSION.test(path)).sort();
 }

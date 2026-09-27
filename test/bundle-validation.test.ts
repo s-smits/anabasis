@@ -224,6 +224,30 @@ describe("bundle isolation checks", () => {
     );
   });
 
+  it("scans every code file once an import the walk cannot follow may run unread code", () => {
+    const dir = slugDir();
+    write(dir, AGENT_TOOLS_TS, "export const tools = [];\n");
+    write(dir, BRIEF_FILE, "{}\n");
+    const helper = 'export const run = () => Bun.spawn(["node"], { env: { ...process.env, LANG: "C" } });\n';
+    write(dir, "correctness-model/support.test-helper.ts", helper);
+    const evaluator = (imports: string) =>
+      `${imports}export const evaluate = () => ({ ok: true, issues: [] });\n`;
+    // Builtins are leaves: the closure still names everything that runs, and the helper is not in it.
+    write(
+      dir,
+      CORRECTNESS_MODEL_EVALUATOR_TS,
+      evaluator('import { join } from "node:path";\nimport "bun";\n'),
+    );
+    expect(fingerprintSlug(dir).ok).toBe(true);
+    // A package the walk cannot read may import the helper itself, so the whole package is scanned.
+    write(dir, CORRECTNESS_MODEL_EVALUATOR_TS, evaluator('import "left-pad";\n'));
+    const opaque = fingerprintSlug(dir);
+    if (opaque.ok) throw new Error("an opaque closure must fall back to the full scan");
+    expect(opaque.findings.map((finding) => finding.file)).toEqual([
+      "correctness-model/support.test-helper.ts",
+    ]);
+  });
+
   it("refuses to fingerprint a slug missing either bundle", () => {
     const dir = mkdtempSync(join(tmpdir(), "ana-fingerprint-"));
     dirs.push(dir);

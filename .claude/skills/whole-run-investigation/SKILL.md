@@ -50,6 +50,8 @@ one bounded brief instead of the captures: the run's size and terminal, each lan
 pointed at, then the triggers and scan findings the deterministic lanes raised. **Read the brief,
 not the lane files** — the whole read is the size of a paid lane's context — and open a lane file
 only once the brief has made that lane the question. `wri.ts brief --out <review>` re-renders it.
+A later `read` of the same run into the same `--out` adds its lanes to the recorded review, and a
+lane read again replaces only its own capture, so a narrower second read never drops the first.
 
 | tier | the run | lanes read | semantic lanes to start from |
 | --- | --- | --- | --- |

@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "../src/meta/filesystem.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
-import { join } from "../src/meta/path.ts";
+import { join, resolve } from "../src/meta/path.ts";
+import { runtimeProcess } from "../src/meta/process.ts";
+import { parseJsonAs } from "../src/meta/json-runtime.ts";
 import { afterAll, describe, expect, it } from "bun:test";
 import type { CaseRecordRow } from "../src/claim/case-record.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
@@ -167,6 +169,41 @@ describe("what the read said", () => {
     for (const [name, text] of Object.entries(captures)) writeFileSync(join(reviewDir, `${name}.txt`), text);
     return reviewDir;
   }
+
+  /** The lanes a review records, after one `wri.ts read` per lane list into the same `--out`. */
+  function readInto(campaign: string, reviewDir: string, ...reads: string[]): string[] {
+    const wri = resolve(import.meta.dirname, "../.claude/skills/whole-run-investigation/scripts/wri.ts");
+    for (const lanes of reads) {
+      const read = Bun.spawnSync({
+        cmd: [runtimeProcess.execPath, wri, "read", campaign, "--out", reviewDir, "--lanes", lanes],
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(read.stderr.toString()).toBe("");
+      expect(read.exitCode).toBe(0);
+    }
+    const state = parseJsonAs<{ steps: { label: string }[] }>(
+      readFileSync(join(reviewDir, "wri-review.json"), "utf8"),
+    );
+    return state.steps.map((row) => row.label);
+  }
+
+  it("adds a narrower later read's lanes to the review rather than replacing the earlier read", () => {
+    const campaign = campaignWith([verified(RUN)], { terminal: true });
+    const reviewDir = scratchDir("ana-brief-reread-");
+    expect(readInto(campaign, reviewDir, "climb,walls", "handoff")).toEqual(["climb", "walls", "handoff"]);
+    const brief = renderBrief(reviewDir);
+    for (const lane of ["climb", "walls", "handoff"]) expect(brief).toContain(`== ${lane}`);
+    // A lane read again replaces its own row and no other.
+    expect(readInto(campaign, reviewDir, "walls")).toEqual(["climb", "handoff", "walls"]);
+  });
+
+  it("starts a review of another run empty rather than carrying that run's lanes", () => {
+    const reviewDir = scratchDir("ana-brief-reread-");
+    readInto(campaignWith([verified(RUN)], { terminal: true }), reviewDir, "climb");
+    const other = campaignWith([verified(RUN)], { terminal: true });
+    expect(readInto(other, reviewDir, "walls")).toEqual(["walls"]);
+  });
 
   it("quotes a short lane whole and points at a long one", () => {
     const long = Array.from({ length: LANE_LINES + 12 }, (_, at) => `row ${at}`).join("\n");

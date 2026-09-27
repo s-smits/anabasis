@@ -531,6 +531,23 @@ function measuredRepo(args: WriArgs, target: RunSelection, lanes: readonly Lane[
   return resolve(resolveSourceCheckout(commit, { cwd: runtimeProcess.cwd() }).repo);
 }
 
+/** A read into a review that already recorded one of the same run keeps the earlier lanes' rows,
+ *  so a narrower second read adds to the review rather than replacing it; a lane read again
+ *  replaces only its own row. A review of another run starts empty. */
+export function carryEarlierRead(
+  earlier: WriReviewState | null,
+  fresh: WriReviewState,
+  lanes: readonly Pick<Lane, "name">[],
+): WriReviewState {
+  if (earlier === null || earlier.campaign !== fresh.campaign || earlier.runId !== fresh.runId) return fresh;
+  const reread = new Set(lanes.map((lane) => lane.name));
+  return {
+    ...fresh,
+    repo: fresh.repo ?? earlier.repo,
+    steps: earlier.steps.filter((row) => !reread.has(row.label)),
+  };
+}
+
 async function runRead(
   args: WriArgs,
   positional: string | null,
@@ -541,17 +558,21 @@ async function runRead(
   const scope = runScope(target.campaign, target.runId);
   const lanes = select(scope);
   const repo = measuredRepo(args, target, lanes);
-  const state: WriReviewState = {
-    schema: "wri-review/v1",
-    reviewDir,
-    campaign: target.campaign,
-    runId: target.runId,
-    repo,
-    reviewCheckout: CHECKOUT,
-    tier: scope.tier,
-    semanticLanes: scope.semanticLanes,
-    steps: [],
-  };
+  const state = carryEarlierRead(
+    existsSync(statePath(reviewDir)) ? loadState(reviewDir) : null,
+    {
+      schema: "wri-review/v1",
+      reviewDir,
+      campaign: target.campaign,
+      runId: target.runId,
+      repo,
+      reviewCheckout: CHECKOUT,
+      tier: scope.tier,
+      semanticLanes: scope.semanticLanes,
+      steps: [],
+    },
+    lanes,
+  );
   mkdirSync(reviewDir, { recursive: true });
   saveState(state);
   console.log(

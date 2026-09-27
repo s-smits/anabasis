@@ -42,7 +42,7 @@ import type { VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { bindProductMeasurement, selectedProductDir } from "./product-versions.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
-import { regradeForCorrection } from "./battery-reuse.ts";
+import { regradeForCorrection, remeasureReuse } from "./battery-reuse.ts";
 
 interface PostBuildInput {
   args: FullRunArgs;
@@ -309,6 +309,11 @@ function refuseBrokenFreeze(input: PostBuildInput): CandidateEvaluation | null {
 /** The recorded solves this round's battery grades instead of solving, or undefined when it solves
  *  every task. Whichever way it goes, the reason is recorded beside the round. */
 function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
+  const { remeasure } = input.decision;
+  if (input.build === "reused" && remeasure !== undefined) {
+    fullrunLine(`${input.manifest.slug}: remeasure — ${input.decision.reason}`);
+    return remeasureReuse(input.measureDir, remeasure);
+  }
   if (input.build !== "candidate") return undefined;
   const { reuse, reason } = regradeForCorrection({
     repoRoot: input.repoRoot,

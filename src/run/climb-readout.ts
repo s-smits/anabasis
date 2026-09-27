@@ -54,6 +54,9 @@ export type DifficultyDecision = {
   repeated?: { cases: number; scores: [string, string] };
   /** A family significantly too easy beside one significantly too hard, when there are both. */
   conflict?: { easy: string; hard: string };
+  /** Families the environment censored whole, so the placement says nothing about them. A fact
+   *  beside the placement, never a reason to withhold it. */
+  censored?: { families: readonly string[] };
 };
 
 /** The author's declared target against what its battery recorded. */
@@ -176,6 +179,7 @@ export function decideDifficulty(
         },
       }),
     ...(conflict !== null && { conflict }),
+    ...(latest.censoredFamilies !== undefined && { censored: { families: latest.censoredFamilies } }),
   };
   const sample = decidingSample(latest);
   const placement = placeOnBand(sample.passes, sample.n, band);

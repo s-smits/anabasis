@@ -51,6 +51,8 @@ interface CaseRow {
   /** Wall-clock minutes the solve took. A negative value records the two instants in reverse. */
   minutes?: number;
   publicInput?: JsonValue;
+  /** The recorded reason a case ended in a runtime non-result. */
+  runtimeNonResult?: string;
 }
 
 type BatteryFields = { [field: string]: JsonValue | undefined };
@@ -70,6 +72,7 @@ function caseRecord(row: CaseRow): JsonValue {
     ...keyIfDefined("family", row.family),
     pass: row.pass,
     acceptedSubmit: row.acceptedSubmit ?? row.pass !== null,
+    ...keyIfDefined("runtimeNonResult", row.runtimeNonResult),
     ...keyIfDefined("solver", Object.keys(solver).length === 0 ? undefined : solver),
   };
 }
@@ -298,6 +301,23 @@ describe("what one battery contributes to the reading", () => {
       RECORDED_AT,
     );
     expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 1 });
+  });
+
+  it("names a family every case of which ended in a non-result, and no family that kept one scored", () => {
+    const tree = tmp();
+    const cut = { pass: null, acceptedSubmit: false, runtimeNonResult: "usage limit reached" };
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "a", family: "span", pass: true },
+        { taskId: "b", family: "span", ...cut },
+        { taskId: "c", family: "joint", ...cut },
+        { taskId: "d", family: "joint", ...cut },
+      ],
+      RECORDED_AT,
+    );
+    expect(admittedOnly(tree).battery.censoredFamilies).toEqual(["joint"]);
   });
 
   it("calls the failing set unknown, never empty, when one failing row carries no id", () => {

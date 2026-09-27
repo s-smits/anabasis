@@ -94,6 +94,28 @@ describe("the reopen route", () => {
   });
 });
 
+describe("a battery the environment cut short", () => {
+  const remeasure = { of: "r1", taskIds: ["t4", "t5"] };
+
+  it("is measured again in place of a rebuild, carrying the cases it solves again", () => {
+    const move = decideNextMove("adopted", rows("advisory", "environment"), streak(1), false, remeasure);
+    expect(move).toMatchObject({ move: "measure", remeasure });
+    expect(move.reason).toContain("rerun them without changing the harness");
+  });
+
+  it("still reopens the product when a blocking row or an unfinished proposal owns the round", () => {
+    const blocked = decideNextMove(
+      "adopted",
+      rows("blocking", "correctness-model/tasks.json"),
+      streak(1),
+      false,
+      remeasure,
+    );
+    expect(blocked.move).toBe("rebuild");
+    expect(decideNextMove("adopted", [], streak(1), true, remeasure).move).toBe("rebuild");
+  });
+});
+
 afterAll(() => {
   for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
 });

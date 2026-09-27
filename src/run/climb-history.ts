@@ -72,6 +72,9 @@ export interface ClimbBattery {
    *  reads as "unknown" and never as "nothing failed". Controller-only: it feeds the repeated-core
    *  comparison and is never rendered to an author. */
   failedTaskIds?: readonly string[];
+  /** Families every one of whose cases ended in a runtime non-result, so the placement holds none
+   *  of their tasks. Absent when there are none. */
+  censoredFamilies?: readonly string[];
 }
 
 /** One family's difficulty counts, as the readout hands them to the author. `attempts` is the
@@ -317,6 +320,18 @@ function calibrationOf(evidence: BatteryEvidence, scored: CaseRows): PredictionS
   return predictionScore(predictions, verdicts);
 }
 
+/** The named families none of whose cases produced a scored row, or undefined when there are none. */
+function censoredFamilies(rows: CaseRows): string[] | undefined {
+  const scoredByFamily = new Map<string, boolean>();
+  for (const row of rows) {
+    if (!isString(row.family) || row.family.trim() === "") continue;
+    const scored = !isString(row.runtimeNonResult);
+    scoredByFamily.set(row.family, (scoredByFamily.get(row.family) ?? false) || scored);
+  }
+  const censored = [...scoredByFamily].flatMap(([family, scored]) => (scored ? [] : [family])).sort();
+  return censored.length === 0 ? undefined : censored;
+}
+
 function admittedClimbRow(
   admitted: Extract<BatteryAdmission, { ok: true }>,
   wallMinutes: number | null,
@@ -360,6 +375,7 @@ function admittedClimbRow(
         "failedTaskIds",
         failedIds.every((id): id is string => id !== null) ? failedIds : undefined,
       ),
+      ...keyIfDefined("censoredFamilies", censoredFamilies(evidence.cases ?? [])),
       // Refused rows stay in `n` as fails; `ClimbBattery.unaccepted` says why.
       unaccepted: countUnaccepted(scored),
       measured,

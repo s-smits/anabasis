@@ -12,6 +12,8 @@ import { readAdmission } from "./admission.ts";
 import type { AskManifest } from "./ask-manifest.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
+import { type Remeasure, censoredRemeasure } from "./battery-reuse.ts";
+import { isString } from "../meta/json-shape.ts";
 
 export interface NextMove {
   /** `rebuild` is the retained round name for adopted-product authoring, not an order to redesign. */
@@ -20,6 +22,8 @@ export interface NextMove {
   seed?: "adopted";
   /** One measured condition opens one resumable pass; prose changes cannot reset its allowance. */
   reopenKey?: string;
+  /** A `measure` that solves only these cases of that battery again and regrades the rest. */
+  remeasure?: Remeasure;
 }
 
 interface SelectedNextMove {
@@ -43,12 +47,15 @@ export function epochPassOf(decision: NextMove): string | undefined {
 
 /** Build when no adopted product exists; measure a condition that has not been measured.
  * Thereafter the Builder chooses a hypothesis and a permitted scope from the actual evidence.
- * A host/environment blocker still stops before another authoring or measurement spend. */
+ * A host/environment blocker still stops before another authoring or measurement spend. A battery
+ * the environment cut short is measured again on unchanged bytes before any rebuild, because the
+ * Builder would otherwise author against cases nothing measured. */
 export function decideNextMove(
   product: "adopted" | "none",
   feedback: CampaignFeedback[] | null,
   readout: ClimbReadout | null = null,
   preAdoption = false,
+  remeasure: Remeasure | null = null,
 ): NextMove {
   if (product === "none") {
     return { move: "build", reason: "no adopted domain harness; build one from the original request" };
@@ -69,6 +76,13 @@ export function decideNextMove(
     return {
       move: "measure",
       reason: "no saved measurement has feedback; measure the current harness to produce it",
+    };
+  }
+  if (!preAdoption && blocking.length === 0 && remeasure !== null) {
+    return {
+      move: "measure",
+      reason: `${remeasure.taskIds.length} case(s) of battery ${remeasure.of} ended in environment-owned non-results; rerun them without changing the harness and regrade the rest`,
+      remeasure,
     };
   }
   const reason = [
@@ -115,11 +129,14 @@ export function selectNextMoveFromDisk(input: {
   const blocks = (rows: CampaignFeedback[] | null) =>
     rows?.some((row) => row.severity === "blocking") === true;
   const fromPreAdoption = !blocks(measured?.feedback ?? null) && blocks(preAdoption);
+  const adopted = existsSync(domainDir);
+  const remeasure = adopted ? censoredRemeasure(domainDir, readout) : "no adopted product";
   const decided = decideNextMove(
-    existsSync(domainDir) ? "adopted" : "none",
+    adopted ? "adopted" : "none",
     fromPreAdoption ? preAdoption : (measured?.feedback ?? null),
     readout,
     fromPreAdoption,
+    isString(remeasure) ? null : remeasure,
   );
   return {
     prior: fromPreAdoption ? null : measured,

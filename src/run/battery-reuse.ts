@@ -1,13 +1,20 @@
-/** When a round's battery grades recorded solves instead of solving. An evaluation correction after
- *  a battery at or above the aim, over the same agent bytes and the same public tasks, keeps every
- *  byte the solver read, so the Built solver would be paid to write artifacts that already exist:
- *  the round regrades that battery under the corrected evaluator instead. Below the aim a
- *  correction still measures a fresh battery, because there the question is whether the solver can
- *  reach the tasks at all, which regrading its old attempts cannot answer. */
+/** When a round's battery grades recorded solves instead of solving. Both cases keep every byte the
+ *  solver read, so the Built solver would be paid to write artifacts that already exist:
+ *
+ *  - An evaluation correction after a battery at or above the aim, over the same agent bytes and
+ *    the same public tasks, regrades that battery under the corrected evaluator. Below the aim a
+ *    correction still measures a fresh battery, because there the question is whether the solver
+ *    can reach the tasks at all, which regrading its old attempts cannot answer.
+ *  - A battery whose every non-result the environment owns, on the product still selected,
+ *    re-solves exactly those cases and regrades the rest, which is what the analysis finding
+ *    "rerun without changing the harness" promises. A rebuild in its place would author against a
+ *    measurement the environment cut short. */
 import { existsSync } from "../meta/filesystem.ts";
 import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
 import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
+import { POLICY } from "../critic/policy.ts";
+import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
 import { type BatteryRecord, readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { readPublicResources } from "../correctness-bundle/public-resources.ts";
@@ -21,7 +28,7 @@ import { capturedJsonStringify } from "../meta/json-runtime.ts";
 import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { claimsDirFor } from "./claim-write.ts";
 import { retainedRunDir } from "./climb-history.ts";
-import { readClimbReadout } from "./climb-readout.ts";
+import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { selectedProductDir } from "./product-versions.ts";
 import { loadRecordedTasks } from "./run-driver.ts";
 
@@ -35,6 +42,15 @@ interface IdenticalExam {
   scoringChanged: boolean;
   reuse: BatteryReuse;
 }
+
+/** The cases a remeasure solves again: every other case of battery `of` is regraded from its
+ *  recorded solve. */
+export interface Remeasure {
+  of: string;
+  taskIds: string[];
+}
+
+type RecordedBattery = Pick<BatteryRecord, "cases" | "regrade" | "discrimination" | "bundleSnapshot">;
 
 type ExamRead = { exam: IdenticalExam } | { exam: null; reason: string };
 
@@ -137,4 +153,99 @@ export function regradeForCorrection(input: {
     reuse: read.exam.reuse,
     reason: `evaluation correction over the exam battery ${read.exam.runId} sat at or above the aim; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
   };
+}
+
+/** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps
+ *  cutting short ends at the same allowance an all-non-result battery gets, and then the Builder
+ *  has the round. */
+function remeasureChain(domainDir: string, battery: Pick<BatteryRecord, "cases" | "regrade">): number {
+  let count = 0;
+  let at = battery;
+  // A remeasure re-solved some of its cases and regraded the rest; a correction's regrade reuses
+  // every case, so it does not count.
+  while (at.regrade !== undefined && at.regrade.reused < at.cases.length) {
+    count += 1;
+    const runDir = retainedRunDir(domainDir, at.regrade.of);
+    if (runDir === null) break;
+    at = readRecordedBatteryRecord(runDir, at.regrade.of);
+  }
+  return count;
+}
+
+/** Why `battery` is not a remeasure's source, or null when it is: each censored case is a
+ *  solver-side non-result of a kind the environment owns, no external check recorded an unbound
+ *  result, and the product that measured it is the one selected now. */
+function notRemeasurable(domainDir: string, battery: RecordedBattery): string | null {
+  const censored = battery.cases.filter((row) => row.runtimeNonResultKind !== null);
+  if (censored.length === 0) return "no case ended in a non-result";
+  const environmentOwned = censored.every(
+    (row) =>
+      row.solver.nonResult !== null &&
+      row.runtimeNonResultKind !== null &&
+      ENVIRONMENT_OWNED_NONRESULT_KINDS.has(row.runtimeNonResultKind),
+  );
+  if (!environmentOwned) return "a non-result the environment does not own, or one past the solver";
+  // The analysis routes an unbound external result to the check's owner and says to repair before
+  // rerunning, so a remeasure here would contradict the finding the Builder reads.
+  if (battery.discrimination.findings.some((row) => row.code === "EXTERNAL_RESULT_UNBOUND")) {
+    return "an external check recorded an unbound result";
+  }
+  const fingerprint = fingerprintSlug(domainDir);
+  const { bundleSnapshot: measured } = battery;
+  if (
+    !fingerprint.ok ||
+    measured.agentHash !== fingerprint.agentHash ||
+    measured.scoringHash !== fingerprint.scoringHash ||
+    measured.taskSetHash !== fingerprint.taskSetHash
+  ) {
+    return "the selected product is not the one that measured it";
+  }
+  const chain = remeasureChain(domainDir, battery);
+  if (chain >= POLICY.loop.environmentBlockedRounds) return `${chain} remeasures in a row already`;
+  return null;
+}
+
+/** The latest battery's environment-censored cases to solve again on unchanged product bytes, or
+ *  the reason it has none. */
+export function censoredRemeasure(domainDir: string, readout: ClimbReadout | null): Remeasure | string {
+  const latest = readout?.rows[0];
+  if (latest === undefined) return "no measured battery";
+  if (latest.nonResults === 0) return "no case ended in a non-result";
+  const runDir = retainedRunDir(domainDir, latest.runId);
+  if (runDir === null) return `battery ${latest.runId} has no unique retained run directory`;
+  let battery: RecordedBattery;
+  try {
+    battery = readRecordedBatteryRecord(runDir, latest.runId);
+  } catch (error) {
+    return errorMessage(error);
+  }
+  const refused = notRemeasurable(domainDir, battery);
+  if (refused !== null) return refused;
+  const remeasure = {
+    of: latest.runId,
+    taskIds: battery.cases.flatMap((row) => (row.runtimeNonResultKind === null ? [] : [row.taskId])),
+  };
+  // Read the kept solves now, so a record that cannot be vouched for sends the round to the
+  // Builder here rather than failing the battery it would have opened.
+  const kept = keptSolves(domainDir, remeasure);
+  return isString(kept) ? kept : remeasure;
+}
+
+function keptSolves(domainDir: string, remeasure: Remeasure): BatteryReuse | string {
+  const runDir = retainedRunDir(domainDir, remeasure.of);
+  if (runDir === null) return `battery ${remeasure.of} has no unique retained run directory`;
+  const again = new Set(remeasure.taskIds);
+  const kept = loadRecordedTasks(domainDir)
+    .map((task) => task.taskId)
+    .filter((id) => !again.has(id));
+  const read = readRecordedSolves(runDir, remeasure.of, kept);
+  return read.ok ? read.value : read.refusal;
+}
+
+/** The recorded solves a remeasure regrades: every case of its source battery except the ones it
+ *  solves again. */
+export function remeasureReuse(domainDir: string, remeasure: Remeasure): BatteryReuse {
+  const kept = keptSolves(domainDir, remeasure);
+  if (isString(kept)) throw new Error(`remeasure of ${remeasure.of}: ${kept}`);
+  return kept;
 }

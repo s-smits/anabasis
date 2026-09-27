@@ -33,7 +33,8 @@ export const POLICY = {
     /** Consecutive batteries that recorded only typed non-results and created no claim before the
      *  loop closes with an environment terminal. Re-measuring an unavailable provider creates no
      *  evidence, however many rounds it is given, and a small allowance still covers a transient
-     *  outage. Read by src/run/full-run-round.ts. */
+     *  outage. Read by src/run/full-run-round.ts, and by src/run/battery-reuse.ts as the bound on
+     *  remeasuring a battery the environment cut short. */
     environmentBlockedRounds: 3,
     /** Consecutive build-failed rounds before the loop stops trying. One failed authoring round used
      *  to end the campaign, and the recomputed next decision often permits a retry. Read by

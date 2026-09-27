@@ -1,9 +1,10 @@
 /**
- * An evaluation correction after a battery at or above the aim regrades that battery's recorded
- * solves under the corrected evaluator instead of paying the Built solver to write the same
- * artifacts again. Two rounds, no provider: round one builds and measures, round two submits one
- * change and is measured. The solver counts its calls per battery, so "no solve" is a count of zero
- * rather than an inference from timing.
+ * A battery that grades recorded solves instead of paying the Built solver to write the same
+ * artifacts again: an evaluation correction after a battery at or above the aim regrades all of
+ * them, and a battery the environment cut short re-solves only its censored cases. Two rounds, no
+ * provider: round one builds and measures, round two submits one change or remeasures. The solver
+ * counts its calls per battery, so "no solve" is a count of zero rather than an inference from
+ * timing.
  */
 import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
@@ -17,7 +18,7 @@ import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } fr
 import { buildHarness } from "../src/run/harness-build.ts";
 import { measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir } from "../src/run/product-versions.ts";
-import type { Solver } from "../src/correctness-bundle/solve.ts";
+import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
 import { required } from "./helpers/doubles.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
@@ -36,6 +37,10 @@ interface SecondRound {
   /** A new wording for the one public validity rule the solver reads. */
   assertion?: string;
 }
+
+/** How the solver meets one task of one battery: the right answer, the input unchanged, a provider
+ *  non-result, or an attempt that never submits. */
+type Answer = "right" | "flub" | "provider" | "silent";
 
 const PROMPT = "Build a harness that uppercases one public input.";
 const TASKS = 6;
@@ -96,16 +101,24 @@ function writeTasks(workspace: string, inputs: readonly string[]): void {
   });
 }
 
-/** Two rounds with the fixed flubbing solver, the second applying `second`. Returns each battery's
- *  solver calls, its passes and its regrade fact. */
-async function twoRounds(flub: ReadonlySet<string>, second: SecondRound) {
+/** The first battery answers every task in `flub` with its input unchanged and the rest right. */
+function flubbing(flub: ReadonlySet<string>): (runId: string, taskId: string) => Answer {
+  return (_runId, taskId) => (flub.has(taskId) ? "flub" : "right");
+}
+
+/** Two rounds, the solver answering each battery's task as `answer` says and the second round
+ *  applying `second`. Returns each battery's solver calls, its passes and its regrade fact. */
+async function twoRounds(answer: (runId: string, taskId: string) => Answer, second: SecondRound = {}) {
   const root = scratchRepo();
   const calls = new Map<string, number>();
   const solverFor =
     (runId: string): Solver =>
     async (task, toolset, submitted) => {
       calls.set(runId, (calls.get(runId) ?? 0) + 1);
-      return scriptedUppercaseSolver(flub)(task, toolset, submitted);
+      const kind = answer(runId, task.taskId);
+      if (kind === "provider") return nonResultOutcome({ kind: "provider", message: "usage limit reached" });
+      if (kind === "silent") return { turns: 1, completedTurns: 0, errors: [], runtimeIdentities: [] };
+      return scriptedUppercaseSolver(new Set(kind === "flub" ? [task.taskId] : []))(task, toolset, submitted);
     };
   const drive: FullRunDeps["drive"] = (manifest, options) =>
     measureHarness(manifest, {
@@ -141,7 +154,7 @@ async function twoRounds(flub: ReadonlySet<string>, second: SecondRound) {
           change: "compare the answer without regard to case",
           ...PLAN_FIELDS,
           expectedResult: "the same artifacts score at least as well",
-          target: { comparator: "at-least", verifiedPasses: TASKS - flub.size },
+          target: { comparator: "at-least", verifiedPasses: 1 },
         }),
       );
     }
@@ -192,7 +205,9 @@ async function twoRounds(flub: ReadonlySet<string>, second: SecondRound) {
 
 describe("an evaluation correction regrades instead of re-solving", () => {
   it("after a battery above the aim, schedules no solve and records the pass the correction flipped", async () => {
-    const { outcome, batteries } = await twoRounds(new Set(["t5"]), { evaluator: CASE_BLIND_EVALUATOR });
+    const { outcome, batteries } = await twoRounds(flubbing(new Set(["t5"])), {
+      evaluator: CASE_BLIND_EVALUATOR,
+    });
     expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
       ["build", "adopted"],
       ["rebuild", "candidate"],
@@ -209,7 +224,7 @@ describe("an evaluation correction regrades instead of re-solving", () => {
   }, 180_000);
 
   it("after a battery below the aim, still measures a fresh battery", async () => {
-    const { batteries } = await twoRounds(new Set(["t1", "t2", "t3", "t4", "t5"]), {
+    const { batteries } = await twoRounds(flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])), {
       evaluator: CASE_BLIND_EVALUATOR,
     });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
@@ -220,7 +235,7 @@ describe("an evaluation correction regrades instead of re-solving", () => {
 
   it("a task probe after a battery above the aim still measures a full battery", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(new Set(["t5"]), { inputs });
+    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), { inputs });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
       [TASKS, null],
@@ -228,7 +243,7 @@ describe("an evaluation correction regrades instead of re-solving", () => {
   }, 180_000);
 
   it("a correction that also rewrites the public rule the solver reads measures a full battery", async () => {
-    const { batteries } = await twoRounds(new Set(["t5"]), {
+    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
       evaluator: CASE_BLIND_EVALUATOR,
       assertion: "The answer equals the input in upper case, compared without regard to case.",
     });
@@ -240,10 +255,41 @@ describe("an evaluation correction regrades instead of re-solving", () => {
 
   it("a correction that also moves one task measures a full battery", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
-    const { batteries } = await twoRounds(new Set(["t5"]), { evaluator: CASE_BLIND_EVALUATOR, inputs });
+    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
+      evaluator: CASE_BLIND_EVALUATOR,
+      inputs,
+    });
     expect(batteries.map((row) => [row.solves, row.regrade])).toEqual([
       [TASKS, null],
       [TASKS, null],
     ]);
+  }, 180_000);
+});
+
+describe("a battery the environment cut short is remeasured before any rebuild", () => {
+  const censored = (runId: string, taskId: string): Answer =>
+    runId === "rg" && (taskId === "t4" || taskId === "t5") ? "provider" : "right";
+
+  it("re-solves exactly the two provider non-results on unchanged bytes and regrades the other four", async () => {
+    const { outcome, batteries } = await twoRounds(censored);
+    expect(outcome.rounds.map((row) => [row.move, row.build])).toEqual([
+      ["build", "adopted"],
+      ["measure", "reused"],
+    ]);
+    const [first, second] = batteries;
+    expect(first?.passes).toEqual([true, true, true, true, null, null]);
+    expect(second).toEqual({
+      runId: "rg-i02",
+      solves: 2,
+      passes: [true, true, true, true, true, true],
+      regrade: { of: "rg", reused: 4, changedPasses: 0 },
+    });
+  }, 180_000);
+
+  it("rebuilds when the two cases were unaccepted attempts rather than non-results", async () => {
+    const silent = (runId: string, taskId: string): Answer =>
+      runId === "rg" && (taskId === "t4" || taskId === "t5") ? "silent" : "right";
+    const { outcome } = await twoRounds(silent);
+    expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild"]);
   }, 180_000);
 });

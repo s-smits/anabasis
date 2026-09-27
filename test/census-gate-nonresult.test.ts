@@ -243,6 +243,15 @@ describe("a census that ends in a verifier non-result", () => {
     expect(feedback[0]?.findings?.[0]?.code).toBe("tool-timeout");
     expect(detail).not.toContain("rerun alone");
     expect(detail).not.toContain("Host load");
+    // The one fact a Builder cannot see from its session: the wall is its own to raise.
+    expect(detail).toContain(
+      "The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default 300 s), which the harness may raise to 3000 s.",
+    );
+  });
+
+  it("names the wall's source only on a run that timed out", async () => {
+    const { feedback } = await settle("crash-no-wall", TRUSS_CRASH);
+    expect(feedback[0]?.findings?.[0]?.detail).not.toContain("gate.tool_run_seconds");
   });
 
   it("drains a reference solve still running past the wall before the retry starts", async () => {

@@ -33,7 +33,11 @@ import {
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
-import { harnessSettings } from "../correctness-bundle/harness-config.ts";
+import {
+  DEFAULT_HARNESS_SETTINGS,
+  HOST_MAXIMUM_FACTOR,
+  harnessSettings,
+} from "../correctness-bundle/harness-config.ts";
 import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -441,7 +445,15 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
   const advice = started
     ? ` Cell facts: cwd, TMPDIR and HOME are one private scratch directory holding only the files this evaluate wrote from artifact or public-task bytes, no network, sandbox "${evidence.sandbox}", environment variables received: PATH, TMPDIR, HOME. A tool that works in the authoring session and not here is missing one of those facts or an input file. Give the run every file it reads, a timeoutMs it can finish in, and read its exit code and stderr in the evaluator instead of letting it fail the case.`
     : " The host refused the request before starting a process; change the request the evaluator makes.";
-  return `Tool "${evidence.toolId}" (${evidence.toolSource}, run as \`${[evidence.command, ...evidence.args].join(" ")}\`) reached no completed run for check "${evidence.checkId}"${subject} (attempt ${evidence.attempt}): outcome "${evidence.outcome}"${reason}. Process facts: ${ended}, ${evidence.durationMs} ms, ${evidence.stdoutBytes} stdout bytes, ${evidence.stderrBytes} stderr bytes.${advice}`;
+  return `Tool "${evidence.toolId}" (${evidence.toolSource}, run as \`${[evidence.command, ...evidence.args].join(" ")}\`) reached no completed run for check "${evidence.checkId}"${subject} (attempt ${evidence.attempt}): outcome "${evidence.outcome}"${reason}. Process facts: ${ended}, ${evidence.durationMs} ms, ${evidence.stdoutBytes} stdout bytes, ${evidence.stderrBytes} stderr bytes.${wallSource(evidence)}${advice}`;
+}
+
+/** Where a timed-out run's wall came from, since a Builder that cannot see it takes the host default
+ *  for a fixed ceiling and cuts its checks rather than raising it. */
+function wallSource(evidence: VerifierExecutionEvidence): string {
+  if (!evidence.timedOut) return "";
+  const defaultSeconds = DEFAULT_HARNESS_SETTINGS.toolRunMs / 1000;
+  return ` The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default ${defaultSeconds} s), which the harness may raise to ${defaultSeconds * HOST_MAXIMUM_FACTOR} s.`;
 }
 
 /** Which census met the failure: host structure rather than anything the verifier printed, so it

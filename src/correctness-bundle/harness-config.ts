@@ -25,7 +25,7 @@ const SETTINGS = {
   gate: { reference_solve_seconds: 120, census_minutes: 30, check_seconds: 600, tool_run_seconds: 300 },
   battery: { solve_concurrency: 3 },
 } as const;
-const HOST_MAXIMUM_FACTOR = 10;
+export const HOST_MAXIMUM_FACTOR = 10;
 
 type Section = keyof typeof SETTINGS;
 type Raw = { [S in Section]: { [K in keyof (typeof SETTINGS)[S]]: number } };

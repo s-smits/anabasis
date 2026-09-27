@@ -452,6 +452,12 @@ rerun, and the first timeout stands. Timeouts are not routed to the environment:
 timeout diagnosable unless the evidence proves the environment owns it, and the load figures are
 there for the author to read that, not for the gate to guess it.
 
+Every `tool-timeout` finding, rerun or not, also says where its wall came from: the evaluator's
+`timeoutMs` capped by `gate.tool_run_seconds` in `agent/config.yaml`, with the default and the ten
+times it that the harness may raise it to (`wallSource`, `src/run/census-gate.ts`). A Builder that
+could not see the ceiling took the host default for a fixed limit and cut its checks rather than
+raising it.
+
 ### accept-control-rejected (verifier wall signals, Darwin)
 
 The verifier's Seatbelt profile is deny-default and grants `process*`, which does not cover

@@ -16,6 +16,7 @@ import { runtimeProcess } from "../src/meta/process.ts";
 import {
   type WalledRun,
   attribute,
+  outputReader,
   requestWithoutFiles,
   testCommand,
   wallSeconds,
@@ -51,6 +52,7 @@ function ran(overrides: Partial<WalledRun> = {}): WalledRun {
     failures: 0,
     clockEnded: 0,
     errors: 0,
+    bailed: false,
     peakLoad: 1,
     ...overrides,
   };
@@ -172,6 +174,40 @@ describe("whose verdict the suite reports", () => {
     expect(attribute(first, [file(A_TEST_TS), file("quiet.test.ts")], 8)).toMatchObject({
       rerun: [file(A_TEST_TS)],
       because: "clock-only",
+    });
+  });
+
+  it("runs a file whose worker crashed again beside the files a clock failed", () => {
+    // Bun prints `✗ <file> (worker crashed: exit code 3)` and no `(fail)` line for it, so it is in
+    // the exit code and not in `failed`: a rerun of the clock's files alone would pass and clear it.
+    const failed = new Set([file(A_TEST_TS)]);
+    const first = ran({
+      exitCode: 1,
+      failures: 1,
+      clockEnded: 1,
+      failed,
+      reported: failed,
+      interrupted: new Set([file("crash.test.ts")]),
+      incomplete: new Set([file("aborted.test.ts")]),
+    });
+    expect(attribute(first, [file(A_TEST_TS)], 8)).toMatchObject({
+      rerun: [file(A_TEST_TS), file("crash.test.ts"), file("aborted.test.ts")],
+      because: "clock-only",
+    });
+  });
+
+  it("keeps a bailed run's verdict: the files after the bail never ran, and a rerun of the failed ones says nothing of them", () => {
+    const failed = new Set([file(A_TEST_TS)]);
+    const clockOnly = { exitCode: 1, failures: 1, clockEnded: 1, failed, reported: failed };
+    expect(
+      attribute(ran({ ...clockOnly, bailed: true }), [file(A_TEST_TS), file(B_TEST_TS)], 8),
+    ).toMatchObject({
+      rerun: null,
+      exitCode: 1,
+      because: "bailed",
+    });
+    expect(attribute(ran(clockOnly), [file(A_TEST_TS), file(B_TEST_TS)], 8)).toMatchObject({
+      rerun: [file(A_TEST_TS)],
     });
   });
 
@@ -308,6 +344,51 @@ describe("whose verdict the suite reports", () => {
       exitCode: 1,
       because: "none-left",
     });
+  });
+});
+
+describe("what the suite reads from Bun's output", () => {
+  // Every line below is one Bun 1.4.2 printed, over a fixture that crashed a worker, timed a test
+  // and a hook out, failed a slow assertion and bailed.
+  function read(lines: readonly string[]) {
+    const { run, scanLine } = outputReader(join(REPO_ROOT, "test"));
+    for (const line of lines) scanLine(line);
+    return run;
+  }
+
+  it("counts a failure as the clock's only when Bun says so, for a test or a hook", () => {
+    const run = read([
+      "slow.test.ts:",
+      "(fail) times out [1000.63ms]",
+      "  ^ this test timed out after 1000ms.",
+      "hook.test.ts:",
+      "(fail) hooked [1000.13ms]",
+      "  ^ a beforeEach/afterEach hook timed out for this test.",
+    ]);
+    expect(run).toMatchObject({ failures: 2, clockEnded: 2 });
+  });
+
+  it("does not count an assertion that failed after the suite's wall as the clock's", () => {
+    // A test with a longer timeout of its own can fail an assertion at 61 s; no notice follows it.
+    const run = read([
+      "slow.test.ts:",
+      "error: expect(received).toBe(expected)",
+      "(fail) slow assert [61202.17ms]",
+      "",
+      " 0 pass",
+    ]);
+    expect(run).toMatchObject({ failures: 1, clockEnded: 0 });
+  });
+
+  it("names a file whose worker crashed and notices a bail", () => {
+    const run = read([
+      "crash.test.ts:",
+      "✗ crash.test.ts (worker crashed: exit code 3)",
+      "Bailed out after 1 failure",
+    ]);
+    expect([...run.interrupted]).toEqual([file("crash.test.ts")]);
+    expect(run.bailed).toBe(true);
+    expect(run.failures).toBe(0);
   });
 });
 
@@ -566,6 +647,46 @@ it("times out once, then passes", async () => {
       run.kill("SIGKILL");
     }
   }, 60_000);
+  it("keeps a failure when a worker crashed beside a file a clock failed and that passes alone", async () => {
+    const host = scratchDir("ana-suite-crash-");
+    const fixture = join(host, "fixture"),
+      marker = join(host, "first-run");
+    mkdirSync(fixture);
+    writeFileSync(
+      join(fixture, "clock.test.ts"),
+      `import { it } from "bun:test";
+it("times out once, then passes", async () => {
+  if (await Bun.file(${JSON.stringify(marker)}).exists()) return;
+  await Bun.write(${JSON.stringify(marker)}, "timed out");
+  await Bun.sleep(5_000);
+}, 300);
+`,
+    );
+    writeFileSync(
+      join(fixture, "crash.test.ts"),
+      `import { it } from "bun:test";\nit("exits", () => { process.exit(3); });\n`,
+    );
+    const run = Bun.spawn(["bun", SUITE, join(fixture, "clock.test.ts"), join(fixture, "crash.test.ts")], {
+      cwd: REPO_ROOT,
+      env: {
+        ...Bun.env,
+        TMPDIR: host,
+        ANA_TEST_TMPDIR: host,
+        ANA_TEST_WORKERS: "2",
+        ANA_TEST_HOST_LOAD: "0",
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    try {
+      const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
+      expect(err).toContain("worker crashed");
+      expect(code).not.toBe(0);
+    } finally {
+      run.kill("SIGKILL");
+    }
+  }, 60_000);
+
   it("takes a rerun's zero over a file that declares no test, which Bun prints nothing for", async () => {
     // One file wedges the first process and passes alone; the other holds no test, so neither
     // process prints a line for it. A file that would not load fails Bun's exit with an unhandled

@@ -56,6 +56,8 @@ type Spec = {
   effort?: ClimbEffort;
   familyEffort?: FamilyEffort[];
   calibration?: AdmittedClimbRow["authoring"]["calibration"];
+  wall?: number;
+  wallBound?: number;
 };
 
 function authoring(target: NonNullable<Spec["target"]>, gap: string): ExperimentAuthoring {
@@ -107,7 +109,8 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
     familyEffort: spec.familyEffort ?? [],
     calibration: spec.calibration ?? null,
     passedTaskIds: [],
-    solveWallMinutes: 120,
+    solveWallMinutes: spec.wall ?? 120,
+    wallBound: spec.wallBound ?? 0,
   };
   if (spec.target !== undefined || spec.gap !== undefined) {
     recorded.experimentAuthoring = authoring(

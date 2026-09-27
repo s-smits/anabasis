@@ -282,6 +282,24 @@ describe("what one battery contributes to the reading", () => {
     expect(admittedOnly(tree)).toMatchObject(expected);
   });
 
+  it("counts the unaccepted cases whose solve ran to the product's own wall", () => {
+    const tree = tmp();
+    mkdirSync(join(tree, "agent"), { recursive: true });
+    writeFileSync(join(tree, "agent", "config.yaml"), "solver:\n  solve_minutes: 12\n");
+    writeBattery(
+      tree,
+      "r1",
+      [
+        { taskId: "cut", pass: false, acceptedSubmit: false, minutes: 12 },
+        // Unaccepted well inside the wall, and accepted at the wall: neither was cut by it.
+        { taskId: "early", pass: false, acceptedSubmit: false, minutes: 3 },
+        { taskId: "slow", pass: true, minutes: 12 },
+      ],
+      RECORDED_AT,
+    );
+    expect(admittedOnly(tree).authoring).toMatchObject({ solveWallMinutes: 12, wallBound: 1 });
+  });
+
   it("calls the failing set unknown, never empty, when one failing row carries no id", () => {
     const tree = tmp();
     writeBattery(

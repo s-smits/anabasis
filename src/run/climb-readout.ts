@@ -98,6 +98,8 @@ type ReadoutRow = {
   familyEffort: FamilyEffort[] | null;
   /** The `solve_minutes` wall the effort is read against; null when the product's config did not parse. */
   solveWallMinutes: number | null;
+  /** Unaccepted cases whose solve ran to that wall; null when the claim was refused. */
+  wallBound: number | null;
   /** The plan's predictions scored against the verdicts; null when the claim was refused or no
    *  prediction named a scored task. */
   calibration: ClimbAuthoringCalibration | null;
@@ -264,8 +266,17 @@ function readoutRow(
           effort: row.authoring.effort,
           familyEffort: row.authoring.familyEffort,
           calibration: row.authoring.calibration,
+          wallBound: row.authoring.wallBound,
         }
-      : { passed: null, deciding: null, families: null, effort: null, familyEffort: null, calibration: null };
+      : {
+          passed: null,
+          deciding: null,
+          families: null,
+          effort: null,
+          familyEffort: null,
+          calibration: null,
+          wallBound: null,
+        };
   const placement = decision?.placement ?? null;
   return {
     runId: row.battery.runId,
@@ -289,6 +300,7 @@ function readoutRow(
     effort: admitted.effort,
     familyEffort: admitted.familyEffort,
     solveWallMinutes: row.authoring.solveWallMinutes,
+    wallBound: admitted.wallBound,
     calibration: admitted.calibration,
     experiment: row.authoring.experimentAuthoring ?? null,
   };

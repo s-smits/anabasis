@@ -135,6 +135,10 @@ interface ClimbAuthoringRow {
   /** The `solve_minutes` wall of the product that recorded this battery, which the effort of its
    *  cases is read against; null when that product's agent/config.yaml does not parse. */
   solveWallMinutes: number | null;
+  /** The unaccepted cases whose solve ran to its wall: a fact to read beside a lowered
+   *  `solve_minutes`, since a failure the wall caused measures the wall rather than the task. Zero
+   *  when the wall is unknown. */
+  wallBound: number;
   experimentAuthoring?: ExperimentAuthoring;
 }
 
@@ -172,6 +176,10 @@ export interface ClimbBatteriesRead {
  *  form writes the same sentence once per battery — thousands of characters of steering. The
  *  evidence rows keep every run id; this bound governs the prose beside them. */
 const NAMED_RUNS_PER_REASON = 4;
+
+/** How close to the wall a solve must end to count as cut by it. A solve's recorded span starts
+ *  after the wall's own clock does, so a solve the wall stopped can read a little short of it. */
+const WALL_BOUND_SHARE = 0.95;
 
 /** The sample a battery is read over: the host-identified changed subset when one was recorded,
  *  even at zero attempts, and otherwise the whole battery. Unchanged successes cannot be allowed
@@ -287,6 +295,15 @@ function solveEffort(cases: CaseRows): ClimbEffort | null {
   };
 }
 
+/** The unaccepted cases whose recorded solve ran to within `WALL_BOUND_SHARE` of the wall. */
+function wallBoundCount(scored: CaseRows, wallMinutes: number | null): number {
+  if (wallMinutes === null) return 0;
+  const unaccepted = scored.filter((row) => countUnaccepted([row]) === 1);
+  return caseSpend(unaccepted).filter(
+    (row) => row.minutes !== null && row.minutes >= wallMinutes * WALL_BOUND_SHARE,
+  ).length;
+}
+
 /** The bound plan's predictions against the scored verdicts. Only the aggregate score leaves here;
  *  the per-task pairs are the battery's own published pass bits and are not restated. */
 function calibrationOf(evidence: BatteryEvidence, scored: CaseRows): PredictionScore | null {
@@ -327,6 +344,7 @@ function admittedClimbRow(
       calibration: calibrationOf(evidence, scored),
       passedTaskIds: scored.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
       solveWallMinutes: wallMinutes,
+      wallBound: wallBoundCount(scored, wallMinutes),
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
     },
     battery: {

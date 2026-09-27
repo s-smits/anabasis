@@ -17,7 +17,8 @@ import { BUNDLE_FILES } from "../author/feedback-routing.ts";
 import { HARNESS_CONFIG_FILE } from "../correctness-bundle/harness-config.ts";
 import { readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
 import { verifierEnvironmentHashOfTools } from "../correctness-bundle/verifier-environment.ts";
-import { TOOL_ID_RE } from "../verify/tool-inventory.ts";
+import { TOOL_ID_RE, portableToolTreeDigest } from "../verify/tool-inventory.ts";
+import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import type { ToolEntry, VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import { type ReaderTool, readerParameters, readerToolText } from "./review-reader.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -32,6 +33,19 @@ const INVENTORY_MAX_FILES = 400;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".toolchain", "runs", "scratch", "dist"]);
 // Every bundle file but the optional walls, whose absence is the defaults rather than a gap.
 const CORE_FILES = BUNDLE_FILES.filter((file) => file !== HARNESS_CONFIG_FILE);
+/** The tool-tree text a review may read: files the tree digest hashes by their bytes (the same 1 MiB
+ *  line `toolTreeCounts` draws), outside installed third-party packages, which are upstream code
+ *  rather than the program the Builder wrote around them. */
+const TOOLCHAIN_TEXT_BYTES = 1024 * 1024;
+const TOOLCHAIN_TEXT_FILES = 100;
+const TOOLCHAIN_SKIP_DIRS = new Set([
+  "node_modules",
+  "site-packages",
+  "dist-packages",
+  "__pycache__",
+  ".git",
+]);
+export const TOOLCHAIN_PREFIX = "toolchain:";
 export interface ReviewInventory {
   files: string[];
   truncated: boolean;
@@ -133,7 +147,17 @@ function recordedTool(id: string, value: JsonValue): Omit<ToolEntry, "id" | "pat
   ) {
     throw new Error(`recorded verifier tool ${id} has incomplete provenance`);
   }
-  return { digest: tool.digest, source: tool.source, kind: tool.kind, interpreter: tool.interpreter };
+  const tree = tool.treeDigest;
+  if (tree !== undefined && !isDigest(tree)) {
+    throw new Error(`recorded verifier tool ${id} has a malformed tree digest`);
+  }
+  return {
+    digest: tool.digest,
+    source: tool.source,
+    kind: tool.kind,
+    interpreter: tool.interpreter,
+    ...(tree === undefined ? null : { treeDigest: tree }),
+  };
 }
 
 function boundCommand(
@@ -173,6 +197,7 @@ function verifierSources(tools: Record<string, JsonValue>, evidence: readonly Ve
         source: tool.source,
         kind: tool.kind,
         interpreter: tool.interpreter,
+        ...(tool.treeDigest === undefined ? null : { treeDigest: tool.treeDigest }),
       };
     }
   }
@@ -205,13 +230,76 @@ export function reviewVerifierEvidence(root: string, runId: string): ReviewVerif
     if (Object.keys(sources).length > INVENTORY_MAX_FILES) {
       throw new Error("recorded verifier inventory exceeds the review limit");
     }
-    return { identity: hashJsonValue({ environmentHash, sources }), tools: sources, unavailable: null };
+    // The tree digest is already inside the environment hash, so the identity is taken without it
+    // and a review condition recorded before the reviewer could read the tree keeps its identity.
+    const identified = Object.fromEntries(
+      Object.entries(sources).map(([alias, { treeDigest: _tree, ...entry }]) => [alias, entry]),
+    );
+    return {
+      identity: hashJsonValue({ environmentHash, sources: identified }),
+      tools: sources,
+      unavailable: null,
+    };
   } catch (error) {
     return {
       identity: null,
       tools: {},
       unavailable: boundText(`Verifier evidence unavailable: ${errorMessage(error)}`, 400).shown,
     };
+  }
+}
+
+/**
+ * The text files of the measured tree's `.toolchain`, readable when a recorded verifier tool's tree
+ * digest covers them. An entry point's own bytes are often a shim over a script beside it — `exec
+ * python3 "$ROOT/libexec/solver.py"` — so the entry-point read shows the reviewer the shim and not
+ * the program that decided. The tree digest a workspace tool recorded at measurement is what binds
+ * the rest of the tree to the verdicts; a tree whose digest no longer matches any recorded one has
+ * moved since, and grants nothing.
+ *
+ * Only text is offered: at most 1 MiB, no NUL byte and valid UTF-8, shallowest paths first and at
+ * most a hundred of them, under `toolchain:<path>`. Installed packages (`node_modules`,
+ * `site-packages`) are left out. The texts are captured once, when the review opens, so a later
+ * edit of the tree cannot change what a quote was checked against.
+ */
+export function toolchainTexts(
+  root: string,
+  tools: Readonly<Record<string, ToolEntry>>,
+): Map<string, string> {
+  const recorded = new Set(
+    Object.values(tools).flatMap((tool) => (tool.treeDigest === undefined ? [] : [tool.treeDigest])),
+  );
+  const tree = recorded.size === 0 ? null : bundleSnapshotToolTree(root);
+  if (tree === null || !recorded.has(portableToolTreeDigest(tree))) return new Map();
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (TOOLCHAIN_SKIP_DIRS.has(entry.name)) continue;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) walk(abs);
+      else if (entry.isFile()) found.push(relative(tree, abs));
+    }
+  };
+  walk(tree);
+  const depth = (path: string) => path.split("/").length;
+  const texts = new Map<string, string>();
+  for (const rel of found.sort((a, b) => depth(a) - depth(b) || compareCodeUnits(a, b))) {
+    if (texts.size >= TOOLCHAIN_TEXT_FILES) break;
+    const text = toolchainText(join(tree, rel));
+    if (text !== null) texts.set(`${TOOLCHAIN_PREFIX}${rel}`, text);
+  }
+  return texts;
+}
+
+/** One tool-tree file as text, or null for a file too large, binary by its NUL bytes, or not UTF-8. */
+function toolchainText(path: string): string | null {
+  try {
+    if (statSync(path).size > TOOLCHAIN_TEXT_BYTES) return null;
+    const bytes = readFileSync(path);
+    if (bytes.includes(0)) return null;
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
   }
 }
 

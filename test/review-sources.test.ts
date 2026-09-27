@@ -9,7 +9,11 @@ import {
   reviewInventory,
   reviewVerifierEvidence,
   reviewCoverage,
+  TOOLCHAIN_PREFIX,
+  toolchainTexts,
 } from "../src/review/review-sources.ts";
+import { portableToolTreeDigest } from "../src/verify/tool-inventory.ts";
+import type { ToolEntry } from "../src/verify/verifier-port.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
 import { EvidenceLog } from "../src/claim/evidence-log.ts";
 import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
@@ -963,5 +967,49 @@ describe("what the reviewer may open", () => {
     expect(await call(edge, { path: "edge.ts" })).toEndWith("(1 character remains; call again to continue.)");
     expect(state.readChars).toBe(source.length);
     expect(state.reads).toEqual(Array(Math.ceil(source.length / 16_000)).fill(EVALUATOR_TS));
+  });
+});
+
+describe("tool-tree text a recorded tree digest covers", () => {
+  const tree = (root: string) => join(root, ".toolchain");
+  const write = (root: string, rel: string, bytes: string | Uint8Array) => {
+    mkdirSync(dirname(join(tree(root), rel)), { recursive: true });
+    writeFileSync(join(tree(root), rel), bytes);
+  };
+  const entry = (treeDigest: string | undefined) => ({
+    "verifier:solve:0": {
+      id: "solve",
+      path: "/abs/.toolchain/bin/solve",
+      digest: "a".repeat(64),
+      source: "workspace-toolchain",
+      kind: "script",
+      interpreter: "sh",
+      ...(treeDigest === undefined ? null : { treeDigest }),
+    } satisfies ToolEntry,
+  });
+
+  test("offers the script behind a shim, and no binary, oversized file or installed package", () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "bin/solve", '#!/bin/sh\nexec python3 "$ROOT/libexec/solver.py" "$@"\n');
+    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
+    write(root, "libexec/engine.so", new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]));
+    write(root, "share/table.csv", "x".repeat(2 * 1024 * 1024));
+    write(root, "venv/lib/python3.12/site-packages/numpy/core.py", "import os\n");
+    write(root, "node_modules/left-pad/index.js", "module.exports = 1;\n");
+    const texts = toolchainTexts(root, entry(portableToolTreeDigest(tree(root))));
+    expect([...texts.keys()]).toEqual([
+      `${TOOLCHAIN_PREFIX}bin/solve`,
+      `${TOOLCHAIN_PREFIX}libexec/solver.py`,
+    ]);
+    expect(texts.get(`${TOOLCHAIN_PREFIX}libexec/solver.py`)).toContain("def solve");
+  });
+
+  test("grants nothing when no recorded tree digest matches the tree as it is now", () => {
+    const root = scratchDir("ana-review-toolchain-");
+    write(root, "libexec/solver.py", "def solve(frame):\n    return frame\n");
+    const recorded = portableToolTreeDigest(tree(root));
+    write(root, "libexec/solver.py", "def solve(frame):\n    return None\n");
+    expect(toolchainTexts(root, entry(recorded)).size).toBe(0);
+    expect(toolchainTexts(root, entry(undefined)).size).toBe(0);
   });
 });

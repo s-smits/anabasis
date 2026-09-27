@@ -62,6 +62,7 @@ import {
   type ReviewVerifierEvidence,
   deliveredSource,
   readSourceTool,
+  toolchainTexts,
   reviewCoverage,
   reviewInventory,
   reviewVerifierEvidence,
@@ -560,6 +561,15 @@ function orientation(
     .join("\n");
 }
 
+/** The tool-tree files the review may read, when the recorded tree digest still covers the tree. */
+function toolchainLines(toolchain: ReadonlyMap<string, string>): string[] {
+  if (toolchain.size === 0) return [];
+  return [
+    `Tool-tree text the recorded verifier tree digest covers (${toolchain.size}; installed packages left out), readable by name and outside the coverage this review is held to:`,
+    [...toolchain.keys()].join("\n"),
+  ];
+}
+
 /** Resume a reader that stopped while pages remain, and count the resumption. It resumes only
  *  while reads are still arriving: a session that has stopped reading is finishing its synthesis,
  *  not stalling, and pushing it round the same loop again would buy nothing but another turn. */
@@ -693,6 +703,10 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     ...rehearsed.keys(),
   ]);
   const unread = unreadSourcePrompt(state, sourcePaths);
+  // The tool tree's text is offered beside the source and outside it: not in the coverage the
+  // review is held to, and not among the pages the unread prompt resumes the reader for.
+  const toolchain = toolchainTexts(root, verifier.tools);
+  const readable = new Set([...sourcePaths, ...toolchain.keys()]);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -719,7 +733,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       repoRoot: input.repoRoot,
       role: "epoch-reviewer",
       tools: [
-        readSourceTool(root, sourcePaths, state, verifier.tools, rehearsed),
+        readSourceTool(root, readable, state, verifier.tools, new Map([...rehearsed, ...toolchain])),
         probe.tool,
         recordFindingTool(
           issues,
@@ -739,7 +753,9 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       ],
       continuePrompt: (text) => unread() ?? measured.duty?.(text) ?? null,
       systemPrompt: EPOCH_REVIEW_PROMPT,
-      prompt: orientation(input, inventory, verifier, issues, measured),
+      prompt: [orientation(input, inventory, verifier, issues, measured), ...toolchainLines(toolchain)].join(
+        "\n",
+      ),
       ...keyIfDefined("observer", input.observer),
       ...keyIfDefined("providerBudget", input.providerBudget),
     });

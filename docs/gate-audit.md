@@ -191,7 +191,10 @@ non-results (`src/run/full-run-round.ts`). Remeasuring the same dead environment
 Counts a byte-identical resubmit of a refused candidate as a strike, and ends the session as
 `authoring-stalled` at `noopSubmitStrikes` (`src/gate/candidate-memory.ts`), which ends the campaign
 as `build-failed`; the strike and final messages now say the campaign ends rather than the round.
-The same bytes cannot earn a different verdict.
+The same bytes cannot earn a different verdict. The condition is the candidate's bytes, every
+resolved tool entry and the tool tree's content, so a repair behind an unchanged wrapper script is
+not a strike, and a tool run that only wrote bytecode, user caches or Arduino's compile counter is
+(`toolTreeDigest`, `src/verify/tool-inventory.ts`).
 
 ### unchanged-candidate-strike
 

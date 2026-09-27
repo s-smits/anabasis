@@ -213,8 +213,9 @@ const rowsOf = (body: JsonObject) => ({ ...body, stages: undefined, repeated: un
  *  for this candidate, because it contains no environment failure. */
 const PRODUCT_GATE_FEEDBACK: CampaignFeedback[] = GATE_FEEDBACK.filter((row) => row.owner !== "environment");
 
-it("rechecks changed installed-tool or interpreter bytes, preserves every trial and remembers each condition", async () => {
-  const dir = workspace("tool-condition");
+/** Grounds the fixture's second check on the installed tool `field-engine`, and returns the
+ *  workspace `.toolchain/bin` it is installed into. */
+function groundOnFieldEngine(dir: string): string {
   const model = join(dir, "correctness-model");
   const brief = parseJsonAs<Brief>(readFileSync(join(model, "brief.json"), "utf8"));
   const check = brief.truthChecks[1]!;
@@ -232,6 +233,12 @@ it("rechecks changed installed-tool or interpreter bytes, preserves every trial 
   writeFileSync(join(model, "controls.json"), JSON.stringify(controls));
   const bin = join(dir, ".toolchain", "bin");
   mkdirSync(bin, { recursive: true });
+  return bin;
+}
+
+it("rechecks changed installed-tool or interpreter bytes, preserves every trial and remembers each condition", async () => {
+  const dir = workspace("tool-condition");
+  const bin = groundOnFieldEngine(dir);
   const install = (exit: number) => {
     writeFileSync(join(bin, "field-engine"), `#!/bin/sh\nexit ${exit}\n`);
     chmodSync(join(bin, "field-engine"), 0o755);
@@ -278,6 +285,50 @@ it("rechecks changed installed-tool or interpreter bytes, preserves every trial 
   expect(reinterpreted.repeated).toBeUndefined();
   expect(reinterpreted.snapshotId).toBe(first.snapshotId);
   expect(trials).toHaveLength(5);
+});
+
+/** A wrapper over logic in the tool tree, as 7 of 9 recorded domain toolchains install theirs. */
+function wrapperCondition(name: string) {
+  const dir = workspace(name);
+  const bin = groundOnFieldEngine(dir);
+  writeFileSync(
+    join(bin, "field-engine"),
+    '#!/bin/sh\nexec python3 "$(dirname "$0")/../libexec/field.py" "$@"\n',
+  );
+  chmodSync(join(bin, "field-engine"), 0o755);
+  const write = (rel: string, body: string) => {
+    mkdirSync(join(dir, ".toolchain", rel, ".."), { recursive: true });
+    writeFileSync(join(dir, ".toolchain", rel), body);
+  };
+  write("libexec/field.py", "LIMIT = 0.5\n");
+  const key = () => {
+    const candidate = checkCandidate(dir, { slug: "matching", exactTasks: 4 });
+    if (!candidate.ok) throw new Error("fixture candidate refused");
+    return conditionKey(candidate);
+  };
+  return { write, key };
+}
+
+it("reads a repair behind an unchanged wrapper, and a package installed under home, as a new condition", () => {
+  const { write, key } = wrapperCondition("tool-tree-repair");
+  const before = key();
+  write("libexec/field.py", "LIMIT = 0.7\n");
+  expect(key()).not.toBe(before);
+  // The first bytes again are the first condition again, so what it earned still answers for it.
+  write("libexec/field.py", "LIMIT = 0.5\n");
+  expect(key()).toBe(before);
+  write("home/venv/lib/python3.12/site-packages/fieldlib-1.0.dist-info/METADATA", "Name: fieldlib\n");
+  expect(key()).not.toBe(before);
+});
+
+it("keeps the condition when running the tool only wrote its own caches into the tree", () => {
+  const { write, key } = wrapperCondition("tool-tree-run");
+  const before = key();
+  write("libexec/__pycache__/field.cpython-312.pyc", "bytecode");
+  write("home/Library/Caches/pip/http/entry", "cached");
+  write("home/.cache/matplotlib/fontlist.json", "{}");
+  write("arduino/inventory.yaml", "build_cache:\n    compilation_count_since_last_purge: 7\n");
+  expect(key()).toBe(before);
 });
 
 describe("correctness_check", () => {

@@ -12,9 +12,9 @@
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { openSync, readSync, readdirSync, closeSync, statSync } from "../meta/filesystem.ts";
-import { basename, dirname, isAbsolute, join, resolve } from "../meta/path.ts";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "../meta/path.ts";
 import { sha256OfFile } from "../meta/digest.ts";
-import { compareCodeUnits } from "../meta/stable-json.ts";
+import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { toolchainPathDirs } from "./wall-policy.ts";
 import { commandSearchPath, toolTreeSearchDirs } from "./solve-command-isolation.ts";
 import type { ToolEntry, ToolInventory } from "./verifier-port.ts";
@@ -25,6 +25,14 @@ export const TOOL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$/;
 /** Distinct packages kept per tool. Reporting, not identity: a list this long already says the
  *  interpreter is a whole distribution rather than one installed tool. */
 const MAX_PACKAGES = 256;
+
+/** Tool-tree files larger than this count by size and time rather than bytes. */
+const TREE_HASHED_BYTES = 1 << 20;
+/** What a run of an installed tool rewrites by itself: bytecode, the user caches under the Builder's
+ *  `home/`, and the compile counter Arduino keeps in `inventory.yaml`. */
+const RUN_WRITTEN = /^home\/(\.cache|Library\/Caches)(\/|$)|(^|\/)(__pycache__|inventory\.yaml)(\/|$)/;
+/** File digests by path, size, mtime and inode, so a later check rereads only what moved. */
+const treeFileDigests = new Map<string, string>();
 
 interface ResolveToolInventoryInput {
   toolIds: readonly string[];
@@ -109,8 +117,9 @@ function interpreterPath(path: string, toolTree: string | null): string | undefi
  * link. Empty for a binary tool or a non-Python interpreter.
  *
  * This says what was installed, never what decided a verdict: a wrapper can import a package and
- * ignore it. It also stays out of every identity hash, although a `pip install` changes it with no
- * digest moving, because it reads directory names rather than bytes.
+ * ignore it. It also stays out of every identity hash, because it reads directory names rather than
+ * bytes; a `pip install` into the tool tree moves the session's condition through `toolTreeDigest`
+ * instead, and moves no travelling digest.
  */
 function interpreterPackages(path: string, toolTree: string | null): string[] {
   const interpreter = interpreterPath(path, toolTree);
@@ -124,6 +133,31 @@ function interpreterPackages(path: string, toolTree: string | null): string[] {
     }
   }
   return [...packages].sort(compareCodeUnits).slice(0, MAX_PACKAGES);
+}
+
+/**
+ * The tool tree's own content, which no inventory entry carries: a wrapper `exec python3
+ * "$ROOT/libexec/check.py"` keeps its digest while `check.py`, a config it passes, or a package in a
+ * venv under `home/` is repaired underneath it. Every file and link counts by its path, and a file
+ * up to 1 MiB also by its bytes; a larger one, an installed binary in practice, counts by size and
+ * time, because rereading a firmware toolchain's gigabytes on every check would cost more than the
+ * gate. `RUN_WRITTEN` stays out, so running a tool in the Builder shell is not an edit; a gate run
+ * writes nothing here, since the verifier cell only reads the tree.
+ */
+export function toolTreeDigest(toolTree: string): string {
+  const rows = readdirSync(toolTree, { recursive: true, withFileTypes: true }).flatMap((entry) => {
+    const path = join(entry.parentPath, entry.name);
+    const rel = relative(toolTree, path);
+    if (entry.isDirectory() || RUN_WRITTEN.test(rel)) return [];
+    if (!entry.isFile()) return [rel];
+    const { size, mtimeNs, ino } = statSync(path, { bigint: true });
+    const seen = `${size}:${mtimeNs}:${ino}`;
+    const digest =
+      size > TREE_HASHED_BYTES ? seen : (treeFileDigests.get(`${path}\0${seen}`) ?? sha256OfFile(path));
+    treeFileDigests.set(`${path}\0${seen}`, digest);
+    return [`${rel}\0${digest}`];
+  });
+  return hashJsonValue(rows.sort(compareCodeUnits));
 }
 
 function listDir(path: string): string[] {

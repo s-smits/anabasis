@@ -65,7 +65,8 @@ export interface BuilderCustomToolSemantic {
   subjectDigest?: string;
   candidateId?: string;
   /** The candidate's bytes and installed tool tree together (`conditionKey`), so a refusal cleared
-   *  by a tool repair over unchanged bytes reads as a different condition, not as no edit. */
+   *  by a tool repair over unchanged bytes, behind a wrapper included, reads as a different
+   *  condition, not as no edit. */
   conditionId?: string;
   /** The gate stages a correctness_check ran to a verdict, `census` standing for a gates stage
    *  that skipped the reference solve. */

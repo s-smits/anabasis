@@ -47,7 +47,7 @@ import {
 } from "../correctness-bundle/controls.ts";
 import { type HiddenExpectation, type TaskBattery, validateTasks } from "../correctness-bundle/tasks.ts";
 import { type ToolsSpec, normalizeToolsSpec, validateToolsSpec } from "../correctness-bundle/tools-spec.ts";
-import { resolveToolInventory } from "../verify/tool-inventory.ts";
+import { resolveToolInventory, toolTreeDigest } from "../verify/tool-inventory.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { commitAll } from "./domain-repo.ts";
 import { isString, type JsonValue } from "../meta/json-shape.ts";
@@ -99,10 +99,11 @@ export type CandidateCheckOutcome = (
        *  consumes these values rather than parsing the same bytes again, so no stage can disagree
        *  with another about what the candidate says. */
       bundle: ValidatedBundle;
-      /** What this candidate's declared tools resolve to on this host, each resolved entry whole:
-       *  the half of the submission's identity `snapshotId` cannot carry, because the tool tree is
-       *  machine-local and the same bytes evaluate differently over different executables. Null
-       *  when the brief grounds no check on a tool. */
+      /** What this candidate's declared tools resolve to on this host, each resolved entry whole,
+       *  and the content of the tool tree behind them: the half of the submission's identity
+       *  `snapshotId` cannot carry, because the tool tree is machine-local and the same bytes
+       *  evaluate differently over different executables. Null when the brief grounds no check on a
+       *  tool. */
       engineCondition: string | null;
       /** Path-independent identity, retained with adopted conformance for later attribution. */
       verifierEnvironmentHash: string | null;
@@ -469,9 +470,11 @@ export function loadValidatedBundle(
  *
  * When every named tool resolves, the candidate is evaluated over those exact executables, and the
  * returned condition digest names every resolved entry whole rather than a projection of a few
- * fields, which would leave out the interpreter a script runs under. The gate cache, the remembered
- * preview and the no-op strike all key on this digest, so an interpreter-only change is a new
- * condition.
+ * fields, which would leave out the interpreter a script runs under, and beside them the tool tree's
+ * content (`toolTreeDigest`), which a wrapper's own bytes leave out. The gate cache, the remembered
+ * preview and the no-op strike all key on this digest, so an interpreter-only change or a repair
+ * behind an unchanged wrapper is a new condition, while a tool run that only wrote its own caches
+ * is not. `verifierEnvironmentHash` keeps the entries alone, since it travels between machines.
  */
 function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], findings: ContractFinding[]) {
   if (toolIds.length === 0) return { engineCondition: null, verifierEnvironmentHash: null };
@@ -497,9 +500,10 @@ function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], f
   }
   return {
     verifierEnvironmentHash: verifierEnvironmentHashOfTools(resolved.inventory),
-    engineCondition: hashJsonValue(
-      Object.values(resolved.inventory).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-    ),
+    engineCondition: hashJsonValue({
+      tools: Object.values(resolved.inventory).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      tree: toolTree === null ? null : toolTreeDigest(toolTree),
+    }),
   };
 }
 

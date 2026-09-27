@@ -6,6 +6,7 @@ import { adviceIssueId } from "../src/author/rebuild-advice.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
 import {
+  CHANNELS,
   buildHandoffs,
   classifyFamily,
   renderHandoffs,
@@ -278,6 +279,16 @@ describe("round hand-offs", () => {
     expect(() => buildHandoffs({ campaign: unversioned, runId: RUN })).toThrow(
       `difficulty-decisions/${SECOND}-x.json is not difficulty-decision/v7`,
     );
+  });
+
+  it("names the one round that reads no notes as the one that stays in its workspace", () => {
+    // roundPrompt reads the notes whenever the workspace moved, which every measured round's
+    // resumed session does, so a resumed session is not the gap.
+    const source = readFileSync(join(import.meta.dir, "..", "src", "author", "builder-session.ts"), "utf8");
+    expect(source).toContain("const moved = previous === null || previous.workspace !== input.workspace;");
+    const memory = CHANNELS.find((channel) => channel.name === "memory");
+    expect(memory?.alternative).toContain("stays in the same workspace");
+    expect(memory?.alternative).not.toContain("resumed session");
   });
 
   it("refuses to invent a round for a campaign with neither epochs nor claims", () => {

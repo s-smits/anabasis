@@ -114,12 +114,14 @@ export const CHANNELS: readonly Channel[] = [
     read: "experiment",
     alternative: "none: submit already refuses a missing proposal",
   },
-  // src/author/builder-memory.ts (fresh sessions only)
+  // src/author/builder-memory.ts, rendered by roundPrompt in src/author/builder-session.ts for any
+  // round opening in a workspace the conversation has not worked in, resumed sessions included
   {
     name: "memory",
     marker: "Historical notes, model-authored",
     read: "memory",
-    alternative: "restate on a resumed session, which receives no memory block",
+    alternative:
+      "restate on a round that stays in the same workspace, the one round that receives no memory block",
   },
   // src/builder/user-context.ts
   {

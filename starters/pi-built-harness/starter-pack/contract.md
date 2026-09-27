@@ -51,6 +51,11 @@ it enforces as `citedDecisionIds` (an undeclared id, or only private ones, is re
   present task publishes the same number: it grades today's battery correctly and silently forbids
   the next one from varying that input, so the demand can then only move by magnitude. Declaring
   the path in `publicInputPaths` does not do it; the code that decides has to read it.
+- A check certifying behaviour on a named resource, such as a pin, a member or a channel, decides
+  from the values the answer produces for that resource: a simulated trace of that pin, the
+  register writes the build emits for it, the force computed in that member. A library symbol or a
+  constant found anywhere in the build proves the answer mentions the resource, not that it
+  behaves, and an answer driving the wrong pin carries the same symbols.
 - A multi-file answer is one root with `fileMap: true` and the `files` preset.
 - Where a rule turns on a numeric constant, give the check itself, beside `execution`,
   `numericBoundaries: [{publicInputPath, constantName, artifactPath, direction}]`: the task path
@@ -117,6 +122,10 @@ macOS): what an earlier `correctness_check` or `submit` stored there for the sam
 there; one under TMPDIR is rebuilt on every run.
 - Args carry flags and names; files and stdin carry operands. Omit `stdin` when the command has
   none. A nonzero exit is a completed result for your code to interpret.
+- A tool a check or the solver runs prints only what its reader needs. The host reads at most
+  1 MiB of a check's tool stdout, and a run printing more is a protocol non-result rather than a
+  verdict, so the check, and any rehearsal it grades, decides nothing. Write a full dump to a file
+  and print the lines the check reads.
 - For external evidence, file contents and stdin must be string leaves or JSON of this check's
   declared artifact/public projection, and a request binding no such leaf or naming another
   check's tool is refused. For authored evidence, they may be constructed text,
@@ -276,6 +285,15 @@ facts and protected verifier behaviour are not. State rules
 and tool behaviour, not how limits were set or how hard the tasks are. A `ruleDecisions` row you
 declared private belongs nowhere in this file: writing its recipe here in your own words publishes
 it as surely as copying the row.
+
+The solver's shell has no `.toolchain` directory and no workspace: each command runs in a fresh
+folder, and what reaches it is the programs in `.toolchain`'s `bin` directories, by name on its
+PATH with `.toolchain/bin` first. So the guide names a program by the name that runs it, never a
+path into `.toolchain`, a virtualenv to activate or a file under `correctness-model/`. Give a
+configured wrapper the tool's own name in `.toolchain/bin`, because the solver calls a tool by that
+name, and a raw binary answering to it elsewhere on the PATH runs without your configuration. The
+host's `python3` carries no numpy or scipy you can count on, so expose an interpreter whose
+libraries a search needs as a program in `.toolchain/bin`.
 
 ```markdown
 # Operating Guide

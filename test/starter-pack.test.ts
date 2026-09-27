@@ -8,10 +8,17 @@ import { type ControlCorpus, validateControls } from "../src/correctness-bundle/
 import { type BuildTask, validateTasks } from "../src/correctness-bundle/tasks.ts";
 import { validateToolsSpec } from "../src/correctness-bundle/tools-spec.ts";
 import { MATCHING_ACCEPTS, MATCHING_BRIEF, MATCHING_TASKS } from "./helpers/matching-fixture.ts";
-import { STARTER_DOC, STARTER_ENTRY, brief, fence, fileMapBrief } from "./helpers/starter-contracts.ts";
+import {
+  STARTER_DOC,
+  STARTER_ENTRY,
+  STARTER_LADDER,
+  brief,
+  fence,
+  fileMapBrief,
+} from "./helpers/starter-contracts.ts";
 import { EVALUATOR_CALIBRATION_POLICY } from "../src/claim/calibration.ts";
 import { hashJsonBytes, parseJsonAs } from "../src/meta/json-runtime.ts";
-import { createVerifierHost } from "../src/verify/host.ts";
+import { STDOUT_MAX_BYTES, createVerifierHost } from "../src/verify/host.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { evaluateCheckProgram } from "../vendor/correctness-model-bundle/evaluate.ts";
@@ -148,6 +155,39 @@ describe("pi starter pack brief vocabulary", () => {
     expect(STARTER_DOC.replace(/\s+/g, " ")).toContain(
       `at least ${minimumKnownPasses} known-correct and ${minimumKnownFailures} deliberately incorrect rows`,
     );
+  });
+
+  // Each clause answers a recorded way a battery measured something other than the request, so the
+  // text keeps saying it: a symbol check certifying a pin, a check tool printing past the host cap,
+  // and a guide naming a path the solver's shell does not have.
+  it.concurrent("contract.md binds resource checks to produced values and names the stdout cap", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain("decides from the values the answer produces for that resource");
+    expect(text).toContain(
+      "A library symbol or a constant found anywhere in the build proves the answer mentions the resource, not that it behaves",
+    );
+    const mebibytes = STDOUT_MAX_BYTES / 2 ** 20;
+    expect(Number.isInteger(mebibytes)).toBe(true);
+    expect(text).toContain(
+      `The host reads at most ${String(mebibytes)} MiB of a check's tool stdout, and a run printing more is a protocol non-result`,
+    );
+  });
+
+  it.concurrent("contract.md tells the guide to name programs the solver's shell can run", () => {
+    const text = STARTER_DOC.replace(/\s+/g, " ");
+    expect(text).toContain(
+      "the guide names a program by the name that runs it, never a path into `.toolchain`",
+    );
+    expect(text).toContain("Give a configured wrapper the tool's own name in `.toolchain/bin`");
+    expect(text).toContain("carries no numpy or scipy you can count on");
+  });
+
+  it.concurrent("the ladder calls the solver walls working conditions, not a difficulty setting", () => {
+    const text = STARTER_LADDER.replace(/\s+/g, " ");
+    expect(text).toContain(
+      "The solver's walls in `agent/config.yaml` are working conditions, not a difficulty setting.",
+    );
+    expect(text).toContain("measures the wall");
   });
 
   it.concurrent("the file-map brief contract passes validateBrief unchanged", () => {

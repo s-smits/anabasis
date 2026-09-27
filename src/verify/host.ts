@@ -85,7 +85,9 @@ export const DEFAULT_TOOL_TIMEOUT_MS = 300_000;
  *  little room for any of them. */
 export const TOOL_TIMEOUT_CEILING_MS = DEFAULT_TOOL_TIMEOUT_MS;
 
-const STDOUT_MAX_BYTES = 1024 * 1024;
+/** The stdout a check's tool run may write; past it the run is a protocol non-result. The starter
+ *  contract states this figure to the Builder, so a change here changes that text too. */
+export const STDOUT_MAX_BYTES = 1024 * 1024;
 /** The shell's own exit codes for a program it could not execute (126) or could not find (127). */
 const SHELL_COULD_NOT_RUN = new Set<number | null>([126, 127]);
 /** The shell's own launch-failure line, as bash (`w: line 2: p: cannot execute: …`), dash

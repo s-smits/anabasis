@@ -153,6 +153,11 @@ survives the set, so the solver gives something up before it knows what it is bu
 set is a region rather than a list, the solver has to find its own worst case before it can report
 one.
 
+The solver's walls in `agent/config.yaml` are working conditions, not a difficulty setting. A task
+the solver fails only because `solve_minutes` or `max_turns` was lowered below what a practitioner's
+answer needs measures the wall, and reads from outside exactly like a missed demand; move the tier
+with the tasks and leave the walls where the work fits.
+
 Three things you publish can give the tier back without a word of the tasks changing.
 
 **Your tools.** The analysis stays, because a solver without one fails on arithmetic, which

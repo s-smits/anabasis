@@ -60,11 +60,14 @@ export function exitTermination(
 
 /** A startup the host stopped waiting for, classified by the last phase the worker reported.
  *  Before its walls are installed the wait is the host's, and `deadline` says so. Afterwards
- *  the wait is on candidate code loading, which no environment reader may claim. */
+ *  the wait is on candidate code loading, which no environment reader may claim: a worker that
+ *  never answered its ready frame broke the protocol, as a request it never answered does, so the
+ *  kind is `protocol`, which F2 already reads as the author's and no battery reader counts as the
+ *  environment's. */
 export function readyTimeoutCause(walls: Walls, readyTimeoutMs: number): Cause {
   return walls === "installed"
     ? cause(
-        "runtime",
+        "protocol",
         `did not finish loading the candidate harness within ${readyTimeoutMs}ms of its walls being installed`,
       )
     : cause("runtime", "timed out before its ready handshake", true);

@@ -424,3 +424,161 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
     expect(prompt).toContain(`${JOINTS.slice(0, 12)} (joints, unaccepted, 2/5): no diagnosis recorded`);
   });
 });
+
+/** An earlier review's task-set findings reach the next review while the task set is unchanged, and
+ *  a battery above the aim owes its review one of two endings, which the host asks for once. */
+describe("what an unchanged task set and an above-aim placement ask of the review", () => {
+  type Turn = Parameters<NonNullable<Parameters<typeof runEpochReview>[0]["readerTurn"]>>[0];
+
+  async function reviewed(input: {
+    counts: Counts;
+    taskSetHash?: string;
+    earlier?: { taskSetHash: string };
+    turn?: (turn: Turn) => Promise<string>;
+  }) {
+    const root = tree();
+    recordBattery(root, root, "r1", input.counts);
+    if (input.earlier !== undefined) {
+      const dir = join(campaignDir(root, SLUG), "analysis");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "r0-epoch-review.json"),
+        JSON.stringify({
+          schema: "epoch-review/v5",
+          runId: "r0",
+          status: "completed",
+          condition: { taskSetHash: input.earlier.taskSetHash },
+          coverage: { complete: true },
+          findings: [
+            {
+              defect: true,
+              owner: "correctness-model/tasks.json",
+              severity: "advisory",
+              claim: "private reviewer prose about the siblings",
+              evidence: "e",
+              publicInputPath: "$.loads",
+            },
+          ],
+          disputes: [],
+          report: null,
+        }),
+      );
+    }
+    const analysis = analysisOf(input.counts);
+    const snapshot = { ...keyIfDefined("taskSetHash", input.taskSetHash) };
+    let prompt = "";
+    const continued: string[] = [];
+    const record = await runEpochReview({
+      repoRoot: root,
+      slug: SLUG,
+      runId: "r1",
+      treeRoot: ".",
+      analysis: { ...analysis, identities: { ...analysis.identities, bundleSnapshot: double(snapshot) } },
+      priorAdvice: null,
+      publicRequest: "solves the domain",
+      review,
+      readerTurn: async (turn) => {
+        prompt = turn.prompt;
+        const first = await (input.turn?.(turn) ?? Promise.resolve(""));
+        const next = turn.continuePrompt?.(first) ?? null;
+        if (next === null) return { pin: null, text: first, error: null };
+        continued.push(next);
+        const last = "core demands the load coupling, and nothing is left undemanded.";
+        expect(turn.continuePrompt?.(last) ?? null).toBeNull();
+        return { pin: null, text: last, error: null };
+      },
+    });
+    return { prompt, continued, record };
+  }
+
+  it("shows the earlier task-set finding in its public form when the task set is unchanged", async () => {
+    const { prompt } = await reviewed({
+      counts: { passed: 8, verified: 25 },
+      taskSetHash: "tasks-a",
+      earlier: { taskSetHash: "tasks-a" },
+    });
+    expect(prompt).toContain("Earlier reviews of this same task set");
+    expect(prompt).toContain("- r0: Epoch review (correctness-model/tasks.json): public input `$.loads`");
+    expect(prompt).not.toContain("private reviewer prose");
+  });
+
+  it("shows no earlier task-set finding once the task set has changed", async () => {
+    const { prompt } = await reviewed({
+      counts: { passed: 8, verified: 25 },
+      taskSetHash: "tasks-b",
+      earlier: { taskSetHash: "tasks-a" },
+    });
+    expect(prompt).not.toContain("Earlier reviews of this same task set");
+    expect(prompt).not.toContain("$.loads");
+  });
+
+  it("asks an above-aim review once for its account and records the account the restatement drew", async () => {
+    const { continued, record } = await reviewed({
+      counts: { passed: 20, verified: 25 },
+      turn: () => Promise.resolve("I found nothing demonstrated."),
+    });
+    expect(continued).toHaveLength(1);
+    expect(continued[0]).toContain("for each family (core)");
+    // The fake answered the restatement by naming the family, which is the account.
+    expect(record.aboveAimDuty).toBe("accounted");
+    expect(record.report).toContain("core demands the load coupling");
+  });
+
+  it("records an account given in the first closing message without asking again", async () => {
+    const { continued, record } = await reviewed({
+      counts: { passed: 20, verified: 25 },
+      turn: () => Promise.resolve("Family core demands the published load coupling."),
+    });
+    expect(continued).toHaveLength(0);
+    expect(record.aboveAimDuty).toBe("accounted");
+  });
+
+  it("records a task-set defect as the finding that discharges the duty", async () => {
+    const { continued, record } = await reviewed({
+      counts: { passed: 20, verified: 25 },
+      turn: async (turn) => {
+        const tool = turn.tools.find((row) => row.name === "record_finding");
+        await tool?.execute(
+          "c1",
+          double({
+            defect: true,
+            owner: "correctness-model/tasks.json",
+            severity: "advisory",
+            claim: "the siblings differ only in their published values",
+            publicInputPath: "$.loads",
+          }),
+        );
+        return "Recorded one task-set defect.";
+      },
+    });
+    expect(continued).toHaveLength(0);
+    expect(record.aboveAimDuty).toBe("finding");
+  });
+
+  it("owes nothing on the aim, and records no duty there", async () => {
+    const { continued, record } = await reviewed({ counts: { passed: 8, verified: 25 } });
+    expect(continued).toHaveLength(0);
+    expect(record.aboveAimDuty).toBeUndefined();
+  });
+
+  it("records the duty undischarged when the restatement is answered without an account", async () => {
+    const root = tree();
+    recordBattery(root, root, "r1", { passed: 20, verified: 25 });
+    const record = await runEpochReview({
+      repoRoot: root,
+      slug: SLUG,
+      runId: "r1",
+      treeRoot: ".",
+      analysis: analysisOf({ passed: 20, verified: 25 }),
+      priorAdvice: null,
+      publicRequest: "solves the domain",
+      review,
+      readerTurn: async (turn) => {
+        expect(turn.continuePrompt?.("Nothing found.")).toContain("above the aim");
+        expect(turn.continuePrompt?.("Still nothing.") ?? null).toBeNull();
+        return { pin: null, text: "Still nothing.", error: null };
+      },
+    });
+    expect(record.aboveAimDuty).toBe("undischarged");
+  });
+});

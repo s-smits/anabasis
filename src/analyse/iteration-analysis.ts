@@ -112,7 +112,7 @@ interface ClaimFileSlice {
  * one still outranks the climb at promotion — exactly the misroute a severity change is made to
  * end.
  */
-export const FEEDBACK_POLICY = "severity-route/11-owner-defect";
+export const FEEDBACK_POLICY = "severity-route/12-recurring-demand";
 
 /** A finding states two facts: where it sits and whether it is a defect. Only a bundle file can
  *  hold a defect, so a defect with no owner, or one owned by the environment, has no spelling. An
@@ -162,6 +162,11 @@ type FindingBody = {
    *  boundary, and the same check name arrives round after round with nothing behind it, each time
    *  ordering a rebuild the author cannot aim. */
   probes?: Array<{ controlId: string; path: string; movedCheckIds: string[] }>;
+  /** How many distinct earlier reviewed conditions named what this finding names — its check or
+   *  deeper path, or for a task-set finding the public input it asks to vary. Absent when none did.
+   *  A count of namings, public in the same way the identities it counts are, and rendered so the
+   *  author can tell a first reading from advice it has already been given. */
+  namedBefore?: number;
 };
 
 export interface AdmittedEvidence {

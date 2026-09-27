@@ -40,6 +40,7 @@ import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } fr
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
+import type { AboveAimDuty } from "./above-aim-duty.ts";
 
 export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
 /** Product identity; review procedure belongs to the review request. */
@@ -98,6 +99,10 @@ export type EpochReviewEvidence = {
   /** What the review executed, absent when it executed nothing. Private: which check reacts to
    *  which changed field is verifier detail an author must not read. */
   probes?: ReviewProbeRow[];
+  /** How a finished review of a battery above the aim met the duty that placement puts on it: a
+   *  task-set defect recorded, every family accounted for in the report, or neither after one
+   *  continuation restating it (`above-aim-duty.ts`). Absent for any other review. */
+  aboveAimDuty?: AboveAimDuty;
   report: string | null;
 };
 
@@ -124,6 +129,7 @@ export type ReviewState = SourceReadState & {
 type BriefIdentities = { schemaRoots: readonly string[]; checkIds: readonly string[] };
 
 type FindingArgs = ReturnType<typeof findingArgs>;
+type PassCounts = { passed: number; verified: number; unaccepted: number };
 
 /** Minimum demonstration length for a blocking finding. The review instructions ask for a
  *  demonstrated violation before blocking, and without a floor nothing in the host checks that one
@@ -163,6 +169,8 @@ type FindingVerdict = { why: string } | { severity: FindingSeverity; placement: 
 type FindingPriors = {
   readonly identities?: BriefIdentities | undefined;
   readonly recurring?: ReadonlyMap<string, number> | undefined;
+  /** Owners whose demand defect the previous full-pass review named too (`recurringDemandOwners`). */
+  readonly demandRecurs?: ReadonlySet<BundleFile> | undefined;
 };
 
 export function measuredConditionOf({
@@ -244,7 +252,8 @@ export function conditionAlreadyReviewed(
  *  second time. An unplaced finding is the one excluded, because it is the reviewer saying it could
  *  not attribute what it saw, and counting it would let an unattributed observation force the next
  *  finding on that check to blocking. An observation the reviewer could not attribute is not a
- *  first naming; the next placed claim about that check is. */
+ *  first naming; the next placed claim about that check is. A task-set finding also counts under
+ *  its public input (`taskInputNaming`), a key no check id can equal. */
 export function recurringDefects(analysisDir: string, current: MeasuredCondition): Map<string, number> {
   const seen = new Map<string, Set<string>>();
   const currentKey = current.digest;
@@ -254,14 +263,76 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
     if (review.coverage?.complete !== true || priorKey === null || priorKey === currentKey) continue;
     for (const finding of review.findings) {
       if (finding.owner === null) continue;
-      const identity = namedSubject(finding);
-      if (identity === null) continue;
-      const conditions = seen.get(identity) ?? new Set<string>();
-      conditions.add(priorKey);
-      seen.set(identity, conditions);
+      for (const identity of [namedSubject(finding), taskInputNaming(finding)]) {
+        if (identity === null) continue;
+        const conditions = seen.get(identity) ?? new Set<string>();
+        conditions.add(priorKey);
+        seen.set(identity, conditions);
+      }
     }
   }
   return new Map([...seen].map(([identity, conditions]) => [identity, conditions.size]));
+}
+
+/** The task-set naming of a finding: the public input it asks the battery to vary, keyed within its
+ *  own owner. It is counted beside `namedSubject` rather than in place of it, so a check named by a
+ *  task-set observation of hardness still counts towards that check, and the owner prefix keeps the
+ *  new key from ever matching a check id: `admitSeverity`, which reads contract defects alone, sees
+ *  exactly the counts it saw before. What the task-set key buys is the rendered count of how often
+ *  an earlier review asked the battery to move the same input. */
+function taskInputNaming(finding: { owner: string | null; publicInputPath?: string | null }): string | null {
+  return finding.owner === TASKS_FILE && finding.publicInputPath != null
+    ? `${TASKS_FILE} ${finding.publicInputPath}`
+    : null;
+}
+
+/** The task-set findings earlier complete reviews recorded over the task set now under review. A
+ *  task-set finding asks the next battery to demand more of the request; when the battery that came
+ *  back has the same `taskSetHash`, nothing it said was acted on, and a reviewer who is not shown it
+ *  re-derives it from scratch or, worse, reads the unchanged tasks as settled. The current review's
+ *  own file is left out, since it is being written. */
+export function earlierTaskFindings(
+  analysisDir: string,
+  current: MeasuredCondition,
+  runId: string,
+): Array<{ runId: string; findings: AnalysisFinding[] }> {
+  if (current.taskSetHash === null) return [];
+  return completedReviews(analysisDir)
+    .filter((review) => review.runId !== runId && review.condition?.taskSetHash === current.taskSetHash)
+    .map((review) => ({
+      runId: review.runId,
+      findings: review.findings.filter((finding) => finding.owner === TASKS_FILE),
+    }))
+    .filter((row) => row.findings.length > 0)
+    .sort((a, b) => a.runId.localeCompare(b.runId));
+}
+
+/** Whether a battery passed every case it verified, with at least one verified and none left
+ *  unaccepted. Runtime non-results neither pass nor fail, so they do not break a full pass. */
+export function allPassed(counts: PassCounts): boolean {
+  return counts.verified > 0 && counts.passed === counts.verified && counts.unaccepted === 0;
+}
+
+/** The task set, when its demand finding recurs across two consecutive full passes. The finding is
+ *  advice on its first reading, and a round that acted on advice is free to have weighed it and
+ *  moved on. When the next battery again passes everything and the next review names the task set
+ *  again, the advice was read and the tasks did not move, so the host admits that second naming as
+ *  blocking. Only the task set escalates: a blocking finding owned by the evaluator or the brief
+ *  reopens the evaluation over the same frozen, fully passed tasks, which is one more correction of
+ *  an exam that stays easy. Empty unless both batteries passed in full and the previous battery's
+ *  review completed and named a task-set defect. */
+export function recurringDemandOwners(
+  analysisDir: string,
+  previous: { runId: string; counts: PassCounts } | null,
+  current: PassCounts,
+): ReadonlySet<BundleFile> {
+  if (previous === null || !allPassed(previous.counts) || !allPassed(current)) return new Set();
+  const review = completedReviews(analysisDir).find((row) => row.runId === previous.runId);
+  return new Set(
+    (review?.findings ?? []).flatMap((finding) =>
+      finding.defect && finding.owner === TASKS_FILE ? [TASKS_FILE] : [],
+    ),
+  );
 }
 
 /** Admit the reviewer's chosen severity under the limits only the host can apply. Nothing here
@@ -283,13 +354,24 @@ export function recurringDefects(analysisDir: string, current: MeasuredCondition
  *  A probe-backed defect is exempt from the first-occurrence agent-tier floor, because a finding
  *  citing a probe is not a suspicion: the candidate's own declared checks ran over its own accept
  *  control and over one changed field, and the row records what they decided. The reviewer still
- *  owes the demonstration, the citations and the one-reopen cap. */
+ *  owes the demonstration, the citations and the one-reopen cap.
+ *
+ *  A demand defect recurring across two full passes (`recurringDemandOwners`) is admitted blocking
+ *  ahead of the two-occurrence ceiling, because that ceiling bounds repeated repairs of one check
+ *  and a full pass is the measurement saying the evaluation has not yet found a limit at all. */
 function admitSeverity(
   { owner, defect }: FindingPlacement,
   chosen: FindingSeverity,
-  host: { blockingAlready: boolean; recurrences: number; demonstrated: boolean; probeBacked: boolean },
+  host: {
+    blockingAlready: boolean;
+    recurrences: number;
+    demonstrated: boolean;
+    probeBacked: boolean;
+    demandRecurs: boolean;
+  },
 ): FindingSeverity {
   if (!defect || host.blockingAlready || !host.demonstrated) return "advisory";
+  if (host.demandRecurs) return "blocking";
   if (host.recurrences >= 2) return "advisory";
   if (host.recurrences === 1) return "blocking";
   if (host.probeBacked) return chosen;
@@ -596,6 +678,7 @@ export function recordFindingTool(
 ): ReaderTool {
   const identities = priors.identities ?? { schemaRoots: [], checkIds: [] };
   const recurring = priors.recurring ?? new Map<string, number>();
+  const demand = priors.demandRecurs ?? new Set<BundleFile>();
   const byPrefix = new Map(offered.map((issue) => [issue.id.slice(0, 12), issue.id] as const));
   return {
     name: "record_finding",
@@ -624,9 +707,12 @@ export function recordFindingTool(
       // defect is admitted advisory however strong its own case is: a second blocking defect in
       // one reading is a reason to inspect the review, not to reopen twice.
       const blockingAlready = state.findings.some((row) => row.defect && row.severity === undefined);
-      const identity = namedSubject(parsed);
-      const recurrences =
-        contractDefect(verdict.placement) && identity !== null ? (recurring.get(identity) ?? 0) : 0;
+      const count = (key: string | null) => (key === null ? 0 : (recurring.get(key) ?? 0));
+      const recurrences = contractDefect(verdict.placement) ? count(namedSubject(parsed)) : 0;
+      const namedBefore =
+        subject.owner === TASKS_FILE
+          ? count(taskInputNaming({ ...parsed, owner: subject.owner }))
+          : count(namedSubject(parsed));
       const probes = probeBackedRows(state.probes, args.probeIds);
       for (const row of probes) row.cited = true;
       const admitted = admitSeverity(verdict.placement, verdict.severity, {
@@ -634,8 +720,12 @@ export function recordFindingTool(
         recurrences,
         demonstrated: demonstrated(parsed.demonstration) && subject.citations !== null,
         probeBacked: probes.length > 0,
+        demandRecurs: verdict.placement.defect && subject.owner !== null && demand.has(subject.owner),
       });
-      state.findings.push(recordedFinding(subject, verdict.placement, admitted, probes, evidencePath));
+      state.findings.push({
+        ...recordedFinding(subject, verdict.placement, admitted, probes, evidencePath),
+        ...keysIf(namedBefore > 0, () => ({ namedBefore })),
+      });
       if (admitted !== verdict.severity) {
         state.admission.severityAdjusted.push({
           owner: subject.owner,

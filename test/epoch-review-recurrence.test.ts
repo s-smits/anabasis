@@ -6,7 +6,7 @@
  * an agent-side defect advises on its first reading and blocks on its second, and a probe that
  * actually executed may block on the first.
  */
-import { EVALUATOR_FILE } from "../src/meta/bundle-layout.ts";
+import { BRIEF_FILE, EVALUATOR_FILE, TASKS_FILE } from "../src/meta/bundle-layout.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
@@ -19,8 +19,10 @@ import {
   EPOCH_REVIEW_SCHEMA,
   conditionAlreadyReviewed,
   measuredConditionOf,
+  allPassed,
   recordFindingTool,
   recurringDefects,
+  recurringDemandOwners,
 } from "../src/review/epoch-review-findings.ts";
 import type { MeasuredCondition } from "../src/review/epoch-review-findings.ts";
 
@@ -733,5 +735,141 @@ describe("a condition is reviewed once", () => {
 
   test("an absent task set hash still separates conditions", () => {
     expect(condition(null).digest).not.toBe(condition("t1").digest);
+  });
+});
+
+/**
+ * A demand finding recurring across two full passes. The task set's undemanded obligation is advice
+ * when first read; a second full pass whose review names the task set again says the advice was read
+ * and the tasks did not move, so that second naming blocks. A battery that failed a case between them
+ * is a battery that found something, and the recurrence then stays advice. Only the task set
+ * escalates: an evaluator or brief finding blocking there would reopen the evaluation over the same
+ * frozen tasks.
+ */
+describe("a demand finding recurring across full passes", () => {
+  const FULL = { passed: 6, verified: 6, unaccepted: 0 };
+  const FAILED = { passed: 5, verified: 6, unaccepted: 0 };
+  const condition = (taskSetHash: string): MeasuredCondition =>
+    measuredConditionOf({
+      agentHash: "a",
+      correctnessModelHash: "c",
+      taskSetHash,
+      builtPin: "claude/claude-opus-5/medium",
+      verifierIdentity: "verifier-a",
+    });
+  const undemanded = {
+    defect: true,
+    owner: TASKS_FILE,
+    severity: "advisory",
+    claim: "sibling tasks differ only in published values",
+    evidence: "e",
+    publicInputPath: "$.loads",
+  };
+  const analysisDir = (findings: JsonValue[]) => {
+    const root = scratchDir("ana-epoch-demand-");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, "r1-epoch-review.json"),
+      JSON.stringify({
+        ...REVIEW_IDENTITY,
+        schema: EPOCH_REVIEW_SCHEMA,
+        runId: "r1",
+        status: "completed",
+        condition: condition("t1"),
+        coverage: { complete: true },
+        findings,
+      }),
+    );
+    return root;
+  };
+  const admitted = async (
+    demandRecurs: ReadonlySet<never> | ReturnType<typeof recurringDemandOwners>,
+    finding: Record<string, JsonValue> = undemanded,
+  ) => {
+    const state = reviewState();
+    const reply = await call(
+      recordFindingTool([], [], "e", state, {
+        identities: { schemaRoots: ["files"], checkIds: ["bounds"] },
+        demandRecurs,
+      }),
+      { ...finding, citations: CITATIONS, demonstration: DEMO },
+    );
+    return { reply, severity: state.findings[0]?.severity };
+  };
+
+  test("reads a full pass as every verified case passing with none unaccepted", () => {
+    expect(allPassed({ passed: 6, verified: 6, unaccepted: 0 })).toBe(true);
+    expect(allPassed({ passed: 5, verified: 6, unaccepted: 0 })).toBe(false);
+    expect(allPassed({ passed: 6, verified: 6, unaccepted: 1 })).toBe(false);
+    expect(allPassed({ passed: 0, verified: 0, unaccepted: 0 })).toBe(false);
+  });
+
+  test("the second full-pass naming of the task set is admitted blocking", async () => {
+    const owners = recurringDemandOwners(analysisDir([undemanded]), { runId: "r1", counts: FULL }, FULL);
+    expect([...owners]).toEqual([TASKS_FILE]);
+    expect(await admitted(owners)).toEqual({ reply: "recorded defect as blocking", severity: undefined });
+  });
+
+  test("a single naming stays advisory", async () => {
+    const owners = recurringDemandOwners(analysisDir([]), { runId: "r1", counts: FULL }, FULL);
+    expect(owners.size).toBe(0);
+    expect((await admitted(owners)).severity).toBe("advisory");
+    expect(recurringDemandOwners(analysisDir([undemanded]), null, FULL).size).toBe(0);
+  });
+
+  test("a recurrence after a battery that failed a case stays advisory", async () => {
+    const dir = analysisDir([undemanded]);
+    const afterFail = recurringDemandOwners(dir, { runId: "r1", counts: FAILED }, FULL);
+    expect((await admitted(afterFail)).severity).toBe("advisory");
+    const nowFailing = recurringDemandOwners(dir, { runId: "r1", counts: FULL }, FAILED);
+    expect((await admitted(nowFailing)).severity).toBe("advisory");
+  });
+
+  test("an evaluator or brief finding recurring across full passes stays advisory", async () => {
+    const evaluator = { ...undemanded, owner: EVALUATOR_FILE, checkId: "bounds" };
+    const brief = { ...undemanded, owner: BRIEF_FILE, artifactSchemaPath: "files" };
+    const owners = recurringDemandOwners(
+      analysisDir([evaluator, brief]),
+      { runId: "r1", counts: FULL },
+      FULL,
+    );
+    expect(owners.size).toBe(0);
+    expect((await admitted(owners, evaluator)).severity).toBe("advisory");
+    expect((await admitted(owners, brief)).severity).toBe("advisory");
+  });
+
+  test("a task-set finding counts its public input, and the projection says how often it was named", async () => {
+    const tasks = {
+      defect: true,
+      owner: "correctness-model/tasks.json",
+      severity: "advisory",
+      claim: "siblings differ only in values",
+      evidence: "e",
+      checkId: "bounds",
+      publicInputPath: "$.loads",
+    };
+    const recurring = recurringDefects(analysisDir([tasks]), condition("t2"));
+    // The check it names still counts towards that check, and the input is counted beside it.
+    expect(recurring.get("bounds")).toBe(1);
+    expect(recurring.get("correctness-model/tasks.json $.loads")).toBe(1);
+    const state = reviewState();
+    await call(
+      recordFindingTool([], [], "e", state, { identities: { schemaRoots: [], checkIds: [] }, recurring }),
+      {
+        defect: true,
+        owner: "correctness-model/tasks.json",
+        severity: "advisory",
+        claim: "again",
+        publicInputPath: "$.loads",
+      },
+    );
+    expect(state.findings[0]?.namedBefore).toBe(1);
+    const [shown] = publicEpochReview({
+      status: "completed",
+      findings: state.findings,
+      disputes: [],
+    }).findings;
+    expect(shown?.claim).toContain("Named in 1 earlier review.");
+    expect(shown?.claim).not.toContain("again");
   });
 });

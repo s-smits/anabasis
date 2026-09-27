@@ -204,6 +204,11 @@ function publicFinding(
   // own heading, and a copy per finding puts it several times into one authoring prompt, in front
   // of each sentence the author has to act on. One duty, one owner (rule 14).
   const context = [...obligation, ...veto, ...dispute];
+  // A count of earlier namings, so a finding the author has already been given reads as such rather
+  // than as news. It rides with advice too, since advice repeated is the case it exists for.
+  const earlier = finding.namedBefore ?? 0;
+  const repeated =
+    earlier === 0 ? [] : [`Named in ${String(earlier)} earlier review${earlier === 1 ? "" : "s"}.`];
   // The repair instruction rides only with a demonstrated defect — which, until the request left
   // this list, was every repairable finding, since `context` could not then be empty.
   const repair =
@@ -214,9 +219,13 @@ function publicFinding(
         ];
   return {
     ...finding,
-    claim: [publicFindingClaim(finding, deferred, contract.brief), ...context, ...probed, ...repair].join(
-      "\n",
-    ),
+    claim: [
+      publicFindingClaim(finding, deferred, contract.brief),
+      ...repeated,
+      ...context,
+      ...probed,
+      ...repair,
+    ].join("\n"),
   };
 }
 
@@ -257,4 +266,21 @@ export function publicEpochReview(
           }))
         : [],
   };
+}
+
+/** Earlier task-set findings over the task set now under review, each in the public form its round's
+ *  Builder read. Shown to the reviewer rather than to the author: the author already received them,
+ *  and the reviewer is the one reading whether an unchanged battery left them standing. */
+export function earlierTaskFindingLines(
+  rows: ReadonlyArray<{ runId: string; findings: AnalysisFinding[] }>,
+): string[] {
+  if (rows.length === 0) return [];
+  return [
+    "Earlier reviews of this same task set (its taskSetHash is unchanged) recorded these correctness-model/tasks.json findings, as the Builder read them. The tasks did not change since, so read whether each still stands before recording it again:",
+    ...rows.flatMap(({ runId, findings }) =>
+      publicEpochReview({ status: "completed", findings, disputes: [] }).findings.map(
+        (finding) => `- ${runId}: ${finding.claim.replaceAll("\n", " ")}`,
+      ),
+    ),
+  ];
 }

@@ -74,10 +74,14 @@ import {
   briefIdentities,
   conditionAlreadyReviewed,
   measuredConditionOf,
+  earlierTaskFindings,
   recordFindingTool,
+  recurringDemandOwners,
   recurringDefects,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import { aboveAimContinuation, aboveAimDuty } from "./above-aim-duty.ts";
+import { earlierTaskFindingLines } from "./epoch-review-public.ts";
 
 export interface EpochReviewInput {
   repoRoot: string;
@@ -134,6 +138,8 @@ export interface RehearsalCase {
 }
 
 type ReaderTurn = Awaited<ReturnType<typeof runReaderTurn>>;
+/** A battery's placement sentence, and its signed distance to the aim when it was placed. */
+type AimReading = { text: string; toAim: number | null };
 type ReviewCoverage = ReturnType<typeof reviewCoverage>;
 
 /** A session that may read, carrying everything the read depends on, or one that may not and
@@ -379,7 +385,7 @@ function checkpointLines(input: EpochReviewInput): string[] {
     aimLine(input, () => selectedProductDir(input.repoRoot, input.slug), {
       runId: advice.runId,
       pin: advice.backendPin,
-    }),
+    }).text,
     "Read it wherever you would otherwise infer what a solver reaches: how wide the feasible set is, whether a published limit is attainable, whether a battery is about to fail. An accept control sits where its author put it and is no sample of solver behaviour.",
   ];
 }
@@ -405,7 +411,8 @@ function aimLine(
   input: EpochReviewInput,
   domainDir: () => string,
   battery: { runId: string; pin: string },
-): string {
+): AimReading {
+  const unplaced = (text: string) => ({ text, toAim: null });
   let readout: ClimbReadout | null;
   try {
     readout = readClimbReadout(
@@ -415,23 +422,31 @@ function aimLine(
       join(input.repoRoot, FROZEN_MANIFEST_PATH),
     );
   } catch (cause) {
-    return `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`;
+    return unplaced(
+      `Aim: the climb readout could not be read (${errorMessage(cause)}); read the counts alone.`,
+    );
   }
   const { runId } = battery;
   const row = readout?.rows.find((entry) => entry.runId === runId);
   if (readout === null || row === undefined) {
     const excluded = readout?.excluded.find((entry) => entry.runId === runId)?.reason;
-    return `Aim: the climb readout holds no row for this battery (${excluded ?? "not recorded"}), so it has no placement; read the counts alone.`;
+    return unplaced(
+      `Aim: the climb readout holds no row for this battery (${excluded ?? "not recorded"}), so it has no placement; read the counts alone.`,
+    );
   }
   if (row.claimRefusal !== null) {
-    return `Aim: this battery's claim was refused (${row.claimRefusal}), so the climb readout places it nowhere; read the counts alone.`;
+    return unplaced(
+      `Aim: this battery's claim was refused (${row.claimRefusal}), so the climb readout places it nowhere; read the counts alone.`,
+    );
   }
   const { zone, aim, toAim, deciding, wilson } = row;
   if (zone === null || aim === null || toAim === null || deciding === null || wilson === null) {
     const decided = readout.decision.evidence.at(-1)?.runId === runId;
-    return decided
-      ? fill(FRAME.readout.unplaced, { rationale: readout.decision.rationale })
-      : "Aim: the climb readout placed no zone for this battery; read the counts alone.";
+    return unplaced(
+      decided
+        ? fill(FRAME.readout.unplaced, { rationale: readout.decision.rationale })
+        : "Aim: the climb readout placed no zone for this battery; read the counts alone.",
+    );
   }
   const reading = fill(FRAME.readout.reading, {
     population: deciding.population,
@@ -445,7 +460,7 @@ function aimLine(
     hi: aim[1],
     zone: FRAME.zoneWords[zone],
   });
-  return `${reading}${lead(toAim)}`;
+  return { text: `${reading}${lead(toAim)}`, toAim };
 }
 
 /**
@@ -497,6 +512,7 @@ function orientation(
   inventory: ReviewInventory,
   verifier: ReviewVerifierEvidence,
   issues: readonly AdviceIssue[],
+  measured: { aim: string; earlier: readonly string[] },
 ): string {
   const { analysis } = input;
   return [
@@ -513,10 +529,8 @@ function orientation(
             analysis.battery.summary.verified,
             analysis.battery.summary.passed,
           ),
-          aimLine(input, () => join(input.repoRoot, input.treeRoot), {
-            runId: input.runId,
-            pin: analysis.identities.backendPin,
-          }),
+          measured.aim,
+          ...measured.earlier,
         ]),
     ...roundPlanLines(input.experiment ?? null, analysis),
     ...contestedLines(input),
@@ -587,6 +601,47 @@ function recordedReview(
   };
 }
 
+/** The owners whose demand defect recurs across this battery and the one before it, both passing in
+ *  full. The previous battery is the one the prior advice packet was derived from, and its counts
+ *  are read from that packet; an authoring checkpoint has no battery of its own and escalates
+ *  nothing. */
+function demandOwners(input: EpochReviewInput, analysisDir: string) {
+  const { analysis, priorAdvice } = input;
+  if (analysis === null) return new Set<never>();
+  const previous =
+    priorAdvice === null ? null : { runId: priorAdvice.runId, counts: adviceTotals(priorAdvice.families) };
+  return recurringDemandOwners(analysisDir, previous, analysis.battery.summary);
+}
+
+/** What a measured battery adds to the session: its placement against the aim, the task-set
+ *  findings earlier reviews of the same task set recorded, and — above the aim — the one
+ *  continuation that restates the duty the placement opens, with the reading of how it was met. */
+function measuredContext(
+  input: EpochReviewInput,
+  evidence: EpochReviewEvidence,
+  analysisDir: string,
+  findings: ReviewState["findings"],
+) {
+  const { analysis } = input;
+  if (analysis === null) return { aim: "", earlier: [], duty: null, settle: () => ({}) };
+  const aim = aimLine(input, () => join(input.repoRoot, input.treeRoot), {
+    runId: input.runId,
+    pin: analysis.identities.backendPin,
+  });
+  const families = [...familyTally(analysis.cases).keys()].sort();
+  const above = aim.toAim !== null && aim.toAim < 0;
+  return {
+    aim: aim.text,
+    earlier:
+      evidence.condition === null
+        ? []
+        : earlierTaskFindingLines(earlierTaskFindings(analysisDir, evidence.condition, input.runId)),
+    duty: above ? aboveAimContinuation(findings, families) : null,
+    settle: (turn: ReaderTurn) =>
+      above && turn.error === null ? { aboveAimDuty: aboveAimDuty(findings, families, turn.text) } : {},
+  };
+}
+
 /** Read one condition once, and record what came back whether or not the reader finished. A
  *  refused session returns its evidence unread rather than nothing, so every campaign round leaves
  *  a review record that says what happened to it. */
@@ -607,6 +662,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     admission: { continuations: 0, citationRefusals: 0, severityAdjusted: [] },
   };
   const probe = probeTool(root, join(analysisDir, `${input.runId}-probe-lifetime`), state.probes);
+  const measured = measuredContext(input, evidence, analysisDir, state.findings);
   const contested = new Map(
     [...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => {
       const path = contestedArtifact(input.treeRoot, row);
@@ -626,6 +682,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
     ...contested.keys(),
     ...rehearsed.keys(),
   ]);
+  const unread = unreadSourcePrompt(state, sourcePaths);
   // The task ids a finding may not name, since a finding is about a family and a claim pinned to
   // one task cannot direct an authoring pass. A measured battery supplies them; at an authoring
   // checkpoint they come from the draft's own task file, and a partial draft still gets a reading.
@@ -663,12 +720,13 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
             identities: briefIdentities(root),
             recurring:
               evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
+            demandRecurs: demandOwners(input, analysisDir),
           },
         ),
       ],
-      continuePrompt: unreadSourcePrompt(state, sourcePaths),
+      continuePrompt: (text) => unread() ?? measured.duty?.(text) ?? null,
       systemPrompt: EPOCH_REVIEW_PROMPT,
-      prompt: orientation(input, inventory, verifier, issues),
+      prompt: orientation(input, inventory, verifier, issues, measured),
       ...keyIfDefined("observer", input.observer),
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
@@ -681,11 +739,14 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const contestedReads = [...contested].flatMap(([path, artifact]) =>
     state.reads.includes(path) ? [artifact] : [],
   );
-  return recordedReview(
-    { ...evidence, contestedReads },
-    turn,
-    state,
-    reviewCoverage(inventory, verifier, state),
-    verifier,
-  );
+  return {
+    ...recordedReview(
+      { ...evidence, contestedReads },
+      turn,
+      state,
+      reviewCoverage(inventory, verifier, state),
+      verifier,
+    ),
+    ...measured.settle(turn),
+  };
 }

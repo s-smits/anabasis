@@ -12,6 +12,7 @@ import { sha256 } from "#src/meta/digest.ts";
 import { env, pipeline } from "@huggingface/transformers";
 import { homedir } from "#src/meta/os.ts";
 import { join } from "#src/meta/path.ts";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "#src/meta/filesystem.ts";
 import { parseCliArgs } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import {
@@ -337,15 +338,42 @@ function validMargin(value: number): number {
   return value;
 }
 
+/** Every vector the pinned model has produced, keyed by the digest of its text and stored beside the
+ *  weights. A read still classifies every unit of every trace; only a text no earlier read embedded
+ *  reaches the model, so a run read again as it grows pays for its new prose and nothing else. */
+function vectorStore() {
+  const dir = join(CACHE_DIR, "ana-vectors");
+  const file = join(dir, `${sha256(`${MODEL}@${MODEL_REVISION}`)}.jsonl`);
+  const known = new Map<string, number[]>();
+  if (existsSync(file)) {
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      try {
+        const [key, vector]: [string, number[]] = JSON.parse(line);
+        known.set(key, vector);
+      } catch {
+        // A line cut short by an interrupted append is skipped, and its text is embedded again.
+      }
+    }
+  }
+  mkdirSync(dir, { recursive: true });
+  return {
+    known,
+    add: (key: string, vector: number[]) => appendFileSync(file, `${JSON.stringify([key, vector])}\n`),
+  };
+}
+
 /** The pinned model as an embed function: texts in, unit vectors out, shortest texts batched first. */
 export async function modelEmbed(batchSize: number): Promise<Embed> {
   env.cacheDir = CACHE_DIR;
   const extract = await pipeline("feature-extraction", MODEL, { dtype: "fp32", revision: MODEL_REVISION });
+  const store = vectorStore();
   return async (texts) => {
+    const keys = texts.map((text) => sha256(text));
+    const output = keys.map((key) => store.known.get(key));
     const order = texts
       .map((text, index) => ({ index, chars: text.length }))
+      .filter(({ index }) => output[index] === undefined)
       .sort((a, b) => a.chars - b.chars || a.index - b.index);
-    const output = Array.from<number[]>({ length: texts.length });
     for (let at = 0; at < order.length; at += batchSize) {
       const slice = order.slice(at, at + batchSize);
       // Mean pooling over a batch of texts yields one row per text, each a float vector.
@@ -359,9 +387,15 @@ export async function modelEmbed(batchSize: number): Promise<Embed> {
         const vector = vectors[offset];
         if (vector === undefined) throw new Error(`the model returned no vector for text ${index}`);
         output[index] = vector;
+        const key = keys[index] ?? "";
+        store.known.set(key, vector);
+        store.add(key, vector);
       });
     }
-    return output;
+    return output.map((vector, index) => {
+      if (vector === undefined) throw new Error(`no vector for text ${index}`);
+      return vector;
+    });
   };
 }
 

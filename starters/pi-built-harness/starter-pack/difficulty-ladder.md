@@ -47,8 +47,7 @@ When the answer is a program or a configuration, the tiers keep their meaning an
 material. The finite thing is a resource the target really has. The degraded states are real faults
 of what the program connects to and real malformed input. A harder task asks for more of the
 requested capabilities at once, through their real interfaces, so that making one work constrains
-how another can. The checks decide from what the built program does, never from how its source is
-arranged or from a trace of calls into a stand-in you wrote.
+how another can.
 
 ## Six domains
 

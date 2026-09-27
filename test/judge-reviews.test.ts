@@ -523,6 +523,24 @@ describe("the Judge exit is advice only", () => {
     const { root, analysis } = repoWith(exitBattery(10, 0));
     const result = runJudgeReviews(analysis, { repoRoot: root, judgePin: JUDGE_PIN });
     expect(result.exit).toMatchObject({ kind: "none", verifierFailJudgePass: 0, verified: 10 });
+    expect(result.exit.reason).toBe("the Judge and the verifier agreed on every reviewed verified case");
+  });
+
+  // Agreement is claimed over the cases the Judge returned a verdict on. A census where every
+  // subject came back empty, as a spent review account leaves it, agreed on nothing.
+  it("says the Judge reviewed nothing, and why, when no case returned a verdict", () => {
+    const cases = ["t1", "t2", "t3", "t4"].map((taskId) => ({ taskId, truthOk: true, judge: null }));
+    const unanswered = repoWith({ cases });
+    const empty = runJudgeReviews(unanswered.analysis, { repoRoot: unanswered.root, judgePin: JUDGE_PIN });
+    expect(empty.coverage).toEqual({ reviewable: 4, reviewed: 0 });
+    expect(empty.exit).toMatchObject({
+      kind: "none",
+      reason: "the Judge reviewed no verified case: none of the 4 cases offered to it returned a verdict",
+    });
+    const off = repoWith({ cases: [{ taskId: "t1", truthOk: true }], census: "off" });
+    expect(runJudgeReviews(off.analysis, { repoRoot: off.root, judgePin: null }).exit.reason).toBe(
+      'the Judge reviewed no verified case: the evidence says judge:"off", so this battery had no judge',
+    );
   });
 });
 

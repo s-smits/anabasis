@@ -43,7 +43,8 @@ export type BatteryCensus = {
 
 /**
  * The Judge exit. `advisory` names at least one complete disagreement between the Judge and the
- * verifier; `none` means they agreed on every reviewed case.
+ * verifier; `none` means they agreed on every reviewed case, or that the Judge reviewed none, which
+ * its reason then says.
  */
 export type JudgeExit = {
   kind: "none" | "advisory";
@@ -193,7 +194,17 @@ function censusHold(attempt: CensusAttempt, subjects: readonly ContestedSubject[
   return `the judge review is incomplete: ${unresampled} contradicting verdicts returned no resample verdict`;
 }
 
-function judgeExit(contested: readonly ContestedCase[], verified: number): JudgeExit {
+/** Why the Judge returned no verdict on any case: the census it could not read, or the count of
+ *  subjects offered to it that came back empty. */
+function unreviewedReason(attempt: CensusAttempt): string {
+  if (attempt.census === null) return attempt.reason ?? "the battery has no census";
+  const { offered } = attempt.census.evidence;
+  return offered === 0
+    ? "no case was offered to it"
+    : `none of the ${offered} cases offered to it returned a verdict`;
+}
+
+function judgeExit(contested: readonly ContestedCase[], verified: number, attempt: CensusAttempt): JudgeExit {
   const verifierFailJudgePass = contested.filter(
     (row) => row.verifier === false && row.judge === true,
   ).length;
@@ -201,10 +212,16 @@ function judgeExit(contested: readonly ContestedCase[], verified: number): Judge
   const vetoed = contested.filter(isVetoed).length;
   const base = { verifierFailJudgePass, verifierPassJudgeFail, verified };
   if (contested.length === 0) {
+    // Agreement is claimed over the cases the Judge returned a verdict on, so with none there is
+    // nothing it agreed on, and the reason says why nothing was reviewed instead.
+    const reviewed = attempt.census?.evidence.verdicts ?? 0;
     return {
       ...base,
       kind: "none",
-      reason: "the Judge and the verifier agreed on every reviewed verified case",
+      reason:
+        reviewed === 0
+          ? `the Judge reviewed no verified case: ${unreviewedReason(attempt)}`
+          : "the Judge and the verifier agreed on every reviewed verified case",
     };
   }
   return {
@@ -229,7 +246,7 @@ export function runJudgeReviews(analysis: IterationAnalysis, deps: JudgeReviewDe
   const byAssertion = new Map(brief?.truthChecks.map((check) => [check.assertion, check.id] as const) ?? []);
   const contested = attempt.census === null ? [] : contestedCases(subjects, byAssertion);
   const verified = analysis.cases.filter((row) => row.truthOk !== null).length;
-  const exit = judgeExit(contested, verified);
+  const exit = judgeExit(contested, verified, attempt);
   const absent: string[] = [];
   if (attempt.census === null) absent.push(`main-judge census: no census to read (${attempt.reason})`);
   const result: JudgeReviewsResult = {

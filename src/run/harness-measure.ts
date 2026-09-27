@@ -298,7 +298,6 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
     tasks,
     openHost: options.createVerifier,
     runtime,
-    regradeOnly,
     capabilities: regradeOnly ? [...reuse.capabilities] : builtCapabilities(piRuntime?.profile ?? null),
     backendStartup:
       preflight === null
@@ -331,11 +330,10 @@ async function measureResolvedBattery(
   } = contract;
   const { runId } = options;
   fullrunLine(`${slug}: battery started (${runId}, ${tasks.length} tasks)`);
-  // A regrade scores artifacts the Judge already reviewed against public rules the correction left
-  // unchanged, so it asks for no review of its own.
-  const judge = contract.regradeOnly
-    ? null
-    : options.judge === undefined
+  // A regrade saves the solves and keeps the review: a corrected verifier can pass an artifact the
+  // Judge has never seen as a pass, which is exactly the disagreement the review exists to read.
+  const judge =
+    options.judge === undefined
       ? judgeSessionFor(slots.review, repoRoot, runtime.observer, options.providerBudget)
       : options.judge;
   let claim: WrittenRunClaim | null = null;

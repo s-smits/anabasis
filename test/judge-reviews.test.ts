@@ -203,6 +203,7 @@ function repoWith(
           correctnessModelHash: "b".repeat(64),
           scoringHash: "b".repeat(64),
           taskSetHash: null,
+          toolTreeDigest: null,
         },
         backendPin: BUILT_PIN,
         buildInputsHash: "d".repeat(64),

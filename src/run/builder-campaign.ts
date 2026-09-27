@@ -64,7 +64,9 @@ import { EMPTY_USER_CONTEXT, type PreparedUserContext } from "../builder/user-co
 import { createHarnessResetTool } from "../builder/harness-reset.ts";
 import { createHarnessTrialTool } from "../builder/harness-trial.ts";
 import { createCorrectnessCheckTool } from "../gate/check-tool.ts";
-import { admissionFindings } from "../gate/experiment-admission.ts";
+import { controllerValidatedFinding } from "../correctness-bundle/brief.ts";
+import { TASKS_FILE } from "../meta/bundle-layout.ts";
+import { admissionFindings, experimentOperation } from "../gate/experiment-admission.ts";
 import {
   type Gate,
   type GateReport,
@@ -113,7 +115,11 @@ export interface BuilderCampaignInput {
   advisoryNote?: string;
   /** The recorded batteries and their passing solver traces, as the context tool's history and
    *  traces sources; absent before anything was measured. */
-  measured?: Pick<ContextBinding, "history" | "traces">;
+  measured?: Pick<ContextBinding, "history" | "traces"> & {
+    /** Why a repeat candidate would pose the exam a battery at or above the aim already sat, or
+     *  null when it would not; `identicalExamRefusal` owns the reading. */
+    identicalExam?: (candidateDir: string) => string | null;
+  };
   /** The `--context` files, as the context tool's user source. */
   userContext?: PreparedUserContext;
   maxTurns?: number;
@@ -346,6 +352,8 @@ class BuilderCampaignController {
       });
     }
     const candidateId = conditionKey(candidate);
+    const exam = this.identicalExam(candidate);
+    if (exam !== null) return this.strike(candidateId, exam);
     // Admission reads EXPERIMENT.json, which the key leaves out, so it is recomputed beside a
     // remembered refusal (A → B → A) rather than remembered with it.
     const cached = this.candidates.refusalFor(candidateId);
@@ -370,6 +378,30 @@ class BuilderCampaignController {
     // them is not a no-op; counting it would strike the same commit twice for one worker crash.
     if (outcome.ok || outcome.terminal === true || retryable) return outcome;
     return this.strike(candidateId, outcome);
+  }
+
+  /** A repeat of a product whose last battery sat at or above the aim, posing that battery's exact
+   *  exam, is refused before any gate runs: measuring it would buy a second blind battery of a
+   *  condition already measured. The first such submit is no strike, since the candidate memory
+   *  strikes only a condition it has already refused; the same bytes submitted again are. */
+  private identicalExam(candidate: CandidateSnapshot): Refused | null {
+    const check = this.input.measured?.identicalExam;
+    if (check === undefined) return null;
+    if (experimentOperation(candidate, this.input.adoptedDir).operation !== "repeat") return null;
+    const detail = check(candidate.snapshotDir);
+    if (detail === null) return null;
+    return {
+      ok: false,
+      stage: "gates",
+      commit: candidate.commit,
+      findings: [
+        controllerValidatedFinding({
+          code: "identical-exam-over-aim",
+          path: TASKS_FILE,
+          detail,
+        }),
+      ],
+    };
   }
 
   /** Every non-terminal refusal passes the candidate memory's repeat policy; its ceiling ends the session. */

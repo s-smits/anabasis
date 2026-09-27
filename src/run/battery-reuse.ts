@@ -16,7 +16,16 @@ import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import { POLICY } from "../critic/policy.ts";
 import { ENVIRONMENT_OWNED_NONRESULT_KINDS } from "../claim/record-events.ts";
 import { fingerprintSlug } from "../claim/fingerprint.ts";
-import { type BatteryRecord, readRecordedBatteryRecord } from "../correctness-bundle/battery-record.ts";
+import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { CASE_RECORD_FILE, readCaseRecord } from "../claim/case-record.ts";
+import type { SlotChoice } from "../backends/resolve.ts";
+import { campaignDir } from "../meta/campaign-root.ts";
+import { canonicalJson } from "../meta/stable-json.ts";
+import {
+  type BatteryRecord,
+  readRecordedBatteryRecord,
+  toolTreeDigestOf,
+} from "../correctness-bundle/battery-record.ts";
 import { readPublicResources } from "../correctness-bundle/public-resources.ts";
 import {
   type BatteryReuse,
@@ -30,7 +39,7 @@ import { claimsDirFor } from "./claim-write.ts";
 import { retainedRunDir } from "./climb-history.ts";
 import { type ClimbReadout, readClimbReadout } from "./climb-readout.ts";
 import { selectedProductDir } from "./product-versions.ts";
-import { loadRecordedTasks } from "./run-driver.ts";
+import { batteryCondition, loadRecordedTasks } from "./run-driver.ts";
 
 /** A candidate that poses the exam a recorded battery already sat, with the same agent. */
 interface IdenticalExam {
@@ -51,6 +60,15 @@ export interface Remeasure {
 }
 
 type RecordedBattery = Pick<BatteryRecord, "cases" | "regrade" | "discrimination" | "bundleSnapshot">;
+
+/** The exam a candidate poses under this run's Built slot. */
+interface ExamInput {
+  repoRoot: string;
+  slug: string;
+  runPin: string;
+  built: Pick<SlotChoice, "reasoningEffort" | "withholdInstruments">;
+  candidateDir: string;
+}
 
 type ExamRead = { exam: IdenticalExam } | { exam: null; reason: string };
 
@@ -85,18 +103,38 @@ function latestBatteryAtOrAboveAim(
   return { runId: latest.runId, toAim: latest.toAim, runDir };
 }
 
+/** Which part of the solver's own condition moved since battery `runId` solved, or null when none
+ *  did. The backend pin names no reasoning effort, the agent bytes hold neither the instruments an
+ *  operator withheld nor the tool tree the solver's shell runs first on PATH, and a recorded solve
+ *  answers only the condition it ran under. */
+function solverConditionMoved(
+  input: ExamInput,
+  runId: string,
+  battery: Pick<BatteryRecord, "bundleSnapshot" | "condition">,
+): string | null {
+  const recordPath = join(campaignDir(input.repoRoot, input.slug), CASE_RECORD_FILE);
+  const session = readCaseRecord(recordPath).find((entry) => entry.row.runId === runId)?.row.isolation
+    ?.session;
+  if (session?.reasoningEffort !== input.built.reasoningEffort) return "the Built reasoning effort moved";
+  const condition = batteryCondition(input.candidateDir, input.built.withholdInstruments === true);
+  if (canonicalJson(condition) !== canonicalJson(battery.condition)) {
+    return "the solver's run condition moved";
+  }
+  if (
+    battery.bundleSnapshot.toolTreeDigest !== toolTreeDigestOf(bundleSnapshotToolTree(input.candidateDir))
+  ) {
+    return "the solver's tool tree moved";
+  }
+  return null;
+}
+
 /** Whether `candidateDir` poses exactly the exam the latest battery sat — the same agent bytes, the
  *  same backend pin and the same public task bytes over the same task ids — when that battery sat
  *  at or above the aim. The reason says which condition failed. */
-function identicalExamOverAim(input: {
-  repoRoot: string;
-  slug: string;
-  runPin: string;
-  candidateDir: string;
-}): ExamRead {
+function identicalExamOverAim(input: ExamInput): ExamRead {
   const source = latestBatteryAtOrAboveAim(input.repoRoot, input.slug, input.runPin);
   if (isString(source)) return { exam: null, reason: source };
-  let battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "cases">;
+  let battery: Pick<BatteryRecord, "backendPin" | "bundleSnapshot" | "cases" | "condition">;
   try {
     battery = readRecordedBatteryRecord(source.runDir, source.runId);
   } catch (error) {
@@ -108,6 +146,8 @@ function identicalExamOverAim(input: {
   if (battery.bundleSnapshot.agentHash !== fingerprint.agentHash) {
     return { exam: null, reason: "the agent bytes moved" };
   }
+  const solving = solverConditionMoved(input, source.runId, battery);
+  if (solving !== null) return { exam: null, reason: solving };
   const tasks = loadRecordedTasks(input.candidateDir);
   const ids = tasks.map((task) => task.taskId);
   if (ids.length !== battery.cases.length) return { exam: null, reason: "the task count moved" };
@@ -137,13 +177,9 @@ function identicalExamOverAim(input: {
 
 /** The recorded solves an evaluation correction regrades instead of solving, or null when the
  *  round measures a fresh battery. The reason is recorded either way. */
-export function regradeForCorrection(input: {
-  repoRoot: string;
-  slug: string;
-  runPin: string;
-  candidateDir: string;
-  experimentAuthoring: ExperimentAuthoring | undefined;
-}): CorrectionRegrade {
+export function regradeForCorrection(
+  input: ExamInput & { experimentAuthoring: ExperimentAuthoring | undefined },
+): CorrectionRegrade {
   if (input.experimentAuthoring?.operation.operation !== "evaluation-correction") {
     return { reuse: null, reason: "not an evaluation correction" };
   }
@@ -153,6 +189,18 @@ export function regradeForCorrection(input: {
     reuse: read.exam.reuse,
     reason: `evaluation correction over the exam battery ${read.exam.runId} sat at or above the aim; its ${read.exam.reuse.solves.size} recorded solves are regraded under the corrected evaluator`,
   };
+}
+
+/** Why a submitted candidate that moved nothing the verifier reads must not buy a fresh blind
+ *  battery, or null when it may. A battery at or above the aim already answered the exam these
+ *  agent bytes and these public tasks pose; solving it again measures the same condition twice and
+ *  finds the same limit it did not find the first time. A candidate whose scoring moved is an
+ *  evaluation correction, which `regradeForCorrection` settles, so the caller asks this only of a
+ *  repeat. */
+export function identicalExamRefusal(input: ExamInput): string | null {
+  const read = identicalExamOverAim(input);
+  if (read.exam === null || read.exam.scoringChanged) return null;
+  return `battery ${read.exam.runId} already measured these agent bytes on these exact public tasks under this scoring program and placed at or above the aim, so a fresh blind battery would pose the identical exam. This submit is not counted as a strike; submitting the same bytes again is.`;
 }
 
 /** How many remeasures in a row led to `battery`, itself included. A chain the environment keeps

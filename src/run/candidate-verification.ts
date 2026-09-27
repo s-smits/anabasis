@@ -319,6 +319,7 @@ function batteryReuse(input: PostBuildInput): BatteryReuse | undefined {
     repoRoot: input.repoRoot,
     slug: input.manifest.slug,
     runPin: input.runPin,
+    built: input.slots.built,
     candidateDir: input.measureDir,
     experimentAuthoring: input.experimentAuthoring,
   });

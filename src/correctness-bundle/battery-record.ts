@@ -18,6 +18,7 @@ import type { DiscriminationClaimabilityFinding } from "../claim/discrimination-
 import type { JudgeEvidence } from "../claim/judge.ts";
 import { type NonResultKind, PROVIDER_STOPPED_REASON_PREFIX } from "../claim/record-events.ts";
 import type { BundleSnapshot } from "../claim/bundle-snapshot.ts";
+import { portableToolTreeDigest } from "../verify/tool-inventory.ts";
 import type { VerifierExecutionEvidence as HostVerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { VerifierExecutionEvidence } from "./grounding.ts";
 import type { SolverNonResult } from "./solve.ts";
@@ -170,6 +171,9 @@ export type BundleSnapshotFact = {
   correctnessModelHash: string;
   scoringHash: string;
   taskSetHash: string | null;
+  /** The portable digest of the tool tree the solver's shell ran first on PATH, which sits outside
+   *  every hash above; null when the bundle had none or it could not be read. */
+  toolTreeDigest: string | null;
 };
 
 /** The slice of one recorded battery.json the controller's battery join reads: its closed
@@ -273,7 +277,17 @@ export function bundleSnapshotFact(bundleSnapshot: BundleSnapshot): BundleSnapsh
     correctnessModelHash: bundleSnapshot.correctnessModelHash,
     scoringHash: bundleSnapshot.scoringHash,
     taskSetHash: bundleSnapshot.taskSetHash,
+    toolTreeDigest: toolTreeDigestOf(bundleSnapshot.toolTree),
   };
+}
+
+/** `BundleSnapshotFact.toolTreeDigest` for one tool tree path. */
+export function toolTreeDigestOf(toolTree: string | null): string | null {
+  try {
+    return toolTree === null ? null : portableToolTreeDigest(toolTree);
+  } catch {
+    return null;
+  }
 }
 
 export function batteryPath(slugDir: string, runId: string): string {

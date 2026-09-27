@@ -105,6 +105,7 @@ function analysis(
         correctnessModelHash: "b".repeat(64),
         scoringHash: "b".repeat(64),
         taskSetHash: "c".repeat(64),
+        toolTreeDigest: null,
       },
       backendPin: "codex:test",
       buildInputsHash: "d".repeat(64),

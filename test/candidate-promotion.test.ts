@@ -123,6 +123,7 @@ function sealedBundleOf(candidateDir: string): BundleSnapshotFact {
     correctnessModelHash: observed.correctnessModelHash,
     scoringHash: observed.scoringHash,
     taskSetHash: observed.taskSetHash,
+    toolTreeDigest: null,
   };
 }
 

@@ -8,19 +8,26 @@
  */
 import { PLAN_FIELDS } from "./helpers/experiment-plan.ts";
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 import type { BuilderCommandGuardResult } from "../src/builder/command-guard.ts";
 import { EMPTY_USER_CONTEXT } from "../src/builder/user-context.ts";
 import type { JsonValue } from "../src/meta/json-shape.ts";
+import type { JudgeSession } from "../src/review/judge.ts";
 import { analyseStep } from "../src/run/analyse-step.ts";
 import { type FullRunDeps, parseFullRunArgs, runFullRun, slugForDirectInput } from "../src/run/full-run.ts";
 import { buildHarness } from "../src/run/harness-build.ts";
-import { measureHarness } from "../src/run/harness-measure.ts";
+import { type HarnessMeasureOptions, measureHarness } from "../src/run/harness-measure.ts";
 import { measuredProductDir } from "../src/run/product-versions.ts";
 import { type Solver, nonResultOutcome } from "../src/correctness-bundle/solve.ts";
 import { readRecordedBatteryRecord } from "../src/correctness-bundle/battery-record.ts";
-import { required } from "./helpers/doubles.ts";
 import { builtSession, fullFakeHost, probeEvidence } from "./helpers/measure-doubles.ts";
 import { scriptedBuilderRuntime } from "./helpers/scripted-builder-runtime.ts";
 import { writeFixtureThresholds } from "./helpers/thresholds.ts";
@@ -36,6 +43,17 @@ interface SecondRound {
   inputs?: readonly string[];
   /** A new wording for the one public validity rule the solver reads. */
   assertion?: string;
+  /** A program round two adds to the tool tree the solver's shell runs first on PATH. */
+  toolchainProgram?: string;
+  /** The Judge round two's battery is handed. */
+  judge?: JudgeSession;
+}
+
+/** Where the first battery's solving condition differs from the run's Built slot: the effort its
+ *  session reported, or the check's instrument withheld from its shell. */
+interface FirstBattery {
+  effort?: string;
+  withheld?: true;
 }
 
 /** How the solver meets one task of one battery: the right answer, the input unchanged, a provider
@@ -49,6 +67,10 @@ const SLUG = slugForDirectInput(PROMPT, EMPTY_USER_CONTEXT.digest);
  *  that the first evaluator failed now passes. */
 const CASE_BLIND_EVALUATOR =
   "export const checks = { answer: ({artifact, publicTask}) => String(Array.isArray(artifact.answer) && artifact.answer.length === 1 ? artifact.answer[0] : artifact.answer).toUpperCase() === publicTask.publicInput.input.toUpperCase() };";
+
+/** The same correction for a check that also runs its tool-tree instrument. */
+const CASE_BLIND_TOOL_EVALUATOR =
+  'export const checks = { answer: async ({artifact, publicTask}, runtime) => { const result = await runtime.tools.run({ toolId: "uppercase-fixture", args: [] }); return result.exitCode === 0 && String(artifact.answer).toUpperCase() === publicTask.publicInput.input.toUpperCase(); } };';
 
 const scratch: string[] = [];
 const guard: BuilderCommandGuardResult = {
@@ -101,6 +123,13 @@ function writeTasks(workspace: string, inputs: readonly string[]): void {
   });
 }
 
+/** An executable program in the workspace's tool tree. */
+function putProgram(workspace: string, name: string): void {
+  mkdirSync(join(workspace, ".toolchain/bin"), { recursive: true });
+  writeFileSync(join(workspace, ".toolchain/bin", name), "#!/bin/sh\nexit 0\n");
+  chmodSync(join(workspace, ".toolchain/bin", name), 0o755);
+}
+
 /** The first battery answers every task in `flub` with its input unchanged and the rest right. */
 function flubbing(flub: ReadonlySet<string>): (runId: string, taskId: string) => Answer {
   return (_runId, taskId) => (flub.has(taskId) ? "flub" : "right");
@@ -108,7 +137,11 @@ function flubbing(flub: ReadonlySet<string>): (runId: string, taskId: string) =>
 
 /** Two rounds, the solver answering each battery's task as `answer` says and the second round
  *  applying `second`. Returns each battery's solver calls, its passes and its regrade fact. */
-async function twoRounds(answer: (runId: string, taskId: string) => Answer, second: SecondRound = {}) {
+async function twoRounds(
+  answer: (runId: string, taskId: string) => Answer,
+  second: SecondRound = {},
+  first: FirstBattery = {},
+) {
   const root = scratchRepo();
   const calls = new Map<string, number>();
   const solverFor =
@@ -120,26 +153,46 @@ async function twoRounds(answer: (runId: string, taskId: string) => Answer, seco
       if (kind === "silent") return { turns: 1, completedTurns: 0, errors: [], runtimeIdentities: [] };
       return scriptedUppercaseSolver(new Set(kind === "flub" ? [task.taskId] : []))(task, toolset, submitted);
     };
-  const drive: FullRunDeps["drive"] = (manifest, options) =>
-    measureHarness(manifest, {
+  const drive: FullRunDeps["drive"] = (manifest, options) => {
+    const firstBattery = options.runId === "rg";
+    const built = options.resolvedSlots?.built;
+    const measured: HarnessMeasureOptions = {
       ...options,
       solver: solverFor(options.runId),
-      createVerifier: () => fullFakeHost(),
       isolationProbe: () => probeEvidence(true),
-      sessionProbe: async () => builtSession(),
-      judge: null,
-    });
+      sessionProbe: async () => ({
+        ...builtSession(),
+        reasoningEffort: (firstBattery ? first.effort : undefined) ?? built?.reasoningEffort ?? "medium",
+      }),
+      judge: firstBattery ? null : (second.judge ?? null),
+    };
+    // A check that runs its instrument needs the real host; the double runs no tool.
+    if (first.withheld !== true) measured.createVerifier = () => fullFakeHost();
+    if (
+      firstBattery &&
+      first.withheld === true &&
+      options.resolvedSlots !== undefined &&
+      built !== undefined
+    ) {
+      measured.resolvedSlots = { ...options.resolvedSlots, built: { ...built, withholdInstruments: true } };
+    }
+    return measureHarness(manifest, measured);
+  };
+  const submits: string[] = [];
   let round = -1;
   const builderRuntime = scriptedBuilderRuntime(async (ctx) => {
     if (ctx.turn === 1) round += 1;
     if (round === 0) {
-      uppercaseFixture(ctx.workspace, false, false, TASKS);
+      // The instrument the launch withholds is the fixture's own tool-tree program, which its check
+      // runs.
+      uppercaseFixture(ctx.workspace, false, first.withheld === true, TASKS);
       writeTasks(ctx.workspace, UPPERCASE_TASK_INPUTS);
     } else {
       if (second.evaluator !== undefined) {
         writeFileSync(join(ctx.workspace, "correctness-model/evaluator.ts"), second.evaluator);
       }
       if (second.inputs !== undefined) writeTasks(ctx.workspace, second.inputs);
+      if (second.toolchainProgram !== undefined) putProgram(ctx.workspace, second.toolchainProgram);
       if (second.assertion !== undefined) {
         const file = join(ctx.workspace, "correctness-model/brief.json");
         const brief = JSON.parse(readFileSync(file, "utf8"));
@@ -158,7 +211,8 @@ async function twoRounds(answer: (runId: string, taskId: string) => Answer, seco
         }),
       );
     }
-    await ctx.call("submit", {});
+    const result = await ctx.call("submit", {});
+    submits.push(result.content.map((part) => (part.type === "text" ? part.text : "")).join(""));
     return "submitted";
   });
   const { repoRoot, ...runArgs } = {
@@ -190,17 +244,26 @@ async function twoRounds(answer: (runId: string, taskId: string) => Answer, seco
     drive,
     analyse: analyseStep,
   });
-  const batteries = outcome.rounds.map((row) => {
-    const dir = required(measuredProductDir(root, SLUG, row.runId), `no product bound to ${row.runId}`);
+  const batteries = outcome.rounds.flatMap((row) => {
+    const dir = measuredProductDir(root, SLUG, row.runId);
+    if (dir === null) return [];
     const battery = readRecordedBatteryRecord(join(dir, "runs", row.runId), row.runId);
-    return {
-      runId: row.runId,
-      solves: calls.get(row.runId) ?? 0,
-      passes: battery.cases.map((c) => c.pass),
-      regrade: battery.regrade ?? null,
-    };
+    return [
+      {
+        runId: row.runId,
+        solves: calls.get(row.runId) ?? 0,
+        passes: battery.cases.map((c) => c.pass),
+        regrade: battery.regrade ?? null,
+      },
+    ];
   });
-  return { outcome, batteries };
+  const withheld = outcome.rounds.flatMap((row) => {
+    const dir = measuredProductDir(root, SLUG, row.runId);
+    return dir === null
+      ? []
+      : readRecordedBatteryRecord(join(dir, "runs", row.runId), row.runId).condition.advisorsRemoved;
+  });
+  return { outcome, batteries, calls, submits, withheld };
 }
 
 describe("an evaluation correction regrades instead of re-solving", () => {
@@ -253,6 +316,68 @@ describe("an evaluation correction regrades instead of re-solving", () => {
     ]);
   }, 180_000);
 
+  describe("measures a fresh battery when only the solver's own condition moved", () => {
+    const fresh = [
+      [TASKS, null],
+      [TASKS, null],
+    ];
+    it("the Built reasoning effort the recorded solves ran under", async () => {
+      const { batteries } = await twoRounds(
+        flubbing(new Set(["t5"])),
+        { evaluator: CASE_BLIND_EVALUATOR },
+        { effort: "minimal" },
+      );
+      expect(batteries.map((row) => [row.solves, row.regrade])).toEqual(fresh);
+    }, 180_000);
+
+    it("the check instrument withheld from the recorded solves' shell", async () => {
+      const { batteries, withheld } = await twoRounds(
+        flubbing(new Set(["t5"])),
+        { evaluator: CASE_BLIND_TOOL_EVALUATOR },
+        { withheld: true },
+      );
+      expect(withheld).toEqual(["instrument:uppercase-fixture"]);
+      expect(batteries.map((row) => [row.solves, row.regrade])).toEqual(fresh);
+    }, 180_000);
+
+    it("a program added to the tool tree the solver's shell runs", async () => {
+      const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
+        evaluator: CASE_BLIND_EVALUATOR,
+        toolchainProgram: "analyser",
+      });
+      expect(batteries.map((row) => [row.solves, row.regrade])).toEqual(fresh);
+    }, 180_000);
+  });
+
+  it("keeps the configured Judge on the regrade, which saves only the solves", async () => {
+    let reviews = 0;
+    const judge: JudgeSession = {
+      pin: "codex/scripted-judge",
+      promptPolicyDigest: "a".repeat(64),
+      invoke: async () => {
+        reviews += 1;
+        return {
+          verdict: true,
+          abstained: false,
+          rationale: "matches",
+          rules: [],
+          error: null,
+          errorKind: null,
+          turns: 1,
+        };
+      },
+    };
+    const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
+      evaluator: CASE_BLIND_EVALUATOR,
+      judge,
+    });
+    expect(batteries.map((row) => [row.solves, row.regrade?.reused ?? null])).toEqual([
+      [TASKS, null],
+      [0, TASKS],
+    ]);
+    expect(reviews).toBeGreaterThan(0);
+  }, 180_000);
+
   it("a correction that also moves one task measures a full battery", async () => {
     const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
     const { batteries } = await twoRounds(flubbing(new Set(["t5"])), {
@@ -291,5 +416,27 @@ describe("a battery the environment cut short is remeasured before any rebuild",
       runId === "rg" && (taskId === "t4" || taskId === "t5") ? "silent" : "right";
     const { outcome } = await twoRounds(silent);
     expect(outcome.rounds.map((row) => row.move)).toEqual(["build", "rebuild"]);
+  }, 180_000);
+});
+
+describe("an identical exam after a battery at or above the aim", () => {
+  it("is returned to the Builder with its typed clause and buys no second battery", async () => {
+    const { outcome, batteries, calls, submits } = await twoRounds(flubbing(new Set()));
+    expect(batteries.map((row) => row.runId)).toEqual(["rg"]);
+    expect(submits.at(-1)).toContain("identical-exam-over-aim");
+    expect(submits.at(-1)).toContain("not counted as a strike");
+    expect(calls.get("rg-i02")).toBeUndefined();
+    expect(outcome.rounds.at(-1)?.build).toBe("build-failed");
+  }, 180_000);
+
+  it("measures a fresh battery when one public task input moved", async () => {
+    const inputs = [...UPPERCASE_TASK_INPUTS.slice(0, 5), "gh"];
+    const { batteries } = await twoRounds(flubbing(new Set()), { inputs });
+    expect(batteries.map((row) => row.solves)).toEqual([TASKS, TASKS]);
+  }, 180_000);
+
+  it("measures a fresh battery when the identical exam follows a battery below the aim", async () => {
+    const { batteries } = await twoRounds(flubbing(new Set(["t1", "t2", "t3", "t4", "t5"])));
+    expect(batteries.map((row) => row.solves)).toEqual([TASKS, TASKS]);
   }, 180_000);
 });

@@ -155,7 +155,10 @@ describe("the context tool", () => {
   });
 });
 
-function recordedTree(secret: string): string {
+function recordedTree(
+  secret: string,
+  artifactOf: (taskId: string) => JsonValue = () => ({ report: { massKg: 2160.912 } }),
+): string {
   const tree = tmp();
   const runId = "r1";
   const model = join(tree, "correctness-model");
@@ -193,7 +196,7 @@ function recordedTree(secret: string): string {
       publicTask: { taskId, family: "frame", publicInput: { limits: { massKg: 2171.4 } } },
     });
     if (taskId !== "t3") {
-      evidence.write(`cases/${taskId}/artifact.json`, { report: { massKg: 2160.912 } });
+      evidence.write(`cases/${taskId}/artifact.json`, artifactOf(taskId));
     }
     evidence.write(`cases/${taskId}/verifier.json`, {
       stdout: secret,

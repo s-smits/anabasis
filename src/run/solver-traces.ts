@@ -46,8 +46,7 @@ export function measuredSolverTraces(
     const violations = verifyRunDir(runDir);
     const margins = measuredMargins(runDir, runId);
     return row.authoring.passedTaskIds.flatMap((taskId): ContextDocument[] => {
-      const artifact = recordedEvidence(runDir, `cases/${taskId}/${CASE_ARTIFACT_FILE}`, violations);
-      const task = recordedPublicTasks(runDir, [taskId], violations);
+      const passing = passingCase(runDir, taskId, violations);
       const solve: ContextDocument = {
         id: `traces/${runId}/${taskId}`,
         source: "traces",
@@ -64,9 +63,8 @@ export function measuredSolverTraces(
           return solverTraceLines(`${taskId} in ${runId}`, trace, wall).join("\n");
         },
       };
-      if (!artifact.ok || !("tasks" in task)) return [solve];
-      const [publicTask] = task.tasks;
-      const submittedArtifact = capturedJsonParse(artifact.bytes);
+      if (passing === null) return [solve];
+      const { publicTask, submittedArtifact } = passing;
       return [
         solve,
         {
@@ -90,6 +88,19 @@ export function measuredSolverTraces(
       ];
     });
   });
+}
+
+/** A passing case's public task and submitted artifact, each vouched for by the evidence log; null
+ *  when either cannot be. */
+function passingCase(
+  runDir: string,
+  taskId: string,
+  violations: ReturnType<typeof verifyRunDir>,
+): { publicTask: unknown; submittedArtifact: unknown } | null {
+  const artifact = recordedEvidence(runDir, `cases/${taskId}/${CASE_ARTIFACT_FILE}`, violations);
+  const task = recordedPublicTasks(runDir, [taskId], violations);
+  if (!artifact.ok || !("tasks" in task)) return null;
+  return { publicTask: task.tasks[0], submittedArtifact: capturedJsonParse(artifact.bytes) };
 }
 
 /** The limits the brief this battery was scored under publishes; none when that brief cannot be read

@@ -149,6 +149,10 @@ export type AdviceIssue = {
    *  counting a disputed issue: a dispute is a reason not to rebuild the agent around it, never a
    *  reason to stop observing it. */
   dispute: string | null;
+  /** A Judge issue this battery's epoch review settled in the check's favour, with a probe in which
+   *  the Judge's reading moved the check. It stops the issue standing for this battery alone: the
+   *  next battery that observes the disagreement records it afresh, without the flag. */
+  judgeSettled?: true;
 };
 
 type AdviceFamilyRow = {
@@ -239,7 +243,11 @@ const GAP_WORDS: Record<ConditionGap, string> = {
  *  the one thing the diagnosis reader, the epoch reviewer and the render all mean by "standing". */
 export function isStanding(issue: AdviceIssue): boolean {
   return (
-    !issue.retired && issue.dispute === null && issue.absentBatteries === 0 && issue.unmeasured.length === 0
+    !issue.retired &&
+    issue.dispute === null &&
+    issue.judgeSettled !== true &&
+    issue.absentBatteries === 0 &&
+    issue.unmeasured.length === 0
   );
 }
 
@@ -249,7 +257,10 @@ export function issueStatusWord(issue: AdviceIssue): string {
   if (issue.retired) return "retired";
   if (issue.dispute !== null) return "disputed";
   if (issue.unmeasured.length > 0) return "unmeasured";
-  if (issue.absentBatteries === 0) return issue.returned ? "regressed" : "active";
+  if (issue.absentBatteries === 0) {
+    if (issue.judgeSettled === true) return "settled";
+    return issue.returned ? "regressed" : "active";
+  }
   return issue.absentBatteries >= CONFIRMED_FIXED_AFTER ? "confirmed-fixed" : "tentatively-fixed";
 }
 
@@ -455,6 +466,8 @@ export function attachIssueReadings(
   readings: {
     diagnoses?: ReadonlyArray<{ issueIds: readonly string[]; diagnosis: IssueDiagnosis }>;
     disputes?: ReadonlyArray<{ issueId: string; reason: string }>;
+    /** Judge issue ids the epoch review settled in the check's favour. */
+    settled?: readonly string[];
   },
 ): RebuildAdvicePacket {
   // One reading may cover several issues, which is how the reader says two kinds in two families
@@ -465,16 +478,20 @@ export function attachIssueReadings(
     ),
   );
   const disputed = new Map((readings.disputes ?? []).map((row) => [row.issueId, row.reason] as const));
-  if (diagnosed.size === 0 && disputed.size === 0) return packet;
+  const settled = new Set(readings.settled ?? []);
+  if (diagnosed.size === 0 && disputed.size === 0 && settled.size === 0) return packet;
   return {
     ...packet,
     issues: packet.issues.map((issue) => {
       const reading = diagnosed.get(issue.id);
-      const dispute = isStanding(issue) ? disputed.get(issue.id) : undefined;
-      if (reading === undefined && dispute === undefined) return issue;
+      const standing = isStanding(issue);
+      const dispute = standing ? disputed.get(issue.id) : undefined;
+      const settles = standing && dispute === undefined && settled.has(issue.id);
+      if (reading === undefined && dispute === undefined && !settles) return issue;
       return {
         ...issue,
         ...(dispute === undefined ? null : { dispute }),
+        ...(settles ? { judgeSettled: true as const } : null),
         ...(reading === undefined ? null : { diagnosis: reading }),
       };
     }),
@@ -742,12 +759,16 @@ export function blockingLine(
 export function renderRebuildAdvice(packet: RebuildAdvicePacket): string {
   const totals = adviceTotals(packet.families);
   const disputed = packet.issues.filter((issue) => issue.dispute !== null && !issue.retired);
+  const settled = packet.issues.filter((issue) => issueStatusWord(issue) === "settled");
   return [
     ...standingLines(packet.issues),
     unmeasuredLine(packet.issues),
     disputed.length === 0
       ? null
       : `Disputed issues — an epoch review argued these come from the evaluation rather than the harness, so do not rebuild the agent around them: ${disputed.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
+    settled.length === 0
+      ? null
+      : `Settled Judge disagreements — an epoch review showed by execution that the check stands, so neither the evaluation nor the agent is asked to change for them: ${settled.map((issue) => `${issue.family} (${issue.kind})`).join("; ")}.`,
     blockingLine(packet.blockingByCheck, packet.applicableByCheck, totals.verified, totals.passed),
     packet.judge === null || packet.judge.exit === "none"
       ? null

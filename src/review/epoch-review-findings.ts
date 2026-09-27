@@ -18,7 +18,12 @@
  */
 import { existsSync, readdirSync } from "../meta/filesystem.ts";
 import { join } from "../meta/path.ts";
-import { type AnalysisFinding, type FindingPlacement, namedSubject } from "../analyse/iteration-analysis.ts";
+import {
+  type AnalysisFinding,
+  DEMAND_GAPS,
+  type FindingPlacement,
+  namedSubject,
+} from "../analyse/iteration-analysis.ts";
 import { contractDefect } from "../analyse/finding-owner.ts";
 import type { AdviceIssue } from "../author/rebuild-advice.ts";
 import { readCompleted } from "../author/campaign-epoch.ts";
@@ -158,6 +163,8 @@ interface FindingCase {
   state: ReviewState;
   identities: BriefIdentities;
   taskIds: readonly string[];
+  /** The declared checks a listed, confirmed Judge disagreement names. */
+  contested: ReadonlySet<string>;
 }
 
 type FindingRule = (subject: FindingCase) => string | null;
@@ -171,6 +178,8 @@ type FindingPriors = {
   readonly recurring?: ReadonlyMap<string, number> | undefined;
   /** Owners whose demand defect the previous full-pass review named too (`recurringDemandOwners`). */
   readonly demandRecurs?: ReadonlySet<BundleFile> | undefined;
+  /** The declared checks the listed, confirmed Judge disagreements name (`judgeSettlement`). */
+  readonly contested?: ReadonlySet<string> | undefined;
 };
 
 export function measuredConditionOf({
@@ -415,6 +424,9 @@ function findingArgs(args: Record<string, JsonValue>) {
     checkId: optional("checkId"),
     artifactSchemaPath: optional("artifactSchemaPath"),
     publicInputPath: optional("publicInputPath"),
+    secondPublicInputPath: optional("secondPublicInputPath"),
+    demandGap: DEMAND_GAPS.find((gap) => gap === args.demandGap) ?? null,
+    settlesJudge: args.settlesJudge === true,
     unobserved: args.unobserved === true,
   };
 }
@@ -484,13 +496,41 @@ const schemaPath: FindingRule = ({ parsed, identities }) => {
     : `artifactSchemaPath root ${root} is not a declared artifactSchema root`;
 };
 
+/** Both public input paths are held to one rule: rooted at `$.` and naming no individual task. */
 const publicInput: FindingRule = ({ parsed, taskIds }) => {
-  if (parsed.publicInputPath === null) return null;
-  if (!parsed.publicInputPath.startsWith("$.")) return "publicInputPath must start with $.";
-  const path = parsed.publicInputPath;
-  return taskIds.some((taskId) => mentionsTask(path, taskId))
-    ? "publicInputPath may not name an individual task"
+  for (const [field, path] of [
+    ["publicInputPath", parsed.publicInputPath],
+    ["secondPublicInputPath", parsed.secondPublicInputPath],
+  ] as const) {
+    if (path === null) continue;
+    if (!path.startsWith("$.")) return `${field} must start with $.`;
+    if (taskIds.some((taskId) => mentionsTask(path, taskId))) {
+      return `${field} may not name an individual task`;
+    }
+  }
+  return null;
+};
+
+/** A demand gap is one of the closed set or nothing: an unrecognised word is refused rather than
+ *  dropped, so the reviewer learns the set instead of believing it classified the finding. */
+const knownDemandGap: FindingRule = ({ parsed, args }) =>
+  args.demandGap !== undefined && parsed.demandGap === null
+    ? `demandGap must be one of ${DEMAND_GAPS.join(", ")}`
     : null;
+
+/** Settling a Judge disagreement as the Judge's error takes an executed case, not a reading: an
+ *  observation on a check a confirmed disagreement names, citing a probe that wrote the Judge's
+ *  reading into an accept control and moved that check. Without the probe the settlement is one
+ *  model's reading against another's, and it stays in the closing message. */
+const judgeSettlement: FindingRule = ({ parsed, args, state, contested }) => {
+  if (!parsed.settlesJudge) return null;
+  const { checkId } = parsed;
+  if (parsed.defect !== false || checkId === null || !contested.has(checkId)) {
+    return "settlesJudge is for an observation whose checkId is a check a listed Judge disagreement names";
+  }
+  return probeBackedRows(state.probes, args.probeIds).some((row) => row.movedCheckIds.includes(checkId))
+    ? null
+    : "settlesJudge requires a cited probe in which writing the Judge's reading into an accept control moved that check";
 };
 
 /** Every rule `record_finding` applies, in the order it applies them. Holding them as a list is
@@ -529,6 +569,8 @@ const FINDING_RULES: readonly FindingRule[] = [
       : null,
   schemaPath,
   publicInput,
+  knownDemandGap,
+  judgeSettlement,
 ];
 
 /** The first rule that has a reason, or the severity the reviewer chose. */
@@ -574,6 +616,9 @@ function recordedFinding(
     ...keyIfNotNull("checkId", parsed.checkId),
     ...keyIfNotNull("artifactSchemaPath", parsed.artifactSchemaPath),
     ...keyIfNotNull("publicInputPath", parsed.publicInputPath),
+    ...keyIfNotNull("secondPublicInputPath", parsed.secondPublicInputPath),
+    ...keyIfNotNull("demandGap", parsed.demandGap),
+    ...keysIf(parsed.settlesJudge, () => ({ settlesJudge: true as const })),
     ...keysIf(parsed.unobserved, () => ({ unobserved: true as const })),
     ...keysIf(probes.length > 0, () => ({
       probes: probes.map(({ controlId, path, movedCheckIds }) => ({ controlId, path, movedCheckIds })),
@@ -662,6 +707,22 @@ function findingParameters(disputable: readonly string[]) {
         description:
           "A `$.`-prefixed JSON path into the public task input the finding is about. Required for a defect owned by correctness-model/tasks.json: name the input the fresh battery should vary, because the claim itself does not reach the task author and this path is the whole of what it will read.",
       },
+      secondPublicInputPath: {
+        type: "string",
+        description:
+          "A second `$.`-prefixed public input path, when the obligation relates two inputs — for instance a load and the limit it must be held to. It crosses to authoring beside the first.",
+      },
+      demandGap: {
+        type: "string",
+        enum: [...DEMAND_GAPS],
+        description:
+          "For a finding about what the tasks fail to demand, which shape it takes: capability-unexercised (the request names a capability no task exercises), sibling-values-only (sibling tasks differ only in published values), limit-cleared-widely (the first reasonable candidate clears a published limit widely), solver-tool-reports-margins (a solver tool reports every margin a declared check reads), rule-outside-request (a rule no practitioner of the request would hold). It crosses to authoring; the claim does not.",
+      },
+      settlesJudge: {
+        type: "boolean",
+        description:
+          "True on an observation (defect false) that settles a listed Judge disagreement as the Judge's error: name the deciding check in checkId and cite in probeIds the probe that wrote the Judge's reading into an accept control and moved that check. The Judge issue then stops standing, so no authoring pass acts on it.",
+      },
     },
   };
 }
@@ -696,6 +757,7 @@ export function recordFindingTool(
         state,
         identities,
         taskIds,
+        contested: priors.contested ?? new Set(),
       };
       const verdict = findingVerdict(subject);
       if ("why" in verdict) {

@@ -381,9 +381,11 @@ describe("controller admission", () => {
     // The request has one owner: every prompt rendering these rows states it once under its own
     // heading, and a copy per finding would repeat it once per finding in one authoring prompt.
     expect(JSON.stringify(admission.feedback)).not.toContain(request);
-    expect(JSON.stringify(admission.feedback)).toContain(brief.truthChecks[0]!.assertion);
-    expect(JSON.stringify(admission.feedback)).toContain(brief.ruleDecisions![0]!.statement);
-    expect(JSON.stringify(admission.feedback)).toContain("plausible counterexample");
+    // A brief-owned finding asks for a decision about the published rule, not a repair of the
+    // check's code, so the evaluator's obligation line and repair order stay off it.
+    expect(JSON.stringify(admission.feedback)).toContain("decide the public rule this concerns in the brief");
+    expect(JSON.stringify(admission.feedback)).not.toContain(brief.truthChecks[0]!.assertion);
+    expect(JSON.stringify(admission.feedback)).not.toContain("plausible counterexample");
     expect(JSON.stringify(admission.feedback)).not.toContain("PRIVATE_EXAMPLE");
     expect(state.findings[0]?.claim).toContain("PRIVATE_EXAMPLE");
     const advisory: ReviewState = {

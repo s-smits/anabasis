@@ -167,7 +167,28 @@ type FindingBody = {
    *  A count of namings, public in the same way the identities it counts are, and rendered so the
    *  author can tell a first reading from advice it has already been given. */
   namedBefore?: number;
+  /** Which of the recognised demand shapes the reviewer read the finding as, from a closed set. A
+   *  typed classification, public like the owner, and rendered as its own sentence. */
+  demandGap?: DemandGap;
+  /** A second public input the finding relates the first to, validated like `publicInputPath`. */
+  secondPublicInputPath?: string;
+  /** An observation that settles a listed Judge disagreement on its `checkId` as the Judge's error,
+   *  backed by a cited probe that moved that check. The Judge issue it settles stops standing. */
+  settlesJudge?: true;
 };
+
+/** The shapes a demand finding takes, as the reviewer's standing prompt lists them: a capability no
+ *  task exercises, sibling tasks differing only in published values, a limit the first reasonable
+ *  candidate clears widely, a solver tool reporting every margin a check reads, and a rule no
+ *  practitioner of the request would hold. */
+export const DEMAND_GAPS = [
+  "capability-unexercised",
+  "sibling-values-only",
+  "limit-cleared-widely",
+  "solver-tool-reports-margins",
+  "rule-outside-request",
+] as const;
+export type DemandGap = (typeof DEMAND_GAPS)[number];
 
 export interface AdmittedEvidence {
   digest: string;

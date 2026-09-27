@@ -24,6 +24,7 @@ import {
 } from "./helpers/review-fixtures.ts";
 import { authoringReviewText, recordAuthoringDisputes } from "../src/run/harness-build.ts";
 import {
+  adviceIssueId,
   attachIssueReadings,
   isStanding,
   issueStatusWord,
@@ -37,6 +38,7 @@ import { publicEpochReview } from "../src/review/epoch-review-public.ts";
 import { briefIdentities, recordFindingTool } from "../src/review/epoch-review-findings.ts";
 import { PROBE_BUDGET } from "../src/review/review-probe.ts";
 import { BUNDLE_FILES } from "../src/author/feedback-routing.ts";
+import { TASKS_FILE } from "../src/meta/bundle-layout.ts";
 
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 
@@ -182,7 +184,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const tool = recordFindingTool([], [], evidence, state);
     const args = {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "one template closes every family",
       severity: "advisory",
     };
@@ -220,7 +222,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     for (const severity of [undefined, null, "urgent", ""]) {
       const args = {
         defect: true,
-        owner: "correctness-model/tasks.json",
+        owner: TASKS_FILE,
         claim: "the task range may be too narrow",
         publicInputPath: "$.limits.span",
       };
@@ -232,7 +234,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     expect(state.refused).toBe(4);
     await call(tool, {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "the task range may be too narrow",
       severity: "advisory",
       publicInputPath: "$.limits.span",
@@ -359,7 +361,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const state = reviewState();
     const text = await call(recordFindingTool([issue()], ["truss-09"], evidence, state), {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "truss-09 is unsolvable",
       severity: "blocking",
       citations: CITATIONS,
@@ -375,7 +377,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const tool = recordFindingTool([issue()], [], evidence, state);
     await call(tool, {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "the beams check passes any artifact",
       severity: "blocking",
       citations: CITATIONS,
@@ -385,7 +387,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     });
     await call(tool, {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "restated",
       severity: "blocking",
       citations: CITATIONS,
@@ -412,7 +414,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     const state = reviewState();
     await call(recordFindingTool([issue()], [], evidence, state), {
       defect: true,
-      owner: "correctness-model/tasks.json",
+      owner: TASKS_FILE,
       claim: "the task range may be too narrow",
       severity: "advisory",
       publicInputPath: "$.limits.span",
@@ -426,7 +428,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
 
   test("observations and solving-agent defects leave verified failures available for diagnosis", async () => {
     const placements = [
-      { defect: false, owner: "correctness-model/tasks.json" },
+      { defect: false, owner: TASKS_FILE },
       { defect: false },
       { defect: true, owner: "agent/tools-spec.json" },
     ];
@@ -714,7 +716,7 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
     test("an observation names the check, never a repair order", async () => {
       // An uncertain reading that reaches the Builder as "inspect and repair that contract" followed
       // by "Repair the complete public obligation" is a repair order it never earned.
-      for (const placement of [{ owner: "correctness-model/tasks.json" }, {}]) {
+      for (const placement of [{ owner: TASKS_FILE }, {}]) {
         const state = reviewState();
         expect(
           await call(recordFindingTool([], [], evidence, state, { identities }), {
@@ -796,5 +798,172 @@ describe("the epoch reviewer's finding tool stays inside its authority", () => {
       );
       expect(briefIdentities(root)).toEqual(identities);
     });
+  });
+});
+
+describe("what a finding's typed fields carry to authoring", () => {
+  const evidence = "campaigns/truss/analysis/r2-epoch-review.json";
+  const identities = { schemaRoots: ["layout"], checkIds: ["deflection"] };
+  const brief = double<Brief>({
+    truthChecks: [{ id: "deflection", assertion: "span/250", citedDecisionIds: [], execution: {} }],
+    ruleDecisions: [],
+  });
+  const advisory = { defect: true, severity: "advisory", citations: CITATIONS };
+  const probeRow = (id: number, movedCheckIds: string[]) => ({
+    id,
+    controlId: "accept-1",
+    taskId: "t1",
+    path: "$.layout.members[0].area",
+    change: { value: "1" },
+    baseline: { outcome: "pass" as const, blockingCheckIds: [] },
+    mutated: { outcome: "fail" as const, blockingCheckIds: movedCheckIds },
+    movedCheckIds,
+    refused: null,
+  });
+  const contestedRow = {
+    taskId: "t1",
+    family: "roof",
+    judge: false,
+    verifier: true,
+    rules: ["deflection within span/250"],
+    rationale: "PRIVATE reason",
+    confirmed: true,
+    checkIds: ["deflection"],
+    evidence: "e",
+    artifact: null,
+  };
+
+  test("a shape and a second public input cross; the claim alone moves no projection", async () => {
+    const project = async (claim: string) => {
+      const state = reviewState();
+      await call(recordFindingTool([], [], evidence, state, { identities }), {
+        ...advisory,
+        owner: TASKS_FILE,
+        claim,
+        demandGap: "limit-cleared-widely",
+        publicInputPath: "$.loads",
+        secondPublicInputPath: "$.limits.deflection",
+      });
+      return publicEpochReview({ status: "completed", ...state }, { brief });
+    };
+    const first = await project("the limit is cleared by half");
+    expect(first.findings[0]?.claim).toBe(
+      "Epoch review (correctness-model/tasks.json): public inputs `$.loads` and `$.limits.deflection`; make the fresh battery's tasks differ in what they ask of this input — which parts it brings together and how they must work — not only in the values published in it; it does not ask for a published limit to move between batteries.\nThe first reasonable candidate clears a published limit widely.",
+    );
+    const reworded = await project("a wholly different private wording");
+    expect(reworded.findings.map((finding) => finding.claim)).toEqual(
+      first.findings.map((finding) => finding.claim),
+    );
+  });
+
+  test("a shape outside the closed set, and a second input naming a task, are refused", async () => {
+    const tool = recordFindingTool([], ["t1"], evidence, reviewState(), { identities });
+    const base = {
+      ...advisory,
+      owner: TASKS_FILE,
+      claim: "c",
+      publicInputPath: "$.loads",
+    };
+    expect(await call(tool, { ...base, demandGap: "too-easy" })).toContain(
+      "refused: demandGap must be one of",
+    );
+    expect(await call(tool, { ...base, secondPublicInputPath: "loads" })).toContain(
+      "secondPublicInputPath must start with $.",
+    );
+    expect(await call(tool, { ...base, secondPublicInputPath: "$.t1.loads" })).toContain(
+      "secondPublicInputPath may not name an individual task",
+    );
+  });
+
+  test("a brief finding on a check keeps its own heading and gets no obligation or repair line", async () => {
+    const project = async (owner: string) => {
+      const state = reviewState();
+      await call(recordFindingTool([], [], evidence, state, { identities }), {
+        ...advisory,
+        owner,
+        claim: "c",
+        checkId: "deflection",
+      });
+      return publicEpochReview({ status: "completed", ...state }, { brief, deferAdvisory: false }).findings[0]
+        ?.claim;
+    };
+    const briefClaim = (await project("correctness-model/brief.json")) ?? "";
+    expect(briefClaim.startsWith("Epoch review (correctness-model/brief.json): check `deflection`;")).toBe(
+      true,
+    );
+    expect(briefClaim).toContain("decide the public rule this concerns in the brief");
+    expect(briefClaim).not.toContain("Declared public obligation");
+    expect(briefClaim).not.toContain("Repair the complete public obligation");
+    const evaluatorClaim = (await project("correctness-model/evaluator.ts")) ?? "";
+    expect(
+      evaluatorClaim.startsWith("Epoch review (correctness-model/evaluator.ts): check `deflection`;"),
+    ).toBe(true);
+    expect(evaluatorClaim).toContain("Declared public obligation");
+    expect(evaluatorClaim).toContain("Repair the complete public obligation");
+  });
+
+  test("settlesJudge needs a cited probe that moved the contested check, and then settles the issue", async () => {
+    const observation = {
+      defect: false,
+      claim: "the Judge misread span/250",
+      severity: "advisory",
+      checkId: "deflection",
+      settlesJudge: true,
+      citations: CITATIONS,
+    };
+    const priors = { identities, contested: new Set(["deflection"]) };
+    const refusedState = reviewState();
+    refusedState.probes.rows.push(probeRow(1, []));
+    const refusedTool = recordFindingTool([], [], evidence, refusedState, priors);
+    expect(await call(refusedTool, { ...observation, probeIds: [1] })).toContain(
+      "settlesJudge requires a cited probe",
+    );
+    expect(await call(refusedTool, observation)).toContain("settlesJudge requires a cited probe");
+    const uncontested = reviewState();
+    uncontested.probes.rows.push(probeRow(1, ["deflection"]));
+    expect(
+      await call(recordFindingTool([], [], evidence, uncontested, { identities }), {
+        ...observation,
+        probeIds: [1],
+      }),
+    ).toContain("settlesJudge is for an observation whose checkId");
+
+    const state = reviewState();
+    state.probes.rows.push(probeRow(1, ["deflection"]));
+    expect(
+      await call(recordFindingTool([], [], evidence, state, priors), { ...observation, probeIds: [1] }),
+    ).toContain("recorded observation");
+    expect(state.findings[0]).toMatchObject({ settlesJudge: true, checkId: "deflection" });
+    const vetoedIssue = issue({
+      id: adviceIssueId("judge-failed-verifier-passed", "roof", null),
+      kind: "judge-failed-verifier-passed",
+      family: "roof",
+    });
+    const projected = publicEpochReview({ status: "completed", ...state }, { brief, vetoed: [contestedRow] });
+    expect(projected.settledJudge).toEqual([vetoedIssue.id]);
+    expect(projected.findings[0]?.claim).toContain(
+      "The review settled the Judge's disagreement on 1 case(s) in roof in the check's favour",
+    );
+    expect(projected.findings[0]?.claim).not.toContain("PRIVATE");
+    const settled = attachIssueReadings(advicePacket([vetoedIssue, issue()]), {
+      settled: projected.settledJudge,
+    });
+    expect(settled.issues.map(issueStatusWord)).toEqual(["settled", "active"]);
+    expect(settled.issues.map(isStanding)).toEqual([false, true]);
+    const rendered = renderRebuildAdvice(settled);
+    expect(rendered).toContain("Settled Judge disagreements");
+    expect(rendered).toContain("roof (judge-failed-verifier-passed)");
+
+    // The same observation without the flag settles nothing, and the issue stays standing.
+    const unsettled = publicEpochReview(
+      { status: "completed", ...state, findings: state.findings.map(({ settlesJudge: _, ...rest }) => rest) },
+      { brief, vetoed: [contestedRow] },
+    );
+    expect(unsettled.settledJudge).toEqual([]);
+    expect(
+      attachIssueReadings(advicePacket([vetoedIssue]), { settled: unsettled.settledJudge }).issues.map(
+        issueStatusWord,
+      ),
+    ).toEqual(["active"]);
   });
 });

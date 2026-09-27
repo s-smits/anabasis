@@ -109,6 +109,9 @@ export interface EpochReviewInput {
   vetoed?: readonly ContestedCase[];
   /** Verifier fails the Main Judge passed, with the failing checks on record; settled the other way. */
   disputed?: readonly ContestedCase[];
+  /** Every other case the Judge and the verifier decided differently — unconfirmed, or a failing
+   *  case with no deciding check on record. Offered to read beside the settlement work, never owed. */
+  otherContested?: readonly ContestedCase[];
   /** The round's blind rehearsals, at an authoring checkpoint alone. */
   rehearsals?: readonly RehearsalCase[];
   /** The probes the previous authoring review of this round rested its findings on, at an
@@ -216,7 +219,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v8",
+      policy: "review-probing-findings/v9",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -288,6 +291,13 @@ function contestedLines(input: EpochReviewInput): string[] {
     ),
     ...(input.disputed ?? []).map((row) =>
       line("Disputed fail", row, `failed ${row.checkIds.join(", ")}; the Judge passed it`),
+    ),
+    ...(input.otherContested ?? []).map((row) =>
+      line(
+        "Also contested, not required to settle",
+        row,
+        `the verifier ${row.verifier ? "passed" : "failed"} it${row.checkIds.length > 0 ? ` on ${row.checkIds.join(", ")}` : ""} and the Judge ${row.judge ? "passed" : "failed"} it`,
+      ),
     ),
   ];
 }
@@ -664,7 +674,7 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   const probe = probeTool(root, join(analysisDir, `${input.runId}-probe-lifetime`), state.probes);
   const measured = measuredContext(input, evidence, analysisDir, state.findings);
   const contested = new Map(
-    [...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => {
+    [...(input.vetoed ?? []), ...(input.disputed ?? []), ...(input.otherContested ?? [])].flatMap((row) => {
       const path = contestedArtifact(input.treeRoot, row);
       return path === null || row.artifact === null ? [] : [[path, row.artifact] as const];
     }),
@@ -721,6 +731,9 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
             recurring:
               evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
             demandRecurs: demandOwners(input, analysisDir),
+            contested: new Set(
+              [...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => row.checkIds),
+            ),
           },
         ),
       ],

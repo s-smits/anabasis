@@ -986,6 +986,28 @@ describe("a reading attaches to an issue without changing what the battery count
     const before = advicePacket([issue()]);
     expect(attachIssueReadings(before, {})).toBe(before);
   });
+
+  it("a Judge settlement stops a standing issue standing, and touches no other", () => {
+    const after = attachIssueReadings(advicePacket([issue(), issue({ id: JOINTS, family: "joints" })]), {
+      settled: [BEAMS],
+    });
+    expect(after.issues.map(issueStatusWord)).toEqual(["settled", "active"]);
+    expect(after.issues[0]?.count).toBe(2);
+    for (const notStanding of [{ absentBatteries: 2 }, { retired: true }, { dispute: "evaluation" }]) {
+      const before = advicePacket([issue(notStanding)]);
+      expect(attachIssueReadings(before, { settled: [BEAMS] })).toEqual(before);
+    }
+    // A later battery that observes the disagreement again records it afresh, standing.
+    const [again] = advance(
+      after.issues.slice(0, 1),
+      [{ kind: "verified-fail", family: "beams", detail: null, count: 2, denominator: 5 }],
+      "r3",
+      advicePacket([]).families,
+      "complete",
+    );
+    expect(again?.judgeSettled).toBeUndefined();
+    expect(issueStatusWord(again ?? issue())).toBe("active");
+  });
 });
 
 describe("what the author reads", () => {

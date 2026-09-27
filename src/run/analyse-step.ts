@@ -148,6 +148,7 @@ export async function analyseStep(
   const publish = (
     reviewFindings: AnalysisFinding[],
     disputes: ReadonlyArray<{ issueId: string; reason: string }>,
+    settled: readonly string[] = [],
   ) => {
     const admission = admitFindings(repoRoot, analysis, [
       ...hostFindings(repoRoot, analysis),
@@ -156,9 +157,7 @@ export async function analyseStep(
     writeCompleted(join(dir, `${runId}-admission.json`), { runId, policy: FEEDBACK_POLICY, ...admission });
     const derived = attachIssueReadings(
       deriveRebuildAdvice(analysis, judges, admission, standing, condition),
-      {
-        disputes,
-      },
+      { disputes, settled },
     );
     writeCompleted(rebuildAdvicePath(repoRoot, slug, runId), derived);
     writeCompleted(latestRebuildAdvicePath(repoRoot, slug), derived);
@@ -182,6 +181,7 @@ export async function analyseStep(
       priorAdvice: standing ?? null,
       experiment: recordedPlan(measuredDir, runId),
       ...contested,
+      otherContested: judges.contested.filter((row) => !isVetoed(row) && !isDisputedFail(row)),
       review,
       publicRequest: options.publicRequest ?? null,
       ...keyIfDefined("safeguardContext", options.safeguardContext),
@@ -193,7 +193,11 @@ export async function analyseStep(
   const brief = epochReview.status === "completed" ? readValidatedBrief(measuredDir) : null;
   const publicReview = publicEpochReview(epochReview, { brief, ...contested });
   providerBudget?.throwIfDenied();
-  const { admission, derived } = publish(publicReview.findings, publicReview.disputes);
+  const { admission, derived } = publish(
+    publicReview.findings,
+    publicReview.disputes,
+    publicReview.settledJudge,
+  );
   const diagnose = () =>
     readDiagnoses({
       repoRoot,

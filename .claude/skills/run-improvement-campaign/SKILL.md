@@ -589,7 +589,8 @@ mechanism working, and no reading of the three flat rounds in front of it would 
 
 Choose one: retain and measure; fix the demonstrated owner; delete a mechanism with no consumer or
 no decision effect; investigate a consequential ambiguity; or stop because the authorised programme
-or the allowance ended. The product owns its own within-run climb and rebuild decisions.
+or the allowance ended. The product owns its own within-run climb and rebuild decisions. Whether a new wave of runs improved on the one it replaced is a [wave audit](../whole-run-investigation/references/wave-audit.md),
+read at the first battery, the third round and the terminal.
 
 The standing goal for that choice, set by the operator on 2026-09-18, is to **optimise the climb
 towards really hard tasks**: prefer the change that shortens the run of `too-easy` placements before

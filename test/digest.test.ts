@@ -833,6 +833,14 @@ describe("digest", () => {
                 interpreter: "bash",
                 digest: "y",
               },
+              {
+                toolId: "tree-wrap",
+                kind: "script",
+                source: "workspace-toolchain",
+                interpreter: "python3",
+                digest: "z",
+                treeDigest: "sha256:" + "a".repeat(64),
+              },
             ],
           },
         },
@@ -846,11 +854,13 @@ describe("digest", () => {
     expect(digest).toContain(
       `VERSION TOOLCHAIN DANGLING (lane 2): versions/v3/.toolchain → ${gone} resolves to nothing`,
     );
-    expect(digest).toContain("run-1: verifier tools 2 · binaries 1 · scripts 1");
+    expect(digest).toContain("run-1: verifier tools 3 · binaries 1 · scripts 2");
     expect(digest).toContain(
       "WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 wrap (workspace-toolchain, interpreter bash)",
     );
     expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 gcc");
+    // A script whose whole tool tree is digested is not attested by its wrapper bytes alone.
+    expect(digest).not.toContain("WRAPPER-ONLY TOOL DIGEST (lane 2): run-1 tree-wrap");
   });
 
   it("reads an off-aim streak and a missed target from the recorded readout rows", () => {

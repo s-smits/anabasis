@@ -259,8 +259,10 @@ function claimToolLines(campaign: string): string[] {
       `${runId}: verifier tools ${tools.length} · binaries ${tools.length - scripts.length} · scripts ${scripts.length}`,
     );
     // The digest of a wrapper script proves the wrapper's bytes and says nothing about the
-    // interpreter or the package it dispatches to.
-    for (const tool of scripts) {
+    // interpreter or the package it dispatches to. A workspace tool also carries `treeDigest`,
+    // the whole tool tree the host re-checks before each run, which covers what the wrapper
+    // dispatches to there; only a script without one is attested by its own bytes alone.
+    for (const tool of scripts.filter((entry) => !isString(entry.treeDigest))) {
       lines.push(
         `WRAPPER-ONLY TOOL DIGEST (lane 2): ${runId} ${jsonText(tool.toolId ?? "?")} (${jsonText(tool.source ?? "?")}, interpreter ${jsonText(tool.interpreter ?? "?")})`,
       );

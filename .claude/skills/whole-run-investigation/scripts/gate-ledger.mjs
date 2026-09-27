@@ -444,6 +444,10 @@ export const DELIBERATELY_UNLEDGERED = new Map([
   ["generated-execution-unclassified", BOUNDARY],
   ["missing-bundle-file", "bundle assembly: a required file is absent, so nothing downstream can run"],
   ["vendor-shadowed", "census gate: a vendored path the toolchain shadows, a host-layout fact"],
+  [
+    "operating-guide-unreachable-path",
+    "bundle advisory: shown in readiness and never refuses a candidate, so it holds nothing up",
+  ],
 ]);
 
 /**

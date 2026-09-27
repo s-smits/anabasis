@@ -342,6 +342,31 @@ describe("the operating guide", () => {
     );
   });
 
+  // The solver's shell has no .toolchain or correctness-model/ folder, only the tool tree's programs
+  // on PATH, so a path into either names nothing it can open. That is advice, never a refusal.
+  it("advises on a guide path the solver's shell cannot open and still accepts the candidate", () => {
+    const dir = workspace();
+    guide(
+      dir,
+      "# Operating Guide\n\nRun `.toolchain/venv/bin/python analyze.py`, then read correctness-model/brief.json.\n",
+    );
+    const advisories = loadValidatedBundle(dir, ASK).advisories;
+    expect(advisories).toEqual([
+      expect.objectContaining({
+        code: "operating-guide-unreachable-path",
+        path: "agent/BUILT_AGENTS.md",
+        detail: expect.stringContaining(".toolchain/venv/bin/python, correctness-model/brief.json, which"),
+      }),
+    ]);
+    accept(dir);
+  });
+
+  it("does not advise on a program named by its name or by its .toolchain/bin path", () => {
+    const dir = workspace();
+    guide(dir, "# Operating Guide\n\nRun `truss-analyze` (installed as `.toolchain/bin/truss-analyze`).\n");
+    expect(loadValidatedBundle(dir, ASK).advisories).toEqual([]);
+  });
+
   it("accepts any written guide, however long", () => {
     const dir = workspace();
     guide(dir, `# Operating Guide\n\n${"Declare every part before binding. ".repeat(300)}`);

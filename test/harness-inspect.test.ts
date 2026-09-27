@@ -375,6 +375,25 @@ describe("harness_inspect", () => {
     ).toBe(false);
   });
 
+  it.concurrent("shows the guide's unreachable-path advisory and none for a clean guide", async () => {
+    const dir = workspace();
+    expect(Object.hasOwn(await inspect(dir, "readiness"), "advisories")).toBe(false);
+    writeFileSync(
+      join(dir, "agent/BUILT_AGENTS.md"),
+      `${MATCHING_OPERATING_GUIDE}\nRun .toolchain/solver/run.py.\n`,
+    );
+    const { advisories } = await inspect<{
+      advisories: Array<{ code: string; path: string; detail: string }>;
+    }>(dir, "readiness");
+    expect(advisories).toEqual([
+      {
+        code: "operating-guide-unreachable-path",
+        path: "agent/BUILT_AGENTS.md",
+        detail: expect.stringContaining(".toolchain/solver/run.py, which"),
+      },
+    ]);
+  });
+
   it.concurrent("names the exact tool list agent/tools.ts must register", async () => {
     const { toolContract: body } = await inspect<{
       toolContract: { registerExactly: string[]; declared: Array<{ name: string }> };

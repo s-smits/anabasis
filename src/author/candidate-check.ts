@@ -56,6 +56,15 @@ import { type ExperimentSubmission, captureExperimentSubmission } from "./experi
 import { freshCandidateFindings, freshTaskValidationContext } from "./fresh-candidate-contract.ts";
 import { BRIEF_FILE, CONTROLS_FILE, TASKS_FILE, TOOLS_SPEC_FILE } from "../meta/bundle-layout.ts";
 
+/** Paths a guide may name that the solver's shell has no file at: anything inside the tool tree or
+ *  the correctness model. Each command runs in a fresh folder holding neither, with the tool tree's
+ *  program directories on PATH, so only a program's name reaches it. */
+const UNREACHABLE_GUIDE_PATH = /(?:~\/)?\.toolchain\/[^\s`'"()<>[\]]+|\bcorrectness-model\/[^\s`'"()<>[\]]*/g;
+/** `.toolchain/bin/<program>` names a program the shell runs by that last segment, which is how the
+ *  contract tells the Builder to install one, so the guide naming it that way still names the program. */
+const TOOLCHAIN_PROGRAM = /^\.toolchain\/bin\/[^/]+$/;
+const LISTED_GUIDE_PATHS = 5;
+
 export interface CandidateCheckContext {
   slug: string;
   /** The ask manifest's battery size, when the ask states one; its upper bound when `minTasks`
@@ -248,21 +257,51 @@ function validatedBattery(
     : null;
 }
 
+/** The guide's paths the solver's shell cannot open. Advisory: a guide naming one still ships, but
+ *  a solver told to run it meets "not found" and falls back to re-implementing what it computes. */
+function unreachableGuidePaths(guide: string): ContractFinding[] {
+  const paths = [
+    ...new Set(
+      [...guide.matchAll(UNREACHABLE_GUIDE_PATH)].flatMap(([match]) => {
+        const path = match.replace(/[.,;:]+$/, "");
+        return TOOLCHAIN_PROGRAM.test(path) ? [] : [path];
+      }),
+    ),
+  ];
+  if (paths.length === 0) return [];
+  const rest = paths.length - LISTED_GUIDE_PATHS;
+  const named = `${paths.slice(0, LISTED_GUIDE_PATHS).join(", ")}${rest > 0 ? ` and ${String(rest)} more` : ""}`;
+  return [
+    controllerValidatedFinding({
+      code: "operating-guide-unreachable-path",
+      path: BUILT_AGENTS_FILE,
+      detail: `${BUILT_AGENTS_FILE} names ${named}, which the solver's shell has no file at: each command runs in a fresh folder without .toolchain or correctness-model/, and only programs in .toolchain's bin directories reach it, by name. Name the program that runs instead`,
+    }),
+  ];
+}
+
 /** An absent, empty or still-seeded guide is a bundle defect: the agent reads this file before
  *  every task, so a harness without a written one ships a solver that has only its per-tool
- *  descriptions to work from. Whether the guidance is any good, or says too much, is review's. */
-function guideFindings(workspace: string): ContractFinding[] {
+ *  descriptions to work from. A path the solver's shell cannot open is an advisory beside it.
+ *  Whether the guidance is any good, or says too much, is review's. */
+function guideFindings(workspace: string, { findings, advisories }: BatteryFindings): void {
   const guide = readBundleFile(workspace, BUILT_AGENTS_FILE);
-  if (guide === null) return [missingBundleFile(BUILT_AGENTS_FILE)];
+  if (guide === null) {
+    findings.push(missingBundleFile(BUILT_AGENTS_FILE));
+    return;
+  }
   const detail =
     guide.trim() === ""
       ? `${BUILT_AGENTS_FILE} is empty — state how this harness's tools compose and what must hold before submission, or the agent reads per-tool descriptions and nothing else`
       : guide.includes("starter-placeholder:")
         ? `${BUILT_AGENTS_FILE} still carries the starter placeholder marker — replace the seeded rules with this domain's operating policy and delete the marker comment`
         : null;
-  return detail === null
-    ? []
-    : [controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail })];
+  if (detail !== null) {
+    findings.push(
+      controllerValidatedFinding({ code: "operating-guide-shape", path: BUILT_AGENTS_FILE, detail }),
+    );
+  }
+  advisories.push(...unreachableGuidePaths(guide));
 }
 
 /** Mirrors `validatedBrief` for the tools contract: validate one bundle file, push its findings and
@@ -373,7 +412,7 @@ export function loadValidatedBundle(
         ),
       );
     }
-    findings.push(...guideFindings(workspace));
+    guideFindings(workspace, { findings, advisories });
     return { findings, advisories, brief: null, battery: null, corpus: null, toolsSpec: null };
   }
 
@@ -406,7 +445,7 @@ export function loadValidatedBundle(
 
   const toolsSpec = validatedToolsSpec(specRaw, findings);
   filesPresetCapabilityCheck(workspace, brief, toolsSpec, findings);
-  findings.push(...guideFindings(workspace));
+  guideFindings(workspace, { findings, advisories });
   if (mode === "admission") {
     // The fresh contract compares the kickoff, the brief, the battery and the controls against each
     // other and reads nothing else, so its diagnostics are made of author-written material and may

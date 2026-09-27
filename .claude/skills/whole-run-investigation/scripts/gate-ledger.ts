@@ -249,8 +249,14 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
   row(
     ["CT-3", "controls-no-verdict", "narrowed"],
     [0.9, 0.05],
-    ["DISCRIMINATION_PROBE_NO_VERDICT", "DISCRIMINATION_NOT_PROVEN", "verifier-tool-refused", "tool-timeout"],
-    "every recorded blocking firing was an F2 grading timeout, most the tool's cost under four lanes; rerun alone before refusing since 2026-09-27",
+    [
+      "DISCRIMINATION_PROBE_NO_VERDICT",
+      "DISCRIMINATION_NOT_PROVEN",
+      "verifier-tool-refused",
+      "tool-timeout",
+      "DISCRIMINATION_CHECK_TIMED_OUT",
+    ],
+    "every recorded blocking firing was a timeout, most the tool's cost under four lanes; F2 cases and control rejects rerun alone since 2026-09-27, and a check whose rejects all timed out holds the claim open without refusing",
   ),
   row(["CT-4", "reject-discrimination", "rewritten"], [0.95, 0.03], [], "became R2"),
   row(

@@ -72,9 +72,9 @@ tool call gets a fresh empty home. This stage and F2 share one wall.
 - `DISCRIMINATION_CHECK_UNREJECTED`: a check some task applies to is no reject's `expectedCheckId`.
   Add a reject that fails it.
 - `DISCRIMINATION_PROBE_NO_VERDICT`: a check's tool run crashed on an example, so that example
-  proves nothing. A tool the host itself could not start is the environment's, not yours. A run
-  that timed out refuses nothing and is listed in the advisory `controls-tool-timeout` row, but that
-  example still counts as no reject of its check.
+  proves nothing. A tool the host itself could not start is the environment's, not yours.
+- `controls-tool-timeout` (advisory): a timed-out run refuses nothing; an uncovered reject reruns
+  once. If all of a check's rejects time out, `DISCRIMINATION_CHECK_TIMED_OUT` holds the claim.
 - `EXTERNAL_RESULT_UNBOUND`: a check returned before its tool runs finished. Await every run.
 - `EXTERNAL_VERDICT_UNGROUNDED`: a check that declares required tools passed without a completed
   run of one of them (`starter-pack/contract.md`); refused here, failed in F2, a non-result in the

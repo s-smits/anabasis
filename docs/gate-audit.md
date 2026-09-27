@@ -177,7 +177,9 @@ routed to `.toolchain` rather than to the correctnessModel (below).
 Refuses a control whose check threw or reached no verdict because its tool run crashed
 (`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/correctness-bundle/run-controls.ts`). It
 witnesses nothing about the checks. A control whose tool timed out refuses nothing: it is the
-advisory `controls-tool-timeout` (`timedOutControls`, `src/correctness-bundle/control-receipts.ts`).
+advisory `controls-tool-timeout` (`timedOutControls`, `src/correctness-bundle/control-receipts.ts`),
+and since 2026-09-27 a reject whose check nothing else proved runs once more alone first, and a
+check whose every reject timed out is the advisory `DISCRIMINATION_CHECK_TIMED_OUT` (below).
 The blocking `tool-timeout` that remains is F2's, a reference artifact's grading run that timed
 out, and since 2026-09-27 that refuses only after a rerun alone (below). A tool the host refused twice, for `sandbox` or
 `verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
@@ -346,7 +348,9 @@ two cannot disagree: a reject whose `expectedCheckId` did not fail on it
 (`DISCRIMINATION_CHECK_UNREJECTED`). A reject whose tool run crashed is
 `DISCRIMINATION_PROBE_NO_VERDICT`'s, and one that timed out refuses nothing and is listed in the
 advisory `controls-tool-timeout` row. Neither is a miss, and unless the environment refused it,
-neither names its check, so a check whose only reject reached no verdict is still unrejected. The per-family reject and the per-cell
+neither names its check, so a check whose only reject crashed is still unrejected. A check whose
+every reject timed out is not: since 2026-09-27 it is `DISCRIMINATION_CHECK_TIMED_OUT`, which the
+census reads as advisory while the execution keeps it, so the claim stays open (below). The per-family reject and the per-cell
 accept requirements are gone: mutation analysis asks that every check be seen to kill a mutant, not
 that every family supply one, and the claim's `intrinsic-` and `external-grounding-uncovered`
 clauses are deleted as the same fact read a second time.
@@ -448,8 +452,8 @@ of 22 of those censuses the wall was only 1.0 to 1.6 times the same tool's slowe
 on other tasks: the timeout measured the tool's cost with four lanes sharing the host more often
 than a hang. A grading run that timed out now waits for the F2 lanes to drain and runs its whole
 case once more, alone among F2's cases (the control census may still be running beside it), under
-the next host attempt (`rerunAlone`,
-`src/correctness-bundle/solvability.ts`); a case that completes there is judged like any other. A
+the next host attempt (`rerunAlone` in `src/correctness-bundle/run-controls.ts`, which the
+control census shares, and `rerunCase` in `src/correctness-bundle/solvability.ts`); a case that completes there is judged like any other. A
 second timeout refuses as before, and the `tool-timeout` finding now carries the host's wall, the
 first timeout's duration, the slowest completed run of the same tool on the same check, the
 `gate.tool_run_seconds` ceiling, and the host load average at each timeout against its cores
@@ -477,3 +481,25 @@ which reaches every process under the wall and none outside it, and its policy i
 grant. Linux needs no counterpart: Bubblewrap runs the command in a private pid and user namespace
 with no seccomp filter, where a process already signals its own children; that is read from
 `src/verify/linux-bwrap.ts`, not run.
+
+### controls-no-verdict (control timeout rerun alone), 2026-09-27
+
+A control whose tool timed out refused nothing already, but R2 still refused the check whose every
+reject timed out, as `DISCRIMINATION_CHECK_UNREJECTED` with the remedy "add a reject". On truss
+snapshots that main refused as `PROBE_NO_VERDICT`, the stack refused that way beside an advisory
+`controls-tool-timeout`, and the Builder was told to add a reject it already had, for a timeout that
+may have been the host's load. Two things changed. The control census now calls F2's owner,
+`rerunAlone` (`src/correctness-bundle/run-controls.ts`): once the reject lanes drain, the first
+timed-out reject of each check no other reject witnessed runs once more, alone and under the next
+host attempt, and the first rerun that times out again ends the pass. An accept that timed out is
+not rerun, because it refuses nothing either way. A crash settles at once as before. Then a check
+whose rejects all still timed out gets its own code, `DISCRIMINATION_CHECK_TIMED_OUT`
+(`controlDecisionFindings`, `src/correctness-bundle/control-receipts.ts`), which `timeoutReadout`
+moves beside the timed-out examples as an advisory row. The execution keeps it among its findings, so
+`claimable` stays false and the battery replay records no cases until a reject of that check
+finishes; no pass rate rests on a check nothing saw fail. The `controls-tool-timeout` row now
+names the host's reason, which carries the wall the run met, the slowest completed run of the same
+tool on the same check (`slowestCompletedMs`, shared with F2), the `gate.tool_run_seconds` wall,
+and whether the example timed out again alone. The timeout is not settled as the environment's:
+an environment row at submit ends the session as `environment-blocked`, which would let a tool
+that never finishes end a campaign.

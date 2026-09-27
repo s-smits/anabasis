@@ -136,12 +136,12 @@ describe("the submit gate end to end", () => {
     expect(rows(outcome)).toEqual([["DISCRIMINATION_REJECT_PASSED"]]);
   }, 120_000);
 
-  it.concurrent("reads timed-out rejects beside the verdict and refuses the check they leave unwitnessed", async () => {
+  it.concurrent("reads a check whose every reject timed out beside the verdict instead of refusing it", async () => {
     // The installed tool loops on the rejects' empty answer and exits on every other one, and only
     // the rejects get the 400 ms wall. An answer that exits gets a minute, because on a loaded host
     // its launch alone can outlast 400 ms, and an accept that times out adds a solvability row this
-    // test is not about. The timeouts themselves refuse nothing and ride as one advisory row; what
-    // refuses is R2, because no reject that reached a verdict names the check.
+    // test is not about. Every reject of the check times out, alone as well, so the check is read as
+    // timed out rather than unrejected: one advisory row that refuses nothing and holds the claim.
     const outcome = await preview(
       "no-verdict",
       (dir) => {
@@ -158,8 +158,8 @@ describe("the submit gate end to end", () => {
       },
       true,
     );
-    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "blocking" }, { severity: "advisory" }] });
-    expect(rows(outcome)).toEqual([["DISCRIMINATION_CHECK_UNREJECTED"], ["controls-tool-timeout"]]);
+    expect(outcome.gated).toMatchObject({ feedback: [{ severity: "advisory" }] });
+    expect(rows(outcome)).toEqual([["DISCRIMINATION_CHECK_TIMED_OUT", "controls-tool-timeout"]]);
   }, 120_000);
 
   it.concurrent("refuses a reference solve that fails one task at F2", async () => {

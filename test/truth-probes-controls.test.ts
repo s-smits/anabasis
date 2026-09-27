@@ -193,6 +193,30 @@ describe("the controls probe", () => {
     expect(result.toolCheckCoverage?.[0]?.attestedLaunches).toBe(0);
   }, 30_000);
 
+  it.concurrent("reads a check whose every reject timed out twice beside the verdict, not in it", async () => {
+    // Both rejects naming expected-binding time out in the lanes and again alone.
+    const timedOut = (subjectId: string, attempt: number) =>
+      double<VerifierExecutionEvidence>({
+        phase: "discrimination",
+        subjectId,
+        attempt,
+        checkId: "expected-binding",
+        toolId: "checker",
+        outcome: "timeout",
+        durationMs: 300_000,
+        nonResultReason: 'tool "checker" exceeded 300000ms',
+      });
+    const rows = ["r-wrongbind", "r-wrongbind-two-part"].flatMap((id) => [timedOut(id, 1), timedOut(id, 2)]);
+    const result = await toolBackedSlug("tool-check-timed-out", rows);
+    const codes = (findings: readonly { code: string }[] | undefined) =>
+      (findings ?? []).map(({ code }) => code);
+    expect(codes(result.findings)).not.toContain("DISCRIMINATION_CHECK_TIMED_OUT");
+    expect(codes(result.findings)).not.toContain("DISCRIMINATION_CHECK_UNREJECTED");
+    expect(codes(result.advisory)).toEqual(
+      expect.arrayContaining(["DISCRIMINATION_CHECK_TIMED_OUT", "controls-tool-timeout"]),
+    );
+  }, 30_000);
+
   it.concurrent("strips correctnessModel issue text from a rejected valid example before the author projection", async () => {
     // Rebind the membership program to public parts, so this rejection comes from a public rule.
     const { brief, firstCheck } = cloneBrief();

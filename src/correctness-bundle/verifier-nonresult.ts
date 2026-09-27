@@ -1,6 +1,8 @@
 import type { VerifierExecutionNonResultKind } from "../verify/correctness-model-result.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 
+type TimedRun = Pick<VerifierExecutionEvidence, "phase" | "toolId" | "checkId">;
+
 /**
  * What an F2 grading run that timed out twice leaves for the author to weigh: it timed out beside
  * the other reference tasks, then again when rerun alone. Most recorded timeouts were a tool's
@@ -55,4 +57,22 @@ export class VerifierExecutionNonResult extends Error {
     );
     this.name = "VerifierExecutionNonResult";
   }
+}
+
+/** The longest run of a timed-out tool on the same check in the same stage that did complete, or
+ *  null when none did. F2 and the control census both put it beside a second timeout, because a
+ *  completed run near the wall says the tool's cost meets it, and none at all says it may not finish. */
+export function slowestCompletedMs(
+  evidence: readonly (TimedRun & Pick<VerifierExecutionEvidence, "outcome" | "durationMs">)[],
+  timedOut: TimedRun,
+): number | null {
+  const durations = evidence.flatMap((row) =>
+    row.phase === timedOut.phase &&
+    row.outcome === "executed" &&
+    row.toolId === timedOut.toolId &&
+    row.checkId === timedOut.checkId
+      ? [row.durationMs]
+      : [],
+  );
+  return durations.length === 0 ? null : Math.max(...durations);
 }

@@ -8,9 +8,11 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "../src/meta/filesystem.ts";
 import {
   controlDecisionFindings,
+  DISCRIMINATION_CHECK_TIMED_OUT,
   DISCRIMINATION_CHECK_UNREJECTED,
   DISCRIMINATION_REJECT_PASSED,
   timedOutControls,
+  timeoutReadout,
 } from "../src/correctness-bundle/control-receipts.ts";
 import { EXTERNAL_VERDICT_UNGROUNDED } from "../src/correctness-bundle/tool-runs.ts";
 import { validateBrief } from "../src/correctness-bundle/brief-validator.ts";
@@ -39,6 +41,7 @@ describe("gate decisions", () => {
     EXTERNAL_VERDICT_UNGROUNDED,
     DISCRIMINATION_REJECT_PASSED,
     DISCRIMINATION_CHECK_UNREJECTED,
+    DISCRIMINATION_CHECK_TIMED_OUT,
     "brief-artifact-root-unread",
     "brief-cited-decision-withheld",
   ])("tells the Builder %s under Gates", (code) => {
@@ -105,7 +108,29 @@ describe("R2, every check can say no", () => {
 
   it("counts a reject that reached no verdict as neither a miss nor a witness", () => {
     expect(controlDecisionFindings(["a"], [noVerdict]).map((row) => row.code)).toEqual([
-      "DISCRIMINATION_CHECK_UNREJECTED",
+      DISCRIMINATION_CHECK_TIMED_OUT,
+    ]);
+  });
+
+  // A check that has a reject lacks a verdict, not a reject: it gets its own code, which the census
+  // reads beside the verdict, and a crash still leaves its check unrejected.
+  it("gives a check whose every reject timed out its own code, not the one that asks for a reject", () => {
+    const crashed: ControlReceipt = {
+      ...reject("r2", "b", []),
+      observedOutcome: "non-result",
+      nonResultKind: "crash",
+    };
+    expect(
+      controlDecisionFindings(["a", "b"], [noVerdict, crashed]).map((row) => [row.code, row.message]),
+    ).toEqual([
+      [
+        DISCRIMINATION_CHECK_UNREJECTED,
+        'no reject that reached a verdict names check "b" as its expectedCheckId',
+      ],
+      [
+        DISCRIMINATION_CHECK_TIMED_OUT,
+        'every reject naming check "a" as its expectedCheckId timed out, so none reached a verdict',
+      ],
     ]);
   });
 
@@ -120,43 +145,82 @@ describe("R2, every check can say no", () => {
   });
 });
 
-describe("CT-3, a timed-out example is read, not refused", () => {
-  const row = (subjectId: string, outcome: "timeout" | "executed", durationMs: number, toolId = "cc") => ({
-    phase: "discrimination" as const,
-    subjectId,
-    attempt: 1,
-    toolId,
-    durationMs,
-    outcome,
-  });
+describe("CT-3, a timed-out example is read beside the wall it met", () => {
+  // Every timeout row carries the host's reason, as the host writes it; an executed row has none.
+  const row = (subjectId: string, outcome: "timeout" | "executed", durationMs: number, toolId = "cc") => {
+    const base = {
+      phase: "discrimination" as const,
+      subjectId,
+      attempt: 1,
+      toolId,
+      checkId: "k",
+      durationMs,
+      outcome,
+    };
+    return outcome === "timeout" ? { ...base, nonResultReason: `tool "${toolId}" exceeded 30000ms` } : base;
+  };
+  const tail =
+    "The tool-run wall (gate.tool_run_seconds in agent/config.yaml) is 300.0 s, and a lower wall is the timeoutMs the check requested. " +
+    "A timed-out example refuses nothing here; a check whose every reject timed out holds the claim open until one finishes. " +
+    "A completed run near the wall wants a timeoutMs with room, up to that wall, or less work per run; no completed run means the tool may not finish on this input";
 
-  it("names each timed-out example beside its tool and how long it ran", () => {
+  it("names each timed-out example beside its tool, the wall it met and the slowest completed run", () => {
     const settled = new Map([
       ["a1", { attempt: 1, hostNonResult: "timeout" }],
       ["a2", { attempt: 1, hostNonResult: "timeout" }],
       ["a3", { attempt: 1, hostNonResult: null }],
       ["a4", { attempt: 1, hostNonResult: "crash" }],
     ]);
-    const evidence = [row("a1", "timeout", 30_060), row("a2", "timeout", 30_100), row("a3", "executed", 900)];
-    const readout = timedOutControls(settled, evidence, "correctness-model/evaluator.ts");
+    const evidence = [
+      row("a1", "timeout", 30_060),
+      row("a2", "timeout", 30_100),
+      row("a3", "executed", 900),
+      row("a4", "executed", 27_400),
+      { ...row("a5", "executed", 29_900), checkId: "other" },
+    ];
+    const readout = timedOutControls(settled, evidence, "correctness-model/evaluator.ts", 300_000);
     expect(readout.map((finding) => [finding.code, finding.detail])).toEqual([
       [
         "controls-tool-timeout",
-        'tool "cc" hit its time limit on 2 examples: "a1" after 30.1 s, "a2" after 30.1 s. Those examples reached no verdict, which refuses nothing here; if the tool needs longer, raise the run\'s timeoutMs or the tool-run wall in agent/config.yaml',
+        'tool "cc" on check "k" hit its time limit on 2 examples: "a1" after 30.1 s, "a2" after 30.1 s. ' +
+          'The host: tool "cc" exceeded 30000ms. Its slowest run on that check that completed in this census took 27.4 s. ' +
+          tail,
       ],
     ]);
   });
 
-  // A crash, and a timeout row from another phase or attempt, are not this readout's.
-  it("reads one example in the singular and ignores rows of another phase", () => {
+  // A rerun alone settles at attempt 2; its attempt-1 timeout says it ran twice, and rows of another
+  // phase are not this readout's.
+  it("says a reject timed out again alone, reads one example in the singular and ignores another phase", () => {
     const settled = new Map([["a1", { attempt: 2, hostNonResult: "timeout" }]]);
     const evidence = [
-      { ...row("a1", "timeout", 5_000, "other"), attempt: 1 },
-      { ...row("a1", "timeout", 5_000, "other"), phase: "solvability" as const, attempt: 2 },
+      row("a1", "timeout", 29_000),
+      { ...row("a1", "executed", 1_000), phase: "solvability" as const },
       { ...row("a1", "timeout", 12_000), attempt: 2 },
     ];
-    expect(timedOutControls(settled, evidence, "p").map((finding) => finding.detail)).toEqual([
-      'tool "cc" hit its time limit on 1 example: "a1" after 12.0 s. That example reached no verdict, which refuses nothing here; if the tool needs longer, raise the run\'s timeoutMs or the tool-run wall in agent/config.yaml',
+    expect(timedOutControls(settled, evidence, "p", 300_000).map((finding) => finding.detail)).toEqual([
+      'tool "cc" on check "k" hit its time limit on 1 example: "a1" after 12.0 s and again alone. ' +
+        'The host: tool "cc" exceeded 30000ms. No run of it on that check completed in this census. ' +
+        tail,
+    ]);
+  });
+});
+
+describe("the census reads a check whose every reject timed out beside the verdict", () => {
+  const finding = (code: string) => ({ code, path: "correctness-model/controls.json", detail: code });
+
+  // The execution keeps the finding, so the claim stays open; only the gate stops refusing on it.
+  it("moves only that check's finding to the advisory rows, beside the timed-out examples", () => {
+    const readout = timeoutReadout(
+      [finding(DISCRIMINATION_CHECK_TIMED_OUT), finding(DISCRIMINATION_CHECK_UNREJECTED)],
+      new Map([["r1", { attempt: 2, hostNonResult: "timeout" }]]),
+      [],
+      300_000,
+    );
+    expect(readout.findings.map((row) => row.code)).toEqual([DISCRIMINATION_CHECK_UNREJECTED]);
+    expect(readout.advisory.map((row) => row.code)).toEqual([
+      DISCRIMINATION_CHECK_TIMED_OUT,
+      "controls-tool-timeout",
     ]);
   });
 });

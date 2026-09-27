@@ -12,6 +12,9 @@ type DiscriminationClaimabilityCode =
   // not fail, and a declared check no reject names.
   | "DISCRIMINATION_REJECT_PASSED"
   | "DISCRIMINATION_CHECK_UNREJECTED"
+  // R2's (b) for a check whose every reject timed out, one of them again alone: it holds the claim
+  // open, and the census reads it beside the verdict rather than refusing on it.
+  | "DISCRIMINATION_CHECK_TIMED_OUT"
   // From runControls and the solve path: an external engine's consumed verdict disagrees with the
   // verifier's verdict for the same checkId, or the verifier reports an environment non-result
   // without the exact host result for this subject and with no pending invocation when evaluation

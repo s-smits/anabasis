@@ -62,7 +62,7 @@ import type { ControlCorpus } from "./controls.ts";
 import { boundedDraftSummary } from "./draft-summary.ts";
 import { SUBMIT_MAX_ATTEMPTS, type ControlReceipt } from "./battery-record.ts";
 import { runControls } from "./run-controls.ts";
-import { timedOutControls } from "./control-receipts.ts";
+import { timeoutReadout } from "./control-receipts.ts";
 import { discriminationDisclosure } from "./discrimination-author-detail.ts";
 import { evaluateCheckProgram } from "./predicate.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
@@ -225,8 +225,7 @@ export function makeProbeControls(options: ProbeControlsOptions = {}): ProbeCont
         );
       }
       return {
-        findings,
-        advisory: timedOutControls(settled, hostEvidence, EVALUATOR_FILE),
+        ...timeoutReadout(findings, settled, hostEvidence, harnessSettings(slugDir).toolRunMs),
         controlReceipts: execution.controlReceipts,
         toolCheckCoverage: coverage,
         checkCost: checkCostRows(spend, hostEvidence),

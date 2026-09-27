@@ -26,8 +26,9 @@ import { identityComposedFinding } from "./discrimination-author-detail.ts";
 import { type ContractFinding, controllerValidatedFinding } from "./brief.ts";
 import { namedExamples, type SettledControl } from "./grounding-coverage.ts";
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
-import { environmentOwnedToolNonResult } from "./verifier-nonresult.ts";
+import { environmentOwnedToolNonResult, slowestCompletedMs } from "./verifier-nonresult.ts";
 import { observedBlockingCheckIds } from "../../vendor/correctness-model-bundle/control-results.ts";
+import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
 
 /**
  * R2, every check can say no. A pass rate means something only if each declared check has been
@@ -36,17 +37,24 @@ import { observedBlockingCheckIds } from "../../vendor/correctness-model-bundle/
  * some reject. A reject that failed only elsewhere proves another check, and a check no reject
  * names has never been seen to refuse anything. Both read the receipts alone and are recorded with
  * them, and the claim reads that record rather than deciding again. A reject that reached no
- * verdict is not a miss, and unless the environment refused it, it names no check either, so a
- * check whose only reject timed out is refused under (b) rather than passing on a reject nothing saw
- * fail.
+ * verdict is not a miss, and unless the environment refused it, it names no check either.
+ *
+ * A check whose every reject timed out is the one case (b) does not refuse as the author's. It has
+ * a reject, so "add a reject" would send the author after the wrong repair, and a timeout beside
+ * the other lanes often measured the host's load rather than the reject: the runner has already run
+ * one of those rejects again alone, and it timed out there too. So the check gets its own code,
+ * which the census reads beside the verdict and refuses nothing on, while the finding still holds
+ * the claim open: no pass rate rests on a check nothing saw fail, and a battery whose replay meets
+ * the same timeouts records no cases.
  */
 export const DISCRIMINATION_REJECT_PASSED = "DISCRIMINATION_REJECT_PASSED";
 export const DISCRIMINATION_CHECK_UNREJECTED = "DISCRIMINATION_CHECK_UNREJECTED";
+export const DISCRIMINATION_CHECK_TIMED_OUT = "DISCRIMINATION_CHECK_TIMED_OUT";
 const CONTROL_TOOL_TIMEOUT = "controls-tool-timeout";
 
 type TimeoutRow = Pick<
   VerifierExecutionEvidence,
-  "phase" | "subjectId" | "attempt" | "toolId" | "durationMs" | "outcome"
+  "phase" | "subjectId" | "attempt" | "toolId" | "checkId" | "durationMs" | "outcome" | "nonResultReason"
 >;
 
 export type ControlEvaluation =
@@ -119,7 +127,7 @@ export function controlReceiptInvalidFinding(
 
 // --- Recording one run's observations ---------------------------------------------------------
 
-function receiptSide(attempt: number, evaluation: ControlEvaluation): ControlReceiptSide {
+export function receiptSide(attempt: number, evaluation: ControlEvaluation): ControlReceiptSide {
   const nonResult = (nonResultKind: NonResultKind): ControlReceiptSide => ({
     attempt,
     outcome: "non-result",
@@ -451,11 +459,12 @@ export function primarySide(receipt: ControlReceipt): ControlReceiptSide {
 
 /** Whether a reject counts towards (b). One that reached a verdict does; so does one the host
  *  refused to run, because the environment owns that refusal and its own row already holds the claim
- *  open, so naming the check unwitnessed as well would add an author row to an outage. */
-function witnesses(receipt: ControlReceipt): boolean {
+ *  open, so naming the check unwitnessed as well would add an author row to an outage. The control
+ *  runner asks the same of a side before it settles, to choose which timed-out reject runs again. */
+export function sideWitnesses(side: Pick<ControlReceiptSide, "outcome" | "nonResultKind">): boolean {
   return (
-    receipt.observedOutcome !== "non-result" ||
-    (receipt.nonResultKind !== null && environmentOwnedToolNonResult(receipt.nonResultKind))
+    side.outcome !== "non-result" ||
+    (side.nonResultKind !== null && environmentOwnedToolNonResult(side.nonResultKind))
   );
 }
 
@@ -471,8 +480,16 @@ export function controlDecisionFindings(
       ? [receipt.controlId]
       : [],
   );
-  const named = new Set(rejects.flatMap((receipt) => (witnesses(receipt) ? [receipt.expectedCheckId] : [])));
-  const unrejected = checkIds.filter((checkId) => !named.has(checkId));
+  const named = new Set(
+    rejects.flatMap((receipt) => (sideWitnesses(primarySide(receipt)) ? [receipt.expectedCheckId] : [])),
+  );
+  // A check whose rejects timed out has a reject; what it lacks is a verdict, and the sentence that
+  // tells the author to add a reject would send it after the wrong repair.
+  const timedOut = new Set(
+    rejects.flatMap((receipt) => (receipt.nonResultKind === "timeout" ? [receipt.expectedCheckId] : [])),
+  );
+  const unrejected = checkIds.filter((checkId) => !named.has(checkId) && !timedOut.has(checkId));
+  const slow = checkIds.filter((checkId) => !named.has(checkId) && timedOut.has(checkId));
   const findings: DiscriminationClaimabilityFinding[] = [];
   if (missed.length > 0) {
     const examples = missed.length === 1 ? "1 invalid example" : `${missed.length} invalid examples`;
@@ -494,47 +511,86 @@ export function controlDecisionFindings(
       ),
     );
   }
+  if (slow.length > 0) {
+    const checks = `${slow.length === 1 ? "check" : "checks"} ${namedExamples(slow)}`;
+    const detail = `every reject naming ${checks} as its expectedCheckId timed out, so none reached a verdict`;
+    findings.push(
+      identityComposedFinding(
+        { code: DISCRIMINATION_CHECK_TIMED_OUT, message: detail },
+        `${detail}. That refuses nothing here and holds the claim open until one does. The ${CONTROL_TOOL_TIMEOUT} row names the tool, the wall it met and its slowest completed run; give the run room up to the tool-run wall, or cut its work, so the reject finishes`,
+      ),
+    );
+  }
   return findings;
 }
 
-/** A control whose tool run hit its time limit, read beside the verdict and refusing nothing. The
- *  same request often completes on a less busy host, so a timeout says more about the machine than
- *  about the candidate; a check whose only rejects timed out is still refused, under (b). What the
- *  Builder can act on is which tool ran out of time on which example and after how long, so it can
- *  shorten the run or give the tool a longer wall. One row per tool, from the host's own rows at the
- *  attempt the runner settled. */
+/** A control whose tool run hit its time limit, read beside the verdict. A reject that would
+ *  otherwise leave its check unwitnessed has run once more alone (`rerunAlone`), so a timeout on it
+ *  here outlasted a quieter host. Neither an accept nor a reject that timed out refuses the
+ *  candidate, and a check whose every reject timed out holds the claim open under its own code.
+ *  What the Builder can act on is which tool ran out of time on which example, the wall it met and how long the same tool's completed runs on the same check
+ *  took, which is what tells a wall too tight for the tool from a tool that never finishes. One row
+ *  per tool and check, from the host's own rows at the attempt the runner settled. `wallMs` is the
+ *  harness's tool-run wall, which a run's own timeoutMs can only lower. */
 export function timedOutControls(
   settled: ReadonlyMap<string, SettledControl>,
   evidence: readonly TimeoutRow[],
   path: string,
+  wallMs: number,
 ): ContractFinding[] {
-  // Keyed by the tool as the row names it, so one row per tool.
-  const byTool = new Map<string, { ids: string[]; notes: string[] }>();
+  const census = evidence.filter((run) => run.phase === "discrimination");
+  const byTool = new Map<string, { row: TimeoutRow | undefined; ids: string[]; notes: string[] }>();
   for (const [controlId, { attempt, hostNonResult }] of settled) {
     if (hostNonResult !== "timeout") continue;
-    const row = evidence.find(
-      (run) =>
-        run.phase === "discrimination" &&
-        run.subjectId === controlId &&
-        run.attempt === attempt &&
-        run.outcome === "timeout",
-    );
-    const tool = row === undefined ? "a tool the host did not record" : `tool "${row.toolId}"`;
-    const group = byTool.get(tool) ?? { ids: [], notes: [] };
+    const rows = census.filter((run) => run.subjectId === controlId && run.outcome === "timeout");
+    const row = rows.find((run) => run.attempt === attempt);
+    const alone = rows.some((run) => run.attempt < attempt) ? " and again alone" : "";
+    const key =
+      row === undefined ? "a tool the host did not record" : `tool "${row.toolId}" on check "${row.checkId}"`;
+    const group = byTool.get(key) ?? { row, ids: [], notes: [] };
     group.ids.push(controlId);
-    group.notes.push(
-      `"${controlId}"${row === undefined ? "" : ` after ${(row.durationMs / 1000).toFixed(1)} s`}`,
-    );
-    byTool.set(tool, group);
+    group.notes.push(`"${controlId}"${row === undefined ? "" : ` after ${seconds(row.durationMs)}${alone}`}`);
+    byTool.set(key, group);
   }
-  return [...byTool].map(([tool, { ids, notes }]) =>
+  return [...byTool].map(([key, { row, ids, notes }]) =>
     controllerValidatedFinding({
       code: CONTROL_TOOL_TIMEOUT,
       path,
       detail:
-        `${tool} hit its time limit on ${ids.length === 1 ? "1 example" : `${ids.length} examples`}: ${notes.join(", ")}. ` +
-        `${ids.length === 1 ? "That example reached" : "Those examples reached"} no verdict, which refuses nothing here; ` +
-        "if the tool needs longer, raise the run's timeoutMs or the tool-run wall in agent/config.yaml",
+        `${key} hit its time limit on ${ids.length === 1 ? "1 example" : `${ids.length} examples`}: ${notes.join(", ")}. ` +
+        `${row === undefined ? "" : timingSentence(census, row)}The tool-run wall (gate.tool_run_seconds in agent/config.yaml) is ${seconds(wallMs)}, and a lower wall is the timeoutMs the check requested. ` +
+        "A timed-out example refuses nothing here; a check whose every reject timed out holds the claim open until one finishes. " +
+        "A completed run near the wall wants a timeoutMs with room, up to that wall, or less work per run; no completed run means the tool may not finish on this input",
     }),
   );
+}
+
+/** The host's own reason, which names the wall the run met, and the slowest completed run beside it.
+ *  Both are host measurements, so they cross to the author whole. */
+function timingSentence(census: readonly TimeoutRow[], row: TimeoutRow): string {
+  const slowest = slowestCompletedMs(census, row);
+  const reason = row.nonResultReason === undefined ? "" : `The host: ${row.nonResultReason}. `;
+  return `${reason}${
+    slowest === null
+      ? "No run of it on that check completed in this census. "
+      : `Its slowest run on that check that completed in this census took ${seconds(slowest)}. `
+  }`;
+}
+
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
+
+/** The census's control findings as the gate reads them: a check whose every reject timed out moves
+ *  beside the timed-out examples, where it refuses nothing, while the execution's own findings keep
+ *  it and so keep the claim open. Everything else still refuses. */
+export function timeoutReadout(
+  findings: readonly ContractFinding[],
+  settled: ReadonlyMap<string, SettledControl>,
+  evidence: readonly TimeoutRow[],
+  wallMs: number,
+) {
+  const timedOut = (finding: ContractFinding) => finding.code === DISCRIMINATION_CHECK_TIMED_OUT;
+  return {
+    findings: findings.filter((finding) => !timedOut(finding)),
+    advisory: [...findings.filter(timedOut), ...timedOutControls(settled, evidence, EVALUATOR_FILE, wallMs)],
+  };
 }

@@ -26,8 +26,10 @@ import type { BuildTask } from "./tasks.ts";
 import {
   type ControlEvaluation,
   type ReceiptSession,
+  receiptSide,
   recordObservation,
   settleControlReceipts,
+  sideWitnesses,
 } from "./control-receipts.ts";
 import { blockingFailedCheckIds, blockingIssueSummary } from "./verdict-binding.ts";
 import { namedExamples, type SettledControl, TOOL_REFUSED_CODE } from "./grounding-coverage.ts";
@@ -161,6 +163,30 @@ export async function inLanes<T, R>(
   const rejected = settled.find((outcome) => outcome.status === "rejected");
   if (rejected !== undefined) throw rejected.reason;
   return results;
+}
+
+/**
+ * Runs the listed slots of a settled `inLanes` result again, alone and one after another, in the
+ * order given. A run that timed out beside the other lanes often measured the lanes sharing the host
+ * rather than its own work, and alone means one at a time, because side by side the reruns would
+ * bring that contention back. The first rerun that times out as well ends the pass: it refuses
+ * whatever the remaining reruns would show, and each costs up to a whole tool wall. F2 and the
+ * control census both call this, so a timed-out run gets the same second chance in either stage.
+ */
+export async function rerunAlone<R>(
+  results: (R | undefined)[],
+  indices: readonly number[],
+  rerun: (previous: R, index: number) => Promise<R>,
+  timedOut: (result: R) => boolean,
+  stopped: () => boolean,
+): Promise<void> {
+  for (const index of indices) {
+    const previous = results[index];
+    if (previous === undefined || stopped()) return;
+    const again = await rerun(previous, index);
+    results[index] = again;
+    if (timedOut(again)) return;
+  }
 }
 
 const laneStopped = (run: ControlSession) => run.stopped || run.options.stopped?.() === true;
@@ -314,24 +340,26 @@ function addThrown(
   );
 }
 
-/** Evaluate one control in its own lane. */
+/** Evaluate one control from attempt `first`: 1 in its lane, and the next attempt when it runs
+ *  again alone after a timeout, so the rerun's rows are never read as the first run's. */
 async function evaluateInLane(
   run: ControlSession,
   control: Control,
   hidden: BuildTask["hidden"],
+  first = 1,
 ): Promise<Observation> {
-  let attempt = 1;
+  let attempt = first;
   let settled = await evaluateControl(run, control, hidden, attempt);
   // One fresh execution for an environment-owned refusal, `sandbox` or `verifierUnavailable`,
-  // which is the allowance the census gate gives itself. An author-owned kind, `timeout` or
-  // `crash`, settles at once, and a run another lane has already stopped buys no retry at all.
+  // which is the allowance the census gate gives itself. A timeout waits for `rerunAlone`, a crash
+  // settles at once, and a run another lane has already stopped buys no retry at all.
   if (
     !run.stopped &&
     "hostNonResult" in settled.evaluation &&
     environmentOwnedToolNonResult(settled.evaluation.hostNonResult)
   ) {
     await toolRetryDelay(run.options.toolRetryWaitMs);
-    attempt = 2;
+    attempt += 1;
     settled = await evaluateControl(run, control, hidden, attempt);
   }
   return { ...settled, attempt };
@@ -376,9 +404,10 @@ function admitObservation(
     );
     return null;
   }
-  // A timeout refuses nothing: the same request often completes on a less busy host. The census
-  // reads it beside the verdict from the host's rows (`timedOutControls`), and R2 still refuses a
-  // check whose only rejects reached no verdict.
+  // A timeout refuses nothing here. A reject whose check nothing else witnessed has already run
+  // again alone; the census reads the timeout beside the verdict from the host's rows
+  // (`timedOutControls`), and R2 holds the claim open for a check whose every reject timed out
+  // (`DISCRIMINATION_CHECK_TIMED_OUT`) without refusing the candidate.
   if ("hostNonResult" in evaluation && evaluation.hostNonResult === "timeout") return null;
   if ("hostNonResult" in evaluation) {
     addToGroup(run, "no-verdict", control.id, `"${control.id}" (${evaluation.hostNonResult})`, (ids, notes) =>
@@ -602,6 +631,36 @@ function acceptRejectedFindings(
   return findings;
 }
 
+const timedOut = ({ evaluation }: Observation): boolean =>
+  "hostNonResult" in evaluation && evaluation.hostNonResult === "timeout";
+
+/** The rejects a timeout would leave refusing their check under R2: for each check no reject
+ *  witnessed, the first reject naming it that timed out. A check another reject witnessed is already
+ *  proved and an accept that timed out refuses nothing, so neither buys a run alone, and one reject
+ *  that finishes is all a check needs. */
+function unwitnessedTimeouts(
+  rejects: ControlCorpus["reject"],
+  observations: readonly (Observation | undefined)[],
+): number[] {
+  const witnessed = new Set(
+    rejects.flatMap((control, index) => {
+      const observation = observations[index];
+      return observation !== undefined &&
+        sideWitnesses(receiptSide(observation.attempt, observation.evaluation))
+        ? [control.expectedCheckId]
+        : [];
+    }),
+  );
+  const chosen = new Map<string, number>();
+  for (const [index, control] of rejects.entries()) {
+    const observation = observations[index];
+    if (observation === undefined || !timedOut(observation)) continue;
+    if (witnessed.has(control.expectedCheckId) || chosen.has(control.expectedCheckId)) continue;
+    chosen.set(control.expectedCheckId, index);
+  }
+  return [...chosen.values()];
+}
+
 async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<void> {
   // A hidden-comparison reject is verified with its own evaluate-side operand, which overrides the
   // task's row for that check. External rejects carry no hidden data at all.
@@ -616,6 +675,17 @@ async function runRejects(run: ControlSession, corpus: ControlCorpus): Promise<v
     corpus.reject,
     run.options.lanes ?? CENSUS_LANES,
     (control) => evaluateInLane(run, control, hiddenOf(control)),
+    () => laneStopped(run),
+  );
+  await rerunAlone(
+    observations,
+    unwitnessedTimeouts(corpus.reject, observations),
+    (previous, index) => {
+      const control = corpus.reject[index];
+      if (control === undefined) return Promise.resolve(previous);
+      return evaluateInLane(run, control, hiddenOf(control), previous.attempt + 1);
+    },
+    timedOut,
     () => laneStopped(run),
   );
   for (const [index, control] of corpus.reject.entries()) {

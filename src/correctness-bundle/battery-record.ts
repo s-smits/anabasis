@@ -155,7 +155,13 @@ export type BatteryRecord = {
    *  non-result rates, so three simultaneous solves and one-at-a-time solves are different measured
    *  conditions; the case rows alone never disclose which limit was configured. */
   solveExecution: { maxConcurrency: number; scheduling: "bounded-worker-pool" };
+  /** Present when some cases are battery `of`'s recorded solves graded again rather than solved:
+   *  how many were, and how many of those the host verifier now scores differently from the
+   *  battery they came from. Every other case was solved fresh. */
+  regrade?: BatteryRegrade;
 };
+
+export type BatteryRegrade = { of: string; reused: number; changedPasses: number };
 
 /** Saved snapshot identity, without the absolute directory that only applies on this machine. */
 export type BundleSnapshotFact = {

@@ -29,7 +29,12 @@ import type { ExperimentAuthoring } from "./experiment-freeze.ts";
 import { builtCapabilities, piBuiltReadAllowRoots, resolvePiBuiltRuntime } from "../backends/pi-built.ts";
 import { type ResolvedSlots, backendPinOf, resolveSlots } from "../backends/resolve.ts";
 import { type SessionProfileEvidence, composedIsolation } from "../backends/session-isolation.ts";
-import { CASE_RECORD_FILE, type CaseIsolationEvidence, type RunCondition } from "../claim/case-record.ts";
+import {
+  CASE_RECORD_FILE,
+  type CaseIsolationEvidence,
+  type RunCondition,
+  readCaseRecord,
+} from "../claim/case-record.ts";
 import { type ConformanceEvidence, readBoundConformance } from "../claim/conformance-evidence.ts";
 import { FROZEN_MANIFEST_PATH, loadFrozenManifest } from "../critic/manifest.ts";
 import { fullrunLine, createRunObserver, type RunObserver } from "../observe/run-observer.ts";
@@ -42,6 +47,7 @@ import {
 import type { Toolset } from "../correctness-bundle/contracts.ts";
 import type { JudgeSession } from "../review/judge.ts";
 import type { Solver } from "../correctness-bundle/solve.ts";
+import type { BatteryReuse } from "../correctness-bundle/recorded-solve.ts";
 import type { BuildTask } from "../correctness-bundle/tasks.ts";
 import { type HostSolveIsolationEvidence, probeHostSolveReadDeny } from "../verify/solve-sandbox.ts";
 import type { VerifierHostHandle } from "../verify/verifier-port.ts";
@@ -102,6 +108,10 @@ export interface HarnessMeasureOptions {
   safeguardContext?: SafeguardContext;
   /** One run-wide outer-turn budget shared with Builder and Review. */
   providerBudget?: ProviderResourceBudget;
+  /** Recorded solves the battery grades instead of solving. When they cover every task the battery
+   *  is a regrade: no Built runtime starts, and it records the isolation and capabilities the
+   *  recorded solves ran under, since those are the solves it scores. */
+  reuse?: BatteryReuse;
 }
 
 export interface HarnessMeasureResult {
@@ -149,6 +159,7 @@ interface MeasureBatteryContext {
   safeguardContext?: SafeguardContext;
   observer?: RunObserver;
   judge: JudgeSession | null;
+  reuse?: BatteryReuse;
 }
 
 /** The measurement driver's identity recorded on each case row, separate from the solving agent. */
@@ -217,6 +228,21 @@ async function resolveCaseIsolation(
   return isolation;
 }
 
+/** The solver of a battery that solves nothing: every task is a recorded solve, so a call is a
+ *  scheduling defect rather than a reason to start a runtime. */
+const regradeOnlySolver: Solver = () => {
+  throw new Error("a regrade battery solves nothing: every task has a recorded solve");
+};
+
+/** The isolation the recorded solves ran under, read from their own case rows. */
+function recordedIsolation(recordPath: string, runId: string): CaseIsolationEvidence {
+  const isolation = readCaseRecord(recordPath).find((entry) => entry.row.runId === runId)?.row.isolation;
+  if (isolation === undefined || isolation === null) {
+    throw new Error(`regrade: the campaign record holds no isolation evidence for ${runId}`);
+  }
+  return isolation;
+}
+
 /** Everything the battery consumes, resolved once: slot identities, executed isolation evidence,
  *  recorded tasks and the Built runtime. `measureHarness` then runs measurement and records the
  *  result, including an environment-blocked battery. */
@@ -234,9 +260,13 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
   // Create the driver's evidence directory before measurement; a missing parent is not a held lock.
   const recordPath = join(campaignDir(repoRoot, slug), CASE_RECORD_FILE);
   mkdirSync(dirname(recordPath), { recursive: true });
+  const tasks = options.tasks ?? loadRecordedTasks(slugDir);
+  const { reuse } = options;
+  const regradeOnly = reuse !== undefined && tasks.every((task) => reuse.solves.has(task.taskId));
   const solveIsolation = builtSolveIsolation(repoRoot, piBuiltReadAllowRoots(slots));
+  const scripted = options.solver ?? (regradeOnly ? regradeOnlySolver : undefined);
   const piRuntime =
-    options.solver === undefined
+    scripted === undefined
       ? resolvePiBuiltRuntime(slots, repoRoot, solveIsolation, options.processEnv ?? Bun.env)
       : null;
   const preflight =
@@ -249,12 +279,13 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
           builtRuntime: piRuntime,
           phase: "measurement",
         });
-  const isolation = await resolveCaseIsolation(options, repoRoot, recordPath, preflight, piRuntime);
-  const tasks = options.tasks ?? loadRecordedTasks(slugDir);
+  const isolation = regradeOnly
+    ? recordedIsolation(recordPath, reuse.of)
+    : await resolveCaseIsolation(options, repoRoot, recordPath, preflight, piRuntime);
   const observer = options.observer ?? createRunObserver(repoRoot, slug, options.runId);
   const runtime = builtBatteryRuntime(piRuntime, observer, {
     maxTurns: options.maxTurns,
-    scripted: options.solver,
+    scripted,
     providerBudget: options.providerBudget,
     safeguardContext: options.safeguardContext,
   });
@@ -267,7 +298,8 @@ async function resolveMeasureInterface(manifest: AskManifest, options: HarnessMe
     tasks,
     openHost: options.createVerifier,
     runtime,
-    capabilities: builtCapabilities(piRuntime?.profile ?? null),
+    regradeOnly,
+    capabilities: regradeOnly ? [...reuse.capabilities] : builtCapabilities(piRuntime?.profile ?? null),
     backendStartup:
       preflight === null
         ? undefined
@@ -299,8 +331,11 @@ async function measureResolvedBattery(
   } = contract;
   const { runId } = options;
   fullrunLine(`${slug}: battery started (${runId}, ${tasks.length} tasks)`);
-  const judge =
-    options.judge === undefined
+  // A regrade scores artifacts the Judge already reviewed against public rules the correction left
+  // unchanged, so it asks for no review of its own.
+  const judge = contract.regradeOnly
+    ? null
+    : options.judge === undefined
       ? judgeSessionFor(slots.review, repoRoot, runtime.observer, options.providerBudget)
       : options.judge;
   let claim: WrittenRunClaim | null = null;
@@ -328,6 +363,7 @@ async function measureResolvedBattery(
       ...keyIfDefined("backendStartup", backendStartup),
       observer: runtime.observer,
       judge,
+      ...keyIfDefined("reuse", options.reuse),
     });
   } catch (error) {
     if (!(error instanceof BatteryVerificationNonResult)) throw error;
@@ -430,6 +466,7 @@ async function measureBattery(runId: string, ctx: MeasureBatteryContext): Promis
       ...keyIfDefined("verifierLifetime", ctx.verifierLifetime),
       ...keyIfDefined("safeguardContext", ctx.safeguardContext),
       ...keyIfDefined("observer", ctx.observer),
+      ...keyIfDefined("reuse", ctx.reuse),
     },
     isolation: ctx.isolation,
     tasks: ctx.tasks,

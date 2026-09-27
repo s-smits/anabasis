@@ -28,6 +28,7 @@ import type { VerifierHostHandle } from "../verify/verifier-port.ts";
 import {
   BATTERY_FILE,
   type BatteryRecord,
+  type BatteryRegrade,
   batteryDisposition,
   batteryTerminalReason,
   BatteryVerificationNonResult,
@@ -38,6 +39,7 @@ import {
   bundleSnapshotFact,
 } from "./battery-record.ts";
 import { solveBatteryWithProviderStop } from "./battery-provider-stop.ts";
+import { type BatteryReuse, recordedSolvedCase } from "./recorded-solve.ts";
 import { harnessSettings } from "./harness-config.ts";
 import { validateBrief } from "./brief-validator.ts";
 import { type Brief, externalChecksOf, throwIfInvalid } from "./brief.ts";
@@ -103,6 +105,8 @@ export interface VerificationRunnerOptions {
   safeguardContext?: SafeguardContext;
   /** Timing-only phase spans for the existing observation stream. */
   observer?: RunObserver;
+  /** Recorded solves this battery grades again instead of solving; every other task is solved. */
+  reuse?: BatteryReuse;
 }
 
 type VerifyInput = Parameters<BuildDeps["verify"]>[0];
@@ -250,10 +254,29 @@ function recordBatteryRecord(
       maxConcurrency: solveWidth(ctx),
       scheduling: "bounded-worker-pool",
     },
+    ...keyIfDefined("regrade", regradeFact(ctx.options.reuse, parts.cases)),
   };
   ctx.evidence.write(BATTERY_FILE, battery);
   ctx.evidence.record();
   return battery;
+}
+
+/** How many cases this battery graded from recorded solves, and how many of those changed their
+ *  pass. Undefined when it reused nothing. */
+function regradeFact(
+  reuse: BatteryReuse | undefined,
+  cases: readonly CaseRecord[],
+): BatteryRegrade | undefined {
+  if (reuse === undefined) return undefined;
+  const reused = cases.flatMap((row) => {
+    const recorded = reuse.solves.get(row.taskId);
+    return recorded === undefined ? [] : [{ after: row.pass, before: recorded.record.pass }];
+  });
+  return {
+    of: reuse.of,
+    reused: reused.length,
+    changedPasses: reused.filter((row) => row.after !== row.before).length,
+  };
 }
 
 async function measuredPhase<T>(
@@ -470,6 +493,13 @@ async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> 
     await solveBatteryWithProviderStop(
       ctx.input.tasks,
       async (task, index) => {
+        const recorded = ctx.options.reuse?.solves.get(task.taskId);
+        if (recorded !== undefined) {
+          for (const [name, bytes] of recorded.evidence) {
+            ctx.evidence.write(`cases/${task.taskId}/${name}`, capturedJsonParse(bytes));
+          }
+          return recordedSolvedCase(task, recorded);
+        }
         const solvedCase = await solveCase(
           {
             createStarter: ctx.createStarter,
@@ -495,28 +525,31 @@ async function solveAndGradeBattery(ctx: BatteryContext): Promise<GradedCase[]> 
         return solvedCase;
       },
       solveWidth(ctx),
-      async (solvedCase) => {
-        delivered += 1;
-        if (gradingStopped) {
-          // A solve receipt records that the case was solved and says nothing about the grading it
-          // never received, so the omission would otherwise leave no trace at all.
-          safeguardTriggered(
-            "45-case-grading-skipped",
-            `run=${ctx.options.runId} task=${solvedCase.task.taskId} graded=${gradedCases.length}`,
-            ctx.options.safeguardContext,
-          );
-          return;
-        }
-        if (!gradingStarted) {
-          gradingStarted = true;
-          observer?.phase({ ...GRADING, state: "started" });
-        }
-        if (!(await recordSolvedCase(ctx, gradedCases, solvedCase))) {
-          gradingStopped = true;
-          observer?.phase({ ...GRADING, state: "failed" });
-        }
+      {
+        onSolved: async (solvedCase) => {
+          delivered += 1;
+          if (gradingStopped) {
+            // A solve receipt records that the case was solved and says nothing about the grading it
+            // never received, so the omission would otherwise leave no trace at all.
+            safeguardTriggered(
+              "45-case-grading-skipped",
+              `run=${ctx.options.runId} task=${solvedCase.task.taskId} graded=${gradedCases.length}`,
+              ctx.options.safeguardContext,
+            );
+            return;
+          }
+          if (!gradingStarted) {
+            gradingStarted = true;
+            observer?.phase({ ...GRADING, state: "started" });
+          }
+          if (!(await recordSolvedCase(ctx, gradedCases, solvedCase))) {
+            gradingStopped = true;
+            observer?.phase({ ...GRADING, state: "failed" });
+          }
+        },
+        onWorkersSettled: () => observer?.phase({ ...SOLVING, state: "completed" }),
+        reused: (task) => ctx.options.reuse?.solves.has(task.taskId) === true,
       },
-      () => observer?.phase({ ...SOLVING, state: "completed" }),
     );
     if (gradingStarted && !gradingStopped) observer?.phase({ ...GRADING, state: "completed" });
   } catch (error) {

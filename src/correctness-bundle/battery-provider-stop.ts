@@ -8,6 +8,10 @@
  * Each task it never schedules still records a typed non-result naming the stop, so the
  * denominator stays whole and the round reads as operational rather than short. Any other result
  * resets the provider count, and cases already in flight finish normally.
+ *
+ * A reused case is a recorded solve graded again rather than a provider call, so it neither
+ * advances nor resets the count, and a stop never turns it into an unattempted row: the recorded
+ * solve exists whatever the provider is doing now.
  */
 import { mapWithConcurrencyLimit } from "../run/session-pool.ts";
 import { type SolvedCase, unattemptedCase } from "./solve-case.ts";
@@ -23,16 +27,23 @@ export const NEVER_ATTEMPTED_PREFIX = "not attempted: the battery stopped schedu
 /** The never-attempted reason of a battery the controller stopped by refusing a turn permit. */
 export const TURN_REFUSED_STOP_PREFIX = `${NEVER_ATTEMPTED_PREFIX} after the controller refused a Built turn permit`;
 
+/** What the pool reports as it goes, and which tasks it grades from a recorded solve. */
+interface BatteryPoolHooks {
+  onSolved?: (solvedCase: SolvedCase, index: number) => Promise<void>;
+  onWorkersSettled?: () => void;
+  reused?: (task: BuildTask) => boolean;
+}
+
 export function solveBatteryWithProviderStop(
   tasks: readonly BuildTask[],
   solveOne: (task: BuildTask, index: number) => Promise<SolvedCase>,
   concurrency: number,
-  onSolved?: (solvedCase: SolvedCase, index: number) => Promise<void>,
-  onWorkersSettled?: () => void,
+  hooks: BatteryPoolHooks = {},
 ): Promise<SolvedCase[]> {
   let consecutive = 0;
   let stopped: SolverNonResult | null = null;
   const solveUnlessStopped = async (task: BuildTask, index: number): Promise<SolvedCase> => {
+    if (hooks.reused?.(task) === true) return solveOne(task, index);
     if (stopped !== null) return unattemptedCase(task, stopped);
     const solvedCase = await solveOne(task, index);
     const { nonResult } = solvedCase.solved;
@@ -49,5 +60,11 @@ export function solveBatteryWithProviderStop(
     }
     return solvedCase;
   };
-  return mapWithConcurrencyLimit(tasks, concurrency, solveUnlessStopped, onSolved, onWorkersSettled);
+  return mapWithConcurrencyLimit(
+    tasks,
+    concurrency,
+    solveUnlessStopped,
+    hooks.onSolved,
+    hooks.onWorkersSettled,
+  );
 }

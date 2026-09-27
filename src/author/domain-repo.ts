@@ -189,6 +189,12 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
   const dropped: string[] = [];
   try {
     const source = realpathSync(path);
+    // Every path the relocation writes names the copy by its real location, because that is the
+    // spelling the walls grant: the verifier and the Built solver open the tool tree through its
+    // realpath, and Seatbelt checks the path a process asks for, so a venv home or a launcher
+    // reached through a linked ancestor (a run worktree's `campaigns` link, say) is denied inside
+    // the wall and Python starts with no stdlib. `path` stays the handle for the file operations.
+    const destination = join(realpathSync.native(dir), WORKSPACE_TOOL_TREE);
     cpSync(source, copy, { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true });
     // Relative links already name the copied packages. Absolute internal links must move too,
     // while external runtime links keep their targets. A linked directory is never walked, because
@@ -204,7 +210,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
       if (!entry.isSymbolicLink()) {
         // The walk lists directories as well, and a directory is not a file the Builder can open.
         if (entry.isFile()) counts.files += 1;
-        const relocated = relocateToolLauncher(link, source, path, name);
+        const relocated = relocateToolLauncher(link, source, destination, name);
         // A file the copy cannot make stand alone is left out of the copy, not treated as a reason
         // to end the run. The refusal this replaces told its reader to recreate the installation in
         // the repair workspace and then made that impossible, because it fires on things like a
@@ -251,7 +257,7 @@ function copySeedToolTree(dir: string, safeguard?: SafeguardContext): string | n
     ].filter((name) => readFileSync(join(path, name), "utf8").includes(`${source}/`));
     for (const name of homed) {
       const config = join(path, name);
-      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${path}/`));
+      writeFileSync(config, readFileSync(config, "utf8").replaceAll(`${source}/`, `${destination}/`));
     }
     if (homed.length > 0) {
       safeguardTriggered(

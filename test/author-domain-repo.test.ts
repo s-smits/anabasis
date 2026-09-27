@@ -176,7 +176,7 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     initWorkspace(dir, seed);
     const owned = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
-    expect(owned).toContain(`'''exec' "${join(dir, ".toolchain/venv/bin/python3")}" "$0" "$@"`);
+    expect(owned).toContain(`'''exec' "${join(realpathSync(dir), ".toolchain/venv/bin/python3")}" "$0" "$@"`);
     expect(owned).not.toContain(python);
     expect(owned).toContain("from numpy.f2py.f2py2e import main");
   });
@@ -212,7 +212,7 @@ describe("the domain workspace repository", () => {
     const dir = tmp();
     initWorkspace(dir, seed);
     expect(readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(
-      `home = ${join(dir, ".toolchain")}/py/bin\n`,
+      `home = ${join(realpathSync(dir), ".toolchain")}/py/bin\n`,
     );
     expect(readFileSync(join(adopted, "venv/pyvenv.cfg"), "utf8")).toBe(`home = ${adopted}/py/bin\n`);
 
@@ -222,6 +222,25 @@ describe("the domain workspace repository", () => {
     const besideDir = tmp();
     initWorkspace(besideDir, sibling);
     expect(readFileSync(join(besideDir, ".toolchain/venv/pyvenv.cfg"), "utf8")).toBe(`home = ${beside}\n`);
+  });
+
+  it("names the repair tree by its real path when the workspace is reached through a linked ancestor", () => {
+    // A run worktree reaches its campaigns through a `campaigns` link, and the walls grant the tool
+    // tree by its realpath, so a venv home or launcher spelled through the link starts no Python.
+    const seed = tmp();
+    const adopted = join(realpathSync(seed), ".toolchain");
+    seedWithUvVenv(seed, `${adopted}/py/bin`);
+    const real = realpathSync(tmp());
+    const linked = join(tmp(), "campaigns");
+    symlinkSync(real, linked);
+    const dir = join(linked, "workspace");
+    initWorkspace(dir, seed);
+    const owned = join(real, "workspace", ".toolchain");
+    const config = readFileSync(join(dir, ".toolchain/venv/pyvenv.cfg"), "utf8");
+    expect(config).toBe(`home = ${owned}/py/bin\n`);
+    const launcher = readFileSync(join(dir, ".toolchain/venv/bin/f2py"), "utf8");
+    expect(launcher).toContain(`'''exec' "${owned}/venv/bin/python3" "$0" "$@"`);
+    expect(`${config}${launcher}`).not.toContain(linked);
   });
 
   it("names a partial copy an interrupted pass left beside the tool tree, and still seeds", () => {

@@ -80,6 +80,11 @@ export interface SourceDelta {
 
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SAFEGUARD_CALL = /safeguardTriggered\s*\(\s*["'`]([^"'`]+)["'`]/g;
+/** A file whose safeguard calls the run can reach. */
+const SAFEGUARD_SOURCE = /\.(?:ts|mts|js|mjs)$/;
+/** A test calls safeguardTriggered with fixture ids and template placeholders that no run fires,
+ *  so its calls are not declarations; the path still counts as changed. */
+const TEST_SOURCE = /^test\/|\.test\.[cm]?[jt]s$/;
 /** Broad path heuristic for possible model-visible changes; verify delivery before making a claim.
  *  The Judge's files moved from src/truth to src/review, and a recorded run may sit on either side. */
 const MODEL_VISIBLE = [
@@ -126,10 +131,14 @@ function laneKey(campaign: string): string {
   return basename(campaign).replace(/-\d+$/, "");
 }
 
-/** The newest sibling campaign of the same lane opened before this run. */
+/** The newest sibling campaign of the same lane opened before this run on another source commit.
+ *  Several campaigns of one lane often launch from one commit, and the nearest of them by launch
+ *  time would read as an identical source, which says nothing about what changed since the lane
+ *  last measured a different tree. */
 export function previousCampaign(
   campaign: string,
   writtenAt: JsonValue | undefined,
+  commit: string,
 ): PreviousCampaign | null {
   const parent = dirname(campaign);
   const lane = laneKey(campaign);
@@ -140,7 +149,8 @@ export function previousCampaign(
     const found = openingOf(dir, null);
     const at = asRecord(found?.opening)?.writtenAt;
     if (!isString(at) || (isString(writtenAt) && at >= writtenAt)) continue;
-    candidates.push({ dir, at, commit: sourceCommitOf(found?.opening) });
+    const earlier = sourceCommitOf(found?.opening);
+    if (earlier !== commit) candidates.push({ dir, at, commit: earlier });
   }
   candidates.sort((left, right) => (left.at < right.at ? 1 : -1));
   return candidates[0] ?? null;
@@ -167,6 +177,85 @@ export function firedSafeguards(campaign: string, runId: string): Map<string, nu
   return fired;
 }
 
+/** The commit this run is compared against and where it came from: the operator's campaign or
+ *  revision when named, otherwise the lane's nearest earlier campaign on another source. */
+function previousSource(
+  campaign: string,
+  previous: string | null,
+  writtenAt: JsonValue,
+  commit: string,
+): Pick<SourceDelta, "previousCommit" | "previousProvenance"> {
+  if (previous !== null && existsSync(join(previous, "controller"))) {
+    const older = openingOf(resolve(previous), null);
+    return {
+      previousCommit: sourceCommitOf(older?.opening),
+      previousProvenance: `campaign ${basename(resolve(previous))}`,
+    };
+  }
+  if (previous !== null) return { previousCommit: previous, previousProvenance: "operator-named revision" };
+  const sibling = previousCampaign(campaign, writtenAt, commit);
+  if (sibling === null) {
+    return {
+      previousCommit: null,
+      previousProvenance: `no earlier campaign of lane ${laneKey(campaign)} on another source beside ${campaign}`,
+    };
+  }
+  return {
+    previousCommit: sibling.commit,
+    previousProvenance: `newest earlier campaign of lane ${laneKey(campaign)} on another source: ${basename(sibling.dir)} (opened ${sibling.at})`,
+  };
+}
+
+/** One `--name-status` line as a changed path, with the safeguard ids a run-reachable source
+ *  file declares at each side. */
+function changedPath(repo: string, previousCommit: string, commit: string, line: string): ChangedPath {
+  const [code = "", ...paths] = line.split("\t");
+  const path = paths.at(-1);
+  if (path === undefined) throw new Error(`name-status line ${JSON.stringify(line)} names no path`);
+  const change = CHANGE_BY_STATUS.get(code.charAt(0)) ?? "modified";
+  const entry: ChangedPath = { path, change, safeguardIds: [] };
+  if (!SAFEGUARD_SOURCE.test(path) || TEST_SOURCE.test(path) || change === "deleted") return entry;
+  const now = safeguardIds(repo, commit, path);
+  const before = change === "added" ? new Set<string>() : safeguardIds(repo, previousCommit, path);
+  entry.safeguardIds = [...now].sort();
+  entry.newSafeguardIds = [...now].filter((id) => !before.has(id)).sort();
+  entry.removedSafeguardIds = [...before].filter((id) => !now.has(id)).sort();
+  return entry;
+}
+
+/** Why the delta cannot be read, when a commit is missing or both sides are one commit. */
+function unresolved(
+  repo: string,
+  commit: string,
+  previousCommit: string | null,
+  previousProvenance: string,
+): Pick<SourceDelta, "state" | "reason"> | null {
+  if (!commitExists(repo, commit)) {
+    return { state: "source-unresolved", reason: `${repo} has no commit ${commit}` };
+  }
+  if (previousCommit === null) return { state: "previous-unresolved", reason: previousProvenance };
+  if (!commitExists(repo, previousCommit)) {
+    return { state: "previous-unresolved", reason: `${repo} has no commit ${previousCommit}` };
+  }
+  return previousCommit === commit ? { state: "identical-source" } : null;
+}
+
+/** Each safeguard a changed file declares, fired or unreached in this run, and each one the run
+ *  fired that no changed file declares. */
+function addReach(
+  result: SourceDelta,
+  declared: ReadonlySet<string>,
+  fired: ReadonlyMap<string, number>,
+): void {
+  for (const id of [...declared].sort()) {
+    const count = fired.get(id) ?? 0;
+    result.safeguards.push({ id, state: count > 0 ? "fired" : "unreached", firings: count });
+  }
+  for (const [id, count] of [...fired.entries()].sort(byDefaultOrder)) {
+    if (!declared.has(id)) result.firedElsewhere.push({ id, firings: count });
+  }
+}
+
 export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
   const { runId, previous = null } = named;
   const campaign = resolve(named.campaign);
@@ -179,24 +268,12 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
     throw new Error(`opening for ${found.runId} records no full source commit`);
   }
   const opening: JsonObject | null = asRecord(found.opening);
-  let previousCommit: JsonValue = null;
-  let previousProvenance: string;
-  if (previous === null) {
-    const sibling = previousCampaign(campaign, opening?.writtenAt ?? null);
-    if (sibling === null) {
-      previousProvenance = `no earlier campaign of lane ${laneKey(campaign)} beside ${campaign}`;
-    } else {
-      previousCommit = sibling.commit;
-      previousProvenance = `newest earlier campaign of lane ${laneKey(campaign)}: ${basename(sibling.dir)} (opened ${sibling.at})`;
-    }
-  } else if (existsSync(join(previous, "controller"))) {
-    const older = openingOf(resolve(previous), null);
-    previousCommit = sourceCommitOf(older?.opening);
-    previousProvenance = `campaign ${basename(resolve(previous))}`;
-  } else {
-    previousCommit = previous;
-    previousProvenance = "operator-named revision";
-  }
+  const { previousCommit, previousProvenance } = previousSource(
+    campaign,
+    previous,
+    opening?.writtenAt ?? null,
+    commit,
+  );
   const result: SourceDelta = {
     schema: "wri-source-delta/v1",
     campaign,
@@ -210,52 +287,19 @@ export function buildSourceDelta(named: SourceDeltaInput): SourceDelta {
     firedElsewhere: [],
     modelVisibleChanged: [],
   };
-  if (!commitExists(repo, commit)) {
-    result.state = "source-unresolved";
-    result.reason = `${repo} has no commit ${commit}`;
-    return result;
-  }
-  if (!isString(previousCommit) || !GIT_SHA.test(previousCommit)) {
-    result.state = "previous-unresolved";
-    result.reason = previousProvenance;
-    return result;
-  }
-  if (!commitExists(repo, previousCommit)) {
-    result.state = "previous-unresolved";
-    result.reason = `${repo} has no commit ${previousCommit}`;
-    return result;
-  }
-  if (previousCommit === commit) {
-    result.state = "identical-source";
-    return result;
-  }
-  const status = gitText(repo, "diff", "--name-status", `${previousCommit}..${commit}`);
-  const fired = firedSafeguards(campaign, found.runId);
+  const previousSha = isString(previousCommit) && GIT_SHA.test(previousCommit) ? previousCommit : null;
+  const settled = unresolved(repo, commit, previousSha, previousProvenance);
+  if (settled !== null || previousSha === null) return { ...result, ...settled };
+  const status = gitText(repo, "diff", "--name-status", `${previousSha}..${commit}`);
   const declaredInChanged = new Set<string>();
   for (const line of status.split("\n").filter((row) => row.length > 0)) {
-    const [code = "", ...paths] = line.split("\t");
-    const path = paths.at(-1);
-    if (path === undefined) throw new Error(`name-status line ${JSON.stringify(line)} names no path`);
-    const change = CHANGE_BY_STATUS.get(code.charAt(0)) ?? "modified";
-    const entry: ChangedPath = { path, change, safeguardIds: [] };
-    if (/\.(?:ts|mts|js|mjs)$/.test(path) && change !== "deleted") {
-      const now = safeguardIds(repo, commit, path);
-      const before = change === "added" ? new Set<string>() : safeguardIds(repo, previousCommit, path);
-      entry.safeguardIds = [...now].sort();
-      entry.newSafeguardIds = [...now].filter((id) => !before.has(id)).sort();
-      entry.removedSafeguardIds = [...before].filter((id) => !now.has(id)).sort();
-      for (const id of now) declaredInChanged.add(id);
-    }
+    const entry = changedPath(repo, previousSha, commit, line);
+    for (const id of entry.safeguardIds) declaredInChanged.add(id);
+    const { path } = entry;
     if (MODEL_VISIBLE.some((pattern) => pattern.test(path))) result.modelVisibleChanged.push(path);
     result.changed.push(entry);
   }
-  for (const id of [...declaredInChanged].sort()) {
-    const count = fired.get(id) ?? 0;
-    result.safeguards.push({ id, state: count > 0 ? "fired" : "unreached", firings: count });
-  }
-  for (const [id, count] of [...fired.entries()].sort(byDefaultOrder)) {
-    if (!declaredInChanged.has(id)) result.firedElsewhere.push({ id, firings: count });
-  }
+  addReach(result, declaredInChanged, firedSafeguards(campaign, found.runId));
   return result;
 }
 

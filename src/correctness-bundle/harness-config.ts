@@ -2,11 +2,11 @@
  *  submitted snapshot by the solver, the submit gate and measurement, so all three run the harness
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
- *  The Builder is told the file exists, not what it holds. The seeded file and a timeout finding
- *  state the host maximums, because a Builder that could not see them read a gate wall as a hard
- *  cap and spent hours re-engineering its tool runs to fit under it. Each maximum is ten times its
- *  default, which leaves a harness room to ask for what its domain needs without being able to
- *  declare a wall that never cuts. The solver's walls also stop at a tenth of their defaults: below
+ *  The Builder is told the file exists, not what it holds. A gate wall has no maximum: the one
+ *  recorded value that reached ten times its default was a reference solve, the wall a stronger
+ *  witness needs longest. The solver's walls and the battery width keep that maximum, because a
+ *  solve wall is part of the measured condition and the width is bounded by the host's cores, and
+ *  the solver's walls also stop at a tenth of their defaults: below
  *  that the solver never sees a command return, and the wall's own submit of its first draft is what
  *  the battery grades. That floor is current policy for a new candidate or a new solve, so only
  *  `harnessConfigIssue` applies it: `harnessSettings` reads what a recorded bundle declared, and a
@@ -27,8 +27,8 @@ const SETTINGS = {
   battery: { solve_concurrency: 3 },
 } as const;
 
-/** How far above its default the host accepts a setting, and how far below it a solver wall. */
-export const HOST_MAXIMUM_FACTOR = 10;
+/** How far above its default the host accepts a solver or battery setting, and how far below it a solver wall. */
+const HOST_LIMIT_FACTOR = 10;
 
 type Section = keyof typeof SETTINGS;
 type Raw = { [S in Section]: { [K in keyof (typeof SETTINGS)[S]]: number } };
@@ -47,10 +47,10 @@ export interface HarnessSettings {
 
 export class HarnessConfigError extends Error {}
 
-/** A value far above its default (`"above"`), or, for a solver wall, far below it (`"below"`). */
+/** A solver or battery setting far above its default (`"above"`), or a solver wall far below it (`"below"`). */
 function hostLimitSide(section: Section, value: number, fallback: number): "above" | "below" | null {
-  if (value > fallback * HOST_MAXIMUM_FACTOR) return "above";
-  return section === "solver" && value * HOST_MAXIMUM_FACTOR < fallback ? "below" : null;
+  if (section !== "gate" && value > fallback * HOST_LIMIT_FACTOR) return "above";
+  return section === "solver" && value * HOST_LIMIT_FACTOR < fallback ? "below" : null;
 }
 
 const hostLimitMessage = (section: Section, key: string, value: number, side: "above" | "below") =>

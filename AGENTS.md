@@ -794,8 +794,9 @@ live evidence.
     Builder is told the file exists, not what it holds. The defaults are, for the solver,
     `solve_minutes 120`, `max_turns 24`, `shell_timeout_seconds 300` and
     `shell_timeout_max_seconds 900`; and for the gate, `reference_solve_seconds 120`,
-    `census_minutes 30`, `check_seconds 600` and `tool_run_seconds 300`. A harness may raise any of
-    them to **ten times** its default, and above that the host refuses; a solver wall may also fall
+    `census_minutes 30`, `check_seconds 600` and `tool_run_seconds 300`. A harness may raise a gate
+    wall as far as it needs, and a solver wall or the battery width to **ten times** its default,
+    above which the host refuses, because the solve wall is part of the measured condition; a solver wall may also fall
     no lower than a tenth of its default, because below that the solver never sees a command return
     and the battery grades whatever draft the wall's own submit sent. That floor refuses admitting a
     candidate or starting a solve (`harnessConfigIssue`), never reading a recorded bundle, so a

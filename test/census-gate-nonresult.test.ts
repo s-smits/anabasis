@@ -229,7 +229,7 @@ describe("a census that ends in a verifier non-result", () => {
       "(attempt 2)",
       "timed out first beside the other reference tasks after 60140 ms, then again when rerun alone",
       'slowest run of tool "truss-contract-checker" on check "design-contract" that completed in this census took 57300 ms',
-      "the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now 300000 ms, which the host accepts up to 3000000 ms",
+      "the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now 300000 ms and without a host maximum",
       "one check with all its tool runs is held to gate.check_seconds, now 600000 ms",
       "raising the ceiling where it needs to",
       "Host load average was 11.3 at the first timeout and 3.5 at the second, on 8 cores",
@@ -248,7 +248,7 @@ describe("a census that ends in a verifier non-result", () => {
     expect(detail).not.toContain("Host load");
     // The one fact a Builder cannot see from its session: the wall is its own to raise.
     expect(detail).toContain(
-      "The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default 300 s), which the harness may raise to 3000 s.",
+      "The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default 300 s), which the harness may raise as far as the tool needs.",
     );
   });
 

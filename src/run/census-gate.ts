@@ -33,11 +33,7 @@ import {
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 import type { SubjectCheckRun } from "../verify/correctness-model-result.ts";
 import type { SolvabilityCensusGate } from "./solvability-gate.ts";
-import {
-  DEFAULT_HARNESS_SETTINGS,
-  HOST_MAXIMUM_FACTOR,
-  harnessSettings,
-} from "../correctness-bundle/harness-config.ts";
+import { DEFAULT_HARNESS_SETTINGS, harnessSettings } from "../correctness-bundle/harness-config.ts";
 import type { SolvabilityStageCache } from "../correctness-bundle/solvability-stages.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
@@ -453,7 +449,7 @@ export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): strin
 function wallSource(evidence: VerifierExecutionEvidence): string {
   if (!evidence.timedOut) return "";
   const defaultSeconds = DEFAULT_HARNESS_SETTINGS.toolRunMs / 1000;
-  return ` The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default ${defaultSeconds} s), which the harness may raise to ${defaultSeconds * HOST_MAXIMUM_FACTOR} s.`;
+  return ` The wall it met is the evaluator's timeoutMs capped by gate.tool_run_seconds in agent/config.yaml (default ${defaultSeconds} s), which the harness may raise as far as the tool needs.`;
 }
 
 /** Which census met the failure: host structure rather than anything the verifier printed, so it
@@ -515,12 +511,11 @@ function rerunDetail(context: CensusContext, rerun: TimeoutRerun | undefined): s
   if (rerun === undefined) return "";
   const { first, slowestCompletedMs, load } = rerun;
   const { toolRunMs: ceilingMs, checkWallMs } = harnessSettings(context.slugDir);
-  const maximumMs = DEFAULT_HARNESS_SETTINGS.toolRunMs * HOST_MAXIMUM_FACTOR;
   const slowest =
     slowestCompletedMs === null
       ? `No run of tool "${first.toolId}" on check "${first.checkId}" completed in this census`
       : `The slowest run of tool "${first.toolId}" on check "${first.checkId}" that completed in this census took ${slowestCompletedMs} ms`;
-  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now ${ceilingMs} ms, which the host accepts up to ${maximumMs} ms, and a wall below it is the timeoutMs the evaluator requested; one check with all its tool runs is held to gate.check_seconds, now ${checkWallMs} ms. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, raising the ceiling where it needs to, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
+  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now ${ceilingMs} ms and without a host maximum, and a wall below it is the timeoutMs the evaluator requested; one check with all its tool runs is held to gate.check_seconds, now ${checkWallMs} ms. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, raising the ceiling where it needs to, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
 }
 
 function settleToolUnavailable(

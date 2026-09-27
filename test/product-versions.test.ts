@@ -22,6 +22,7 @@ import { MEMORY_FILE, SCRATCHPAD_FILE } from "../src/author/builder-memory.ts";
 import {
   bindProductMeasurement,
   measuredProductDir,
+  productHistoryDirs,
   productVersionDir,
   publishProductVersion,
   readProductVersion,
@@ -102,6 +103,18 @@ test("published bytes remain available; selection, decision and admission commit
   expect(JSON.parse(ledger.productDecision("adopt-second") ?? "null")).toEqual(row);
   expect(promoteCandidate(root, slug, second, "adopt-second", { experiment: "build" })).toEqual(row);
   expect(() => bindProductMeasurement(root, slug, "second-battery", first)).toThrow("different product");
+});
+
+test("a version under measurement reads its own battery before its decision row exists", () => {
+  const { root, source } = fixture();
+  const first = publishProductVersion(source("first"));
+  selectInitialProduct(root, slug, "first");
+  const second = publishProductVersion(source("second"));
+  // The review of the second version's battery runs before promotion records its decision, so a
+  // history read from the ledger alone would hold no row for the battery under review.
+  expect(productHistoryDirs(second)).toContain(second);
+  expect(productHistoryDirs(second).filter((dir) => dir === first)).toHaveLength(1);
+  expect(productHistoryDirs(first).filter((dir) => dir === first)).toHaveLength(1);
 });
 
 test("zero verified cases keep the selected product and leave the advice packet unadmitted", () => {

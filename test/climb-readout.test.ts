@@ -58,6 +58,7 @@ type Spec = {
   calibration?: AdmittedClimbRow["authoring"]["calibration"];
   wall?: number;
   wallBound?: number;
+  agent?: string | null;
 };
 
 function authoring(target: NonNullable<Spec["target"]>, gap: string): ExperimentAuthoring {
@@ -111,6 +112,7 @@ function row(runId: string, index: number, spec: Spec): AdmittedClimbRow {
     passedTaskIds: [],
     solveWallMinutes: spec.wall ?? 120,
     wallBound: spec.wallBound ?? 0,
+    agentHash: spec.agent === undefined ? "agent-a" : spec.agent,
   };
   if (spec.target !== undefined || spec.gap !== undefined) {
     recorded.experimentAuthoring = authoring(

@@ -139,6 +139,8 @@ interface ClimbAuthoringRow {
    *  `solve_minutes`, since a failure the wall caused measures the wall rather than the task. Zero
    *  when the wall is unknown. */
   wallBound: number;
+  /** The recorded `agentHash` of the bundle this battery measured; null when the record holds none. */
+  agentHash: string | null;
   experimentAuthoring?: ExperimentAuthoring;
 }
 
@@ -345,6 +347,7 @@ function admittedClimbRow(
       passedTaskIds: scored.flatMap((row) => (row.pass === true && isString(row.taskId) ? [row.taskId] : [])),
       solveWallMinutes: wallMinutes,
       wallBound: wallBoundCount(scored, wallMinutes),
+      agentHash: isString(evidence.bundleSnapshot?.agentHash) ? evidence.bundleSnapshot.agentHash : null,
       ...keyIfDefined("experimentAuthoring", evidence.experimentAuthoring),
     },
     battery: {

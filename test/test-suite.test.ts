@@ -17,7 +17,6 @@ import {
   type WalledRun,
   attribute,
   requestWithoutFiles,
-  rerunVerdict,
   testCommand,
   wallSeconds,
   workerCount,
@@ -165,16 +164,14 @@ describe("whose verdict the suite reports", () => {
     expect(attribute(first, [file(A_TEST_TS)], 64)).toMatchObject({ rerun: null, because: "stands" });
   });
 
-  it("keeps the first verdict when a file printed no result at all, whatever the host was doing", () => {
-    // Its module would not load, or the process ended before it ran. Nothing in `failed` speaks
-    // for it, so rerunning `failed` could clear a run that was never attempted.
+  it("runs the failed files again beside a file that declares no test and so printed no result", () => {
+    // Bun loads such a file and prints nothing for it, neither header nor result. A file that would
+    // not load is the error case below, so a quiet file says only that it holds no test.
     const failed = new Set([file(A_TEST_TS)]);
     const first = ran({ exitCode: 1, failures: 1, clockEnded: 1, failed, reported: failed });
-    expect(attribute(first, [file(A_TEST_TS), file("silent.test.ts")], 8)).toMatchObject({
-      rerun: null,
-      exitCode: 1,
-      because: "unreported",
-      subject: [file("silent.test.ts")],
+    expect(attribute(first, [file(A_TEST_TS), file("quiet.test.ts")], 8)).toMatchObject({
+      rerun: [file(A_TEST_TS)],
+      because: "clock-only",
     });
   });
 
@@ -310,32 +307,6 @@ describe("whose verdict the suite reports", () => {
       rerun: null,
       exitCode: 1,
       because: "none-left",
-    });
-  });
-});
-
-describe("whose verdict a rerun gives", () => {
-  const given = [file("a.test.ts"), file(B_TEST_TS)];
-
-  it("takes a rerun that reported every file it was given", () => {
-    expect(rerunVerdict(ran({ reported: new Set(given) }), given)).toMatchObject({ exitCode: 0, silent: [] });
-    expect(rerunVerdict(ran({ exitCode: 1, reported: new Set(given) }), given)).toMatchObject({
-      exitCode: 1,
-    });
-  });
-
-  it("refuses a zero from a rerun that printed no result for a file it was given", () => {
-    // That file was silent in the first process -- which is why it is in the rerun -- and silent
-    // again here, so no process tested it and its pass would be the wrapper's own invention.
-    expect(rerunVerdict(ran({ reported: new Set([file("a.test.ts")]) }), given)).toMatchObject({
-      exitCode: 1,
-      silent: [file(B_TEST_TS)],
-    });
-  });
-
-  it("fails a rerun the wall ended", () => {
-    expect(rerunVerdict(ran({ exitCode: null, reported: new Set(given) }), given)).toMatchObject({
-      exitCode: 1,
     });
   });
 });
@@ -595,12 +566,11 @@ it("times out once, then passes", async () => {
       run.kill("SIGKILL");
     }
   }, 60_000);
-
-  it("fails a rerun that printed no result for a file it was given, rather than taking its zero", async () => {
-    // The rerun is the one process whose verdict becomes the suite's, and it was taken unread. One
-    // file wedges the first process and passes alone; the other prints nothing in either process,
-    // so returning the rerun's zero would report a green suite over a file that never ran.
-    const host = scratchDir("ana-suite-silent-");
+  it("takes a rerun's zero over a file that declares no test, which Bun prints nothing for", async () => {
+    // One file wedges the first process and passes alone; the other holds no test, so neither
+    // process prints a line for it. A file that would not load fails Bun's exit with an unhandled
+    // error, so the rerun's zero already covers it.
+    const host = scratchDir("ana-suite-quiet-");
     const fixture = join(host, "fixture"),
       marker = join(host, "first-run");
     mkdirSync(fixture);
@@ -614,7 +584,6 @@ it("passes once the first process has wedged", async () => {
 }, 900_000);
 `,
     );
-    // Bun loads this one and prints neither a header nor a result: it declares no test at all.
     writeFileSync(join(fixture, "quiet.test.ts"), "export {};\n");
     const run = Bun.spawn(["bun", SUITE, join(fixture, "tail.test.ts"), join(fixture, "quiet.test.ts")], {
       cwd: REPO_ROOT,
@@ -631,9 +600,9 @@ it("passes once the first process has wedged", async () => {
     });
     try {
       const [code, err] = await Promise.all([run.exited, new Response(run.stderr).text()]);
-      expect(err).toContain("the rerun printed no result for 1 of the 2 file(s) it was given");
+      expect(err).toContain("idle-wall: retrying");
       expect(err).toContain("quiet.test.ts");
-      expect(code).toBe(1);
+      expect(code).toBe(0);
     } finally {
       run.kill("SIGKILL");
     }

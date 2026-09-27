@@ -31,10 +31,11 @@
  * wall, which lists what the group was running and then does what Bun's own CI runner does with a
  * stalled batch: SIGTERM to the coordinator, SIGKILL 15 s later, and every file left unfinished run
  * again one at a time, however many there are. Here that is one fresh process without workers, over
- * the files Bun's interrupt report names and every file that printed no result, and its verdict is
- * the suite's for the files it reports -- a file silent there as well was tested by neither
- * process, so its silence is a failure and not a pass. A failure printed before the wall is kept:
- * the rerun covers the files the first process never finished, never the verdict of one it did.
+ * the files Bun's interrupt report names and every file that printed no result, and its exit code is
+ * the suite's. A file that declares no test prints nothing in either process, and one that would
+ * not load fails that exit with an unhandled error, so silence alone is no verdict. A failure
+ * printed before the wall is kept: the rerun covers the files the first process never finished,
+ * never the verdict of one it did.
  * The suite owns the wall, so `bun run test` and the gate share one behaviour;
  * `ANA_TEST_IDLE_SECONDS` shortens it for its own test, and `wallSeconds` widens it in proportion
  * to load the suite did not create.
@@ -133,7 +134,6 @@ type Reason =
   | "already-failed"
   | "none-left"
   | "never-finished"
-  | "unreported"
   | "too-many-failed"
   | "clock-only"
   | "crowded-host"
@@ -147,15 +147,6 @@ interface Attribution {
   exitCode: number;
   because: Reason;
   subject: readonly string[];
-}
-
-/** Whose verdict a rerun may give. It exists to settle named files, so its exit code speaks for
- *  the files it printed a result for and for no others: a file silent in the first process -- which
- *  is why it is here -- and silent again is one no process has tested, and returning zero would
- *  report a pass nothing observed. So `main` reads this rather than the rerun's own exit code. */
-interface RerunVerdict {
-  exitCode: number;
-  silent: readonly string[];
 }
 
 const RERUN_FILE_LIMIT = 8;
@@ -586,22 +577,10 @@ export function attribute(
   const because: Reason | null =
     first.clockEnded === first.failures ? "clock-only" : first.peakLoad > cores * 2 ? "crowded-host" : null;
   if (because === null) return { rerun: null, exitCode: first.exitCode, because: "stands", subject: [] };
-  // A file Bun printed no result for did not fail an assertion or a clock: its module would not
-  // load, or the process ended before it ran. Nothing in `failed` speaks for it, so rerunning
-  // `failed` cannot clear the run.
-  const unreported = asked.filter((file) => !first.reported.has(file));
-  if (unreported.length > 0) {
-    return { rerun: null, exitCode: first.exitCode, because: "unreported", subject: unreported };
-  }
   if (failed.length > RERUN_FILE_LIMIT) {
     return { rerun: null, exitCode: first.exitCode, because: "too-many-failed", subject: failed };
   }
   return { rerun: failed, exitCode: first.exitCode, because, subject: failed };
-}
-
-export function rerunVerdict(again: WalledRun, rerun: readonly string[]): RerunVerdict {
-  const silent = rerun.filter((file) => !again.reported.has(file));
-  return { exitCode: silent.length > 0 ? 1 : (again.exitCode ?? 1), silent };
 }
 
 async function main(): Promise<number> {
@@ -665,7 +644,6 @@ async function main(): Promise<number> {
         // Bun's own CI runner's line for the same rerun, where `interrupted` is its `failed`: the
         // files the wall interrupted and any a clock failed before it.
         "never-finished": `idle-wall: retrying ${String(interrupted)} interrupted and ${String(step.subject.length - interrupted)} unfinished file(s) one at a time in one fresh process: ${relative(step.subject)}`,
-        unreported: `host-wall: error: ${machine}, but ${String(step.subject.length)} file(s) printed no result at all: ${relative(step.subject)}`,
         "too-many-failed": `host-wall: error: ${machine}, but ${String(step.subject.length)} files failed, which is more than a busy host explains: ${relative(step.subject)}`,
         "clock-only": `host-wall: ${machine}; ${rerunning}`,
         "crowded-host": `host-wall: ${machine}; ${rerunning}`,
@@ -686,13 +664,7 @@ async function main(): Promise<number> {
     if (again.exitCode === null) {
       console.error("idle-wall: error: the rerun was ended by the idle wall named above.");
     }
-    const verdict = rerunVerdict(again, step.rerun);
-    if (verdict.silent.length > 0) {
-      console.error(
-        `host-wall: error: the rerun printed no result for ${String(verdict.silent.length)} of the ${String(step.rerun.length)} file(s) it was given: ${relative(verdict.silent)}`,
-      );
-    }
-    return verdict.exitCode;
+    return again.exitCode ?? 1;
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }

@@ -1,6 +1,6 @@
 # Deterministic lanes
 
-Twelve readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
+Thirteen readers, one question each, no provider call. `review-angles.md` holds the semantic lanes a
 paid sweep spends on; this file holds what a local read already answers, so a live run can be
 assessed without one, and it names the trigger string each reader prints beside the semantic lane
 that string starts. Every reader is a lane of `scripts/wri.ts`, selected by name:
@@ -10,8 +10,8 @@ bun .claude/skills/whole-run-investigation/scripts/wri.ts <lane> <campaign>/<run
 ```
 
 The lanes are `snapshot`, `challenge`, `delta` and `overview`, which collect; `climb`, `yield`,
-`posture`, `timeline`, `walls`, `handoff` and `gates`, which read the campaign; and `archive`,
-which writes the record. `brief.ts` runs the seven campaign lanes as `CAMPAIGN_LANES` and renders
+`posture`, `timeline`, `walls`, `handoff`, `gates` and `target`, which read the campaign; and `archive`,
+which writes the record. `brief.ts` runs the eight campaign lanes as `CAMPAIGN_LANES` and renders
 their trigger lines into the sweep brief, reading an in-process lane's triggers from the
 `<lane>.triggers.json` it writes beside its capture, so a trigger below is the same bytes whether it was read from
 a lane's own output or from the brief.
@@ -142,6 +142,17 @@ the scoring closure (`scoringClosureHash`) or a task's hidden expectations moved
 cannot be read. A replay
 candidate stays one after the replay is run, because nothing records that it was.
 
+`target` runs `hardware-target.ts`. It reads the recorded request from the
+`prompt-ingested` user-directive row of `observability/<runId>.jsonl` and the current epoch's
+`correctness-model/brief.json` `domain`, matches both against `HARDWARE_TARGETS`, the one list of
+board and microcontroller families (ESP32, RP2040, Raspberry Pi, STM32, AVR, nRF, SAMD, Teensy,
+MSP430, PIC), and prints `HARDWARE TARGET NAMED (lanes 29, 30)` when either names one. The same row
+names every run in a sibling campaign whose opening carries this run's `requestDigest` on another
+`source.commit`, with the nearest earlier and later one, which is what lane 29's matched-window
+comparison starts from. `--reference <abs dir>` pins an external reference tree by Git revision, or
+by `portableToolTreeDigest` when it is not a Git tree, and records an absent one as a gap. The same
+detection gates lane 30 in `manifest-inputs.ts`, so a request naming no target never launches it.
+
 ## The archive
 
 `archive` writes the sweep's record under `wri-archive/v2` from the lanes above and the semantic
@@ -156,5 +167,5 @@ ledger is not.
 trigger first and by the default set only where no trigger picks: probe, which is a run not scored
 or under two hours, launches four lanes, by default 5, 8, 12 and 25; standard launches eight, the
 probe set plus 1, 9, 14 and 24; deep, which is twelve hours, three epochs or three batteries,
-launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Twenty-eight is the ceiling. Lanes
-7 and 23 sit outside every tier and are launched alone, only when their own trigger fired.
+launches fourteen, the standard set plus 2, 6, 10, 11, 13 and 22. Thirty is the ceiling. Lanes 7,
+23 and 30 sit outside every tier and are launched alone, only when their own trigger fired.

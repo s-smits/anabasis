@@ -11,7 +11,14 @@ import { dirname, isAbsolute, join, relative } from "#src/meta/path.ts";
 import { errorMessage } from "#src/meta/runtime-values.ts";
 import { CommandFailure, runCommand, type CommandArgs } from "#skills/main/cli.ts";
 import { emitReport } from "#skills/main/output.ts";
-import { ANGLE_COUNT, ISOLATED_ANGLES, angleNumbers, leafPrompt, SHA256 } from "./catalogue-shape.ts";
+import {
+  ANGLE_COUNT,
+  HARDWARE_LANES,
+  ISOLATED_ANGLES,
+  angleNumbers,
+  leafPrompt,
+  SHA256,
+} from "./catalogue-shape.ts";
 import { FINDING_OWNERS, REPORT_SECTIONS } from "./manifest-reporting.ts";
 import { hasText } from "#src/meta/text.ts";
 import { readJsonFile, writeJsonFile } from "#src/meta/completed-json.ts";
@@ -45,6 +52,8 @@ export interface TaskRow {
   task: string;
   lanes: string[];
   admission: AdmissionRow;
+  /** The one directory a hardware session may write, or null for a read-only session. */
+  scratch: string | null;
 }
 
 /** How the launch record binds the reports' prompt identity. */
@@ -170,6 +179,25 @@ function checkLaneCoverage(rows: readonly TaskRow[]): void {
   }
 }
 
+/** A task's scratch, which only a session holding a hardware lane may carry, and then only as its
+ *  own `hw-scratch/<name>` directory, so no other lane is ever launched with a writable root. A
+ *  task without one was launched read-only. */
+function scratchOf(row: JsonObject, admitted: AdmissionRow, index: number): string | null {
+  const { scratch = null } = row;
+  if (scratch === null) return null;
+  if (!admitted.lanes.some((lane) => HARDWARE_LANES.has(lane))) {
+    throw new Error(`tasks[${index}].scratch is set on a session with no hardware lane`);
+  }
+  if (
+    !isString(scratch) ||
+    !isAbsolute(scratch) ||
+    !scratch.endsWith(`/hw-scratch/${admitted.identityKey}`)
+  ) {
+    throw new Error(`tasks[${index}].scratch must be the session's own absolute hw-scratch directory`);
+  }
+  return scratch;
+}
+
 function taskRows(tasks: JsonValue): TaskRow[] {
   if (!Array.isArray(tasks) || tasks.length === 0) {
     throw new Error("tasks.json must contain at least one task");
@@ -189,7 +217,13 @@ function taskRows(tasks: JsonValue): TaskRow[] {
     if (admitted.identityKey !== row.name) {
       throw new Error(`tasks[${index}].admission.identityKey must equal task name`);
     }
-    return { name: row.name, task: row.task, lanes, admission: admitted };
+    return {
+      name: row.name,
+      task: row.task,
+      lanes,
+      admission: admitted,
+      scratch: scratchOf(row, admitted, index),
+    };
   });
   const modes = new Set(rows.map((row) => row.admission.mode));
   if (modes.size !== 1) throw new Error("tasks.json must use one progressive admission mode");
@@ -404,14 +438,14 @@ function inputBinding(
     inputTasks !== null
   ) {
     const instructions = readFileSync(instructionsPath).toString("utf8").trim();
-    const promptHash = (task: string): string =>
-      sha256(new TextEncoder().encode(leafPrompt(instructions, task)));
+    const promptHash = ({ task, scratch }: TaskRow): string =>
+      sha256(new TextEncoder().encode(leafPrompt(instructions, task, scratch)));
     sessions.forEach((session, index) => {
       const task = tasks[index];
       if (task === undefined) {
         throw new Error(`tasks[${index}] is missing; cannot hash launch.sessions[${index}]`);
       }
-      const expectedHash = promptHash(task.task);
+      const expectedHash = promptHash(task);
       if (asRecord(session)?.promptSha256 !== expectedHash) {
         issues.push(`launch.sessions[${index}].promptSha256 does not match the exact launcher prompt bytes`);
       }
@@ -481,9 +515,20 @@ function launchBinding(
     if (!isString(row.workdir) || !isAbsolute(row.workdir)) {
       issues.push(`launch.sessions[${index}].workdir is not absolute`);
     }
-    if (row.sandbox !== "read-only") issues.push(`launch.sessions[${index}].sandbox must be read-only`);
-    if (!Array.isArray(row.ownedPaths) || row.ownedPaths.length > 0) {
-      issues.push(`launch.sessions[${index}].ownedPaths must be an empty array`);
+    const scratch = tasks[index]?.scratch ?? null;
+    if (scratch === null) {
+      if (row.sandbox !== "read-only") issues.push(`launch.sessions[${index}].sandbox must be read-only`);
+      if (!Array.isArray(row.ownedPaths) || row.ownedPaths.length > 0) {
+        issues.push(`launch.sessions[${index}].ownedPaths must be an empty array`);
+      }
+    } else {
+      // A hardware session writes its own scratch and nothing else.
+      if (row.sandbox !== "workspace-write") {
+        issues.push(`launch.sessions[${index}].sandbox must be workspace-write for its hardware scratch`);
+      }
+      if (!Array.isArray(row.ownedPaths) || row.ownedPaths.length !== 1 || row.ownedPaths[0] !== scratch) {
+        issues.push(`launch.sessions[${index}].ownedPaths must name only its hardware scratch`);
+      }
     }
     if (!SHA256.test(jsonText(row.promptSha256 ?? ""))) {
       issues.push(`launch.sessions[${index}].promptSha256 is missing or invalid`);

@@ -1,23 +1,24 @@
 # Whole-run investigation review angles
 
 This file is the whole catalogue: nine deterministic rows the primary reviewer settles itself, and
-twenty-eight semantic lanes a paid session can be given, one question each. A lane is started by a
+thirty semantic lanes a paid session can be given, one question each. A lane is started by a
 deterministic trigger, which is the capitalised text before the first colon of a line that
 `digest.ts`, `source-delta.ts`, `walls.ts`, `timeline.ts`, `climb-velocity.ts`,
-`handoffs.ts` or `gate-rent.ts` prints, grouped by `run-overview.ts` and rendered by `brief.ts`. The trigger says
+`handoffs.ts`, `gate-rent.ts` or `hardware-target.ts` prints, grouped by `run-overview.ts` and rendered by `brief.ts`. The trigger says
 a lane has something to read; it does not say what the answer is, and a lane that contradicts its
 trigger with evidence is a useful result. Nothing here changes a score. The verifier owns every
 pass, and a lane's product is one finding with one owner, the exact evidence it cites and the
 observation that would reverse it. The owner is a `FeedbackOwner` — one of the nine bundle files
 of `BUNDLE_FILES` in `src/author/feedback-routing.ts`, such as `correctness-model/evaluator.ts` or
 `agent/tools-spec.json`, or `environment` — when the Builder can repair it, and a named controller
-source file when it cannot. Lanes 7 and 23 are
+source file when it cannot. Lanes 7, 23 and 30 are
 isolated and never share a session with another lane.
 
 Each lane body opens with one paragraph beginning `Starts from`, which the manifest carries
 verbatim as the lane's trigger; the rows have none, because nothing starts them. The lanes are
 grouped by the question they share — product validity, difficulty, calibration, the review loop,
-hand-offs and attribution, the solver's own time and failure, and the gate itself — and a lane's neighbours are
+hand-offs and attribution, the solver's own time and failure, the gate itself, and a named hardware
+target's ground truth — and a lane's neighbours are
 named inside its body where one hands to the next.
 
 ## Deterministic rows A–I
@@ -141,7 +142,7 @@ row under a completed turn is an instrumentation gap: report `unproven identity`
 case's kind, because an unproven served-model identity refuses the identity claim and nothing
 else. Do not read model names out of trace prose.
 
-## Semantic lanes 1–28
+## Semantic lanes 1–30
 
 **1. Request-to-verdict chain.**
 
@@ -752,6 +753,65 @@ if the advice read a regrade; it routes to `correctness-model/evaluator.ts` or
 `correctness-model/tasks.json` for a correction that missed, and to `controller-source`
 (`src/author/rebuild-advice.ts`) where the flips show an issue the advice keeps unmeasured that the
 evidence has settled.
+
+**29. Hardware target coverage against public ground truth.**
+
+Starts from the `target` lane's `HARDWARE TARGET NAMED (lanes 29, 30)`, which fires when the
+recorded request or `correctness-model/brief.json` names a board or microcontroller the
+`HARDWARE_TARGETS` list in `scripts/hardware-target.ts` recognises, and which names every other run
+that asked the same request on another source commit.
+
+The question is how much of what the named target actually requires the harness's families,
+tools, artifact roots and checks reach, measured against public authorities rather than against
+the Builder's own reading of them. Lane 1 asks what one verdict observes; this lane asks the
+target's side of the same question, so start from the target and work back. For each named target,
+take its public ground truth: the vendor toolchain that compiles for the real board (ESP-IDF or
+arduino-esp32 for ESP32, pico-sdk or the arduino-pico core for RP2040, avr-gcc and the Arduino AVR
+core for an Uno), the published datasheet and pinout facts — input-only pins, converter
+resolution, voltage and current limits, bus assignments — each with a datasheet, schematic or URL
+as its provenance, and a simulator where one exists (QEMU's esp32 machine, Wokwi, rp2040js). Keep
+four scopes apart, compile, host double, target simulation and hardware, name the one the verifier
+actually observed for each check from its `evidence.kind` and `execution.requiredToolIds`, and name
+each obligation the request carries that only a higher scope could observe. A check compiling
+against the real core observes the compile scope and nothing above it; a host double of the core's
+library observes the Builder's own semantics. When the operator passes `--reference <abs dir>` to
+the `target` lane, the report pins that tree by Git revision, or by content digest when it is not a
+Git tree, and the lane reads it as the reference implementation; with none given, the missing
+reference is a recorded gap and not a failure. When the trigger row names same-request runs on
+other source, compare this run against the nearest of them over the matched elapsed window, the
+shorter run's window on both sides, as `notes/predictions/20260925-pr25-checklist.md` in the main
+checkout does, and name that window. The decision it changes is whether the measured pass rate may
+be read as a capability on the named target or only on the observed scope; it routes to
+`correctness-model/evaluator.ts` for a check observing a narrower scope than its obligation, to
+`agent/tools-spec.json` for a missing vendor toolchain, and to `correctness-model/brief.json` for a
+published fact that disagrees with the datasheet.
+
+**30. Ground-truth verdict comparison.**
+
+Starts from `HARDWARE TARGET NAMED (lanes 29, 30)` with verified cases above zero; it works alone
+and freezes its own verdicts before it reads verifier source, recorded verdicts or another lane.
+
+The question is whether an executable instrument independent of the Builder agrees with the
+recorded verdicts. The session must first prove an adapter: a command that takes an accepted
+artifact as the battery published it and runs it through a public ground-truth instrument for the
+named target — the vendor compiler for the real board, a simulator executing the built image, or a
+board — and shows one run end to end with its tool digest. With no adapter the missing adapter is
+the finding, the session names what it would need, and it reports no verdicts at all, because a
+verdict read off the source by eye is the Builder's reading again. With an adapter, run every
+verified case's accepted artifact and every accept and reject control, write each verdict to the
+session's own file in its scratch directory, the one path its prompt lets it write, and record that file's digest before opening `verifier.json`, `case-record.jsonl`,
+`evaluator.ts` or any lane report. Only then read the recorded verdicts and report the two-by-two —
+ground truth pass or fail against recorded pass or fail — with explicit denominators, and cases and
+controls separately. A property the instrument did not execute is unobservable, not wrong: a
+simulator with no display peripheral says nothing about the display, and a wording difference, such
+as a brief calling GPIO34 and GPIO35 input-only where the datasheet lists 34 to 39, is a brief
+defect for lane 29 and not a wrong answer. Ground-truth output is protected like verifier output
+under AGENTS.md rule 4: the lane reports counts, check ids and instrument identities, never an
+artifact, a failure location or instrument output, and never proposes any of it for model-visible
+text. The decision it changes is whether the verifier's pass carries on the target; a recorded pass
+the instrument fails routes to `correctness-model/evaluator.ts`, a recorded fail it passes to
+`correctness-model/tasks.json` or the evaluator by the check involved, and an absent adapter to
+`agent/tools-spec.json` or `environment`.
 
 ## Retired
 

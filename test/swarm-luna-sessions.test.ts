@@ -6,17 +6,19 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "../src/meta/filesystem.ts";
 import { tmpdir } from "../src/meta/os.ts";
 import { dirname, join } from "../src/meta/path.ts";
 import { parseJsonAs } from "../src/meta/json-runtime.ts";
-import { required } from "./helpers/doubles.ts";
+import { double, required } from "./helpers/doubles.ts";
+import type { LunaOptions } from "../.claude/skills/codex-luna-swarm/scripts/luna-sessions-manifest.ts";
 
 import { test } from "bun:test";
 
-const { normalizeReasoningEffort } = await import(
+const { normalizeManifest, normalizeReasoningEffort, quickManifest } = await import(
   "../.claude/skills/codex-luna-swarm/scripts/luna-sessions.ts"
 );
 const launcherPath = join(import.meta.dir, "../.claude/skills/codex-luna-swarm/scripts/luna-sessions.ts");
@@ -68,6 +70,42 @@ test("accepts high, xhigh, and max while defaulting to max", () => {
     () => normalizeReasoningEffort("medium"),
     /--reasoning-effort must be one of high, xhigh, or max/,
   );
+});
+
+// A direct launch's row may own one path, which the WRI hardware lanes use for their scratch.
+test("lets a direct-launch row own a path under workspace-write and still refuses anything else", () => {
+  const root = mkdtempSync(join(tmpdir(), "luna-quick-"));
+  try {
+    const scratch = join(root, "scratch");
+    mkdirSync(scratch);
+    const instructions = join(root, "instructions.md");
+    writeFileSync(instructions, "shared\n");
+    const manifest = (rows: unknown[]) => {
+      const tasks = join(root, "tasks.json");
+      writeFileSync(tasks, JSON.stringify(rows));
+      return normalizeManifest(
+        quickManifest(
+          double<LunaOptions>({ tasks_file: tasks, workdir: root, instructions_file: instructions }),
+        ),
+      );
+    };
+    const [open, owner] = manifest([
+      { name: "a", task: "x" },
+      { name: "b", task: "y", workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] },
+    ]);
+    assert.equal(open?.sandbox, "read-only");
+    assert.deepEqual(open?.ownedPaths, []);
+    assert.equal(owner?.sandbox, "workspace-write");
+    assert.deepEqual(owner?.ownedPaths, [scratch]);
+    assert.equal(owner?.workdir, realpathSync(scratch));
+    assert.throws(
+      () => manifest([{ name: "b", task: "y", sandbox: "workspace-write" }]),
+      /must declare ownedPaths/,
+    );
+    assert.throws(() => manifest([{ name: "b", task: "y", model: "other" }]), /unsupported fields: model/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("refuses an unknown or valueless option with exit 2 before launching anything", () => {

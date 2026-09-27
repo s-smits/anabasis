@@ -27,10 +27,10 @@ variable and reads what the loop did with its batteries rather than their incomp
 
 ## The deterministic read comes first, and it chooses the rest
 
-Twelve local readers cost nothing but compute, and between them they already name the run's size,
+Thirteen local readers cost nothing but compute, and between them they already name the run's size,
 its three denominators, what moved between batteries, which of its own walls bound it, what each
-slot was doing while the clock ran, which gate components refused and what that cost, and what the
-digest flagged. A paid lane opened before that read
+slot was doing while the clock ran, which gate components refused and what that cost, which hardware
+target the request names, and what the digest flagged. A paid lane opened before that read
 spends on a question the read would have answered for free, or would at least have sharpened into
 a trigger; and a paid lane opened without a trigger is a lane spent on inventory. So the read runs
 first, always, and its triggers are what choose the semantic lanes.
@@ -53,12 +53,12 @@ only once the brief has made that lane the question. `wri.ts brief --out <review
 
 | tier | the run | lanes read | semantic lanes to start from |
 | --- | --- | --- | --- |
-| `probe` | under two hours, or no case has scored yet | the seven that read campaign bytes alone: `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`, `gates` | 4 |
-| `standard` | a scored battery, under twelve hours and under three epochs | all twelve | 8 |
-| `deep` | twelve hours or more, three epochs or more, or three batteries | all twelve | 14 |
+| `probe` | under two hours, or no case has scored yet | the eight that read campaign bytes alone: `climb`, `yield`, `posture`, `timeline`, `walls`, `handoff`, `gates`, `target` | 4 |
+| `standard` | a scored battery, under twelve hours and under three epochs | all thirteen | 8 |
+| `deep` | twelve hours or more, three epochs or more, or three batteries | all thirteen | 14 |
 
-Twenty-eight is the ceiling, because there are twenty-eight lanes. The triggers choose the lanes, and
-the isolated two open only on a trigger; where no trigger picks, the brief falls back to a default
+Thirty is the ceiling, because there are thirty lanes. The triggers choose the lanes, and
+the isolated three open only on a trigger; where no trigger picks, the brief falls back to a default
 set — `probe` opens lanes 5, 8, 12 and 25, `standard` adds 1, 9, 14 and 24, and `deep` adds 2, 6,
 10, 11, 13 and 22. The tier is a default and not a gate: `--lanes` and `--all` still select
 whatever is asked for, a run the operator calls important earns the lanes its questions need rather
@@ -137,6 +137,7 @@ could change.
 | `gates` `GATE STALL`, `GATE CLEARED WITHOUT EDIT`, `BELOW-BAR GATE FIRED`, `UNLEDGERED REFUSAL CODE`, `REVIEW HOLD CHAIN` or `CEILING ENDED RUN`; a defect a battery or a probe found that a gate owns | 27 |
 | `gates` `EVALUATION CORRECTION REPLAY CANDIDATE`; an issue left `unmeasured` across a correction | 28 |
 | verified cases, with lane 5 or 6 reading slack | 7 |
+| `target` `HARDWARE TARGET NAMED`; lane 30 also needs verified cases above zero | 29, 30 |
 
 A missing trigger does not settle the semantic question: it says the arithmetic found nothing,
 which is different from the property being absent. Block 3b's `AGGREGATE HIDES FAMILY`, `FAMILY
@@ -146,16 +147,18 @@ questions for a lane. Lanes 3, 4, 8, 13 and 19 have no digest trigger of their o
 what the primary reads in rows C, D and H and in the earlier notes, which is why the default sets
 above carry some of them.
 
-## The twenty-eight lanes
+## The thirty lanes
 
-The catalogue is exactly twenty-eight semantic lanes, in one file after the rows, each a contiguous
+The catalogue is exactly thirty semantic lanes, in one file after the rows, each a contiguous
 `**N. Title.**` heading that `scripts/catalogue-shape.ts` counts as `ANGLE_COUNT`. Each asks one
 sharp question, and they fall into seven groups. One independent `gpt-6-luna` session at `max`
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.
 When the operator asks for Luna, run one session per lane and never group lanes. A Luna or Codex
-lane is read-only. A native lane, a Claude subagent run from `prompts/`, may also repair a finding
+lane is read-only, except that a session holding lane 29 or 30 runs inside, and may write, one
+scratch directory of its own, `<review>/lanes/hw-scratch/<session>/`, which its prompt names: it
+builds adapters and compiler output there and freezes its verdict file there. A native lane, a Claude subagent run from `prompts/`, may also repair a finding
 it proved, one commit per finding in a worktree of its own and never a push; the primary folds
 those commits in the way it folds any lane's.
 
@@ -238,13 +241,24 @@ The gate:
     corrected evaluator through `replay --under`, for each replay candidate the `gates` lane
     names; the flips, and the issue states they could settle, which nothing in the controller reads.
 
-Lanes 7 and 23 are isolated, and `ISOLATED_ANGLES` in `catalogue-shape.ts` is what enforces it:
-lane 23 alone receives the private packet `scripts/trace-challenge.ts` writes, and lane 7 freezes
-its public-only corpus before it reads verifier internals or any other lane's report.
-`MIN_AUTO_SESSIONS` is therefore three — the two isolated seats plus one — and the manifest
-refuses a grouping that crosses either boundary. Sessions are contiguous runs of the catalogue,
-so when both isolated lanes have fired, `--auto` needs five sessions: lanes 1 to 6, lane 7,
-lanes 8 to 22, lane 23 and lanes 24 to 28. An isolated lane whose trigger did not fire is dropped
+Hardware ground truth:
+
+29. **Hardware target coverage against public ground truth.** The named target's vendor toolchain,
+    datasheet and pinout facts and simulators against the harness's families, tools, roots and
+    checks; the scope each check observed and the obligations only a higher scope observes; an
+    optional `--reference` tree; the same request on other source over a matched window.
+30. **Ground-truth verdict comparison.** Isolated: an adapter from the accepted artifact to an
+    executable instrument proved first, verdicts frozen before verifier source, then the two-by-two
+    against the recorded verdicts; with no adapter, the adapter is the finding.
+
+Lanes 7, 23 and 30 are isolated, and `ISOLATED_ANGLES` in `catalogue-shape.ts` is what enforces
+it: lane 23 alone receives the private packet `scripts/trace-challenge.ts` writes, lane 7 freezes
+its public-only corpus before it reads verifier internals or any other lane's report, and lane 30
+freezes its ground-truth verdicts before it reads verifier source or the recorded verdicts.
+`MIN_AUTO_SESSIONS` is therefore four — the three isolated seats plus one — and the manifest
+refuses a grouping that crosses any of those boundaries. Sessions are contiguous runs of the
+catalogue, so when all three isolated lanes have fired, `--auto` needs six sessions: lanes 1 to 6,
+lane 7, lanes 8 to 22, lane 23, lanes 24 to 29 and lane 30. An isolated lane whose trigger did not fire is dropped
 from an auto grouping with a line on stderr, and refused outright when named under `--sessions`. Shared orientation and context stay free of case
 verdicts, verifier-derived selection hints and other lanes' conclusions, because a lane told what
 to find finds it. Every other lane may be grouped under an explicit override; grouping is never
@@ -464,4 +478,6 @@ curation, the `climb`, `hold-limit` and `ease` verbs and the saturation ledger. 
 now, and none of it is a lane. The twelve former angles that kept a direct successor are renumbered
 and their evidence rewritten against the current source; a finding an older note gives under any
 other retired number is still a finding, and its mechanism is what to carry forward, under
-whichever of the twenty-eight lanes owns the question today.
+whichever of the thirty lanes owns the question today. The `--consumer-hardware` flag that once
+asked for a hardware comparison by hand is retired too: the `target` lane's `HARDWARE TARGET NAMED`
+trigger fires from the recorded request and brief, and starts lanes 29 and 30.

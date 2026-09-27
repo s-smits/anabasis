@@ -280,6 +280,68 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "thread_test_123
     expect(retiredSummary.stderr).toContain("summary.json is not a completed Luna summary");
   });
 
+  it("lets a hardware session write its own scratch and no read-only session write anything", () => {
+    const f = fixture({ launch: false });
+    const scratch = join(f.dir, "hw-scratch", "lane_30");
+    const hardware = {
+      name: "lane_30",
+      task: "assignedSession: lane_30\nassignedLanes: 30\n\nRun the ground truth.",
+      admission: admission("lane_30", [30]),
+      scratch,
+    };
+    const open = JSON.parse(readFileSync(f.tasks, "utf8"))[0];
+    writeFileSync(f.tasks, JSON.stringify([open, hardware]));
+    const hardwareReport = join(f.output, "lane_30.md");
+    writeFileSync(hardwareReport, laneReport("lane_30"));
+    writeFileSync(
+      f.summary,
+      JSON.stringify({
+        schemaVersion: 1,
+        type: "luna_sessions.completed",
+        outputDir: f.output,
+        sessions: [
+          { name: LANE, status: "completed", exitCode: 0, reportPath: f.report },
+          { name: "lane_30", status: "completed", exitCode: 0, reportPath: hardwareReport },
+        ],
+      }),
+    );
+    const launchWith = (rows: { sandbox: string; ownedPaths: string[] }[]): string[] => {
+      writeFileSync(
+        join(f.output, "launch.json"),
+        JSON.stringify({
+          type: "luna_sessions.launch",
+          outputDir: f.output,
+          sessions: [LANE, "lane_30"].map((name, at) => ({
+            name,
+            workdir: f.dir,
+            promptSha256: "0".repeat(64),
+            ...rows[at],
+          })),
+        }),
+      );
+      run(f.tasks, f.summary);
+      return receiptOf(f).launchBinding.issues;
+    };
+    const sandboxIssues = (issues: string[]) => issues.filter((row) => /sandbox|ownedPaths/.test(row));
+    const readOnly = { sandbox: "read-only", ownedPaths: [] };
+    const owner = { sandbox: "workspace-write", ownedPaths: [scratch] };
+    expect(sandboxIssues(launchWith([readOnly, owner]))).toEqual([]);
+    expect(sandboxIssues(launchWith([owner, owner]))).toEqual([
+      "launch.sessions[0].sandbox must be read-only",
+      "launch.sessions[0].ownedPaths must be an empty array",
+    ]);
+    expect(sandboxIssues(launchWith([readOnly, { ...owner, ownedPaths: [scratch, f.dir] }]))).toEqual([
+      "launch.sessions[1].ownedPaths must name only its hardware scratch",
+    ]);
+    expect(sandboxIssues(launchWith([readOnly, readOnly]))).toEqual([
+      "launch.sessions[1].sandbox must be workspace-write for its hardware scratch",
+      "launch.sessions[1].ownedPaths must name only its hardware scratch",
+    ]);
+    // A scratch on a session with no hardware lane is refused before any launch is read.
+    writeFileSync(f.tasks, JSON.stringify([{ ...open, scratch }, hardware]));
+    expect(run(f.tasks, f.summary).stderr).toContain("scratch is set on a session with no hardware lane");
+  });
+
   it("rejects a present but stale Luna launch record", () => {
     const f = fixture();
     writeFileSync(

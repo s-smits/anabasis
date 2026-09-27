@@ -27,7 +27,16 @@ export type LunaOptions = {
   help: boolean;
 };
 /** One direct-launch session before `normalizeManifest` checks it. */
-export type QuickSession = { name: JsonValue; task: JsonValue | undefined };
+export type QuickSession = {
+  name: JsonValue;
+  task: JsonValue | undefined;
+  workdir?: JsonValue | undefined;
+  sandbox?: JsonValue | undefined;
+  ownedPaths?: JsonValue | undefined;
+};
+/** The fields a direct-launch task row may carry; `normalizeManifest` checks the last three as it
+ *  checks a manifest file's own, so a row that owns a path must name its workspace-write sandbox. */
+const QUICK_TASK_FIELDS: ReadonlySet<string> = new Set(["name", "task", "workdir", "sandbox", "ownedPaths"]);
 /** The manifest a direct launch builds from its options, read by `normalizeManifest` like a file. */
 export type QuickManifest = {
   workdir: string;
@@ -183,13 +192,17 @@ function quickManifest(options: LunaOptions): QuickManifest {
       if (!isRecord(entry)) {
         throw new Error(`tasks[${index}] must be a string or an object with name and task`);
       }
-      const unexpected = Object.keys(entry).filter((key) => !new Set(["name", "task"]).has(key));
+      const unexpected = Object.keys(entry).filter((key) => !QUICK_TASK_FIELDS.has(key));
       if (unexpected.length > 0) {
         throw new Error(`tasks[${index}] has unsupported fields: ${unexpected.join(", ")}`);
       }
+      // An absent field reads as the manifest default in `normalizeManifest`.
       return {
         name: entry.name ?? `luna_${String(rank).padStart(width, "0")}`,
         task: entry.task,
+        workdir: entry.workdir,
+        sandbox: entry.sandbox,
+        ownedPaths: entry.ownedPaths,
       };
     }
     return {

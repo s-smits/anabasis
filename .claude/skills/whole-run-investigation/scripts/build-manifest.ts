@@ -9,14 +9,7 @@ import { dirname, join, resolve } from "#src/meta/path.ts";
 import { type CommandArgs, type CommandResult, runCommand } from "#skills/main/cli.ts";
 import { runtimeProcess } from "#src/meta/process.ts";
 import { hasText } from "#src/meta/text.ts";
-import {
-  ANGLE_FILES,
-  GIT_SHA,
-  ISOLATED_ANGLES,
-  MIN_AUTO_SESSIONS,
-  PUBLIC_ONLY_LANE,
-  TRACE_CHALLENGE_LANE,
-} from "./catalogue-shape.ts";
+import { ANGLE_FILES, GIT_SHA, ISOLATED_ANGLES, MIN_AUTO_SESSIONS } from "./catalogue-shape.ts";
 import {
   type AngleSession,
   assertIndexMatchesCatalogue,
@@ -44,7 +37,7 @@ const USAGE = [
   "                     [--revision <40-char commit>] [--live] [--title <text>] [--context <file>]",
   "                     [--shared-instructions <shared-instructions.json>] [--web-access]",
   "                     [--transport luna|codex|native] [--effort high|xhigh|max] [--launch [--detach]]",
-  `Lanes ${PUBLIC_ONLY_LANE} and ${TRACE_CHALLENGE_LANE} are isolated: they launch only when their deterministic trigger fired in the snapshot.`,
+  `Lanes ${[...ISOLATED_ANGLES.keys()].join(", ")} are isolated: each launches only when its deterministic trigger fired in the snapshot.`,
 ].join("\n");
 
 /** The launch options, as parsed and before `missingPaths` proves the required ones present. */
@@ -203,11 +196,12 @@ function main(args: CommandArgs): CommandResult {
     reviewMode,
   };
   const instructions = composeInstructions(instructionInput);
-  const tasks = composeTasks(sessionSet.sessions, join(snapshot.dir, "trace-challenge"), {
-    campaign,
-    runId,
-    reviewMode,
-  });
+  const tasks = composeTasks(
+    sessionSet.sessions,
+    join(snapshot.dir, "trace-challenge"),
+    { campaign, runId, reviewMode },
+    options.outDir,
+  );
   // All transports prepend one common instruction file. When the public-only lane is present,
   // keep that common file public and attach the richer context only to the other tasks.
   const publicOnly = sessionSet.sessions.some(publicOnlySession);

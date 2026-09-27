@@ -10,17 +10,27 @@ export const SHA256 = /^[0-9a-f]{64}$/;
 export const GIT_SHA = /^[0-9a-f]{40}$/;
 
 /** Semantic lanes the current catalogue declares (1..ANGLE_COUNT, contiguous, in order). */
-export const ANGLE_COUNT = 28;
+export const ANGLE_COUNT = 30;
 export const ANGLE_FILES = ["review-angles.md"];
 
-// These two lanes keep their own evidence boundary even under explicit grouping, and launch only
-// when their deterministic trigger has fired. Their numbers are owned here and nowhere else.
+// These lanes keep their own evidence boundary even under explicit grouping, and launch only when
+// their deterministic trigger has fired. Their numbers are owned here and nowhere else.
 export const PUBLIC_ONLY_LANE = 7;
 export const TRACE_CHALLENGE_LANE = 23;
+export const GROUND_TRUTH_LANE = 30;
 export const ISOLATED_ANGLES = new Map([
   [PUBLIC_ONLY_LANE, "freezes its public-only alternative corpus before reading verifier internals"],
   [TRACE_CHALLENGE_LANE, "carries the private trace-challenge packet"],
+  [
+    GROUND_TRUTH_LANE,
+    "freezes its ground-truth verdicts before reading verifier source or recorded verdicts",
+  ],
 ]);
+// The hardware ground-truth lanes compile, simulate and adapt accepted artifacts, so each session
+// holding one gets one writable scratch directory under the launch's own output; every other
+// session, and every campaign tree, stays read-only.
+export const HARDWARE_TARGET_LANE = 29;
+export const HARDWARE_LANES: ReadonlySet<number> = new Set([HARDWARE_TARGET_LANE, GROUND_TRUTH_LANE]);
 export const MIN_AUTO_SESSIONS = ISOLATED_ANGLES.size + 1; // one seat for the open lanes
 
 /** Deterministic rows the primary reviewer settles, in catalogue order, with their titles. */
@@ -67,8 +77,24 @@ export function angleNumbers(): number[] {
   return Array.from({ length: ANGLE_COUNT }, (_, index) => index + 1);
 }
 
+/** The one directory a hardware session may write, under the launch output it was composed for. */
+export function hardwareScratch(outDir: string, session: string): string {
+  return `${outDir}/hw-scratch/${session}`;
+}
+
+/** The authority the Luna launcher appends for a session that owns `scratch`, spelled as
+ *  `luna-sessions-runtime.ts` spells a workspace-write session's. */
+export function scratchAuthority(scratch: string): string {
+  return [
+    `Authority: workspace-write. You own only: ${scratch}.`,
+    "Other agents may be editing the repository. Preserve their work and do not revert it.",
+  ].join("\n");
+}
+
 /** The exact prompt one lane receives: the manifest composes it, and the report validator hashes
- *  it again to prove the launch sent what the manifest recorded. */
-export function leafPrompt(instructions: string, task: string): string {
-  return `${instructions.trim()}\n\n${task.trim()}\n\n${READ_ONLY_AUTHORITY}`;
+ *  it again to prove the launch sent what the manifest recorded. A hardware session's prompt ends
+ *  in its scratch authority; every other one ends read-only. */
+export function leafPrompt(instructions: string, task: string, scratch: string | null = null): string {
+  const authority = scratch === null ? READ_ONLY_AUTHORITY : scratchAuthority(scratch);
+  return `${instructions.trim()}\n\n${task.trim()}\n\n${authority}`;
 }

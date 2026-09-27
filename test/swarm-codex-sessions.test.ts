@@ -138,6 +138,20 @@ test("planSessions applies the policy, keeps explicit choices and refuses bad ro
   assert.throws(() => planSessions([], {}), /non-empty array/);
 });
 
+test("planSessions carries a task's own workdir and refuses a relative one", () => {
+  const plan = planSessions(
+    [
+      { name: "a", task: "x" },
+      { name: "b", task: "y", write: true, workdir: "/abs/scratch" },
+    ],
+    {},
+  );
+  assert.equal(plan.sessions[0]?.workdir, undefined);
+  assert.equal(plan.sessions[1]?.workdir, "/abs/scratch");
+  assert.equal(plan.sessions[1]?.write, true);
+  assert.throws(() => planSessions([{ name: "a", task: "x", workdir: "scratch" }], {}), /absolute path/);
+});
+
 test("each command parses its own options and refuses what it does not take with exit 2", () => {
   const dir = scratch();
   // A misspelled flag used to be stored as an option nothing read; now it refuses before running.

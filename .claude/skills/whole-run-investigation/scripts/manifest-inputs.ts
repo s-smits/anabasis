@@ -11,12 +11,14 @@ import {
   DETERMINISTIC_ROW_TITLES,
   DETERMINISTIC_ROWS,
   GIT_SHA,
+  GROUND_TRUTH_LANE,
   ISOLATED_ANGLES,
   TRACE_CHALLENGE_LANE,
   SHA256 as SHA_256,
 } from "./catalogue-shape.ts";
 import { readJsonFile } from "#src/meta/completed-json.ts";
 import { jsonText, readJsonAs } from "./run-overview.ts";
+import { namedTargets } from "./hardware-target.ts";
 
 export const ORIENTATION_HEADING = "orientation";
 /** Maximum nonblank lines in the shared reviewer orientation. */
@@ -357,14 +359,18 @@ export function assertIndexMatchesCatalogue(index: string, angles: string): Map<
   return declared;
 }
 
-/** Which isolated lanes the recorded evidence lets a launch include. Both need at least one
+/** Which isolated lanes the recorded evidence lets a launch include. Each needs at least one
  *  verified case in the default view; the trace-challenge lane also needs a complete packet, which
- *  the composer verifies byte by byte once the lane is assigned. */
+ *  the composer verifies byte by byte once the lane is assigned, and the ground-truth lane needs a
+ *  request or brief that names a hardware target. */
 export function isolatedLaneGate(snapshot: Snapshot): Map<number, LaneGate> {
   const report = snapshot.view("default");
   const verified = report
     ? Object.values(report.batteries ?? {}).reduce((sum, battery) => sum + (battery.cases?.verified ?? 0), 0)
     : null;
+  const { campaign } = snapshot.status;
+  const namesHardware =
+    isString(campaign) && snapshot.runId !== null && namedTargets(campaign, snapshot.runId).length > 0;
   const gate = new Map<number, LaneGate>();
   for (const number of ISOLATED_ANGLES.keys()) {
     if (verified === null) {
@@ -383,6 +389,10 @@ export function isolatedLaneGate(snapshot: Snapshot): Map<number, LaneGate> {
       !existsSync(join(snapshot.dir, "trace-challenge", "trace-challenge-status.json"))
     ) {
       gate.set(number, { fired: false, reason: "the snapshot carries no trace-challenge packet" });
+      continue;
+    }
+    if (number === GROUND_TRUTH_LANE && !namesHardware) {
+      gate.set(number, { fired: false, reason: "neither the request nor the brief names a hardware target" });
       continue;
     }
     gate.set(number, { fired: true, reason: `${verified} verified case(s) recorded` });

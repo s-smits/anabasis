@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from "#src/meta/filesystem.ts";
 import { homedir } from "#src/meta/os.ts";
-import { join } from "#src/meta/path.ts";
+import { isAbsolute, join } from "#src/meta/path.ts";
 import {
   type ExitWith,
   absoluteOption,
@@ -55,8 +55,16 @@ const COMMANDS = {
 export type BatchPolicy = { model: string; effort: string; rule: string };
 /** The launch flags that shape the plan; each one overrides the batch policy for every task. */
 export type PlanOptions = { model?: string | undefined; effort?: string | undefined; write?: boolean };
-/** One task resolved to the model, effort and write mode its session runs with. */
-export type PlannedSession = { name: string; task: string; model: string; effort: string; write: boolean };
+/** One task resolved to the model, effort and write mode its session runs with, and the directory
+ *  it runs in when the task names its own rather than the launch's `--workdir`. */
+export type PlannedSession = {
+  name: string;
+  task: string;
+  model: string;
+  effort: string;
+  write: boolean;
+  workdir: string | undefined;
+};
 export type SessionPlan = { sessions: PlannedSession[]; policy: string };
 type SessionSummary = { name: string; model: string; effort: string; write: boolean };
 type LaunchOptions = {
@@ -135,7 +143,11 @@ export function planSessions(tasks: JsonValue, options: PlanOptions): SessionPla
     // it is stringified here instead, so a scalar arrives spelled the same.
     const model = shown(task.model ?? options.model ?? policy.model);
     const effort = requireEffort(task.effort ?? options.effort ?? policy.effort, `task ${name}`);
-    return { name, task: text, model, effort, write: Boolean(task.write ?? options.write) };
+    const { workdir } = task;
+    if (workdir !== undefined && (!isString(workdir) || !isAbsolute(workdir))) {
+      throw new Error(`task ${name}: workdir must be an absolute path`);
+    }
+    return { name, task: text, model, effort, write: Boolean(task.write ?? options.write), workdir };
   });
   return { sessions, policy: explicit ? "explicit flags" : policy.rule };
 }
@@ -178,7 +190,14 @@ function launch(options: LaunchOptions): number {
   const launched = plan.sessions.map((session) => {
     const promptFile = join(outDir, `${session.name}.prompt.md`);
     writeFileSync(promptFile, session.task, { mode: 0o600 });
-    const spec = { ...session, outDir, companion, workdir, promptFile, startedAt };
+    const spec = {
+      ...session,
+      outDir,
+      companion,
+      workdir: session.workdir ?? workdir,
+      promptFile,
+      startedAt,
+    };
     const specFile = join(outDir, `${session.name}.spec.json`);
     writeFileSync(specFile, JSON.stringify(spec, null, 2), { mode: 0o600 });
     const pid = spawnDetached(

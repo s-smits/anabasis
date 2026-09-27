@@ -19,6 +19,7 @@ import { readCaseCounts } from "#tools/runs/evidence.ts";
 import type { RunLocation } from "#tools/runs/discover.ts";
 import { openRecordedRun } from "#skills/main/run.ts";
 import { type DigestTrigger, jsonText, readJsonAsOrNull, type ScanFinding } from "./run-overview.ts";
+import { HARDWARE_TRIGGER } from "./hardware-target.ts";
 
 export const BRIEF_SCHEMA = "wri-brief/v1";
 
@@ -109,9 +110,18 @@ interface ReviewState {
 
 /** The lanes that read recorded campaign bytes alone. The other five open the measured checkout or
  *  an archive, which is work worth doing once a battery has scored something. */
-export const CAMPAIGN_LANES = ["climb", "yield", "posture", "timeline", "walls", "handoff", "gates"];
+export const CAMPAIGN_LANES = [
+  "climb",
+  "yield",
+  "posture",
+  "timeline",
+  "walls",
+  "handoff",
+  "gates",
+  "target",
+];
 
-/** How many semantic lanes each tier starts with, out of the 28 the catalogue declares. */
+/** How many semantic lanes each tier starts with, out of the 30 the catalogue declares. */
 export const SEMANTIC_LANES = { probe: 4, standard: 8, deep: 14 };
 
 /** The lanes a tier launches when no digest trigger picks any. Each tier keeps the set below it
@@ -128,7 +138,7 @@ export const DEFAULT_LANES = {
  * The semantic lanes each digest trigger starts, by the trigger's exact text before the first
  * colon. A trigger row the digest prints with a qualifier after that text still matches, because
  * the match is on the leading text. A trigger absent here is a lead with no lane of its own. Every
- * suffixed trigger names its own lane; the one unsuffixed trigger argues for two.
+ * suffixed trigger names its own lanes; the one unsuffixed trigger argues for two.
  */
 export const LANE_FOR_TRIGGER = new Map([
   ["VERSION TOOLCHAIN IS A SYMLINK (lane 2)", [2]],
@@ -160,6 +170,7 @@ export const LANE_FOR_TRIGGER = new Map([
   ["REVIEW HOLD CHAIN (lane 27)", [27]],
   ["CEILING ENDED RUN (lane 27)", [27]],
   ["EVALUATION CORRECTION REPLAY CANDIDATE (lane 28)", [28]],
+  [HARDWARE_TRIGGER, [29, 30]],
 ]);
 
 /** The lanes a grouped trigger starts, empty when the catalogue starts none from it. */

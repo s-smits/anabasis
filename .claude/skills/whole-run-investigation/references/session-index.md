@@ -3,7 +3,7 @@
 One sentence per row and per lane. Read this file to choose; read the body in
 [review-angles.md](review-angles.md), whose headings this file repeats byte for byte, because
 `build-manifest.ts` parses both and refuses the manifest when they drift. The nine rows are the
-primary reviewer's own work and are never delegated. The twenty-eight lanes are what a paid session
+primary reviewer's own work and are never delegated. The thirty lanes are what a paid session
 can be given, and each opens with the deterministic trigger that starts it, so a lane whose trigger
 never fired is not launched, whatever the tier allows.
 
@@ -37,7 +37,7 @@ and record each tool run's `source`, `digest` and `kind` under one `verifierEnvi
 **I. served-model attestation.** Read `runtimeIdentities[]` for a provider `resultId` per row,
 and refuse the identity claim, and nothing else, where a completed turn is unattested.
 
-## Semantic lanes 1–28
+## Semantic lanes 1–30
 
 **1. Request-to-verdict chain.** From an `in-process` check or an unread artifact root, say what
 the verdict observes and whether a host double inverts the target's semantics while passing.
@@ -128,12 +128,20 @@ defect.
 **28. Evaluation-correction regrade.** From an evaluation correction beside the battery of its recorded
 baseline, regrade that battery's accepted artifacts under the corrected evaluator and read the flips.
 
+**29. Hardware target coverage against public ground truth.** From `HARDWARE TARGET NAMED`, pair the
+harness's families, tools, roots and checks with the named target's vendor toolchain, datasheet and
+simulators, name the scope each check observed and the obligations only a higher scope observes.
+
+**30. Ground-truth verdict comparison.** Only when a hardware target is named and verified cases
+exceed zero: prove an adapter to an executable ground-truth instrument, freeze its verdicts, then
+report the two-by-two against the recorded verdicts; with no adapter, the adapter is the finding.
+
 ## Tiers
 
 The tier is the size of the recorded run, decided by `brief.ts` from the elapsed time, the epoch
 count and the battery count, and it bounds how many lanes a sweep may be given. Lanes are chosen
-by trigger; the default set applies only when no trigger picks. Twenty-eight is the ceiling, and
-lanes 7 and 23 are never counted in a tier: each is launched alone, and only when its own trigger
+by trigger; the default set applies only when no trigger picks. Thirty is the ceiling, and
+lanes 7, 23 and 30 are never counted in a tier: each is launched alone, and only when its own trigger
 fires.
 
 | tier | run shape | lanes | default set |
@@ -141,7 +149,7 @@ fires.
 | probe | not scored, or under two hours | 4 | 5, 8, 12, 25 |
 | standard | anything between | 8 | probe plus 1, 9, 14, 24 |
 | deep | twelve hours, three epochs or three batteries | 14 | standard plus 2, 6, 10, 11, 13, 22 |
-| isolated | a trigger for lane 7 or 23 fired | that lane, alone | — |
+| isolated | a trigger for lane 7, 23 or 30 fired | that lane, alone | — |
 
 A lane the tier names is still launched only on its trigger, so a standard run whose block 4d
 printed nothing gives lane 14 nothing to read and the sweep says so rather than launching it.

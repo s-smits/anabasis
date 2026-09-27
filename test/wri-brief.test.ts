@@ -19,6 +19,7 @@ import {
   tierOf,
 } from "../.claude/skills/whole-run-investigation/scripts/brief.ts";
 import { LANES, lanesForScope } from "../.claude/skills/whole-run-investigation/scripts/wri.ts";
+import { HARDWARE_TRIGGER } from "../.claude/skills/whole-run-investigation/scripts/hardware-target.ts";
 
 const RUN = "custom-test-20260919T000000000Z-abcdef";
 const START = "2026-09-19T00:00:00.000Z";
@@ -282,6 +283,8 @@ describe("what the read said", () => {
     expect(lanesForTrigger("MEMORY OVER READ CAP (lane 26)")).toEqual([26]);
     // The one unsuffixed trigger argues for two lanes, and a qualifier after its text still matches.
     expect(lanesForTrigger("UNTRIPPED IN SHIPPING (3 rules)")).toEqual([5, 6]);
+    // The hardware trigger starts the coverage lane and the isolated ground-truth lane together.
+    expect(lanesForTrigger(HARDWARE_TRIGGER)).toEqual([29, 30]);
     expect(lanesForTrigger("FAMILY UNMOVED all-pass")).toEqual([]);
     // A trigger that merely begins with a known name is not that trigger.
     expect(lanesForTrigger("UNTRIPPED IN SHIPPINGS")).toEqual([]);

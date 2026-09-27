@@ -12,20 +12,20 @@
 //   bun wri.ts launch  --out <abs review dir> [--lanes <count> | --sessions <spec>] [--effort max] [--title <t>] [--notes <f>] [--context <f>]
 //   bun wri.ts finish  --out <abs review dir>
 //   bun wri.ts census  [--root <campaign tree>] [--json] [--out <abs file>]
-//   bun wri.ts delta | climb | yield | timeline | walls | handoff | gates  <target> [--run <runId>] [--json] [--out <abs file>]
+//   bun wri.ts delta | climb | yield | timeline | walls | handoff | gates | target  <target> [--run <runId>] [--json] [--out <abs file>]
 //              delta [--repo <abs>] [--previous <commit | abs campaign dir>]; timeline [--classify];
-//              walls [--battery <runId>]
+//              walls [--battery <runId>]; target [--reference <abs dir>]
 //
 // `lanes` prints the deterministic catalogue and `scope` sizes one run. `read` runs the lanes named
 // by rank or by name, and with none named it sizes the run first and reads what that size earns
 // (brief.ts owns both the sizing and the digest). Every lane's output is captured to
 // `<review>/<lane>.txt` and the command prints one bounded brief instead, because the whole read is
 // the size of a paid lane's context. A lane whose report carries `triggers` also writes them to
-// `<review>/<lane>.triggers.json`, where the brief reads them beside the snapshot's own. The seven lanes that read in-process are also subcommands of
+// `<review>/<lane>.triggers.json`, where the brief reads them beside the snapshot's own. The eight lanes that read in-process are also subcommands of
 // their own, which print one lane's view, its JSON under `--json`, and record the JSON at `--out`.
 // `review` reads every lane, prints the brief and then launches the semantic lanes the run's tier
 // names; the ordinary path is `read`, then `launch --sessions` with the lanes the brief argues for,
-// each a number from the 28-lane catalogue. `brief` re-renders that digest from a finished review
+// each a number from the 30-lane catalogue. `brief` re-renders that digest from a finished review
 // directory. Use `collect` and `launch` separately only to edit `shared-instructions.json` between
 // them. `finish` validates the lane reports, scaffolds the archive from recorded bytes and
 // `verdicts.json`, then runs the archive validator; the investigation itself ends in one adjudicated
@@ -68,6 +68,7 @@ export interface ReadContext {
   previous: string | null;
   classify: boolean;
   battery: string | null;
+  reference: string | null;
 }
 
 /** What a lane inside a review reads: the in-process context plus the review's own paths. */
@@ -263,6 +264,18 @@ export const LANES: readonly Lane[] = [
     },
   },
   {
+    name: "target",
+    label: "hardware target",
+    options: ["reference"],
+    read: async (c) => {
+      const { buildHardwareTarget, renderHardwareTarget } = await import("./hardware-target.ts");
+      return shown(
+        buildHardwareTarget({ campaign: c.campaign, runId: c.runId, reference: c.reference }),
+        renderHardwareTarget,
+      );
+    },
+  },
+  {
     name: "archive",
     label: "archive validity",
     needs: (c) =>
@@ -271,7 +284,7 @@ export const LANES: readonly Lane[] = [
   },
 ];
 
-const TARGET = ["out", "campaign", "run", "repo"];
+const TARGET = ["out", "campaign", "run", "repo", "reference"];
 const LAUNCH = ["out", "lanes", "sessions", "effort", "title", "notes", "context"];
 /** Each subcommand's own options, so one a subcommand does not take is refused there. */
 const COMMANDS: Record<
@@ -368,6 +381,7 @@ function context(state: WriReviewState): LaneContext {
     previous: null,
     classify: true,
     battery: null,
+    reference: null,
   };
 }
 
@@ -543,7 +557,8 @@ async function runRead(
   console.log(
     `run ${state.runId} (${target.chosen}), ${scope.tier} tier\n  measured checkout ${repo ?? "not needed by the selected lanes"}\n  reading ${lanes.length} lane(s):`,
   );
-  const ctx = context(state);
+  const reference = args.value("reference");
+  const ctx = { ...context(state), reference: reference === null ? null : absolute(args, "reference") };
   for (const lane of lanes) await runLane(state, lane, ctx);
   console.log(`\n${renderBrief(reviewDir)}\n\nrecorded: ${statePath(reviewDir)}`);
   return state;
@@ -561,6 +576,7 @@ async function laneCommand(args: WriArgs, positional: string | null, lane: Readi
     previous: args.value("previous"),
     classify: args.flag("classify"),
     battery: args.value("battery"),
+    reference: args.value("reference") === null ? null : absolute(args, "reference"),
   });
   emitReport(report, { json: args.flag("json"), out, render: () => text });
 }

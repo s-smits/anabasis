@@ -17,6 +17,8 @@ import {
   DIGEST_VERDICTS,
   ISOLATED_ANGLES,
   FIX_AUTHORITY,
+  HARDWARE_LANES,
+  hardwareScratch,
   leafPrompt,
   PUBLIC_ONLY_LANE,
   SHA256 as SHA_256,
@@ -102,6 +104,8 @@ export interface InstructionInput extends SessionSet {
 export interface ManifestTask {
   name: string;
   task: string;
+  /** The one directory a hardware session may write, or null for a read-only session. */
+  scratch: string | null;
   admission: {
     schema: string;
     mode: string;
@@ -588,10 +592,23 @@ function isolationLines(session: LaunchSession, challenge: TraceChallengePaths |
   return lines;
 }
 
+/** The scratch line a hardware session's task carries, naming the one path it may write. */
+function scratchLines(scratch: string | null): string[] {
+  if (scratch === null) return [];
+  return [
+    "",
+    `Writable scratch: \`${scratch}\` is the one directory this session may write, and the one exception ` +
+      "to the shared instruction not to write: build adapters, compiler and simulator outputs and the " +
+      "session-owned verdict file there, and record each file's digest from there. The measured worktree, " +
+      "`campaigns/`, `domains/` and every other path stay read-only.",
+  ];
+}
+
 export function composeTasks(
   sessions: readonly LaunchSession[],
   challengeDir: string | null = null,
   challengeIdentity: ChallengeIdentity | null = null,
+  outDir: string | null = null,
 ): ManifestTask[] {
   const traceSession = sessions.find((session) =>
     session.lanes.some((lane) => lane.number === TRACE_CHALLENGE_LANE),
@@ -608,9 +625,13 @@ export function composeTasks(
   return sessions.map((session) => {
     const parts = taskParts(publicOnlySession(session) ? { ...session, direction: "" } : session);
     parts.push(...isolationLines(session, challenge));
+    const hardware = outDir !== null && session.lanes.some((lane) => HARDWARE_LANES.has(lane.number));
+    const scratch = hardware ? hardwareScratch(resolve(outDir), session.name) : null;
+    parts.push(...scratchLines(scratch));
     return {
       name: session.name,
       task: parts.join("\n"),
+      scratch,
       admission: {
         schema: "wri-progressive-admission/v2",
         mode: admissionMode,
@@ -665,7 +686,11 @@ function lunaArgs({
  *  tool's 600 s wall by codex-sessions.ts, so the reviewer writes no instruction packet by hand. */
 function writeCodexTasks(outPath: string, instructions: string, tasks: readonly ManifestTask[]): string {
   const codexTasksPath = join(outPath, "codex-tasks.json");
-  const rows = tasks.map(({ name, task }) => ({ name, task: leafPrompt(instructions, task) }));
+  const rows = tasks.map(({ name, task, scratch }) => {
+    const prompt = leafPrompt(instructions, task, scratch);
+    // A hardware session runs in, and writes, its own scratch; every other one reads.
+    return scratch === null ? { name, task: prompt } : { name, task: prompt, write: true, workdir: scratch };
+  });
   writeJsonFile(codexTasksPath, rows);
   return codexTasksPath;
 }
@@ -678,12 +703,19 @@ export function writeAndDispatch(input: DispatchInput): void {
   const launcherTasksPath = join(outPath, "luna-tasks.json");
   writeFileSync(instructionsPath, `${input.instructions.trimEnd()}\n`);
   writeJsonFile(tasksPath, input.tasks);
-  // The WRI manifest carries its admission ledger, while the Luna launcher intentionally accepts
-  // only its small {name, task} transport shape. Bind the two by the sidecar below rather than
-  // weakening the launcher schema with review-only metadata.
+  // The WRI manifest carries its admission ledger, while the Luna launcher accepts only its small
+  // transport shape: {name, task}, plus the workdir, sandbox and owned path of a hardware session.
+  // Bind the two by the sidecar below rather than weakening the launcher schema with review-only
+  // metadata.
+  // A hardware session runs inside its own scratch, the one root its workspace-write sandbox opens.
+  for (const { scratch } of input.tasks) if (scratch !== null) mkdirSync(scratch, { recursive: true });
   writeJsonFile(
     launcherTasksPath,
-    input.tasks.map(({ name, task }) => ({ name, task })),
+    input.tasks.map(({ name, task, scratch }) =>
+      scratch === null
+        ? { name, task }
+        : { name, task, workdir: scratch, sandbox: "workspace-write", ownedPaths: [scratch] },
+    ),
   );
   const authored =
     input.orientationText.length + input.sessions.reduce((sum, session) => sum + session.direction.length, 0);
@@ -754,8 +786,8 @@ function writeLaunchInput(
   { outputDir, workdir, tasksPath, launcherTasksPath, instructionsPath }: LaunchIdentity,
   input: DispatchInput,
 ): void {
-  const promptHash = (task: string): string =>
-    sha256(new TextEncoder().encode(leafPrompt(input.instructions, task)));
+  const promptHash = ({ task, scratch }: ManifestTask): string =>
+    sha256(new TextEncoder().encode(leafPrompt(input.instructions, task, scratch)));
   writeJsonFile(join(outputDir, "wri-launch-input.json"), {
     schema: "wri-luna-launch-input/v1",
     outputDir,
@@ -770,7 +802,7 @@ function writeLaunchInput(
       name: task.name,
       taskSha256: sha256(new TextEncoder().encode(task.task)),
       admissionSha256: sha256(new TextEncoder().encode(JSON.stringify(task.admission))),
-      promptSha256: promptHash(task.task),
+      promptSha256: promptHash(task),
     })),
   });
 }

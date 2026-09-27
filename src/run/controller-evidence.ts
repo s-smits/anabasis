@@ -9,6 +9,8 @@ import {
   writeCompleted,
 } from "../author/campaign-epoch.ts";
 import type { ResolvedSlots } from "../backends/resolve.ts";
+import { loadRepoEnv } from "../backends/env.ts";
+import { slotCredentials } from "../backends/login-state.ts";
 import { keyIfDefined } from "../meta/optional-key.ts";
 import { hashJsonValue } from "../meta/stable-json.ts";
 import { CONTROLLER_LOCK_FILE, type LockHolderState, lockHolderState, lockToken } from "./campaign-lock.ts";
@@ -277,6 +279,9 @@ function writeControllerOpening(input: {
     abandonedRuns: abandonedSiblingRuns(campaign, input.runId),
     epoch: { key: epoch.key, supersedes: epoch.supersedes },
     modelSlots: input.slots,
+    // Which account each slot's kind books against, as a source and a digest, never the token: a
+    // limit or a spend is per account, and the slots alone cannot say which account that was.
+    credentials: slotCredentials(input.slots, loadRepoEnv(input.repoRoot)),
     // budget.json spans runs and epochs, so a later run moves the counter and the file alone can
     // never say what this run spent — a campaign whose turn count is many times any one run's
     // iteration count leaves no reader able to say which run spent them. The snapshot at open and

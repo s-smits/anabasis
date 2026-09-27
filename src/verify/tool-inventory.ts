@@ -383,6 +383,27 @@ function resolveOne(
   return null;
 }
 
+/**
+ * The programs a solver's shell is to be denied under the withheld-instruments condition: every
+ * check tool id that resolves inside the candidate's own tool tree, by the path the verifier would
+ * run. A tool the host path supplies stays, because an interpreter or compiler shared with every
+ * process on the host is not an instrument the Builder made, and withholding it would take the
+ * solver's own runtime away with it. Sorted and unique; empty without a tool tree.
+ */
+export function withheldInstrumentPaths(toolIds: readonly string[], toolTree: string | null): string[] {
+  if (toolTree === null) return [];
+  // The tree precedes the host in `resolveToolInventory`'s search, so the first tree directory
+  // holding the id is the path the verifier runs. Found without hashing: that walk would cost a
+  // whole-tree digest at every solve start and decide nothing here.
+  const dirs = toolTreeSearchDirs(toolTree);
+  const paths = toolIds.flatMap((id) => {
+    if (!TOOL_ID_RE.test(id)) return [];
+    const path = dirs.map((dir) => resolve(dir, id)).find((candidate) => isExecutableFile(candidate));
+    return path === undefined ? [] : [path];
+  });
+  return [...new Set(paths)].sort(compareCodeUnits);
+}
+
 /** Resolve every declared tool id once. The tool tree wins over the host path so a Builder that
  *  installed a newer compiler measures against it; the entry says which one was taken. */
 export function resolveToolInventory(input: ResolveToolInventoryInput): ResolvedToolInventory {

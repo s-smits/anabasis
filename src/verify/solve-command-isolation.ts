@@ -81,6 +81,7 @@ type CommandIsolationIdentity =
       readDenies: string[];
       network: "shared";
       toolTree: string | null;
+      withheld?: string[];
     }
   | {
       schema: typeof BUILT_COMMAND_ISOLATION_FIXTURE;
@@ -94,6 +95,7 @@ type CommandIsolationIdentity =
       userTempRoots: string[];
       writeDenies: string[];
       toolTree: string | null;
+      withheld?: string[];
     };
 
 /**
@@ -161,6 +163,8 @@ interface CommandIsolationPolicy {
   /** What stays closed under the open read default. Darwin carries these inside `profile` as
    *  rules; Linux has no profile text, so `stageCommandIsolation` overmounts each one from here. */
   readDenies: string[];
+  /** Withheld programs in both path forms; Linux overmounts each real file, Darwin emits a rule. */
+  withheld: string[];
   /** The complete non-secret environment given to this command. Linux serialises it as bwrap
    *  `--setenv` entries after its mandatory `--clearenv`; Darwin passes the same map to pi. */
   environment: CommandIsolationEnvironment;
@@ -187,6 +191,9 @@ interface CommandDirectories {
   /** The adopted harness's own `.toolchain` tree, read-only and first on PATH; null when the
    *  bundle has none. */
   toolTree?: string | null;
+  /** Programs inside that tree the command may neither run nor read, under the withheld-instruments
+   *  launch condition (`withheldInstrumentPaths`); empty or absent everywhere else. */
+  withheld?: readonly string[];
 }
 
 /**
@@ -274,7 +281,12 @@ function commandReadAllows(
   return [...new Set([...covered, ...own])].sort();
 }
 
-function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[], toolTree: string | null) {
+function darwinCommandProfile(
+  base: SolveIsolationPolicy,
+  scratchRoots: string[],
+  toolTree: string | null,
+  withheld: string[],
+) {
   const writeDenies = [...new Set(["/", ...base.deniedWriteRoots])].sort();
   const scratchParent = canonicalForms(BUILT_COMMAND_SCRATCH_ROOT).sort();
   // Under a deny-default read rule one command's scratch tree stayed private without a rule of its
@@ -320,6 +332,10 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
     // prints the file while `ls` of its directory and the shell's PATH search over it answer
     // "Operation not permitted". Naming both operations in the allow puts this rule back in charge.
     ...sbRule("allow file-read* file-read-metadata", "subpath", readAllows),
+    // A withheld program inside the tool tree just reopened, closed after that allow so that it
+    // wins: without metadata the PATH search passes over it, and without read or exec neither the
+    // name nor the file runs.
+    ...sbRule("deny file-read* file-read-metadata process-exec", "literal", withheld),
     // The parent of every command's scratch tree, closed for the same three operations the
     // temporary grant above opened. `file-read-metadata` is named outright for the same specificity
     // reason: without it, one command's `stat` of another command's draft file reports its size
@@ -352,6 +368,7 @@ function darwinCommandProfile(base: SolveIsolationPolicy, scratchRoots: string[]
       userTempRoots: tempRoots,
       writeDenies,
       toolTree,
+      ...withheldKey(withheld),
     } satisfies CommandIsolationIdentity,
   };
 }
@@ -364,6 +381,7 @@ export function commandIsolationPolicy(
     ...new Set([...canonicalForms(dirs.work), ...canonicalForms(dirs.home), ...canonicalForms(dirs.temp)]),
   ].sort();
   const toolTree = dirs.toolTree ?? null;
+  const withheld = [...new Set((dirs.withheld ?? []).flatMap((path) => canonicalForms(path)))].sort();
   const linux = base.mechanismId === LINUX_BWRAP_ID;
   /*
    * What the Linux command wall overmounts, now that its reads open by default: the session's
@@ -399,9 +417,10 @@ export function commandIsolationPolicy(
           readDenies,
           network: "shared",
           toolTree,
+          ...withheldKey(withheld),
         } satisfies CommandIsolationIdentity,
       }
-    : darwinCommandProfile(base, scratchRoots, toolTree);
+    : darwinCommandProfile(base, scratchRoots, toolTree, withheld);
   return {
     profileId: BUILT_COMMAND_ISOLATION_PROFILE_ID,
     mechanismId: base.mechanismId,
@@ -411,8 +430,15 @@ export function commandIsolationPolicy(
     scratchRoots,
     readAllowRoots: linux ? readAllowRoots : identity.readAllows,
     readDenies,
+    withheld,
     environment: commandIsolationEnvironment(dirs),
   };
+}
+
+/** The identity key only when something is withheld, so a policy with none hashes exactly as it
+ *  did before the condition existed. */
+function withheldKey(withheld: string[]): { withheld?: string[] } {
+  return withheld.length === 0 ? {} : { withheld };
 }
 
 /** Escapes one argument for a `/bin/sh -c` command line. A single quote ends the literal, so the
@@ -451,6 +477,12 @@ export function stageCommandIsolation(
       ...bwrapOpenReadArgs({ network: true }),
       ...bwrapTmpfsDenies(policy.readDenies),
       ...bwrapReadBinds(policy.readAllowRoots),
+      // Each withheld program's real file, overmounted by the empty device after the tool tree was
+      // bound back, so the name runs nothing and the file reads empty. A link path is skipped: its
+      // target is in the list as its own real form, and a bind cannot land on a link.
+      ...policy.withheld.flatMap((path) =>
+        canonicalForms(path).length === 1 ? ["--ro-bind", "/dev/null", path] : [],
+      ),
       ...bwrapWriteBinds(policy.scratchRoots),
       ...[
         "/",

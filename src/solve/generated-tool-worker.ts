@@ -31,6 +31,7 @@ import {
 import type { BuiltControllerInterface } from "../correctness-bundle/contracts.ts";
 import { CONFORMANCE_PROBE_POLICY, type ConformanceEvidence } from "../claim/conformance-evidence.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
+import { checkInstrumentPaths } from "../correctness-bundle/check-instruments.ts";
 import { fileArtifactRoot, fileArtifactRootIssue } from "./draft-files.ts";
 import { fileMapDigest } from "./draft-store.ts";
 import type { SubmissionPort } from "./final-submission.ts";
@@ -90,6 +91,9 @@ export interface GeneratedToolStarterOptions {
   traceTaskAccess?: boolean;
   /** The measuring run, carried for the shell's own safeguard; absent outside a resolved run. */
   safeguardContext?: SafeguardContext;
+  /** The operator's launch condition: the shell may not run a check's required tool that resolves
+   *  from the bundle's `.toolchain`. Absent or false leaves the shell exactly as it was. */
+  withholdInstruments?: boolean;
 }
 /** One shared projection for the build-time and production worker identity checks. */
 export function generatedToolWorkerBinding(worker: GeneratedToolWorkerCondition): GeneratedToolWorkerBinding {
@@ -378,6 +382,7 @@ export async function createGeneratedToolStarter(
               home,
               publicResourceFiles: seedSessionHome(home, options.task, readPublicResources(options.slugDir)),
               toolTree: bundleSnapshotToolTree(options.slugDir),
+              withheld: options.withholdInstruments === true ? checkInstrumentPaths(options.slugDir) : [],
               timeouts: settings,
               ...keyIfDefined("safeguardContext", options.safeguardContext),
             }),

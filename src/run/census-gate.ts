@@ -514,12 +514,13 @@ function settleNonResult(
 function rerunDetail(context: CensusContext, rerun: TimeoutRerun | undefined): string {
   if (rerun === undefined) return "";
   const { first, slowestCompletedMs, load } = rerun;
-  const ceilingMs = harnessSettings(context.slugDir).toolRunMs;
+  const { toolRunMs: ceilingMs, checkWallMs } = harnessSettings(context.slugDir);
+  const maximumMs = DEFAULT_HARNESS_SETTINGS.toolRunMs * HOST_MAXIMUM_FACTOR;
   const slowest =
     slowestCompletedMs === null
       ? `No run of tool "${first.toolId}" on check "${first.checkId}" completed in this census`
       : `The slowest run of tool "${first.toolId}" on check "${first.checkId}" that completed in this census took ${slowestCompletedMs} ms`;
-  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the harness ceiling (gate.tool_run_seconds) is ${ceilingMs} ms, and a wall below it is the timeoutMs the evaluator requested. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, up to the ceiling, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
+  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now ${ceilingMs} ms, which the host accepts up to ${maximumMs} ms, and a wall below it is the timeoutMs the evaluator requested; one check with all its tool runs is held to gate.check_seconds, now ${checkWallMs} ms. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, raising the ceiling where it needs to, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
 }
 
 function settleToolUnavailable(

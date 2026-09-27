@@ -35,10 +35,11 @@ const refusal = (text: string): string | undefined =>
   harnessConfigIssue(workspace(text))?.slice(`${HARNESS_CONFIG_FILE} `.length);
 
 describe("agent/config.yaml", () => {
-  it("seeds the starter with exactly the defaults and warns before an increase or a short solver wall", () => {
+  it("seeds the starter with exactly the defaults and states the host bounds on an increase or a short solver wall", () => {
     expect(readFileSync(join(STARTER, HARNESS_CONFIG_FILE), "utf8")).toContain(
-      "the host refuses a value far above its seeded one, or a solver value far below it",
+      "the host refuses a value more than ten times its seeded one, or a solver value below a\n# tenth of it",
     );
+    expect(readFileSync(join(STARTER, HARNESS_CONFIG_FILE), "utf8")).not.toContain("far above");
     expect(harnessSettings(STARTER)).toEqual(DEFAULT_HARNESS_SETTINGS);
   });
 

@@ -229,12 +229,15 @@ describe("a census that ends in a verifier non-result", () => {
       "(attempt 2)",
       "timed out first beside the other reference tasks after 60140 ms, then again when rerun alone",
       'slowest run of tool "truss-contract-checker" on check "design-contract" that completed in this census took 57300 ms',
-      "the harness ceiling (gate.tool_run_seconds) is",
+      "the ceiling is this harness's own setting gate.tool_run_seconds in agent/config.yaml, now 300000 ms, which the host accepts up to 3000000 ms",
+      "one check with all its tool runs is held to gate.check_seconds, now 600000 ms",
+      "raising the ceiling where it needs to",
       "Host load average was 11.3 at the first timeout and 3.5 at the second, on 8 cores",
     ]) {
       expect(finding?.detail).toContain(fact);
     }
     expect(finding?.detail).not.toContain("t17");
+    expect(finding?.detail).not.toContain("up to the ceiling,");
   });
 
   it("adds no rerun sentence to a timeout that never earned a rerun", async () => {

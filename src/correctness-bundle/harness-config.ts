@@ -2,8 +2,9 @@
  *  submitted snapshot by the solver, the submit gate and measurement, so all three run the harness
  *  under the walls it asked for rather than three separate sets (operator decision).
  *
- *  The Builder is told the file exists, not what it holds, and the host maximums live only here
- *  under `src/correctness-bundle/`, which the Builder cannot read. Each maximum is ten times its
+ *  The Builder is told the file exists, not what it holds. The seeded file and a timeout finding
+ *  state the host maximums, because a Builder that could not see them read a gate wall as a hard
+ *  cap and spent hours re-engineering its tool runs to fit under it. Each maximum is ten times its
  *  default, which leaves a harness room to ask for what its domain needs without being able to
  *  declare a wall that never cuts. The solver's walls also stop at a tenth of their defaults: below
  *  that the solver never sees a command return, and the wall's own submit of its first draft is what
@@ -25,6 +26,8 @@ const SETTINGS = {
   gate: { reference_solve_seconds: 120, census_minutes: 30, check_seconds: 600, tool_run_seconds: 300 },
   battery: { solve_concurrency: 3 },
 } as const;
+
+/** How far above its default the host accepts a setting, and how far below it a solver wall. */
 export const HOST_MAXIMUM_FACTOR = 10;
 
 type Section = keyof typeof SETTINGS;

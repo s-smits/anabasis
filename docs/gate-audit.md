@@ -101,6 +101,13 @@ Refuses agent code importing the correctness model, an unvetted package or a bui
 material, non-regular files and capability escapes (`src/claim/bundle-validation.ts`,
 `src/claim/fingerprint.ts`). This is the isolation of hidden data from the solver.
 
+The capability-escape scan (`correctness-model-capability-escape`) reads the code the verifier
+runs, since 2026-09-27: `evaluator.ts` and `reference/index.ts` with every module each reaches at
+run time (`verifierSourceFiles`, over `runtimeClosure` in `src/claim/scoring-closure.ts`). It used
+to read every code file but those named `*.test.*`, and its one recorded firing, firmware
+9c0c68b1-10 seq 37, refused a `local-runtime.test-support.ts` only `evaluator.test.ts` imported;
+the Builder moved it to `scratch/`. A file's name now decides nothing either way.
+
 ### experiment-plan-schema
 
 Refuses an `EXPERIMENT.json` that does not read as `experiment-plan/v2` (`experiment-plan-schema`,

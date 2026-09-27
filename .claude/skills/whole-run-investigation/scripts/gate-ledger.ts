@@ -177,7 +177,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
       "non-regular-entry",
       "unvetted-import",
     ],
-    "the walls keep hidden data out of the agent side",
+    "the walls keep hidden data out of the agent side; the escape scan reads the verifier's import closure",
   ),
   row(
     ["ID-3", "condition-identity", "kept"],

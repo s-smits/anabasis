@@ -4,8 +4,12 @@
  * process remains a separate runtime boundary.
  */
 import * as ts from "typescript5";
-import type { BundleFile } from "./bundle-hash.ts";
+import { realpathSync } from "../meta/filesystem.ts";
+import { relative } from "../meta/path.ts";
+import { EVALUATOR_FILE } from "../meta/bundle-layout.ts";
+import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
 import { specifiersIn } from "./bundle-validation.ts";
+import { runtimeClosure } from "./scoring-closure.ts";
 
 type GeneratedCorrectnessModelCapabilityEscapeKind = "child-process" | "ambient-environment-spread";
 
@@ -16,7 +20,6 @@ interface GeneratedCorrectnessModelCapabilityEscape {
 }
 
 const CODE_EXTENSION = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
-const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
 
 function unwrapParentheses(node: ts.Expression): ts.Expression {
   let current = node;
@@ -134,8 +137,16 @@ export function generatedCorrectnessModelCapabilityEscapes(
   return candidates;
 }
 
-/** Correctness-model files this scan reads: authored modules, never the Builder's own tests, which
- *  sit outside the verifier's runtime closure. */
-export function scannableBundleSource(file: BundleFile): boolean {
-  return CODE_EXTENSION.test(file.path) && !TEST_FILE.test(file.path);
+/** The correctness-model code the host runs, relative to the package: the evaluator and the
+ *  reference solve with every module each reaches at run time (`runtimeClosure`). A file's name
+ *  decides nothing. A helper only a Builder test imports never runs in the verifier, and recorded
+ *  firmware 9c0c68b1-10 was refused for exactly such a `local-runtime.test-support.ts`; a test module
+ *  the evaluator imports runs with it. */
+export function verifierSourceFiles(correctnessModelDir: string): string[] {
+  const entries = [EVALUATOR_FILE, REFERENCE_SOLVE_ENTRY].map((entry) =>
+    relative("correctness-model", entry),
+  );
+  return runtimeClosure(realpathSync(correctnessModelDir), entries)
+    .files.filter((path) => CODE_EXTENSION.test(path))
+    .sort();
 }

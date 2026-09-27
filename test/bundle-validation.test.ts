@@ -169,19 +169,20 @@ describe("bundle isolation checks", () => {
     ).toEqual(["answers.json", "hidden-expectations.ts"]);
   });
 
-  it("scans every generated correctnessModel code module for capability escapes, leaving casts and the Builder's tests free", () => {
+  it("scans the code the verifier runs for capability escapes, whatever the files are named, and nothing else", () => {
     const dir = slugDir();
     write(dir, AGENT_TOOLS_TS, "export const tools = [];\n");
     write(dir, BRIEF_FILE, "{}\n");
+    const spawnsNode = 'import { spawnSync } from "node:child_process";\nspawnSync("node");\n';
     write(
       dir,
       CORRECTNESS_MODEL_EVALUATOR_TS,
-      "export const solve = () => ({});\nexport const evaluate = () => ({ ok: true, issues: [] });\n",
+      'import "./helper.mts";\nimport "./loaders.ts";\nimport "./checks.test.ts";\nexport const evaluate = () => ({ ok: true, issues: [] });\n',
     );
     write(
       dir,
       "correctness-model/helper.mts",
-      'import { spawnSync } from "node:child_process";\nspawnSync("node");\nexport const relay = (value: unknown) => value as unknown as string;\n',
+      `${spawnsNode}export const relay = (value: unknown) => value as unknown as string;\n`,
     );
     // Every loader form the shared module-operand reader sees still refuses.
     write(
@@ -189,17 +190,34 @@ describe("bundle isolation checks", () => {
       "correctness-model/loaders.ts",
       'export * from "child_process";\nconst cp = require("child_process");\nexport const later = () => import("node:child_process");\n',
     );
+    // A test-named module the evaluator imports runs in the verifier.
+    write(dir, "correctness-model/checks.test.ts", spawnsNode);
+    write(
+      dir,
+      "correctness-model/reference/index.ts",
+      'import "./env.ts";\nexport const solve = () => ({});\n',
+    );
+    write(dir, "correctness-model/reference/env.ts", "export const env = { ...process.env, A: 1 };\n");
+    // Recorded firmware 9c0c68b1-10: a support module only the Builder's test imports never runs.
     write(
       dir,
       "correctness-model/evaluator.test.ts",
-      'import { spawnSync } from "node:child_process";\nconst runtime = {} as any;\nspawnSync("frame3dd", [String(runtime)]);\n',
+      `import "./local-runtime.test-support.ts";\n${spawnsNode}`,
     );
+    write(
+      dir,
+      "correctness-model/local-runtime.test-support.ts",
+      'export const run = () => Bun.spawn(["node"], { env: { ...process.env, LANG: "C" } });\n',
+    );
+    write(dir, "correctness-model/unimported.ts", spawnsNode);
     const result = fingerprintSlug(dir);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.findings.map((finding) => finding.file)).toEqual([
+      "correctness-model/checks.test.ts",
       "correctness-model/helper.mts",
       ...Array.from({ length: 3 }, () => "correctness-model/loaders.ts"),
+      "correctness-model/reference/env.ts",
     ]);
     expect(new Set(result.findings.map((finding) => finding.code))).toEqual(
       new Set(["correctness-model-capability-escape"]),

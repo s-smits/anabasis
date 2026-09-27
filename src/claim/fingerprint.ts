@@ -11,7 +11,7 @@ import { sha256 } from "../meta/digest.ts";
 import { type BundleFile, IrregularBundleEntryError, hashBundle } from "./bundle-hash.ts";
 import {
   generatedCorrectnessModelCapabilityEscapes,
-  scannableBundleSource,
+  verifierSourceFiles,
 } from "./correctness-model-hygiene.ts";
 import {
   type BundleValidationFinding,
@@ -137,19 +137,14 @@ export function fingerprintSlug(
       })),
     };
   }
-  // Brief-marked generated source may not spawn processes or forward the ambient environment.
-  // `scannableBundleSource` leaves test files out, since they are not part of what the verifier
-  // executes.
+  // Brief-marked generated source the verifier runs may not spawn processes or forward the ambient
+  // environment. Code only the Builder's own tests reach is not part of what the verifier executes.
   const correctnessModelSourceFindings: BundleValidationFinding[] = generated
-    ? correctnessModel.files.flatMap((file) => {
-        if (!scannableBundleSource(file)) return [];
-        const source = parseGeneratedSource(
-          readFileSync(join(correctnessModelDir, file.path), "utf8"),
-          file.path,
-        );
+    ? verifierSourceFiles(correctnessModelDir).flatMap((path) => {
+        const source = parseGeneratedSource(readFileSync(join(correctnessModelDir, path), "utf8"), path);
         return generatedCorrectnessModelCapabilityEscapes(source).map((capabilityEscape) => ({
           code: "correctness-model-capability-escape" as const,
-          file: `correctness-model/${file.path}`,
+          file: `correctness-model/${path}`,
           detail:
             capabilityEscape.kind === "child-process"
               ? `generated correctnessModel loads ${capturedJsonStringify(capabilityEscape.token)} directly — process execution belongs to the controller-owned verifier host, never model-authored correctnessModel source`

@@ -30,10 +30,12 @@ export const REFUSAL_BAR = 0.98;
  * under its own row.
  */
 export const QUALIFIERS = new Map<string, { beside: readonly string[]; reason: string }>([
-  [
-    "tool-timeout",
-    { beside: ["CT-3", "GR-2"], reason: "the tool-run detail of a no-verdict or a census wall" },
-  ],
+  ...["tool-timeout", "tool-no-result", "tool-crash", "tool-wall-refusal", "tool-unavailable"].map(
+    (code): [string, { beside: readonly string[]; reason: string }] => [
+      code,
+      { beside: ["CT-3", "GR-2"], reason: "the tool-run detail of a no-verdict or a census wall" },
+    ],
+  ),
   ["SOLVABILITY_CENSUS_BLOCKED", { beside: ["F2-1"], reason: "the census half of an F2 verdict refusal" }],
   [
     "SOLVABILITY_FAILURE_CONCENTRATION",
@@ -188,7 +190,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
   // F2: reference solve
   row(
     ["F2-1", "f2-reference-verdict", "narrowed"],
-    [0.85, 0.1],
+    [0.88, 0.1],
     [
       "SOLVABILITY_CENSUS_BLOCKED",
       "SOLVABILITY_INSTALLED_TOOLS_SUSPECT",
@@ -199,7 +201,8 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ],
     "15 episodes to 2026-09-25: 8 true, 3 the candidate's own .toolchain told as the reference " +
       "(now named as the tools), 4 host limits (stdout cap and 126/127 now tool non-results; " +
-      "QEMU wall and host load remain); firmware-10 was never repaired",
+      "QEMU wall and host load remain); firmware-10 was never repaired. Four more on 2026-09-27, " +
+      "each right about the bytes, one of them the controller's own venv reseeding charged to the author",
   ),
   row(
     ["F2-2", "f2-representation-defect", "narrowed"],
@@ -226,11 +229,12 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
   ]),
   row(
     ["F2-5", "f2-host-nonresult", "rewritten"],
-    [0.9, 0.1],
+    [0.8, 0.15],
     ["solvability-submission-path-host-non-result", "solvability-reference-solve-host-non-result"],
     "8 recorded firings (7 read as gate-unvalidated, 1 as gate-environment), none on the candidate's " +
       "bytes and each cleared on a later check of the same bytes; since 2026-09-27 a case gets one " +
-      "fresh attempt inside the census before the host's non-result stands",
+      "fresh attempt inside the census before the host's non-result stands. A ninth on 2026-09-27 " +
+      "fired after that attempt, and the next submit of the same config was accepted",
     ["gate-environment"],
   ),
   // CT: controls and census
@@ -244,11 +248,13 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["CT-2", "accept-control-rejected", "kept"],
     [0.97, 0.03],
     ["DISCRIMINATION_ACCEPT_REJECTED", "DISCRIMINATION_CONTROL_RECEIPT_INVALID"],
-    "7 of 8 recorded episodes real; a tool that did no work in the census routes to .toolchain since 2026-09-27",
+    "7 of 8 recorded episodes real, and 5 more on 2026-09-27 all right about the bytes, one of them the " +
+      "controller's own venv reseeding charged to the author; a tool that exited 126 or 127 and did no " +
+      "work in the census routes to .toolchain since 2026-09-27",
   ),
   row(
     ["CT-3", "controls-no-verdict", "narrowed"],
-    [0.9, 0.05],
+    [0.92, 0.05],
     [
       "DISCRIMINATION_PROBE_NO_VERDICT",
       "DISCRIMINATION_NOT_PROVEN",
@@ -256,7 +262,9 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
       "tool-timeout",
       "DISCRIMINATION_CHECK_TIMED_OUT",
     ],
-    "every recorded blocking firing was a timeout, most the tool's cost under four lanes; F2 cases and control rejects rerun alone since 2026-09-27, and a check whose rejects all timed out holds the claim open without refusing; a tool the host refused twice is the environment's for an authored check as for an external one",
+    "every recorded blocking firing was a timeout, most the tool's cost under four lanes; F2 cases and control rejects rerun alone since 2026-09-27, and a check whose rejects all timed out holds the claim open without refusing; a tool the host refused twice is the environment's for an authored check as for an external one; " +
+      "both 2026-09-27 firings were real, an external check fed altered content and a tool writing past " +
+      "the 1 MiB of stdout the host reads",
   ),
   row(["CT-4", "reject-discrimination", "rewritten"], [0.95, 0.03], [], "became R2"),
   row(
@@ -457,6 +465,7 @@ export const DELIBERATELY_UNLEDGERED = new Map<string, string>([
     "brief-duplicate-decision-id",
     "brief-duplicate-design-rule-constant",
     "brief-duplicate-join-id",
+    "brief-join-check-ownership-invalid",
     "brief-no-artifact-schema",
     "brief-no-truth-checks",
     "brief-numeric-boundary-duplicate",

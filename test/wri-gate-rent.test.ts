@@ -214,9 +214,9 @@ describe("gate-ledger against the source", () => {
       ),
     );
     expect(constructed.size).toBeGreaterThan(50);
-    // Two refusals that recorded runs show firing and no audit has scored: printed as unledgered
-    // until one does, so lane 27 names them rather than this list hiding them.
-    const unscoredButFiring = ["brief-join-check-ownership-invalid", "gate-unvalidated"];
+    // A refusal recorded runs show firing and no audit has scored: printed as unledgered until
+    // one does, so lane 27 names it rather than this list hiding it.
+    const unscoredButFiring = ["gate-unvalidated"];
     expect([...constructed].filter((code) => !known.has(code)).sort()).toEqual(unscoredButFiring);
   });
 

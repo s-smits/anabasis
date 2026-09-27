@@ -85,9 +85,9 @@ test("batch policy: up to five sessions take Sol medium, six or more take Luna x
     rule: "1-5 sessions: gpt-5.6-sol medium",
   });
   assert.deepEqual(batchPolicy(6), {
-    model: "gpt-5.6-luna",
+    model: "gpt-6-luna",
     effort: "xhigh",
-    rule: "6+ sessions: gpt-5.6-luna xhigh",
+    rule: "6+ sessions: gpt-6-luna xhigh",
   });
   assert.throws(() => batchPolicy(0), /at least one session/);
 });
@@ -108,14 +108,14 @@ test("planSessions applies the policy, keeps explicit choices and refuses bad ro
     Array.from({ length: 6 }, (_, index) => ({ name: `s${index}`, task: "q" })),
     {},
   );
-  assert.equal(six.sessions[5]?.model, "gpt-5.6-luna");
+  assert.equal(six.sessions[5]?.model, "gpt-6-luna");
   assert.equal(six.sessions[5]?.effort, "xhigh");
   const explicit = planSessions(
     [
       { name: "a", task: "x" },
       { name: "b", task: "y", effort: "max" },
     ],
-    { model: "gpt-5.6-luna", effort: "high" },
+    { model: "gpt-6-luna", effort: "high" },
   );
   assert.equal(explicit.policy, "explicit flags");
   assert.deepEqual(
@@ -198,7 +198,7 @@ test("plan-only prints the resolved batch without spawning", () => {
   assert.equal(result.code, 0, result.stderr);
   const plan = parseJsonAs<{ event: string; policy: string; sessions: unknown[] }>(result.stdout.trim());
   assert.equal(plan.event, "codex_sessions.plan");
-  assert.equal(plan.policy, "6+ sessions: gpt-5.6-luna xhigh");
+  assert.equal(plan.policy, "6+ sessions: gpt-6-luna xhigh");
   assert.equal(plan.sessions.length, 6);
   assert.equal(existsSync(join(dir, "out")), false);
 });

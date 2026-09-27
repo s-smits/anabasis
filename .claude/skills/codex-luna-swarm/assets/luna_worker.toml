@@ -1,6 +1,6 @@
 name = "luna_worker"
 description = "Handles clear, repeatable, high-volume tasks with bounded scope and concise handoffs."
-model = "gpt-5.6-luna"
+model = "gpt-6-luna"
 model_reasoning_effort = "max"
 service_tier = "fast"
 

@@ -9,7 +9,7 @@
 //
 // tasks.json is an array of { name, task, model?, effort?, write? }. Without an explicit model and
 // effort the operator's batch policy of 2026-09-04 applies: up to five sessions run gpt-5.6-sol at
-// medium, six or more run gpt-5.6-luna at xhigh, all started together.
+// medium, six or more run gpt-6-luna at xhigh, all started together.
 import {
   closeSync,
   existsSync,
@@ -93,7 +93,7 @@ export function usage(): string {
       ">] [--write] [--companion <abs path>] [--plan-only]",
     "codex-sessions.ts status --out-dir <abs dir>",
     "codex-sessions.ts drain --out-dir <abs dir>",
-    "Batch policy when model and effort are not given: 1-5 sessions gpt-5.6-sol/medium, 6+ gpt-5.6-luna/xhigh.",
+    "Batch policy when model and effort are not given: 1-5 sessions gpt-5.6-sol/medium, 6+ gpt-6-luna/xhigh.",
   ].join("\n");
 }
 
@@ -101,7 +101,7 @@ export function batchPolicy(count: number): BatchPolicy {
   if (!Number.isInteger(count) || count < 1) throw new Error("a batch needs at least one session");
   return count <= 5
     ? { model: "gpt-5.6-sol", effort: "medium", rule: "1-5 sessions: gpt-5.6-sol medium" }
-    : { model: "gpt-5.6-luna", effort: "xhigh", rule: "6+ sessions: gpt-5.6-luna xhigh" };
+    : { model: "gpt-6-luna", effort: "xhigh", rule: "6+ sessions: gpt-6-luna xhigh" };
 }
 
 function requireEffort(value: JsonValue | undefined, where: string): string {

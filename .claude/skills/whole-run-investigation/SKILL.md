@@ -150,7 +150,7 @@ above carry some of them.
 
 The catalogue is exactly twenty-eight semantic lanes, in one file after the rows, each a contiguous
 `**N. Title.**` heading that `scripts/catalogue-shape.ts` counts as `ANGLE_COUNT`. Each asks one
-sharp question, and they fall into seven groups. One independent `gpt-5.6-luna` session at `max`
+sharp question, and they fall into seven groups. One independent `gpt-6-luna` session at `max`
 per lane is the shape of a lane; [Codex Luna Swarm](../codex-luna-swarm/SKILL.md) owns transport
 and collection, and there is no coordinator and no further delegation. Honour an explicit
 supported model, effort and grouping override through the matching transport.

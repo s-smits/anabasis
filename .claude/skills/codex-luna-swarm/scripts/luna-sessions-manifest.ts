@@ -48,7 +48,7 @@ export type LunaSession = {
   ownedPaths: string[];
 };
 
-const MODEL = "gpt-5.6-luna";
+const MODEL = "gpt-6-luna";
 const DEFAULT_REASONING_EFFORT = "max";
 const REASONING_EFFORTS = new Set(["high", "xhigh", "max"]);
 const SANDBOXES: ReadonlySet<string> = new Set(["read-only", "workspace-write"]);

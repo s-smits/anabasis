@@ -676,7 +676,7 @@ describe("what a launch composes", () => {
       );
     }
     expect(result.stdout).toContain("codex-sessions.ts launch --tasks-file");
-    expect(result.stdout).toContain("--model gpt-5.6-luna --effort max");
+    expect(result.stdout).toContain("--model gpt-6-luna --effort max");
   });
 
   it("launches from an incomplete snapshot and names each failed view with its captured error", () => {

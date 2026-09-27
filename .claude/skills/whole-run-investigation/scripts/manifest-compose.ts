@@ -712,7 +712,7 @@ export function writeAndDispatch(input: DispatchInput): void {
       "--workdir",
       input.worktree,
       "--model",
-      "gpt-5.6-luna",
+      "gpt-6-luna",
       "--effort",
       input.effort,
     ];

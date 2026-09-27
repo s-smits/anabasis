@@ -17,7 +17,7 @@ while seven sessions on one bounded question belong here. This skill is limited 
 around one bounded question.
 
 Sessions are Codex subagents under the operator's batch policy: two to five independent
-questions run on `gpt-5.6-sol` at `medium`, six or more on `gpt-5.6-luna` at `xhigh`, launched
+questions run on `gpt-5.6-sol` at `medium`, six or more on `gpt-6-luna` at `xhigh`, launched
 together. `codex-luna-swarm` owns the transport, including the direct companion call from Claude
 Code. Use a Claude subagent only when the operator names one (`fable-low` for Fable), and never
 more than two at once. A current user instruction naming another model takes precedence. Use more

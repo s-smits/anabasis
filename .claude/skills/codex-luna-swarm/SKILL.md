@@ -1,6 +1,6 @@
 ---
 name: codex-luna-swarm
-description: Launch, start, monitor, and collect independent Codex subagents (gpt-5.6-luna at high, xhigh or max; gpt-5.6-sol for small review batches) for bounded parallel work, from Codex or from Claude Code, including requests supplied as a Markdown file of session prompts. This skill owns Codex subagent transport even when another investigation or review skill defines the questions. Use whenever the user asks for Luna or Sol agents, a swarm, many sessions, a concurrency test, a particular reasoning effort, a Codex subagent from Claude Code, or later collection of reports. Distinguish launch-only requests from requests to wait, collect, or synthesise. Route high and xhigh through the direct launcher; for 16 or more sessions, also invoke the direct launcher instead of native spawn_agent.
+description: Launch, start, monitor, and collect independent Codex subagents (gpt-6-luna at high, xhigh or max; gpt-5.6-sol for small review batches) for bounded parallel work, from Codex or from Claude Code, including requests supplied as a Markdown file of session prompts. This skill owns Codex subagent transport even when another investigation or review skill defines the questions. Use whenever the user asks for Luna or Sol agents, a swarm, many sessions, a concurrency test, a particular reasoning effort, a Codex subagent from Claude Code, or later collection of reports. Distinguish launch-only requests from requests to wait, collect, or synthesise. Route high and xhigh through the direct launcher; for 16 or more sessions, also invoke the direct launcher instead of native spawn_agent.
 ---
 
 # Codex Luna Swarm
@@ -93,7 +93,7 @@ The operator's batch policy (2026-09-04) decides the model before these transpor
 | independent questions | model and effort | launch |
 | --- | --- | --- |
 | 2 to 5 | `gpt-5.6-sol` at `medium` | native `gpt-5.6-sol` sessions, or one companion call per session from Claude Code |
-| 6 or more | `gpt-5.6-luna` at `xhigh` | all sessions in one batch; native `luna_worker` cannot represent `xhigh`, so use the direct launcher |
+| 6 or more | `gpt-6-luna` at `xhigh` | all sessions in one batch; native `luna_worker` cannot represent `xhigh`, so use the direct launcher |
 
 An explicit operator choice for the current batch replaces the table; recover it from
 `notes/current-state.md` or the message. Do not expand two useful questions to six merely to
@@ -128,7 +128,7 @@ Batch policy when the operator names no model and effort (operator decision 2026
 | sessions | model | effort |
 | --- | --- | --- |
 | 1-5 | `gpt-5.6-sol` | `medium` |
-| 6 or more | `gpt-5.6-luna` | `xhigh` |
+| 6 or more | `gpt-6-luna` | `xhigh` |
 
 Start every session of a batch together. `scripts/codex-sessions.ts` applies the policy, writes
 one prompt file per session and detaches one companion per task, so the Bash tool's 600 s timeout
@@ -137,7 +137,7 @@ one prompt file per session and detaches one companion per task, so the Bash too
 ```sh
 bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts launch \
   --tasks-file /private/tmp/<session>/tasks.json --out-dir /private/tmp/<session>/codex \
-  --workdir /absolute/worktree [--model gpt-5.6-luna --effort xhigh] [--write] [--plan-only]
+  --workdir /absolute/worktree [--model gpt-6-luna --effort xhigh] [--write] [--plan-only]
 bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts status --out-dir /private/tmp/<session>/codex
 bun .claude/skills/codex-luna-swarm/scripts/codex-sessions.ts drain  --out-dir /private/tmp/<session>/codex
 ```
@@ -217,7 +217,7 @@ Call `spawn_agent` with:
 - `fork_turns: "none"` when the message contains the complete evidence packet; and
 - the bounded assignment in `message`.
 
-Do not pass `model` or `reasoning_effort`; the project custom agent owns `gpt-5.6-luna` and `max`.
+Do not pass `model` or `reasoning_effort`; the project custom agent owns `gpt-6-luna` and `max`.
 Do not use this route for an explicit `high` or `xhigh` request.
 After the first native session is accepted, submit the remaining prepared sessions without waiting for
 that session to finish. For launch-only work, return the accepted task IDs and stop.
@@ -225,7 +225,7 @@ that session to finish. For launch-only work, return the accepted task IDs and s
 ## Use the fallback launcher
 
 Resolve `scripts/luna-sessions.ts` relative to this `SKILL.md`. Do not read, copy, or reimplement it in
-the main session. It starts one independent `codex exec` process per session, pins `gpt-5.6-luna`, the
+the main session. It starts one independent `codex exec` process per session, pins `gpt-6-luna`, the
 selected `high`, `xhigh`, or `max` reasoning effort, and priority service, sends prompts over stdin
 without a shell, and writes per-session evidence. Do not substitute a global or previously copied
 launcher for this repo-scoped script.

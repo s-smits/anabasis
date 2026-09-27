@@ -253,7 +253,7 @@ function reviewFixture(): string {
     join(output, "launch.json"),
     json({
       type: "luna_sessions.launch",
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
       reasoningEffort: "max",
       sessions: [{ name: "lane_05", promptSha256: "c".repeat(64) }],
     }),

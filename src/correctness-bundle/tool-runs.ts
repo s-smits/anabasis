@@ -118,6 +118,8 @@ export function executionEvidence(verifier: VerifierHostHandle): ExternalExecuti
             kind: entry.kind,
             interpreter: entry.interpreter,
             ...interpreter,
+            ...keyIfDefined("treeDigest", entry.treeDigest),
+            ...keyIfDefined("portableDigest", entry.portableDigest),
             ...keyIfDefined("packages", entry.packages === undefined ? undefined : [...entry.packages]),
           },
         ];

@@ -9,6 +9,7 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 
+import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { chmodSync, mkdirSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { isString } from "../src/meta/json-shape.ts";
@@ -195,6 +196,7 @@ describe("resolving the tool inventory", () => {
       }
       const host = createVerifierHost({
         inventory: resolved.inventory,
+        toolTree: ws.toolTree,
         baseDir: ws.cells,
         requireOsSandbox: false,
       });
@@ -240,6 +242,96 @@ describe("resolving the tool inventory", () => {
     expect(resolved.invalid).toEqual(["bad/id"]);
     // An invalid id is not also reported missing: it never entered resolution.
     expect(resolved.inventory["bad/id"]).toBeUndefined();
+  });
+
+  it("counts a large file behind a shim by its bytes, so a same-length change moves the tree digest", () => {
+    // An engine or shared library over 1 MiB behind an unchanged wrapper can change without
+    // changing its length; a tree digest counting it by size would call both one environment.
+    const large = new Uint8Array((1 << 20) + 512).fill(7);
+    const treeDigest = (bytes: Uint8Array) => {
+      const ws = workspace();
+      script(join(ws.toolTree, "bin"), "engine", ['exec "$(dirname "$0")/../lib/engine.bin" "$@"']);
+      mkdirSync(join(ws.toolTree, "lib"), { recursive: true });
+      const engine = join(ws.toolTree, "lib", "engine.bin");
+      writeFileSync(engine, bytes);
+      const read = () => resolveToolInventory({ toolIds: ["engine"], toolTree: ws.toolTree, pathDirs: [] });
+      return { digest: required(read().inventory["engine"], "engine").treeDigest, engine, read };
+    };
+    const original = treeDigest(large);
+    const changed = large.slice();
+    changed[changed.length - 1] = 8;
+
+    expect(treeDigest(changed).digest).not.toBe(original.digest);
+    // A byte-identical copy elsewhere keeps the identity, since a copy keeps no time or inode.
+    expect(treeDigest(large).digest).toBe(original.digest);
+    // A rewrite in place that puts the mtime back to the nanosecond is still reread rather than
+    // answered from memory, since only the kernel sets the ctime.
+    const stamp = `${original.engine}.stamp`;
+    expect(Bun.spawnSync(["touch", "-r", original.engine, stamp]).exitCode).toBe(0);
+    writeFileSync(original.engine, changed);
+    expect(Bun.spawnSync(["touch", "-r", stamp, original.engine]).exitCode).toBe(0);
+    fs.unlinkSync(stamp);
+    expect(required(original.read().inventory["engine"], "engine").treeDigest).not.toBe(original.digest);
+  });
+
+  it("counts a tool tree copied to another path as the same tree, and any byte the copy changed as a new one", () => {
+    // A reseed copies `.toolchain` into the next epoch's workspace and rewrites its launchers,
+    // activation scripts and wrappers to name the new path. Counted by raw bytes, that moved the
+    // tree digest and the environment hash on every reseed, so a task-only round read as scoring
+    // moved and was recorded as a new baseline.
+    const seed = (edit: (root: string) => Record<string, string | Uint8Array> = () => ({})) => {
+      const ws = workspace();
+      const root = fs.realpathSync.native(ws.toolTree);
+      // One occurrence straddles the 1 MiB read boundary, so only a carried tail can see it whole.
+      const engine = new Uint8Array((1 << 20) + 4096).fill(7);
+      engine.set(new TextEncoder().encode(root), (1 << 20) - 5);
+      const files: Record<string, string | Uint8Array> = {
+        "bin/truss-solve": `#!/bin/sh\nexec "${root}/venv/bin/python" "${root}/truss_cli.py" "$@"\n`,
+        "venv/bin/truss": `#!/bin/sh\n'''exec' "${root}/venv/bin/python" "$0" "$@"\n' '''\nimport truss\n`,
+        "venv/bin/activate": `VIRTUAL_ENV="${root}/venv"\nexport VIRTUAL_ENV\n`,
+        "truss_cli.py": "print('solve')\n",
+        "lib/engine.bin": engine,
+        ...edit(root),
+      };
+      for (const [rel, bytes] of Object.entries(files)) {
+        mkdirSync(join(root, rel, ".."), { recursive: true });
+        writeFileSync(join(root, rel), bytes);
+        chmodSync(join(root, rel), 0o755);
+      }
+      const resolved = resolveToolInventory({
+        toolIds: ["truss-solve"],
+        toolTree: ws.toolTree,
+        pathDirs: [],
+      });
+      return {
+        root,
+        tree: required(resolved.inventory["truss-solve"], "truss-solve").treeDigest,
+        environment: verifierEnvironmentHashOfTools(resolved.inventory),
+      };
+    };
+    const original = seed();
+    const copy = seed();
+    expect(copy.root).not.toBe(original.root);
+    expect(copy.tree).toBe(original.tree);
+    expect(copy.environment).toBe(original.environment);
+
+    const moved = [
+      // A byte of a script the wrapper runs, and a byte of the wrapper beside the path it names.
+      seed(() => ({ "truss_cli.py": "print('solve!')\n" })),
+      seed((root) => ({
+        "bin/truss-solve": `#!/bin/sh\nexec "${root}/venv/bin/python" -u "${root}/truss_cli.py"\n`,
+      })),
+      // The same bytes around the path with the path somewhere else in them.
+      seed((root) => ({ "venv/bin/activate": `VIRTUAL_ENV="/venv${root}"\nexport VIRTUAL_ENV\n` })),
+      // A copy still naming the tree it came from runs that tree's interpreter, not its own.
+      seed(() => ({
+        "bin/truss-solve": `#!/bin/sh\nexec "${original.root}/venv/bin/python" "${original.root}/truss_cli.py" "$@"\n`,
+      })),
+    ];
+    for (const changed of moved) {
+      expect(changed.tree).not.toBe(original.tree);
+      expect(changed.environment).not.toBe(original.environment);
+    }
   });
 
   it("admits a plain command name and refuses anything that can address a file", () => {

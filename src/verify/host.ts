@@ -35,7 +35,7 @@ import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { cancellableByteStream } from "../meta/cancellable-stream.ts";
 import { isString } from "../meta/json-shape.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
-import { interpreterDigest, toolProvenance } from "./tool-inventory.ts";
+import { interpreterDigest, portableToolTreeDigest, toolProvenance } from "./tool-inventory.ts";
 import type { VerifierExecutionNonResultKind } from "./correctness-model-result.ts";
 import type { ExactReadDrift } from "./exact-read-attestation.ts";
 import { LINUX_BWRAP_ID, bwrapWrappedSignal } from "./linux-bwrap.ts";
@@ -150,6 +150,10 @@ interface Scope {
   tail: Promise<void>;
   pendingAtClose: number;
   closed: boolean;
+  /** The live `.toolchain` tree digest, walked at this scope's first workspace-tool run rather
+   *  than at every run, because a large install takes a noticeable fraction of a second to walk;
+   *  null when the walk could not complete. */
+  treeDigest?: string | null;
   /** Stops for this scope's live children and for its waits on another scope's identical run. */
   children: Set<() => Promise<VerifierProcessSettlement | null>>;
   /** Each process receipt this scope began, with the cell its process ran in. */
@@ -219,15 +223,25 @@ function shellCouldNotLaunch(run: EvidenceRun): boolean {
  *  under another python3 is a different tool and may well give a different answer. That covers an
  *  interpreter unresolvable when the snapshot was taken and resolvable now: it decides the grade and
  *  no run ever hashed it, which is drift in the one direction the snapshot cannot see. Both sides
- *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. */
-function movedSinceSnapshot(entry: ToolEntry, liveDigest: string, toolTree: string | null): string | null {
+ *  absent is not movement, and the exec then fails on its own as `verifierUnavailable`. A workspace
+ *  tool is also its tree, since the file the id names is often a shim over a script beside it. */
+function movedSinceSnapshot(
+  entry: ToolEntry,
+  liveDigest: string,
+  toolTree: string | null,
+  liveTree: () => string | null,
+): string | null {
   if (liveDigest !== entry.digest) return "bytes changed";
-  if (entry.kind === "binary") return null;
-  const live = interpreterDigest(entry.path, toolTree);
-  if (live === entry.interpreterDigest) return null;
-  return entry.interpreterDigest === undefined
-    ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
-    : `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  const live = entry.kind === "binary" ? undefined : interpreterDigest(entry.path, toolTree);
+  if (live !== entry.interpreterDigest) {
+    return entry.interpreterDigest === undefined
+      ? `now resolves a ${entry.interpreter ?? "interpreter"} that was not pinned at snapshot`
+      : `resolves a different ${entry.interpreter ?? "interpreter"}`;
+  }
+  // Last, so an interpreter installed in the tree is still named as the interpreter that moved.
+  return entry.treeDigest === undefined || liveTree() === entry.treeDigest
+    ? null
+    : "toolchain tree changed or could not be read";
 }
 
 /** The tool timeout: what the evaluator asked for, at least one millisecond and at most the
@@ -598,6 +612,16 @@ class VerifierHost implements VerifierHostHandle {
     for (const stop of scope.children) void stop().catch(() => {});
   }
 
+  private liveTree(scope: Scope): string | null {
+    if (scope.treeDigest !== undefined || this.toolTree === null) return scope.treeDigest ?? null;
+    try {
+      scope.treeDigest = portableToolTreeDigest(this.toolTree);
+    } catch {
+      scope.treeDigest = null;
+    }
+    return scope.treeDigest;
+  }
+
   private checkCell(scope: Scope, checkId: string): ToolCell {
     const prior = scope.cells.get(checkId);
     if (prior !== undefined) return prior;
@@ -758,7 +782,10 @@ class VerifierHost implements VerifierHostHandle {
       );
     }
     base = { ...base, toolDigest: liveDigest };
-    const moved = source === "cell" ? null : movedSinceSnapshot(entry, liveDigest, this.toolTree);
+    const moved =
+      source === "cell"
+        ? null
+        : movedSinceSnapshot(entry, liveDigest, this.toolTree, () => this.liveTree(scope));
     if (moved !== null) {
       return nonResult(
         unspawned(base),

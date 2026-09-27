@@ -53,8 +53,9 @@ export type VerifierExecutionEvidence = {
    *  candidate's own `.toolchain` tree or the host path, and whether it is a binary or a script
    *  behind an interpreter. A claim reader sees here whether the compiler that judged the artifact
    *  was one the Builder installed, and whether "the tool" is a text file the Builder could have
-   *  written. The environment hash covers digest and source only, so adding provenance moved no
-   *  recorded identity. */
+   *  written. The environment hash covers the digest (for a workspace tool the portable digest in
+   *  its place), the source, the interpreter digest and the tree digest; kind, interpreter name and
+   *  packages are provenance and stay out of it. */
   tools: Record<
     string,
     {
@@ -63,6 +64,8 @@ export type VerifierExecutionEvidence = {
       kind: "binary" | "script";
       interpreter: string | null;
       interpreterDigest?: string;
+      treeDigest?: string;
+      portableDigest?: string;
       packages?: string[];
     }
   >;

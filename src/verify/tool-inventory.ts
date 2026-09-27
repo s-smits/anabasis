@@ -11,9 +11,18 @@
  * than the check, which lets the author supply the world its own artifact is judged in.
  */
 import { keyIfDefined } from "../meta/optional-key.ts";
-import { openSync, readSync, readdirSync, closeSync, statSync } from "../meta/filesystem.ts";
+import {
+  openSync,
+  readSync,
+  readdirSync,
+  readlinkSync,
+  realpathSync,
+  closeSync,
+  statSync,
+} from "../meta/filesystem.ts";
+import { containsPath } from "../meta/path-containment.ts";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "../meta/path.ts";
-import { sha256OfFile } from "../meta/digest.ts";
+import { sha256, sha256OfFile } from "../meta/digest.ts";
 import { compareCodeUnits, hashJsonValue } from "../meta/stable-json.ts";
 import { toolchainPathDirs } from "./wall-policy.ts";
 import { commandSearchPath, toolTreeSearchDirs } from "./solve-command-isolation.ts";
@@ -26,13 +35,20 @@ export const TOOL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$/;
  *  interpreter is a whole distribution rather than one installed tool. */
 const MAX_PACKAGES = 256;
 
-/** Tool-tree files larger than this count by size and time rather than bytes. */
+/** Tool-tree files larger than this count by size, time and inode in the session key, and are
+ *  read in chunks of this size when their bytes are hashed. */
 const TREE_HASHED_BYTES = 1 << 20;
 /** What a run of an installed tool rewrites by itself: bytecode, the user caches under the Builder's
  *  `home/`, and the compile counter Arduino keeps in `inventory.yaml`. */
 const RUN_WRITTEN = /^home\/(\.cache|Library\/Caches)(\/|$)|(^|\/)(__pycache__|inventory\.yaml)(\/|$)/;
-/** File digests by path, size, mtime and inode, so a later check rereads only what moved. */
+/** File digests by tree root, path, size, mtime, inode and ctime, so a later walk rereads only what
+ *  moved. The ctime is there because a process can put a file's mtime back after rewriting it, and
+ *  nothing but the kernel can set a ctime; the root is there because it is taken out of the bytes. */
 const treeFileDigests = new Map<string, string>();
+
+/** Which count a walk takes: `local` for this host's session condition, `portable` for the
+ *  identity a record carries between machines and between copies of the same tree. */
+type TreeSide = "local" | "portable";
 
 interface ResolveToolInventoryInput {
   toolIds: readonly string[];
@@ -118,8 +134,7 @@ function interpreterPath(path: string, toolTree: string | null): string | undefi
  *
  * This says what was installed, never what decided a verdict: a wrapper can import a package and
  * ignore it. It also stays out of every identity hash, because it reads directory names rather than
- * bytes; a `pip install` into the tool tree moves the session's condition through `toolTreeDigest`
- * instead, and moves no travelling digest.
+ * bytes; a `pip install` into the tool tree moves the entry's `treeDigest` instead.
  */
 function interpreterPackages(path: string, toolTree: string | null): string[] {
   const interpreter = interpreterPath(path, toolTree);
@@ -136,28 +151,120 @@ function interpreterPackages(path: string, toolTree: string | null): string[] {
 }
 
 /**
- * The tool tree's own content, which no inventory entry carries: a wrapper `exec python3
+ * The tool tree's own content, which a tool entry's own digest leaves out: a wrapper `exec python3
  * "$ROOT/libexec/check.py"` keeps its digest while `check.py`, a config it passes, or a package in a
- * venv under `home/` is repaired underneath it. Every file and link counts by its path, and a file
- * up to 1 MiB also by its bytes; a larger one, an installed binary in practice, counts by size and
- * time, because rereading a firmware toolchain's gigabytes on every check would cost more than the
- * gate. `RUN_WRITTEN` stays out, so running a tool in the Builder shell is not an edit; a gate run
- * writes nothing here, since the verifier cell only reads the tree.
+ * venv under `home/` is repaired underneath it. Every file counts by its path and its bytes, and a
+ * link by where it points. `RUN_WRITTEN` stays out, so running a tool in the
+ * Builder shell is not an edit; a gate run writes nothing here, since the verifier cell only reads
+ * the tree.
+ *
+ * `portable` counts every file by its bytes, whatever its size, because it is the identity the
+ * verifier host re-checks for drift and `verifierEnvironmentHash` records: an engine binary, a
+ * shared library or a data file behind an unchanged shim can change without changing its length.
+ * `local`, the session's gate-cache key, counts a file larger than 1 MiB by size, time and inode
+ * instead, which catches a rebuild on this host without reading it. Each process reads a file's
+ * bytes once while its metadata stands; over a firmware tree of 70,000 files and 8.7 GB, the large
+ * files add about six seconds warm to the eleven the small ones already cost.
+ *
+ * Both count a file with the tree's own real path taken out of its bytes (`rootlessDigest`), since
+ * that path is the one thing a copy of the tree is meant to change: a reseed copies `.toolchain`
+ * into the next workspace and rewrites every launcher, activation script and wrapper to name it.
  */
-export function toolTreeDigest(toolTree: string): string {
-  const rows = readdirSync(toolTree, { recursive: true, withFileTypes: true }).flatMap((entry) => {
-    const path = join(entry.parentPath, entry.name);
-    const rel = relative(toolTree, path);
-    if (entry.isDirectory() || RUN_WRITTEN.test(rel)) return [];
-    if (!entry.isFile()) return [rel];
-    const { size, mtimeNs, ino } = statSync(path, { bigint: true });
-    const seen = `${size}:${mtimeNs}:${ino}`;
-    const digest =
-      size > TREE_HASHED_BYTES ? seen : (treeFileDigests.get(`${path}\0${seen}`) ?? sha256OfFile(path));
-    treeFileDigests.set(`${path}\0${seen}`, digest);
-    return [`${rel}\0${digest}`];
-  });
+function toolTreeCounts(toolTree: string, side: TreeSide): Array<[string, string]> {
+  const root = realpathSync.native(toolTree);
+  return readdirSync(toolTree, { recursive: true, withFileTypes: true }).flatMap(
+    (entry): Array<[string, string]> => {
+      const path = join(entry.parentPath, entry.name);
+      const rel = relative(toolTree, path);
+      if (entry.isDirectory() || RUN_WRITTEN.test(rel)) return [];
+      if (entry.isSymbolicLink()) return [[rel, linkCount(path, toolTree, root)]];
+      return [[rel, entry.isFile() ? fileCount(path, side, root) : "special"]];
+    },
+  );
+}
+
+function fileCount(path: string, side: TreeSide, root: string): string {
+  const { size, mtimeNs, ctimeNs, ino } = statSync(path, { bigint: true });
+  const seen = `${size}:${mtimeNs}:${ino}`;
+  if (side === "local" && size > TREE_HASHED_BYTES) return seen;
+  const key = `${root}\0${path}\0${seen}:${ctimeNs}`;
+  const digest = treeFileDigests.get(key) ?? rootlessDigest(path, root);
+  treeFileDigests.set(key, digest);
+  return digest;
+}
+
+/**
+ * sha256 over a file read in 1 MiB chunks, so a toolchain archive of hundreds of megabytes is never
+ * held whole, with every occurrence of `root` taken out. A file that never names the root counts by
+ * its plain sha256. One that does counts by the bytes around each occurrence and the offset it was
+ * taken from, which puts back exactly the file it came from, so a copy that moved, dropped or added
+ * an occurrence, or changed any other byte, counts differently. A copy naming the tree it was copied
+ * from names another root, and its bytes count as they stand.
+ */
+function rootlessDigest(path: string, root: string): string {
+  const needle = Buffer.from(root);
+  const bytes = Buffer.alloc(TREE_HASHED_BYTES + needle.length);
+  const kept = new Bun.CryptoHasher("sha256");
+  const offsets = new Bun.CryptoHasher("sha256");
+  let carried = 0;
+  let hashed = 0;
+  let found = 0;
+  const fd = openSync(path, "r");
+  try {
+    for (;;) {
+      const read = readSync(fd, bytes, carried, TREE_HASHED_BYTES, null);
+      const view = bytes.subarray(0, carried + read);
+      let start = 0;
+      for (let hit = view.indexOf(needle, start); hit !== -1; hit = view.indexOf(needle, start)) {
+        kept.update(view.subarray(start, hit));
+        hashed += hit - start;
+        offsets.update(`${hashed},`);
+        found += 1;
+        start = hit + needle.length;
+      }
+      // Hold back a tail too short to hold the root, since the next read may complete it.
+      const end = read === 0 ? view.length : Math.max(start, view.length - needle.length + 1);
+      kept.update(view.subarray(start, end));
+      hashed += end - start;
+      if (read === 0) break;
+      carried = view.length - end;
+      bytes.copyWithin(0, end, view.length);
+    }
+  } finally {
+    closeSync(fd);
+  }
+  const digest = kept.digest("hex");
+  return found === 0 ? digest : sha256(`rooted:${digest}:${offsets.digest("hex")}`);
+}
+
+/** A link inside the tree counts by the tree path it names, so a copy whose absolute links were
+ *  moved counts the same; one leaving the tree counts by the file it reaches, never its host path. */
+function linkCount(path: string, toolTree: string, root: string): string {
+  const target = resolve(dirname(path), readlinkSync(path));
+  if (containsPath(target, toolTree)) return `link:${relative(toolTree, target)}`;
+  try {
+    return statSync(target).isFile()
+      ? `external:${fileCount(target, "portable", root)}`
+      : "external:not-a-file";
+  } catch {
+    return "external:unresolved";
+  }
+}
+
+function treeDigestOf(toolTree: string, side: TreeSide): string {
+  const rows = toolTreeCounts(toolTree, side).map(([rel, count]) => `${rel}\0${count}`);
   return hashJsonValue(rows.sort(compareCodeUnits));
+}
+
+/** The tree digest this host's session keys its gate cache and no-op strikes on. */
+export function toolTreeDigest(toolTree: string): string {
+  return treeDigestOf(toolTree, "local");
+}
+
+/** The tree digest a workspace-toolchain entry carries as `treeDigest`, which the host re-checks
+ *  before a run and `verifierEnvironmentHash` covers. */
+export function portableToolTreeDigest(toolTree: string): string {
+  return treeDigestOf(toolTree, "portable");
 }
 
 function listDir(path: string): string[] {
@@ -220,11 +327,20 @@ export function resolveToolInventory(input: ResolveToolInventoryInput): Resolved
   ];
   const inventory: ToolInventory = Object.create(null);
   const missing: string[] = [];
+  let treeDigest: string | undefined;
   for (const id of ids) {
     if (!TOOL_ID_RE.test(id)) continue;
     const entry = resolveOne(id, searchDirs, input.toolTree);
     if (entry === null) missing.push(id);
     else inventory[id] = entry;
+    // A workspace tool is its whole tree: the wrapper the id names is often a shim over a script
+    // beside it, and that script decides the verdict. One walk serves every such entry.
+    if (entry?.source === "workspace-toolchain" && input.toolTree !== null) {
+      treeDigest ??= portableToolTreeDigest(input.toolTree);
+      entry.treeDigest = treeDigest;
+      // The entry file as the tree counts one, which is the same file under another tree path.
+      entry.portableDigest = fileCount(entry.path, "portable", realpathSync.native(input.toolTree));
+    }
   }
   return { inventory, missing, invalid };
 }

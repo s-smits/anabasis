@@ -474,7 +474,8 @@ export function loadValidatedBundle(
  * content (`toolTreeDigest`), which a wrapper's own bytes leave out. The gate cache, the remembered
  * preview and the no-op strike all key on this digest, so an interpreter-only change or a repair
  * behind an unchanged wrapper is a new condition, while a tool run that only wrote its own caches
- * is not. `verifierEnvironmentHash` keeps the entries alone, since it travels between machines.
+ * is not. `verifierEnvironmentHash` travels between machines, so it keeps the entries alone, each
+ * workspace entry with the portable tree digest, which counts every file by its bytes, not by inode.
  */
 function candidateToolVerdict(snapshotDir: string, toolIds: readonly string[], findings: ContractFinding[]) {
   if (toolIds.length === 0) return { engineCondition: null, verifierEnvironmentHash: null };

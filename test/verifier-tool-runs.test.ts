@@ -11,6 +11,9 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { chmodSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { createVerifierHost } from "../src/verify/host.ts";
+import { portableToolTreeDigest, resolveToolInventory } from "../src/verify/tool-inventory.ts";
+import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
+import { join } from "../src/meta/path.ts";
 import {
   executionEvidence,
   hostNonResult,
@@ -21,15 +24,30 @@ import {
 import type { CorrectnessModelResult } from "../src/verify/correctness-model-result.ts";
 import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
 import { required } from "./helpers/doubles.ts";
-import { cleanupScratch } from "./helpers/scratch.ts";
-import { hostFixture, runOnce, subject, toolPath } from "./helpers/verifier-host.ts";
+import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
+import { TOOL_PATH, hostFixture, runOnce, script, subject, toolPath } from "./helpers/verifier-host.ts";
 
 afterAll(cleanupScratch);
 
 describe("reading the host's rows", () => {
   it("separates each evaluation's tool runs, non-result and checks without tool coverage", async () => {
-    const fx = hostFixture({ "good-tool": ["exit 0"], "drift-tool": ["exit 0"] });
-    const drift = toolPath(fx, "drift-tool");
+    // The drifting tool sits on the host path: an edit inside the workspace tree would move every
+    // workspace tool's identity, the good one's included.
+    const pathDir = scratchDir("ana-host-path-");
+    const drift = script(pathDir, "drift-tool", ["exit 0"]);
+    const onPath = resolveToolInventory({ toolIds: ["drift-tool"], toolTree: null, pathDirs: [pathDir] });
+    const workspaceTools = hostFixture({ "good-tool": ["exit 0"] });
+    const fx = {
+      ...workspaceTools,
+      host: createVerifierHost({
+        inventory: { ...workspaceTools.inventory, ...onPath.inventory },
+        toolTree: workspaceTools.toolTree,
+        baseDir: workspaceTools.cells,
+        parentEnv: { PATH: TOOL_PATH },
+        requireOsSandbox: false,
+        lifetime: createVerifierLifetime({ root: join(workspaceTools.dir, "lifetime-rows") }),
+      }),
+    };
     writeFileSync(drift, "#!/bin/sh\nexit 0\n# moved\n");
     chmodSync(drift, 0o755);
 
@@ -99,6 +117,9 @@ describe("reading the host's rows", () => {
       kind: "script",
       interpreter: "sh",
       interpreterDigest: sha256OfFile("/bin/sh"),
+      treeDigest: portableToolTreeDigest(fx.toolTree),
+      // A tool that never names its own tree counts by its plain bytes.
+      portableDigest: sha256OfFile(toolPath(fx, "good-tool")),
     });
     expect(evidence.verifierEnvironmentHash).toMatch(/^[0-9a-f]{64}$/);
   });

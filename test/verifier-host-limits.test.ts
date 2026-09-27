@@ -8,7 +8,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { chmodSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import { chmodSync, cpSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
 import { sha256OfFile } from "../src/meta/digest.ts";
 import { join } from "../src/meta/path.ts";
 import { processGroupExists } from "../src/meta/subprocess.ts";
@@ -20,7 +20,10 @@ import {
 } from "../src/verify/host.ts";
 import { resolveToolInventory } from "../src/verify/tool-inventory.ts";
 import { executionEvidence } from "../src/correctness-bundle/tool-runs.ts";
-import { verifierEnvironmentHashOfTools } from "../src/correctness-bundle/verifier-environment.ts";
+import {
+  recordedVerifierHash,
+  verifierEnvironmentHashOfTools,
+} from "../src/correctness-bundle/verifier-environment.ts";
 import { createVerifierLifetime } from "../src/verify/verifier-lifetime.ts";
 import { required } from "./helpers/doubles.ts";
 import { cleanupScratch, scratchDir } from "./helpers/scratch.ts";
@@ -127,6 +130,65 @@ describe("execution limits and sandbox requirements", () => {
     expect(moved.executed).toBe(false);
     expect(moved.nonResult?.kind).toBe("sandbox");
     expect(moved.nonResult?.message).toContain("resolves a different interp since the candidate snapshot");
+  });
+
+  it("identifies a workspace tool by its whole tree, so a script behind an unchanged shim is drift", async () => {
+    // The shape the truss campaigns shipped: an unchanged shim execs a script beside it, and that
+    // script decides the verdict.
+    const fx = hostFixture({ shim: ['exec /bin/sh "$(dirname "$0")/../libexec/decide.sh"'] });
+    const decide = script(join(fx.toolTree, "libexec"), "decide.sh", ["echo pass"]);
+    const resolve = (tree = fx.toolTree) =>
+      required(
+        resolveToolInventory({ toolIds: ["shim"], toolTree: tree, pathDirs: [] }).inventory.shim,
+        "shim",
+      );
+    const entry = resolve();
+    const host = createVerifierHost({
+      inventory: { shim: entry },
+      toolTree: fx.toolTree,
+      baseDir: fx.cells,
+      parentEnv: { PATH: TOOL_PATH },
+      requireOsSandbox: false,
+      lifetime: createVerifierLifetime({ root: join(fx.dir, "lifetime-tree") }),
+    });
+    expect((await runOnce(host, subject({}), { toolId: "shim", checkId: "c" })).stdout).toBe("pass\n");
+    const recorded = executionEvidence(host);
+    expect(recorded.tools.shim?.treeDigest).toBe(required(entry.treeDigest, "treeDigest"));
+    // Unchanged bytes keep the identity, and so does a copy, which keeps no time or inode.
+    expect(resolve().treeDigest).toBe(entry.treeDigest);
+    const copy = join(fx.dir, "copied-toolchain");
+    cpSync(fx.toolTree, copy, { recursive: true });
+    expect(resolve(copy).treeDigest).toBe(entry.treeDigest);
+    // A host tool has no tree of its own.
+    const cat = resolveToolInventory({ toolIds: ["cat"], toolTree: fx.toolTree, pathDirs: ["/bin"] });
+    expect(cat.inventory.cat).not.toHaveProperty("treeDigest");
+
+    writeFileSync(decide, "#!/bin/sh\necho pass\n# zero utilisation\n");
+    const moved = await runOnce(host, subject({}), { toolId: "shim", checkId: "c" });
+    expect(moved.executed).toBe(false);
+    expect(moved.nonResult?.kind).toBe("sandbox");
+    expect(moved.nonResult?.message).toContain("toolchain tree changed or could not be read since the");
+    // The shim's own digest never moved; the recorded environment still does.
+    const after = resolve();
+    expect(after.digest).toBe(entry.digest);
+    expect(after.treeDigest).not.toBe(entry.treeDigest);
+    expect(verifierEnvironmentHashOfTools({ shim: after })).not.toBe(recorded.verifierEnvironmentHash);
+    // A recorded workspace tool without its tree digest is an older record, and is refused.
+    const { treeDigest: _dropped, ...bare } = required(recorded.tools.shim, "recorded shim");
+    const older = {
+      tools: { shim: bare },
+      verifierEnvironmentHash: verifierEnvironmentHashOfTools({ shim: bare }),
+    };
+    expect(recordedVerifierHash(older)).toBeUndefined();
+    // So is one without its portable digest, which would bind the raw bytes in its place.
+    const { portableDigest: _raw, ...unportable } = required(recorded.tools.shim, "recorded shim");
+    expect(
+      recordedVerifierHash({
+        tools: { shim: unportable },
+        verifierEnvironmentHash: verifierEnvironmentHashOfTools({ shim: unportable }),
+      }),
+    ).toBeUndefined();
+    expect(recordedVerifierHash(recorded)).toBe(required(recorded.verifierEnvironmentHash, "hash"));
   });
 
   it("refuses a script whose interpreter was unresolvable at snapshot and resolves by the time it runs", async () => {

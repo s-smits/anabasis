@@ -46,6 +46,15 @@ export interface ToolEntry {
   /** sha256 of that interpreter's bytes as the cell's search path resolved it at snapshot time;
    *  absent for a binary or an interpreter that could not be found. */
   interpreterDigest?: string;
+  /** `portableToolTreeDigest` of the candidate's `.toolchain` at resolution, for a workspace tool;
+   *  absent for a host tool. The id names one file, and that file is often a shim over a script
+   *  beside it, so the entry digest alone does not identify the program that decides. */
+  treeDigest?: string;
+  /** The executable as `portableToolTreeDigest` counts a file, with its tree's own path taken out of
+   *  the bytes, for a workspace tool; absent for a host tool. A copy of the tree at another path
+   *  rewrites its launchers and wrappers to name that path, so `digest` moves with every copy and
+   *  this does not, which is why `verifierEnvironmentHash` binds this in its place. */
+  portableDigest?: string;
   /** `name==version` of the Python distributions beside a script's interpreter, sorted; absent
    *  when there are none. Installation only, and outside every identity hash. */
   packages?: string[];

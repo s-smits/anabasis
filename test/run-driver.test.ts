@@ -41,7 +41,10 @@ import {
 } from "../src/correctness-bundle/battery-record.ts";
 import type { ControlCorpus } from "../src/correctness-bundle/controls.ts";
 import { batteryClaimInput, batteryRunEvidence } from "../src/claim/battery-run-evidence.ts";
-import { NEVER_ATTEMPTED_PREFIX } from "../src/correctness-bundle/battery-provider-stop.ts";
+import {
+  NEVER_ATTEMPTED_PREFIX,
+  TURN_REFUSED_STOP_PREFIX,
+} from "../src/correctness-bundle/battery-provider-stop.ts";
 import { double, required } from "./helpers/doubles.ts";
 import { caseRecordRow } from "./helpers/case-record-row.ts";
 import type { JudgeSession } from "../src/review/judge-contract.ts";
@@ -558,6 +561,19 @@ describe("battery disposition", () => {
     ];
     expect(batteryDisposition("scheduled", rows)).toBe("provider-stopped");
     expect(batteryDisposition("scheduled", rows.slice(0, 2))).toBe("completed");
+  });
+
+  it("names a battery the controller cut short by refusing a turn apart from a provider stop", () => {
+    // A spent run budget is not a provider outage, and the claim reads a provider stop's reason
+    // as one.
+    const rows = [
+      { runtimeNonResult: null, solver: NO_CALL },
+      { runtimeNonResult: `${TURN_REFUSED_STOP_PREFIX} (last attempted task "t1")`, solver: NO_CALL },
+    ];
+    expect(batteryDisposition("scheduled", rows)).toBe("turn-refused-stopped");
+    expect(batteryTerminalReason("turn-refused-stopped", rows)).toBe(
+      "turn-refused-stopped: 1 of 2 cases were never attempted, because the controller refused a Built turn permit",
+    );
   });
 
   const dead = [

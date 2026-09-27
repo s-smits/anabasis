@@ -36,7 +36,7 @@ import { createSubmissionAuthority, submissionPortOf } from "../src/solve/final-
 import { compilePublicArtifactSchema } from "../src/solve/public-artifact-schema.ts";
 import { DEFAULT_HARNESS_SETTINGS } from "../src/correctness-bundle/harness-config.ts";
 import { solverNonResultReason } from "../src/correctness-bundle/runtime-blocker.ts";
-import { builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
+import { TURN_PERMIT_REFUSED_PREFIX, builtStarterFactoryForSolver } from "../src/correctness-bundle/solve.ts";
 import { keyIfDefined } from "../src/meta/optional-key.ts";
 import type { JsonObject } from "../src/meta/json-shape.ts";
 import { runtimeProcess } from "../src/meta/process.ts";
@@ -361,6 +361,18 @@ describe("the solve loop", () => {
     expect(outcome.turns).toBe(1);
     expect(outcome.completedTurns).toBe(0);
     expect(budget.snapshot().used).toBe(1);
+  });
+
+  // The controller's own ledger refused the turn, so no provider was reached: the case must not
+  // count towards the battery's provider stop or read as a provider outage.
+  it("records a turn the run's budget refused as the controller's, not the provider's", async () => {
+    const { outcome, accepted } = await solve([{ text: "planning" }, WRITE, SUBMIT], {
+      maxTurns: 3,
+      budget: new ProviderResourceBudget(1),
+    });
+    expect(accepted).toBe(false);
+    expect(outcome.nonResult?.kind).toBe("runtime");
+    expect(outcome.nonResult?.message).toStartWith(TURN_PERMIT_REFUSED_PREFIX);
   });
 
   it("keeps the redacted failed-turn marker the non-result reader classifies", async () => {

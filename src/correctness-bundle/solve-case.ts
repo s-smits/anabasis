@@ -39,6 +39,7 @@ import {
   type BuiltRuntimeBoundaryEvidence,
   type SolveOutcome,
   type Solver,
+  type SolverNonResult,
   nonResultOutcome,
 } from "./solve.ts";
 import {
@@ -287,12 +288,12 @@ export async function solveCase(deps: SolveCaseDeps, task: BuildTask): Promise<S
  *  provider non-result naming the stop is the whole of what happened to it. It is built here so the
  *  scheduler does not assemble a `SolvedCase` of its own beside this file's writer, which is how the
  *  two shapes would drift. */
-export function unattemptedCase(task: BuildTask, message: string): SolvedCase {
+export function unattemptedCase(task: BuildTask, stop: SolverNonResult): SolvedCase {
   const at = new Date().toISOString();
   return {
     task,
     committed: commitPublicTask(task),
-    solved: nonResultOutcome({ kind: "provider", message }),
+    solved: nonResultOutcome(stop),
     final: null,
     finalDefect: null,
     acceptedSubmit: false,

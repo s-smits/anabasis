@@ -12,6 +12,11 @@ import type { PublicArtifactSchema } from "../solve/public-artifact-schema.ts";
 import type { Toolset } from "./contracts.ts";
 import type { PublicTask } from "./task-split.ts";
 
+/** The opening of a Built non-result the controller caused by refusing a turn permit, because the
+ *  run's model budget is spent or the controller is stopping. It is not the provider's failure, so
+ *  no provider-stop count sees it, and the battery stops scheduling on it. */
+export const TURN_PERMIT_REFUSED_PREFIX = "controller refused the turn permit:";
+
 export type SolverNonResult = {
   kind: "provider" | "runtime" | "protocol" | "sandbox" | "crash";
   message: string;

@@ -3,7 +3,7 @@
  * The runner writes these types; the claim gate and analysis readers consume them. Keeping the
  * definitions together gives writers and readers one vocabulary for the recorded evidence.
  */
-import { NEVER_ATTEMPTED_PREFIX } from "./battery-provider-stop.ts";
+import { NEVER_ATTEMPTED_PREFIX, TURN_REFUSED_STOP_PREFIX } from "./battery-provider-stop.ts";
 import { recordedEvidence } from "../claim/evidence-log.ts";
 import { isString } from "../meta/json-shape.ts";
 import { dirname, join } from "../meta/path.ts";
@@ -199,12 +199,18 @@ export class BatteryVerificationNonResult extends Error {
 }
 
 /**
- * How a battery ended. Three values, because three are producible: a battery refused before any
- * case was scheduled, one the provider-stop rule cut short, and one that ran its whole task set.
+ * How a battery ended. Four values, because four are producible: a battery refused before any
+ * case was scheduled, one the provider-stop rule cut short, one the controller cut short by refusing
+ * a turn permit, and one that ran its whole task set.
  * A battery the controller aborts never reaches a final record, so no "aborted" value is created here —
  * the controller terminal owns that, and a value nothing can produce would only read as absent.
  */
-export const BATTERY_DISPOSITIONS = ["skipped-precase", "provider-stopped", "completed"] as const;
+export const BATTERY_DISPOSITIONS = [
+  "skipped-precase",
+  "provider-stopped",
+  "turn-refused-stopped",
+  "completed",
+] as const;
 /**
  * Derived at the one record assembler. `plan` is declared by the caller because "no rows" cannot
  * distinguish a refused battery from an empty one. The unattempted count is read from the rows,
@@ -215,6 +221,9 @@ export function batteryDisposition(
   cases: readonly { runtimeNonResult: string | null }[],
 ): BatteryDisposition {
   if (plan === "skipped") return "skipped-precase";
+  if (cases.some((row) => row.runtimeNonResult?.startsWith(TURN_REFUSED_STOP_PREFIX) === true)) {
+    return "turn-refused-stopped";
+  }
   return cases.some(neverAttempted) ? "provider-stopped" : "completed";
 }
 
@@ -245,8 +254,10 @@ export function batteryTerminalReason(
     }
     return "complete";
   }
-  const never = cases.filter(neverAttempted).length;
-  return `${PROVIDER_STOPPED_REASON_PREFIX} ${String(never)} of ${String(cases.length)} cases were never attempted`;
+  const never = `${String(cases.filter(neverAttempted).length)} of ${String(cases.length)} cases were never attempted`;
+  return disposition === "turn-refused-stopped"
+    ? `turn-refused-stopped: ${never}, because the controller refused a Built turn permit`
+    : `${PROVIDER_STOPPED_REASON_PREFIX} ${never}`;
 }
 
 export function bundleSnapshotFact(bundleSnapshot: BundleSnapshot): BundleSnapshotFact {

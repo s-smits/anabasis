@@ -169,8 +169,8 @@ not retried, since the same bytes fail the same way.
 Refuses a candidate, and at claim time a battery, when a known-valid accept control fails a check
 (`DISCRIMINATION_ACCEPT_REJECTED`; `src/correctness-bundle/run-controls.ts`, `src/correctness-bundle/control-receipts.ts`).
 When the checks reject an answer the Builder vouches for, no measured pass can be read through them.
-Since 2026-09-27 an accept whose blocking checks' tools did no work anywhere in the census is
-routed to `.toolchain` rather than to the correctnessModel (below).
+Since 2026-09-27 an accept whose blocking checks' tools exited 126 or 127 and did no work anywhere
+in the census is routed to `.toolchain` rather than to the correctnessModel (below).
 
 ### controls-no-verdict
 
@@ -183,7 +183,8 @@ check whose every reject timed out is the advisory `DISCRIMINATION_CHECK_TIMED_O
 The blocking `tool-timeout` that remains is F2's, a reference artifact's grading run that timed
 out, and since 2026-09-27 that refuses only after a rerun alone (below). A tool the host refused twice, for `sandbox` or
 `verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
-which `tool-environment` below settles as the environment's.
+which `tool-environment` below settles as the environment's, whether an authored or an external
+check called the tool.
 
 ### external-result-unbound
 
@@ -438,12 +439,17 @@ Seven of eight recorded refusals were real, and in five of those the fault was a
 not run in the snapshot or the verifier cell — a relocated venv, a wrapper that would not launch,
 an emulator the wall refused — while the finding told the Builder to fix the correctnessModel. A
 tool that fails silently on one input is not yet that: a compiler refusing a broken accept also
-exits 1 with nothing on stdout. What separates them is the rest of the census. An accept is routed
-to `.toolchain`, as its own `DISCRIMINATION_ACCEPT_REJECTED` finding, when each of its blocking
-checks has a run that ended nonzero with no stdout and that run's tool never exited 0 or wrote
-stdout on any accept or reject (`unrunnableTools`, `src/correctness-bundle/run-controls.ts`). One
-working run anywhere keeps the rejection the correctnessModel's. The refusal itself is unchanged;
-only its owner and remedy moved.
+exits 1 with nothing on stdout, and so does a working compiler rejecting every accept over the
+same invalid construct, so even the whole census does not separate them on exit 1. The host already
+types the unambiguous launch failures as non-results that never reach this refusal: a spawn that
+failed, a wall refusal, and a 126 or 127 whose stderr ends in the shell's own launch line. An
+accept is routed to `.toolchain`, as its own `DISCRIMINATION_ACCEPT_REJECTED` finding, only when
+each of its blocking checks has a run that exited 126 or 127 with no stdout and that run's tool
+never exited 0 or wrote stdout on any accept or reject (`silentTools`,
+`src/correctness-bundle/run-controls.ts`). A tool that only ever failed silently with another code
+keeps the rejection the correctnessModel's, and the finding names the install as the other reading
+with the by-hand run that tells them apart. One working run anywhere keeps it the correctnessModel's
+outright. The refusal itself is unchanged; only its owner and remedy moved.
 
 ### controls-no-verdict (F2 timeout rerun alone)
 
@@ -503,3 +509,19 @@ tool on the same check (`slowestCompletedMs`, shared with F2), the `gate.tool_ru
 and whether the example timed out again alone. The timeout is not settled as the environment's:
 an environment row at submit ends the session as `environment-blocked`, which would let a tool
 that never finishes end a campaign.
+
+### controls-no-verdict (authored check, tool refused twice), 2026-09-27
+
+The audit of 2026-09-26 found that the environment route for a tool the host refused twice existed
+only for an external check, through its grounding row, so an authored check that ran a tool through
+`execution.requiredToolIds` and met the same `sandbox` or `verifierUnavailable` refusal twice kept
+a `PROBE_NO_VERDICT` row owned by `correctness-model/evaluator.ts`. That row was remembered as a
+verdict on the bytes, and a byte-identical resubmit struck, which rule 14 forbids. The route had
+already moved by the time this entry was written: `admitObservation`
+(`src/correctness-bundle/run-controls.ts`) gives any control whose environment-owned refusal
+survived its retry `verifier-tool-refused`, whatever evidence kind its check declares, and the
+census gate settles that code as the environment's. What was missing was a test holding it for an
+authored check. `test/control-receipts.test.ts` now runs the external check's tool call under
+authored evidence with the host refusing it twice, and expects `verifier-tool-refused` alone after
+two attempts. Restricting the branch to briefs that declare an external check fails that test and
+no other in the file.

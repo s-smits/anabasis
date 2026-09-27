@@ -582,6 +582,33 @@ describe("control receipts", () => {
     ]);
   });
 
+  it("settles an authored check's twice-refused tool as the environment's, as it does an external check's", async () => {
+    // The same tool call under authored evidence: the check's semantics are the author's, but the
+    // host that could not run its tool is still the environment, so no evaluator.ts row is left.
+    const authored: Brief = {
+      ...EXTERNAL_BRIEF,
+      truthChecks: EXTERNAL_BRIEF.truthChecks.map((check) => ({
+        ...check,
+        execution: { ...check.execution, requiredToolIds: ["checker"], evidence: { kind: "authored" } },
+      })),
+    };
+    const verifier = fakeToolHost(() => "verifierUnavailable");
+    const discrimination = await runControls(
+      externalEvaluate,
+      EXTERNAL_CORPUS,
+      [TASK],
+      { ...EXTERNAL_OPTIONS, brief: authored, toolRetryWaitMs: 0 },
+      verifier,
+    );
+    expect(discrimination.findings.map((finding) => finding.code)).toEqual([TOOL_REFUSED_CODE]);
+    expect(discrimination.claimable).toBe(false);
+    expect(verifier.evidence().map((row) => [row.subjectId, row.attempt])).toEqual([
+      ["accept-1", 1],
+      ["reject-external", 1],
+      ["reject-external", 2],
+    ]);
+  });
+
   it.each([
     ["timeout", null],
     ["crash", null],

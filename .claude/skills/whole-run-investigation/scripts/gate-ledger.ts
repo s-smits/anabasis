@@ -256,7 +256,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
       "tool-timeout",
       "DISCRIMINATION_CHECK_TIMED_OUT",
     ],
-    "every recorded blocking firing was a timeout, most the tool's cost under four lanes; F2 cases and control rejects rerun alone since 2026-09-27, and a check whose rejects all timed out holds the claim open without refusing",
+    "every recorded blocking firing was a timeout, most the tool's cost under four lanes; F2 cases and control rejects rerun alone since 2026-09-27, and a check whose rejects all timed out holds the claim open without refusing; a tool the host refused twice is the environment's for an authored check as for an external one",
   ),
   row(["CT-4", "reject-discrimination", "rewritten"], [0.95, 0.03], [], "became R2"),
   row(

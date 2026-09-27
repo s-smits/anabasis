@@ -340,7 +340,7 @@ export function prepareDarwinSeatbelt(
     baseline: { import: SEATBELT_BASELINE, closureSha256: support.baselineDigest },
     default: "deny",
     network: VERIFIER_POSTURE.network ? "allow" : "deny",
-    process: "allow-process-star-under-inherited-seatbelt",
+    process: "allow-process-star-and-same-sandbox-signal-under-inherited-seatbelt",
     reads: {
       exact: exactReadSnapshots,
       roots: readRoots,
@@ -369,6 +369,11 @@ export function prepareDarwinSeatbelt(
         ...userTempChildTreeRules(userTempRoots),
         ...verifierTempSiblingDenyRules(),
         ...sbRule("allow file-read* file-read-metadata file-write*", "subpath", [workdir]),
+        // `process*` does not cover `signal`, so a deny-default wall stops a tool from stopping a
+        // process it started — an emulator harness ending QEMU, a runner ending a test child — and
+        // an accept whose tool works in the authoring shell fails here. `same-sandbox` reaches every
+        // process under this wall and none outside it.
+        "(allow signal (target same-sandbox))",
       ],
     },
   });

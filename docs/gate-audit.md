@@ -451,3 +451,17 @@ first timeout's duration, the slowest completed run of the same tool on the same
 rerun, and the first timeout stands. Timeouts are not routed to the environment: rule 9 keeps a
 timeout diagnosable unless the evidence proves the environment owns it, and the load figures are
 there for the author to read that, not for the gate to guess it.
+
+### accept-control-rejected (verifier wall signals, Darwin)
+
+The verifier's Seatbelt profile is deny-default and grants `process*`, which does not cover
+`signal`, so a tool could not stop a process it had started: an emulator harness ending QEMU got
+EPERM from `kill`, its accept controls failed `target-behaviour`, and the census refused the
+candidate as `DISCRIMINATION_ACCEPT_REJECTED` and `SOLVABILITY_CENSUS_BLOCKED` owned by the
+correctnessModel, while the same tool worked in the Builder's `(allow default)` shell. The
+firmware run 7398e7-10 met it on its target-behaviour accepts. The verifier profile now carries
+`(allow signal (target same-sandbox))` (`prepareDarwinSeatbelt`, `src/verify/darwin-seatbelt.ts`),
+which reaches every process under the wall and none outside it, and its policy identity names the
+grant. Linux needs no counterpart: Bubblewrap runs the command in a private pid and user namespace
+with no seccomp filter, where a process already signals its own children; that is read from
+`src/verify/linux-bwrap.ts`, not run.

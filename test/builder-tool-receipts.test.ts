@@ -210,7 +210,7 @@ it("reads the host's own load when no reading is injected", () => {
     () => now,
   );
   now = 30 * 60_000;
-  expect(clock()).toMatch(
+  expect(clock(false)).toMatch(
     /^Round clock: 30 min since this round opened; host load average \d+\.\d on \d+ cores\.$/,
   );
 });
@@ -237,4 +237,80 @@ it("asks once inside a running turn for authoring when two hours pass without a 
   const later = session();
   now = 500 * 60_000;
   expect(await later.text()).not.toContain("No candidate");
+});
+
+it("states the last clear preview in place of the authoring ask, and only for a clear correctness_check", async () => {
+  let now = 0;
+  let submitted = false;
+  let status = "clear";
+  const result = async () => ({ content: [], details: { status, stage: "census" } });
+  const tools = withCustomToolReceipts(
+    [
+      toolDouble({ name: "correctness_check", execute: result }),
+      toolDouble({ name: "bash", execute: result }),
+    ],
+    {
+      recorder: new BuilderExecutionRecorder(Date.now()),
+      activeTurn: () => 1,
+      checkpoint: () => {},
+      closed: () => null,
+      clock: sessionClock(
+        () => submitted,
+        () => now,
+        () => "host load average 3.0 on 12 cores",
+      ),
+    },
+  );
+  const call = async (index: number) => JSON.stringify(await tools[index]!.execute("call", NO_ARGS));
+  // A bash call reporting "clear" in its details is not a preview, and a refused preview is not clear.
+  now = 10 * 60_000;
+  await call(1);
+  status = "findings";
+  await call(0);
+  now = 31 * 60_000;
+  expect(await call(1)).not.toContain("clear correctness_check");
+  status = "clear";
+  now = 45 * 60_000;
+  await call(0);
+  now = 61 * 60_000;
+  expect(await call(1)).toContain(
+    "The last clear correctness_check was 16 min ago, and no candidate has been submitted since.",
+  );
+  now = 121 * 60_000;
+  const late = await call(1);
+  expect(late).toContain("The last clear correctness_check was 76 min ago");
+  expect(late).not.toContain("move to authoring");
+  submitted = true;
+  now = 151 * 60_000;
+  const after = await call(1);
+  expect(after).toContain("Round clock: 151 min");
+  expect(after).not.toContain("clear correctness_check");
+});
+
+it("keeps the authoring ask for a round whose previews never came back clear", async () => {
+  let now = 0;
+  const tools = withCustomToolReceipts(
+    [
+      toolDouble({
+        name: "correctness_check",
+        execute: async () => ({ content: [], details: { status: "blocked" } }),
+      }),
+    ],
+    {
+      recorder: new BuilderExecutionRecorder(Date.now()),
+      activeTurn: () => 1,
+      checkpoint: () => {},
+      closed: () => null,
+      clock: sessionClock(
+        () => false,
+        () => now,
+        () => "host load average 3.0 on 12 cores",
+      ),
+    },
+  );
+  now = 121 * 60_000;
+  const text = JSON.stringify(await tools[0]!.execute("call", NO_ARGS));
+  expect(text).toContain("No candidate has been submitted yet.");
+  expect(text).toContain("move to authoring now");
+  expect(text).not.toContain("clear correctness_check");
 });

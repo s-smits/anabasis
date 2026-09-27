@@ -16,7 +16,7 @@ type BuilderToolReceiptSession = {
   readonly checkpoint: () => void;
   readonly closed: () => "accepted" | "terminal-refusal" | null;
   readonly afterTool?: (() => Promise<string | null>) | undefined;
-  readonly clock?: (() => string | null) | undefined;
+  readonly clock?: ((clearPreview: boolean) => string | null) | undefined;
 };
 
 function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<unknown> {
@@ -41,26 +41,41 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
  *  hours before its first submit, and without this clock the continuation says nothing in all that
  *  time. The half-hour line carries the host load beside the minutes, because a round sharing its
  *  host with other campaigns can see its compiles and previews run several times slower, and a
- *  Builder that cannot see the load reads that as its own tool being slow or flaky. */
+ *  Builder that cannot see the load reads that as its own tool being slow or flaky.
+ *
+ *  A clear preview changes what the no-submit facts mean. Asking a Builder that holds one to "move
+ *  to authoring" is simply false, and a Builder with a clear preview and no submit is the case that
+ *  ran longest: rounds kept reshaping a candidate for hours after the gate had already cleared it.
+ *  So the clock remembers the last clear `correctness_check` and states how long ago it was, while
+ *  no submit has followed, in place of the authoring ask. */
 export function sessionClock(
   submitted: () => boolean = () => true,
   now: () => number = () => performance.now(),
   load: () => string = hostLoad,
-): () => string | null {
+): (clearPreview: boolean) => string | null {
   const opened = now();
   let marks = 0;
   let asked = false;
-  return () => {
-    const elapsed = now() - opened;
+  let clearAt: number | null = null;
+  return (clearPreview) => {
+    const at = now();
+    if (clearPreview) clearAt = at;
+    const elapsed = at - opened;
     const minutes = Math.floor(elapsed / 60_000);
+    const since =
+      clearAt === null || submitted()
+        ? null
+        : `The last clear correctness_check was ${String(Math.floor((at - clearAt) / 60_000))} min ago, and no candidate has been submitted since.`;
     const lines: string[] = [];
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
       lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
+      if (since !== null) lines.push(since);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && !submitted()) {
       asked = true;
-      lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      if (since === null) lines.push(`No candidate has been submitted yet. ${MOVE_TO_AUTHORING}`);
+      else if (!lines.includes(since)) lines.push(since);
     }
     return lines.length === 0 ? null : lines.join("\n");
   };
@@ -105,9 +120,15 @@ export function withCustomToolReceipts(
   let active = 0;
   let reviewing: Promise<string | null> | null = null;
   // A call refused because the round closed states no time; the clock reads only for open calls.
-  const settle = async (name: string, turn: number, open: boolean): Promise<string | null> => {
+  const settle = async (
+    name: string,
+    turn: number,
+    open: boolean,
+    result?: AgentToolResult<unknown>,
+  ): Promise<string | null> => {
     active -= 1;
-    const time = open ? clock() : null;
+    const clear = name === "correctness_check" && asRecord(result?.details)?.status === "clear";
+    const time = open ? clock(clear) : null;
     const review = await reviewAfter(name, turn);
     return [review, time].filter(Boolean).join("\n") || null;
   };
@@ -172,7 +193,7 @@ export function withCustomToolReceipts(
         // minutes to the tool, which can be most of a long call's recorded duration. The receipt is
         // in `details`.
         recorder.customToolFinished(sequence, "returned", result);
-        const advice = await settle(name, turn, closure === null);
+        const advice = await settle(name, turn, closure === null, result);
         // Public advice rides the completed result as one more text block.
         if (hasText(advice)) {
           result = { ...result, content: [...result.content, { type: "text", text: advice }] };

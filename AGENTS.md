@@ -940,6 +940,21 @@ and tests, each block under a `Gate audit 2026-09-25 … commented out (unsure)`
 `docs/gate-audit.md` lists both kinds with what each refused and how to restore it. A commented-out
 refusal is not enforced, so do not describe it to a model as a rule.
 
+Two ledgers under this checkout's ignored `notes/` hold how sure we are of each decision, so that a
+later reading can take one back without re-deriving why it was made. The gate audit ledger
+(`notes/gate-audit-ledger/`) holds one card per component: what it refused, which stages it runs
+at, its firings in the recorded corpus, the 98% sentence, and a falsifier. `INDEX.md` gives each
+card a code in nine groups (SH, ID, F2, CT, GR, BR, DF, LP, WL), 50 codes in all, 29 kept and 21
+commented out at b4746f0. `CONFIDENCE.md` scores each component P(right), P(stall) and P(move)
+against a keep bar of P(right) ≥ 0.98 with P(stall) near zero. The climb rewrite ledger
+(`notes/climb-rewrite-ledger/LEDGER.md`, 2026-09-28) does the same for the climbing overhaul, with
+different columns because the question is different. Each change records the decision it is meant
+to move, the evidence before it, P(value), P(brittle), whether it is a safe removal, a bet with a
+frozen prediction or a risky change to a working path, the exact revert, and the halfway form to
+fall back to. A resolution log records each row as kept, reverted or in-between once a measured run
+has read it. A change to a gate component or to the climb machinery updates its row in the same
+sitting, and a row resolves only from recorded run bytes, never from the change's own tests.
+
 ### Identities, walls and process facts
 
 The accepted candidate has one byte identity, from submit through adoption. Product files become

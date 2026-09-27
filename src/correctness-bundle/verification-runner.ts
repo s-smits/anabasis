@@ -121,7 +121,7 @@ interface BatteryContext {
   corpus: ControlCorpus;
   publicArtifactSchema: ReturnType<typeof compilePublicArtifactSchema>;
   verifier: VerifierHostHandle;
-  externalChecks: Array<{ checkId: string; adapterId: string }>;
+  externalChecks: Array<{ checkId: string; adapterId: string; kind: "authored" | "external" }>;
   checkIdsByTask: Map<string, string[]>;
   evidence: EvidenceLog;
 }

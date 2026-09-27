@@ -53,12 +53,13 @@ describe("reading the host's rows", () => {
 
     const key = { phase: "battery" as const, subjectId: "case-rows", attempt: 3 };
     const scope = fx.host.openSubject(subject({ a: 1 }, key));
-    await scope.port.run({ toolId: "good-tool", checkId: "c-ran" });
-    await scope.port.run({ toolId: "drift-tool", checkId: "c-blocked" });
+    const stdin = JSON.stringify({ a: 1 });
+    await scope.port.run({ toolId: "good-tool", checkId: "c-ran", stdin });
+    await scope.port.run({ toolId: "drift-tool", checkId: "c-blocked", stdin });
     await scope.close();
     // A second evaluate of the same subject: its rows belong to its own attempt.
     const retry = fx.host.openSubject(subject({ a: 1 }, { ...key, attempt: 4 }));
-    await retry.port.run({ toolId: "good-tool", checkId: "c-ran" });
+    await retry.port.run({ toolId: "good-tool", checkId: "c-ran", stdin });
     await retry.close();
 
     expect(subjectRuns(fx.host, key).map((row) => [row.checkId, row.outcome])).toEqual([
@@ -69,11 +70,11 @@ describe("reading the host's rows", () => {
     expect(hostNonResult(fx.host, { ...key, attempt: 4 })).toBeNull();
 
     const external = [
-      { checkId: "c-ran", adapterId: "good-tool" },
-      { checkId: "c-blocked", adapterId: "drift-tool" },
-      { checkId: "c-absent", adapterId: "good-tool" },
-      { checkId: "c-two", adapterId: "good-tool" },
-      { checkId: "c-two", adapterId: "drift-tool" },
+      { checkId: "c-ran", adapterId: "good-tool", kind: "external" as const },
+      { checkId: "c-blocked", adapterId: "drift-tool", kind: "external" as const },
+      { checkId: "c-absent", adapterId: "good-tool", kind: "external" as const },
+      { checkId: "c-two", adapterId: "good-tool", kind: "external" as const },
+      { checkId: "c-two", adapterId: "drift-tool", kind: "external" as const },
     ];
     const pass: CorrectnessModelResult = { ok: true, issues: [], checkReceipts: [] };
     const failedBy = (...checkIds: string[]): CorrectnessModelResult => ({
@@ -106,10 +107,16 @@ describe("reading the host's rows", () => {
     );
 
     const evidence = executionEvidence(fx.host);
-    expect(evidence.executed).toEqual([
-      { phase: "battery", subjectId: "case-rows", attempt: 3, checkId: "c-ran", adapterId: "good-tool" },
-      { phase: "battery", subjectId: "case-rows", attempt: 4, checkId: "c-ran", adapterId: "good-tool" },
-    ]);
+    expect(evidence.executed).toEqual(
+      [3, 4].map((attempt) => ({
+        phase: "battery" as const,
+        subjectId: "case-rows",
+        attempt,
+        checkId: "c-ran",
+        adapterId: "good-tool",
+        artifactInput: true,
+      })),
+    );
     expect(Object.keys(evidence.tools)).toEqual(["good-tool"]);
     expect(evidence.tools["good-tool"]).toEqual({
       digest: sha256OfFile(toolPath(fx, "good-tool")),
@@ -122,6 +129,75 @@ describe("reading the host's rows", () => {
       portableDigest: sha256OfFile(toolPath(fx, "good-tool")),
     });
     expect(evidence.verifierEnvironmentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("grounds an external pass only on a run that was handed the artifact", async () => {
+    // `decode` fails the way a JSON reader fails on empty input; `reject` reads its input and
+    // exits 1 whatever it was given. Neither exit code is what decides grounding.
+    const fx = hostFixture({
+      decode: ['input=$(cat); [ -n "$input" ] || { echo "JSONDecodeError" >&2; exit 1; }', "exit 0"],
+      reject: ["cat >/dev/null", "exit 1"],
+    });
+    const artifact = { source: "int main(void) { return 0; }", note: "" };
+    const publicTask = { taskId: "t", family: "f", publicInput: { span: "12" } };
+    const pass: CorrectnessModelResult = { ok: true, issues: [], checkReceipts: [] };
+    const check = (checkId: string, kind: "authored" | "external" = "external") => ({
+      checkId,
+      adapterId: checkId === "c-exit1" ? "reject" : "decode",
+      kind,
+    });
+    const key = { phase: "battery" as const, subjectId: "case-input", attempt: 1 };
+    const scope = fx.host.openSubject(subject(artifact, { ...key, publicTask }));
+    const run = (
+      checkId: string,
+      toolId: string,
+      input: { stdin?: string; files?: Record<string, string> },
+    ) => scope.port.run({ toolId, checkId, ...input });
+    // The stdin was dropped: the tool ran, exited 1 on empty input, and the evaluator passed anyway.
+    const dropped = await run("c-dropped", "decode", {});
+    expect([dropped.executed, dropped.exitCode]).toEqual([true, 1]);
+    // Artifact bytes on stdin ground the pass even though this tool exits 1.
+    expect((await run("c-exit1", "reject", { stdin: JSON.stringify(artifact) })).exitCode).toBe(1);
+    // A file holding one artifact leaf grounds it too.
+    await run("c-file", "decode", { files: { "main.c": artifact.source } });
+    // The public task alone, or an empty artifact leaf, hands the tool nothing of the artifact.
+    await run("c-task-only", "decode", { stdin: "12" });
+    await run("c-empty-leaf", "decode", { stdin: "" });
+    // One run with the artifact among a check's runs grounds it, in either order.
+    await run("c-later", "decode", {});
+    await run("c-later", "decode", { stdin: JSON.stringify(artifact) });
+    await scope.close();
+
+    const ids = ["c-dropped", "c-exit1", "c-file", "c-task-only", "c-empty-leaf", "c-later"];
+    const bindings = fx.host.executedBindings();
+    expect(
+      ungroundedPassChecks(
+        pass,
+        ids,
+        ids.map((id) => check(id)),
+        bindings,
+        key,
+      ),
+    ).toEqual([
+      { checkId: "c-dropped", toolIds: ["decode"] },
+      { checkId: "c-empty-leaf", toolIds: ["decode"] },
+      { checkId: "c-task-only", toolIds: ["decode"] },
+    ]);
+    // The fact is recorded on the binding, one per check, whichever of its runs carried it.
+    expect(bindings.map((row) => [row.checkId, row.artifactInput])).toEqual(
+      ids.map((id) => [id, ["c-exit1", "c-file", "c-later"].includes(id)]),
+    );
+    // An authored check never claimed its tool decided on the artifact, so any completed run counts.
+    expect(
+      ungroundedPassChecks(pass, ["c-dropped"], [check("c-dropped", "authored")], bindings, key),
+    ).toEqual([]);
+    // A fail still stands without grounding.
+    const failed: CorrectnessModelResult = {
+      ok: false,
+      issues: [{ checkId: "c-dropped", message: "" }],
+      checkReceipts: [],
+    };
+    expect(ungroundedPassChecks(failed, ["c-dropped"], [check("c-dropped")], bindings, key)).toEqual([]);
   });
 
   it("names the environment by tool bytes, not by where the checkout put them", async () => {

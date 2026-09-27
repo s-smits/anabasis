@@ -69,6 +69,7 @@ describe("makeVerify external-verifier grounding (C3)", () => {
           attempt: 1,
           checkId: "ghost-ref",
           adapterId: TOOL_ID,
+          artifactInput: true,
         }))
         .sort(bySubject),
     );

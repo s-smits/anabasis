@@ -47,6 +47,7 @@ export type VerifierExecutionEvidence = {
     attempt: number;
     checkId: string;
     adapterId: string;
+    artifactInput: boolean;
   }>;
   verifierEnvironmentHash: string | null;
   /** Every tool that ran to completion: its executable digest, whether it came from the

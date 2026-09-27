@@ -213,6 +213,9 @@ export interface ExecutedCheckBinding {
   attempt: number;
   checkId: string;
   adapterId: string;
+  /** Whether at least one of those runs was handed non-empty artifact bytes as a file or stdin.
+   *  Only such a run can have decided anything about the artifact; args are not classified. */
+  artifactInput: boolean;
 }
 
 /** The evaluator-facing contract — run, and nothing else. The artifact comes from the bound

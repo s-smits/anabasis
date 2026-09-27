@@ -41,7 +41,7 @@ const resonanceOnT1: ScoredCase[] = GREEN_SCORE.map((row) =>
 
 /** A battery row: one completed run of `adapterId` for `checkId` on `subjectId`. */
 function ran(subjectId: string, checkId: string, adapterId: string) {
-  return { phase: "battery" as const, subjectId, attempt: 1, checkId, adapterId };
+  return { phase: "battery" as const, subjectId, attempt: 1, checkId, adapterId, artifactInput: true };
 }
 
 /** The recorded shape of a behaviour check declared external over an installed compiler: each case

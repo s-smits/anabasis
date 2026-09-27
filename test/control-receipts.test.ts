@@ -162,6 +162,7 @@ function fakeToolHost(
                 attempt: subject.attempt,
                 checkId: request.checkId,
                 adapterId: request.toolId,
+                artifactInput: true,
               });
             }
             const code = bad ? 1 : 0;
@@ -402,6 +403,7 @@ describe("control receipts", () => {
         attempt: 1,
         checkId: "external-check",
         adapterId: "checker",
+        artifactInput: true,
       },
     ]);
   });

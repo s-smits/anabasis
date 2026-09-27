@@ -49,7 +49,10 @@ export function hostNonResult(
 
 /**
  * R1, a grounded pass: every check that decided a pass and declares required tools ran each of
- * them to completion on this subject. Only a pass is read. A check may return false before it
+ * them to completion on this subject. An `external` check names its tool as the instrument that
+ * decided, so one of those runs must also have been handed artifact bytes as a file or stdin: a run
+ * that received nothing of the artifact, such as one whose stdin was dropped, decided nothing about
+ * it, and the exit code does not change that. Only a pass is read. A check may return false before it
  * reaches its tool, on a precondition the artifact already breaks, and that fail is a real verdict;
  * a skipped run can withhold a pass but never create a fail. Timeouts and crashes are the host's
  * non-result and stay with `hostNonResult`. `decidingIds` are the checks the evaluation ran: every
@@ -58,7 +61,7 @@ export function hostNonResult(
 export function ungroundedPassChecks(
   verdict: CorrectnessModelResult | null,
   decidingIds: readonly string[],
-  checkTools: ReadonlyArray<{ checkId: string; adapterId: string }>,
+  checkTools: ReadonlyArray<{ checkId: string; adapterId: string; kind: "authored" | "external" }>,
   bindings: readonly ExecutedCheckBinding[],
   subject: SubjectKey,
 ): UngroundedCheck[] {
@@ -70,7 +73,8 @@ export function ungroundedPassChecks(
       (binding) =>
         ofSubject(binding, subject) &&
         binding.checkId === pair.checkId &&
-        binding.adapterId === pair.adapterId,
+        binding.adapterId === pair.adapterId &&
+        (pair.kind === "authored" || binding.artifactInput),
     );
     if (deciding.has(pair.checkId) && !ran) {
       missing.set(pair.checkId, [...(missing.get(pair.checkId) ?? []), pair.adapterId]);

@@ -79,6 +79,7 @@ export function qiskitExecution(subjectIds: readonly string[]): VerifierExecutio
       attempt: 1,
       checkId: "resonance",
       adapterId: "qiskit-adapter",
+      artifactInput: true,
     })),
     verifierEnvironmentHash: "e".repeat(64),
     tools: QISKIT_TOOLS,

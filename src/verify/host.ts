@@ -186,6 +186,8 @@ type RunInputs = {
   files: Record<string, string>;
   stdin: string | null;
   inputPaths: string[];
+  /** A non-empty file or stdin that is a string leaf or the JSON of the artifact. */
+  artifactInput: boolean;
 };
 /** The executable facts one evidence row names; null when nothing resolved. */
 type EvidenceTool = { command: string; source: ToolEntry["source"] | "cell"; kind: ToolEntry["kind"] };
@@ -710,18 +712,25 @@ class VerifierHost implements VerifierHostHandle {
     if (violation !== null) authoringDefect(violation, "verifier-tool-input");
     const files: Record<string, string> = Object.create(null);
     const inputPaths = new Set<string>();
+    let artifactInput = false;
+    const origins = (content: string): string[] => {
+      const paths = cell.leaves.get(content) ?? ["authored:derived"];
+      if (content !== "" && paths.some((path) => path.startsWith("artifact:"))) artifactInput = true;
+      return paths;
+    };
     for (const [name, content] of Object.entries(request.files ?? {})) {
       const rel = cellRelativePath(name);
       if (rel === null) authoringDefect(`file "${name}" is not a cell-relative path`);
       if (Object.hasOwn(files, rel)) authoringDefect(`multiple input names resolve to "${rel}"`);
       files[rel] = content;
-      for (const path of cell.leaves.get(content) ?? ["authored:derived"]) inputPaths.add(path);
+      for (const path of origins(content)) inputPaths.add(path);
     }
     const stdin = request.stdin ?? null;
     if (stdin !== null) {
-      for (const path of cell.leaves.get(stdin) ?? ["authored:derived"]) inputPaths.add(path);
+      for (const path of origins(stdin)) inputPaths.add(path);
     }
-    return { args: [...args], files, stdin, inputPaths: [...inputPaths].sort(compareCodeUnits) };
+    const sorted = [...inputPaths].sort(compareCodeUnits);
+    return { args: [...args], files, stdin, inputPaths: sorted, artifactInput };
   }
 
   private async run(scope: Scope, request: ToolRunRequest): Promise<ToolRunResult> {
@@ -733,7 +742,7 @@ class VerifierHost implements VerifierHostHandle {
           toolId: isString(request?.toolId) ? request.toolId : "",
           checkId: isString(request?.checkId) ? request.checkId : "",
         },
-        { args: [], files: {}, stdin: null, inputPaths: [] },
+        { args: [], files: {}, stdin: null, inputPaths: [], artifactInput: false },
         null,
       );
       return nonResult(
@@ -856,18 +865,22 @@ class VerifierHost implements VerifierHostHandle {
     }
     if (result.executed && !scope.closed) {
       if (source !== "cell") this.usedTools.set(request.toolId, { ...entry, digest: liveDigest });
-      this.bindings.set(
-        `${subject.phase}\u0000${subject.subjectId}\u0000${String(subject.attempt)}\u0000${request.checkId}\u0000${request.toolId}`,
-        {
-          phase: subject.phase,
-          subjectId: subject.subjectId,
-          attempt: subject.attempt,
-          checkId: request.checkId,
-          adapterId: request.toolId,
-        },
-      );
+      this.bind(subject, request, inputs);
     }
     return result;
+  }
+
+  /** One binding per subject, check and tool; it carries artifact input once any of its runs did. */
+  private bind(subject: VerifierSubject, request: ToolRunRequest, inputs: RunInputs): void {
+    const key = `${subject.phase}\u0000${subject.subjectId}\u0000${String(subject.attempt)}\u0000${request.checkId}\u0000${request.toolId}`;
+    this.bindings.set(key, {
+      phase: subject.phase,
+      subjectId: subject.subjectId,
+      attempt: subject.attempt,
+      checkId: request.checkId,
+      adapterId: request.toolId,
+      artifactInput: this.bindings.get(key)?.artifactInput === true || inputs.artifactInput,
+    });
   }
 
   private evidenceBase(

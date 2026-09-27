@@ -126,7 +126,7 @@ export interface GradeCaseDeps {
   evaluate: EvaluatorFn;
   verifier: VerifierHostHandle;
   runId: string;
-  externalChecks: Array<{ checkId: string; adapterId: string }>;
+  externalChecks: Array<{ checkId: string; adapterId: string; kind: "authored" | "external" }>;
   /** This task's applicable checkIds, computed by the shared applicability owner. */
   applicableIds: string[];
 }

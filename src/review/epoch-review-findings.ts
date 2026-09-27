@@ -45,7 +45,7 @@ import { type ReviewVerifierEvidence, type SourceReadState, deliveredSource } fr
 import { BRIEF_FILE, TASKS_FILE } from "../meta/bundle-layout.ts";
 import { readJsonFile } from "../meta/completed-json.ts";
 import { boundText } from "../meta/bounded-text.ts";
-import type { AboveAimDuty } from "./above-aim-duty.ts";
+import type { AboveAimDuty, ClauseDisposal } from "./review-duties.ts";
 
 export const EPOCH_REVIEW_SCHEMA = "epoch-review/v5";
 /** Product identity; review procedure belongs to the review request. */
@@ -106,8 +106,11 @@ export type EpochReviewEvidence = {
   probes?: ReviewProbeRow[];
   /** How a finished review of a battery above the aim met the duty that placement puts on it: a
    *  task-set defect recorded, every family accounted for in the report, or neither after one
-   *  continuation restating it (`above-aim-duty.ts`). Absent for any other review. */
+   *  continuation restating it (`review-duties.ts`). Absent for any other review. */
   aboveAimDuty?: AboveAimDuty;
+  /** Each clause of the one-line request as the finished review's closing message disposed of it.
+   *  Absent where the review had no request to split or ended in an error. */
+  requestClauses?: ClauseDisposal[];
   report: string | null;
 };
 

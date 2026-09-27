@@ -81,7 +81,7 @@ import {
   recurringDefects,
 } from "./epoch-review-findings.ts";
 import { TASKS_FILE } from "../meta/bundle-layout.ts";
-import { aboveAimContinuation, aboveAimDuty } from "./above-aim-duty.ts";
+import { aboveAimAsk, aboveAimDuty, askOnce, clauseLines, requestDuty } from "./review-duties.ts";
 import { earlierTaskFindingLines } from "./epoch-review-public.ts";
 
 export interface EpochReviewInput {
@@ -220,7 +220,7 @@ function openSession(input: EpochReviewInput): OpenSession {
     reviewerEffort: input.review.enabled ? (input.review.reasoningEffort ?? null) : null,
     requestDigest: hashJsonValue({
       publicRequest: input.publicRequest,
-      policy: "review-probing-findings/v9",
+      policy: "review-probing-findings/v10",
       prompt: EPOCH_REVIEW_PROMPT,
     }),
     obligationsDigest: obligationsDigest(input, disputableIssues(input)),
@@ -523,12 +523,13 @@ function orientation(
   inventory: ReviewInventory,
   verifier: ReviewVerifierEvidence,
   issues: readonly AdviceIssue[],
-  measured: { aim: string; earlier: readonly string[] },
+  measured: { aim: string; earlier: readonly string[]; clauses: readonly string[] },
 ): string {
   const { analysis } = input;
   return [
     `Campaign ${input.slug}, review ${input.runId}, source tree ${input.treeRoot}.`,
     `Original request (verbatim): ${input.publicRequest ?? "(not available to this review)"}`,
+    ...clauseLines(measured.clauses),
     ...(analysis === null
       ? checkpointLines(input)
       : [
@@ -634,8 +635,8 @@ function demandOwners(input: EpochReviewInput, analysisDir: string) {
 }
 
 /** What a measured battery adds to the session: its placement against the aim, the task-set
- *  findings earlier reviews of the same task set recorded, and — above the aim — the one
- *  continuation that restates the duty the placement opens, with the reading of how it was met. */
+ *  findings earlier reviews of the same task set recorded, and — above the aim — the duty the
+ *  placement opens, with the reading of how it was met. */
 function measuredContext(
   input: EpochReviewInput,
   evidence: EpochReviewEvidence,
@@ -643,7 +644,7 @@ function measuredContext(
   findings: ReviewState["findings"],
 ) {
   const { analysis } = input;
-  if (analysis === null) return { aim: "", earlier: [], duty: null, settle: () => ({}) };
+  if (analysis === null) return { aim: "", earlier: [], ask: null, settle: () => ({}) };
   const aim = aimLine(input, () => join(input.repoRoot, input.treeRoot), {
     runId: input.runId,
     pin: analysis.identities.backendPin,
@@ -656,9 +657,26 @@ function measuredContext(
       evidence.condition === null
         ? []
         : earlierTaskFindingLines(earlierTaskFindings(analysisDir, evidence.condition, input.runId)),
-    duty: above ? aboveAimContinuation(findings, families) : null,
+    ask: above ? aboveAimAsk(findings, families) : null,
     settle: (turn: ReaderTurn) =>
       above && turn.error === null ? { aboveAimDuty: aboveAimDuty(findings, families, turn.text) } : {},
+  };
+}
+
+/** What `record_finding` weighs a finding against beyond its own arguments: the declared
+ *  identities, the defects earlier reviews of this condition recorded, the owners whose demand
+ *  finding recurs across full passes, and the checks a listed Judge disagreement names. */
+function findingPriors(
+  input: EpochReviewInput,
+  evidence: EpochReviewEvidence,
+  analysisDir: string,
+  identities: ReturnType<typeof briefIdentities>,
+): Parameters<typeof recordFindingTool>[4] {
+  return {
+    identities,
+    recurring: evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
+    demandRecurs: demandOwners(input, analysisDir),
+    contested: new Set([...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => row.checkIds)),
   };
 }
 
@@ -683,6 +701,9 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
   };
   const probe = probeTool(root, join(analysisDir, `${input.runId}-probe-lifetime`), state.probes);
   const measured = measuredContext(input, evidence, analysisDir, state.findings);
+  const identities = briefIdentities(root);
+  const clauses = requestDuty(input.publicRequest, identities.checkIds, state.findings);
+  const duty = askOnce([measured.ask, clauses.ask]);
   const contested = new Map(
     [...(input.vetoed ?? []), ...(input.disputed ?? []), ...(input.otherContested ?? [])].flatMap((row) => {
       const path = contestedArtifact(input.treeRoot, row);
@@ -740,22 +761,15 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
           taskIds,
           join("campaigns", input.slug, "analysis", `${input.runId}-epoch-review.json`),
           state,
-          {
-            identities: briefIdentities(root),
-            recurring:
-              evidence.condition === null ? new Map() : recurringDefects(analysisDir, evidence.condition),
-            demandRecurs: demandOwners(input, analysisDir),
-            contested: new Set(
-              [...(input.vetoed ?? []), ...(input.disputed ?? [])].flatMap((row) => row.checkIds),
-            ),
-          },
+          findingPriors(input, evidence, analysisDir, identities),
         ),
       ],
-      continuePrompt: (text) => unread() ?? measured.duty?.(text) ?? null,
+      continuePrompt: (text) => unread() ?? duty(text),
       systemPrompt: EPOCH_REVIEW_PROMPT,
-      prompt: [orientation(input, inventory, verifier, issues, measured), ...toolchainLines(toolchain)].join(
-        "\n",
-      ),
+      prompt: [
+        orientation(input, inventory, verifier, issues, { ...measured, clauses: clauses.clauses }),
+        ...toolchainLines(toolchain),
+      ].join("\n"),
       ...keyIfDefined("observer", input.observer),
       ...keyIfDefined("providerBudget", input.providerBudget),
     });
@@ -777,5 +791,6 @@ export async function runEpochReview(input: EpochReviewInput): Promise<EpochRevi
       verifier,
     ),
     ...measured.settle(turn),
+    ...clauses.settle(turn),
   };
 }

@@ -429,12 +429,17 @@ describe("the round plan and the diagnosed issues reach the reviewer", () => {
  *  a battery above the aim owes its review one of two endings, which the host asks for once. */
 describe("what an unchanged task set and an above-aim placement ask of the review", () => {
   type Turn = Parameters<NonNullable<Parameters<typeof runEpochReview>[0]["readerTurn"]>>[0];
+  // The one clause of "solves the domain", disposed of, so that a test about another duty is not
+  // also answering the request-clause duty.
+  const DISPOSED = "\nClause 1: answer; decides: yes, every task.";
 
   async function reviewed(input: {
     counts: Counts;
     taskSetHash?: string;
     earlier?: { taskSetHash: string };
     turn?: (turn: Turn) => Promise<string>;
+    publicRequest?: string;
+    disposal?: string;
   }) {
     const root = tree();
     recordBattery(root, root, "r1", input.counts);
@@ -475,15 +480,15 @@ describe("what an unchanged task set and an above-aim placement ask of the revie
       treeRoot: ".",
       analysis: { ...analysis, identities: { ...analysis.identities, bundleSnapshot: double(snapshot) } },
       priorAdvice: null,
-      publicRequest: "solves the domain",
+      publicRequest: input.publicRequest ?? "solves the domain",
       review,
       readerTurn: async (turn) => {
         prompt = turn.prompt;
-        const first = await (input.turn?.(turn) ?? Promise.resolve(""));
+        const first = (await (input.turn?.(turn) ?? Promise.resolve(""))) + (input.disposal ?? DISPOSED);
         const next = turn.continuePrompt?.(first) ?? null;
         if (next === null) return { pin: null, text: first, error: null };
         continued.push(next);
-        const last = "core demands the load coupling, and nothing is left undemanded.";
+        const last = `core demands the load coupling, and nothing is left undemanded.${input.disposal ?? DISPOSED}`;
         expect(turn.continuePrompt?.(last) ?? null).toBeNull();
         return { pin: null, text: last, error: null };
       },
@@ -580,5 +585,91 @@ describe("what an unchanged task set and an above-aim placement ask of the revie
       },
     });
     expect(record.aboveAimDuty).toBe("undischarged");
+  });
+});
+
+describe("what the request's clauses ask of every review", () => {
+  const REQUEST = "designs roof trusses, checks geometric nonlinearity and reversing wind";
+
+  async function closing(texts: readonly string[], finding?: Record<string, string | boolean>) {
+    const root = tree();
+    recordBattery(root, root, "r1", { passed: 8, verified: 25 });
+    let prompt = "";
+    const continued: string[] = [];
+    const record = await runEpochReview({
+      repoRoot: root,
+      slug: SLUG,
+      runId: "r1",
+      treeRoot: ".",
+      analysis: analysisOf({ passed: 8, verified: 25 }),
+      priorAdvice: null,
+      publicRequest: REQUEST,
+      review,
+      readerTurn: async (turn) => {
+        prompt = turn.prompt;
+        if (finding !== undefined) {
+          await turn.tools.find((row) => row.name === "record_finding")?.execute("c1", double(finding));
+        }
+        let text = "";
+        for (const next of texts) {
+          text = next;
+          const ask = turn.continuePrompt?.(text) ?? null;
+          if (ask === null) break;
+          continued.push(ask);
+        }
+        return { pin: null, text, error: null };
+      },
+    });
+    return { prompt, continued, record };
+  }
+
+  const ALL_DISPOSED = [
+    "Clause 1: answer; decides: yes, task t1.",
+    "Clause 2: unchecked; decides: unknown.",
+    "Clause 3: answer; decides: yes, task t2.",
+  ].join("\n");
+
+  it("lists every clause on the aim, and owes nothing once each is disposed of", async () => {
+    const { prompt, continued, record } = await closing([ALL_DISPOSED]);
+    expect(prompt).toContain("1. designs roof trusses");
+    expect(prompt).toContain("2. checks geometric nonlinearity");
+    expect(prompt).toContain("3. reversing wind");
+    expect(continued).toHaveLength(0);
+    expect(record.requestClauses?.map((row) => [row.check, row.decides])).toEqual([
+      ["answer", "yes"],
+      ["unchecked", "unknown"],
+      ["answer", "yes"],
+    ]);
+  });
+
+  it("asks once for a clause left undisposed or named against an undeclared check, and records it so", async () => {
+    const partial = "Clause 1: answer; decides: yes.\nClause 3: nonlinear-service; decides: yes.";
+    const { continued, record } = await closing([partial, partial, partial]);
+    expect(continued).toHaveLength(1);
+    expect(continued[0]).toContain("Request clauses 2, 3 are not yet disposed of");
+    expect(record.requestClauses?.map((row) => row.check)).toEqual(["answer", null, null]);
+  });
+
+  it("asks again for a clause no task decides until a task-set defect carries it", async () => {
+    const noTask = ALL_DISPOSED.replace(
+      "Clause 2: unchecked; decides: unknown",
+      "Clause 2: answer; decides: no",
+    );
+    const bare = await closing([noTask, noTask]);
+    expect(bare.continued).toHaveLength(1);
+    expect(bare.continued[0]).toContain("Request clause 2 is not yet disposed of");
+    const carried = await closing([noTask], {
+      defect: true,
+      owner: "correctness-model/tasks.json",
+      severity: "advisory",
+      claim: "no task drives the check into the nonlinear regime",
+      publicInputPath: "$.loads",
+    });
+    expect(carried.continued).toHaveLength(0);
+    expect(carried.record.requestClauses?.[1]).toEqual({
+      clause: "checks geometric nonlinearity",
+      check: "answer",
+      decides: "no",
+    });
   });
 });

@@ -25,6 +25,7 @@ import type { ControlReceipt } from "../correctness-bundle/battery-record.ts";
 import { REFERENCE_SOLVE_ENTRY } from "../correctness-bundle/evaluator-process-bundle.ts";
 import type { CheckCost, ToolCheckCoverage } from "../correctness-bundle/grounding-coverage.ts";
 import {
+  type TimeoutRerun,
   VerifierExecutionNonResult,
   environmentOwnedToolNonResult,
   toolRetryDelay,
@@ -411,9 +412,10 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 /**
  * What the author may read about a failed tool run. Two kinds of fact cross: the identities it
  * wrote itself, and what the host measured around the process — how it ended, how long it ran, how
- * many bytes it wrote, and for a `sandbox` or `protocol` outcome the host's own reason, which is
- * host-authored text about the request or the byte counts rather than anything the tool printed. Tool stdout and stderr stay
- * protected as verifier output under rule 4.
+ * many bytes it wrote, and for a `sandbox`, `protocol` or `timeout` outcome the host's own reason,
+ * which is host-authored text about the request, the byte counts or the wall the run met rather
+ * than anything the tool printed. Tool stdout and stderr stay protected as verifier output under
+ * rule 4.
  *
  * The cell facts in `advice` are what the Builder cannot observe from its own session, where the
  * same command works: a tool that needs HOME fails here and nowhere the author can see, and a
@@ -425,7 +427,7 @@ function settleModuleResolution(context: CensusContext): CampaignFeedback[] | nu
 export function toolRunFailureDetail(evidence: VerifierExecutionEvidence): string {
   const subject = evidence.phase === "discrimination" ? ` on control "${evidence.subjectId}"` : "";
   const reason =
-    (evidence.outcome === "sandbox" || evidence.outcome === "protocol") &&
+    (evidence.outcome === "sandbox" || evidence.outcome === "protocol" || evidence.outcome === "timeout") &&
     evidence.nonResultReason !== undefined
       ? `: ${evidence.nonResultReason}`
       : "";
@@ -484,7 +486,7 @@ function settleNonResult(
         {
           code: toolNonResultCode(error.evidence),
           path: EVALUATOR_FILE,
-          detail: toolRunFailureDetail(error.evidence),
+          detail: `${toolRunFailureDetail(error.evidence)}${rerunDetail(context, error.rerun)}`,
         },
       ]),
     },
@@ -492,6 +494,20 @@ function settleNonResult(
   return persistFailure(context, feedback, completed, "fail", {
     verifierNonResultEvidence: tracePointer(context.iterationDir, TOOL_NON_RESULT_FILE),
   });
+}
+
+/** The timings that tell a wall too tight for the tool from a tool that hangs: both timeouts, the
+ *  slowest run of the same tool and check that completed, which wall bound it, and how loaded the
+ *  host was each time. Every number is a host measurement, so it crosses to the author whole. */
+function rerunDetail(context: CensusContext, rerun: TimeoutRerun | undefined): string {
+  if (rerun === undefined) return "";
+  const { first, slowestCompletedMs, load } = rerun;
+  const ceilingMs = harnessSettings(context.slugDir).toolRunMs;
+  const slowest =
+    slowestCompletedMs === null
+      ? `No run of tool "${first.toolId}" on check "${first.checkId}" completed in this census`
+      : `The slowest run of tool "${first.toolId}" on check "${first.checkId}" that completed in this census took ${slowestCompletedMs} ms`;
+  return ` It timed out first beside the other reference tasks after ${first.durationMs} ms, then again when rerun alone. ${slowest}; the harness ceiling (gate.tool_run_seconds) is ${ceilingMs} ms, and a wall below it is the timeoutMs the evaluator requested. Host load average was ${load.first.toFixed(1)} at the first timeout and ${load.rerun.toFixed(1)} at the second, on ${load.cores} cores. A completed run near the wall means the tool's cost meets it: give the run a timeoutMs with room, up to the ceiling, or less work per run; no completed run on a quiet host means the tool does not finish on this input.`;
 }
 
 function settleToolUnavailable(

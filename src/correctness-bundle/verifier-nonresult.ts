@@ -2,6 +2,21 @@ import type { VerifierExecutionNonResultKind } from "../verify/correctness-model
 import type { VerifierExecutionEvidence } from "../verify/verifier-port.ts";
 
 /**
+ * What an F2 grading run that timed out twice leaves for the author to weigh: it timed out beside
+ * the other reference tasks, then again when rerun alone. Most recorded timeouts were a tool's
+ * ordinary cost meeting its wall rather than a wrong answer, so the refusal carries the timings and
+ * the host load that tell those apart instead of the bare outcome.
+ */
+export interface TimeoutRerun {
+  /** The first run's evidence, from beside the other lanes. */
+  first: VerifierExecutionEvidence;
+  /** Longest completed run of the same tool on the same check in this census; null when none completed. */
+  slowestCompletedMs: number | null;
+  /** One-minute host load average when each timeout was seen, and the host's cores. */
+  load: { first: number; rerun: number; cores: number };
+}
+
+/**
  * A tool run the host authorised produced no completed run. The host alone writes the kind: a
  * tool has no wire on which to report its own outcome, so the kind is a host measurement and can
  * be read for ownership directly. Two kinds are the environment's — the OS wall was unavailable or
@@ -31,7 +46,10 @@ export function toolRetryDelay(waitMs: number = TOOL_RETRY_DELAY_MS): Promise<vo
 }
 
 export class VerifierExecutionNonResult extends Error {
-  constructor(readonly evidence: VerifierExecutionEvidence) {
+  constructor(
+    readonly evidence: VerifierExecutionEvidence,
+    readonly rerun?: TimeoutRerun,
+  ) {
     super(
       `${evidence.phase} evaluate of "${evidence.subjectId}" could not run: tool "${evidence.toolId}" for check "${evidence.checkId}" ended as ${evidence.outcome}`,
     );

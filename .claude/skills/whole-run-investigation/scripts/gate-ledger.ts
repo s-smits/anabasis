@@ -250,7 +250,7 @@ export const GATE_LEDGER: readonly LedgerEntry[] = [
     ["CT-3", "controls-no-verdict", "narrowed"],
     [0.9, 0.05],
     ["DISCRIMINATION_PROBE_NO_VERDICT", "DISCRIMINATION_NOT_PROVEN", "verifier-tool-refused", "tool-timeout"],
-    "every recorded firing was a timeout, which is sometimes the tool's cost rather than the author's",
+    "every recorded blocking firing was an F2 grading timeout, most the tool's cost under four lanes; rerun alone before refusing since 2026-09-27",
   ),
   row(["CT-4", "reject-discrimination", "rewritten"], [0.95, 0.03], [], "became R2"),
   row(

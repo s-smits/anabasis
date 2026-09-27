@@ -198,6 +198,53 @@ describe("a census that ends in a verifier non-result", () => {
     expect(feedback[0]?.findings?.[0]?.detail).not.toContain("t17");
   });
 
+  const GRADING_TIMEOUT: VerifierExecutionEvidence = {
+    ...TRUSS_CRASH,
+    phase: "solvability",
+    subjectId: "self:t17",
+    attempt: 2,
+    outcome: "timeout",
+    timedOut: true,
+    exitCode: null,
+    signal: "SIGTERM",
+    durationMs: 60_210,
+    nonResultReason: 'tool "truss-contract-checker" exceeded 60000ms; process group absence was verified',
+  };
+
+  it("gives a grading timeout that recurred alone both timings, the slowest completed run and the host load", async () => {
+    const { feedback } = await runGate("rerun-timeout", {
+      probeControls: async () => ({ findings: [] }),
+      solvability: async () => {
+        throw new VerifierExecutionNonResult(GRADING_TIMEOUT, {
+          first: { ...GRADING_TIMEOUT, attempt: 1, durationMs: 60_140 },
+          slowestCompletedMs: 57_300,
+          load: { first: 11.25, rerun: 3.5, cores: 8 },
+        });
+      },
+    });
+    const finding = feedback[0]?.findings?.[0];
+    expect(finding?.code).toBe("tool-timeout");
+    for (const fact of [
+      'outcome "timeout": tool "truss-contract-checker" exceeded 60000ms',
+      "(attempt 2)",
+      "timed out first beside the other reference tasks after 60140 ms, then again when rerun alone",
+      'slowest run of tool "truss-contract-checker" on check "design-contract" that completed in this census took 57300 ms',
+      "the harness ceiling (gate.tool_run_seconds) is",
+      "Host load average was 11.3 at the first timeout and 3.5 at the second, on 8 cores",
+    ]) {
+      expect(finding?.detail).toContain(fact);
+    }
+    expect(finding?.detail).not.toContain("t17");
+  });
+
+  it("adds no rerun sentence to a timeout that never earned a rerun", async () => {
+    const { feedback } = await settle("unrerun-timeout", { ...GRADING_TIMEOUT, attempt: 1 });
+    const detail = feedback[0]?.findings?.[0]?.detail ?? "";
+    expect(feedback[0]?.findings?.[0]?.code).toBe("tool-timeout");
+    expect(detail).not.toContain("rerun alone");
+    expect(detail).not.toContain("Host load");
+  });
+
   it("drains a reference solve still running past the wall before the retry starts", async () => {
     let referenceDone = false;
     let solves = 0;

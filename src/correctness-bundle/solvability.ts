@@ -38,6 +38,8 @@ import {
 import { sha256 } from "../meta/digest.ts";
 import { errorMessage } from "../meta/runtime-values.ts";
 import { VerifierOperationalStop, type VerifierLifetime } from "../verify/verifier-lifetime.ts";
+import { VerifierExecutionNonResult } from "./verifier-nonresult.ts";
+import { availableParallelism, loadavg } from "../meta/os.ts";
 import { compareCodeUnits } from "../meta/stable-json.ts";
 import type { BuiltStarter } from "../solve/built-starter.ts";
 import type { GeneratedToolStarterOptions } from "../solve/generated-tool-worker.ts";
@@ -115,6 +117,14 @@ interface SolvabilityContract {
 }
 
 type Loaded<T> = { ok: true; value: T } | { ok: false; finding: ContractFinding };
+
+/** One task through stage 3: its bytes, and how its case settled in the lanes. A timed-out case
+ *  still owes its rerun alone; a resolved one has its outcome or the stop that ended it. */
+type CaseSlot = { task: BuildTask; fullTaskJson: string; committed: CommittedPublicTask<JsonValue> };
+type TimedOutRun = VerifierExecutionNonResult & { evidence: { outcome: "timeout" } };
+type ResolvedCase = CaseSlot & ({ outcome: SolvabilityCaseOutcome } | { stop: VerifierOperationalStop });
+type TimedOutCase = CaseSlot & { timedOut: TimedOutRun; load: number };
+type SettledCase = ResolvedCase | TimedOutCase;
 
 /** What one case needs beyond its own task: the recorded bytes to solve against, the submission
  *  contract it has to pass, the census condition it is judged under, and the stage memory that lets
@@ -470,11 +480,66 @@ function cleanupPending(stop: VerifierOperationalStop): ContractFinding {
   };
 }
 
+const timedOutRun = (error: unknown): error is TimedOutRun =>
+  error instanceof VerifierExecutionNonResult && error.evidence.outcome === "timeout";
+
+async function settleCase(session: SolvabilityCaseSession, slot: CaseSlot): Promise<SettledCase> {
+  try {
+    return {
+      ...slot,
+      outcome: await runSolvabilityCase(session, slot.task, slot.fullTaskJson, slot.committed),
+    };
+  } catch (error) {
+    if (timedOutRun(error)) return { ...slot, timedOut: error, load: loadavg()[0] ?? 0 };
+    if (!(error instanceof VerifierOperationalStop)) throw error;
+    return { ...slot, stop: error };
+  }
+}
+
+/** The longest run of the timed-out tool on the same check that did complete in this census. */
+function slowestCompletedMs(session: SolvabilityCaseSession, timedOut: TimedOutRun): number | null {
+  const durations = session.census.verifier
+    .evidence()
+    .filter(
+      (row) =>
+        row.phase === "solvability" &&
+        row.outcome === "executed" &&
+        row.toolId === timedOut.evidence.toolId &&
+        row.checkId === timedOut.evidence.checkId,
+    )
+    .map((row) => row.durationMs);
+  return durations.length === 0 ? null : Math.max(...durations);
+}
+
+/**
+ * A grading run that timed out beside the other lanes gets one more run, alone, before it refuses.
+ * In 17 of 22 recorded censuses that refused on a timeout, the wall was only 1.0 to 1.6 times the
+ * tool's slowest completed run on other tasks, so the first timeout often measured four lanes
+ * sharing the host rather than the case. The rerun waits for every F2 lane to drain (the control
+ * census may still be running beside it) and runs the whole case again under the next host
+ * attempt, so its rows are never read as the first run's. A second
+ * timeout stands, and carries both timings, the slowest completed run and the host load to the
+ * refusal, which is what lets the author tell a wall too tight for the tool from a tool that hangs.
+ */
+async function rerunAlone(session: SolvabilityCaseSession, slot: TimedOutCase): Promise<ResolvedCase> {
+  const first = slot.timedOut.evidence;
+  const alone = { ...session, census: { ...session.census, attempt: first.attempt + 1 } };
+  const { task, fullTaskJson, committed } = slot;
+  const rerun = await settleCase(alone, { task, fullTaskJson, committed });
+  if (!("timedOut" in rerun)) return rerun;
+  throw new VerifierExecutionNonResult(rerun.timedOut.evidence, {
+    first,
+    slowestCompletedMs: slowestCompletedMs(session, rerun.timedOut),
+    load: { first: slot.load, rerun: rerun.load, cores: availableParallelism() },
+  });
+}
+
 /** Stage 3: cases run in the control census's lanes and are recorded in task order. The lane width
  *  is the control census's because the two have the same shape of work: a whole task set solved one
  *  after another inside the same wall the controls run under. After a stop no further task starts,
  *  every case that already ran keeps its row, and the cleanup finding is admitted once rather than
- *  per lane. */
+ *  per lane. A case whose grading timed out is rerun alone once the lanes drain (`rerunAlone`); a
+ *  stop or a cut leaves no room for that, and the first timeout stands. */
 async function solveInLanes(
   session: SolvabilityCaseSession,
   tasks: readonly BuildTask[],
@@ -494,23 +559,25 @@ async function solveInLanes(
       const committed = commitPublicTask(
         /* SAFETY: this loop's own serialisation of a battery member. */ roundTripped as BuildTask,
       );
-      try {
-        return {
-          task,
-          fullTaskJson,
-          committed,
-          outcome: await runSolvabilityCase(session, task, fullTaskJson, committed),
-        };
-      } catch (error) {
-        if (!(error instanceof VerifierOperationalStop)) throw error;
-        stopped = true;
-        return { task, fullTaskJson, committed, stop: error };
-      }
+      const slot = await settleCase(session, { task, fullTaskJson, committed });
+      if ("stop" in slot) stopped = true;
+      return slot;
     },
     () => stopped || cut(),
   );
+  const resolved: ResolvedCase[] = [];
   for (const slot of settled) {
     if (slot === undefined) break;
+    if (!("timedOut" in slot)) {
+      resolved.push(slot);
+      continue;
+    }
+    if (stopped || cut()) throw slot.timedOut;
+    // Alone means one at a time: the reruns are the only work left in F2, and running them side
+    // by side would bring back the contention the rerun exists to remove.
+    resolved.push(await rerunAlone(session, slot));
+  }
+  for (const slot of resolved) {
     if ("outcome" in slot) {
       cases.push(slot.outcome.row);
       if (slot.outcome.finding !== null) findings.push(slot.outcome.finding);

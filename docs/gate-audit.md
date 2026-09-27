@@ -161,9 +161,12 @@ routed to `.toolchain` rather than to the correctnessModel (below).
 
 ### controls-no-verdict
 
-Refuses a control whose check threw or reached no verdict because its tool runs timed out or
-crashed (`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/correctness-bundle/run-controls.ts`). It
-witnesses nothing about the checks. A tool the host refused twice, for `sandbox` or
+Refuses a control whose check threw or reached no verdict because its tool run crashed
+(`DISCRIMINATION_NOT_PROVEN`, `PROBE_NO_VERDICT`; `src/correctness-bundle/run-controls.ts`). It
+witnesses nothing about the checks. A control whose tool timed out refuses nothing: it is the
+advisory `controls-tool-timeout` (`timedOutControls`, `src/correctness-bundle/control-receipts.ts`).
+The blocking `tool-timeout` that remains is F2's, a reference artifact's grading run that timed
+out, and since 2026-09-27 that refuses only after a rerun alone (below). A tool the host refused twice, for `sandbox` or
 `verifierUnavailable`, is no longer counted here: since 2026-09-26 it is `verifier-tool-refused`,
 which `tool-environment` below settles as the environment's.
 
@@ -313,8 +316,11 @@ tools, authored or external, has no completed run of one of them on that same su
 never refused for a missing run: a skipped run could only have withheld a pass, and refusing one
 mislabelled correct prechecks and every census reject that passed its check. One code,
 `EXTERNAL_VERDICT_UNGROUNDED`. The F2 witness fails, a census control is refused, and a battery or
-rehearsal case is a `verifier` non-result. Timeouts and crashes stay with
-`DISCRIMINATION_PROBE_NO_VERDICT`, and `generated-correctness-model-relay` is gone as a
+rehearsal case is a `verifier` non-result. A control whose tool crashed stays with
+`DISCRIMINATION_PROBE_NO_VERDICT`; a control whose tool timed out refuses nothing and is read
+beside the verdict as the advisory `controls-tool-timeout`, while R2 still refuses a check whose
+only rejects reached no verdict. An F2 grading run that timed out is rerun alone once before it
+refuses (`controls-no-verdict`, below). `generated-correctness-model-relay` is gone as a
 classification. The claim's `external-grounding-case-uncovered` clause is deleted, since no verified
 pass can now lack its run.
 
@@ -409,3 +415,20 @@ checks has a run that ended nonzero with no stdout and that run's tool never exi
 stdout on any accept or reject (`unrunnableTools`, `src/correctness-bundle/run-controls.ts`). One
 working run anywhere keeps the rejection the correctnessModel's. The refusal itself is unchanged;
 only its owner and remedy moved.
+
+### controls-no-verdict (F2 timeout rerun alone)
+
+Every recorded blocking `tool-timeout` came from F2, the grading of a reference artifact, and in 17
+of 22 of those censuses the wall was only 1.0 to 1.6 times the same tool's slowest completed run
+on other tasks: the timeout measured the tool's cost with four lanes sharing the host more often
+than a hang. A grading run that timed out now waits for the F2 lanes to drain and runs its whole
+case once more, alone among F2's cases (the control census may still be running beside it), under
+the next host attempt (`rerunAlone`,
+`src/correctness-bundle/solvability.ts`); a case that completes there is judged like any other. A
+second timeout refuses as before, and the `tool-timeout` finding now carries the host's wall, the
+first timeout's duration, the slowest completed run of the same tool on the same check, the
+`gate.tool_run_seconds` ceiling, and the host load average at each timeout against its cores
+(`rerunDetail`, `src/run/census-gate.ts`). A stop or a census wall cut leaves no room for the
+rerun, and the first timeout stands. Timeouts are not routed to the environment: rule 9 keeps a
+timeout diagnosable unless the evidence proves the environment owns it, and the load figures are
+there for the author to read that, not for the gate to guess it.

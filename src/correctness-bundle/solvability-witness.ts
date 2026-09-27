@@ -42,6 +42,9 @@ export interface WitnessCensus {
   verifier: VerifierHostHandle;
   evaluate: EvaluatorFn;
   operandCommitment: OperandCommitmentContext;
+  /** The host attempt this evaluate records under; 1 unless a timed-out case is being rerun, whose
+   *  rows must not be read as the first run's. */
+  attempt?: number;
 }
 
 /** Put one artifact through the generated correctnessModel for one task and say what came back. The
@@ -54,7 +57,7 @@ export async function evaluateWitness(
   artifactJson: string,
   subjectId: string,
 ): Promise<EvaluatedWitness> {
-  const { brief } = census;
+  const { brief, attempt = 1 } = census;
   const fullTask = parseJsonAs<BuildTask>(targetTaskJson);
   const committed = commitPublicTask(fullTask);
   const artifact = capturedJsonParse(artifactJson);
@@ -70,7 +73,7 @@ export async function evaluateWitness(
     runId: null,
     phase: "solvability",
     subjectId,
-    attempt: 1,
+    attempt,
     artifact,
     publicTask: evaluateView,
     hidden: fullTask.hidden,
@@ -101,7 +104,7 @@ export async function evaluateWitness(
   } finally {
     pending = (await scope.close()).pendingInvocations;
   }
-  const subject = { phase: "solvability" as const, subjectId, attempt: 1 };
+  const subject = { phase: "solvability" as const, subjectId, attempt };
   // As in gradeCase, pending calls are an authoring defect. Scope closure cancels queued
   // calls without spawning; their refusal rows must not turn that defect into an outage.
   const hostFailure =

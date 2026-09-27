@@ -53,6 +53,8 @@ export type SlotChoice = {
   /** Ordered exclusive upstream route, resolved once with the slot rather than reread later. */
   providerPin?: string[];
   source: "operator" | "env" | "default";
+  /** Built slot only: the operator's withheld-instruments launch condition, present when on. */
+  withholdInstruments?: true;
 };
 
 export type ReviewChoice =
@@ -72,6 +74,10 @@ export type ResolvedSlots = {
    *  the default was used because no operator file existed to say otherwise. */
   operatorConfig: string | null;
 };
+
+/** The environment key that carries `--withhold-instruments` from the launch to every place the
+ *  slots are resolved. `fullrun` always sets it, so no `.env` file decides the condition for a run. */
+export const WITHHOLD_INSTRUMENTS_ENV = "HARNESS_BUILT_WITHHOLD_INSTRUMENTS";
 
 /** Narrow an untrusted value (operator file, env var, form input) to a known kind. */
 function isBackendKind(value: JsonValue): value is BackendKind {
@@ -229,9 +235,20 @@ function resolveSide(side: "builder" | "built", pin: OperatorPin, repo: RepoEnv)
 export function resolveSlots(repoRoot: string, slug: string, repo: RepoEnv): ResolvedSlots {
   const selection = OperatorSelection.read(repoRoot, slug);
   const builder = resolveSide("builder", selection.pin("builder"), repo);
-  const built = resolveSide("built", selection.pin("built"), repo);
+  const built = { ...resolveSide("built", selection.pin("built"), repo), ...withheldInstruments(repo.env) };
   const review = resolveReview(selection.pin("review"), repo, built);
   return { slug, builder, built, review, operatorConfig: selection.files.join(" over ") || null };
+}
+
+/** The Built solve's shell may not run a check's own `.toolchain` instrument. Off unless the key
+ *  says `true`; any spelling but `true` or `false` is refused rather than read as either. */
+function withheldInstruments(env: Record<string, string>): Pick<SlotChoice, "withholdInstruments"> {
+  const value = env[WITHHOLD_INSTRUMENTS_ENV];
+  if (value === undefined || value === "false") return {};
+  if (value === "true") return { withholdInstruments: true };
+  throw new Error(
+    `env ${WITHHOLD_INSTRUMENTS_ENV} must be true or false, got ${capturedJsonStringify(value)}`,
+  );
 }
 
 /** The review slot following the Built slot: its whole served condition, provider route included,

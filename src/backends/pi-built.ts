@@ -78,6 +78,8 @@ export interface PiBuiltRuntime {
   readyWallMs?: number;
   /** Test option: the whole-solve wall in milliseconds; production reads the bundle's agent/config.yaml. */
   solveWallMs?: number;
+  /** The operator's withheld-instruments launch condition, from the Built slot; absent when off. */
+  withholdInstruments?: true;
 }
 
 type PiBuiltStart = Omit<PiWire.PiBuiltStart, "workerInstanceId">;
@@ -164,7 +166,7 @@ export function resolvePiBuiltRuntime(
   env: OptionalEnvValues = Bun.env,
 ): PiBuiltRuntime {
   const { profile, auth } = resolvePiSlot("built", slots.built, { webSearch: true }, repoRoot, env);
-  return { profile, auth, policy };
+  return { profile, auth, policy, ...keyIfDefined("withholdInstruments", slots.built.withholdInstruments) };
 }
 
 let workerBundle: Promise<PiBuiltWorkerBundle> | null = null;
@@ -505,6 +507,7 @@ export function piBuiltSolver(runtime: PiBuiltRuntime, options: BuiltSolverOptio
       publicArtifactSchema,
       sessionIsolation: runtime.policy,
       ...keyIfDefined("safeguardContext", safeguardContext),
+      ...keyIfDefined("withholdInstruments", runtime.withholdInstruments),
     });
   });
 }

@@ -5,7 +5,14 @@
  * costs a provider call while the real fingerprint, bundle snapshot, verification and recording
  * paths still run.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "../src/meta/filesystem.ts";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "../src/meta/filesystem.ts";
 import { join } from "../src/meta/path.ts";
 
 import { afterAll, describe, expect, it } from "bun:test";
@@ -24,7 +31,9 @@ import {
   nonResultOutcome,
 } from "../src/correctness-bundle/solve.ts";
 import type { GeneratedToolBoundaryProbe } from "../src/solve/built-starter.ts";
+import { measuredConditionDigest } from "../src/author/issue-condition.ts";
 import {
+  MATCHING_BRIEF,
   MATCHING_TOOLS_SPEC,
   MATCHING_TASKS as TASKS,
   scriptedMatchingSolver as scriptedSolver,
@@ -179,6 +188,33 @@ describe("the battery driver", () => {
     expect(withoutPreset).toMatch(/^[0-9a-f]{64}$/);
     expect(withPreset).toMatch(/^[0-9a-f]{64}$/);
     expect(withPreset).not.toBe(withoutPreset);
+  });
+
+  // The operator's withheld-instruments condition: off records exactly what a battery recorded
+  // before it existed; on names each check tool the bundle's own tree resolves, and not a host one,
+  // so the measured-condition digest separates the two batteries.
+  it("records withheld check instruments as removed, and nothing when the condition is off", () => {
+    const { slugDir } = slug("withheld-condition");
+    const [first, second] = MATCHING_BRIEF.truthChecks;
+    const brief = {
+      ...MATCHING_BRIEF,
+      truthChecks: [
+        { ...first, execution: { ...first?.execution, requiredToolIds: ["own-check"] } },
+        { ...second, execution: { ...second?.execution, requiredToolIds: ["sh"] } },
+      ],
+    };
+    writeFileSync(join(slugDir, "correctness-model/brief.json"), JSON.stringify(brief));
+    mkdirSync(join(slugDir, ".toolchain/bin"), { recursive: true });
+    writeFileSync(join(slugDir, ".toolchain/bin/own-check"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    const off = batteryCondition(slugDir);
+    const on = batteryCondition(slugDir, true);
+    expect(off.advisorsRemoved).toEqual([]);
+    expect(batteryCondition(slugDir, false)).toEqual(off);
+    expect(on.advisorsRemoved).toEqual(["instrument:own-check"]);
+    expect(on.toolInterfaceHash).toBe(off.toolInterfaceHash);
+    const digest = (runCondition: typeof off) =>
+      measuredConditionDigest({ builtPin: "claude/m", isolationStrength: "os", runCondition });
+    expect(digest(on)).not.toBe(digest(off));
   });
 
   it("records one case row per task with checked pointers, and reads rows only from their own bytes", async () => {

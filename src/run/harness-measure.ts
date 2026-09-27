@@ -317,7 +317,7 @@ async function measureResolvedBattery(
       openHost,
       ...keyIfDefined("verifierLifetime", options.verifierLifetime),
       ...keyIfDefined("safeguardContext", options.safeguardContext),
-      condition: batteryCondition(slugDir),
+      condition: batteryCondition(slugDir, slots.built.withholdInstruments === true),
       solver: runtime.solver(),
       projectToolset: (toolset) => toolset,
       backendPin: backendPinOf(slots),

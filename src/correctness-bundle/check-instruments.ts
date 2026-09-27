@@ -3,6 +3,8 @@
  * the withheld-instruments launch condition closes in the Built shell and records in the battery's
  * run condition, so what the solver lost and what the evidence says it lost cannot disagree.
  */
+import { basename } from "../meta/path.ts";
+import { compareCodeUnits } from "../meta/stable-json.ts";
 import { bundleSnapshotToolTree } from "../claim/bundle-snapshot.ts";
 import { withheldInstrumentPaths } from "../verify/tool-inventory.ts";
 import { requiredToolsOf } from "./brief.ts";
@@ -17,4 +19,9 @@ export function checkInstrumentPaths(slugDir: string): string[] {
     checks.flatMap((check) => requiredToolsOf(check.execution)),
     bundleSnapshotToolTree(slugDir),
   );
+}
+
+/** The same programs by tool id, sorted: a path's last segment is the id the check declared. */
+export function checkInstrumentIds(slugDir: string): string[] {
+  return [...new Set(checkInstrumentPaths(slugDir).map((path) => basename(path)))].sort(compareCodeUnits);
 }

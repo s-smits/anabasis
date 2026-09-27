@@ -10,7 +10,7 @@ import { FROZEN_MANIFEST_PATH } from "../critic/manifest.ts";
 import type { AdmittedEvidence } from "../analyse/iteration-analysis.ts";
 import type { JudgeReviewsResult } from "../analyse/judge-reviews.ts";
 import { setProjectBackendSelection } from "../backends/project-backends.ts";
-import { backendPinOf } from "../backends/resolve.ts";
+import { WITHHOLD_INSTRUMENTS_ENV, backendPinOf } from "../backends/resolve.ts";
 import { fullrunLine, startFullRunObservation } from "../observe/run-observer.ts";
 import { analyseStep } from "./analyse-step.ts";
 import type { AskManifest } from "./ask-manifest.ts";
@@ -317,13 +317,20 @@ function fullRunOutcome(
   };
 }
 
+/** The slot choices the launch flags make, before anything resolves the slots. */
+function applyLaunchSlots(args: FullRunArgs, repoRoot: string, projectId: string): void {
+  // Set on every launch, off included, so the condition is the flag's and never a `.env` file's.
+  Bun.env[WITHHOLD_INSTRUMENTS_ENV] = String(args.withholdInstruments === true);
+  for (const slot of ["builder", "built", "review"] as const) {
+    const selection = args.backendSelections?.[slot];
+    if (selection !== undefined) setProjectBackendSelection(repoRoot, projectId, slot, selection);
+  }
+}
+
 async function runUnderLock(run: LockedRun): Promise<FullRunOutcome> {
   const { args, repoRoot, deps, admitted, state, safeguardContext, stopRequested, builderConversation } = run;
   const { prompt, userContext, project } = admitted;
-  for (const slot of ["builder", "built", "review"] as const) {
-    const selection = args.backendSelections?.[slot];
-    if (selection !== undefined) setProjectBackendSelection(repoRoot, project.id, slot, selection);
-  }
+  applyLaunchSlots(args, repoRoot, project.id);
   const manifest: AskManifest =
     args.expectedTasks === undefined
       ? admitted.manifest

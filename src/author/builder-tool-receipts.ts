@@ -6,6 +6,7 @@ import type { PiTool } from "../backends/pi-session.ts";
 import { BuilderExecutionRecorder } from "./builder-execution.ts";
 import { hasText } from "../meta/text.ts";
 import { MOVE_TO_AUTHORING, NO_SUBMIT_REMINDER_MS } from "./builder-continuation.ts";
+import { availableParallelism, loadavg } from "../meta/os.ts";
 
 /** The session the receipts are written against: who records, which turn is open, how a checkpoint
  *  is taken, whether the session has closed, and the optional hooks. */
@@ -38,10 +39,13 @@ function closedResult(reason: "accepted" | "terminal-refusal"): AgentToolResult<
  *  without a submit, the continuation's ask to author. It exists because a Claude Builder session
  *  runs as one turn, so a turn boundary may not come for hours. A session can author for three
  *  hours before its first submit, and without this clock the continuation says nothing in all that
- *  time. */
+ *  time. The half-hour line carries the host load beside the minutes, because a round sharing its
+ *  host with other campaigns can see its compiles and previews run several times slower, and a
+ *  Builder that cannot see the load reads that as its own tool being slow or flaky. */
 export function sessionClock(
   submitted: () => boolean = () => true,
   now: () => number = () => performance.now(),
+  load: () => string = hostLoad,
 ): () => string | null {
   const opened = now();
   let marks = 0;
@@ -52,7 +56,7 @@ export function sessionClock(
     const lines: string[] = [];
     if (Math.floor(minutes / 30) > marks) {
       marks = Math.floor(minutes / 30);
-      lines.push(`Round clock: ${String(minutes)} min since this round opened.`);
+      lines.push(`Round clock: ${String(minutes)} min since this round opened; ${load()}.`);
     }
     if (!asked && elapsed >= NO_SUBMIT_REMINDER_MS && !submitted()) {
       asked = true;
@@ -60,6 +64,11 @@ export function sessionClock(
     }
     return lines.length === 0 ? null : lines.join("\n");
   };
+}
+
+/** The host's one-minute load average against its cores, as the clock states it. */
+function hostLoad(): string {
+  return `host load average ${(loadavg()[0] ?? 0).toFixed(1)} on ${String(availableParallelism())} cores`;
 }
 
 /** Wait for `pending` unless `signal` aborts first; an aborted wait resolves so the caller can

@@ -184,18 +184,35 @@ it("states the session clock once per half hour and not after the build closed",
     clock: sessionClock(
       () => true,
       () => now,
+      () => "host load average 57.6 on 12 cores",
     ),
   });
   now = 29 * 60_000;
   expect(await text()).not.toContain("Round clock");
   now = 31 * 60_000;
-  expect(await text()).toContain("Round clock: 31 min since this round opened.");
+  expect(await text()).toContain(
+    "Round clock: 31 min since this round opened; host load average 57.6 on 12 cores.",
+  );
   now = 59 * 60_000;
   expect(await text()).not.toContain("Round clock");
+  now = 61 * 60_000;
+  expect(await text()).toContain("Round clock: 61 min since this round opened; host load average 57.6");
   closed = "accepted";
   now = 95 * 60_000;
   expect(await text()).not.toContain("Round clock");
   expect(recorder.finish("turn-bound").authoringReviews).toEqual([]);
+});
+
+it("reads the host's own load when no reading is injected", () => {
+  let now = 0;
+  const clock = sessionClock(
+    () => true,
+    () => now,
+  );
+  now = 30 * 60_000;
+  expect(clock()).toMatch(
+    /^Round clock: 30 min since this round opened; host load average \d+\.\d on \d+ cores\.$/,
+  );
 });
 
 it("asks once inside a running turn for authoring when two hours pass without a submit", async () => {

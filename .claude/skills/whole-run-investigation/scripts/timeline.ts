@@ -110,6 +110,8 @@ export const TIMELINE_SCHEMA = "wri-run-timeline/v1";
 const STALLS = 5;
 /** The share of a gap a recorded wait must cover before the gap is attributed to it. */
 const WAIT_COVER = 0.8;
+/** Whether a phase row settles its span rather than opening or holding it. */
+const SETTLED = new Set(["completed", "failed"]);
 
 const minutes = (ms: number): number => Math.round(ms / 600) / 100;
 
@@ -159,17 +161,34 @@ function streams(campaign: string, runId: string): StreamRead {
   return { rows, inputs, scope };
 }
 
+/**
+ * The phase the run holds after each row. A phase row is the last word, except for a span nested
+ * under another phase's span, which is how an authoring review runs inside the build: its rows
+ * carry `phase: "analyse"` and the build span's id as `parentId`. While it runs the run holds its
+ * phase, and once it settles the run is back in the enclosing phase, so the Builder authoring that
+ * follows reads as build and not as analysis.
+ */
+function heldPhases(rows: readonly ObservationRow[]): Array<string | null> {
+  const spanPhase = new Map<string, string>();
+  let current: string | null = null;
+  return rows.map((row) => {
+    if (!isString(row.phase)) return current;
+    const enclosing = isString(row.parentId) ? spanPhase.get(row.parentId) : undefined;
+    if (row.type === "phase-transition" && isString(row.id)) spanPhase.set(row.id, row.phase);
+    const nested = row.type === "phase-transition" && enclosing !== undefined && enclosing !== row.phase;
+    current = nested && isString(row.state) && SETTLED.has(row.state) ? enclosing : row.phase;
+    return current;
+  });
+}
+
 /** One entry per phase, carrying the time the run held it and the states it passed through. The
- *  interval between two rows belongs to the phase of the earlier one, which is the last phase the
- *  run is recorded in; the final row closes no interval. */
+ *  interval between two rows belongs to the phase held after the earlier one; the final row closes
+ *  no interval. A row's state counts under its own phase, which a settled nested span has left. */
 function phases(rows: readonly ObservationRow[]): PhaseRow[] {
   const held = new Map<string, PhaseRow & { heldMs: number }>();
-  let current: string | null = null;
-  for (const [index, row] of rows.entries()) {
-    if (isString(row.phase)) current = row.phase;
-    if (current === null) continue;
-    const entry = held.get(current) ?? {
-      phase: current,
+  const entryOf = (phase: string, row: ObservationRow) => {
+    const entry = held.get(phase) ?? {
+      phase,
       rows: 0,
       heldMs: 0,
       states: {},
@@ -177,12 +196,22 @@ function phases(rows: readonly ObservationRow[]): PhaseRow[] {
       lastAt: row.at,
       elapsedMinutes: 0,
     };
+    held.set(phase, entry);
+    return entry;
+  };
+  const after = heldPhases(rows);
+  for (const [index, row] of rows.entries()) {
+    const current = after[index] ?? null;
+    if (isString(row.phase) && isString(row.state)) {
+      const own = entryOf(row.phase, row);
+      own.states[row.state] = (own.states[row.state] ?? 0) + 1;
+    }
+    if (current === null) continue;
+    const entry = entryOf(current, row);
     entry.rows += 1;
     entry.lastAt = row.at;
     const next = rows[index + 1];
     if (next !== undefined) entry.heldMs += Date.parse(textOf(next.at)) - Date.parse(textOf(row.at));
-    if (isString(row.state)) entry.states[row.state] = (entry.states[row.state] ?? 0) + 1;
-    held.set(current, entry);
   }
   return [...held.values()]
     .map(({ heldMs, ...entry }) => ({ ...entry, elapsedMinutes: minutes(heldMs) }))
@@ -192,9 +221,9 @@ function phases(rows: readonly ObservationRow[]): PhaseRow[] {
 /** The longest gaps between consecutive rows: elapsed time with the row the run sat behind. */
 function stalls(rows: readonly ObservationRow[]): Gap[] {
   const gaps: Gap[] = [];
-  let phase: string | null = null;
+  const after = heldPhases(rows);
   for (const [index, row] of rows.entries()) {
-    if (isString(row.phase)) phase = row.phase;
+    const phase = after[index] ?? null;
     const next = rows[index + 1];
     if (next === undefined) continue;
     gaps.push({
@@ -274,9 +303,11 @@ function causeOf(gap: Gap, sources: CauseSources): string {
  *  last transition at or before it. */
 function transitions(rows: readonly ObservationRow[]): PhaseMark[] {
   const marks: PhaseMark[] = [];
-  for (const row of rows) {
-    if (!isString(row.phase) || row.phase === marks.at(-1)?.phase) continue;
-    marks.push({ phase: row.phase, at: row.at, atMs: Date.parse(textOf(row.at)) });
+  const after = heldPhases(rows);
+  for (const [index, row] of rows.entries()) {
+    const phase = after[index];
+    if (phase === null || phase === undefined || phase === marks.at(-1)?.phase) continue;
+    marks.push({ phase, at: row.at, atMs: Date.parse(textOf(row.at)) });
   }
   return marks;
 }

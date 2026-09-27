@@ -127,8 +127,11 @@ there; one under TMPDIR is rebuilt on every run.
   makes: its aliases, its helpers and the macros its toolchain defines for that target. Keep the
   stand-in's own state out of the answer's names, in its own namespace or compilation unit, and
   give each such check at least one accept that is not your reference's output but another
-  practitioner's answer against the real platform. An answer the real toolchain builds and runs
-  correctly that the stand-in cannot build is the stand-in's defect.
+  practitioner's answer against the real platform. The cheapest such accept is your reference's
+  answer with one identifier it declares renamed, and one value it writes out replaced by the name
+  the target predefines for it: the real toolchain gives both the same verdict, so the stand-in
+  must too. An answer the real toolchain builds and runs correctly that the stand-in cannot build
+  is the stand-in's defect.
 - Declare `hidden: "required"` to receive private cases; the host binds that row to this check
   and records its digest with the tool inputs. Private cases test the published rule within its
   public domain; a published finite answer table cannot establish an unrestricted behaviour rule.

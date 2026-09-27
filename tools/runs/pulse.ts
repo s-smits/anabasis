@@ -489,6 +489,12 @@ function buildStatus(reading: PulseReading): string {
 function measureStatus(reading: PulseReading): string {
   const rows = topLevel(reading.observations);
   const since = rows.findLastIndex((row) => row.phase === "solve" && row.state === "started");
+  // Between a round's build row and its solve the gate runs, and any earlier solve belongs to the
+  // battery before. A `measure` round's only build row is `completed`, so any state opens a round.
+  const last = rows.at(-1);
+  if (since <= rows.findLastIndex((row) => row.phase === "build") && last !== undefined) {
+    return `gating: ${last.phase} ${duration(reading.now - Date.parse(last.at))}`;
+  }
   const pool = since < 0 ? [] : rows.slice(since);
   const count = (state: string) =>
     pool.filter((row) => row.phase === "measure-on" && row.state === state).length;

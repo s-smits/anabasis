@@ -239,6 +239,31 @@ describe("runs pulse", () => {
     expect(statusLine(after, 10)).toContain("ended: completed");
   });
 
+  it("states a round in its gate by the gate's phase, not the previous battery's solves", () => {
+    const earlier = [...OPENING, transition(5, "solve", "started"), transition(6, "measure-on", "started")];
+    const gating = [...earlier, transition(40, "build", "started"), transition(90, "controls", "started")];
+    expect(statusLine(reading(93, { observations: gating }), 10)).toContain("gating: controls 3m 0s");
+    const solving = [...gating, transition(95, "solve", "started"), transition(96, "measure-on", "started")];
+    expect(statusLine(reading(97, { observations: solving }), 10)).toContain(
+      "measuring: 0 submitted, 1 solving, 2m 0s",
+    );
+  });
+
+  it("states a remeasure round in its gate, and a gate no build row opened", () => {
+    // A `measure` move opens its round with no `build:started`, only these two rows.
+    const measured = [...OPENING, transition(5, "solve", "started"), transition(20, "claim", "completed")];
+    const remeasure = [
+      ...measured,
+      transition(30, "next", "completed"),
+      transition(31, "build", "completed", { summary: "Current adopted harness reused" }),
+      transition(31, "adopt", "completed", { summary: "Current domain tree already adopted" }),
+      transition(32, "controls", "started"),
+    ];
+    expect(statusLine(reading(35, { observations: remeasure }), 10)).toContain("gating: controls 3m 0s");
+    const unopened = [transition(0, "input", "completed"), transition(2, "controls", "started")];
+    expect(statusLine(reading(5, { observations: unopened }), 10)).toContain("gating: controls 3m 0s");
+  });
+
   it("states a build round by its counts and names what this tree could not read", () => {
     const line = statusLine(
       reading(45, {
